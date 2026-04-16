@@ -87,6 +87,16 @@ describe("knowledge/parsers", () => {
       expect(chunks[0]!.content).toContain("Alice");
     });
 
+    test("empty content returns 0 chunks", () => {
+      expect(parseFileToChunks("", "empty.txt", "plaintext")).toEqual([]);
+      expect(parseFileToChunks("", "empty.md", "markdown")).toEqual([]);
+      expect(parseFileToChunks("", "empty.json", "json")).toEqual([]);
+    });
+
+    test("whitespace-only content returns 0 chunks", () => {
+      expect(parseFileToChunks("   \n\n  ", "ws.txt", "plaintext")).toEqual([]);
+    });
+
     test("all chunks carry filename as path", () => {
       const content = "# A\n\nText\n\n## B\n\nMore";
       const chunks = parseFileToChunks(content, "doc.md", "markdown");
