@@ -14,6 +14,7 @@ import * as prompts from "@clack/prompts";
 import { runBrowserLogin, runDeviceFlow } from "@cli-core/index.ts";
 import { defineCommand, runCommand, showUsage } from "citty";
 import { profileCommand } from "./commands/profile.ts";
+import { updateCommand } from "./commands/update.ts";
 import {
   configPath,
   DEFAULT_ENGINE_URL,
@@ -29,8 +30,8 @@ import { runInkRepl } from "./ink-repl.ts";
 import { runMcpProxy } from "./mcp-proxy.ts";
 import { mostRecentSession } from "./sessions.ts";
 import { renderHelp } from "./slash.ts";
-
-const VERSION = "0.0.1";
+import { VERSION } from "@cli-core/version.ts";
+import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 
 // ---------- Shared arg shapes ----------
 
@@ -423,6 +424,7 @@ const mainCommand = defineCommand({
     status: statusCommand,
     tenants: tenantsCommand,
     mcp: mcpCommand,
+    update: updateCommand,
   },
   async run({ args }) {
     const profile = resolveProfile({
@@ -505,9 +507,12 @@ const SUB_COMMANDS: Record<string, any> = {
   status: statusCommand,
   tenants: tenantsCommand,
   mcp: mcpCommand,
+  update: updateCommand,
 };
 
 async function dispatch(): Promise<void> {
+  notifyIfUpdateAvailable("sk");
+
   if (rawArgs.length === 1 && (rawArgs[0] === "--version" || rawArgs[0] === "-v")) {
     process.stdout.write(`${VERSION}\n`);
     return;

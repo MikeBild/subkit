@@ -14,6 +14,7 @@
 
 import { type AgentTargetConfig, TunnelAgentClient } from "./client.ts";
 import { log } from "./logger.ts";
+import { VERSION } from "@cli-core/version.ts";
 
 interface ParsedArgs {
   engine_url: string;
@@ -66,6 +67,33 @@ function parseArgs(argv: string[]): ParsedArgs {
 }
 
 async function main(): Promise<void> {
+  // --check-update: check for updates without installing, exit.
+  if (process.argv.includes("--check-update")) {
+    const { checkForUpdate, defaultUpdaterConfig } = await import("@cli-core/updater.ts");
+    const info = await checkForUpdate(defaultUpdaterConfig("tunnel-agent", VERSION), true);
+    if (info) {
+      log.info("update available", { current: VERSION, latest: info.version });
+      process.exit(0);
+    }
+    log.info("already at latest version", { version: VERSION });
+    process.exit(0);
+  }
+
+  // --self-update: download newer binary, replace, exit.
+  // Checked before parseArgs since it doesn't need --engine-url etc.
+  if (process.argv.includes("--self-update")) {
+    const { runAgentSelfUpdate } = await import("./update.ts");
+    try {
+      await runAgentSelfUpdate();
+      process.exit(0);
+    } catch (err) {
+      log.error("update failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      process.exit(1);
+    }
+  }
+
   let parsed: ParsedArgs;
   try {
     parsed = parseArgs(process.argv.slice(2));
@@ -74,6 +102,15 @@ async function main(): Promise<void> {
       error: err instanceof Error ? err.message : String(err),
     });
     process.exit(2);
+  }
+
+  // Non-blocking startup update check
+  if (process.env.NO_UPDATE_CHECK !== "1") {
+    import("./update.ts")
+      .then((m) => m.checkAndLogUpdate())
+      .catch(() => {
+        /* silent */
+      });
   }
 
   log.info("tunnel agent starting", {
@@ -85,7 +122,7 @@ async function main(): Promise<void> {
     engine_url: parsed.engine_url,
     api_key: parsed.api_key,
     targets: parsed.targets,
-    agent_version: "0.0.1",
+    agent_version: VERSION,
   });
   const shutdown = (signal: string): void => {
     log.info("shutdown", { signal });
@@ -96,6 +133,13 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
   await client.start();
   log.info("tunnel agent registered");
+
+  // Start periodic 24h update check after successful registration
+  if (process.env.NO_UPDATE_CHECK !== "1") {
+    const { startPeriodicUpdateCheck } = await import("./update.ts");
+    startPeriodicUpdateCheck();
+  }
+
   await new Promise<void>(() => {});
 }
 

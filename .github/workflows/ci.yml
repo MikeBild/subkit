@@ -84,6 +84,20 @@ jobs:
       - name: Build CLI binary
         run: bun run build:cli
 
+      - name: Build sk binary
+        run: bun run build:sk
+
+      - name: Verify version injection
+        run: |
+          set -eux
+          CLI_VERSION=$(./dist/subkit --version)
+          SK_VERSION=$(./dist/sk --version)
+          echo "subkit version: $CLI_VERSION"
+          echo "sk version: $SK_VERSION"
+          # In CI from source, version comes from package.json (0.0.0)
+          test -n "$CLI_VERSION"
+          test -n "$SK_VERSION"
+
       - name: Smoke run engine binary
         id: smoke
         run: |

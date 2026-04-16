@@ -4,6 +4,7 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
+import { VERSION } from "@cli-core/version.ts";
 
 export type AppEnv = {
   Variables: {
@@ -35,7 +36,7 @@ export function createOpenApiApp(): OpenAPIHono<AppEnv> {
 
 export const OPENAPI_INFO = {
   title: "subkit engine",
-  version: process.env.ENGINE_VERSION ?? "0.0.0-dev",
+  version: process.env.ENGINE_VERSION ?? VERSION ?? "0.0.0-dev",
   description:
     "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec.",
 } as const;
