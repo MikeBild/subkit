@@ -63,29 +63,12 @@ jobs:
 
       - name: Migrate database
         run: bun run db:migrate
-        env:
-          DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
-          MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
 
-      - name: Test
-        run: bun test
-        env:
-          DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
-          MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
-          LLM_PROVIDER: mock
-          SKIP_DOCKER: "1"
+      - name: Unit + integration tests
+        run: bun test apps/ packages/
 
-      - name: Build engine binary
-        run: bun run build:engine
-
-      - name: Build agent binary
-        run: bun run build:agent
-
-      - name: Build CLI binary
-        run: bun run build:cli
-
-      - name: Build sk binary
-        run: bun run build:sk
+      - name: Build all binaries
+        run: bun run build:all
 
       - name: Verify version injection
         run: |
@@ -94,9 +77,11 @@ jobs:
           SK_VERSION=$(./dist/sk --version)
           echo "subkit version: $CLI_VERSION"
           echo "sk version: $SK_VERSION"
-          # In CI from source, version comes from package.json (0.0.0)
           test -n "$CLI_VERSION"
           test -n "$SK_VERSION"
+
+      - name: E2E tests
+        run: bun test tests/e2e/
 
       - name: Smoke run engine binary
         id: smoke
