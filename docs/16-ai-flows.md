@@ -1,6 +1,10 @@
 # 16 — AI Flows
 
-The engine exposes four AI flows. Each flow is a bounded LLM tool loop wrapped around the same prompt-assembly pipeline (Context Enhancement) and the same model-routing layer. None of the flows ever execute user-defined Steps in the caller's tenant directly — they emit drafts, patches, schemas, or messages, and a separate commit path turns those into durable changes.
+The engine exposes four AI flows:
+
+- Each flow is a bounded LLM tool loop wrapped around the same prompt-assembly pipeline (Context Enhancement) and the same model-routing layer
+- No flow ever executes user-defined Steps in the caller's tenant directly
+- Flows emit drafts, patches, schemas, or messages; a separate commit path turns those into durable changes
 
 The flows share four invariants:
 
@@ -65,7 +69,9 @@ flowchart LR
   I --> J[js-tiktoken accounting]
 ```
 
-**User memory** is an optional per-call payload sourced from the caller-supplied `SUBKIT.md` file (the `sk` end-user CLI walks upward from cwd and merges with `~/.sk/SUBKIT.md`). It is slotted between workflow skills and ingested connector docs. Overflow trimming drops `failures → docs → user memory → workflow skills → connector skills → global skills`, preserving the invariant that Skills and the user turn are never trimmed.
+**User memory** is an optional per-call payload sourced from the caller-supplied `SUBKIT.md` file (the `sk` end-user CLI walks upward from cwd and merges with `~/.sk/SUBKIT.md`). It is slotted between workflow skills and ingested connector docs.
+
+Overflow trimming order (first dropped → last dropped): `failures → docs → user memory → workflow skills → connector skills → global skills`. Knowledge Sources sit between Skills and Connector Docs in the trimming order. Skills and the user turn are never trimmed.
 
 - Skills are loaded in scope order (global → connector → workflow), each in descending version. Only `active` Skills are loaded.
 - Ingested connector documentation is selected by relevance against the user turn — the ingestion pipeline produces semantic-search-ready chunks against the 90% similarity threshold.
@@ -84,9 +90,10 @@ The engine speaks to the LLM exclusively through the `ai` package.
 | `extract` | `streamObject` | Pure schema fill, no tools. |
 | `converse` | `streamText` | Streaming chat surface, `stepCountIs(20–40)`, full structured-intent palette. |
 
-The conversational loop uses `experimental_activeTools` to narrow the palette per phase: early authoring exposes `propose_step` and friends; once a draft is structurally complete, the palette swaps to `dry_run_step`, `validate_draft`, `request_human_approval`, `commit_draft`. Phase transitions are deterministic — driven by draft state, not by the model.
-
-`experimental_createMCPClient` bridges the engine's own MCP surface back into the tool map for flows that need to query the engine's tools (for example `fetch_connector_docs` calling into the MCP resource layer). The MCP client is created once per flow invocation and torn down at the end.
+- `experimental_activeTools` narrows the palette per phase: early authoring exposes `propose_step` and friends; once a draft is structurally complete, the palette swaps to `dry_run_step`, `validate_draft`, `request_human_approval`, `commit_draft`
+- Phase transitions are deterministic — driven by draft state, not by the model
+- `experimental_createMCPClient` bridges the engine's own MCP surface back into the tool map for flows that need to query the engine's tools (e.g. `fetch_connector_docs` calling into the MCP resource layer)
+- MCP client is created once per flow invocation and torn down at the end
 
 ```ts
 // Skeleton of a converse turn. Trade-off: streamText keeps the surface
@@ -105,12 +112,12 @@ const result = await streamText({
 
 ## Model routing
 
-Models are resolved at the call site through a tenant-aware lookup.
+Models are resolved at the call site through a tenant-aware lookup:
 
-- Deployment defaults come from environment variables: `LLM_PRIMARY` and `LLM_FALLBACK`.
-- Tenant rows override the defaults via `llm_primary`, `llm_fallback`, and `llm_provider_credentials` (encrypted with the same AES-256-GCM helper as Connector Credentials).
-- `llm_monthly_token_budget` lives on the tenant row and caps cumulative spend.
-- Resolution order on every call: tenant → deployment default. The first non-null primary wins; the matching fallback is wired alongside it.
+- Deployment defaults from environment variables: `LLM_PRIMARY` and `LLM_FALLBACK`
+- Tenant rows override via `llm_primary`, `llm_fallback`, and `llm_provider_credentials` (encrypted with the same AES-256-GCM helper as Connector Credentials)
+- `llm_monthly_token_budget` lives on the tenant row and caps cumulative spend
+- Resolution order: tenant → deployment default; first non-null primary wins, matching fallback wired alongside it
 
 Fallback fires on three signals:
 
@@ -118,7 +125,7 @@ Fallback fires on three signals:
 2. `overloaded` — provider returned a transient capacity error.
 3. `context_length_exceeded` — the assembled prompt exceeds the primary's window after assembly-time trimming.
 
-When neither primary nor fallback can handle the call, the SDK call fails with a typed `llm_quota_exhausted` or `llm_unavailable` error. Both surface cleanly in `subkit chat` and in chat platforms via the same error envelope.
+When neither primary nor fallback can handle the call, the SDK call fails with a typed `llm_quota_exhausted` or `llm_unavailable` error. Both surface via the same error envelope.
 
 ```ts
 // Trade-off: a tiny resolver beats a generic policy engine here — three
@@ -136,16 +143,17 @@ function resolveModelForTenant(tenantId: string) {
 }
 ```
 
-The 120 s LLM request timeout is enforced at every SDK call via `AbortSignal.timeout(120_000)`. Per-model context-length caps are enforced at prompt-assembly time against the *effective* model — not the deployment default — so tenant overrides never trip on the wrong cap.
+- 120 s LLM request timeout enforced at every SDK call via `AbortSignal.timeout(120_000)`
+- Per-model context-length caps enforced at prompt-assembly time against the *effective* model — not the deployment default — so tenant overrides never trip on the wrong cap
 
 ## Skill-less cold start
 
-When a flow runs against a Connector that has no curated Skills yet, the engine does the following:
+When a flow runs against a Connector that has no curated Skills yet:
 
-1. Load the global `cold-start` Skill, which carries safety-margin guidance (smaller batch sizes, more conservative retries, more aggressive validation between mutations).
-2. Run the documentation ingestion pipeline against the Connector if it has a known docs source and ingested content is older than the freshness threshold.
-3. Proceed with the flow at a tightened `stepCountIs` (the lower end of the 20–40 range for `converse`, fixed at 20 for `generate` and `repair`).
-4. Mark the resulting draft or patch as "cold-start" in the audit trail so operators know to author Skills before promoting it.
+- Load the global `cold-start` Skill — carries safety-margin guidance (smaller batch sizes, more conservative retries, more aggressive validation between mutations)
+- Run the documentation ingestion pipeline against the Connector if it has a known docs source and ingested content is older than the freshness threshold
+- Proceed with the flow at a tightened `stepCountIs` (lower end of 20–40 for `converse`, fixed at 20 for `generate` and `repair`)
+- Mark the resulting draft or patch as "cold-start" in the audit trail so operators know to author Skills before promoting it
 
 The engine never fabricates a Skill from a successful cold-start run. Skill creation is always a human action.
 

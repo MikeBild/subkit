@@ -1,10 +1,10 @@
 # 34 — Installation
 
-This document covers CLI installation details for all platforms. For the full setup and configuration guide (profiles, backend deploy, auto-update), see the [README](README.md).
+This document covers installation, setup, auto-update, and uninstall for all platforms and all four binaries.
 
 ## Available Binaries
 
-Each GitHub Release publishes 15 binaries plus a `SHA256SUMS` checksum file:
+Each GitHub Release publishes 20 binaries (4 binaries × 5 platforms) plus a `SHA256SUMS` checksum file:
 
 | Binary | macOS ARM64 | macOS x64 | Linux x64 | Linux ARM64 | Windows x64 |
 |--------|:-----------:|:---------:|:---------:|:-----------:|:-----------:|
@@ -199,4 +199,91 @@ Remove-Item -Recurse -Force "$env:LOCALAPPDATA\subkit"
 $path = [Environment]::GetEnvironmentVariable('PATH', 'User')
 $path = ($path -split ';' | Where-Object { $_ -notlike '*subkit*' }) -join ';'
 [Environment]::SetEnvironmentVariable('PATH', $path, 'User')
+```
+
+---
+
+## Setting Up the CLIs
+
+### `sk` — end-user CLI
+
+`sk` stores profiles in `~/.sk/config.json`. Each profile holds an engine URL, API key, and active tenant.
+
+| Login method | Command | Use case |
+|---|---|---|
+| API key | `sk login --engine-url <url> --api-key <key>` | Scripted / CI |
+| Browser (OIDC) | `sk login --engine-url <url>` | Interactive, opens browser |
+| Portal token | `sk login --engine-url <url> --portal-token <token>` | Portal-locked end users |
+
+**Multiple profiles:**
+```bash
+sk login --engine-url https://staging.example.com --api-key <key> --profile staging
+sk login --engine-url https://prod.example.com    --api-key <key> --profile prod
+sk status --profile staging
+```
+
+**Precedence:** CLI flag → env var (`SUBKIT_ENGINE_URL`, `SUBKIT_API_KEY`) → disk profile → default.
+
+### `subkit` — operator CLI
+
+`subkit` stores profiles in `~/.subkit/config.json` with the same format and precedence as `sk`.
+
+```bash
+subkit login --engine-url https://your-engine.example.com --api-key <key>
+subkit login --engine-url https://your-engine.example.com   # OIDC device flow
+subkit profile set staging --engine-url https://staging.example.com --api-key <key>
+subkit profile use staging
+subkit profile list
+```
+
+### `tunnel-agent`
+
+```bash
+tunnel-agent \
+  --engine-url wss://subkit-tunnel.your-domain.com \
+  --api-key wf_live_abc123 \
+  --targets "my-api=http://localhost:3000/,internal-svc=http://10.0.0.5:8080/"
+```
+
+Environment variable configuration (for systemd / container deploys):
+```bash
+export SUBKIT_ENGINE_URL=wss://subkit-tunnel.your-domain.com
+export SUBKIT_API_KEY=wf_live_abc123
+export SUBKIT_TARGETS="my-api=http://localhost:3000/"
+tunnel-agent
+```
+
+---
+
+## Auto-Update (OTA)
+
+All four binaries have built-in OTA updates from GitHub Releases.
+
+### Update capabilities
+
+| Binary | Startup check | Update command | Periodic re-check | Health endpoint |
+|--------|:---:|:---:|:---:|:---:|
+| `sk` | background, banner on stderr | `sk update` | via startup (24h cache) | n/a |
+| `subkit` | background, banner on stderr | `subkit update` | via startup (24h cache) | n/a |
+| `engine` | background, structured log | `engine --self-update` | via startup (24h cache) | `/v1/health` → `update_available`, `latest_version` |
+| `tunnel-agent` | background, structured log | `tunnel-agent --self-update` | every 24h (long-running) | n/a |
+
+### What the update does
+
+1. Queries `api.github.com/repos/mikebild/subkit/releases/latest`
+2. Compares remote version against running binary's embedded version
+3. Downloads the correct binary for current OS/architecture
+4. Downloads `SHA256SUMS` and verifies the hash
+5. On macOS: ad-hoc codesigns the binary
+6. Atomically replaces the running binary (rename → move → cleanup)
+7. On Windows: renames running `.exe` to `.old`, writes new, cleans up on next run
+
+- Server binaries (`engine`, `tunnel-agent`): `--self-update` downloads and exits — operator restarts
+- CLI binaries: in-place update, no restart needed
+- Permission error → prints `run with sudo: sudo sk update`
+
+### Disable auto-check
+
+```bash
+export NO_UPDATE_CHECK=1
 ```

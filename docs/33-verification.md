@@ -4,6 +4,8 @@ This document is the **end-to-end smoke test matrix** for a release. It is a che
 
 The matrix runs against a single tenant unless noted otherwise. Numbered checkboxes are the intended granularity for an operator stepping through it manually; an automated harness collapses each step into one assertion block.
 
+> **Note:** Some steps reference CLI commands not yet implemented (e.g., `subkit tenants create`, `subkit users create`, `subkit system-accounts create`). These require direct REST API calls until the CLI commands are added. Steps marked with "(REST API)" indicate this.
+
 ---
 
 ## 1. Bring up the stack
@@ -15,9 +17,9 @@ The matrix runs against a single tenant unless noted otherwise. Numbered checkbo
 
 ## 2. Bootstrap identity
 
-- [ ] Create a Tenant via CLI: `subkit tenants create acme`.
-- [ ] Create a User with OIDC binding: `subkit users create alice@acme.test --oidc-subject ...`.
-- [ ] Create a System Account: `subkit system-accounts create ci-bot`.
+- [ ] Create a Tenant (REST API): `POST /v1/identity/tenants` with `{ "slug": "acme", "display_name": "Acme" }`.
+- [ ] Create a User with OIDC binding (REST API): `POST /v1/identity/users` with `{ "email": "alice@acme.test", "oidc_subject": "..." }`.
+- [ ] Create a System Account (REST API): `POST /v1/identity/system-accounts` with `{ "name": "ci-bot" }`.
 - [ ] Issue a personal API Key for the User: `subkit apikeys create --user alice@acme.test --scopes workflows:run`.
 - [ ] Issue a machine API Key for the System Account: `subkit apikeys create --system-account ci-bot --scopes workflows:run,executions:read`.
 - [ ] Issue a Portal Token for an end-user-style scope: `subkit portal-tokens create --workflows invoice-summary --ttl 24h`.
