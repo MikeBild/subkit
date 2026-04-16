@@ -13,11 +13,13 @@ import { auditCommand } from "./commands/audit.ts";
 import { chatCommand } from "./commands/chat.ts";
 import { connectorsCommand } from "./commands/connectors.ts";
 import { credentialsCommand } from "./commands/credentials.ts";
+import { discoveryCommand } from "./commands/discovery.ts";
 import { eventsCommand } from "./commands/events.ts";
 import { executionsCommand } from "./commands/executions.ts";
 import { extractCommand } from "./commands/extract.ts";
 import { healthCommand } from "./commands/health.ts";
 import { hooksCommand } from "./commands/hooks.ts";
+import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
 import { loginCommand } from "./commands/login.ts";
 import { mcpCommand } from "./commands/mcp.ts";
 import { notificationsCommand } from "./commands/notifications.ts";
@@ -25,6 +27,7 @@ import { portalTokensCommand } from "./commands/portal-tokens.ts";
 import { profileCommand } from "./commands/profile.ts";
 import { rbacCommand } from "./commands/rbac.ts";
 import { schedulesCommand } from "./commands/schedules.ts";
+import { skillCandidatesCommand } from "./commands/skill-candidates.ts";
 import { skillsCommand } from "./commands/skills.ts";
 import { subscriptionsCommand } from "./commands/subscriptions.ts";
 import { tenantsCommand } from "./commands/tenants.ts";
@@ -50,6 +53,9 @@ export const main = defineCommand({
     credentials: credentialsCommand,
     schedules: schedulesCommand,
     skills: skillsCommand,
+    "skill-candidates": skillCandidatesCommand,
+    "knowledge-sources": knowledgeSourcesCommand,
+    discovery: discoveryCommand,
     executions: executionsCommand,
     hooks: hooksCommand,
     subscriptions: subscriptionsCommand,

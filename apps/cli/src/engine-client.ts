@@ -319,6 +319,118 @@ export class EngineClient {
       fell_back: boolean;
     }>("POST", "/v1/ai/extract", body);
   }
+
+  // --------------------------- Knowledge Sources ---------------------------
+  listKnowledgeSources(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: KnowledgeSourceSummary[] }> {
+    return this.request("GET", "/v1/knowledge-sources", undefined, query);
+  }
+  getKnowledgeSource(id: string): Promise<KnowledgeSourceSummary> {
+    return this.request("GET", `/v1/knowledge-sources/${id}`);
+  }
+  searchKnowledge(
+    q: string,
+    opts: Record<string, string | number | undefined> = {},
+  ): Promise<{ hits: KnowledgeSearchHit[] }> {
+    return this.request("GET", "/v1/knowledge-sources/search", undefined, { q, ...opts });
+  }
+  deleteKnowledgeSource(id: string): Promise<{ deleted: boolean }> {
+    return this.request("DELETE", `/v1/knowledge-sources/${id}`);
+  }
+
+  /** Upload a file as a knowledge source. Uses multipart/form-data. */
+  async createKnowledgeSource(
+    file: { name: string; content: Uint8Array | Buffer; type?: string },
+    metadata: Record<string, unknown> = {},
+  ): Promise<KnowledgeSourceSummary> {
+    const form = new FormData();
+    form.append("file", new Blob([Buffer.from(file.content)], { type: file.type ?? "application/octet-stream" }), file.name);
+    form.append("metadata", JSON.stringify(metadata));
+    const url = `${this.base}/v1/knowledge-sources`;
+    const h: Record<string, string> = { accept: "application/json" };
+    if (this.apiKey) h.authorization = `Bearer ${this.apiKey}`;
+    if (this.tenant) h["x-subkit-tenant"] = this.tenant;
+    const res = await this.fetchImpl(url, { method: "POST", headers: h, body: form });
+    const text = await res.text();
+    if (!res.ok) {
+      let parsed: EngineErrorBody | string = text;
+      try { parsed = JSON.parse(text) as EngineErrorBody; } catch { /* keep as string */ }
+      throw new EngineError(res.status, parsed);
+    }
+    return JSON.parse(text) as KnowledgeSourceSummary;
+  }
+
+  // --------------------------- Skill Candidates ---------------------------
+  listSkillCandidates(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: SkillCandidateSummary[] }> {
+    return this.request("GET", "/v1/skill-candidates", undefined, query);
+  }
+  getSkillCandidate(id: string): Promise<SkillCandidateSummary> {
+    return this.request("GET", `/v1/skill-candidates/${id}`);
+  }
+  approveSkillCandidate(
+    id: string,
+    body: Record<string, unknown> = {},
+  ): Promise<{ candidate: SkillCandidateSummary; skill_id: string }> {
+    return this.request("POST", `/v1/skill-candidates/${id}/approve`, body);
+  }
+  rejectSkillCandidate(
+    id: string,
+    body: { reason?: string } = {},
+  ): Promise<{ rejected: boolean }> {
+    return this.request("POST", `/v1/skill-candidates/${id}/reject`, body);
+  }
+
+  // --------------------------- Discovery ---------------------------
+  listDiscoveryRuns(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: DiscoveryRunSummary[] }> {
+    return this.request("GET", "/v1/discovery/runs", undefined, query);
+  }
+  getDiscoveryRun(id: string): Promise<DiscoveryRunSummary> {
+    return this.request("GET", `/v1/discovery/runs/${id}`);
+  }
+  listDiscoveryArtifacts(
+    runId: string,
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: DiscoveryArtifactSummary[] }> {
+    return this.request("GET", `/v1/discovery/runs/${runId}/artifacts`, undefined, query);
+  }
+  approveDiscoveryArtifact(id: string): Promise<{ approved: boolean }> {
+    return this.request("POST", `/v1/discovery/artifacts/${id}/approve`);
+  }
+  rejectDiscoveryArtifact(
+    id: string,
+    body: { reason?: string } = {},
+  ): Promise<{ rejected: boolean }> {
+    return this.request("POST", `/v1/discovery/artifacts/${id}/reject`, body);
+  }
+
+  /** Upload files for discovery analysis. Uses multipart/form-data. */
+  async createDiscoveryRun(
+    files: Array<{ name: string; content: Uint8Array | Buffer; type?: string }>,
+    label?: string,
+  ): Promise<DiscoveryRunSummary> {
+    const form = new FormData();
+    for (const f of files) {
+      form.append("files", new Blob([Buffer.from(f.content)], { type: f.type ?? "application/octet-stream" }), f.name);
+    }
+    if (label) form.append("label", label);
+    const url = `${this.base}/v1/discovery/runs`;
+    const h: Record<string, string> = { accept: "application/json" };
+    if (this.apiKey) h.authorization = `Bearer ${this.apiKey}`;
+    if (this.tenant) h["x-subkit-tenant"] = this.tenant;
+    const res = await this.fetchImpl(url, { method: "POST", headers: h, body: form });
+    const text = await res.text();
+    if (!res.ok) {
+      let parsed: EngineErrorBody | string = text;
+      try { parsed = JSON.parse(text) as EngineErrorBody; } catch { /* keep as string */ }
+      throw new EngineError(res.status, parsed);
+    }
+    return JSON.parse(text) as DiscoveryRunSummary;
+  }
 }
 
 function buildQuery(params: Record<string, unknown> | undefined): string {
@@ -422,5 +534,56 @@ export interface ExecutionSummary {
   request_source: string;
   started_at: string | null;
   finished_at: string | null;
+  created_at: string;
+}
+
+export interface KnowledgeSourceSummary {
+  id: string;
+  name: string;
+  slug: string;
+  scope: string;
+  status: string;
+  source_uri: string;
+  bytes_total: number;
+  chunk_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeSearchHit {
+  id: string;
+  knowledge_source_id: string;
+  title: string | null;
+  snippet: string;
+  rank: number;
+}
+
+export interface SkillCandidateSummary {
+  id: string;
+  title: string;
+  pattern_kind: string;
+  confidence: string;
+  status: string;
+  evidence_count: number;
+  scope: string;
+  created_at: string;
+}
+
+export interface DiscoveryRunSummary {
+  id: string;
+  status: string;
+  label: string | null;
+  file_count: number;
+  files_analyzed: number;
+  artifact_count: number;
+  created_at: string;
+}
+
+export interface DiscoveryArtifactSummary {
+  id: string;
+  kind: string;
+  status: string;
+  title: string;
+  confidence: number | null;
   created_at: string;
 }

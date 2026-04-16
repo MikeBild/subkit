@@ -1,12 +1,12 @@
-// Connectors → MCP resources.
+// Connectors, Knowledge Sources, and Skill Candidates → MCP resources.
 //
-// Each connector row becomes a resource at `connector://<id>`. `resources/read`
-// returns a JSON envelope with the connector's metadata (no credentials).
-// `resources/subscribe` is now wired up to the outbox pub/sub: when an
-// event arrives on the `connector.oauth` channel for a subscribed
-// connector, we push a `notifications/resources/updated` frame down the
-// session's transport. Subscriptions are tracked per server instance and
-// cleared automatically when the underlying transport closes.
+// Each domain object becomes a resource at its respective URI:
+//   - `connector://<id>` — connector metadata (no credentials)
+//   - `knowledge://<id>` — knowledge source metadata + chunk count
+//   - `skill-candidate://<id>` — proposed skill improvement
+//
+// `resources/subscribe` is wired to outbox pub/sub: events for
+// subscribed resources push `notifications/resources/updated`.
 
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
@@ -19,10 +19,12 @@ import {
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import * as connectorSvc from "../../connectors/service.ts";
 import type { Db } from "../../db/client.ts";
+import * as knowledgeSvc from "../../knowledge/service.ts";
 import { logger } from "../../logging/logger.ts";
 import { globalEmitter, type PubSubEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { can } from "../../rbac/evaluator.ts";
+import * as skillCandidateSvc from "../../skill-candidates/service.ts";
 
 export interface RegisterResourcesParams {
   server: Server;
@@ -34,6 +36,12 @@ export interface RegisterResourcesParams {
 
 function connectorUri(id: string): string {
   return `connector://${id}`;
+}
+function knowledgeUri(id: string): string {
+  return `knowledge://${id}`;
+}
+function skillCandidateUri(id: string): string {
+  return `skill-candidate://${id}`;
 }
 
 export function registerResourcesCapability(p: RegisterResourcesParams): void {
@@ -71,11 +79,40 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     }
   });
 
-  // Tear down the listener when the server transport closes so we don't
+  // Subscribe to notification.emitted for knowledge + skill-candidate events.
+  // Both event types flow through the generic notification channel.
+  const offNotification = emitter.on(
+    "notification.emitted",
+    async (event: EventEnvelope<unknown>) => {
+      if (event.tenant_id !== principal.tenant_id) return;
+      const payload = (event.payload ?? {}) as Record<string, unknown>;
+
+      // Knowledge source updates
+      const ksId = payload.knowledge_source_id as string | undefined;
+      if (ksId) {
+        const uri = knowledgeUri(ksId);
+        if (subscribed.has(uri)) {
+          try { await server.sendResourceUpdated({ uri }); } catch { /* best-effort */ }
+        }
+      }
+
+      // Skill candidate updates
+      const scId = payload.skill_candidate_id as string | undefined;
+      if (scId) {
+        const uri = skillCandidateUri(scId);
+        if (subscribed.has(uri)) {
+          try { await server.sendResourceUpdated({ uri }); } catch { /* best-effort */ }
+        }
+      }
+    },
+  );
+
+  // Tear down listeners when the server transport closes so we don't
   // leak handlers across reconnects.
   const priorOnClose = server.onclose;
   server.onclose = (): void => {
     offConnectorOauth();
+    offNotification();
     subscribed.clear();
     if (typeof priorOnClose === "function") {
       try {
@@ -105,11 +142,107 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         description: `${cn.driver} (${cn.environment})`,
         mimeType: "application/json",
       }));
+    // Knowledge Sources
+    const knowledgeSources = await knowledgeSvc.listKnowledgeSources(
+      { tenant_id: principal.tenant_id, status: "active" },
+      db,
+    );
+    for (const ks of knowledgeSources) {
+      resources.push({
+        uri: knowledgeUri(ks.id),
+        name: ks.name,
+        description: `Knowledge (${ks.scope}): ${ks.description ?? ks.source_uri}`,
+        mimeType: "application/json",
+      });
+    }
+
+    // Skill Candidates (proposed only)
+    const candidates = await skillCandidateSvc.listSkillCandidates(
+      { tenant_id: principal.tenant_id, status: "proposed" },
+      db,
+    );
+    for (const sc of candidates) {
+      resources.push({
+        uri: skillCandidateUri(sc.id),
+        name: `Suggestion: ${sc.title}`,
+        description: `${sc.pattern_kind} (${sc.confidence}) — ${sc.body.slice(0, 120)}`,
+        mimeType: "application/json",
+      });
+    }
+
     return { resources };
   });
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const uri = req.params.uri;
+
+    // Knowledge Sources
+    if (uri.startsWith("knowledge://")) {
+      const id = uri.slice("knowledge://".length);
+      const ks = await knowledgeSvc.getKnowledgeSource(principal.tenant_id, id, db);
+      if (!ks) throw new Error(`knowledge source not found: ${id}`);
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "knowledge:read",
+        resource: { type: "knowledge", id: ks.id },
+      });
+      if (!decision.allow) {
+        const err = new Error(decision.reason ?? "permission_denied") as Error & { code?: number };
+        err.code = -32001;
+        throw err;
+      }
+      return {
+        contents: [{
+          uri,
+          mimeType: "application/json",
+          text: JSON.stringify({
+            id: ks.id,
+            name: ks.name,
+            scope: ks.scope,
+            source_type: ks.source_type,
+            bytes_total: ks.bytes_total,
+            chunk_count: ks.chunk_count,
+            status: ks.status,
+          }, null, 2),
+        }],
+      };
+    }
+
+    // Skill Candidates
+    if (uri.startsWith("skill-candidate://")) {
+      const id = uri.slice("skill-candidate://".length);
+      const sc = await skillCandidateSvc.getSkillCandidate(principal.tenant_id, id, db);
+      if (!sc) throw new Error(`skill candidate not found: ${id}`);
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "skill:read",
+        resource: { type: "skill_candidate", id: sc.id },
+      });
+      if (!decision.allow) {
+        const err = new Error(decision.reason ?? "permission_denied") as Error & { code?: number };
+        err.code = -32001;
+        throw err;
+      }
+      return {
+        contents: [{
+          uri,
+          mimeType: "application/json",
+          text: JSON.stringify({
+            id: sc.id,
+            title: sc.title,
+            body: sc.body,
+            pattern_kind: sc.pattern_kind,
+            confidence: sc.confidence,
+            evidence_count: sc.evidence_count,
+            scope: sc.scope,
+            status: sc.status,
+          }, null, 2),
+        }],
+      };
+    }
+
     if (!uri.startsWith("connector://")) {
       throw new Error(`unsupported uri: ${uri}`);
     }
