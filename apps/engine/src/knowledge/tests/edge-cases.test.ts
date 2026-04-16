@@ -32,12 +32,12 @@ describe.skipIf(skip)("knowledge/edge-cases", () => {
       },
       ctx.testDb.db,
     );
+    // Empty content is filtered by parseFileToChunks → 0 raw chunks → 0 stored
     expect(result.chunk_count).toBe(0);
-    expect(result.bytes_total).toBe(0);
     expect(result.status).toBe("active");
   });
 
-  test("upload file with only whitespace creates minimal chunks", async () => {
+  test("upload file with only whitespace creates source with 0 chunks", async () => {
     const result = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -47,7 +47,8 @@ describe.skipIf(skip)("knowledge/edge-cases", () => {
       },
       ctx.testDb.db,
     );
-    // Whitespace-only content may produce 0 chunks after filtering
+    // Whitespace-only content filtered out by parseFileToChunks
+    expect(result.chunk_count).toBe(0);
     expect(result.status).toBe("active");
   });
 

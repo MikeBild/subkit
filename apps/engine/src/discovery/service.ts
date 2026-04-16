@@ -82,6 +82,68 @@ export async function createDiscoveryRun(
 ): Promise<DiscoveryRunView> {
   const db = exec ?? getDb();
 
+  // Parse all files OUTSIDE the transaction. Failures are recorded in the
+  // parsed results so the transaction only does clean inserts.
+  interface ParsedFile {
+    filename: string;
+    mime_type: string | null;
+    byte_size: number;
+    format: string;
+    content: string | null;
+    chunk_count: number;
+    status: string;
+    error: string | null;
+    fingerprint: string | null;
+  }
+  const parsedFiles: ParsedFile[] = [];
+  for (const file of p.files) {
+    try {
+      const content =
+        typeof file.buffer === "string" ? file.buffer : new TextDecoder().decode(file.buffer);
+
+      // PostgreSQL TEXT columns reject null bytes — detect and fail early
+      if (content.includes("\x00")) {
+        throw new Error("File contains null bytes — binary files are not supported");
+      }
+
+      const format = detectFormat(file.filename, file.mime);
+      const rawChunks = parseFileToChunks(content, file.filename, format);
+      const fingerprint = createHash("sha256").update(content).digest("hex").slice(0, 32);
+      parsedFiles.push({
+        filename: file.filename,
+        mime_type: file.mime ?? null,
+        byte_size: Buffer.byteLength(content, "utf8"),
+        format,
+        content,
+        chunk_count: rawChunks.length,
+        status: "pending",
+        error: null,
+        fingerprint,
+      });
+    } catch (err) {
+      logger.warn({
+        module: "discovery",
+        action: "discovery.file_parse_failed",
+        msg: `Failed to parse file: ${file.filename}`,
+        error: err instanceof Error ? err.message : String(err),
+        filename: file.filename,
+      });
+      parsedFiles.push({
+        filename: file.filename,
+        mime_type: file.mime ?? null,
+        byte_size: 0,
+        format: "unknown",
+        content: null,
+        chunk_count: 0,
+        status: "failed",
+        error: err instanceof Error ? err.message : String(err),
+        fingerprint: null,
+      });
+    }
+  }
+
+  const parsedCount = parsedFiles.filter((f) => f.status !== "failed").length;
+
   return await (db as Db).transaction(async (tx) => {
     const [run] = await tx
       .insert(discoveryRuns)
@@ -97,53 +159,21 @@ export async function createDiscoveryRun(
 
     if (!run) throw new Error("discovery_runs insert returned no row");
 
-    // Parse and insert files — try-catch per file so one bad file
-    // doesn't abort the entire run.
-    let parsedCount = 0;
-    for (const file of p.files) {
-      try {
-        const content =
-          typeof file.buffer === "string" ? file.buffer : new TextDecoder().decode(file.buffer);
-
-        const format = detectFormat(file.filename, file.mime);
-        const rawChunks = parseFileToChunks(content, file.filename, format);
-        const fingerprint = createHash("sha256").update(content).digest("hex").slice(0, 32);
-
-        await tx.insert(discoveryFiles).values({
-          tenant_id: p.tenant_id,
-          run_id: run.id,
-          filename: file.filename,
-          mime_type: file.mime ?? null,
-          byte_size: Buffer.byteLength(content, "utf8"),
-          format,
-          content,
-          chunk_count: rawChunks.length,
-          fingerprint,
-        });
-        parsedCount++;
-      } catch (err) {
-        // Record the failed file so operators can see what went wrong
-        logger.warn({
-          module: "discovery",
-          action: "discovery.file_parse_failed",
-          msg: `Failed to parse file: ${file.filename}`,
-          error: err instanceof Error ? err.message : String(err),
-          filename: file.filename,
-        });
-        await tx.insert(discoveryFiles).values({
-          tenant_id: p.tenant_id,
-          run_id: run.id,
-          filename: file.filename,
-          mime_type: file.mime ?? null,
-          byte_size: 0,
-          format: "unknown",
-          content: null,
-          chunk_count: 0,
-          status: "failed",
-          error: err instanceof Error ? err.message : String(err),
-          fingerprint: null,
-        });
-      }
+    // Insert all pre-parsed files in a clean transaction
+    for (const pf of parsedFiles) {
+      await tx.insert(discoveryFiles).values({
+        tenant_id: p.tenant_id,
+        run_id: run.id,
+        filename: pf.filename,
+        mime_type: pf.mime_type,
+        byte_size: pf.byte_size,
+        format: pf.format,
+        content: pf.content,
+        chunk_count: pf.chunk_count,
+        status: pf.status,
+        error: pf.error,
+        fingerprint: pf.fingerprint,
+      });
     }
 
     await auditAwait(

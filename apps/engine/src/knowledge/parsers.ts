@@ -81,6 +81,9 @@ export function parseFileToChunks(
   filename: string,
   format: ParsedFormat,
 ): RawChunk[] {
+  // Empty or whitespace-only content produces no chunks
+  if (!content || content.trim().length === 0) return [];
+
   switch (format) {
     case "markdown":
       return parseMarkdownChunks(content, filename);
