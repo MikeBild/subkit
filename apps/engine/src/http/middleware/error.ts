@@ -3,6 +3,7 @@
 // failure as a `request.failed` event.
 
 import type { Context, MiddlewareHandler } from "hono";
+import { logger } from "../../logging/logger.ts";
 import { HttpError } from "../errors.ts";
 import type { AppEnv } from "../openapi.ts";
 
@@ -33,7 +34,8 @@ export function errorMiddleware(): MiddlewareHandler<AppEnv> {
         return envelope(c, err.status, err.code, err.message, err.details);
       }
       const message = err instanceof Error ? err.message : String(err);
-      return envelope(c, 500, "internal_error", message);
+      logger.error({ msg: "unhandled error", error: message, trace_id: c.get("trace_id") });
+      return envelope(c, 500, "internal_error", "internal error");
     }
     return undefined;
   };

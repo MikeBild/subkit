@@ -4,6 +4,7 @@
 // public routes (health, openapi, docs).
 
 import type { MiddlewareHandler } from "hono";
+import { recordAuthFailure } from "../../auth/failed-auth-tracker.ts";
 import type { AuthProviderRegistry } from "../../auth/registry.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { withContext } from "../../logging/context.ts";
@@ -26,6 +27,14 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
         },
       );
       return;
+    }
+    // Track failed attempts when a credential was provided but no provider accepted it.
+    if (c.req.header("authorization")) {
+      const ip =
+        c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+        c.req.header("x-real-ip") ??
+        "unknown";
+      recordAuthFailure(ip);
     }
     await next();
   };

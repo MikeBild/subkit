@@ -35,6 +35,10 @@ const SENSITIVE_KEYS = new Set<string>([
   "refresh_token",
   "access_token",
   "id_token",
+  // connection strings
+  "database_url",
+  "connection_string",
+  "connectionstring",
 ]);
 
 const REDACTED = "***redacted***";
@@ -48,6 +52,8 @@ const SCRUBBERS: RegExp[] = [
   /v0=[a-f0-9]{16,}/gi,
   // Subkit API keys `wf_live_...` / `wf_test_...`
   /wf_(live|test)_[a-zA-Z0-9]+/g,
+  // Postgres connection strings with credentials
+  /postgres(?:ql)?:\/\/[^:]+:[^@]+@/gi,
 ];
 
 function scrubString(value: string): string {
