@@ -214,6 +214,7 @@ describe("/profile slash handler", () => {
       session: initialSessionState(null),
       setConversationId: () => {},
       allowedPermissions: [] as readonly string[],
+      configPath,
     };
   }
 
