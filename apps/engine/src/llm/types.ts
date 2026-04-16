@@ -3,7 +3,7 @@
 
 import type { Skill } from "../skills/types.ts";
 
-export type LlmFlow = "generate" | "extract" | "repair" | "converse";
+export type LlmFlow = "generate" | "extract" | "repair" | "converse" | "discover";
 
 export type LlmProviderKind = "anthropic" | "openai" | "bedrock" | "vertex" | "azure" | "mock";
 
@@ -44,6 +44,17 @@ export interface IncludedChunk {
   tokens: number;
 }
 
+/** Knowledge Source chunk included in the prompt. */
+export interface IncludedKnowledgeChunk {
+  id: string;
+  knowledge_source_id: string;
+  title: string | null;
+  path: string | null;
+  snippet: string;
+  rank: number;
+  tokens: number;
+}
+
 export interface AssembleContextParams {
   tenant_id: string;
   flow: LlmFlow;
@@ -72,6 +83,7 @@ export interface EnhancedPrompt {
   token_counts: {
     system: number;
     skills: number;
+    knowledge: number;
     docs: number;
     failures: number;
     messages: number;
@@ -79,8 +91,10 @@ export interface EnhancedPrompt {
   };
   included_skill_ids: string[];
   included_chunk_ids: string[];
+  included_knowledge_chunk_ids: string[];
   included_skills: Skill[];
   included_chunks: IncludedChunk[];
+  included_knowledge_chunks: IncludedKnowledgeChunk[];
 }
 
 export interface LlmCallLogEntry {

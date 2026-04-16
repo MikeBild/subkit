@@ -8,6 +8,7 @@
 import type { Db } from "../db/client.ts";
 import { getDb } from "../db/client.ts";
 import { searchDocs } from "../docs-ingestion/service.ts";
+import { searchKnowledge } from "../knowledge/service.ts";
 import { logger } from "../logging/logger.ts";
 import { retrieveApplicableSkills } from "../skills/service.ts";
 import type { Skill } from "../skills/types.ts";
@@ -17,6 +18,7 @@ import type {
   AssembleContextParams,
   EnhancedPrompt,
   IncludedChunk,
+  IncludedKnowledgeChunk,
   LlmFlow,
   PriorFailure,
   UserTurn,
@@ -52,6 +54,16 @@ const BASE_SYSTEM_PROMPTS: Record<LlmFlow, string> = {
     "Hold a multi-turn authoring conversation with the operator.",
     "Ground every turn in the provided Skills and connector docs. Ask for clarification only when necessary.",
   ].join(" "),
+  discover: [
+    "You are the subkit workflow engine's discovery flow.",
+    "Analyze the given file content to identify three kinds of artifacts:",
+    "1. Connectors: API integrations (from OpenAPI specs, code with API calls, config files with connection strings).",
+    "2. Skills: operational rules, compliance requirements, best practices (from SOP documents, compliance docs).",
+    "3. Knowledge Sources: reference material that should be indexed for retrieval (from runbooks, glossaries).",
+    "For each artifact, provide: kind, title, description, structured draft data, evidence excerpts, and a confidence score (0-100).",
+    "Be precise. Only propose artifacts you have strong evidence for. Never invent URLs, endpoints, or credentials.",
+    "Return a JSON object with an `artifacts` array.",
+  ].join(" "),
 };
 
 function formatSkill(s: Skill): string {
@@ -68,6 +80,15 @@ function formatChunk(chunk: IncludedChunk): string {
     : chunk.path
       ? `## Doc: ${chunk.path}`
       : "## Doc";
+  return `${heading}\n${chunk.snippet}`;
+}
+
+function formatKnowledgeChunk(chunk: IncludedKnowledgeChunk): string {
+  const heading = chunk.title
+    ? `## Knowledge: ${chunk.title}${chunk.path ? ` — ${chunk.path}` : ""}`
+    : chunk.path
+      ? `## Knowledge: ${chunk.path}`
+      : "## Knowledge";
   return `${heading}\n${chunk.snippet}`;
 }
 
@@ -118,6 +139,40 @@ async function loadChunks(
   }
 }
 
+async function loadKnowledgeChunks(
+  tenant_id: string,
+  workflow_id: string | undefined,
+  query: string,
+  exec: Executor,
+): Promise<IncludedKnowledgeChunk[]> {
+  if (!query) return [];
+  try {
+    const hits = await searchKnowledge(
+      { tenant_id, query, ...(workflow_id ? { workflow_id } : {}), limit: 10 },
+      exec,
+    );
+    return hits.map((h) => ({
+      id: h.id,
+      knowledge_source_id: h.knowledge_source_id,
+      title: h.title,
+      path: h.path,
+      snippet: h.snippet,
+      rank: h.rank,
+      tokens: countTokens(h.snippet),
+    }));
+  } catch (err) {
+    logger.debug({
+      module: "llm",
+      action: "llm.context.knowledge_search_skipped",
+      msg: "knowledge search failed during context assembly",
+      tenant_id,
+      workflow_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}
+
 /**
  * Assemble an EnhancedPrompt for the given tenant + flow. Enforces a
  * token budget against the effective model's context cap and drops
@@ -145,10 +200,22 @@ export async function assembleEnhancedPrompt(
   const connectorSkills = skillsApplicable.filter((s) => s.scope === "connector");
   const workflowSkills = skillsApplicable.filter((s) => s.scope === "workflow");
 
-  const docsBudget = Math.floor(cap * 0.3);
   const query = buildQuery(p.user_turns);
+
+  // Knowledge chunks: 15% of token budget for enterprise domain knowledge.
+  const knowledgeBudget = Math.floor(cap * 0.15);
+  const rawKnowledgeChunks = await loadKnowledgeChunks(p.tenant_id, p.workflow_id, query, db);
+  const knowledgeChunks: IncludedKnowledgeChunk[] = [];
+  let knowledgeBytes = 0;
+  for (const kc of rawKnowledgeChunks) {
+    if (knowledgeBytes + kc.tokens > knowledgeBudget) break;
+    knowledgeChunks.push(kc);
+    knowledgeBytes += kc.tokens;
+  }
+
+  // Connector docs: 30% of token budget.
+  const docsBudget = Math.floor(cap * 0.3);
   const rawChunks = await loadChunks(p.tenant_id, p.connector_id, query, db);
-  // Keep chunks ordered by rank until we blow `docsBudget`.
   const chunks: IncludedChunk[] = [];
   let docsBytes = 0;
   for (const ch of rawChunks) {
@@ -171,6 +238,7 @@ export async function assembleEnhancedPrompt(
     for (const s of globalSkills) sections.push(formatSkill(s));
     for (const s of connectorSkills) sections.push(formatSkill(s));
     for (const s of workflowSkills) sections.push(formatSkill(s));
+    for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
     if (userMemory) sections.push(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
     for (const f of failures) sections.push(formatFailure(f));
@@ -196,6 +264,8 @@ export async function assembleEnhancedPrompt(
       failures = [];
     } else if (chunks.length > 0) {
       chunks.pop();
+    } else if (knowledgeChunks.length > 0) {
+      knowledgeChunks.pop();
     } else if (userMemory) {
       // Drop user memory AFTER docs/failures so grounding survives
       // overflow; before skills because skills are never trimmed
@@ -223,6 +293,7 @@ export async function assembleEnhancedPrompt(
     token_counts: {
       system: systemTokens,
       skills: includedSkills.reduce((t, s) => t + countTokens(formatSkill(s)), 0),
+      knowledge: knowledgeChunks.reduce((t, kc) => t + kc.tokens, 0),
       docs: chunks.reduce((t, c) => t + c.tokens, 0),
       failures: failures.reduce((t, f) => t + countTokens(formatFailure(f)), 0),
       messages: messagesTokens,
@@ -230,8 +301,10 @@ export async function assembleEnhancedPrompt(
     },
     included_skill_ids: includedSkills.map((s) => s.id),
     included_chunk_ids: chunks.map((c) => c.id),
+    included_knowledge_chunk_ids: knowledgeChunks.map((kc) => kc.id),
     included_skills: includedSkills,
     included_chunks: chunks,
+    included_knowledge_chunks: knowledgeChunks,
   };
   return prompt;
 }

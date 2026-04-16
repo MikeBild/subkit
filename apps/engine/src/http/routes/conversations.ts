@@ -14,8 +14,10 @@ import { streamSSE } from "hono/streaming";
 import * as svc from "../../conversations/service.ts";
 import { replayEvents, serializeEvent } from "../../conversations/streaming.ts";
 import type { ConversationStatus } from "../../conversations/types.ts";
+import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { monthlyUsage } from "../../llm/budgets.ts";
 import { resolveModelRoute } from "../../llm/provider.ts";
+import { logger } from "../../logging/logger.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
@@ -559,6 +561,87 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
         }),
       );
     });
+  });
+
+  // ---- File attachment route -------------------------------------------------
+  // POST /v1/conversations/:id/messages/upload
+  //
+  // Accepts multipart/form-data with:
+  //   - message (text): the user's message
+  //   - files[] (binary, 1-10): attached files
+  //   - memory (text, optional): SUBKIT.md content
+  //
+  // Each file is auto-ingested as a Knowledge Source scoped to the
+  // conversation's target workflow (or global). The user message + any
+  // file references are then passed to the standard appendUserMessage flow.
+
+  app.post("/v1/conversations/:id/messages/upload", async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const id = c.req.param("id");
+
+    const formData = await c.req.formData();
+    const message = formData.get("message");
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return c.json({ error: "message field is required" }, 400);
+    }
+
+    const memory = formData.get("memory");
+    const files = formData.getAll("files");
+
+    // Auto-ingest each file as a Knowledge Source
+    const ingestedSources: string[] = [];
+    for (const file of files) {
+      if (!(file instanceof File)) continue;
+      try {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const source = await createKnowledgeSource(
+          {
+            tenant_id: principal.tenant_id,
+            input: {
+              name: file.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " "),
+              scope: "global",
+            },
+            upload: {
+              buffer,
+              filename: file.name,
+              ...(file.type ? { mime: file.type } : {}),
+            },
+            actor_id: principal.id,
+          },
+          db,
+        );
+        ingestedSources.push(source.id);
+      } catch (err) {
+        logger.warn({
+          module: "conversations",
+          action: "file_attachment.ingest_failed",
+          msg: `Failed to ingest file attachment: ${file.name}`,
+          error: err instanceof Error ? err.message : String(err),
+          filename: file.name,
+        });
+      }
+    }
+
+    // Append enriched message that references ingested files
+    const enrichedMessage =
+      ingestedSources.length > 0
+        ? `${message}\n\n[Attached ${ingestedSources.length} file(s) as knowledge sources]`
+        : message;
+
+    const outcome = await svc.appendUserMessage(
+      {
+        tenant_id: principal.tenant_id,
+        conversation_id: id,
+        actor_id: principal.id,
+        message: enrichedMessage,
+        ...(typeof memory === "string" && memory.length > 0 ? { memory } : {}),
+      },
+      db,
+    );
+
+    const serialized = serializeConversation(outcome);
+    return c.json({ ...serialized, ingested_knowledge_source_ids: ingestedSources }, 200);
   });
 
   // Touch the helper so the biome unused-import pass does not reject.

@@ -54,6 +54,7 @@ const ENDUSER_PERMISSIONS = new Set<string>([
   "conversation:write",
   "conversation:cancel",
   "conversation:list",
+  "knowledge:read",
 ]);
 const TUNNEL_AGENT_PERMISSIONS = new Set<string>(["tunnel:agent", "tunnel:read"]);
 const METRICS_SCRAPER_PERMISSIONS = new Set<string>(["metrics:read"]);
