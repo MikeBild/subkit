@@ -7,11 +7,7 @@ import { and, count, desc, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
-import {
-  skillCandidateEvidence,
-  skillCandidates,
-  skillEffectiveness,
-} from "../db/schema/skills.ts";
+import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
 import { createSkill } from "../skills/service.ts";
 import { detectFailurePatterns, detectRepairPatterns, detectSuccessPatterns } from "./detectors/index.ts";
 import type {
