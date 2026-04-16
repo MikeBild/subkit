@@ -101,6 +101,7 @@ export async function detectFailurePatterns(
       ],
       best_practices: ["Add input validation before this step", "Consider a branch step to handle this case"],
       pitfalls: [],
+      doc_refs: [],
       fingerprint,
       confidence: computeConfidence(group.count, ratio),
       evidence: group.execution_ids.slice(0, 50).map((id) => ({

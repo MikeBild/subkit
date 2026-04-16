@@ -34,6 +34,7 @@ const MAX_EVIDENCE_PER_CANDIDATE = 50;
 
 function toView(row: typeof skillCandidates.$inferSelect): SkillCandidateView {
   const blob = (row.examples ?? {}) as Record<string, unknown>;
+  const evidenceArr = Array.isArray(row.evidence) ? row.evidence : [];
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -47,7 +48,7 @@ function toView(row: typeof skillCandidates.$inferSelect): SkillCandidateView {
     best_practices: (blob.best_practices as string[]) ?? [],
     pitfalls: (blob.pitfalls as string[]) ?? [],
     doc_refs: (blob.doc_refs as string[]) ?? [],
-    evidence_count: 0, // populated from evidence table or from jsonb
+    evidence_count: evidenceArr.length,
     confidence: row.confidence,
     status: row.status,
     promoted_skill_id: row.promoted_skill_id,
@@ -230,7 +231,7 @@ async function upsertFromSignal(
           examples: signal.examples,
           best_practices: signal.best_practices,
           pitfalls: signal.pitfalls,
-          doc_refs: [],
+          doc_refs: signal.doc_refs,
         },
         evidence: signal.evidence,
         confidence: signal.confidence,

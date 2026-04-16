@@ -589,6 +589,11 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     const memory = formData.get("memory");
     const files = formData.getAll("files");
 
+    // Resolve conversation to determine scope for knowledge sources
+    const conv = await svc.getConversation(principal.tenant_id, id, db);
+    if (!conv) return c.json({ error: "conversation not found" }, 404);
+    const targetWorkflowId = conv.conversation.target_workflow_id;
+
     // Auto-ingest each file as a Knowledge Source
     const ingestedSources: string[] = [];
     for (const file of files) {
@@ -600,7 +605,8 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
             tenant_id: principal.tenant_id,
             input: {
               name: file.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " "),
-              scope: "global",
+              scope: targetWorkflowId ? "workflow" : "global",
+              ...(targetWorkflowId ? { workflow_id: targetWorkflowId } : {}),
             },
             upload: {
               buffer,

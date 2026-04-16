@@ -4,6 +4,7 @@
 // These endpoints exist for SDK consumers, CI/CD pipelines, and admin tools.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { KNOWLEDGE_SOURCE_MAX_BYTES } from "../../knowledge/budgets.ts";
 import * as svc from "../../knowledge/service.ts";
 import {
   CreateKnowledgeSourceSchema,
@@ -228,6 +229,13 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
 
     if (!(file instanceof File)) {
       return c.json({ error: "file field is required (multipart/form-data)" }, 400);
+    }
+
+    if (file.size > KNOWLEDGE_SOURCE_MAX_BYTES) {
+      return c.json(
+        { error: `File exceeds maximum size of ${KNOWLEDGE_SOURCE_MAX_BYTES} bytes` },
+        413,
+      );
     }
 
     let metadata: Record<string, unknown> = {};
