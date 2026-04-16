@@ -3,7 +3,7 @@
 // Candidates are NEVER auto-promoted. Every mutation goes through an
 // explicit human gate (conversation approval or REST API).
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
@@ -32,9 +32,13 @@ const MAX_EVIDENCE_PER_CANDIDATE = 50;
 // Helpers
 // ---------------------------------------------------------------------------
 
-function toView(row: typeof skillCandidates.$inferSelect): SkillCandidateView {
+/** Convert a DB row to a view. evidence_count defaults to 0 — callers that
+ *  need the real count should query the relational evidence table. */
+function toView(
+  row: typeof skillCandidates.$inferSelect,
+  evidenceCount = 0,
+): SkillCandidateView {
   const blob = (row.examples ?? {}) as Record<string, unknown>;
-  const evidenceArr = Array.isArray(row.evidence) ? row.evidence : [];
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -48,7 +52,7 @@ function toView(row: typeof skillCandidates.$inferSelect): SkillCandidateView {
     best_practices: (blob.best_practices as string[]) ?? [],
     pitfalls: (blob.pitfalls as string[]) ?? [],
     doc_refs: (blob.doc_refs as string[]) ?? [],
-    evidence_count: evidenceArr.length,
+    evidence_count: evidenceCount,
     confidence: row.confidence,
     status: row.status,
     promoted_skill_id: row.promoted_skill_id,
@@ -57,6 +61,32 @@ function toView(row: typeof skillCandidates.$inferSelect): SkillCandidateView {
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
+}
+
+/** Batch-fetch evidence counts for a set of candidate IDs. */
+async function getEvidenceCounts(
+  candidateIds: string[],
+  exec: Executor,
+): Promise<Map<string, number>> {
+  if (candidateIds.length === 0) return new Map();
+  const db = exec;
+  const rows = await db
+    .select({
+      candidate_id: skillCandidateEvidence.skill_candidate_id,
+      cnt: count(),
+    })
+    .from(skillCandidateEvidence)
+    .where(
+      sql`${skillCandidateEvidence.skill_candidate_id} IN (${sql.join(
+        candidateIds.map((id) => sql`${id}`),
+        sql`, `,
+      )})`,
+    )
+    .groupBy(skillCandidateEvidence.skill_candidate_id);
+
+  const m = new Map<string, number>();
+  for (const r of rows) m.set(r.candidate_id, Number(r.cnt));
+  return m;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +117,8 @@ export async function listSkillCandidates(
     .limit(limit)
     .offset(offset);
 
-  return rows.map(toView);
+  const counts = await getEvidenceCounts(rows.map((r) => r.id), db);
+  return rows.map((r) => toView(r, counts.get(r.id) ?? 0));
 }
 
 export async function getSkillCandidate(
@@ -101,7 +132,9 @@ export async function getSkillCandidate(
     .from(skillCandidates)
     .where(and(eq(skillCandidates.tenant_id, tenant_id), eq(skillCandidates.id, id)))
     .limit(1);
-  return rows[0] ? toView(rows[0]) : null;
+  if (!rows[0]) return null;
+  const counts = await getEvidenceCounts([rows[0].id], db);
+  return toView(rows[0], counts.get(rows[0].id) ?? 0);
 }
 
 export async function getSkillCandidateEvidence(
@@ -214,6 +247,41 @@ async function upsertFromSignal(
       );
 
       return { action: "updated" as const };
+    }
+
+    // Supersede existing proposed candidates for the same scope+entity
+    // with a different fingerprint (pattern has evolved).
+    const supersedeScope = [
+      eq(skillCandidates.tenant_id, tenant_id),
+      eq(skillCandidates.status, "proposed"),
+      eq(skillCandidates.scope, signal.scope),
+      eq(skillCandidates.pattern_kind, signal.pattern_kind),
+    ];
+    if (signal.workflow_id) supersedeScope.push(eq(skillCandidates.workflow_id, signal.workflow_id));
+    if (signal.connector_id) supersedeScope.push(eq(skillCandidates.connector_id, signal.connector_id));
+
+    const stale = await tx
+      .select({ id: skillCandidates.id })
+      .from(skillCandidates)
+      .where(and(...supersedeScope));
+
+    for (const s of stale) {
+      await tx
+        .update(skillCandidates)
+        .set({ status: "superseded", updated_at: new Date() })
+        .where(eq(skillCandidates.id, s.id));
+      await auditAwait(
+        {
+          tenant_id,
+          actor_type: "system",
+          action: AuditAction.SKILL_CANDIDATE_SUPERSEDED,
+          resource_type: "skill_candidate",
+          resource_id: s.id,
+          result: "success",
+          metadata: { superseded_by_fingerprint: signal.fingerprint },
+        },
+        tx,
+      );
     }
 
     // Create new candidate

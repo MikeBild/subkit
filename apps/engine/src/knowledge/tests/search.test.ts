@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { tenants } from "../../db/schema/index.ts";
 import { createKnowledgeSource, searchKnowledge } from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
@@ -145,5 +146,49 @@ describe.skipIf(skip)("knowledge/search", () => {
         expect(hits[i]!.rank).toBeLessThanOrEqual(hits[i - 1]!.rank);
       }
     }
+  });
+
+  test("search respects tenant isolation", async () => {
+    // Create a second tenant and verify it can't see tenant 1's knowledge
+    const [otherTenant] = await ctx.testDb.db
+      .insert(tenants)
+      .values({ slug: "other-tenant-search", display_name: "Other Tenant" })
+      .returning();
+    expect(otherTenant).toBeDefined();
+
+    // Seed knowledge in the other tenant
+    await createKnowledgeSource(
+      {
+        tenant_id: otherTenant!.id,
+        input: { name: "Other Docs" },
+        upload: {
+          buffer: Buffer.from("Completely different content about zeppelins and airships."),
+          filename: "other.txt",
+        },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+
+    // Tenant 1 searching for other tenant's content should find nothing
+    const crossTenantHits = await searchKnowledge(
+      { tenant_id: ctx.tenantId, query: "zeppelins airships" },
+      ctx.testDb.db,
+    );
+    expect(crossTenantHits.length).toBe(0);
+
+    // Other tenant searching for tenant 1's content should find nothing
+    const reverseCrossHits = await searchKnowledge(
+      { tenant_id: otherTenant!.id, query: "pagination cursor bearer" },
+      ctx.testDb.db,
+    );
+    expect(reverseCrossHits.length).toBe(0);
+
+    // Other tenant searching for its own content should work
+    const ownHits = await searchKnowledge(
+      { tenant_id: otherTenant!.id, query: "zeppelins" },
+      ctx.testDb.db,
+    );
+    expect(ownHits.length).toBeGreaterThan(0);
   });
 });

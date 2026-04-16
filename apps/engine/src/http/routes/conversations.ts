@@ -327,6 +327,9 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/conversations/:id/messages", async (c, next) => {
     return requireAnyPermission(["conversation:write", "workflow:write"])(c, next);
   });
+  app.use("/v1/conversations/:id/messages/upload", async (c, next) => {
+    return requireAnyPermission(["conversation:write", "knowledge:write"])(c, next);
+  });
   app.use("/v1/conversations/:id/approvals/:approval_id/approve", async (c, next) => {
     return requireAnyPermission(["conversation:approve", "workflow:write"])(c, next);
   });

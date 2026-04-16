@@ -5,7 +5,7 @@
 // creation via the REST API.
 
 import { createHash } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
@@ -83,7 +83,6 @@ export async function createDiscoveryRun(
   const db = exec ?? getDb();
 
   return await (db as Db).transaction(async (tx) => {
-    // Create run
     const [run] = await tx
       .insert(discoveryRuns)
       .values({
@@ -98,26 +97,53 @@ export async function createDiscoveryRun(
 
     if (!run) throw new Error("discovery_runs insert returned no row");
 
-    // Parse and insert files
+    // Parse and insert files — try-catch per file so one bad file
+    // doesn't abort the entire run.
+    let parsedCount = 0;
     for (const file of p.files) {
-      const content =
-        typeof file.buffer === "string" ? file.buffer : new TextDecoder().decode(file.buffer);
+      try {
+        const content =
+          typeof file.buffer === "string" ? file.buffer : new TextDecoder().decode(file.buffer);
 
-      const format = detectFormat(file.filename, file.mime);
-      const rawChunks = parseFileToChunks(content, file.filename, format);
-      const fingerprint = createHash("sha256").update(content).digest("hex").slice(0, 32);
+        const format = detectFormat(file.filename, file.mime);
+        const rawChunks = parseFileToChunks(content, file.filename, format);
+        const fingerprint = createHash("sha256").update(content).digest("hex").slice(0, 32);
 
-      await tx.insert(discoveryFiles).values({
-        tenant_id: p.tenant_id,
-        run_id: run.id,
-        filename: file.filename,
-        mime_type: file.mime ?? null,
-        byte_size: Buffer.byteLength(content, "utf8"),
-        format,
-        content, // stored for analysis; cleared after
-        chunk_count: rawChunks.length,
-        fingerprint,
-      });
+        await tx.insert(discoveryFiles).values({
+          tenant_id: p.tenant_id,
+          run_id: run.id,
+          filename: file.filename,
+          mime_type: file.mime ?? null,
+          byte_size: Buffer.byteLength(content, "utf8"),
+          format,
+          content,
+          chunk_count: rawChunks.length,
+          fingerprint,
+        });
+        parsedCount++;
+      } catch (err) {
+        // Record the failed file so operators can see what went wrong
+        logger.warn({
+          module: "discovery",
+          action: "discovery.file_parse_failed",
+          msg: `Failed to parse file: ${file.filename}`,
+          error: err instanceof Error ? err.message : String(err),
+          filename: file.filename,
+        });
+        await tx.insert(discoveryFiles).values({
+          tenant_id: p.tenant_id,
+          run_id: run.id,
+          filename: file.filename,
+          mime_type: file.mime ?? null,
+          byte_size: 0,
+          format: "unknown",
+          content: null,
+          chunk_count: 0,
+          status: "failed",
+          error: err instanceof Error ? err.message : String(err),
+          fingerprint: null,
+        });
+      }
     }
 
     await auditAwait(
@@ -129,7 +155,11 @@ export async function createDiscoveryRun(
         resource_type: "discovery_run",
         resource_id: run.id,
         result: "success",
-        metadata: { file_count: p.files.length, label: p.label ?? null },
+        metadata: {
+          file_count: p.files.length,
+          parsed_count: parsedCount,
+          label: p.label ?? null,
+        },
       },
       tx,
     );
@@ -137,6 +167,126 @@ export async function createDiscoveryRun(
     return toRunView(run);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Run status transitions
+// ---------------------------------------------------------------------------
+
+export async function markRunAnalyzing(
+  tenant_id: string,
+  run_id: string,
+  exec?: Executor,
+): Promise<void> {
+  const db = exec ?? getDb();
+  await db
+    .update(discoveryRuns)
+    .set({ status: "analyzing", updated_at: new Date() })
+    .where(and(eq(discoveryRuns.tenant_id, tenant_id), eq(discoveryRuns.id, run_id)));
+}
+
+export async function markRunCompleted(
+  tenant_id: string,
+  run_id: string,
+  artifact_count: number,
+  exec?: Executor,
+): Promise<void> {
+  const db = exec ?? getDb();
+  await (db as Db).transaction(async (tx) => {
+    await tx
+      .update(discoveryRuns)
+      .set({
+        status: "completed",
+        artifact_count,
+        completed_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where(and(eq(discoveryRuns.tenant_id, tenant_id), eq(discoveryRuns.id, run_id)));
+
+    // Clear file content after analysis to reclaim storage
+    await tx
+      .update(discoveryFiles)
+      .set({ content: null })
+      .where(eq(discoveryFiles.run_id, run_id));
+
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: "system",
+        action: AuditAction.DISCOVERY_RUN_COMPLETED,
+        resource_type: "discovery_run",
+        resource_id: run_id,
+        result: "success",
+        metadata: { artifact_count },
+      },
+      tx,
+    );
+  });
+}
+
+export async function markRunFailed(
+  tenant_id: string,
+  run_id: string,
+  error: string,
+  exec?: Executor,
+): Promise<void> {
+  const db = exec ?? getDb();
+  await (db as Db).transaction(async (tx) => {
+    await tx
+      .update(discoveryRuns)
+      .set({
+        status: "failed",
+        error,
+        completed_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where(and(eq(discoveryRuns.tenant_id, tenant_id), eq(discoveryRuns.id, run_id)));
+
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: "system",
+        action: AuditAction.DISCOVERY_RUN_FAILED,
+        resource_type: "discovery_run",
+        resource_id: run_id,
+        result: "error",
+        metadata: { error },
+      },
+      tx,
+    );
+  });
+}
+
+export async function markFileAnalyzed(
+  file_id: string,
+  exec?: Executor,
+): Promise<void> {
+  const db = exec ?? getDb();
+  await db
+    .update(discoveryFiles)
+    .set({ status: "analyzed", content: null, updated_at: new Date() })
+    .where(eq(discoveryFiles.id, file_id));
+}
+
+export async function incrementFilesAnalyzed(
+  tenant_id: string,
+  run_id: string,
+  exec?: Executor,
+): Promise<number> {
+  const db = exec ?? getDb();
+  const [row] = await db
+    .update(discoveryRuns)
+    .set({
+      files_analyzed: sql`${discoveryRuns.files_analyzed} + 1`,
+      updated_at: new Date(),
+    })
+    .where(and(eq(discoveryRuns.tenant_id, tenant_id), eq(discoveryRuns.id, run_id)))
+    .returning({ files_analyzed: discoveryRuns.files_analyzed });
+  return row?.files_analyzed ?? 0;
+}
+
+// ---------------------------------------------------------------------------
+// Queries
+// ---------------------------------------------------------------------------
 
 export async function getDiscoveryRun(
   tenant_id: string,
@@ -173,10 +323,6 @@ export async function listDiscoveryRuns(
 
   return rows.map(toRunView);
 }
-
-// ---------------------------------------------------------------------------
-// Artifact queries
-// ---------------------------------------------------------------------------
 
 export async function listDiscoveryArtifacts(
   p: ListDiscoveryArtifactsParams,
@@ -246,9 +392,9 @@ export async function approveDiscoveryArtifact(
     if (!rows[0]) return null;
     const row = rows[0];
 
-    // Materialization happens via the propose_connector / propose_skill
-    // conversation tools or the REST API. For now, mark as approved and
-    // return the draft for the caller to materialize.
+    // Mark approved — actual materialization (creating the Connector / Skill /
+    // Knowledge Source) happens via the conversation tools (propose_connector,
+    // propose_skill) or via the caller after receiving the draft.
     await tx
       .update(discoveryArtifacts)
       .set({ status: "approved", updated_at: new Date() })

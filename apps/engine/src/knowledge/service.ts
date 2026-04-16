@@ -95,25 +95,11 @@ export async function createKnowledgeSource(
     );
   }
 
-  // Check tenant-level budget
-  const tenantUsage = await (exec ?? getDb())
-    .select({ total: sql<number>`coalesce(sum(${knowledgeSources.bytes_total}), 0)` })
-    .from(knowledgeSources)
-    .where(and(eq(knowledgeSources.tenant_id, p.tenant_id), isNull(knowledgeSources.deleted_at)));
-  const currentBytes = Number(tenantUsage[0]?.total ?? 0);
-  if (currentBytes + byteSize > KNOWLEDGE_TENANT_MAX_BYTES) {
-    throw new KnowledgeBudgetExceededError(
-      `Tenant knowledge budget exceeded (${currentBytes} + ${byteSize} > ${KNOWLEDGE_TENANT_MAX_BYTES})`,
-      currentBytes + byteSize,
-      KNOWLEDGE_TENANT_MAX_BYTES,
-    );
-  }
-
   const slug = p.input.slug ?? toSlug(p.input.name);
   const version = createHash("sha256").update(content).digest("hex").slice(0, 32);
   const format = detectFormat(p.upload.filename, p.upload.mime);
 
-  // Parse → chunk → fingerprint → dedup
+  // Parse → chunk → fingerprint → dedup (before transaction — pure CPU work)
   const rawChunks = parseFileToChunks(content, p.upload.filename, format);
   const fingerprinted = fingerprintChunks(rawChunks);
   const { accepted, skipped } = dedupChunks(fingerprinted);
@@ -121,6 +107,23 @@ export async function createKnowledgeSource(
   const totalBytes = accepted.reduce((s, c) => s + c.byte_size, 0);
 
   return await (db as Db).transaction(async (tx) => {
+    // Check tenant-level budget INSIDE transaction to prevent race conditions
+    // where concurrent inserts both pass the check.
+    const tenantUsage = await tx
+      .select({ total: sql<number>`coalesce(sum(${knowledgeSources.bytes_total}), 0)` })
+      .from(knowledgeSources)
+      .where(
+        and(eq(knowledgeSources.tenant_id, p.tenant_id), isNull(knowledgeSources.deleted_at)),
+      );
+    const currentBytes = Number(tenantUsage[0]?.total ?? 0);
+    if (currentBytes + totalBytes > KNOWLEDGE_TENANT_MAX_BYTES) {
+      throw new KnowledgeBudgetExceededError(
+        `Tenant knowledge budget exceeded (${currentBytes} + ${totalBytes} > ${KNOWLEDGE_TENANT_MAX_BYTES})`,
+        currentBytes + totalBytes,
+        KNOWLEDGE_TENANT_MAX_BYTES,
+      );
+    }
+
     const [row] = await tx
       .insert(knowledgeSources)
       .values({

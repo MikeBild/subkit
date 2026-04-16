@@ -52,7 +52,9 @@ export const CreateKnowledgeSourceSchema = z
     description: z.string().max(2000).optional(),
     scope: KnowledgeSourceScopeSchema.optional(),
     workflow_id: z.string().uuid().optional(),
-    refresh_strategy: KnowledgeSourceRefreshSchema.optional(),
+    /** Only 'manual' and 'scheduled' are currently implemented.
+     *  'webhook' is reserved for a future release. */
+    refresh_strategy: z.enum(["manual", "scheduled"]).optional(),
     refresh_cron: z.string().optional(),
   })
   .openapi("CreateKnowledgeSourceBody");
@@ -66,7 +68,7 @@ export const UpdateKnowledgeSourceSchema = z
     scope: KnowledgeSourceScopeSchema.optional(),
     workflow_id: z.string().uuid().nullable().optional(),
     status: z.enum(["active", "inactive"]).optional(),
-    refresh_strategy: KnowledgeSourceRefreshSchema.optional(),
+    refresh_strategy: z.enum(["manual", "scheduled"]).optional(),
     refresh_cron: z.string().nullable().optional(),
   })
   .openapi("UpdateKnowledgeSourceBody");
