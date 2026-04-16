@@ -50,7 +50,8 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run db:migrate
-      - run: bun test
+      - name: Unit + integration tests
+        run: bun test apps/ packages/
 
   # ── Multi-platform CLI binaries ──
 
