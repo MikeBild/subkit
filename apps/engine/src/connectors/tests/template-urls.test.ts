@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { loadBuiltinTemplates } from "../templates.ts";
 
-const SKIP = !!process.env.SKIP_URL_CHECK;
+// URL reachability tests are opt-in: set CHECK_URLS=1 to run them.
+// They hit external APIs and may fail due to rate limits or network issues.
+const RUN_URL_CHECKS = !!process.env.CHECK_URLS;
 
-describe.skipIf(SKIP)("connector template ingestion URLs", () => {
+describe.skipIf(!RUN_URL_CHECKS)("connector template ingestion URLs", () => {
   const templates = loadBuiltinTemplates();
   const withUrls = templates.filter((t) => t.ingestion_url !== null);
 
