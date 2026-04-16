@@ -257,5 +257,37 @@
     "name": "mcp:read",
     "description": "List MCP prompts, resources, and tools for slash-command pickers",
     "resource_type": "mcp"
+  },
+
+  {
+    "name": "knowledge:read",
+    "description": "Read knowledge sources and search knowledge",
+    "resource_type": "knowledge"
+  },
+  {
+    "name": "knowledge:write",
+    "description": "Create, update, or refresh knowledge sources",
+    "resource_type": "knowledge"
+  },
+  {
+    "name": "knowledge:delete",
+    "description": "Delete knowledge sources",
+    "resource_type": "knowledge"
+  },
+
+  {
+    "name": "discovery:read",
+    "description": "Read discovery runs and artifacts",
+    "resource_type": "discovery"
+  },
+  {
+    "name": "discovery:write",
+    "description": "Create discovery runs and upload files for analysis",
+    "resource_type": "discovery"
+  },
+  {
+    "name": "discovery:approve",
+    "description": "Approve or reject discovery artifacts",
+    "resource_type": "discovery"
   }
 ]

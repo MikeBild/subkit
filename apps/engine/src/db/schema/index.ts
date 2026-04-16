@@ -23,3 +23,5 @@ export * from "./webhooks.ts";
 // webhooks-extras is a re-export barrel (same tables); omitted to avoid
 // duplicate symbol exports.
 export * from "./workflows.ts";
+export * from "./knowledge_sources.ts";
+export * from "./discovery.ts";

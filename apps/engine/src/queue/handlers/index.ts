@@ -8,6 +8,8 @@ import { registerApiKeyFlushHandler } from "./apikey-flush.ts";
 import { registerEventFanoutHandler } from "./event-fanout.ts";
 import { registerExecutionRunHandler } from "./execution-run.ts";
 import { registerIngestDocsHandler } from "./ingest-docs.ts";
+import { registerIngestKnowledgeHandler } from "./ingest-knowledge.ts";
+import { registerSkillCandidateAnalyzeHandler } from "./skill-candidate-analyze.ts";
 import { registerWebhookDeliverHandler } from "./webhook-deliver.ts";
 import { registerWorkflowRepairHandler } from "./workflow-repair.ts";
 
@@ -24,6 +26,8 @@ export interface RegisteredHandlers {
   apikeyFlushWorkerId: string;
   oauth2RefreshWorkerId: string;
   ingestDocsWorkerId: string;
+  ingestKnowledgeWorkerId: string;
+  skillCandidateAnalyzeWorkerId: string;
   workflowRepairWorkerId: string;
   webhookDeliverWorkerId: string | null;
   eventFanoutWorkerId: string;
@@ -45,6 +49,14 @@ export async function registerAllHandlers(
     boss: opts.boss,
     db: opts.db,
   });
+  const ingestKnowledgeWorkerId = await registerIngestKnowledgeHandler({
+    boss: opts.boss,
+    db: opts.db,
+  });
+  const skillCandidateAnalyzeWorkerId = await registerSkillCandidateAnalyzeHandler({
+    boss: opts.boss,
+    db: opts.db,
+  });
   const workflowRepairWorkerId = await registerWorkflowRepairHandler({
     boss: opts.boss,
     db: opts.db,
@@ -63,6 +75,8 @@ export async function registerAllHandlers(
     apikeyFlushWorkerId,
     oauth2RefreshWorkerId,
     ingestDocsWorkerId,
+    ingestKnowledgeWorkerId,
+    skillCandidateAnalyzeWorkerId,
     workflowRepairWorkerId,
     webhookDeliverWorkerId,
     eventFanoutWorkerId,

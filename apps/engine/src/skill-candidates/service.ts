@@ -1,0 +1,440 @@
+// Skill Candidates service — CRUD, pattern analysis, approval, and rejection.
+//
+// Candidates are NEVER auto-promoted. Every mutation goes through an
+// explicit human gate (conversation approval or REST API).
+
+import { and, desc, eq, sql } from "drizzle-orm";
+import { auditAwait } from "../audit/audit.ts";
+import { AuditAction } from "../audit/types.ts";
+import { type Db, getDb } from "../db/client.ts";
+import {
+  skillCandidateEvidence,
+  skillCandidates,
+  skillEffectiveness,
+} from "../db/schema/skills.ts";
+import { createSkill } from "../skills/service.ts";
+import { detectFailurePatterns, detectRepairPatterns, detectSuccessPatterns } from "./detectors/index.ts";
+import type {
+  AnalysisResult,
+  ApproveSkillCandidateParams,
+  ListSkillCandidatesParams,
+  PatternSignal,
+  RejectSkillCandidateParams,
+  SkillCandidateEvidenceView,
+  SkillCandidateView,
+} from "./types.ts";
+
+type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+const MAX_EVIDENCE_PER_CANDIDATE = 50;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function toView(row: typeof skillCandidates.$inferSelect): SkillCandidateView {
+  const blob = (row.examples ?? {}) as Record<string, unknown>;
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    scope: row.scope,
+    connector_id: row.connector_id,
+    workflow_id: row.workflow_id,
+    pattern_kind: row.pattern_kind,
+    title: row.title,
+    body: row.body,
+    examples: (blob.examples as string[]) ?? [],
+    best_practices: (blob.best_practices as string[]) ?? [],
+    pitfalls: (blob.pitfalls as string[]) ?? [],
+    doc_refs: (blob.doc_refs as string[]) ?? [],
+    evidence_count: 0, // populated from evidence table or from jsonb
+    confidence: row.confidence,
+    status: row.status,
+    promoted_skill_id: row.promoted_skill_id,
+    fingerprint: row.fingerprint,
+    version: row.version,
+    created_at: row.created_at.toISOString(),
+    updated_at: row.updated_at.toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Read
+// ---------------------------------------------------------------------------
+
+export async function listSkillCandidates(
+  p: ListSkillCandidatesParams,
+  exec?: Executor,
+): Promise<SkillCandidateView[]> {
+  const db = exec ?? getDb();
+  const limit = Math.min(Math.max(1, p.limit ?? 50), 500);
+  const offset = Math.max(0, p.offset ?? 0);
+
+  const conds = [eq(skillCandidates.tenant_id, p.tenant_id)];
+  if (p.status) conds.push(eq(skillCandidates.status, p.status));
+  if (p.scope) conds.push(eq(skillCandidates.scope, p.scope));
+  if (p.connector_id) conds.push(eq(skillCandidates.connector_id, p.connector_id));
+  if (p.workflow_id) conds.push(eq(skillCandidates.workflow_id, p.workflow_id));
+  if (p.pattern_kind) conds.push(eq(skillCandidates.pattern_kind, p.pattern_kind));
+  if (p.confidence) conds.push(eq(skillCandidates.confidence, p.confidence));
+
+  const rows = await db
+    .select()
+    .from(skillCandidates)
+    .where(and(...conds))
+    .orderBy(desc(skillCandidates.created_at))
+    .limit(limit)
+    .offset(offset);
+
+  return rows.map(toView);
+}
+
+export async function getSkillCandidate(
+  tenant_id: string,
+  id: string,
+  exec?: Executor,
+): Promise<SkillCandidateView | null> {
+  const db = exec ?? getDb();
+  const rows = await db
+    .select()
+    .from(skillCandidates)
+    .where(and(eq(skillCandidates.tenant_id, tenant_id), eq(skillCandidates.id, id)))
+    .limit(1);
+  return rows[0] ? toView(rows[0]) : null;
+}
+
+export async function getSkillCandidateEvidence(
+  tenant_id: string,
+  candidate_id: string,
+  exec?: Executor,
+): Promise<SkillCandidateEvidenceView[]> {
+  const db = exec ?? getDb();
+  // Verify candidate belongs to tenant
+  const candidate = await getSkillCandidate(tenant_id, candidate_id, db);
+  if (!candidate) return [];
+
+  const rows = await db
+    .select()
+    .from(skillCandidateEvidence)
+    .where(eq(skillCandidateEvidence.skill_candidate_id, candidate_id))
+    .orderBy(desc(skillCandidateEvidence.captured_at));
+
+  return rows.map((r) => ({
+    id: r.id,
+    skill_candidate_id: r.skill_candidate_id,
+    execution_id: r.execution_id,
+    patch_candidate_id: r.patch_candidate_id,
+    evidence_type: r.evidence_type,
+    summary: r.summary,
+    captured_at: r.captured_at.toISOString(),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Upsert (internal — called by detectors)
+// ---------------------------------------------------------------------------
+
+async function upsertFromSignal(
+  tenant_id: string,
+  signal: PatternSignal,
+  exec: Db,
+): Promise<{ action: "proposed" | "updated" | "skipped" }> {
+  return await exec.transaction(async (tx) => {
+    // Check for existing candidate with same fingerprint
+    const existing = await tx
+      .select()
+      .from(skillCandidates)
+      .where(
+        and(
+          eq(skillCandidates.tenant_id, tenant_id),
+          eq(skillCandidates.fingerprint, signal.fingerprint),
+        ),
+      )
+      .limit(1);
+
+    if (existing[0]) {
+      const row = existing[0];
+      // If rejected or superseded, don't re-propose
+      if (row.status === "rejected" || row.status === "superseded") {
+        return { action: "skipped" as const };
+      }
+      // If already approved, skip
+      if (row.status === "approved") {
+        return { action: "skipped" as const };
+      }
+      // Update existing proposed candidate (bump version, update confidence)
+      await tx
+        .update(skillCandidates)
+        .set({
+          confidence: signal.confidence,
+          version: row.version + 1,
+          evidence: signal.evidence,
+          updated_at: new Date(),
+        })
+        .where(eq(skillCandidates.id, row.id));
+
+      // Add new evidence entries (cap at MAX_EVIDENCE_PER_CANDIDATE)
+      const existingEvidence = await tx
+        .select()
+        .from(skillCandidateEvidence)
+        .where(eq(skillCandidateEvidence.skill_candidate_id, row.id));
+
+      const remaining = MAX_EVIDENCE_PER_CANDIDATE - existingEvidence.length;
+      if (remaining > 0) {
+        const newEvidence = signal.evidence.slice(0, remaining);
+        if (newEvidence.length > 0) {
+          await tx.insert(skillCandidateEvidence).values(
+            newEvidence.map((e) => ({
+              skill_candidate_id: row.id,
+              execution_id: e.execution_id ?? null,
+              patch_candidate_id: e.patch_candidate_id ?? null,
+              evidence_type: e.evidence_type,
+              summary: e.summary,
+            })),
+          );
+        }
+      }
+
+      await auditAwait(
+        {
+          tenant_id,
+          actor_type: "system",
+          action: AuditAction.SKILL_CANDIDATE_UPDATED,
+          resource_type: "skill_candidate",
+          resource_id: row.id,
+          result: "success",
+          metadata: {
+            pattern_kind: signal.pattern_kind,
+            confidence: signal.confidence,
+            version: row.version + 1,
+          },
+        },
+        tx,
+      );
+
+      return { action: "updated" as const };
+    }
+
+    // Create new candidate
+    const [row] = await tx
+      .insert(skillCandidates)
+      .values({
+        tenant_id,
+        scope: signal.scope,
+        connector_id: signal.connector_id ?? null,
+        workflow_id: signal.workflow_id ?? null,
+        pattern_kind: signal.pattern_kind,
+        title: signal.title,
+        body: signal.body,
+        examples: {
+          examples: signal.examples,
+          best_practices: signal.best_practices,
+          pitfalls: signal.pitfalls,
+          doc_refs: [],
+        },
+        evidence: signal.evidence,
+        confidence: signal.confidence,
+        fingerprint: signal.fingerprint,
+      })
+      .returning();
+
+    if (!row) throw new Error("skill_candidates insert returned no row");
+
+    // Insert evidence
+    if (signal.evidence.length > 0) {
+      await tx.insert(skillCandidateEvidence).values(
+        signal.evidence.slice(0, MAX_EVIDENCE_PER_CANDIDATE).map((e) => ({
+          skill_candidate_id: row.id,
+          execution_id: e.execution_id ?? null,
+          patch_candidate_id: e.patch_candidate_id ?? null,
+          evidence_type: e.evidence_type,
+          summary: e.summary,
+        })),
+      );
+    }
+
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: "system",
+        action: AuditAction.SKILL_CANDIDATE_PROPOSED,
+        resource_type: "skill_candidate",
+        resource_id: row.id,
+        result: "success",
+        metadata: {
+          pattern_kind: signal.pattern_kind,
+          confidence: signal.confidence,
+          fingerprint: signal.fingerprint,
+        },
+      },
+      tx,
+    );
+
+    return { action: "proposed" as const };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Pattern analysis entry point
+// ---------------------------------------------------------------------------
+
+export async function runPatternAnalysis(
+  params: { tenant_id: string },
+  exec?: Db,
+): Promise<AnalysisResult> {
+  const db = exec ?? (getDb() as Db);
+
+  // Run all detectors
+  const [repairSignals, failureSignals, successSignals] = await Promise.all([
+    detectRepairPatterns(params.tenant_id, db),
+    detectFailurePatterns(params.tenant_id, db),
+    detectSuccessPatterns(params.tenant_id, db),
+  ]);
+
+  const allSignals = [...repairSignals, ...failureSignals, ...successSignals];
+  let proposed = 0;
+  let updated = 0;
+
+  for (const signal of allSignals) {
+    const result = await upsertFromSignal(params.tenant_id, signal, db);
+    if (result.action === "proposed") proposed++;
+    if (result.action === "updated") updated++;
+  }
+
+  return {
+    candidates_proposed: proposed,
+    candidates_updated: updated,
+    patterns_checked: allSignals.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Human gate: Approve
+// ---------------------------------------------------------------------------
+
+export async function approveSkillCandidate(
+  p: ApproveSkillCandidateParams,
+  exec?: Db,
+): Promise<{ candidate: SkillCandidateView; skill_id: string } | null> {
+  const db = exec ?? (getDb() as Db);
+
+  return await db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(skillCandidates)
+      .where(
+        and(
+          eq(skillCandidates.tenant_id, p.tenant_id),
+          eq(skillCandidates.id, p.candidate_id),
+          eq(skillCandidates.status, "proposed"),
+        ),
+      )
+      .limit(1);
+
+    if (!rows[0]) return null;
+    const row = rows[0];
+    const blob = (row.examples ?? {}) as Record<string, unknown>;
+
+    // Create a skill from the candidate
+    const skill = await createSkill(
+      {
+        tenant_id: p.tenant_id,
+        input: {
+          scope: row.scope,
+          connector_id: row.connector_id ?? undefined,
+          workflow_id: row.workflow_id ?? undefined,
+          title: p.overrides?.title ?? row.title,
+          body: p.overrides?.body ?? row.body,
+          status: p.overrides?.status ?? "draft",
+          examples: (blob.examples as string[]) ?? [],
+          best_practices: (blob.best_practices as string[]) ?? [],
+          pitfalls: (blob.pitfalls as string[]) ?? [],
+          doc_refs: (blob.doc_refs as string[]) ?? [],
+        },
+        actor_id: p.actor_id,
+      },
+      tx,
+    );
+
+    // Update candidate status
+    const [updated] = await tx
+      .update(skillCandidates)
+      .set({
+        status: "approved",
+        promoted_skill_id: skill.id,
+        updated_at: new Date(),
+      })
+      .where(eq(skillCandidates.id, p.candidate_id))
+      .returning();
+
+    await auditAwait(
+      {
+        tenant_id: p.tenant_id,
+        actor_type: p.actor_id ? "user" : "system",
+        actor_id: p.actor_id,
+        action: AuditAction.SKILL_CANDIDATE_APPROVED,
+        resource_type: "skill_candidate",
+        resource_id: p.candidate_id,
+        result: "success",
+        metadata: {
+          promoted_skill_id: skill.id,
+          pattern_kind: row.pattern_kind,
+        },
+      },
+      tx,
+    );
+
+    return {
+      candidate: updated ? toView(updated) : toView(row),
+      skill_id: skill.id,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Human gate: Reject
+// ---------------------------------------------------------------------------
+
+export async function rejectSkillCandidate(
+  p: RejectSkillCandidateParams,
+  exec?: Db,
+): Promise<boolean> {
+  const db = exec ?? (getDb() as Db);
+
+  return await db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(skillCandidates)
+      .where(
+        and(
+          eq(skillCandidates.tenant_id, p.tenant_id),
+          eq(skillCandidates.id, p.candidate_id),
+          eq(skillCandidates.status, "proposed"),
+        ),
+      )
+      .limit(1);
+
+    if (!rows[0]) return false;
+
+    await tx
+      .update(skillCandidates)
+      .set({ status: "rejected", updated_at: new Date() })
+      .where(eq(skillCandidates.id, p.candidate_id));
+
+    await auditAwait(
+      {
+        tenant_id: p.tenant_id,
+        actor_type: p.actor_id ? "user" : "system",
+        actor_id: p.actor_id,
+        action: AuditAction.SKILL_CANDIDATE_REJECTED,
+        resource_type: "skill_candidate",
+        resource_id: p.candidate_id,
+        result: "success",
+        metadata: { reason: p.reason ?? null },
+      },
+      tx,
+    );
+
+    return true;
+  });
+}

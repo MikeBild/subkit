@@ -66,6 +66,8 @@ export function completionBudgetFor(flow: LlmFlow): number {
       return 1_200;
     case "converse":
       return 2_000;
+    case "discover":
+      return 4_000;
     default:
       return 1_500;
   }

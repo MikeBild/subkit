@@ -12,9 +12,13 @@ import { commitDraftTool } from "./commit-draft.ts";
 import { connectStepsTool } from "./connect-steps.ts";
 import { dryRunStepTool } from "./dry-run-step.ts";
 import { fetchConnectorDocsTool } from "./fetch-connector-docs.ts";
+import { listSkillSuggestionsTool } from "./list-skill-suggestions.ts";
 import { listSkillsTool } from "./list-skills.ts";
+import { proposeConnectorTool } from "./propose-connector.ts";
+import { proposeSkillTool } from "./propose-skill.ts";
 import { proposeStepTool } from "./propose-step.ts";
 import { requestHumanApprovalTool } from "./request-human-approval.ts";
+import { searchKnowledgeTool } from "./search-knowledge.ts";
 import { updateParamTool } from "./update-param.ts";
 import { validateDraftTool } from "./validate-draft.ts";
 
@@ -62,7 +66,11 @@ function register(tool: ConversationTool): void {
 
 register(listSkillsTool);
 register(fetchConnectorDocsTool);
+register(searchKnowledgeTool);
+register(listSkillSuggestionsTool);
 register(proposeStepTool);
+register(proposeConnectorTool);
+register(proposeSkillTool);
 register(updateParamTool);
 register(connectStepsTool);
 register(dryRunStepTool);

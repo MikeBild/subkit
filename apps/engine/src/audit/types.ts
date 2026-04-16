@@ -125,6 +125,28 @@ export const AuditAction = {
   APPROVAL_APPROVED: "approval.approved",
   APPROVAL_REJECTED: "approval.rejected",
 
+  // H2: Knowledge Sources
+  KNOWLEDGE_SOURCE_CREATED: "knowledge_source.created",
+  KNOWLEDGE_SOURCE_UPDATED: "knowledge_source.updated",
+  KNOWLEDGE_SOURCE_DELETED: "knowledge_source.deleted",
+  KNOWLEDGE_SOURCE_INGESTED: "knowledge_source.ingested",
+  KNOWLEDGE_SOURCE_REFRESHED: "knowledge_source.refreshed",
+
+  // H2.5: Discovery
+  DISCOVERY_RUN_CREATED: "discovery.run_created",
+  DISCOVERY_RUN_COMPLETED: "discovery.run_completed",
+  DISCOVERY_RUN_FAILED: "discovery.run_failed",
+  DISCOVERY_ARTIFACT_PROPOSED: "discovery.artifact_proposed",
+  DISCOVERY_ARTIFACT_APPROVED: "discovery.artifact_approved",
+  DISCOVERY_ARTIFACT_REJECTED: "discovery.artifact_rejected",
+
+  // H3: Self-Improving Skills
+  SKILL_CANDIDATE_PROPOSED: "skill_candidate.proposed",
+  SKILL_CANDIDATE_UPDATED: "skill_candidate.updated",
+  SKILL_CANDIDATE_APPROVED: "skill_candidate.approved",
+  SKILL_CANDIDATE_REJECTED: "skill_candidate.rejected",
+  SKILL_CANDIDATE_SUPERSEDED: "skill_candidate.superseded",
+
   SYSTEM_STARTUP: "system.startup",
 
   RBAC_ROLE_CREATED: "rbac.role_created",
