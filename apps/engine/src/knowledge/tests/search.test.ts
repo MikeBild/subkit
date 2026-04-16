@@ -78,18 +78,12 @@ describe.skipIf(skip)("knowledge/search", () => {
   });
 
   test("search with empty query returns empty", async () => {
-    const hits = await searchKnowledge(
-      { tenant_id: ctx.tenantId, query: "" },
-      ctx.testDb.db,
-    );
+    const hits = await searchKnowledge({ tenant_id: ctx.tenantId, query: "" }, ctx.testDb.db);
     expect(hits.length).toBe(0);
   });
 
   test("search with whitespace-only query returns empty", async () => {
-    const hits = await searchKnowledge(
-      { tenant_id: ctx.tenantId, query: "   " },
-      ctx.testDb.db,
-    );
+    const hits = await searchKnowledge({ tenant_id: ctx.tenantId, query: "   " }, ctx.testDb.db);
     expect(hits.length).toBe(0);
   });
 

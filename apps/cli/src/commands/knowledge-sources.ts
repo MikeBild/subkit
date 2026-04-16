@@ -60,10 +60,7 @@ const createCmd = defineCommand({
     if (args.scope) metadata.scope = args.scope;
     if (args["workflow-id"]) metadata.workflow_id = args["workflow-id"];
 
-    const created = await client.createKnowledgeSource(
-      { name: fileName, content },
-      metadata,
-    );
+    const created = await client.createKnowledgeSource({ name: fileName, content }, metadata);
     emitOne(asJson, created as unknown as Record<string, unknown>);
   },
 });

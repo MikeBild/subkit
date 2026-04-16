@@ -19,20 +19,58 @@ afterAll(async () => {
 });
 
 describe("connector templates", () => {
-  test("loadBuiltinTemplates returns exactly 10 valid rows", () => {
+  test("loadBuiltinTemplates returns all valid rows", () => {
     const rows = loadBuiltinTemplates();
-    expect(rows).toHaveLength(10);
+    expect(rows.length).toBeGreaterThanOrEqual(80);
     for (const row of rows) {
       const parsed = ConnectorTemplateSchema.safeParse(row);
       expect(parsed.success).toBe(true);
     }
     const slugs = rows.map((r) => r.slug);
-    expect(new Set(slugs).size).toBe(10);
+    expect(new Set(slugs).size).toBe(rows.length);
     expect(slugs).toContain("stripe");
     expect(slugs).toContain("github");
     expect(slugs).toContain("notion");
+    expect(slugs).toContain("jira");
+    expect(slugs).toContain("microsoft-graph");
+    expect(slugs).toContain("firecrawl");
     const openapi = rows.filter((r) => r.ingestion_source === "openapi");
-    expect(openapi.length).toBeGreaterThanOrEqual(6);
+    expect(openapi.length).toBeGreaterThanOrEqual(25);
+  });
+
+  test("every template has category, setup_hint and valid slug", () => {
+    const rows = loadBuiltinTemplates();
+    for (const row of rows) {
+      expect(row.category).toBeTruthy();
+      expect(row.setup_hint).toBeTruthy();
+      expect(row.slug).toMatch(/^[a-z0-9][a-z0-9-]*$/);
+    }
+  });
+
+  test("auth_options entries have valid auth_type and label", () => {
+    const rows = loadBuiltinTemplates();
+    const withOptions = rows.filter((r) => r.auth_options.length > 0);
+    expect(withOptions.length).toBeGreaterThanOrEqual(20);
+    for (const row of withOptions) {
+      for (const opt of row.auth_options) {
+        expect(opt.auth_type).toBeTruthy();
+        expect(opt.label).toBeTruthy();
+        expect(opt.description).toBeTruthy();
+      }
+    }
+  });
+
+  test("driver coverage includes all protocol types", () => {
+    const rows = loadBuiltinTemplates();
+    const drivers = new Set(rows.map((r) => r.driver));
+    expect(drivers.has("http")).toBe(true);
+    expect(drivers.has("graphql")).toBe(true);
+    expect(drivers.has("postgres")).toBe(true);
+    expect(drivers.has("s3")).toBe(true);
+    expect(drivers.has("caldav")).toBe(true);
+    expect(drivers.has("soap")).toBe(true);
+    expect(drivers.has("mqtt")).toBe(true);
+    expect(drivers.has("ftp")).toBe(true);
   });
 
   test("GET /v1/connector-templates returns built-ins + tenant override", async () => {

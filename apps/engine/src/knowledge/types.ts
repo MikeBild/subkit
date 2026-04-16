@@ -47,7 +47,10 @@ export const CreateKnowledgeSourceSchema = z
       .string()
       .min(1)
       .max(100)
-      .regex(/^[a-z0-9][a-z0-9_-]*$/, "slug must be lowercase alphanumeric with hyphens/underscores")
+      .regex(
+        /^[a-z0-9][a-z0-9_-]*$/,
+        "slug must be lowercase alphanumeric with hyphens/underscores",
+      )
       .optional(),
     description: z.string().max(2000).optional(),
     scope: KnowledgeSourceScopeSchema.optional(),

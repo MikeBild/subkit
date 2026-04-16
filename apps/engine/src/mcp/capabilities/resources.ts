@@ -92,7 +92,11 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       if (ksId) {
         const uri = knowledgeUri(ksId);
         if (subscribed.has(uri)) {
-          try { await server.sendResourceUpdated({ uri }); } catch { /* best-effort */ }
+          try {
+            await server.sendResourceUpdated({ uri });
+          } catch {
+            /* best-effort */
+          }
         }
       }
 
@@ -101,7 +105,11 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       if (scId) {
         const uri = skillCandidateUri(scId);
         if (subscribed.has(uri)) {
-          try { await server.sendResourceUpdated({ uri }); } catch { /* best-effort */ }
+          try {
+            await server.sendResourceUpdated({ uri });
+          } catch {
+            /* best-effort */
+          }
         }
       }
     },
@@ -193,19 +201,25 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         throw err;
       }
       return {
-        contents: [{
-          uri,
-          mimeType: "application/json",
-          text: JSON.stringify({
-            id: ks.id,
-            name: ks.name,
-            scope: ks.scope,
-            source_type: ks.source_type,
-            bytes_total: ks.bytes_total,
-            chunk_count: ks.chunk_count,
-            status: ks.status,
-          }, null, 2),
-        }],
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(
+              {
+                id: ks.id,
+                name: ks.name,
+                scope: ks.scope,
+                source_type: ks.source_type,
+                bytes_total: ks.bytes_total,
+                chunk_count: ks.chunk_count,
+                status: ks.status,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
       };
     }
 
@@ -226,20 +240,26 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         throw err;
       }
       return {
-        contents: [{
-          uri,
-          mimeType: "application/json",
-          text: JSON.stringify({
-            id: sc.id,
-            title: sc.title,
-            body: sc.body,
-            pattern_kind: sc.pattern_kind,
-            confidence: sc.confidence,
-            evidence_count: sc.evidence_count,
-            scope: sc.scope,
-            status: sc.status,
-          }, null, 2),
-        }],
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(
+              {
+                id: sc.id,
+                title: sc.title,
+                body: sc.body,
+                pattern_kind: sc.pattern_kind,
+                confidence: sc.confidence,
+                evidence_count: sc.evidence_count,
+                scope: sc.scope,
+                status: sc.status,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
       };
     }
 

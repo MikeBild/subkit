@@ -2,8 +2,8 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
-import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 import { assembleEnhancedPrompt } from "../context.ts";
+import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 
 const skip = process.env.SKIP_DB_TESTS === "1";
 

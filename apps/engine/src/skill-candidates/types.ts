@@ -2,7 +2,12 @@ import { z } from "@hono/zod-openapi";
 
 // ----- enums -----------------------------------------------------------------
 
-export const SkillCandidateStatusSchema = z.enum(["proposed", "approved", "rejected", "superseded"]);
+export const SkillCandidateStatusSchema = z.enum([
+  "proposed",
+  "approved",
+  "rejected",
+  "superseded",
+]);
 export const SkillCandidateConfidenceSchema = z.enum(["low", "medium", "high"]);
 export const SkillCandidatePatternSchema = z.enum([
   "repair_pattern",
@@ -109,11 +114,13 @@ export interface ApproveSkillCandidateParams {
   tenant_id: string;
   candidate_id: string;
   actor_id: string | null;
-  overrides?: {
-    title?: string | undefined;
-    body?: string | undefined;
-    status?: "draft" | "active" | undefined;
-  } | undefined;
+  overrides?:
+    | {
+        title?: string | undefined;
+        body?: string | undefined;
+        status?: "draft" | "active" | undefined;
+      }
+    | undefined;
 }
 
 export interface RejectSkillCandidateParams {

@@ -76,7 +76,10 @@ describe("journey: discovery API lifecycle", () => {
         title: "Widgets API",
         description: "REST connector for Widgets",
         draft: { name: "Widgets", driver: "http", base_url: "https://api.widgets.test" },
-        evidence: { file_ids: [], excerpts: [{ file_id: "", filename: "spec.json", text: "openapi 3.0" }] },
+        evidence: {
+          file_ids: [],
+          excerpts: [{ file_id: "", filename: "spec.json", text: "openapi 3.0" }],
+        },
         confidence: 90,
       })
       .returning();
@@ -125,7 +128,10 @@ describe("journey: discovery API lifecycle", () => {
   });
 
   test("AC6: list artifacts filters by kind and status", async () => {
-    const res = await journeyFetch(ctx, `/v1/discovery/runs/${runId}/artifacts?kind=connector&status=approved`);
+    const res = await journeyFetch(
+      ctx,
+      `/v1/discovery/runs/${runId}/artifacts?kind=connector&status=approved`,
+    );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { items: Array<{ kind: string; status: string }> };
     for (const item of body.items) {

@@ -9,7 +9,11 @@ import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
 import { createSkill } from "../skills/service.ts";
-import { detectFailurePatterns, detectRepairPatterns, detectSuccessPatterns } from "./detectors/index.ts";
+import {
+  detectFailurePatterns,
+  detectRepairPatterns,
+  detectSuccessPatterns,
+} from "./detectors/index.ts";
 import type {
   AnalysisResult,
   ApproveSkillCandidateParams,
@@ -30,10 +34,7 @@ const MAX_EVIDENCE_PER_CANDIDATE = 50;
 
 /** Convert a DB row to a view. evidence_count defaults to 0 — callers that
  *  need the real count should query the relational evidence table. */
-function toView(
-  row: typeof skillCandidates.$inferSelect,
-  evidenceCount = 0,
-): SkillCandidateView {
+function toView(row: typeof skillCandidates.$inferSelect, evidenceCount = 0): SkillCandidateView {
   const blob = (row.examples ?? {}) as Record<string, unknown>;
   return {
     id: row.id,
@@ -113,7 +114,10 @@ export async function listSkillCandidates(
     .limit(limit)
     .offset(offset);
 
-  const counts = await getEvidenceCounts(rows.map((r) => r.id), db);
+  const counts = await getEvidenceCounts(
+    rows.map((r) => r.id),
+    db,
+  );
   return rows.map((r) => toView(r, counts.get(r.id) ?? 0));
 }
 
@@ -253,8 +257,10 @@ async function upsertFromSignal(
       eq(skillCandidates.scope, signal.scope),
       eq(skillCandidates.pattern_kind, signal.pattern_kind),
     ];
-    if (signal.workflow_id) supersedeScope.push(eq(skillCandidates.workflow_id, signal.workflow_id));
-    if (signal.connector_id) supersedeScope.push(eq(skillCandidates.connector_id, signal.connector_id));
+    if (signal.workflow_id)
+      supersedeScope.push(eq(skillCandidates.workflow_id, signal.workflow_id));
+    if (signal.connector_id)
+      supersedeScope.push(eq(skillCandidates.connector_id, signal.connector_id));
 
     const stale = await tx
       .select({ id: skillCandidates.id })

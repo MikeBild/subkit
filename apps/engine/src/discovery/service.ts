@@ -233,10 +233,7 @@ export async function markRunCompleted(
       .where(and(eq(discoveryRuns.tenant_id, tenant_id), eq(discoveryRuns.id, run_id)));
 
     // Clear file content after analysis to reclaim storage
-    await tx
-      .update(discoveryFiles)
-      .set({ content: null })
-      .where(eq(discoveryFiles.run_id, run_id));
+    await tx.update(discoveryFiles).set({ content: null }).where(eq(discoveryFiles.run_id, run_id));
 
     await auditAwait(
       {
@@ -286,10 +283,7 @@ export async function markRunFailed(
   });
 }
 
-export async function markFileAnalyzed(
-  file_id: string,
-  exec?: Executor,
-): Promise<void> {
+export async function markFileAnalyzed(file_id: string, exec?: Executor): Promise<void> {
   const db = exec ?? getDb();
   await db
     .update(discoveryFiles)
@@ -389,9 +383,7 @@ export async function getDiscoveryArtifact(
   const rows = await db
     .select()
     .from(discoveryArtifacts)
-    .where(
-      and(eq(discoveryArtifacts.tenant_id, tenant_id), eq(discoveryArtifacts.id, artifact_id)),
-    )
+    .where(and(eq(discoveryArtifacts.tenant_id, tenant_id), eq(discoveryArtifacts.id, artifact_id)))
     .limit(1);
   return rows[0] ? toArtifactView(rows[0]) : null;
 }

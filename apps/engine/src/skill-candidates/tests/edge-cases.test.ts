@@ -93,10 +93,7 @@ describe.skipIf(skip)("skill-candidates/edge-cases (db)", () => {
   });
 
   test("list with no candidates returns empty array", async () => {
-    const items = await listSkillCandidates(
-      { tenant_id: tenantId },
-      testDb.db,
-    );
+    const items = await listSkillCandidates({ tenant_id: tenantId }, testDb.db);
     expect(items).toEqual([]);
   });
 

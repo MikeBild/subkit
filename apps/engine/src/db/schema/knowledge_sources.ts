@@ -28,10 +28,7 @@ import { workflows } from "./workflows.ts";
 
 // ----- enums -----------------------------------------------------------------
 
-export const knowledgeSourceScopeEnum = pgEnum("knowledge_source_scope", [
-  "global",
-  "workflow",
-]);
+export const knowledgeSourceScopeEnum = pgEnum("knowledge_source_scope", ["global", "workflow"]);
 
 export const knowledgeSourceStatusEnum = pgEnum("knowledge_source_status", [
   "active",

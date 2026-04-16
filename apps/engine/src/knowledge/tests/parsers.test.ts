@@ -38,7 +38,8 @@ describe("knowledge/parsers", () => {
 
   describe("parseFileToChunks", () => {
     test("markdown splits on headings", () => {
-      const content = "# Title\n\nIntro paragraph.\n\n## Section A\n\nContent A.\n\n## Section B\n\nContent B.";
+      const content =
+        "# Title\n\nIntro paragraph.\n\n## Section A\n\nContent A.\n\n## Section B\n\nContent B.";
       const chunks = parseFileToChunks(content, "doc.md", "markdown");
       expect(chunks.length).toBe(3);
       expect(chunks[0]!.title).toBe("Title");

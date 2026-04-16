@@ -24,10 +24,7 @@ interface PatchGroup {
   patch_ids: string[];
 }
 
-export async function detectRepairPatterns(
-  tenant_id: string,
-  exec: Db,
-): Promise<PatternSignal[]> {
+export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise<PatternSignal[]> {
   const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
   const rows = await exec

@@ -35,6 +35,7 @@ import { registerConnectorTemplateRoutes } from "./routes/connector-templates.ts
 import { registerConnectorRoutes } from "./routes/connectors.ts";
 import { registerConversationRoutes } from "./routes/conversations.ts";
 import { registerCredentialRoutes } from "./routes/credentials.ts";
+import { registerDiscoveryRoutes } from "./routes/discovery.ts";
 import { registerEventRoutes } from "./routes/events.ts";
 import { registerExecutionRoutes } from "./routes/executions.ts";
 import { registerHealthRoute } from "./routes/health.ts";
@@ -48,14 +49,13 @@ import { registerSystemAccountRoutes } from "./routes/identity/system-accounts.t
 import { registerTenantRoutes } from "./routes/identity/tenants.ts";
 import { registerUserRoutes } from "./routes/identity/users.ts";
 import { registerWhoamiRoute } from "./routes/identity/whoami.ts";
+import { registerKnowledgeSourceRoutes } from "./routes/knowledge-sources.ts";
 import { registerMcpCatalogRoutes } from "./routes/mcp-catalog.ts";
 import { registerMetricsRoute } from "./routes/metrics.ts";
 import { registerNotificationRoutes } from "./routes/notifications.ts";
 import { registerPatchCandidateRoutes } from "./routes/patch-candidates.ts";
 import { registerRbacRoutes } from "./routes/rbac.ts";
 import { registerRequestHookRoutes } from "./routes/request-hooks.ts";
-import { registerDiscoveryRoutes } from "./routes/discovery.ts";
-import { registerKnowledgeSourceRoutes } from "./routes/knowledge-sources.ts";
 import { registerSkillCandidateRoutes } from "./routes/skill-candidates.ts";
 import { registerSkillRoutes } from "./routes/skills.ts";
 import { registerSubscriptionRoutes } from "./routes/subscriptions.ts";
