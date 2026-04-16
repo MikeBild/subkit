@@ -13,6 +13,8 @@ export type QueueName =
   | "execution.notify"
   | "connector.refresh-oauth"
   | "connector.ingest-docs"
+  | "knowledge.ingest"
+  | "skill-candidate.analyze"
   | "workflow.repair"
   | "workflow.generate"
   | "schema.extract"
@@ -29,6 +31,8 @@ export const QUEUE_NAMES: QueueName[] = [
   "execution.notify",
   "connector.refresh-oauth",
   "connector.ingest-docs",
+  "knowledge.ingest",
+  "skill-candidate.analyze",
   "workflow.repair",
   "workflow.generate",
   "schema.extract",
@@ -97,6 +101,22 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
     queue: {
       retryLimit: 3,
       retryDelay: 30,
+      retryBackoff: true,
+    },
+  },
+  "knowledge.ingest": {
+    name: "knowledge.ingest",
+    queue: {
+      retryLimit: 3,
+      retryDelay: 30,
+      retryBackoff: true,
+    },
+  },
+  "skill-candidate.analyze": {
+    name: "skill-candidate.analyze",
+    queue: {
+      retryLimit: 3,
+      retryDelay: 5,
       retryBackoff: true,
     },
   },
