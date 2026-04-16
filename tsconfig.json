@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@engine/*": ["apps/engine/src/*"],
+      "@shared/*": ["packages/shared/src/*"],
+      "@cli-core/*": ["packages/cli-core/src/*"]
+    }
+  },
+  "include": [
+    "apps/engine/src/**/*.ts",
+    "apps/engine/src/**/*.tsx",
+    "apps/agent/src/**/*.ts",
+    "apps/cli/src/**/*.ts",
+    "apps/cli/src/**/*.tsx",
+    "apps/sk/src/**/*.ts",
+    "apps/sk/src/**/*.tsx",
+    "packages/shared/src/**/*.ts",
+    "packages/cli-core/src/**/*.ts",
+    "drizzle.config.ts"
+  ],
+  "exclude": ["node_modules", "dist", "docs"]
+}

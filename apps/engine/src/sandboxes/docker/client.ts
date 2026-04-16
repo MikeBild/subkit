@@ -1,0 +1,137 @@
+// Minimal Docker Engine API client.
+//
+// Why not dockerode? We want one small surface area we can reason
+// about, and zero native dependencies. Bun's `fetch` already supports
+// Unix sockets via the `unix` option, and the Docker Engine HTTP API
+// only needs a handful of endpoints for the ephemeral container
+// pattern we ship in P14.
+//
+// DOCKER_HOST handling:
+//   - `unix:///absolute/path.sock`  — use Bun's Unix-socket fetch.
+//   - `tcp://host:port`             — use standard fetch.
+//   - unset                         — default to `/var/run/docker.sock`.
+//
+// The base URL for unix-socket requests is a stable `http://docker`
+// host placeholder since Bun routes the actual bytes over the socket.
+
+export interface DockerClientOptions {
+  docker_host?: string | undefined;
+}
+
+export interface DockerFetchInit {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  signal?: AbortSignal;
+}
+
+export class DockerClient {
+  private readonly mode: "unix" | "tcp";
+  private readonly unixPath?: string;
+  private readonly baseUrl: string;
+
+  constructor(opts: DockerClientOptions = {}) {
+    const host = normalizeDockerHost(opts.docker_host ?? process.env.DOCKER_HOST);
+    if (host.startsWith("unix://")) {
+      this.mode = "unix";
+      this.unixPath = host.slice("unix://".length);
+      this.baseUrl = "http://docker";
+    } else if (host.startsWith("tcp://")) {
+      this.mode = "tcp";
+      this.baseUrl = `http://${host.slice("tcp://".length).replace(/\/$/, "")}`;
+    } else if (host.startsWith("http://") || host.startsWith("https://")) {
+      this.mode = "tcp";
+      this.baseUrl = host.replace(/\/$/, "");
+    } else {
+      this.mode = "unix";
+      this.unixPath = "/var/run/docker.sock";
+      this.baseUrl = "http://docker";
+    }
+  }
+
+  get socketPath(): string | undefined {
+    return this.unixPath;
+  }
+
+  /**
+   * Issue a raw fetch against the Docker Engine. Returns the whole
+   * Response so callers can inspect headers (needed for the
+   * stream-multiplexed log body).
+   */
+  async request(path: string, init: DockerFetchInit = {}): Promise<Response> {
+    const url = `${this.baseUrl}${path}`;
+    const headers = { "content-type": "application/json", ...(init.headers ?? {}) };
+    const body = init.body;
+    // Bun extends fetch with an optional `unix` property for AF_UNIX
+    // sockets; the standard lib.dom types don't know about it so we
+    // cast on the way in and never on the way out.
+    const reqInit: Record<string, unknown> = {
+      method: init.method ?? "GET",
+      headers,
+    };
+    if (body !== undefined) reqInit.body = body;
+    if (init.signal) reqInit.signal = init.signal;
+    if (this.mode === "unix" && this.unixPath) {
+      reqInit.unix = this.unixPath;
+    }
+    return fetch(url, reqInit as RequestInit);
+  }
+
+  async json<T>(path: string, init: DockerFetchInit = {}): Promise<{ status: number; body: T }> {
+    const res = await this.request(path, init);
+    const text = await res.text();
+    let parsed: unknown = null;
+    if (text.length > 0) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = text;
+      }
+    }
+    return { status: res.status, body: parsed as T };
+  }
+
+  /** GET /_ping — a 200 OK means the daemon is reachable. */
+  async ping(): Promise<boolean> {
+    try {
+      const res = await this.request("/_ping");
+      return res.status === 200;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function normalizeDockerHost(raw: string | undefined): string {
+  if (!raw) return "";
+  // macOS Docker Desktop sometimes sets DOCKER_HOST to the CLI binary
+  // path (e.g. `unix:///Applications/Docker.app/.../bin/docker`) which
+  // is not a socket — in that case fall back to the canonical
+  // `/var/run/docker.sock`, which is a symlink to the real unix
+  // endpoint on every supported platform.
+  if (raw.startsWith("unix://")) {
+    const p = raw.slice("unix://".length);
+    if (p.endsWith(".sock") || p.includes("docker.sock")) return raw;
+    return "";
+  }
+  return raw;
+}
+
+let _shared: DockerClient | null = null;
+export function getDockerClient(): DockerClient {
+  if (_shared) return _shared;
+  _shared = new DockerClient();
+  return _shared;
+}
+
+/**
+ * Probe the daemon — used by tests to skip when Docker isn't running.
+ */
+export async function daemonReachable(): Promise<boolean> {
+  if (process.env.SKIP_DOCKER === "1") return false;
+  try {
+    return await getDockerClient().ping();
+  } catch {
+    return false;
+  }
+}

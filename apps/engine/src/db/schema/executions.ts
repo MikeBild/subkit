@@ -1,0 +1,130 @@
+import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { tenantId, timestamps } from "./_common.ts";
+import { connectors } from "./connectors.ts";
+import { tenants } from "./identity.ts";
+import { workflows, workflowVersions } from "./workflows.ts";
+
+export const executionStatusEnum = pgEnum("execution_status", [
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "aborted",
+  "timed_out",
+]);
+
+export const executionModeEnum = pgEnum("execution_mode", ["dev", "prod"]);
+
+export const patchClassificationEnum = pgEnum("patch_classification", ["safe", "unsafe"]);
+export const patchStatusEnum = pgEnum("patch_status", [
+  "proposed",
+  "applied",
+  "rejected",
+  "superseded",
+]);
+
+// ----- executions -----------------------------------------------------------
+
+export const executions = pgTable(
+  "executions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    workflow_id: uuid("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    workflow_version_id: uuid("workflow_version_id")
+      .notNull()
+      .references(() => workflowVersions.id, { onDelete: "cascade" }),
+    status: executionStatusEnum("status").notNull(),
+    request_source: text("request_source").notNull(),
+    execution_mode: executionModeEnum("execution_mode").notNull(),
+    parent_execution_id: uuid("parent_execution_id"),
+    result_storage_uri: text("result_storage_uri"),
+    started_at: timestamp("started_at", { withTimezone: true }),
+    finished_at: timestamp("finished_at", { withTimezone: true }),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("executions_tenant_workflow_started_idx").on(t.tenant_id, t.workflow_id, t.started_at),
+    index("executions_tenant_status_idx").on(t.tenant_id, t.status),
+    index("executions_tenant_request_source_idx").on(t.tenant_id, t.request_source),
+  ],
+);
+
+// ----- execution_steps ------------------------------------------------------
+
+export const executionSteps = pgTable(
+  "execution_steps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    execution_id: uuid("execution_id")
+      .notNull()
+      .references(() => executions.id, { onDelete: "cascade" }),
+    step_key: text("step_key").notNull(),
+    step_index: integer("step_index"),
+    kind: text("kind").notNull(),
+    status: text("status").notNull(),
+    input_preview: jsonb("input_preview"),
+    output_preview: jsonb("output_preview"),
+    result_storage_uri: text("result_storage_uri"),
+    result_preview: text("result_preview"),
+    request_meta: jsonb("request_meta"),
+    duration_ms: integer("duration_ms"),
+    retry_count: integer("retry_count").default(0).notNull(),
+    error: jsonb("error"),
+    started_at: timestamp("started_at", { withTimezone: true }),
+    finished_at: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("execution_steps_execution_started_idx").on(t.execution_id, t.started_at)],
+);
+
+// ----- execution_fixtures ---------------------------------------------------
+
+export const executionFixtures = pgTable(
+  "execution_fixtures",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    // `connector_id`, `endpoint_key`, `request`, `response` are populated
+    // for self-healing dry-run fixtures (kind='fixture'). For
+    // kind='offload' rows they are null and the payload lives on `body`.
+    connector_id: uuid("connector_id").references(() => connectors.id, { onDelete: "cascade" }),
+    endpoint_key: text("endpoint_key"),
+    request: jsonb("request"),
+    response: jsonb("response"),
+    kind: text("kind").default("fixture").notNull(),
+    execution_id: uuid("execution_id"),
+    step_id: uuid("step_id"),
+    body: jsonb("body"),
+    byte_size: integer("byte_size"),
+    captured_at: timestamp("captured_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("execution_fixtures_connector_endpoint_idx").on(t.connector_id, t.endpoint_key),
+    index("execution_fixtures_kind_idx").on(t.kind),
+    index("execution_fixtures_execution_idx").on(t.execution_id),
+  ],
+);
+
+// ----- patch_candidates -----------------------------------------------------
+
+export const patchCandidates = pgTable(
+  "patch_candidates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    workflow_id: uuid("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    diff: jsonb("diff").notNull(),
+    classification: patchClassificationEnum("classification").notNull(),
+    fixture_id: uuid("fixture_id"),
+    status: patchStatusEnum("status").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    index("patch_candidates_tenant_workflow_status_idx").on(t.tenant_id, t.workflow_id, t.status),
+  ],
+);

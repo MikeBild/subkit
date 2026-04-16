@@ -1,0 +1,18 @@
+{
+	email {$CADDY_ACME_EMAIL}
+	acme_ca https://acme-v02.api.letsencrypt.org/directory
+}
+
+subkit-api.mikebild.dev {
+	encode zstd gzip
+	reverse_proxy engine:3000
+}
+
+subkit-tunnel.mikebild.dev {
+	handle /v1/tunnels/* {
+		reverse_proxy engine:3001
+	}
+	handle {
+		respond 404
+	}
+}

@@ -1,0 +1,64 @@
+# Multi-stage build: compile the engine binary with Bun, ship on a slim Debian base.
+#
+# BuildKit sets TARGETARCH automatically (amd64 / arm64) so the compiled
+# binary always matches the target platform. The builder stage runs on the
+# same platform as the runtime image thanks to Docker's `--platform` handling,
+# so a plain `bun build --compile` without an explicit --target produces a
+# native binary for the target arch. We pass --target explicitly only to be
+# extra clear in the build log.
+
+FROM oven/bun:1.3-slim AS builder
+ARG TARGETARCH
+ARG ENGINE_VERSION=0.0.0-dev
+ENV ENGINE_VERSION=${ENGINE_VERSION}
+WORKDIR /app
+
+# Copy dependency manifests first so docker can cache the install layer
+# across rebuilds when source files change.
+COPY package.json bun.lock bunfig.toml tsconfig.json tsconfig.base.json biome.json ./
+COPY apps ./apps
+COPY packages ./packages
+
+# Cache bun's install directory between builds for faster rebuilds.
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
+
+# Produce a statically compiled engine binary targeting the host arch.
+# TARGETARCH is amd64 or arm64; Bun's target triples are bun-linux-x64
+# and bun-linux-arm64.
+RUN mkdir -p /out \
+    && BUN_TARGET="bun-linux-$(if [ "$TARGETARCH" = "amd64" ]; then echo x64; else echo arm64; fi)" \
+    && echo "compiling engine for $BUN_TARGET" \
+    && bun build apps/engine/src/index.ts \
+        --compile \
+        --target="$BUN_TARGET" \
+        --outfile=/out/engine
+
+# --- runtime image ---------------------------------------------------------
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tzdata wget \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /out/engine /usr/local/bin/engine
+
+# Writable data directory for blob offload fallback when S3 is not configured.
+RUN mkdir -p /var/data/blobs && chown -R nobody:nogroup /var/data/blobs
+
+ARG ENGINE_VERSION=0.0.0-dev
+ENV NODE_ENV=production \
+    LOG_FORMAT=ndjson \
+    PORT=3000 \
+    ENGINE_VERSION=${ENGINE_VERSION}
+
+EXPOSE 3000 3001
+
+USER nobody
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
+  CMD wget -qO- "http://127.0.0.1:${PORT:-3000}/v1/health" >/dev/null 2>&1 || exit 1
+
+ENTRYPOINT ["/usr/local/bin/engine"]
