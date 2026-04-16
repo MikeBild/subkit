@@ -1,0 +1,691 @@
+// HTTP request step driver. Handles:
+//   - retry policy (5 attempts max, 200ms base, 30s cap, +/- 20% jitter)
+//   - 429 + Retry-After (cap 1h)
+//   - timeouts via AbortController
+//   - response filters
+//   - pagination (offset / page / cursor) with 1000 page cap
+//   - data selectors (applied by step-runner after the driver returns)
+//
+// Idempotency rule:
+//   - GET / HEAD / OPTIONS: retry on 5xx + 429 + connection errors
+//   - POST / PUT / PATCH / DELETE: retry only on 429 + connection errors
+
+import { evaluateHook } from "../../auth/hooks.ts";
+import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
+import { buildRequestPlan, fetchViaTunnel } from "../../connectors/drivers/http.ts";
+import { executeS3Request, type S3Method } from "../../connectors/drivers/s3.ts";
+import { getConnectorForEnvironment } from "../../connectors/service.ts";
+import { logger } from "../../logging/logger.ts";
+import { recordRequestRetry } from "../../observability/instrumentation.ts";
+import type { RequestStep } from "../../workflows/types.ts";
+import { combineSignals } from "../abort.ts";
+import {
+  MAX_PAGES,
+  makeStrategy,
+  PAGE_PROGRESS_INTERVAL,
+  type PaginationSpec,
+} from "../pagination.ts";
+import { applyResponseFilters, ResponseFilterFailError } from "../response-filter.ts";
+import type { StepResult, StepRunContext } from "../types.ts";
+
+export const RETRY_BASE_MS = 200;
+export const RETRY_CAP_MS = 30_000;
+export const REQUEST_TIMEOUT_DEFAULT_MS = 60 * 60_000; // 1h
+
+export class RequestError extends Error {
+  constructor(
+    message: string,
+    public readonly cause_kind:
+      | "http_5xx"
+      | "http_429"
+      | "http_4xx"
+      | "timeout"
+      | "abort"
+      | "connection"
+      | "filter_fail",
+    public readonly status?: number,
+    public readonly meta?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = "RequestError";
+  }
+}
+
+function jitter(ms: number): number {
+  const j = ms * 0.2;
+  return ms + (Math.random() * 2 - 1) * j;
+}
+
+function backoffMs(attempt: number): number {
+  const raw = Math.min(RETRY_CAP_MS, RETRY_BASE_MS * 2 ** attempt);
+  return Math.max(0, jitter(raw));
+}
+
+function parseRetryAfter(header: string | null): number | null {
+  if (!header) return null;
+  const trimmed = header.trim();
+  const numeric = Number.parseFloat(trimmed);
+  if (Number.isFinite(numeric)) {
+    return Math.max(0, numeric * 1000);
+  }
+  const date = Date.parse(trimmed);
+  if (!Number.isNaN(date)) {
+    return Math.max(0, date - Date.now());
+  }
+  return null;
+}
+
+function isIdempotent(method: string): boolean {
+  return method === "GET" || method === "HEAD" || method === "OPTIONS";
+}
+
+interface FetchAttemptResult {
+  status: number;
+  headers: Record<string, string>;
+  body: unknown;
+  bytes_in: number;
+}
+
+interface TunnelRoute {
+  tenant_id: string;
+  target: string;
+}
+
+async function fetchOnce(
+  url: string,
+  method: string,
+  headers: Record<string, string>,
+  body: unknown,
+  signal: AbortSignal,
+  tunnel?: TunnelRoute,
+): Promise<FetchAttemptResult> {
+  if (tunnel) {
+    // Tunnel-routed requests re-use the existing retry loop but delegate
+    // the actual byte transport to the tunnel registry. The plan already
+    // had credentials injected into `headers` before we got here.
+    const parsed = new URL(url);
+    const effectiveBody =
+      body !== undefined && body !== null && method !== "GET" && method !== "HEAD"
+        ? typeof body === "string"
+          ? body
+          : JSON.stringify(body)
+        : null;
+    if (effectiveBody !== null && !headers["content-type"] && !headers["Content-Type"]) {
+      headers["content-type"] = "application/json";
+    }
+    const tunnelRes = await fetchViaTunnel({
+      tenant_id: tunnel.tenant_id,
+      tunnel_target: tunnel.target,
+      method,
+      url: parsed,
+      headers,
+      body: effectiveBody,
+    });
+    const text = tunnelRes.body ?? "";
+    let parsedBody: unknown = text;
+    const ct = tunnelRes.headers["content-type"] ?? tunnelRes.headers["Content-Type"] ?? "";
+    if (typeof ct === "string" && ct.includes("application/json") && text.length > 0) {
+      try {
+        parsedBody = JSON.parse(text);
+      } catch {
+        parsedBody = text;
+      }
+    }
+    return {
+      status: tunnelRes.status,
+      headers: tunnelRes.headers,
+      body: parsedBody,
+      bytes_in: Buffer.byteLength(text, "utf8"),
+    };
+  }
+  const init: RequestInit = {
+    method,
+    headers,
+    signal,
+  };
+  if (body !== undefined && body !== null && method !== "GET" && method !== "HEAD") {
+    init.body = typeof body === "string" ? body : JSON.stringify(body);
+    if (!headers["content-type"] && !headers["Content-Type"]) {
+      (init.headers as Record<string, string>)["content-type"] = "application/json";
+    }
+  }
+  const res = await fetch(url, init);
+  const text = await res.text();
+  let parsed: unknown = text;
+  const ct = res.headers.get("content-type") ?? "";
+  if (ct.includes("application/json") && text.length > 0) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+  }
+  const headerObj: Record<string, string> = {};
+  res.headers.forEach((v, k) => {
+    headerObj[k] = v;
+  });
+  return {
+    status: res.status,
+    headers: headerObj,
+    body: parsed,
+    bytes_in: Buffer.byteLength(text, "utf8"),
+  };
+}
+
+async function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (ms <= 0) return;
+  await new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new RequestError("aborted", "abort"));
+      return;
+    }
+    const t = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(t);
+      reject(new RequestError("aborted", "abort"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+interface DoOnePageParams {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: unknown;
+  max_attempts: number;
+  signal: AbortSignal;
+  retry_total_ms: { value: number };
+  retry_counter: { value: number };
+  tunnel?: TunnelRoute;
+  connector_id?: string | null;
+}
+
+async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
+  let attempt = 0;
+  let lastErr: unknown = null;
+  while (attempt < p.max_attempts) {
+    attempt += 1;
+    if (attempt > 1) p.retry_counter.value += 1;
+    if (p.signal.aborted) {
+      throw new RequestError("aborted", "abort");
+    }
+    try {
+      const res = await fetchOnce(p.url, p.method, p.headers, p.body, p.signal, p.tunnel);
+      if (res.status >= 200 && res.status < 400) return res;
+      if (res.status === 429) {
+        const after = parseRetryAfter(res.headers["retry-after"] ?? null);
+        const wait = Math.min(after ?? backoffMs(attempt), 60 * 60_000);
+        logger.info({
+          module: "execution",
+          action: "request.retry",
+          msg: "request retrying due to 429",
+          reason: "http_429",
+          attempt,
+          wait_ms: Math.round(wait),
+        });
+        recordRequestRetry({ connector_id: p.connector_id ?? null, reason: "http_429" });
+        if (attempt >= p.max_attempts) {
+          throw new RequestError(`http 429`, "http_429", 429, { headers: res.headers });
+        }
+        p.retry_total_ms.value += wait;
+        await sleep(wait, p.signal);
+        continue;
+      }
+      if (res.status >= 500) {
+        if (!isIdempotent(p.method)) {
+          throw new RequestError(`http ${res.status}`, "http_5xx", res.status);
+        }
+        if (attempt >= p.max_attempts) {
+          throw new RequestError(`http ${res.status}`, "http_5xx", res.status);
+        }
+        const wait = backoffMs(attempt);
+        logger.info({
+          module: "execution",
+          action: "request.retry",
+          msg: "request retrying due to 5xx",
+          reason: "http_5xx",
+          attempt,
+          wait_ms: Math.round(wait),
+        });
+        recordRequestRetry({ connector_id: p.connector_id ?? null, reason: "http_5xx" });
+        await sleep(wait, p.signal);
+        continue;
+      }
+      // 4xx (non-429): non-retryable
+      throw new RequestError(`http ${res.status}`, "http_4xx", res.status, { body: res.body });
+    } catch (err) {
+      lastErr = err;
+      if (err instanceof RequestError) {
+        if (err.cause_kind === "http_4xx") throw err;
+        if (err.cause_kind === "abort") throw err;
+        if (err.cause_kind === "filter_fail") throw err;
+        if (attempt >= p.max_attempts) throw err;
+        continue;
+      }
+      const e = err as { name?: string; message?: string; cause?: { name?: string } };
+      const isAbort =
+        e.name === "AbortError" ||
+        e.cause?.name === "AbortError" ||
+        /aborted|abort/i.test(e.message ?? "") ||
+        p.signal.aborted;
+      if (isAbort) {
+        if (p.signal.aborted) throw new RequestError("aborted", "abort");
+        throw new RequestError("timeout", "timeout");
+      }
+      // connection error: retry regardless of method
+      if (attempt >= p.max_attempts) {
+        throw new RequestError(e.message ?? "connection error", "connection");
+      }
+      const wait = backoffMs(attempt);
+      logger.info({
+        module: "execution",
+        action: "request.retry",
+        msg: "request retrying due to connection error",
+        reason: "connection_error",
+        attempt,
+        wait_ms: Math.round(wait),
+      });
+      recordRequestRetry({ connector_id: p.connector_id ?? null, reason: "connection" });
+      await sleep(wait, p.signal);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("request failed");
+}
+
+export interface RunRequestStepParams {
+  ctx: StepRunContext;
+  step: RequestStep;
+  scope: Record<string, unknown>;
+}
+
+export async function runRequestStep(p: RunRequestStepParams): Promise<StepResult> {
+  const start = Date.now();
+  const max_attempts = (p.step.max_retries ?? 4) + 1; // 1 initial + N retries
+  const timeoutMs = p.step.timeout_ms ?? REQUEST_TIMEOUT_DEFAULT_MS;
+  const timeoutCtrl = new AbortController();
+  const timer = setTimeout(() => timeoutCtrl.abort("timeout"), timeoutMs);
+  const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);
+  // Compose headers/query/URL — connector-scoped steps route through the
+  // HTTP driver so credentials get decrypted + applied once up front,
+  // then the P3 retry loop runs on the resulting URL.
+  const headers: Record<string, string> = { ...(p.step.headers ?? {}) };
+  const query: Record<string, string | number | boolean> = { ...(p.step.query ?? {}) };
+  let baseUrl: URL;
+  let tunnelRoute: TunnelRoute | undefined;
+  try {
+    if (p.step.connector_id) {
+      const connector = await getConnectorForEnvironment(
+        p.ctx.tenant_id,
+        p.step.connector_id,
+        p.ctx.execution_mode,
+        p.ctx.db,
+      );
+      if (!connector) {
+        clearTimeout(timer);
+        return {
+          status: "failed",
+          retry_count: 0,
+          duration_ms: Date.now() - start,
+          error: {
+            code: "connector_not_found",
+            message: `connector ${p.step.connector_id} not found`,
+          },
+        };
+      }
+      if (connector.driver === "graphql" || p.step.graphql) {
+        clearTimeout(timer);
+        if (!p.step.graphql) {
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: {
+              code: "missing_graphql",
+              message: "request step against a graphql connector requires a `graphql` config",
+            },
+          };
+        }
+        try {
+          const args: Parameters<typeof graphqlQuery>[0] = {
+            db: p.ctx.db,
+            tenant_id: p.ctx.tenant_id,
+            connector,
+            query: p.step.graphql.query,
+          };
+          if (p.step.graphql.variables !== undefined) {
+            args.variables = p.step.graphql.variables;
+          }
+          if (p.step.graphql.operation !== undefined) {
+            args.operation = p.step.graphql.operation;
+          }
+          const res = await graphqlQuery(args);
+          return {
+            status: res.status >= 200 && res.status < 300 ? "succeeded" : "failed",
+            output: res.body,
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            request_meta: {
+              driver: "graphql",
+              status: res.status,
+              operation: p.step.graphql.operation ?? "query",
+            },
+            ...(res.status >= 200 && res.status < 300
+              ? {}
+              : {
+                  error: {
+                    code: `graphql_${res.status}`,
+                    message: `graphql endpoint returned ${res.status}`,
+                  },
+                }),
+          };
+        } catch (err) {
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: {
+              code: "graphql_error",
+              message: err instanceof Error ? err.message : String(err),
+            },
+          };
+        }
+      }
+      if (connector.driver === "s3") {
+        clearTimeout(timer);
+        try {
+          const reqPath = p.step.path ?? p.step.url ?? "/";
+          const params: Parameters<typeof executeS3Request>[0] = {
+            db: p.ctx.db,
+            tenant_id: p.ctx.tenant_id,
+            connector,
+            method: (p.step.method ?? "GET") as S3Method,
+            path: reqPath,
+          };
+          if (p.step.body !== undefined && p.step.body !== null) {
+            params.body =
+              typeof p.step.body === "string" ? p.step.body : JSON.stringify(p.step.body);
+          }
+          const res = await executeS3Request(params);
+          return {
+            status: res.status >= 200 && res.status < 300 ? "succeeded" : "failed",
+            output: res.body,
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            request_meta: { driver: "s3", method: p.step.method ?? "GET", status: res.status },
+          };
+        } catch (err) {
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: {
+              code: "s3_error",
+              message: err instanceof Error ? err.message : String(err),
+            },
+          };
+        }
+      }
+      if (connector.driver !== "http") {
+        clearTimeout(timer);
+        return {
+          status: "failed",
+          retry_count: 0,
+          duration_ms: Date.now() - start,
+          error: {
+            code: "connector_driver_mismatch",
+            message: `request step requires http driver, got ${connector.driver}`,
+          },
+        };
+      }
+      const plan = await buildRequestPlan({
+        db: p.ctx.db,
+        tenant_id: p.ctx.tenant_id,
+        connector,
+        path_or_url: p.step.path ?? p.step.url ?? "/",
+        headers,
+        query,
+      });
+      baseUrl = plan.url;
+      for (const [k, v] of Object.entries(plan.headers)) {
+        headers[k] = v;
+      }
+      if (plan.tunnel_target) {
+        tunnelRoute = { tenant_id: p.ctx.tenant_id, target: plan.tunnel_target };
+      }
+    } else {
+      if (!p.step.url) {
+        clearTimeout(timer);
+        return {
+          status: "failed",
+          retry_count: 0,
+          duration_ms: Date.now() - start,
+          error: { code: "missing_url", message: "request step requires url or connector_id" },
+        };
+      }
+      baseUrl = new URL(p.step.url);
+      for (const [k, v] of Object.entries(query)) {
+        baseUrl.searchParams.set(k, String(v));
+      }
+    }
+  } catch (err) {
+    clearTimeout(timer);
+    return {
+      status: "failed",
+      retry_count: 0,
+      duration_ms: Date.now() - start,
+      error: {
+        code: "request_setup_error",
+        message: err instanceof Error ? err.message : String(err),
+      },
+    };
+  }
+
+  // Before-Request Hook evaluation — fail-closed.
+  if (p.ctx.principal) {
+    try {
+      const decision = await evaluateHook({
+        db: p.ctx.db,
+        tenant_id: p.ctx.tenant_id,
+        principal: p.ctx.principal,
+        requestCtx: {
+          method: p.step.method,
+          url: baseUrl.toString(),
+          headers,
+          body: p.step.body ?? null,
+          execution_id: p.ctx.execution_id,
+          workflow_id: p.ctx.workflow_id,
+          step_id: p.step.id,
+        },
+        trace_id: p.ctx.trace_id,
+      });
+      // Step-runner trace — every hook evaluation emits a single
+      // debug line so operators can see why a request was allowed or
+      // denied without having to recompute the decision from audit
+      // rows alone.
+      logger.debug({
+        module: "execution",
+        action: "hook.evaluated",
+        hook_id: decision.hook_id ?? null,
+        role: p.ctx.principal?.roles?.[0] ?? null,
+        decision: decision.allowed ? "allow" : "deny",
+        reason: decision.reason ?? null,
+      });
+      if (!decision.allowed) {
+        clearTimeout(timer);
+        return {
+          status: "failed",
+          retry_count: 0,
+          duration_ms: Date.now() - start,
+          error: {
+            code: "policy.denied",
+            message: decision.reason ?? "before-request hook denied",
+            details: decision.hook_id ? { hook_id: decision.hook_id } : undefined,
+          },
+        };
+      }
+    } catch (err) {
+      // Fail-closed on evaluator failure too.
+      clearTimeout(timer);
+      return {
+        status: "failed",
+        retry_count: 0,
+        duration_ms: Date.now() - start,
+        error: {
+          code: "hook_error",
+          message: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
+  }
+
+  const retryTotal = { value: 0 };
+  const retryCounter = { value: 0 };
+  let last_meta: Record<string, unknown> = {};
+  try {
+    if (!p.step.pagination) {
+      const res = await doOnePage({
+        url: baseUrl.toString(),
+        method: p.step.method,
+        headers,
+        body: p.step.body ?? null,
+        max_attempts,
+        signal,
+        retry_total_ms: retryTotal,
+        retry_counter: retryCounter,
+        connector_id: p.step.connector_id ?? null,
+        ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
+      });
+      // Apply response filters
+      let body = res.body;
+      try {
+        body = applyResponseFilters(p.step.response_filters, res.body);
+      } catch (err) {
+        if (err instanceof ResponseFilterFailError) {
+          throw new RequestError(err.message, "filter_fail");
+        }
+        throw err;
+      }
+      last_meta = {
+        url: baseUrl.toString(),
+        method: p.step.method,
+        status: res.status,
+        bytes_in: res.bytes_in,
+      };
+      return {
+        status: "succeeded",
+        output: body,
+        retry_count: retryCounter.value,
+        duration_ms: Date.now() - start,
+        request_meta: last_meta,
+      };
+    }
+    // paginated request
+    const strat = makeStrategy(p.step.pagination as PaginationSpec, {
+      baseUrl,
+      baseQuery: {},
+    });
+    const acc: unknown[] = [];
+    let prev: unknown = null;
+    let pageIdx = 0;
+    let pages_fetched = 0;
+    while (pageIdx < MAX_PAGES) {
+      const next = strat.next(prev, pageIdx);
+      if (next.done) break;
+      const res = await doOnePage({
+        url: next.url,
+        method: p.step.method,
+        headers,
+        body: p.step.body ?? null,
+        max_attempts,
+        signal,
+        retry_total_ms: retryTotal,
+        retry_counter: retryCounter,
+        connector_id: p.step.connector_id ?? null,
+        ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
+      });
+      let body = res.body;
+      try {
+        body = applyResponseFilters(p.step.response_filters, res.body);
+      } catch (err) {
+        if (err instanceof ResponseFilterFailError) {
+          throw new RequestError(err.message, "filter_fail");
+        }
+        throw err;
+      }
+      strat.merge(acc, body);
+      prev = body;
+      pageIdx += 1;
+      pages_fetched += 1;
+      last_meta = {
+        url: next.url,
+        method: p.step.method,
+        status: res.status,
+        page_idx: pageIdx,
+      };
+      if (pages_fetched % PAGE_PROGRESS_INTERVAL === 0) {
+        logger.info({
+          module: "execution",
+          action: "request.pagination_progress",
+          msg: "pagination progress",
+          execution_id: p.ctx.execution_id,
+          step_id: p.step.id,
+          pages_fetched,
+        });
+      }
+    }
+    return {
+      status: "succeeded",
+      output: acc,
+      retry_count: retryCounter.value,
+      duration_ms: Date.now() - start,
+      request_meta: { ...last_meta, pages_fetched },
+    };
+  } catch (err) {
+    const duration_ms = Date.now() - start;
+    if (err instanceof RequestError && err.cause_kind === "abort") {
+      // distinguish step timeout vs external cancel
+      if (timeoutCtrl.signal.aborted && !p.ctx.signal.aborted) {
+        return {
+          status: "timed_out",
+          retry_count: retryCounter.value,
+          duration_ms,
+          error: { code: "step_timeout", message: `request exceeded ${timeoutMs}ms` },
+          request_meta: last_meta,
+        };
+      }
+      return {
+        status: "aborted",
+        retry_count: retryCounter.value,
+        duration_ms,
+        error: { code: "aborted", message: "execution aborted" },
+        request_meta: last_meta,
+      };
+    }
+    if (err instanceof RequestError && err.cause_kind === "timeout") {
+      return {
+        status: "timed_out",
+        retry_count: retryCounter.value,
+        duration_ms,
+        error: { code: "step_timeout", message: `request exceeded ${timeoutMs}ms` },
+        request_meta: last_meta,
+      };
+    }
+    const e = err instanceof Error ? err : new Error(String(err));
+    return {
+      status: "failed",
+      retry_count: retryCounter.value,
+      duration_ms,
+      error: {
+        code: err instanceof RequestError ? err.cause_kind : "request_error",
+        message: e.message,
+      },
+      request_meta: last_meta,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}

@@ -1,0 +1,27 @@
+# One-shot migration runner. Used as an init container in docker-compose so
+# the engine never boots against an un-migrated database.
+
+FROM oven/bun:1.3-slim AS runner
+WORKDIR /app
+
+# Dependency manifests first for cache efficiency.
+COPY package.json bun.lock bunfig.toml tsconfig.json tsconfig.base.json ./
+
+# Source needed to resolve imports from migrate.ts (env.ts, db client, schema,
+# logging helpers, seed helpers, etc.). Copying the full engine app is the
+# simplest way to keep this in lockstep with the main image without carving
+# out a dedicated module boundary.
+COPY apps ./apps
+COPY packages ./packages
+COPY drizzle.config.ts ./drizzle.config.ts
+
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
+
+# Default entrypoint runs the drizzle migration bundle against $DATABASE_URL.
+# Overridden by `docker compose run --rm migrate <cmd>` when we need to run
+# adjacent tooling such as the seed script.
+ENV NODE_ENV=production \
+    LOG_FORMAT=ndjson
+
+ENTRYPOINT ["bun", "run", "apps/engine/src/db/migrate.ts"]

@@ -1,0 +1,139 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1776180309402,
+      "tag": "0000_unknown_cardiac",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776700000000,
+      "tag": "0001_p3_execution_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776800000000,
+      "tag": "0002_p4_queue_cursor_schedule",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776900000000,
+      "tag": "0003_p5_connectors",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777000000000,
+      "tag": "0004_p6_connector_docs",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777100000000,
+      "tag": "0005_p8_llm",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777200000000,
+      "tag": "0006_p9_self_healing",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777300000000,
+      "tag": "0007_p10_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777400000000,
+      "tag": "0008_p11_webhooks",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777500000000,
+      "tag": "0009_p12_chat",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777600000000,
+      "tag": "0010_p14_request_hooks",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1777700000000,
+      "tag": "0011_p5_api_keys_rotating_out",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1777800000000,
+      "tag": "0012_p_gc2_auto_refresh",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1777900000000,
+      "tag": "0013_p_gc4_skill_arguments",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1778000000000,
+      "tag": "0014_p_gc5_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1778100000000,
+      "tag": "0015_p_gc6_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1778200000000,
+      "tag": "0016_p2_oidc_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1778300000000,
+      "tag": "0017_p2_rbac",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1778400000000,
+      "tag": "0018_p2_sk_cli",
+      "breakpoints": true
+    }
+  ]
+}

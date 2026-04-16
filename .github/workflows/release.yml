@@ -1,0 +1,134 @@
+name: release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: registry.digitalocean.com
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: subkit
+          POSTGRES_PASSWORD: subkit
+          POSTGRES_DB: subkit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U subkit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
+      MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
+      LLM_PROVIDER: mock
+      SKIP_DOCKER: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Cache Bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run db:migrate
+      - run: bun test
+
+  build-and-push:
+    name: build-and-push
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Login to DOCR
+        run: doctl registry login --expiry-seconds 1200
+      - name: Build and push engine image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.engine
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            ENGINE_VERSION=${{ steps.meta.outputs.version }}
+          tags: |
+            ${{ env.REGISTRY }}/subkit/engine:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/subkit/engine:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build and push migrate image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.migrate
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/subkit/migrate:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/subkit/migrate:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: deploy
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.build-and-push.outputs.version }}
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          envs: VERSION
+          script: |
+            set -euo pipefail
+            cd /opt/subkit
+            doctl registry login --expiry-seconds 600
+            export ENGINE_VERSION="$VERSION"
+            COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+            $COMPOSE pull engine migrate
+            $COMPOSE up -d migrate
+            $COMPOSE up -d seed
+            $COMPOSE up -d engine caddy
+            docker image prune -f
+
+  smoke:
+    name: smoke
+    needs: [build-and-push, deploy]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.build-and-push.outputs.version }}
+      URL: ${{ secrets.DEPLOY_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke tests
+        run: ./scripts/smoke.sh "$URL" "$VERSION"
