@@ -1,12 +1,7 @@
 // `sk update` — self-update the sk CLI binary from GitHub Releases.
 
+import { checkForUpdate, defaultUpdaterConfig, performUpdate, VERSION } from "@cli-core/index.ts";
 import { defineCommand } from "citty";
-import {
-  VERSION,
-  checkForUpdate,
-  defaultUpdaterConfig,
-  performUpdate,
-} from "@cli-core/index.ts";
 
 export const updateCommand = defineCommand({
   meta: { name: "update", description: "Update sk CLI to the latest version" },
@@ -28,7 +23,7 @@ export const updateCommand = defineCommand({
     },
   },
   async run({ args }) {
-    const channel = args.channel === "beta" ? "beta" : "stable" as const;
+    const channel = args.channel === "beta" ? "beta" : ("stable" as const);
     const config = defaultUpdaterConfig("sk", VERSION, channel);
 
     process.stdout.write(`sk: checking for updates (channel: ${channel})...\n`);
@@ -58,9 +53,7 @@ export const updateCommand = defineCommand({
       await doUpdate(config, info);
     } catch (err) {
       if (isPermissionError(err)) {
-        const hint = process.platform === "win32"
-          ? "run as Administrator"
-          : "sudo sk update";
+        const hint = process.platform === "win32" ? "run as Administrator" : "sudo sk update";
         process.stderr.write(`sk: permission denied — ${hint}\n`);
         process.exit(2);
       }

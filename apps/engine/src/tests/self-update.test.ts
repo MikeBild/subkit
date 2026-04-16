@@ -28,16 +28,10 @@ function captureStdout(): void {
   }) as typeof process.stdout.write;
 }
 
-function makeFetchImpl(
-  handler: (url: string) => Response | Promise<Response>,
-): typeof fetch {
+function makeFetchImpl(handler: (url: string) => Response | Promise<Response>): typeof fetch {
   return (async (input: RequestInfo | URL) => {
     const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     return handler(url);
   }) as unknown as typeof fetch;
 }
@@ -45,15 +39,16 @@ function makeFetchImpl(
 describe("engine runSelfUpdate", () => {
   test("prints 'already at latest' when no update available", async () => {
     captureStdout();
-    const fetchImpl = makeFetchImpl(() =>
-      new Response(
-        JSON.stringify({
-          tag_name: "v0.0.0",
-          prerelease: false,
-          body: "",
-          assets: [],
-        }),
-      ),
+    const fetchImpl = makeFetchImpl(
+      () =>
+        new Response(
+          JSON.stringify({
+            tag_name: "v0.0.0",
+            prerelease: false,
+            body: "",
+            assets: [],
+          }),
+        ),
     );
 
     await runSelfUpdate(fetchImpl);
@@ -64,17 +59,18 @@ describe("engine runSelfUpdate", () => {
     captureStdout();
     // Return a newer version but with no matching asset so performUpdate will fail
     // We're testing the output message, not the actual download
-    const fetchImpl = makeFetchImpl(() =>
-      new Response(
-        JSON.stringify({
-          tag_name: "v99.0.0",
-          prerelease: false,
-          body: "notes",
-          assets: [
-            { name: "SHA256SUMS", browser_download_url: "https://example.com/SHA256SUMS" },
-          ],
-        }),
-      ),
+    const fetchImpl = makeFetchImpl(
+      () =>
+        new Response(
+          JSON.stringify({
+            tag_name: "v99.0.0",
+            prerelease: false,
+            body: "notes",
+            assets: [
+              { name: "SHA256SUMS", browser_download_url: "https://example.com/SHA256SUMS" },
+            ],
+          }),
+        ),
     );
 
     try {
@@ -110,8 +106,11 @@ describe("engine runSelfUpdate", () => {
     // any engine environment variables being set.
     // If it imported env.ts eagerly, it would throw on missing DATABASE_URL.
     captureStdout();
-    const fetchImpl = makeFetchImpl(() =>
-      new Response(JSON.stringify({ tag_name: "v0.0.0", prerelease: false, body: "", assets: [] })),
+    const fetchImpl = makeFetchImpl(
+      () =>
+        new Response(
+          JSON.stringify({ tag_name: "v0.0.0", prerelease: false, body: "", assets: [] }),
+        ),
     );
     // Should not throw
     await runSelfUpdate(fetchImpl);

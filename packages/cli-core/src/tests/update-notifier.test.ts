@@ -8,7 +8,7 @@ import { notifyIfUpdateAvailable } from "../update-notifier.ts";
 // The notifier creates its cache under ~/.{binaryName}/ so we use
 // temp-prefixed names and clean up after.
 
-let cleanupDirs: string[] = [];
+const cleanupDirs: string[] = [];
 
 afterAll(() => {
   for (const dir of cleanupDirs) {
@@ -93,8 +93,7 @@ describe("notifyIfUpdateAvailable", () => {
   test("calls cleanupOldBinary without error", () => {
     // cleanupOldBinary is a no-op on non-Windows
     // Verify that notifyIfUpdateAvailable doesn't throw when calling it
-    const fetchImpl = (async () =>
-      new Response("", { status: 404 })) as unknown as typeof fetch;
+    const fetchImpl = (async () => new Response("", { status: 404 })) as unknown as typeof fetch;
     const name = `notifier-test-cleanup-${Date.now()}`;
     expect(() => notifyIfUpdateAvailable(name, fetchImpl)).not.toThrow();
   });

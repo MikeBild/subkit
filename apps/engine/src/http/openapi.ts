@@ -1,10 +1,10 @@
 // Shared OpenAPIHono instance and document metadata. Routes import this
 // file to register themselves on a single document.
 
+import { VERSION } from "@cli-core/version.ts";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
-import { VERSION } from "@cli-core/version.ts";
 
 export type AppEnv = {
   Variables: {

@@ -3,9 +3,6 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  type UpdateCache,
-  type UpdateInfo,
-  type UpdaterConfig,
   checkForUpdate,
   defaultUpdaterConfig,
   formatUpdateBanner,
@@ -13,6 +10,9 @@ import {
   parseChecksum,
   platformArch,
   readCache,
+  type UpdateCache,
+  type UpdateInfo,
+  type UpdaterConfig,
   writeCache,
 } from "../updater.ts";
 
@@ -47,7 +47,8 @@ function makeGitHubResponse(tag: string, assets: Array<{ name: string }> = []) {
 
 function makeFetchImpl(handler: (url: string) => Response | Promise<Response>): typeof fetch {
   return (async (input: RequestInfo | URL, _init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url =
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     return handler(url);
   }) as typeof fetch;
 }
@@ -341,8 +342,8 @@ describe("checkForUpdate", () => {
 
   test("returns null when remote version equals local", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
-    const fetchImpl = makeFetchImpl(() =>
-      new Response(JSON.stringify(makeGitHubResponse("v1.0.0"))),
+    const fetchImpl = makeFetchImpl(
+      () => new Response(JSON.stringify(makeGitHubResponse("v1.0.0"))),
     );
     const result = await checkForUpdate(cfg, true, fetchImpl);
     expect(result).toBeNull();
@@ -366,8 +367,8 @@ describe("checkForUpdate", () => {
 
   test("writes cache after successful fetch", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
-    const fetchImpl = makeFetchImpl(() =>
-      new Response(JSON.stringify(makeGitHubResponse("v2.0.0"))),
+    const fetchImpl = makeFetchImpl(
+      () => new Response(JSON.stringify(makeGitHubResponse("v2.0.0"))),
     );
     await checkForUpdate(cfg, true, fetchImpl);
     const cache = readCache(cfg.cacheDir);
@@ -377,8 +378,8 @@ describe("checkForUpdate", () => {
 
   test("strips v prefix from tag_name", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
-    const fetchImpl = makeFetchImpl(() =>
-      new Response(JSON.stringify(makeGitHubResponse("v2.5.1"))),
+    const fetchImpl = makeFetchImpl(
+      () => new Response(JSON.stringify(makeGitHubResponse("v2.5.1"))),
     );
     const result = await checkForUpdate(cfg, true, fetchImpl);
     expect(result!.version).toBe("2.5.1");
@@ -420,9 +421,9 @@ describe("performUpdate", () => {
       body: "",
     };
     const fetchImpl = makeFetchImpl(() => new Response(""));
-    await expect(import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl))).rejects.toThrow(
-      /no binary/,
-    );
+    await expect(
+      import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl)),
+    ).rejects.toThrow(/no binary/);
   });
 
   test("throws when SHA256SUMS asset missing", async () => {
@@ -436,9 +437,9 @@ describe("performUpdate", () => {
       body: "",
     };
     const fetchImpl = makeFetchImpl(() => new Response(""));
-    await expect(import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl))).rejects.toThrow(
-      /SHA256SUMS/,
-    );
+    await expect(
+      import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl)),
+    ).rejects.toThrow(/SHA256SUMS/);
   });
 
   test("throws on checksum mismatch", async () => {
@@ -461,9 +462,9 @@ describe("performUpdate", () => {
       }
       return new Response("binary-content");
     });
-    await expect(import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl))).rejects.toThrow(
-      /checksum mismatch/,
-    );
+    await expect(
+      import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl)),
+    ).rejects.toThrow(/checksum mismatch/);
   });
 
   test("cleans up temp file on error", async () => {
@@ -514,8 +515,8 @@ describe("performUpdate", () => {
       }
       return new Response("binary-content");
     });
-    await expect(import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl))).rejects.toThrow(
-      /failed to download SHA256SUMS/,
-    );
+    await expect(
+      import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl)),
+    ).rejects.toThrow(/failed to download SHA256SUMS/);
   });
 });
