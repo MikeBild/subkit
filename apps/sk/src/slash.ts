@@ -82,9 +82,15 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
   {
     name: "skills",
-    help: "List active skills in scope",
+    help: "List active skills in scope (includes pending suggestions)",
     category: "context",
     requires: "skill:read",
+  },
+  {
+    name: "knowledge",
+    help: "List knowledge sources in scope",
+    category: "context",
+    requires: "knowledge:read",
   },
   {
     name: "mcp",

@@ -10,10 +10,14 @@ import { CronExpressionParser } from "cron-parser";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { Db } from "../db/client.ts";
-import { connectors, workflows, workflowsSchedules } from "../db/schema/index.ts";
+import { connectors, knowledgeSources, workflows, workflowsSchedules } from "../db/schema/index.ts";
 import { createExecution } from "../execution/state.ts";
 import { logger } from "../logging/logger.ts";
 import { enqueueIngest, INGEST_DOCS_QUEUE } from "../queue/handlers/ingest-docs.ts";
+import {
+  enqueueKnowledgeIngest,
+  INGEST_KNOWLEDGE_QUEUE,
+} from "../queue/handlers/ingest-knowledge.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { parseCronExpression, scheduleCron, unscheduleCron } from "./cron.ts";
 
@@ -118,6 +122,14 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "docs_refresh_failed",
         msg: "scheduler docs auto-refresh pass failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+    await this.reconcileKnowledgeAutoRefresh().catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "knowledge_refresh_failed",
+        msg: "scheduler knowledge auto-refresh pass failed",
         error: err instanceof Error ? err.message : String(err),
       });
     });
@@ -332,5 +344,62 @@ export class SchedulerReconciler {
       }
     }
     return { cron, every };
+  }
+
+  /**
+   * Knowledge Sources auto-refresh. Walks knowledge sources with
+   * `refresh_strategy = 'scheduled'` and enqueues a re-ingest job
+   * when the cron expression fires.
+   *
+   * Note: Only URL-based sources can be auto-refreshed (the content
+   * is re-fetched). File-upload sources require a manual re-upload.
+   */
+  async reconcileKnowledgeAutoRefresh(): Promise<void> {
+    const rows = await this.opts.db
+      .select()
+      .from(knowledgeSources)
+      .where(
+        and(
+          eq(knowledgeSources.refresh_strategy, "scheduled"),
+          eq(knowledgeSources.status, "active"),
+          isNull(knowledgeSources.deleted_at),
+          isNotNull(knowledgeSources.refresh_cron),
+        ),
+      );
+    for (const row of rows) {
+      const cron = row.refresh_cron;
+      if (!cron) continue;
+      const due = isCronDue(cron, row.last_refreshed_at ?? null, new Date());
+      if (!due) continue;
+      try {
+        await enqueueKnowledgeIngest(this.opts.boss, {
+          tenant_id: row.tenant_id,
+          knowledge_source_id: row.id,
+          filename: row.source_uri,
+          content: "", // file-upload sources cannot be auto-refreshed
+          actor_id: null,
+        });
+        await this.opts.db
+          .update(knowledgeSources)
+          .set({ last_refreshed_at: new Date() })
+          .where(eq(knowledgeSources.id, row.id));
+        logger.info({
+          module: "scheduler",
+          action: "knowledge_refresh_enqueued",
+          msg: "knowledge auto-refresh enqueued ingest job",
+          queue: INGEST_KNOWLEDGE_QUEUE,
+          knowledge_source_id: row.id,
+          cron,
+        });
+      } catch (err) {
+        logger.error({
+          module: "scheduler",
+          action: "knowledge_refresh_enqueue_failed",
+          msg: "failed to enqueue knowledge auto-refresh ingest",
+          knowledge_source_id: row.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   }
 }

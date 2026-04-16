@@ -1,0 +1,136 @@
+// Journey 34: Discovery API lifecycle via REST.
+//
+// Create a discovery run, verify file tracking, seed artifacts
+// manually, approve and reject artifacts.
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { auditLog, discoveryArtifacts } from "../../db/schema/index.ts";
+import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+
+let ctx: JourneyCtx;
+let runId: string;
+
+beforeAll(async () => {
+  ctx = await createJourneyCtx("discovery-api");
+}, 60_000);
+
+afterAll(async () => {
+  if (ctx?.cleanup) await ctx.cleanup();
+}, 30_000);
+
+describe("journey: discovery API lifecycle", () => {
+  test("AC1: create discovery run via multipart", async () => {
+    const form = new FormData();
+    form.append(
+      "files",
+      new Blob(['{"openapi":"3.0.0","info":{"title":"Widgets API","version":"1.0"}}'], {
+        type: "application/json",
+      }),
+      "spec.json",
+    );
+    form.append(
+      "files",
+      new Blob(["# Compliance Policy\n\nAll payments must include an Idempotency-Key header."], {
+        type: "text/markdown",
+      }),
+      "compliance.md",
+    );
+    form.append("label", "Journey test");
+
+    const res = await fetch(`${ctx.baseUrl}/v1/discovery/runs`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.apiKey}` },
+      body: form,
+    });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { id: string; file_count: number; status: string };
+    expect(body.file_count).toBe(2);
+    expect(body.status).toBe("pending");
+    runId = body.id;
+  });
+
+  test("AC2: get run shows status", async () => {
+    const res = await journeyFetch(ctx, `/v1/discovery/runs/${runId}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: string; label: string };
+    expect(body.id).toBe(runId);
+    expect(body.label).toBe("Journey test");
+  });
+
+  test("AC3: list runs includes this one", async () => {
+    const res = await journeyFetch(ctx, "/v1/discovery/runs");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<{ id: string }> };
+    expect(body.items.find((r) => r.id === runId)).toBeDefined();
+  });
+
+  test("AC4: seed + approve an artifact", async () => {
+    // Seed a connector artifact directly (analysis would normally do this)
+    const [artifact] = await ctx.db
+      .insert(discoveryArtifacts)
+      .values({
+        tenant_id: ctx.tenantId,
+        run_id: runId,
+        kind: "connector",
+        title: "Widgets API",
+        description: "REST connector for Widgets",
+        draft: { name: "Widgets", driver: "http", base_url: "https://api.widgets.test" },
+        evidence: { file_ids: [], excerpts: [{ file_id: "", filename: "spec.json", text: "openapi 3.0" }] },
+        confidence: 90,
+      })
+      .returning();
+
+    const res = await journeyFetch(ctx, `/v1/discovery/artifacts/${artifact!.id}/approve`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { approved: boolean };
+    expect(body.approved).toBe(true);
+
+    // Verify audit
+    const audits = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.resource_id, artifact!.id));
+    expect(audits.some((a) => a.action === "discovery.artifact_approved")).toBe(true);
+  });
+
+  test("AC5: seed + reject an artifact with reason", async () => {
+    const [artifact] = await ctx.db
+      .insert(discoveryArtifacts)
+      .values({
+        tenant_id: ctx.tenantId,
+        run_id: runId,
+        kind: "skill",
+        title: "Idempotency Rule",
+        draft: { scope: "global", title: "Idempotency", body: "Always include header" },
+        evidence: { file_ids: [], excerpts: [] },
+        confidence: 70,
+      })
+      .returning();
+
+    const res = await journeyFetch(ctx, `/v1/discovery/artifacts/${artifact!.id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Already covered by existing skill" }),
+    });
+    expect(res.status).toBe(200);
+
+    // Verify status
+    const getRes = await journeyFetch(ctx, `/v1/discovery/artifacts/${artifact!.id}`);
+    expect(getRes.status).toBe(200);
+    const body = (await getRes.json()) as { status: string; rejection_reason: string };
+    expect(body.status).toBe("rejected");
+    expect(body.rejection_reason).toBe("Already covered by existing skill");
+  });
+
+  test("AC6: list artifacts filters by kind and status", async () => {
+    const res = await journeyFetch(ctx, `/v1/discovery/runs/${runId}/artifacts?kind=connector&status=approved`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<{ kind: string; status: string }> };
+    for (const item of body.items) {
+      expect(item.kind).toBe("connector");
+      expect(item.status).toBe("approved");
+    }
+  });
+});
