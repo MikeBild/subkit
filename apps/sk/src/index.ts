@@ -12,6 +12,8 @@
 
 import * as prompts from "@clack/prompts";
 import { runBrowserLogin, runDeviceFlow } from "@cli-core/index.ts";
+import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
+import { VERSION } from "@cli-core/version.ts";
 import { defineCommand, runCommand, showUsage } from "citty";
 import { profileCommand } from "./commands/profile.ts";
 import { updateCommand } from "./commands/update.ts";
@@ -30,8 +32,6 @@ import { runInkRepl } from "./ink-repl.ts";
 import { runMcpProxy } from "./mcp-proxy.ts";
 import { mostRecentSession } from "./sessions.ts";
 import { renderHelp } from "./slash.ts";
-import { VERSION } from "@cli-core/version.ts";
-import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 
 // ---------- Shared arg shapes ----------
 

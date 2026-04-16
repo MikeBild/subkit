@@ -14,46 +14,42 @@ afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-function makeFetchImpl(
-  handler: (url: string) => Response | Promise<Response>,
-): typeof fetch {
+function makeFetchImpl(handler: (url: string) => Response | Promise<Response>): typeof fetch {
   return (async (input: RequestInfo | URL) => {
     const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     return handler(url);
   }) as unknown as typeof fetch;
 }
 
 describe("tunnel-agent checkAndLogUpdate", () => {
   test("does not throw when update is available", async () => {
-    const fetchImpl = makeFetchImpl(() =>
-      new Response(
-        JSON.stringify({
-          tag_name: "v99.0.0",
-          prerelease: false,
-          body: "",
-          assets: [],
-        }),
-      ),
+    const fetchImpl = makeFetchImpl(
+      () =>
+        new Response(
+          JSON.stringify({
+            tag_name: "v99.0.0",
+            prerelease: false,
+            body: "",
+            assets: [],
+          }),
+        ),
     );
     // Should log a warning but not throw
     await checkAndLogUpdate(fetchImpl);
   });
 
   test("does not throw when version is current", async () => {
-    const fetchImpl = makeFetchImpl(() =>
-      new Response(
-        JSON.stringify({
-          tag_name: "v0.0.0",
-          prerelease: false,
-          body: "",
-          assets: [],
-        }),
-      ),
+    const fetchImpl = makeFetchImpl(
+      () =>
+        new Response(
+          JSON.stringify({
+            tag_name: "v0.0.0",
+            prerelease: false,
+            body: "",
+            assets: [],
+          }),
+        ),
     );
     await checkAndLogUpdate(fetchImpl);
   });
@@ -69,15 +65,16 @@ describe("tunnel-agent checkAndLogUpdate", () => {
 
 describe("tunnel-agent runAgentSelfUpdate", () => {
   test("logs 'already at latest' when no update available", async () => {
-    const fetchImpl = makeFetchImpl(() =>
-      new Response(
-        JSON.stringify({
-          tag_name: "v0.0.0",
-          prerelease: false,
-          body: "",
-          assets: [],
-        }),
-      ),
+    const fetchImpl = makeFetchImpl(
+      () =>
+        new Response(
+          JSON.stringify({
+            tag_name: "v0.0.0",
+            prerelease: false,
+            body: "",
+            assets: [],
+          }),
+        ),
     );
     // Should not throw
     await runAgentSelfUpdate(fetchImpl);
@@ -101,17 +98,18 @@ describe("tunnel-agent runAgentSelfUpdate", () => {
   });
 
   test("attempts performUpdate when newer version found", async () => {
-    const fetchImpl = makeFetchImpl(() =>
-      new Response(
-        JSON.stringify({
-          tag_name: "v99.0.0",
-          prerelease: false,
-          body: "",
-          assets: [
-            { name: "SHA256SUMS", browser_download_url: "https://example.com/SHA256SUMS" },
-          ],
-        }),
-      ),
+    const fetchImpl = makeFetchImpl(
+      () =>
+        new Response(
+          JSON.stringify({
+            tag_name: "v99.0.0",
+            prerelease: false,
+            body: "",
+            assets: [
+              { name: "SHA256SUMS", browser_download_url: "https://example.com/SHA256SUMS" },
+            ],
+          }),
+        ),
     );
     // performUpdate will throw because no matching binary asset
     await expect(runAgentSelfUpdate(fetchImpl)).rejects.toThrow(/no binary/);
@@ -127,15 +125,16 @@ describe("tunnel-agent startPeriodicUpdateCheck", () => {
   });
 
   test("can be started and stopped without error", () => {
-    const fetchImpl = makeFetchImpl(() =>
-      new Response(
-        JSON.stringify({
-          tag_name: "v0.0.0",
-          prerelease: false,
-          body: "",
-          assets: [],
-        }),
-      ),
+    const fetchImpl = makeFetchImpl(
+      () =>
+        new Response(
+          JSON.stringify({
+            tag_name: "v0.0.0",
+            prerelease: false,
+            body: "",
+            assets: [],
+          }),
+        ),
     );
     const timer = startPeriodicUpdateCheck(86_400_000, fetchImpl);
     // Verify the timer can be cleared without error

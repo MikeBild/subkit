@@ -15,8 +15,8 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 export const GITHUB_REPO = "mikebild/subkit";
 
@@ -222,7 +222,9 @@ export async function performUpdate(
     const contentLength = Number(binRes.headers.get("content-length") || 0);
     const hash = createHash("sha256");
     const ws = createWriteStream(tmpPath);
-    const readable = Readable.fromWeb(binRes.body as unknown as import("node:stream/web").ReadableStream);
+    const readable = Readable.fromWeb(
+      binRes.body as unknown as import("node:stream/web").ReadableStream,
+    );
     let downloaded = 0;
     let lastProgress = -1;
     const isTTY = process.stderr.isTTY;

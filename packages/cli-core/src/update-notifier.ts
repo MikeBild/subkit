@@ -2,7 +2,12 @@
 // `sk` and `subkit` entry points. The check runs in the background
 // and writes to stderr so it does not interfere with piped output.
 
-import { checkForUpdate, cleanupOldBinary, defaultUpdaterConfig, formatUpdateBanner } from "./updater.ts";
+import {
+  checkForUpdate,
+  cleanupOldBinary,
+  defaultUpdaterConfig,
+  formatUpdateBanner,
+} from "./updater.ts";
 import { VERSION } from "./version.ts";
 
 export function notifyIfUpdateAvailable(binaryName: string, fetchImpl?: typeof fetch): void {

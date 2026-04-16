@@ -1,8 +1,9 @@
+import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
 import { serve } from "@hono/node-server";
 import { ChatAdapterRegistry } from "./chat/registry.ts";
 import { closeDb, getDb } from "./db/client.ts";
-import { createApp } from "./http/server.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
+import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
 import { logger } from "./logging/logger.ts";
 import { startListener, stopListener } from "./pubsub/listener.ts";
@@ -10,7 +11,6 @@ import { startBoss, stopBoss } from "./queue/boss.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
 import { SchedulerReconciler } from "./scheduler/reconciler.ts";
 import { startTunnelWsServer, type TunnelWsServerHandle } from "./tunnels/ws-server.ts";
-import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
 import { setUpdateState } from "./update-state.ts";
 
 const SMOKE_FLAG = "--smoke";
@@ -58,24 +58,24 @@ async function runServer(): Promise<void> {
 
   // Non-blocking update check — fire and forget
   if (process.env.NO_UPDATE_CHECK !== "1")
-  checkForUpdate(defaultUpdaterConfig("engine", OPENAPI_INFO.version))
-    .then((info) => {
-      if (info) {
-        setUpdateState({ update_available: true, latest_version: info.version });
-        logger.warn({
-          module: "engine",
-          action: "update.available",
-          msg: `update available: ${info.version}`,
-          current_version: OPENAPI_INFO.version,
-          latest_version: info.version,
-        });
-      } else {
-        setUpdateState({ update_available: false, latest_version: OPENAPI_INFO.version });
-      }
-    })
-    .catch(() => {
-      /* silent — never block engine startup */
-    });
+    checkForUpdate(defaultUpdaterConfig("engine", OPENAPI_INFO.version))
+      .then((info) => {
+        if (info) {
+          setUpdateState({ update_available: true, latest_version: info.version });
+          logger.warn({
+            module: "engine",
+            action: "update.available",
+            msg: `update available: ${info.version}`,
+            current_version: OPENAPI_INFO.version,
+            latest_version: info.version,
+          });
+        } else {
+          setUpdateState({ update_available: false, latest_version: OPENAPI_INFO.version });
+        }
+      })
+      .catch(() => {
+        /* silent — never block engine startup */
+      });
 
   // Shared chat adapter registry — both the HTTP routes and the
   // outbound fanout worker resolve chat adapters out of this single

@@ -59,10 +59,7 @@ export function rateLimitMiddleware(opts: RateLimitOptions = {}): MiddlewareHand
           ip,
         });
         c.header("Retry-After", String(Math.ceil(windowMs / 1000)));
-        return c.json(
-          { code: "rate_limit_exceeded", message: "too many requests" },
-          429,
-        );
+        return c.json({ code: "rate_limit_exceeded", message: "too many requests" }, 429);
       }
       bucket.tokens--;
     } else {

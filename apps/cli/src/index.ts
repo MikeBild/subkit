@@ -5,6 +5,8 @@
 // Every subcommand also exposes `--engine-url`, `--api-key`, `--tenant`,
 // and `--json` so scripts can operate without a saved profile.
 
+import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
+import { VERSION } from "@cli-core/version.ts";
 import { defineCommand, runCommand, showUsage } from "citty";
 import { apikeysCommand } from "./commands/apikeys.ts";
 import { auditCommand } from "./commands/audit.ts";
@@ -31,8 +33,6 @@ import { tunnelsCommand } from "./commands/tunnels.ts";
 import { updateCommand } from "./commands/update.ts";
 import { workflowsCommand } from "./commands/workflows.ts";
 import { exitCodeFor, formatError } from "./utils/errors.ts";
-import { VERSION } from "@cli-core/version.ts";
-import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 
 export const main = defineCommand({
   meta: {

@@ -12,9 +12,9 @@
 // The binary is produced by `bun build --compile` — see package.json:
 //   "build:agent": "bun build apps/agent/src/index.ts --compile --outfile dist/tunnel-agent"
 
+import { VERSION } from "@cli-core/version.ts";
 import { type AgentTargetConfig, TunnelAgentClient } from "./client.ts";
 import { log } from "./logger.ts";
-import { VERSION } from "@cli-core/version.ts";
 
 interface ParsedArgs {
   engine_url: string;
