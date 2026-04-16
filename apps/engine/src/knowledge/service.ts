@@ -112,9 +112,7 @@ export async function createKnowledgeSource(
     const tenantUsage = await tx
       .select({ total: sql<number>`coalesce(sum(${knowledgeSources.bytes_total}), 0)` })
       .from(knowledgeSources)
-      .where(
-        and(eq(knowledgeSources.tenant_id, p.tenant_id), isNull(knowledgeSources.deleted_at)),
-      );
+      .where(and(eq(knowledgeSources.tenant_id, p.tenant_id), isNull(knowledgeSources.deleted_at)));
     const currentBytes = Number(tenantUsage[0]?.total ?? 0);
     if (currentBytes + totalBytes > KNOWLEDGE_TENANT_MAX_BYTES) {
       throw new KnowledgeBudgetExceededError(

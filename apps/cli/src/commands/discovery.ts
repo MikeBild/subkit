@@ -1,6 +1,6 @@
 // `subkit discovery ...`
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { defineCommand } from "citty";
 import { clientArgs, makeClient } from "../utils/client-args.ts";
@@ -47,10 +47,7 @@ const runCmd = defineCommand({
       content: readFileSync(fp),
     }));
 
-    const result = await client.createDiscoveryRun(
-      files,
-      args.label as string | undefined,
-    );
+    const result = await client.createDiscoveryRun(files, args.label as string | undefined);
     emitOne(asJson, result as unknown as Record<string, unknown>);
   },
 });

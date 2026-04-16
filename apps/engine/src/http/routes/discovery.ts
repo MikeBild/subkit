@@ -33,9 +33,7 @@ const listRunsRoute = createRoute({
   request: {
     query: z
       .object({
-        status: z
-          .enum(["pending", "analyzing", "synthesizing", "completed", "failed"])
-          .optional(),
+        status: z.enum(["pending", "analyzing", "synthesizing", "completed", "failed"]).optional(),
         limit: z.coerce.number().int().positive().max(200).optional(),
         offset: z.coerce.number().int().min(0).optional(),
       })

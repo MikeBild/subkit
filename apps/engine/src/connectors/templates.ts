@@ -29,6 +29,12 @@ export const TemplateIngestionSourceEnum = z.enum([
   "markdown",
   "llms_txt",
   "html",
+  "graphql",
+  "postgres",
+  "wsdl",
+  "grpc_reflection",
+  "asyncapi",
+  "caldav_discovery",
   "unsupported",
 ]);
 
@@ -41,6 +47,15 @@ export const TemplateOAuthSchema = z
   })
   .openapi("ConnectorTemplateOAuth");
 
+export const TemplateAuthOptionSchema = z
+  .object({
+    auth_type: TemplateAuthTypeEnum,
+    label: z.string(),
+    description: z.string(),
+    oauth: TemplateOAuthSchema.nullable().optional(),
+  })
+  .openapi("ConnectorTemplateAuthOption");
+
 export const ConnectorTemplateSchema = z
   .object({
     slug: z
@@ -48,7 +63,21 @@ export const ConnectorTemplateSchema = z
       .min(1)
       .regex(/^[a-z0-9][a-z0-9-]*$/),
     name: z.string().min(1),
-    driver: z.enum(["http", "postgres"]),
+    driver: z.enum([
+      "http",
+      "postgres",
+      "s3",
+      "graphql",
+      "mssql",
+      "mysql",
+      "caldav",
+      "webdav",
+      "soap",
+      "grpc",
+      "mqtt",
+      "imap",
+      "ftp",
+    ]),
     base_url: z.string(),
     auth_type: TemplateAuthTypeEnum,
     oauth: TemplateOAuthSchema.nullable(),
@@ -57,6 +86,10 @@ export const ConnectorTemplateSchema = z
     ingestion_url: z.string().nullable(),
     icon: z.string(),
     description: z.string(),
+    category: z.string().optional(),
+    tags: z.array(z.string()).default([]),
+    setup_hint: z.string().nullable().optional(),
+    auth_options: z.array(TemplateAuthOptionSchema).default([]),
   })
   .openapi("ConnectorTemplate");
 
@@ -77,11 +110,9 @@ export function loadBuiltinTemplates(): ConnectorTemplate[] {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`templates.json validation failed: ${issues}`);
   }
-  // Sanity: the spec ships exactly 10 templates. Drift here usually means
-  // somebody added one without updating tests/docs, so we fail loudly.
-  if (parsed.data.length !== 10) {
+  if (parsed.data.length < 10) {
     throw new Error(
-      `templates.json must contain exactly 10 templates, found ${parsed.data.length}`,
+      `templates.json must contain at least 10 templates, found ${parsed.data.length}`,
     );
   }
   cached = Object.freeze([...parsed.data]) as ConnectorTemplate[];

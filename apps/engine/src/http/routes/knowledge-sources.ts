@@ -106,7 +106,10 @@ const deleteRoute = createRoute({
   security: [{ bearerAuth: [] }],
   request: { params: IdParam },
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: z.object({ deleted: z.boolean() }) } } },
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: z.object({ deleted: z.boolean() }) } },
+    },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });

@@ -16,6 +16,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { policy } from "../../auth/policy.ts";
 import * as connectorSvc from "../../connectors/service.ts";
+import templateSkillsJson from "../../connectors/template-skills.json" with { type: "json" };
 import {
   type ConnectorTemplate,
   ConnectorTemplateSchema,
@@ -24,6 +25,7 @@ import {
 } from "../../connectors/templates.ts";
 import type { CreateConnectorInput } from "../../connectors/types.ts";
 import { connectorTemplates } from "../../db/schema/index.ts";
+import * as skillSvc from "../../skills/service.ts";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -196,6 +198,12 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
         ingestion_url: row.ingestion_url ?? null,
         icon: row.icon,
         description: row.description,
+        category: (row as Record<string, unknown>).category as string | undefined,
+        tags: ((row as Record<string, unknown>).tags as string[]) ?? [],
+        setup_hint: ((row as Record<string, unknown>).setup_hint as string) ?? null,
+        auth_options:
+          ((row as Record<string, unknown>).auth_options as ConnectorTemplate["auth_options"]) ??
+          [],
         source: "tenant",
         id: row.id,
       });
@@ -223,6 +231,10 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
         ingestion_url: body.ingestion_url ?? null,
         icon: body.icon,
         description: body.description,
+        category: body.category ?? null,
+        tags: body.tags ?? [],
+        setup_hint: body.setup_hint ?? null,
+        auth_options: body.auth_options ?? [],
       })
       .returning();
     const row = inserted[0];
@@ -307,6 +319,12 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
         ingestion_url: row.ingestion_url ?? null,
         icon: row.icon,
         description: row.description,
+        category: (row as Record<string, unknown>).category as string | undefined,
+        tags: ((row as Record<string, unknown>).tags as string[]) ?? [],
+        setup_hint: ((row as Record<string, unknown>).setup_hint as string) ?? null,
+        auth_options:
+          ((row as Record<string, unknown>).auth_options as ConnectorTemplate["auth_options"]) ??
+          [],
       };
     } else {
       template = loadBuiltinTemplates().find((t) => t.slug === slug) ?? null;
@@ -333,6 +351,43 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
       },
       db,
     );
+
+    // Seed the default skill for this connector from template-skills.json.
+    if (template.default_skill) {
+      const skillDef = (templateSkillsJson as Record<string, unknown>)[template.default_skill] as
+        | {
+            title: string;
+            body: string;
+            examples?: string[];
+            best_practices?: string[];
+            pitfalls?: string[];
+            doc_refs?: string[];
+          }
+        | undefined;
+      if (skillDef) {
+        try {
+          await skillSvc.createSkill(
+            {
+              tenant_id: principal.tenant_id,
+              input: {
+                scope: "connector",
+                connector_id: created.id,
+                title: skillDef.title,
+                body: skillDef.body,
+                examples: skillDef.examples,
+                best_practices: skillDef.best_practices,
+                pitfalls: skillDef.pitfalls,
+                doc_refs: skillDef.doc_refs,
+              },
+              actor_id: principal.id,
+            },
+            db,
+          );
+        } catch {
+          // Skill seeding is best-effort — don't fail connector creation.
+        }
+      }
+    }
 
     // Add a second audit row that captures the template_slug provenance.
     await auditAwait(

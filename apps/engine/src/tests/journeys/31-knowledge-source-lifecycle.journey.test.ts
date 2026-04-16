@@ -24,9 +24,12 @@ describe("journey: knowledge source lifecycle", () => {
     const form = new FormData();
     form.append(
       "file",
-      new Blob(["# API Guidelines\n\nAll endpoints must return JSON.\nPagination uses cursor tokens."], {
-        type: "text/markdown",
-      }),
+      new Blob(
+        ["# API Guidelines\n\nAll endpoints must return JSON.\nPagination uses cursor tokens."],
+        {
+          type: "text/markdown",
+        },
+      ),
       "api-guidelines.md",
     );
     form.append("metadata", JSON.stringify({ name: "API Guidelines", scope: "global" }));
@@ -89,10 +92,7 @@ describe("journey: knowledge source lifecycle", () => {
   });
 
   test("AC7: audit trail records all operations", async () => {
-    const audits = await ctx.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.resource_id, sourceId));
+    const audits = await ctx.db.select().from(auditLog).where(eq(auditLog.resource_id, sourceId));
     const actions = audits.map((a) => a.action);
     expect(actions).toContain("knowledge_source.created");
     expect(actions).toContain("knowledge_source.updated");

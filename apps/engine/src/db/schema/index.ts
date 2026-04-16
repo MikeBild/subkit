@@ -10,9 +10,11 @@ export * from "./connector_templates.ts";
 export * from "./connectors.ts";
 export * from "./conversations.ts";
 export * from "./conversations-extras.ts";
+export * from "./discovery.ts";
 export * from "./events.ts";
 export * from "./executions.ts";
 export * from "./identity.ts";
+export * from "./knowledge_sources.ts";
 export * from "./llm.ts";
 export * from "./notifications.ts";
 export * from "./rbac.ts";
@@ -23,5 +25,3 @@ export * from "./webhooks.ts";
 // webhooks-extras is a re-export barrel (same tables); omitted to avoid
 // duplicate symbol exports.
 export * from "./workflows.ts";
-export * from "./knowledge_sources.ts";
-export * from "./discovery.ts";

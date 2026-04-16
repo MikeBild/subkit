@@ -345,7 +345,11 @@ export class EngineClient {
     metadata: Record<string, unknown> = {},
   ): Promise<KnowledgeSourceSummary> {
     const form = new FormData();
-    form.append("file", new Blob([Buffer.from(file.content)], { type: file.type ?? "application/octet-stream" }), file.name);
+    form.append(
+      "file",
+      new Blob([Buffer.from(file.content)], { type: file.type ?? "application/octet-stream" }),
+      file.name,
+    );
     form.append("metadata", JSON.stringify(metadata));
     const url = `${this.base}/v1/knowledge-sources`;
     const h: Record<string, string> = { accept: "application/json" };
@@ -355,7 +359,11 @@ export class EngineClient {
     const text = await res.text();
     if (!res.ok) {
       let parsed: EngineErrorBody | string = text;
-      try { parsed = JSON.parse(text) as EngineErrorBody; } catch { /* keep as string */ }
+      try {
+        parsed = JSON.parse(text) as EngineErrorBody;
+      } catch {
+        /* keep as string */
+      }
       throw new EngineError(res.status, parsed);
     }
     return JSON.parse(text) as KnowledgeSourceSummary;
@@ -376,10 +384,7 @@ export class EngineClient {
   ): Promise<{ candidate: SkillCandidateSummary; skill_id: string }> {
     return this.request("POST", `/v1/skill-candidates/${id}/approve`, body);
   }
-  rejectSkillCandidate(
-    id: string,
-    body: { reason?: string } = {},
-  ): Promise<{ rejected: boolean }> {
+  rejectSkillCandidate(id: string, body: { reason?: string } = {}): Promise<{ rejected: boolean }> {
     return this.request("POST", `/v1/skill-candidates/${id}/reject`, body);
   }
 
@@ -415,7 +420,11 @@ export class EngineClient {
   ): Promise<DiscoveryRunSummary> {
     const form = new FormData();
     for (const f of files) {
-      form.append("files", new Blob([Buffer.from(f.content)], { type: f.type ?? "application/octet-stream" }), f.name);
+      form.append(
+        "files",
+        new Blob([Buffer.from(f.content)], { type: f.type ?? "application/octet-stream" }),
+        f.name,
+      );
     }
     if (label) form.append("label", label);
     const url = `${this.base}/v1/discovery/runs`;
@@ -426,7 +435,11 @@ export class EngineClient {
     const text = await res.text();
     if (!res.ok) {
       let parsed: EngineErrorBody | string = text;
-      try { parsed = JSON.parse(text) as EngineErrorBody; } catch { /* keep as string */ }
+      try {
+        parsed = JSON.parse(text) as EngineErrorBody;
+      } catch {
+        /* keep as string */
+      }
       throw new EngineError(res.status, parsed);
     }
     return JSON.parse(text) as DiscoveryRunSummary;

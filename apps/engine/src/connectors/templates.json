@@ -10,7 +10,73 @@
     "ingestion_source": "openapi",
     "ingestion_url": "https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json",
     "icon": "stripe.svg",
-    "description": "Stripe payments API"
+    "description": "Stripe payments API",
+    "category": "payments",
+    "tags": ["rest", "webhooks", "idempotent", "form-encoded"],
+    "setup_hint": "Create a Stripe Secret Key at Dashboard > Developers > API keys (starts with sk_live_ or sk_test_).",
+    "auth_options": []
+  },
+  {
+    "slug": "paypal",
+    "name": "PayPal",
+    "driver": "http",
+    "base_url": "https://api-m.paypal.com",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://api-m.paypal.com",
+      "authorization_endpoint": "https://www.paypal.com/signin/authorize",
+      "token_endpoint": "https://api-m.paypal.com/v1/oauth2/token",
+      "scopes": "openid"
+    },
+    "default_skill": "paypal-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/paypal/paypal-rest-api-specifications/main/openapi/checkout_orders_v2.json",
+    "icon": "paypal.svg",
+    "description": "PayPal REST API for payments and orders",
+    "category": "payments",
+    "tags": ["rest", "webhooks", "client-credentials"],
+    "setup_hint": "Create a PayPal app at developer.paypal.com to get client_id and secret; exchange via Basic Auth at /v1/oauth2/token for a Bearer token.",
+    "auth_options": []
+  },
+  {
+    "slug": "square",
+    "name": "Square",
+    "driver": "http",
+    "base_url": "https://connect.squareup.com",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://squareup.com",
+      "authorization_endpoint": "https://connect.squareup.com/oauth2/authorize",
+      "token_endpoint": "https://connect.squareup.com/oauth2/token",
+      "scopes": "ITEMS_READ ORDERS_READ PAYMENTS_READ"
+    },
+    "default_skill": "square-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/square/connect-api-specification/master/square_connect_api.json",
+    "icon": "square.svg",
+    "description": "Square payments and commerce API",
+    "category": "payments",
+    "tags": ["rest", "versioned-api", "cursor-pagination"],
+    "setup_hint": "Get an access token from Square Developer Portal; include Square-Version header (e.g., 2025-01-22) on every request.",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Personal Access Token (PAT)",
+        "description": "Create a PAT in the Square Developer Portal under your application.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Authorization Code)",
+        "description": "Register an OAuth app in the Square Developer Portal, configure redirect URIs.",
+        "oauth": {
+          "issuer_url": "https://squareup.com",
+          "authorization_endpoint": "https://connect.squareup.com/oauth2/authorize",
+          "token_endpoint": "https://connect.squareup.com/oauth2/token",
+          "scopes": "ITEMS_READ ORDERS_READ PAYMENTS_READ"
+        }
+      }
+    ]
   },
   {
     "slug": "shopify",
@@ -23,74 +89,11 @@
     "ingestion_source": "openapi",
     "ingestion_url": "https://raw.githubusercontent.com/Shopify/shopify-api-spec/main/admin/openapi/2024-07/openapi.json",
     "icon": "shopify.svg",
-    "description": "Shopify Admin REST API"
-  },
-  {
-    "slug": "slack",
-    "name": "Slack",
-    "driver": "http",
-    "base_url": "https://slack.com/api",
-    "auth_type": "bearer",
-    "oauth": {
-      "issuer_url": "https://slack.com",
-      "authorization_endpoint": "https://slack.com/oauth/v2/authorize",
-      "token_endpoint": "https://slack.com/api/oauth.v2.access",
-      "scopes": "chat:write,channels:read"
-    },
-    "default_skill": "slack-basics",
-    "ingestion_source": "unsupported",
-    "ingestion_url": null,
-    "icon": "slack.svg",
-    "description": "Slack Web API"
-  },
-  {
-    "slug": "github",
-    "name": "GitHub",
-    "driver": "http",
-    "base_url": "https://api.github.com",
-    "auth_type": "bearer",
-    "oauth": {
-      "issuer_url": "https://github.com",
-      "authorization_endpoint": "https://github.com/login/oauth/authorize",
-      "token_endpoint": "https://github.com/login/oauth/access_token",
-      "scopes": "repo,read:org"
-    },
-    "default_skill": "github-basics",
-    "ingestion_source": "openapi",
-    "ingestion_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
-    "icon": "github.svg",
-    "description": "GitHub REST API v3"
-  },
-  {
-    "slug": "hubspot",
-    "name": "HubSpot",
-    "driver": "http",
-    "base_url": "https://api.hubapi.com",
-    "auth_type": "bearer",
-    "oauth": {
-      "issuer_url": "https://app.hubspot.com",
-      "authorization_endpoint": "https://app.hubspot.com/oauth/authorize",
-      "token_endpoint": "https://api.hubapi.com/oauth/v1/token",
-      "scopes": "crm.objects.contacts.read crm.objects.contacts.write"
-    },
-    "default_skill": "hubspot-basics",
-    "ingestion_source": "openapi",
-    "ingestion_url": "https://api.hubspot.com/api-catalog-public/v1/apis/crm/v3/objects",
-    "icon": "hubspot.svg",
-    "description": "HubSpot CRM API"
-  },
-  {
-    "slug": "airtable",
-    "name": "Airtable",
-    "driver": "http",
-    "base_url": "https://api.airtable.com/v0",
-    "auth_type": "bearer",
-    "oauth": null,
-    "default_skill": "airtable-basics",
-    "ingestion_source": "unsupported",
-    "ingestion_url": null,
-    "icon": "airtable.svg",
-    "description": "Airtable REST API"
+    "description": "Shopify Admin REST API",
+    "category": "ecommerce",
+    "tags": ["rest", "graphql", "webhooks", "versioned-api"],
+    "setup_hint": "Create a custom app in Shopify Admin > Settings > Apps and development; copy the Admin API access token (header: X-Shopify-Access-Token).",
+    "auth_options": []
   },
   {
     "slug": "salesforce",
@@ -108,25 +111,424 @@
     "ingestion_source": "openapi",
     "ingestion_url": "https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/openapi.json",
     "icon": "salesforce.svg",
-    "description": "Salesforce REST API"
+    "description": "Salesforce REST API",
+    "category": "crm",
+    "tags": ["rest", "soql", "bulk-api"],
+    "setup_hint": "Create a Connected App in Salesforce Setup > App Manager; note client_id and client_secret for OAuth2 authorization code flow.",
+    "auth_options": []
   },
   {
-    "slug": "google-workspace",
-    "name": "Google Workspace",
+    "slug": "hubspot",
+    "name": "HubSpot",
     "driver": "http",
-    "base_url": "https://www.googleapis.com",
+    "base_url": "https://api.hubapi.com",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://app.hubspot.com",
+      "authorization_endpoint": "https://app.hubspot.com/oauth/authorize",
+      "token_endpoint": "https://api.hubapi.com/oauth/v1/token",
+      "scopes": "crm.objects.contacts.read crm.objects.contacts.write"
+    },
+    "default_skill": "hubspot-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://api.hubspot.com/api-catalog-public/v1/apis/crm/v3/objects",
+    "icon": "hubspot.svg",
+    "description": "HubSpot CRM API",
+    "category": "crm",
+    "tags": ["rest", "webhooks", "batch-api"],
+    "setup_hint": "Create a private app in HubSpot > Settings > Integrations > Private Apps; copy the access token, or use OAuth for public apps.",
+    "auth_options": []
+  },
+  {
+    "slug": "pipedrive",
+    "name": "Pipedrive",
+    "driver": "http",
+    "base_url": "https://api.pipedrive.com/api/v2",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://oauth.pipedrive.com",
+      "authorization_endpoint": "https://oauth.pipedrive.com/oauth/authorize",
+      "token_endpoint": "https://oauth.pipedrive.com/oauth/token",
+      "scopes": "base deals:read deals:full contacts:read contacts:full"
+    },
+    "default_skill": "pipedrive-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://developers.pipedrive.com/docs/api/v1/openapi.yaml",
+    "icon": "pipedrive.svg",
+    "description": "Pipedrive CRM API",
+    "category": "crm",
+    "tags": ["rest", "cursor-pagination", "webhooks"],
+    "setup_hint": "Find API token under Settings > Personal Preferences > API, or register an OAuth app in the Developer Hub.",
+    "auth_options": [
+      {
+        "auth_type": "query",
+        "label": "API Token (Query Param)",
+        "description": "Find token under Settings > Personal Preferences > API. Passed as ?api_token= query parameter (v1 only).",
+        "oauth": null
+      },
+      {
+        "auth_type": "bearer",
+        "label": "OAuth Token (Bearer)",
+        "description": "Use OAuth bearer token from the Pipedrive Developer Hub OAuth flow.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Register an OAuth app in the Pipedrive Developer Hub for Authorization Code flow.",
+        "oauth": {
+          "issuer_url": "https://oauth.pipedrive.com",
+          "authorization_endpoint": "https://oauth.pipedrive.com/oauth/authorize",
+          "token_endpoint": "https://oauth.pipedrive.com/oauth/token",
+          "scopes": "base deals:read deals:full contacts:read contacts:full"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "zoho-crm",
+    "name": "Zoho CRM",
+    "driver": "http",
+    "base_url": "https://www.zohoapis.com/crm/v7",
     "auth_type": "oauth2",
     "oauth": {
-      "issuer_url": "https://accounts.google.com",
-      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
-      "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly"
+      "issuer_url": "https://accounts.zoho.com",
+      "authorization_endpoint": "https://accounts.zoho.com/oauth/v2/auth",
+      "token_endpoint": "https://accounts.zoho.com/oauth/v2/token",
+      "scopes": "ZohoCRM.modules.ALL ZohoCRM.settings.ALL"
     },
-    "default_skill": "google-workspace-basics",
+    "default_skill": "zoho-crm-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "zoho-crm.svg",
+    "description": "Zoho CRM API",
+    "category": "crm",
+    "tags": ["rest", "oauth2-only", "region-specific"],
+    "setup_hint": "Register a self-client at Zoho API Console, generate a grant token with CRM scopes, exchange for tokens. Access tokens expire in 1 hour.",
+    "auth_options": []
+  },
+  {
+    "slug": "jira",
+    "name": "Jira",
+    "driver": "http",
+    "base_url": "https://api.atlassian.com/ex/jira/{cloudId}/rest/api/3",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://auth.atlassian.com",
+      "authorization_endpoint": "https://auth.atlassian.com/authorize",
+      "token_endpoint": "https://auth.atlassian.com/oauth/token",
+      "scopes": "read:jira-work write:jira-work read:jira-user offline_access"
+    },
+    "default_skill": "jira-basics",
     "ingestion_source": "openapi",
-    "ingestion_url": "https://gmail.googleapis.com/$discovery/rest?version=v1",
-    "icon": "google-workspace.svg",
-    "description": "Google Workspace APIs (Gmail, Calendar, Drive)"
+    "ingestion_url": "https://dac-static.atlassian.com/cloud/jira/platform/swagger-v3.v3.json",
+    "icon": "jira.svg",
+    "description": "Jira Cloud REST API",
+    "category": "project-management",
+    "tags": ["rest", "jql", "webhooks", "atlassian"],
+    "setup_hint": "Choose: (1) API Token — create at id.atlassian.com/manage-profile/security/api-tokens, use Basic Auth. (2) OAuth 2.0 — register app at developer.atlassian.com.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "API Token (Basic Auth)",
+        "description": "Create an API token at id.atlassian.com/manage-profile/security/api-tokens. Use email as username, token as password. Base URL: https://{domain}.atlassian.net/rest/api/3",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (3LO)",
+        "description": "Register an OAuth 2.0 app at developer.atlassian.com/console/myapps/. Requires audience=api.atlassian.com parameter. Base URL: https://api.atlassian.com/ex/jira/{cloudId}/rest/api/3",
+        "oauth": {
+          "issuer_url": "https://auth.atlassian.com",
+          "authorization_endpoint": "https://auth.atlassian.com/authorize",
+          "token_endpoint": "https://auth.atlassian.com/oauth/token",
+          "scopes": "read:jira-work write:jira-work read:jira-user offline_access"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "linear",
+    "name": "Linear",
+    "driver": "graphql",
+    "base_url": "https://api.linear.app/graphql",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://linear.app",
+      "authorization_endpoint": "https://linear.app/oauth/authorize",
+      "token_endpoint": "https://api.linear.app/oauth/token",
+      "scopes": "read,write"
+    },
+    "default_skill": "linear-basics",
+    "ingestion_source": "graphql",
+    "ingestion_url": null,
+    "icon": "linear.svg",
+    "description": "Linear GraphQL API",
+    "category": "project-management",
+    "tags": ["graphql", "webhooks", "real-time"],
+    "setup_hint": "Create a personal API key at linear.app/settings/api or register an OAuth app under Settings > API > OAuth Applications.",
+    "auth_options": []
+  },
+  {
+    "slug": "asana",
+    "name": "Asana",
+    "driver": "http",
+    "base_url": "https://app.asana.com/api/1.0",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://app.asana.com",
+      "authorization_endpoint": "https://app.asana.com/-/oauth_authorize",
+      "token_endpoint": "https://app.asana.com/-/oauth_token",
+      "scopes": "default"
+    },
+    "default_skill": "asana-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/Asana/openapi/master/defs/asana_oas.yaml",
+    "icon": "asana.svg",
+    "description": "Asana project management API",
+    "category": "project-management",
+    "tags": ["rest", "webhooks", "opt-in-fields"],
+    "setup_hint": "Create a Personal Access Token at app.asana.com/0/my-apps, or register an OAuth app there.",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Personal Access Token (PAT)",
+        "description": "Create a PAT at app.asana.com/0/my-apps. Use as Bearer token.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Authorization Code)",
+        "description": "Register an OAuth app at app.asana.com/0/my-apps for Authorization Code flow.",
+        "oauth": {
+          "issuer_url": "https://app.asana.com",
+          "authorization_endpoint": "https://app.asana.com/-/oauth_authorize",
+          "token_endpoint": "https://app.asana.com/-/oauth_token",
+          "scopes": "default"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "monday",
+    "name": "Monday.com",
+    "driver": "graphql",
+    "base_url": "https://api.monday.com/v2",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://auth.monday.com",
+      "authorization_endpoint": "https://auth.monday.com/oauth2/authorize",
+      "token_endpoint": "https://auth.monday.com/oauth2/token",
+      "scopes": "me:read boards:read boards:write"
+    },
+    "default_skill": "monday-basics",
+    "ingestion_source": "graphql",
+    "ingestion_url": null,
+    "icon": "monday.svg",
+    "description": "Monday.com GraphQL API",
+    "category": "project-management",
+    "tags": ["graphql", "webhooks", "complexity-based-limits"],
+    "setup_hint": "Find your personal API token under avatar > Developers > My Access Tokens, or create an OAuth app in the Developer Center.",
+    "auth_options": []
+  },
+  {
+    "slug": "trello",
+    "name": "Trello",
+    "driver": "http",
+    "base_url": "https://api.trello.com/1",
+    "auth_type": "query",
+    "oauth": null,
+    "default_skill": "trello-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "trello.svg",
+    "description": "Trello REST API",
+    "category": "project-management",
+    "tags": ["rest", "query-auth", "atlassian"],
+    "setup_hint": "Create a Power-Up at trello.com/power-ups/admin to get an API key, then authorize a token via /1/authorize URL.",
+    "auth_options": []
+  },
+  {
+    "slug": "clickup",
+    "name": "ClickUp",
+    "driver": "http",
+    "base_url": "https://api.clickup.com/api/v2",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://app.clickup.com",
+      "authorization_endpoint": "https://app.clickup.com/api",
+      "token_endpoint": "https://api.clickup.com/api/v2/oauth/token",
+      "scopes": ""
+    },
+    "default_skill": "clickup-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://developer.clickup.com/openapi/clickup-api-v2-reference.json",
+    "icon": "clickup.svg",
+    "description": "ClickUp project management API",
+    "category": "project-management",
+    "tags": ["rest", "webhooks", "hierarchy"],
+    "setup_hint": "Find your personal API token under Settings > Apps in ClickUp (starts with pk_), or create an OAuth app.",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Personal Token",
+        "description": "Find your personal API token under Settings > Apps in ClickUp (starts with pk_).",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Authorization Code)",
+        "description": "Create an OAuth app in the ClickUp Developer Portal.",
+        "oauth": {
+          "issuer_url": "https://app.clickup.com",
+          "authorization_endpoint": "https://app.clickup.com/api",
+          "token_endpoint": "https://api.clickup.com/api/v2/oauth/token",
+          "scopes": ""
+        }
+      }
+    ]
+  },
+  {
+    "slug": "slack",
+    "name": "Slack",
+    "driver": "http",
+    "base_url": "https://slack.com/api",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://slack.com",
+      "authorization_endpoint": "https://slack.com/oauth/v2/authorize",
+      "token_endpoint": "https://slack.com/api/oauth.v2.access",
+      "scopes": "chat:write,channels:read"
+    },
+    "default_skill": "slack-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "slack.svg",
+    "description": "Slack Web API",
+    "category": "communication",
+    "tags": ["rest", "webhooks", "bot-token", "socket-mode"],
+    "setup_hint": "Create a Slack app at api.slack.com/apps, add Bot Token Scopes, install to workspace, copy the Bot User OAuth Token (xoxb-).",
+    "auth_options": []
+  },
+  {
+    "slug": "discord",
+    "name": "Discord",
+    "driver": "http",
+    "base_url": "https://discord.com/api/v10",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://discord.com",
+      "authorization_endpoint": "https://discord.com/oauth2/authorize",
+      "token_endpoint": "https://discord.com/api/oauth2/token",
+      "scopes": "identify guilds bot"
+    },
+    "default_skill": "discord-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/discord/discord-api-spec/refs/heads/main/specs/openapi.json",
+    "icon": "discord.svg",
+    "description": "Discord REST API",
+    "category": "communication",
+    "tags": ["rest", "websocket", "bot", "snowflake-ids"],
+    "setup_hint": "Create an app at discord.com/developers/applications, add a Bot, copy the token, use as `Authorization: Bot {token}`.",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bot Token",
+        "description": "Create a Bot in the Discord Developer Portal, copy the token. Uses 'Bot' prefix in Authorization header.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (User OAuth)",
+        "description": "Register an OAuth2 app at discord.com/developers/applications for user-level access.",
+        "oauth": {
+          "issuer_url": "https://discord.com",
+          "authorization_endpoint": "https://discord.com/oauth2/authorize",
+          "token_endpoint": "https://discord.com/api/oauth2/token",
+          "scopes": "identify guilds bot"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "twilio",
+    "name": "Twilio",
+    "driver": "http",
+    "base_url": "https://api.twilio.com/2010-04-01",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "twilio-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/twilio/twilio-oai/main/spec/json/twilio_api_v2010.json",
+    "icon": "twilio.svg",
+    "description": "Twilio SMS, Voice, and Messaging API",
+    "category": "communication",
+    "tags": ["rest", "webhooks", "sms", "voice"],
+    "setup_hint": "Sign up at twilio.com, grab Account SID + Auth Token from Console, use as Basic Auth (SID=username, token=password).",
+    "auth_options": []
+  },
+  {
+    "slug": "sendgrid",
+    "name": "SendGrid",
+    "driver": "http",
+    "base_url": "https://api.sendgrid.com",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "sendgrid-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/oai.json",
+    "icon": "sendgrid.svg",
+    "description": "SendGrid email delivery API",
+    "category": "communication",
+    "tags": ["rest", "email", "templates"],
+    "setup_hint": "Generate an API key under Settings > API Keys (starts with SG.), pass as Bearer token.",
+    "auth_options": []
+  },
+  {
+    "slug": "mailchimp",
+    "name": "Mailchimp",
+    "driver": "http",
+    "base_url": "https://{dc}.api.mailchimp.com/3.0",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://login.mailchimp.com",
+      "authorization_endpoint": "https://login.mailchimp.com/oauth2/authorize",
+      "token_endpoint": "https://login.mailchimp.com/oauth2/token",
+      "scopes": ""
+    },
+    "default_skill": "mailchimp-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://api.mailchimp.com/schema/3.0/Swagger.json",
+    "icon": "mailchimp.svg",
+    "description": "Mailchimp email marketing API",
+    "category": "marketing",
+    "tags": ["rest", "email-marketing", "audiences"],
+    "setup_hint": "Generate an API key from Account & Billing > Extras > API Keys; the suffix (e.g., -us19) determines your data center for the base URL.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "API Key (Basic Auth)",
+        "description": "Use any string as username and the API key as password for Basic Auth.",
+        "oauth": null
+      },
+      {
+        "auth_type": "bearer",
+        "label": "OAuth Token (Bearer)",
+        "description": "Use an OAuth-obtained access token as Bearer.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Register an OAuth app in the Mailchimp Developer Portal.",
+        "oauth": {
+          "issuer_url": "https://login.mailchimp.com",
+          "authorization_endpoint": "https://login.mailchimp.com/oauth2/authorize",
+          "token_endpoint": "https://login.mailchimp.com/oauth2/token",
+          "scopes": ""
+        }
+      }
+    ]
   },
   {
     "slug": "notion",
@@ -144,24 +546,1940 @@
     "ingestion_source": "unsupported",
     "ingestion_url": null,
     "icon": "notion.svg",
-    "description": "Notion API"
+    "description": "Notion API",
+    "category": "productivity",
+    "tags": ["rest", "block-based", "databases"],
+    "setup_hint": "Create an internal integration at notion.so/my-integrations, copy the token (ntn_), share pages with the integration.",
+    "auth_options": []
   },
   {
-    "slug": "linear",
-    "name": "Linear",
+    "slug": "airtable",
+    "name": "Airtable",
     "driver": "http",
-    "base_url": "https://api.linear.app/graphql",
+    "base_url": "https://api.airtable.com/v0",
     "auth_type": "bearer",
-    "oauth": {
-      "issuer_url": "https://linear.app",
-      "authorization_endpoint": "https://linear.app/oauth/authorize",
-      "token_endpoint": "https://api.linear.app/oauth/token",
-      "scopes": "read,write"
-    },
-    "default_skill": "linear-basics",
+    "oauth": null,
+    "default_skill": "airtable-basics",
     "ingestion_source": "unsupported",
     "ingestion_url": null,
-    "icon": "linear.svg",
-    "description": "Linear GraphQL API"
+    "icon": "airtable.svg",
+    "description": "Airtable REST API",
+    "category": "productivity",
+    "tags": ["rest", "spreadsheet-db", "formulas"],
+    "setup_hint": "Create a personal access token at airtable.com/create/tokens with scopes for the bases you need.",
+    "auth_options": []
+  },
+  {
+    "slug": "confluence",
+    "name": "Confluence",
+    "driver": "http",
+    "base_url": "https://api.atlassian.com/ex/confluence/{cloudId}/wiki/api/v2",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://auth.atlassian.com",
+      "authorization_endpoint": "https://auth.atlassian.com/authorize",
+      "token_endpoint": "https://auth.atlassian.com/oauth/token",
+      "scopes": "read:confluence-content.all write:confluence-content offline_access"
+    },
+    "default_skill": "confluence-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://dac-static.atlassian.com/cloud/confluence/openapi-v2.v3.json",
+    "icon": "confluence.svg",
+    "description": "Confluence Cloud wiki API",
+    "category": "productivity",
+    "tags": ["rest", "wiki", "atlassian", "cursor-pagination"],
+    "setup_hint": "Create an API token at id.atlassian.com for Basic Auth, or register an OAuth 2.0 (3LO) app at developer.atlassian.com.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "API Token (Basic Auth)",
+        "description": "Create an API token at id.atlassian.com/manage-profile/security/api-tokens. Use email as username, token as password.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (3LO)",
+        "description": "Register an OAuth 2.0 app at developer.atlassian.com/console/myapps/. Same Atlassian OAuth app works for Jira and Confluence.",
+        "oauth": {
+          "issuer_url": "https://auth.atlassian.com",
+          "authorization_endpoint": "https://auth.atlassian.com/authorize",
+          "token_endpoint": "https://auth.atlassian.com/oauth/token",
+          "scopes": "read:confluence-content.all write:confluence-content offline_access"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "dropbox",
+    "name": "Dropbox",
+    "driver": "http",
+    "base_url": "https://api.dropboxapi.com/2",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://www.dropbox.com",
+      "authorization_endpoint": "https://www.dropbox.com/oauth2/authorize",
+      "token_endpoint": "https://api.dropboxapi.com/oauth2/token",
+      "scopes": "account_info.read files.metadata.read files.content.read files.content.write"
+    },
+    "default_skill": "dropbox-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "dropbox.svg",
+    "description": "Dropbox file storage API",
+    "category": "storage",
+    "tags": ["rest", "file-storage", "content-upload"],
+    "setup_hint": "Create an app at dropbox.com/developers/apps, choose 'Scoped access', configure scopes in Permissions tab, note App key and secret.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (PKCE supported)",
+        "description": "Only auth method. Create app at dropbox.com/developers/apps, use Authorization Code flow with or without PKCE.",
+        "oauth": {
+          "issuer_url": "https://www.dropbox.com",
+          "authorization_endpoint": "https://www.dropbox.com/oauth2/authorize",
+          "token_endpoint": "https://api.dropboxapi.com/oauth2/token",
+          "scopes": "account_info.read files.metadata.read files.content.read files.content.write"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "box",
+    "name": "Box",
+    "driver": "http",
+    "base_url": "https://api.box.com/2.0",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://account.box.com",
+      "authorization_endpoint": "https://account.box.com/api/oauth2/authorize",
+      "token_endpoint": "https://api.box.com/oauth2/token",
+      "scopes": "root_readwrite"
+    },
+    "default_skill": "box-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/box/box-openapi/main/openapi.json",
+    "icon": "box.svg",
+    "description": "Box cloud content management API",
+    "category": "storage",
+    "tags": ["rest", "file-storage", "enterprise"],
+    "setup_hint": "Create a Box app at app.box.com/developers/console, choose OAuth 2.0, configure redirect URI, note Client ID and Secret.",
+    "auth_options": []
+  },
+  {
+    "slug": "google-workspace",
+    "name": "Google Workspace",
+    "driver": "http",
+    "base_url": "https://www.googleapis.com",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://accounts.google.com",
+      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "scopes": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly"
+    },
+    "default_skill": "google-workspace-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://gmail.googleapis.com/$discovery/rest?version=v1",
+    "icon": "google-workspace.svg",
+    "description": "Google Workspace APIs (Gmail, Calendar, Drive)",
+    "category": "productivity",
+    "tags": ["rest", "google", "oauth2", "discovery-doc"],
+    "setup_hint": "Create a Google Cloud project, enable APIs, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "Service Account (JWT)",
+        "description": "Use a service account JSON key for server-to-server access without user interaction.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "google-gmail",
+    "name": "Google Gmail",
+    "driver": "http",
+    "base_url": "https://gmail.googleapis.com/gmail/v1",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://accounts.google.com",
+      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "scopes": "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send"
+    },
+    "default_skill": "google-gmail-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://gmail.googleapis.com/$discovery/rest?version=v1",
+    "icon": "google-gmail.svg",
+    "description": "Google Gmail API",
+    "category": "communication",
+    "tags": ["rest", "google", "email", "quota-units"],
+    "setup_hint": "Create a Google Cloud project, enable Gmail API, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "Service Account (JWT)",
+        "description": "Use a service account with domain-wide delegation for server-to-server access.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "google-calendar",
+    "name": "Google Calendar",
+    "driver": "http",
+    "base_url": "https://www.googleapis.com/calendar/v3",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://accounts.google.com",
+      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "scopes": "https://www.googleapis.com/auth/calendar.events"
+    },
+    "default_skill": "google-calendar-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest",
+    "icon": "google-calendar.svg",
+    "description": "Google Calendar API",
+    "category": "productivity",
+    "tags": ["rest", "google", "scheduling", "webhooks"],
+    "setup_hint": "Create a Google Cloud project, enable Calendar API, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/calendar.events"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "Service Account (JWT)",
+        "description": "Use a service account for server-to-server access without user interaction.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/calendar.events"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "google-drive",
+    "name": "Google Drive",
+    "driver": "http",
+    "base_url": "https://www.googleapis.com/drive/v3",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://accounts.google.com",
+      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "scopes": "https://www.googleapis.com/auth/drive.file"
+    },
+    "default_skill": "google-drive-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
+    "icon": "google-drive.svg",
+    "description": "Google Drive file storage API",
+    "category": "storage",
+    "tags": ["rest", "google", "file-storage", "resumable-upload"],
+    "setup_hint": "Create a Google Cloud project, enable Drive API, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/drive.file"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "Service Account (JWT)",
+        "description": "Use a service account for server-to-server access without user interaction.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/drive.file"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "google-docs",
+    "name": "Google Docs",
+    "driver": "http",
+    "base_url": "https://docs.googleapis.com/v1",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://accounts.google.com",
+      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "scopes": "https://www.googleapis.com/auth/documents"
+    },
+    "default_skill": "google-docs-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://docs.googleapis.com/$discovery/rest?version=v1",
+    "icon": "google-docs.svg",
+    "description": "Google Docs API",
+    "category": "productivity",
+    "tags": ["rest", "google", "documents", "batch-update"],
+    "setup_hint": "Create a Google Cloud project, enable Docs API, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/documents"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "Service Account (JWT)",
+        "description": "Use a service account for server-to-server access without user interaction.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/documents"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "google-sheets",
+    "name": "Google Sheets",
+    "driver": "http",
+    "base_url": "https://sheets.googleapis.com/v4",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://accounts.google.com",
+      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "scopes": "https://www.googleapis.com/auth/spreadsheets"
+    },
+    "default_skill": "google-sheets-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://sheets.googleapis.com/$discovery/rest?version=v4",
+    "icon": "google-sheets.svg",
+    "description": "Google Sheets API",
+    "category": "productivity",
+    "tags": ["rest", "google", "spreadsheets", "a1-notation"],
+    "setup_hint": "Create a Google Cloud project, enable Sheets API, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/spreadsheets"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "Service Account (JWT)",
+        "description": "Use a service account for server-to-server access without user interaction.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/spreadsheets"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "google-chat",
+    "name": "Google Chat",
+    "driver": "http",
+    "base_url": "https://chat.googleapis.com/v1",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://accounts.google.com",
+      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "scopes": "https://www.googleapis.com/auth/chat.messages https://www.googleapis.com/auth/chat.spaces"
+    },
+    "default_skill": "google-chat-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://chat.googleapis.com/$discovery/rest?version=v1",
+    "icon": "google-chat.svg",
+    "description": "Google Chat API",
+    "category": "communication",
+    "tags": ["rest", "google", "chat", "workspace"],
+    "setup_hint": "Create a Google Cloud project, enable Chat API, configure Chat app, set up OAuth, publish to Workspace domain.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/chat.messages https://www.googleapis.com/auth/chat.spaces"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "Service Account (JWT)",
+        "description": "Use a service account for server-to-server access. Requires Google Workspace domain.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/chat.messages https://www.googleapis.com/auth/chat.spaces"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "google-cloud-storage",
+    "name": "Google Cloud Storage",
+    "driver": "http",
+    "base_url": "https://storage.googleapis.com/storage/v1",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://accounts.google.com",
+      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "scopes": "https://www.googleapis.com/auth/devstorage.read_write"
+    },
+    "default_skill": "google-cloud-storage-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://storage.googleapis.com/$discovery/rest?version=v1",
+    "icon": "google-cloud-storage.svg",
+    "description": "Google Cloud Storage JSON API",
+    "category": "cloud",
+    "tags": ["rest", "google", "object-storage", "gcs"],
+    "setup_hint": "Create a Google Cloud project, enable Cloud Storage JSON API, create a service account with Storage Object Admin IAM role.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/devstorage.read_write"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "Service Account (JWT)",
+        "description": "Use a service account JSON key for server-to-server access.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/devstorage.read_write"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "microsoft-graph",
+    "name": "Microsoft Graph",
+    "driver": "http",
+    "base_url": "https://graph.microsoft.com/v1.0",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://login.microsoftonline.com",
+      "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      "scopes": "User.Read Mail.Read Files.Read Sites.Read.All"
+    },
+    "default_skill": "microsoft-graph-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/microsoftgraph/msgraph-metadata/master/openapi/v1.0/openapi.yaml",
+    "icon": "microsoft-graph.svg",
+    "description": "Microsoft Graph unified API",
+    "category": "enterprise",
+    "tags": ["rest", "odata", "microsoft", "unified-api"],
+    "setup_hint": "Register an app in Azure Portal > App registrations, add Microsoft Graph API permissions, generate a client secret, use tenant-specific or /common/ OAuth endpoints.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Authorization Code flow for delegated user access. Use /common/ for multi-tenant or tenant GUID for single-tenant.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "User.Read Mail.Read Files.Read Sites.Read.All"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Client Credentials)",
+        "description": "Client Credentials flow for app-only access without a user. Requires admin consent for application permissions.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "https://graph.microsoft.com/.default"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "microsoft-outlook",
+    "name": "Microsoft Outlook",
+    "driver": "http",
+    "base_url": "https://graph.microsoft.com/v1.0",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://login.microsoftonline.com",
+      "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      "scopes": "Mail.Read Mail.ReadWrite Mail.Send"
+    },
+    "default_skill": "microsoft-outlook-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/microsoftgraph/msgraph-metadata/master/openapi/v1.0/openapi.yaml",
+    "icon": "microsoft-outlook.svg",
+    "description": "Microsoft Outlook mail API via Graph",
+    "category": "enterprise",
+    "tags": ["rest", "email", "calendar", "microsoft"],
+    "setup_hint": "Register an app in Azure Portal, add Mail.Read/Mail.Send permissions; for app-level access to all mailboxes, use application permissions with admin consent.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Authorization Code flow for delegated user access to their own mailbox.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "Mail.Read Mail.ReadWrite Mail.Send"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Client Credentials)",
+        "description": "Client Credentials for app-only access to all mailboxes. Requires admin consent.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "https://graph.microsoft.com/.default"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "microsoft-teams",
+    "name": "Microsoft Teams",
+    "driver": "http",
+    "base_url": "https://graph.microsoft.com/v1.0",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://login.microsoftonline.com",
+      "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      "scopes": "Team.ReadBasic.All Channel.ReadBasic.All Chat.Read"
+    },
+    "default_skill": "microsoft-teams-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/microsoftgraph/msgraph-metadata/master/openapi/v1.0/openapi.yaml",
+    "icon": "microsoft-teams.svg",
+    "description": "Microsoft Teams API via Graph",
+    "category": "enterprise",
+    "tags": ["rest", "chat", "channels", "microsoft"],
+    "setup_hint": "Register an app in Azure Portal with Teams-specific Graph permissions; many Teams permissions require admin consent.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Authorization Code flow for delegated user access.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "Team.ReadBasic.All Channel.ReadBasic.All Chat.Read"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Client Credentials)",
+        "description": "Client Credentials for app-only access. Most Teams permissions require admin consent.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "https://graph.microsoft.com/.default"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "microsoft-sharepoint",
+    "name": "Microsoft SharePoint",
+    "driver": "http",
+    "base_url": "https://graph.microsoft.com/v1.0",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://login.microsoftonline.com",
+      "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      "scopes": "Sites.Read.All Sites.ReadWrite.All"
+    },
+    "default_skill": "microsoft-sharepoint-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/microsoftgraph/msgraph-metadata/master/openapi/v1.0/openapi.yaml",
+    "icon": "microsoft-sharepoint.svg",
+    "description": "Microsoft SharePoint API via Graph",
+    "category": "enterprise",
+    "tags": ["rest", "document-management", "microsoft", "intranet"],
+    "setup_hint": "Register an app in Azure Portal with Sites.Read.All or Sites.ReadWrite.All Graph permissions; use Graph API (not legacy SharePoint REST _api).",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Authorization Code flow for delegated user access.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "Sites.Read.All Sites.ReadWrite.All"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Client Credentials)",
+        "description": "Client Credentials for app-only access. Sites.ReadWrite.All grants access to ALL sites.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "https://graph.microsoft.com/.default"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "microsoft-onedrive",
+    "name": "Microsoft OneDrive",
+    "driver": "http",
+    "base_url": "https://graph.microsoft.com/v1.0",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://login.microsoftonline.com",
+      "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      "scopes": "Files.Read Files.ReadWrite"
+    },
+    "default_skill": "microsoft-onedrive-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/microsoftgraph/msgraph-metadata/master/openapi/v1.0/openapi.yaml",
+    "icon": "microsoft-onedrive.svg",
+    "description": "Microsoft OneDrive file storage API via Graph",
+    "category": "enterprise",
+    "tags": ["rest", "file-storage", "microsoft", "sync"],
+    "setup_hint": "Register an app in Azure Portal with Files.Read/ReadWrite permissions; use /me/drive for personal, Sites.Read.All for org SharePoint drives.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Authorization Code flow for delegated user access to personal OneDrive.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "Files.Read Files.ReadWrite"
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Client Credentials)",
+        "description": "Client Credentials for app-only access. Files.Read is personal only — org drives need Sites.Read.All.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "https://graph.microsoft.com/.default"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "github",
+    "name": "GitHub",
+    "driver": "http",
+    "base_url": "https://api.github.com",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://github.com",
+      "authorization_endpoint": "https://github.com/login/oauth/authorize",
+      "token_endpoint": "https://github.com/login/oauth/access_token",
+      "scopes": "repo,read:org"
+    },
+    "default_skill": "github-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
+    "icon": "github.svg",
+    "description": "GitHub REST API v3",
+    "category": "devops",
+    "tags": ["rest", "graphql", "webhooks", "git"],
+    "setup_hint": "Create a PAT at github.com/settings/tokens, or register an OAuth App under Developer Settings.",
+    "auth_options": []
+  },
+  {
+    "slug": "gitlab",
+    "name": "GitLab",
+    "driver": "http",
+    "base_url": "https://gitlab.com/api/v4",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://gitlab.com",
+      "authorization_endpoint": "https://gitlab.com/oauth/authorize",
+      "token_endpoint": "https://gitlab.com/oauth/token",
+      "scopes": "api read_user read_repository write_repository"
+    },
+    "default_skill": "gitlab-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://gitlab.com/gitlab-org/gitlab/-/raw/master/doc/api/openapi/openapi.yaml",
+    "icon": "gitlab.svg",
+    "description": "GitLab REST API",
+    "category": "devops",
+    "tags": ["rest", "graphql", "ci-cd", "git", "self-hosted"],
+    "setup_hint": "Choose: (1) PAT — create at User Settings > Access Tokens, use PRIVATE-TOKEN header. (2) OAuth 2.0 — register app under Applications.",
+    "auth_options": [
+      {
+        "auth_type": "header",
+        "label": "Personal Access Token (PAT)",
+        "description": "Create at User Settings > Access Tokens with needed scopes. Pass as PRIVATE-TOKEN header.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Register an OAuth app under User Settings > Applications. Uses standard Authorization: Bearer flow.",
+        "oauth": {
+          "issuer_url": "https://gitlab.com",
+          "authorization_endpoint": "https://gitlab.com/oauth/authorize",
+          "token_endpoint": "https://gitlab.com/oauth/token",
+          "scopes": "api read_user read_repository write_repository"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "bitbucket",
+    "name": "Bitbucket",
+    "driver": "http",
+    "base_url": "https://api.bitbucket.org/2.0",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://bitbucket.org",
+      "authorization_endpoint": "https://bitbucket.org/site/oauth2/authorize",
+      "token_endpoint": "https://bitbucket.org/site/oauth2/access_token",
+      "scopes": "repository pullrequest account"
+    },
+    "default_skill": "bitbucket-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://dac-static.atlassian.com/cloud/bitbucket/swagger.v3.json",
+    "icon": "bitbucket.svg",
+    "description": "Bitbucket Cloud REST API",
+    "category": "devops",
+    "tags": ["rest", "git", "atlassian", "pipelines"],
+    "setup_hint": "Create an API token at id.atlassian.com for Basic Auth, or register an OAuth consumer under Workspace Settings.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "App Password (Basic Auth)",
+        "description": "Create an app password at Bitbucket Settings > App passwords. Use email + app password as Basic Auth.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Register an OAuth consumer under Workspace Settings. Token endpoint is /access_token (not /token).",
+        "oauth": {
+          "issuer_url": "https://bitbucket.org",
+          "authorization_endpoint": "https://bitbucket.org/site/oauth2/authorize",
+          "token_endpoint": "https://bitbucket.org/site/oauth2/access_token",
+          "scopes": "repository pullrequest account"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "circleci",
+    "name": "CircleCI",
+    "driver": "http",
+    "base_url": "https://circleci.com/api/v2",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "circleci-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://circleci.com/api/v2/openapi.json",
+    "icon": "circleci.svg",
+    "description": "CircleCI CI/CD API",
+    "category": "devops",
+    "tags": ["rest", "ci-cd", "pipelines"],
+    "setup_hint": "Generate a Personal API Token from User Settings in CircleCI, pass as `Circle-Token` header.",
+    "auth_options": []
+  },
+  {
+    "slug": "vercel",
+    "name": "Vercel",
+    "driver": "http",
+    "base_url": "https://api.vercel.com",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "vercel-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://openapi.vercel.sh/",
+    "icon": "vercel.svg",
+    "description": "Vercel deployment and hosting API",
+    "category": "devops",
+    "tags": ["rest", "deployments", "serverless", "edge"],
+    "setup_hint": "Create an access token at vercel.com/account/tokens. For team resources, append `?teamId={id}`.",
+    "auth_options": []
+  },
+  {
+    "slug": "cloudflare",
+    "name": "Cloudflare",
+    "driver": "http",
+    "base_url": "https://api.cloudflare.com/client/v4",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "cloudflare-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/cloudflare/api-schemas/refs/heads/main/openapi.yaml",
+    "icon": "cloudflare.svg",
+    "description": "Cloudflare API for DNS, CDN, Workers, and security",
+    "category": "devops",
+    "tags": ["rest", "cdn", "dns", "workers", "security"],
+    "setup_hint": "Go to My Profile > API Tokens in Cloudflare dashboard, create a scoped API Token, use as Bearer.",
+    "auth_options": []
+  },
+  {
+    "slug": "aws-s3",
+    "name": "AWS S3",
+    "driver": "s3",
+    "base_url": "https://s3.us-east-1.amazonaws.com",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "aws-s3-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "aws-s3.svg",
+    "description": "Amazon S3 object storage",
+    "category": "cloud",
+    "tags": ["s3", "object-storage", "aws", "sigv4"],
+    "setup_hint": "Create an IAM user, generate Access Key ID + Secret Access Key, note target S3 region and bucket.",
+    "auth_options": []
+  },
+  {
+    "slug": "aws-lambda",
+    "name": "AWS Lambda",
+    "driver": "http",
+    "base_url": "https://lambda.us-east-1.amazonaws.com",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "aws-lambda-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "aws-lambda.svg",
+    "description": "AWS Lambda serverless functions API",
+    "category": "cloud",
+    "tags": ["rest", "serverless", "aws", "sigv4"],
+    "setup_hint": "Create IAM user/role with Lambda permissions, generate Access Key ID + Secret, note function region.",
+    "auth_options": []
+  },
+  {
+    "slug": "aws-dynamodb",
+    "name": "AWS DynamoDB",
+    "driver": "http",
+    "base_url": "https://dynamodb.us-east-1.amazonaws.com",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "aws-dynamodb-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "aws-dynamodb.svg",
+    "description": "AWS DynamoDB NoSQL database API",
+    "category": "cloud",
+    "tags": ["rest", "nosql", "aws", "sigv4"],
+    "setup_hint": "Create IAM user/role with DynamoDB permissions, generate keys, note region.",
+    "auth_options": []
+  },
+  {
+    "slug": "aws-ses",
+    "name": "AWS SES",
+    "driver": "http",
+    "base_url": "https://email.us-east-1.amazonaws.com",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "aws-ses-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "aws-ses.svg",
+    "description": "AWS Simple Email Service API",
+    "category": "cloud",
+    "tags": ["rest", "email", "aws", "sigv4"],
+    "setup_hint": "Create IAM user with SES permissions, verify sender email/domain, request production access to leave sandbox.",
+    "auth_options": []
+  },
+  {
+    "slug": "aws-sqs",
+    "name": "AWS SQS",
+    "driver": "http",
+    "base_url": "https://sqs.us-east-1.amazonaws.com",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "aws-sqs-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "aws-sqs.svg",
+    "description": "AWS Simple Queue Service API",
+    "category": "cloud",
+    "tags": ["rest", "queue", "aws", "sigv4"],
+    "setup_hint": "Create IAM user/role with SQS permissions, note queue URL and region.",
+    "auth_options": []
+  },
+  {
+    "slug": "azure-devops",
+    "name": "Azure DevOps",
+    "driver": "http",
+    "base_url": "https://dev.azure.com/{organization}/_apis",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "azure-devops-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "azure-devops.svg",
+    "description": "Azure DevOps REST API",
+    "category": "cloud",
+    "tags": ["rest", "ci-cd", "azure", "boards", "repos"],
+    "setup_hint": "Choose: (1) PAT — create at User Settings > Personal Access Tokens, use Basic Auth. (2) OAuth — register Entra ID app for service principal access.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Personal Access Token (PAT)",
+        "description": "Go to User Settings > Personal Access Tokens, create PAT with required scopes. Use Basic Auth: base64 of ':' + PAT (empty username).",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Microsoft Entra ID)",
+        "description": "Register an app in Azure Portal, use Entra ID OAuth2 endpoints with scope 499b84ac-1321-427f-aa17-267ca6975798/.default",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "499b84ac-1321-427f-aa17-267ca6975798/.default"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "azure-blob-storage",
+    "name": "Azure Blob Storage",
+    "driver": "http",
+    "base_url": "https://{account}.blob.core.windows.net",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "azure-blob-storage-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "azure-blob-storage.svg",
+    "description": "Azure Blob Storage REST API",
+    "category": "cloud",
+    "tags": ["rest", "object-storage", "azure", "sas"],
+    "setup_hint": "Create Storage Account in Azure Portal, find access keys under 'Access keys', or generate SAS token.",
+    "auth_options": []
+  },
+  {
+    "slug": "azure-functions",
+    "name": "Azure Functions",
+    "driver": "http",
+    "base_url": "https://management.azure.com",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://login.microsoftonline.com",
+      "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      "scopes": "https://management.azure.com/.default"
+    },
+    "default_skill": "azure-functions-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "azure-functions.svg",
+    "description": "Azure Functions management API",
+    "category": "cloud",
+    "tags": ["rest", "serverless", "azure", "arm"],
+    "setup_hint": "Register app in Microsoft Entra ID, grant Contributor role on Function App, obtain client ID, secret, tenant ID.",
+    "auth_options": []
+  },
+  {
+    "slug": "digitalocean",
+    "name": "DigitalOcean",
+    "driver": "http",
+    "base_url": "https://api.digitalocean.com/v2",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "digitalocean-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://api-engineering.nyc3.digitaloceanspaces.com/spec-ci/DigitalOcean-public.v2.yaml",
+    "icon": "digitalocean.svg",
+    "description": "DigitalOcean cloud API",
+    "category": "cloud",
+    "tags": ["rest", "droplets", "kubernetes", "databases"],
+    "setup_hint": "In DigitalOcean Control Panel, go to API > Tokens, generate PAT (dop_v1_) with read/write scope.",
+    "auth_options": []
+  },
+  {
+    "slug": "postgres",
+    "name": "PostgreSQL",
+    "driver": "postgres",
+    "base_url": "",
+    "auth_type": "none",
+    "oauth": null,
+    "default_skill": "postgres-basics",
+    "ingestion_source": "postgres",
+    "ingestion_url": null,
+    "icon": "postgres.svg",
+    "description": "PostgreSQL relational database",
+    "category": "database",
+    "tags": ["sql", "relational", "introspection"],
+    "setup_hint": "Provide a PostgreSQL DSN: postgres://user:password@host:5432/database. Engine introspects tables via information_schema.",
+    "auth_options": []
+  },
+  {
+    "slug": "mssql",
+    "name": "Microsoft SQL Server",
+    "driver": "mssql",
+    "base_url": "",
+    "auth_type": "none",
+    "oauth": null,
+    "default_skill": "mssql-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "mssql.svg",
+    "description": "Microsoft SQL Server database",
+    "category": "database",
+    "tags": ["sql", "relational", "introspection", "azure-sql"],
+    "setup_hint": "Provide an MSSQL connection string: mssql://user:password@hostname:1433/database?encrypt=true. For Azure SQL, enable 'Allow Azure services' in firewall rules.",
+    "auth_options": [
+      {
+        "auth_type": "none",
+        "label": "SQL Authentication (DSN)",
+        "description": "Provide username and password in the connection string.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "Microsoft Entra ID (Azure SQL)",
+        "description": "Use Entra ID token-based auth for Azure SQL. Register app in Azure Portal, assign SQL roles.",
+        "oauth": {
+          "issuer_url": "https://login.microsoftonline.com",
+          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          "scopes": "https://database.windows.net/.default"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "mysql",
+    "name": "MySQL",
+    "driver": "mysql",
+    "base_url": "",
+    "auth_type": "none",
+    "oauth": null,
+    "default_skill": "mysql-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "mysql.svg",
+    "description": "MySQL relational database",
+    "category": "database",
+    "tags": ["sql", "relational", "introspection", "mariadb"],
+    "setup_hint": "Provide a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Works with MySQL 5.7+, MySQL 8.x, and MariaDB 10.x+.",
+    "auth_options": []
+  },
+  {
+    "slug": "cockroachdb",
+    "name": "CockroachDB",
+    "driver": "postgres",
+    "base_url": "",
+    "auth_type": "none",
+    "oauth": null,
+    "default_skill": "cockroachdb-basics",
+    "ingestion_source": "postgres",
+    "ingestion_url": null,
+    "icon": "cockroachdb.svg",
+    "description": "CockroachDB distributed SQL database",
+    "category": "database",
+    "tags": ["sql", "relational", "introspection", "distributed", "postgresql-compatible"],
+    "setup_hint": "Provide a CockroachDB DSN: postgresql://user:password@host:26257/defaultdb?sslmode=verify-full. Uses PostgreSQL wire protocol — fully compatible with the PostgreSQL driver.",
+    "auth_options": []
+  },
+  {
+    "slug": "oracle-ords",
+    "name": "Oracle ORDS",
+    "driver": "http",
+    "base_url": "https://{host}/ords/{schema}",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "oracle-ords-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "oracle-ords.svg",
+    "description": "Oracle REST Data Services (ORDS) API",
+    "category": "database",
+    "tags": ["rest", "sql", "oracle", "ords", "odata"],
+    "setup_hint": "Oracle REST Data Services (ORDS) exposes a SQL execution API. For Oracle Cloud Autonomous DB, ORDS is always-on. For on-premise, deploy ORDS. POST SQL to /_/sql endpoint.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Database Credentials",
+        "description": "Use your Oracle database username and password as Basic Auth credentials against the ORDS endpoint.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (ORDS Client)",
+        "description": "Register an OAuth client in ORDS: BEGIN OAUTH.create_client(...); Authorize via ORDS OAuth endpoints.",
+        "oauth": null
+      }
+    ]
+  },
+  {
+    "slug": "supabase",
+    "name": "Supabase",
+    "driver": "http",
+    "base_url": "https://{ref}.supabase.co/rest/v1",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "supabase-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "supabase.svg",
+    "description": "Supabase PostgREST API",
+    "category": "database",
+    "tags": ["rest", "postgrest", "realtime", "auth"],
+    "setup_hint": "Get project URL and API keys from Dashboard > Settings > API. Use `apikey` header with anon or service_role key.",
+    "auth_options": []
+  },
+  {
+    "slug": "firebase",
+    "name": "Firebase",
+    "driver": "http",
+    "base_url": "https://firestore.googleapis.com/v1",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://accounts.google.com",
+      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "scopes": "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase"
+    },
+    "default_skill": "firebase-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://firestore.googleapis.com/$discovery/rest?version=v1",
+    "icon": "firebase.svg",
+    "description": "Firebase Firestore REST API",
+    "category": "database",
+    "tags": ["rest", "google", "nosql", "realtime"],
+    "setup_hint": "Enable Firestore in Firebase Console, create service account with Firestore Admin role.",
+    "auth_options": []
+  },
+  {
+    "slug": "snowflake",
+    "name": "Snowflake",
+    "driver": "http",
+    "base_url": "https://{account}.snowflakecomputing.com/api/v2",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "snowflake-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/snowflakedb/snowflake-rest-api-specs/main/specifications/sqlapi.yaml",
+    "icon": "snowflake.svg",
+    "description": "Snowflake data warehouse SQL API",
+    "category": "database",
+    "tags": ["rest", "data-warehouse", "sql", "analytics"],
+    "setup_hint": "Generate RSA key pair, assign public key via ALTER USER SET RSA_PUBLIC_KEY, sign JWTs with private key; or create OAuth security integration.",
+    "auth_options": []
+  },
+  {
+    "slug": "datadog",
+    "name": "Datadog",
+    "driver": "http",
+    "base_url": "https://api.datadoghq.com",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "datadog-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "datadog.svg",
+    "description": "Datadog monitoring and analytics API",
+    "category": "analytics",
+    "tags": ["rest", "monitoring", "metrics", "apm"],
+    "setup_hint": "In Datadog Org Settings, create API key and Application key; pass as `DD-API-KEY` and `DD-APPLICATION-KEY` headers.",
+    "auth_options": []
+  },
+  {
+    "slug": "pagerduty",
+    "name": "PagerDuty",
+    "driver": "http",
+    "base_url": "https://api.pagerduty.com",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "pagerduty-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/PagerDuty/api-schema/main/reference/REST/openapiv3.json",
+    "icon": "pagerduty.svg",
+    "description": "PagerDuty incident management API",
+    "category": "analytics",
+    "tags": ["rest", "incident-management", "on-call", "webhooks"],
+    "setup_hint": "In PagerDuty, go to Integrations > API Access Keys, create REST API key, use as `Authorization: Token token={key}`.",
+    "auth_options": [
+      {
+        "auth_type": "header",
+        "label": "API Key (Token header)",
+        "description": "Create REST API key at Integrations > API Access Keys. Use as 'Authorization: Token token={key}'.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Register an OAuth app in PagerDuty Developer Mode for Authorization Code flow.",
+        "oauth": {
+          "issuer_url": "https://identity.pagerduty.com",
+          "authorization_endpoint": "https://identity.pagerduty.com/oauth/authorize",
+          "token_endpoint": "https://identity.pagerduty.com/oauth/token",
+          "scopes": "read write"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "sentry",
+    "name": "Sentry",
+    "driver": "http",
+    "base_url": "https://sentry.io/api/0",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "sentry-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/getsentry/sentry-api-schema/main/openapi-derefed.json",
+    "icon": "sentry.svg",
+    "description": "Sentry error tracking and performance API",
+    "category": "analytics",
+    "tags": ["rest", "error-tracking", "performance", "releases"],
+    "setup_hint": "Create auth token at sentry.io Settings > Auth Tokens with needed scopes, pass as Bearer.",
+    "auth_options": []
+  },
+  {
+    "slug": "servicenow",
+    "name": "ServiceNow",
+    "driver": "http",
+    "base_url": "https://{instance}.service-now.com/api/now",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://{instance}.service-now.com",
+      "authorization_endpoint": "https://{instance}.service-now.com/oauth_auth.do",
+      "token_endpoint": "https://{instance}.service-now.com/oauth_token.do",
+      "scopes": "useraccount"
+    },
+    "default_skill": "servicenow-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "servicenow.svg",
+    "description": "ServiceNow ITSM REST API",
+    "category": "enterprise",
+    "tags": ["rest", "itsm", "workflows", "cmdb"],
+    "setup_hint": "In ServiceNow, go to System OAuth > Application Registry to create an OAuth endpoint; use client_id/secret with instance token endpoint. Or use Basic Auth with admin credentials.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Basic Auth",
+        "description": "Use ServiceNow admin username and password as Basic Auth credentials.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Create an OAuth endpoint in System OAuth > Application Registry, use client_id/secret with instance token endpoint.",
+        "oauth": {
+          "issuer_url": "https://{instance}.service-now.com",
+          "authorization_endpoint": "https://{instance}.service-now.com/oauth_auth.do",
+          "token_endpoint": "https://{instance}.service-now.com/oauth_token.do",
+          "scopes": "useraccount"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "okta",
+    "name": "Okta",
+    "driver": "http",
+    "base_url": "https://{domain}.okta.com/api/v1",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "okta-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/okta/okta-management-openapi-spec/master/dist/spec.yaml",
+    "icon": "okta.svg",
+    "description": "Okta identity and access management API",
+    "category": "enterprise",
+    "tags": ["rest", "identity", "sso", "scim", "mfa"],
+    "setup_hint": "In Okta Admin Console, go to Security > API > Tokens for SSWS API key (header: `Authorization: SSWS {token}`), or register OAuth app under Applications.",
+    "auth_options": [
+      {
+        "auth_type": "header",
+        "label": "SSWS Token",
+        "description": "Create API token at Security > API > Tokens. Use as 'Authorization: SSWS {token}'.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Register an OAuth app under Applications for Authorization Code or Client Credentials flow.",
+        "oauth": {
+          "issuer_url": "https://{domain}.okta.com",
+          "authorization_endpoint": "https://{domain}.okta.com/oauth2/v1/authorize",
+          "token_endpoint": "https://{domain}.okta.com/oauth2/v1/token",
+          "scopes": "okta.users.read okta.groups.read okta.apps.read"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "auth0",
+    "name": "Auth0",
+    "driver": "http",
+    "base_url": "https://{tenant}.auth0.com/api/v2",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://{tenant}.auth0.com",
+      "authorization_endpoint": "https://{tenant}.auth0.com/authorize",
+      "token_endpoint": "https://{tenant}.auth0.com/oauth/token",
+      "scopes": "read:users create:users read:connections read:logs"
+    },
+    "default_skill": "auth0-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "auth0.svg",
+    "description": "Auth0 identity management API",
+    "category": "enterprise",
+    "tags": ["rest", "identity", "oauth2", "management-api"],
+    "setup_hint": "Create a Machine-to-Machine app in Auth0 Dashboard, authorize for Management API with scopes, use client_credentials grant.",
+    "auth_options": []
+  },
+  {
+    "slug": "intercom",
+    "name": "Intercom",
+    "driver": "http",
+    "base_url": "https://api.intercom.io",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://app.intercom.com",
+      "authorization_endpoint": "https://app.intercom.com/oauth",
+      "token_endpoint": "https://api.intercom.io/auth/eagle/token",
+      "scopes": ""
+    },
+    "default_skill": "intercom-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/intercom/Intercom-OpenAPI/main/descriptions/2.11/api.intercom.io.yaml",
+    "icon": "intercom.svg",
+    "description": "Intercom customer messaging API",
+    "category": "enterprise",
+    "tags": ["rest", "customer-messaging", "support", "crm"],
+    "setup_hint": "In Intercom Developer Hub, create app, find access token under Authentication; for OAuth, configure redirect URIs.",
+    "auth_options": []
+  },
+  {
+    "slug": "freshdesk",
+    "name": "Freshdesk",
+    "driver": "http",
+    "base_url": "https://{domain}.freshdesk.com/api/v2",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "freshdesk-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "freshdesk.svg",
+    "description": "Freshdesk helpdesk and ticketing API",
+    "category": "enterprise",
+    "tags": ["rest", "ticketing", "help-desk", "support"],
+    "setup_hint": "In Freshdesk, click Profile > Profile Settings, find API key on right sidebar, use as Basic Auth username with 'X' as password.",
+    "auth_options": []
+  },
+  {
+    "slug": "bamboohr",
+    "name": "BambooHR",
+    "driver": "http",
+    "base_url": "https://api.bamboohr.com/api/gateway.php/{companyDomain}/v1",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "bamboohr-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "bamboohr.svg",
+    "description": "BambooHR human resources API",
+    "category": "enterprise",
+    "tags": ["rest", "hr", "employees", "time-tracking"],
+    "setup_hint": "In BambooHR, gear icon > API Keys > Add New Key; use as Basic Auth username with 'x' as password. Or use OIDC OAuth flow.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "API Key (Basic Auth)",
+        "description": "Create API key in BambooHR settings, use as Basic Auth username with 'x' as password.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (OIDC)",
+        "description": "Use OIDC OAuth flow via id.bamboohr.com for token-based access.",
+        "oauth": {
+          "issuer_url": "https://id.bamboohr.com",
+          "authorization_endpoint": "https://id.bamboohr.com/authorize",
+          "token_endpoint": "https://id.bamboohr.com/token",
+          "scopes": "openid offline_access"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "zendesk",
+    "name": "Zendesk",
+    "driver": "http",
+    "base_url": "https://{subdomain}.zendesk.com/api/v2",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://{subdomain}.zendesk.com",
+      "authorization_endpoint": "https://{subdomain}.zendesk.com/oauth/authorizations/new",
+      "token_endpoint": "https://{subdomain}.zendesk.com/oauth/tokens",
+      "scopes": "read write"
+    },
+    "default_skill": "zendesk-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "zendesk.svg",
+    "description": "Zendesk customer support API",
+    "category": "support",
+    "tags": ["rest", "ticketing", "help-desk", "webhooks"],
+    "setup_hint": "Choose: (1) API Token — enable in Admin > APIs, use Basic Auth with email/token as username. (2) OAuth 2.0 — register client in Admin Center.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "API Token (Basic Auth)",
+        "description": "Enable Token Access in Admin > APIs, generate token. Basic Auth: username = email/token, password = API token.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0",
+        "description": "Register an OAuth client in Admin Center > Apps > OAuth Clients. Uses subdomain-specific endpoints.",
+        "oauth": {
+          "issuer_url": "https://{subdomain}.zendesk.com",
+          "authorization_endpoint": "https://{subdomain}.zendesk.com/oauth/authorizations/new",
+          "token_endpoint": "https://{subdomain}.zendesk.com/oauth/tokens",
+          "scopes": "read write"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "apple-icloud-calendar",
+    "name": "Apple iCloud Calendar",
+    "driver": "caldav",
+    "base_url": "https://caldav.icloud.com",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "apple-icloud-calendar-basics",
+    "ingestion_source": "caldav_discovery",
+    "ingestion_url": null,
+    "icon": "apple-icloud-calendar.svg",
+    "description": "Apple iCloud Calendar via CalDAV",
+    "category": "productivity",
+    "tags": ["caldav", "calendar", "apple", "ics"],
+    "setup_hint": "Apple iCloud CalDAV requires an app-specific password: go to appleid.apple.com > Sign-In and Security > App-Specific Passwords. Use Apple ID email + app-specific password as Basic Auth.",
+    "auth_options": []
+  },
+  {
+    "slug": "apple-icloud-contacts",
+    "name": "Apple iCloud Contacts",
+    "driver": "caldav",
+    "base_url": "https://contacts.icloud.com",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "apple-icloud-contacts-basics",
+    "ingestion_source": "caldav_discovery",
+    "ingestion_url": null,
+    "icon": "apple-icloud-contacts.svg",
+    "description": "Apple iCloud Contacts via CardDAV",
+    "category": "productivity",
+    "tags": ["carddav", "contacts", "apple", "vcard"],
+    "setup_hint": "Apple iCloud CardDAV requires an app-specific password: go to appleid.apple.com > Sign-In and Security > App-Specific Passwords.",
+    "auth_options": []
+  },
+  {
+    "slug": "caldav-generic",
+    "name": "CalDAV (Generic)",
+    "driver": "caldav",
+    "base_url": "https://{server}/remote.php/dav",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "caldav-generic-basics",
+    "ingestion_source": "caldav_discovery",
+    "ingestion_url": null,
+    "icon": "caldav-generic.svg",
+    "description": "Generic CalDAV calendar server",
+    "category": "productivity",
+    "tags": ["caldav", "calendar", "ics", "open-standard"],
+    "setup_hint": "Provide your CalDAV server URL and credentials. Common servers: Nextcloud (/remote.php/dav), Google (apidata.googleusercontent.com/caldav/v2), Fastmail (caldav.fastmail.com).",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Username + Password",
+        "description": "Use your CalDAV server credentials as Basic Auth.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Google, etc.)",
+        "description": "Some CalDAV servers (Google) support OAuth2. Configure with your provider's OAuth endpoints.",
+        "oauth": null
+      }
+    ]
+  },
+  {
+    "slug": "webdav-generic",
+    "name": "WebDAV (Generic)",
+    "driver": "webdav",
+    "base_url": "https://{server}/remote.php/dav/files/{user}",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "webdav-generic-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "webdav-generic.svg",
+    "description": "Generic WebDAV file storage server",
+    "category": "storage",
+    "tags": ["webdav", "file-storage", "open-standard"],
+    "setup_hint": "Provide your WebDAV server URL and credentials. Common servers: Nextcloud, ownCloud, Apache mod_dav, Nginx DAV, Box (dav.box.com).",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Username + Password",
+        "description": "Use your WebDAV server credentials as Basic Auth.",
+        "oauth": null
+      },
+      {
+        "auth_type": "bearer",
+        "label": "Bearer Token",
+        "description": "Some WebDAV servers support Bearer token auth.",
+        "oauth": null
+      }
+    ]
+  },
+  {
+    "slug": "soap-generic",
+    "name": "SOAP (Generic)",
+    "driver": "soap",
+    "base_url": "https://{endpoint}",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "soap-generic-basics",
+    "ingestion_source": "wsdl",
+    "ingestion_url": null,
+    "icon": "soap-generic.svg",
+    "description": "Generic SOAP/WSDL web service",
+    "category": "enterprise",
+    "tags": ["soap", "xml", "wsdl", "enterprise"],
+    "setup_hint": "Provide the SOAP endpoint URL. Append ?wsdl to fetch the service definition. Choose auth method: HTTP Basic, WS-Security (UsernameToken), or OAuth Bearer.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "HTTP Basic Auth",
+        "description": "Standard HTTP Basic Auth for the SOAP endpoint.",
+        "oauth": null
+      },
+      {
+        "auth_type": "header",
+        "label": "WS-Security (UsernameToken)",
+        "description": "Username and password in the SOAP header via WS-Security. Configured in connector config.",
+        "oauth": null
+      },
+      {
+        "auth_type": "bearer",
+        "label": "OAuth 2.0 Bearer",
+        "description": "Bearer token in HTTP Authorization header for modern SOAP services.",
+        "oauth": null
+      }
+    ]
+  },
+  {
+    "slug": "sap-soap",
+    "name": "SAP SOAP",
+    "driver": "soap",
+    "base_url": "https://{tenant}.s4hana.cloud.sap/sap/bc/srt/scs_ext/{service}",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "sap-soap-basics",
+    "ingestion_source": "wsdl",
+    "ingestion_url": null,
+    "icon": "sap-soap.svg",
+    "description": "SAP S/4HANA SOAP web services",
+    "category": "enterprise",
+    "tags": ["soap", "sap", "erp", "wsdl"],
+    "setup_hint": "SAP exposes SOAP services via /sap/bc/srt/. Find your WSDL at the service endpoint + ?wsdl. Use SAP technical user credentials for Basic Auth.",
+    "auth_options": []
+  },
+  {
+    "slug": "servicenow-soap",
+    "name": "ServiceNow SOAP",
+    "driver": "soap",
+    "base_url": "https://{instance}.service-now.com",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "servicenow-soap-basics",
+    "ingestion_source": "wsdl",
+    "ingestion_url": null,
+    "icon": "servicenow-soap.svg",
+    "description": "ServiceNow SOAP API for legacy integrations",
+    "category": "enterprise",
+    "tags": ["soap", "itsm", "servicenow", "wsdl"],
+    "setup_hint": "ServiceNow exposes SOAP via /{tableName}.do?WSDL. Use admin credentials for Basic Auth.",
+    "auth_options": []
+  },
+  {
+    "slug": "grpc-connect",
+    "name": "gRPC Connect",
+    "driver": "http",
+    "base_url": "https://{host}",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "grpc-connect-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "grpc-connect.svg",
+    "description": "gRPC Connect protocol over HTTP/1.1",
+    "category": "protocol",
+    "tags": ["grpc", "connect-rpc", "protobuf", "http"],
+    "setup_hint": "Connect RPC services expose gRPC over standard HTTP/1.1. Provide the base URL and an auth token if required. Uses JSON encoding by default (protobuf optional).",
+    "auth_options": []
+  },
+  {
+    "slug": "grpc-native",
+    "name": "gRPC Native",
+    "driver": "grpc",
+    "base_url": "grpc://{host}:50051",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "grpc-native-basics",
+    "ingestion_source": "grpc_reflection",
+    "ingestion_url": null,
+    "icon": "grpc-native.svg",
+    "description": "Native gRPC over HTTP/2 with protobuf",
+    "category": "protocol",
+    "tags": ["grpc", "protobuf", "http2", "streaming"],
+    "setup_hint": "Provide the gRPC server address (host:port). If the server has reflection enabled, operations are auto-discovered. Otherwise, provide .proto files.",
+    "auth_options": []
+  },
+  {
+    "slug": "mqtt",
+    "name": "MQTT",
+    "driver": "mqtt",
+    "base_url": "mqtt://{broker}:1883",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "mqtt-basics",
+    "ingestion_source": "asyncapi",
+    "ingestion_url": null,
+    "icon": "mqtt.svg",
+    "description": "MQTT pub/sub messaging protocol",
+    "category": "protocol",
+    "tags": ["mqtt", "pub-sub", "iot", "event-driven"],
+    "setup_hint": "Provide MQTT broker URL (mqtt:// or mqtts:// for TLS). Username/password if required. Common brokers: Mosquitto, HiveMQ, EMQX, AWS IoT Core, Azure IoT Hub.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Username + Password",
+        "description": "MQTT CONNECT packet carries username/password. Standard for most brokers.",
+        "oauth": null
+      },
+      {
+        "auth_type": "bearer",
+        "label": "JWT Token (in password field)",
+        "description": "Some brokers accept JWT in the password field of CONNECT. Configure token in credential.",
+        "oauth": null
+      },
+      {
+        "auth_type": "none",
+        "label": "Anonymous",
+        "description": "No authentication — for development/testing brokers only.",
+        "oauth": null
+      }
+    ]
+  },
+  {
+    "slug": "imap-email",
+    "name": "IMAP Email",
+    "driver": "imap",
+    "base_url": "imaps://{host}:993",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "imap-email-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "imap-email.svg",
+    "description": "IMAP/SMTP email protocol",
+    "category": "communication",
+    "tags": ["imap", "smtp", "email", "mime"],
+    "setup_hint": "Provide IMAP server host and port (993 for TLS). For Apple iCloud: imap.mail.me.com with app-specific password. For Gmail: imap.gmail.com with XOAUTH2 or app password.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Username + Password",
+        "description": "IMAP LOGIN with username and password over TLS.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "XOAUTH2 (Gmail, Outlook)",
+        "description": "Gmail and Outlook support IMAP XOAUTH2. Provide OAuth token in credential.",
+        "oauth": null
+      }
+    ]
+  },
+  {
+    "slug": "firecrawl",
+    "name": "Firecrawl",
+    "driver": "http",
+    "base_url": "https://api.firecrawl.dev/v2",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "firecrawl-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/mendableai/firecrawl/main/apps/api/v1-openapi.json",
+    "icon": "firecrawl.svg",
+    "description": "Firecrawl web scraping and crawling API",
+    "category": "scraping",
+    "tags": ["rest", "web-scraping", "crawling", "llm-extraction", "docker"],
+    "setup_hint": "SaaS: sign up at firecrawl.dev, get API key (starts with fc-). Self-hosted: `docker compose up` from the Firecrawl repo (port 3002). Pass key as Bearer token.",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "API Key (SaaS)",
+        "description": "Sign up at firecrawl.dev, get fc- prefixed API key, use as Bearer token.",
+        "oauth": null
+      },
+      {
+        "auth_type": "bearer",
+        "label": "Self-Hosted Token",
+        "description": "Set FIRECRAWL_API_KEY env var in Docker, use same value as Bearer token.",
+        "oauth": null
+      }
+    ]
+  },
+  {
+    "slug": "crawl4ai",
+    "name": "Crawl4AI",
+    "driver": "http",
+    "base_url": "http://localhost:11235",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "crawl4ai-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": null,
+    "icon": "crawl4ai.svg",
+    "description": "Crawl4AI self-hosted web scraping API",
+    "category": "scraping",
+    "tags": ["rest", "web-scraping", "llm-extraction", "docker", "python"],
+    "setup_hint": "Self-hosted only: `docker run -d -p 11235:11235 --shm-size=1g unclecode/crawl4ai:latest`. OpenAPI docs at /docs. Optional JWT auth via POST /token.",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "JWT Token",
+        "description": "POST /token with credentials to get JWT, use as Bearer. Optional — can run without auth.",
+        "oauth": null
+      },
+      {
+        "auth_type": "none",
+        "label": "No Auth (local)",
+        "description": "For local/trusted network deployments without authentication.",
+        "oauth": null
+      }
+    ]
+  },
+  {
+    "slug": "apify",
+    "name": "Apify",
+    "driver": "http",
+    "base_url": "https://api.apify.com/v2",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "apify-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://docs.apify.com/api/openapi.json",
+    "icon": "apify.svg",
+    "description": "Apify cloud web scraping and automation API",
+    "category": "scraping",
+    "tags": ["rest", "web-scraping", "actors", "crawlee", "automation"],
+    "setup_hint": "Sign up at apify.com, get API token from Console > Settings > Integrations. Pass as Bearer token. Runs Crawlee-based actors in the cloud.",
+    "auth_options": []
+  },
+  {
+    "slug": "scrapingbee",
+    "name": "ScrapingBee",
+    "driver": "http",
+    "base_url": "https://app.scrapingbee.com/api/v1",
+    "auth_type": "query",
+    "oauth": null,
+    "default_skill": "scrapingbee-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "scrapingbee.svg",
+    "description": "ScrapingBee web scraping proxy API",
+    "category": "scraping",
+    "tags": ["rest", "web-scraping", "proxy", "js-rendering"],
+    "setup_hint": "Sign up at scrapingbee.com, get API key. Pass as `api_key` query parameter. Single endpoint: GET /api/v1?api_key=KEY&url=TARGET.",
+    "auth_options": []
+  },
+  {
+    "slug": "browserless",
+    "name": "Browserless",
+    "driver": "http",
+    "base_url": "https://production-sfo.browserless.io",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "browserless-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": null,
+    "icon": "browserless.svg",
+    "description": "Browserless headless Chrome API",
+    "category": "scraping",
+    "tags": ["rest", "headless-chrome", "screenshots", "pdf", "docker"],
+    "setup_hint": "SaaS: get token at browserless.io. Self-hosted: `docker run -p 3000:3000 -e TOKEN=my-token ghcr.io/browserless/chrome`. Pass token as `?token=` query param or Bearer.",
+    "auth_options": [
+      {
+        "auth_type": "query",
+        "label": "Token (query param)",
+        "description": "Append ?token=YOUR_TOKEN to all requests.",
+        "oauth": null
+      },
+      {
+        "auth_type": "bearer",
+        "label": "Bearer Token",
+        "description": "Pass token as Authorization: Bearer header.",
+        "oauth": null
+      }
+    ]
+  },
+  {
+    "slug": "jina-reader",
+    "name": "Jina Reader",
+    "driver": "http",
+    "base_url": "https://r.jina.ai",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "jina-reader-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://api.jina.ai/openapi.json",
+    "icon": "jina-reader.svg",
+    "description": "Jina Reader URL-to-markdown and search API",
+    "category": "scraping",
+    "tags": ["rest", "url-to-markdown", "search", "ai-extraction"],
+    "setup_hint": "Simplest: GET https://r.jina.ai/{url} works with no auth (20 RPM). For higher limits, get free key at jina.ai and pass as Bearer token.",
+    "auth_options": [
+      {
+        "auth_type": "none",
+        "label": "No Auth (20 RPM)",
+        "description": "Works immediately — just prefix any URL with https://r.jina.ai/. Limited to 20 requests/minute.",
+        "oauth": null
+      },
+      {
+        "auth_type": "bearer",
+        "label": "API Key (500+ RPM)",
+        "description": "Get free key at jina.ai/?sui=apikey for 500 RPM (Reader) / 100 RPM (Search).",
+        "oauth": null
+      }
+    ]
+  },
+  {
+    "slug": "brightdata",
+    "name": "Bright Data",
+    "driver": "http",
+    "base_url": "https://api.brightdata.com",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "brightdata-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "brightdata.svg",
+    "description": "Bright Data web scraping and proxy API",
+    "category": "scraping",
+    "tags": ["rest", "web-scraping", "proxy", "enterprise", "anti-bot"],
+    "setup_hint": "Sign up at brightdata.com, get API key from Control Panel > Settings > Users. 660+ pre-built dataset scrapers available. Pass as Bearer token.",
+    "auth_options": []
+  },
+  {
+    "slug": "ftp",
+    "name": "FTP/FTPS",
+    "driver": "ftp",
+    "base_url": "ftp://{host}:21",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "ftp-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "ftp.svg",
+    "description": "FTP/FTPS file transfer protocol",
+    "category": "storage",
+    "tags": ["ftp", "ftps", "file-transfer", "legacy"],
+    "setup_hint": "Provide FTP server host, port (21 for FTP, 990 for implicit FTPS, 21 with STARTTLS for explicit FTPS), username and password. For FTPS, the engine uses TLS encryption.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Username + Password",
+        "description": "FTP LOGIN with username and password.",
+        "oauth": null
+      },
+      {
+        "auth_type": "none",
+        "label": "Anonymous FTP",
+        "description": "Anonymous access (username: anonymous, password: email or empty).",
+        "oauth": null
+      }
+    ]
   }
 ]

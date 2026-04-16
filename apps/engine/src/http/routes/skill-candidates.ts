@@ -6,7 +6,10 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import * as svc from "../../skill-candidates/service.ts";
-import { SkillCandidateSchema, type ApproveSkillCandidateParams } from "../../skill-candidates/types.ts";
+import {
+  type ApproveSkillCandidateParams,
+  SkillCandidateSchema,
+} from "../../skill-candidates/types.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -114,9 +117,7 @@ const rejectRoute = createRoute({
     body: {
       content: {
         "application/json": {
-          schema: z
-            .object({ reason: z.string().optional() })
-            .openapi("RejectSkillCandidateBody"),
+          schema: z.object({ reason: z.string().optional() }).openapi("RejectSkillCandidateBody"),
         },
       },
     },

@@ -47,10 +47,7 @@ describe("journey: skill candidate lifecycle", () => {
   let candidateId: string;
 
   test("AC1: pattern analysis detects repair pattern", async () => {
-    const result = await runPatternAnalysis(
-      { tenant_id: ctx.tenantId },
-      ctx.db,
-    );
+    const result = await runPatternAnalysis({ tenant_id: ctx.tenantId }, ctx.db);
     expect(result.candidates_proposed).toBeGreaterThanOrEqual(1);
   });
 
@@ -91,10 +88,7 @@ describe("journey: skill candidate lifecycle", () => {
   });
 
   test("AC5: re-analysis doesn't re-propose approved pattern", async () => {
-    const result = await runPatternAnalysis(
-      { tenant_id: ctx.tenantId },
-      ctx.db,
-    );
+    const result = await runPatternAnalysis({ tenant_id: ctx.tenantId }, ctx.db);
     // Should skip since the fingerprint is already approved
     expect(result.candidates_proposed).toBe(0);
   });

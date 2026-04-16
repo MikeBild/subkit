@@ -23,10 +23,7 @@ interface FailureGroup {
   execution_ids: string[];
 }
 
-export async function detectFailurePatterns(
-  tenant_id: string,
-  exec: Db,
-): Promise<PatternSignal[]> {
+export async function detectFailurePatterns(tenant_id: string, exec: Db): Promise<PatternSignal[]> {
   const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
   // Query failed steps joined with their executions
@@ -96,10 +93,11 @@ export async function detectFailurePatterns(
       workflow_id: group.workflow_id,
       title: `Recurring failure on step '${group.step_key}'`,
       body: `Step '${group.step_key}' fails with '${group.error_kind}' consistently (${group.count} times in ${LOOKBACK_DAYS} days). Consider adding input validation or a guard step.`,
-      examples: [
-        `${group.count} failures with error kind '${group.error_kind}'`,
+      examples: [`${group.count} failures with error kind '${group.error_kind}'`],
+      best_practices: [
+        "Add input validation before this step",
+        "Consider a branch step to handle this case",
       ],
-      best_practices: ["Add input validation before this step", "Consider a branch step to handle this case"],
       pitfalls: [],
       doc_refs: [],
       fingerprint,

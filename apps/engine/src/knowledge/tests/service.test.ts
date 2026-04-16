@@ -36,7 +36,9 @@ describe.skipIf(skip)("knowledge/service", () => {
           scope: "global",
         },
         upload: {
-          buffer: Buffer.from("# Compliance\n\nAll payments must include an Idempotency-Key header.\n\n## Audit\n\nRetain logs for 7 years."),
+          buffer: Buffer.from(
+            "# Compliance\n\nAll payments must include an Idempotency-Key header.\n\n## Audit\n\nRetain logs for 7 years.",
+          ),
           filename: "compliance.md",
           mime: "text/markdown",
         },
@@ -72,10 +74,7 @@ describe.skipIf(skip)("knowledge/service", () => {
   });
 
   test("listKnowledgeSources returns active sources", async () => {
-    const list = await listKnowledgeSources(
-      { tenant_id: ctx.tenantId },
-      ctx.testDb.db,
-    );
+    const list = await listKnowledgeSources({ tenant_id: ctx.tenantId }, ctx.testDb.db);
     expect(list.length).toBeGreaterThanOrEqual(1);
     expect(list.find((s) => s.id === createdId)).toBeDefined();
   });
@@ -178,7 +177,9 @@ describe.skipIf(skip)("knowledge/service", () => {
         tenant_id: ctx.tenantId,
         knowledge_source_id: createdId,
         upload: {
-          buffer: Buffer.from("# New Content\n\nCompletely different material.\n\n## Section 2\n\nMore stuff here."),
+          buffer: Buffer.from(
+            "# New Content\n\nCompletely different material.\n\n## Section 2\n\nMore stuff here.",
+          ),
           filename: "compliance-v2.md",
           mime: "text/markdown",
         },
@@ -217,7 +218,12 @@ describe.skipIf(skip)("knowledge/service", () => {
   });
 
   test("deleteKnowledgeSource returns false for non-existent", async () => {
-    const result = await deleteKnowledgeSource(ctx.tenantId, crypto.randomUUID(), null, ctx.testDb.db);
+    const result = await deleteKnowledgeSource(
+      ctx.tenantId,
+      crypto.randomUUID(),
+      null,
+      ctx.testDb.db,
+    );
     expect(result).toBe(false);
   });
 

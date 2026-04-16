@@ -13,7 +13,21 @@
 
 import { z } from "@hono/zod-openapi";
 
-export const DriverEnum = z.enum(["http", "postgres", "s3", "graphql"]);
+export const DriverEnum = z.enum([
+  "http",
+  "postgres",
+  "s3",
+  "graphql",
+  "mssql",
+  "mysql",
+  "caldav",
+  "webdav",
+  "soap",
+  "grpc",
+  "mqtt",
+  "imap",
+  "ftp",
+]);
 export type DriverName = z.infer<typeof DriverEnum>;
 
 export const EnvironmentEnum = z.enum(["dev", "prod"]);

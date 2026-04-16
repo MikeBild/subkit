@@ -22,10 +22,7 @@ interface StepRecord {
   request_meta: Record<string, unknown> | null;
 }
 
-export async function detectSuccessPatterns(
-  tenant_id: string,
-  exec: Db,
-): Promise<PatternSignal[]> {
+export async function detectSuccessPatterns(tenant_id: string, exec: Db): Promise<PatternSignal[]> {
   const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
   const rows = await exec
@@ -68,7 +65,9 @@ export async function detectSuccessPatterns(
 
     // Rule 1: Check for consistent data_selector patterns
     const selectorsWithMeta = steps.filter(
-      (s) => s.request_meta && typeof (s.request_meta as Record<string, unknown>).data_selector === "string",
+      (s) =>
+        s.request_meta &&
+        typeof (s.request_meta as Record<string, unknown>).data_selector === "string",
     );
     if (selectorsWithMeta.length >= MIN_SUCCESS_COUNT) {
       const selectorCounts = new Map<string, number>();
