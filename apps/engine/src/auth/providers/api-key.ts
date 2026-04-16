@@ -15,6 +15,7 @@ import { type Db, getDb } from "../../db/client.ts";
 import { apiKeys, roles as rolesTable, systemAccounts, users } from "../../db/schema/index.ts";
 import { constantTimeHexEquals, parseKey } from "../../identity/api-key.ts";
 import { log, logger } from "../../logging/logger.ts";
+import { recordAuthFailure } from "../failed-auth-tracker.ts";
 import type { AllowList, AuthProvider, ResolvedPrincipal } from "../types.ts";
 
 const FLUSH_INTERVAL_MS = 60_000;
@@ -137,6 +138,11 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
       }
 
       if (!constantTimeHexEquals(row.token_sha256, parsed.hash)) {
+        const ip =
+          req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+          req.headers.get("x-real-ip") ??
+          "unknown";
+        recordAuthFailure(ip);
         log.auth.denied({
           provider: "api_key",
           reason: "hash_mismatch",

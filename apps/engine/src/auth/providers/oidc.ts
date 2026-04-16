@@ -88,6 +88,14 @@ async function loadConfig(
   clientSecret: string | undefined,
 ): Promise<oauth.Configuration> {
   const url = new URL(issuerUrl);
+  if (url.protocol === "http:") {
+    if (process.env.NODE_ENV === "production") {
+      logger.warn({
+        msg: "OIDC issuer uses insecure HTTP — authorization codes may be intercepted",
+        issuer: issuerUrl,
+      });
+    }
+  }
   const discoveryOptions: oauth.DiscoveryRequestOptions =
     url.protocol === "http:" ? { execute: [oauth.allowInsecureRequests] } : {};
   const configuration = await oauth.discovery(
@@ -132,9 +140,10 @@ async function verifySessionCookie(
 
 function buildCookieHeader(jwt: string): string {
   const maxAge = Math.floor(SESSION_ABSOLUTE_TTL_MS / 1000);
+  const secure = process.env.NODE_ENV !== "development" ? " Secure;" : "";
   return `${SESSION_COOKIE}=${encodeURIComponent(
     jwt,
-  )}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+  )}; Path=/; HttpOnly; SameSite=Lax;${secure} Max-Age=${maxAge}`;
 }
 
 function clearCookieHeader(): string {

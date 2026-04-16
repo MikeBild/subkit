@@ -22,6 +22,7 @@ import { authMiddleware } from "./middleware/auth.ts";
 import { errorMiddleware } from "./middleware/error.ts";
 import { loggingMiddleware } from "./middleware/logging.ts";
 import { portalTokenWorkflowGuard } from "./middleware/policy.ts";
+import { rateLimitMiddleware } from "./middleware/rate-limit.ts";
 import { traceMiddleware } from "./middleware/trace.ts";
 import { type AppEnv, createOpenApiApp, OPENAPI_INFO, SECURITY_SCHEMES } from "./openapi.ts";
 import { registerAiExtractRoute } from "./routes/ai/extract.ts";
@@ -94,9 +95,10 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   const app = createOpenApiApp();
   const registry = opts.registry ?? buildDefaultRegistry(opts.db);
 
-  // Order matters: trace -> logging -> metrics -> error wrap -> db -> auth -> routes.
+  // Order matters: trace -> logging -> rate-limit -> metrics -> error wrap -> db -> auth -> routes.
   app.use("*", traceMiddleware());
   app.use("*", loggingMiddleware());
+  app.use("*", rateLimitMiddleware());
   app.use("*", metricsMiddleware());
   app.use("*", errorMiddleware());
 
@@ -119,7 +121,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
     return c.json(
       {
         code: "internal_error",
-        message: err.message ?? "internal error",
+        message: "internal error",
         trace_id: c.get("trace_id"),
       },
       500,
