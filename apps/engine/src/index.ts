@@ -1,8 +1,8 @@
 import { serve } from "@hono/node-server";
 import { ChatAdapterRegistry } from "./chat/registry.ts";
 import { closeDb, getDb } from "./db/client.ts";
-import { env } from "./env.ts";
 import { createApp } from "./http/server.ts";
+import { OPENAPI_INFO } from "./http/openapi.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
 import { logger } from "./logging/logger.ts";
 import { startListener, stopListener } from "./pubsub/listener.ts";
@@ -10,10 +10,15 @@ import { startBoss, stopBoss } from "./queue/boss.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
 import { SchedulerReconciler } from "./scheduler/reconciler.ts";
 import { startTunnelWsServer, type TunnelWsServerHandle } from "./tunnels/ws-server.ts";
+import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
+import { setUpdateState } from "./update-state.ts";
 
 const SMOKE_FLAG = "--smoke";
+const SELF_UPDATE_FLAG = "--self-update";
+const CHECK_UPDATE_FLAG = "--check-update";
 
 async function runSmoke(): Promise<void> {
+  const { env } = await import("./env.ts");
   logger.info({
     module: "engine",
     action: "smoke.started",
@@ -48,7 +53,29 @@ async function runSmoke(): Promise<void> {
 }
 
 async function runServer(): Promise<void> {
+  const { env } = await import("./env.ts");
   const db = getDb();
+
+  // Non-blocking update check — fire and forget
+  if (process.env.NO_UPDATE_CHECK !== "1")
+  checkForUpdate(defaultUpdaterConfig("engine", OPENAPI_INFO.version))
+    .then((info) => {
+      if (info) {
+        setUpdateState({ update_available: true, latest_version: info.version });
+        logger.warn({
+          module: "engine",
+          action: "update.available",
+          msg: `update available: ${info.version}`,
+          current_version: OPENAPI_INFO.version,
+          latest_version: info.version,
+        });
+      } else {
+        setUpdateState({ update_available: false, latest_version: OPENAPI_INFO.version });
+      }
+    })
+    .catch(() => {
+      /* silent — never block engine startup */
+    });
 
   // Shared chat adapter registry — both the HTTP routes and the
   // outbound fanout worker resolve chat adapters out of this single
@@ -173,6 +200,32 @@ async function runServer(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // --check-update: check for updates without installing, exit.
+  if (process.argv.includes(CHECK_UPDATE_FLAG)) {
+    const info = await checkForUpdate(defaultUpdaterConfig("engine", OPENAPI_INFO.version), true);
+    if (info) {
+      process.stdout.write(`engine: update available ${OPENAPI_INFO.version} → ${info.version}\n`);
+      process.exit(0);
+    }
+    process.stdout.write(`engine: already at latest version ${OPENAPI_INFO.version}\n`);
+    process.exit(0);
+  }
+
+  // --self-update: download newer binary, replace, exit.
+  // Checked before smoke/server since it doesn't need DATABASE_URL.
+  if (process.argv.includes(SELF_UPDATE_FLAG)) {
+    const { runSelfUpdate } = await import("./self-update.ts");
+    try {
+      await runSelfUpdate();
+      process.exit(0);
+    } catch (err) {
+      process.stderr.write(
+        `engine: update failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(1);
+    }
+  }
+
   const isSmoke = process.argv.includes(SMOKE_FLAG);
 
   await withContext(

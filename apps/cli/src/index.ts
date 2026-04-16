@@ -28,10 +28,11 @@ import { subscriptionsCommand } from "./commands/subscriptions.ts";
 import { tenantsCommand } from "./commands/tenants.ts";
 import { tunnelAgentCommand } from "./commands/tunnel-agent.ts";
 import { tunnelsCommand } from "./commands/tunnels.ts";
+import { updateCommand } from "./commands/update.ts";
 import { workflowsCommand } from "./commands/workflows.ts";
 import { exitCodeFor, formatError } from "./utils/errors.ts";
-
-const VERSION = "0.0.1";
+import { VERSION } from "@cli-core/version.ts";
+import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 
 export const main = defineCommand({
   meta: {
@@ -63,6 +64,7 @@ export const main = defineCommand({
     extract: extractCommand,
     chat: chatCommand,
     mcp: mcpCommand,
+    update: updateCommand,
   },
 });
 
@@ -92,6 +94,8 @@ async function resolveSubCommand(
 }
 
 async function dispatch(): Promise<void> {
+  notifyIfUpdateAvailable("subkit");
+
   // Top-level --version
   if (rawArgs.length === 1 && (rawArgs[0] === "--version" || rawArgs[0] === "-v")) {
     process.stdout.write(`${VERSION}\n`);

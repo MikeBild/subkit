@@ -5,7 +5,7 @@ on:
     tags: ['v*.*.*']
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   REGISTRY: registry.digitalocean.com
@@ -52,6 +52,214 @@ jobs:
       - run: bun run db:migrate
       - run: bun test
 
+  # ── Multi-platform CLI binaries ──
+
+  build-cli-binaries:
+    name: build ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
+    needs: test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        binary: [sk, subkit, tunnel-agent, engine]
+        include:
+          # darwin-arm64
+          - binary: sk
+            os: darwin
+            arch: arm64
+            runner: macos-14
+            target: ""
+            entry: apps/sk/src/index.ts
+          - binary: subkit
+            os: darwin
+            arch: arm64
+            runner: macos-14
+            target: ""
+            entry: apps/cli/src/index.ts
+          - binary: tunnel-agent
+            os: darwin
+            arch: arm64
+            runner: macos-14
+            target: ""
+            entry: apps/agent/src/index.ts
+          - binary: engine
+            os: darwin
+            arch: arm64
+            runner: macos-14
+            target: ""
+            entry: apps/engine/src/index.ts
+          # darwin-x64
+          - binary: sk
+            os: darwin
+            arch: x64
+            runner: macos-13
+            target: ""
+            entry: apps/sk/src/index.ts
+          - binary: subkit
+            os: darwin
+            arch: x64
+            runner: macos-13
+            target: ""
+            entry: apps/cli/src/index.ts
+          - binary: tunnel-agent
+            os: darwin
+            arch: x64
+            runner: macos-13
+            target: ""
+            entry: apps/agent/src/index.ts
+          - binary: engine
+            os: darwin
+            arch: x64
+            runner: macos-13
+            target: ""
+            entry: apps/engine/src/index.ts
+          # linux-x64
+          - binary: sk
+            os: linux
+            arch: x64
+            runner: ubuntu-latest
+            target: ""
+            entry: apps/sk/src/index.ts
+          - binary: subkit
+            os: linux
+            arch: x64
+            runner: ubuntu-latest
+            target: ""
+            entry: apps/cli/src/index.ts
+          - binary: tunnel-agent
+            os: linux
+            arch: x64
+            runner: ubuntu-latest
+            target: ""
+            entry: apps/agent/src/index.ts
+          - binary: engine
+            os: linux
+            arch: x64
+            runner: ubuntu-latest
+            target: ""
+            entry: apps/engine/src/index.ts
+          # linux-arm64 (cross-compiled from x64)
+          - binary: sk
+            os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            target: bun-linux-arm64
+            entry: apps/sk/src/index.ts
+          - binary: subkit
+            os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            target: bun-linux-arm64
+            entry: apps/cli/src/index.ts
+          - binary: tunnel-agent
+            os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            target: bun-linux-arm64
+            entry: apps/agent/src/index.ts
+          - binary: engine
+            os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            target: bun-linux-arm64
+            entry: apps/engine/src/index.ts
+          # windows-x64
+          - binary: sk
+            os: windows
+            arch: x64
+            runner: windows-latest
+            target: ""
+            entry: apps/sk/src/index.ts
+          - binary: subkit
+            os: windows
+            arch: x64
+            runner: windows-latest
+            target: ""
+            entry: apps/cli/src/index.ts
+          - binary: tunnel-agent
+            os: windows
+            arch: x64
+            runner: windows-latest
+            target: ""
+            entry: apps/agent/src/index.ts
+          - binary: engine
+            os: windows
+            arch: x64
+            runner: windows-latest
+            target: ""
+            entry: apps/engine/src/index.ts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+
+      - name: Compile binary
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          EXT=""
+          TARGET_FLAG=""
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            EXT=".exe"
+          fi
+          if [ -n "${{ matrix.target }}" ]; then
+            TARGET_FLAG="--target=${{ matrix.target }}"
+          fi
+          OUT="${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
+          mkdir -p dist
+          bun build "${{ matrix.entry }}" \
+            --compile \
+            $TARGET_FLAG \
+            --define "BUILD_VERSION=\"$VERSION\"" \
+            --outfile "dist/$OUT"
+
+      - name: macOS codesign
+        if: matrix.os == 'darwin'
+        run: |
+          BINARY="dist/${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}"
+          codesign --remove-signature "$BINARY" 2>/dev/null || true
+          codesign --sign - --force "$BINARY"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}
+          path: dist/${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}
+
+  # ── Publish GitHub Release with all binaries + checksums ──
+
+  publish-release:
+    name: publish-release
+    needs: build-cli-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd artifacts
+          find . -type f ! -name SHA256SUMS | sort | while read -r f; do
+            sha256sum "$f" | sed 's|  \./[^/]*/||'
+          done > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*/sk_*
+            artifacts/*/subkit_*
+            artifacts/*/tunnel-agent_*
+            artifacts/*/engine_*
+            artifacts/SHA256SUMS
+
+  # ── Docker images ──
+
   build-and-push:
     name: build-and-push
     needs: test
@@ -95,6 +303,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ── Deploy with health check + rollback ──
+
   deploy:
     name: deploy
     needs: build-and-push
@@ -115,10 +325,38 @@ jobs:
             doctl registry login --expiry-seconds 600
             export ENGINE_VERSION="$VERSION"
             COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+
+            # Capture current version for rollback
+            PREV_VERSION=$($COMPOSE ps -q engine 2>/dev/null | xargs -r docker inspect -f '{{index .Config.Env}}' 2>/dev/null | grep -oP 'ENGINE_VERSION=\K[^ ]+' || echo "")
+
             $COMPOSE pull engine migrate
+
+            # Run migrations — abort on failure
             $COMPOSE up -d migrate
+            $COMPOSE wait migrate || { echo "FATAL: migration failed"; exit 1; }
+
             $COMPOSE up -d seed
-            $COMPOSE up -d engine caddy
+            $COMPOSE up -d --no-deps engine
+
+            # Health check loop (30 attempts × 5s = 150s max)
+            for i in $(seq 1 30); do
+              if wget -qO- "http://127.0.0.1:3000/v1/health" 2>/dev/null | grep -q '"ok"'; then
+                echo "Engine v${VERSION} healthy"
+                break
+              fi
+              if [ "$i" -eq 30 ]; then
+                echo "FATAL: health check failed after 150s"
+                if [ -n "$PREV_VERSION" ]; then
+                  echo "Rolling back to $PREV_VERSION"
+                  export ENGINE_VERSION="$PREV_VERSION"
+                  $COMPOSE up -d --no-deps engine
+                fi
+                exit 1
+              fi
+              sleep 5
+            done
+
+            $COMPOSE up -d caddy
             docker image prune -f
 
   smoke:

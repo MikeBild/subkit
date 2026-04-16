@@ -6,6 +6,24 @@
 // Modules live as flat files under `packages/cli-core/src/` and are
 // imported via the `@cli-core/*` path alias (see tsconfig.json).
 
+export { VERSION } from "./version.ts";
+export {
+  type UpdaterConfig,
+  type UpdateInfo,
+  type UpdateCache,
+  checkForUpdate,
+  performUpdate,
+  formatUpdateBanner,
+  defaultUpdaterConfig,
+  cleanupOldBinary,
+  isNewer,
+  platformArch,
+  parseChecksum,
+  readCache,
+  writeCache,
+  GITHUB_REPO,
+} from "./updater.ts";
+export { notifyIfUpdateAvailable } from "./update-notifier.ts";
 export {
   type BrowserLoginOptions,
   type BrowserLoginResult,

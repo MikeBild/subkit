@@ -8,6 +8,7 @@ import { getDb } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import type { AppEnv } from "../openapi.ts";
 import { OPENAPI_INFO } from "../openapi.ts";
+import { getUpdateState } from "../../update-state.ts";
 
 const HealthResponse = z
   .object({
@@ -15,6 +16,8 @@ const HealthResponse = z
     version: z.string(),
     db_connected: z.boolean(),
     uptime_seconds: z.number(),
+    update_available: z.boolean().optional(),
+    latest_version: z.string().optional(),
   })
   .openapi("HealthResponse");
 
@@ -56,12 +59,19 @@ export function registerHealthRoute(app: OpenAPIHono<AppEnv>, deps: HealthDeps =
   app.openapi(route, async (c) => {
     const db = deps.db ?? c.get("db") ?? getDb();
     const db_connected = await pingDb(db);
+    const updateState = getUpdateState();
     return c.json(
       {
         status: "ok" as const,
         version: OPENAPI_INFO.version,
         db_connected,
         uptime_seconds: Math.floor((Date.now() - BOOT_AT) / 1000),
+        ...(updateState
+          ? {
+              update_available: updateState.update_available,
+              latest_version: updateState.latest_version,
+            }
+          : {}),
       },
       200,
     );
