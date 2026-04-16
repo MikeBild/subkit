@@ -1,8 +1,8 @@
 # 18 — Skills
 
-A Skill is a hand-authored, statically curated LLM-context record. Skills are how operators put their domain knowledge in front of every AI flow without rebuilding prompts. The engine reliably loads the right Skills into every flow at the right scope order; it never authors them, never mutates them, and never proposes new ones.
+A Skill is a curated LLM-context record. Skills are how operators put their domain knowledge in front of every AI flow without rebuilding prompts. The engine reliably loads the right Skills into every flow at the right scope order. Skills can be authored by hand or promoted from Skill Candidates -- deterministic pattern detections that always require human approval before becoming active Skills.
 
-**Skills are curated, never auto-generated.** This is a core invariant of the engine. There is no reflection job, no feedback-driven write path, no "skill candidate" promotion pipeline. The only automated improvement vector for AI grounding is periodic re-ingestion of connector documentation. Why: debuggable, reproducible, no silent drift. An operator who reads an audit trail today sees the same Skills the model saw, and a Conversation replayed tomorrow sees the same Skills it saw originally unless an operator edited them.
+**Skills are curated, never auto-promoted.** This is a core invariant of the engine. The engine can detect patterns from execution outcomes and propose Skill Candidates, but no candidate becomes an active Skill without explicit human approval. There is no reflection job, no feedback-driven auto-write path, and no shadow promotion. Why: debuggable, reproducible, no silent drift. An operator who reads an audit trail today sees the same Skills the model saw, and a Conversation replayed tomorrow sees the same Skills it saw originally unless an operator edited or approved them.
 
 ## Record shape
 
@@ -127,16 +127,78 @@ Six rules for writing Skills that pay their cost:
 5. **Cite `doc_refs` where useful.** Anchor the rule to the source so the next operator can verify it.
 6. **Prefer the most specific scope that still applies.** Workflow scope before Connector scope before Global scope.
 
-## Explicit non-goal: automatic skill evolution
+## Skill Candidates
 
-The engine does not implement and will not implement:
+Skill Candidates are deterministic, rule-based pattern detections derived from execution outcomes. The engine observes executions, detects recurring patterns (repairs, failures, successes), and proposes candidate Skills for human review. Candidates are **never auto-promoted** -- a human must approve every candidate before it becomes an active Skill.
 
-- Reflection jobs that read execution outcomes and write back into Skills.
-- Feedback-driven Skill writes from successful Conversations or successful Patch Candidates.
-- "Skill candidate" rows that get promoted on a quality signal.
-- Voyager / Reflexion / GEPA / Meta-Rewarding / generative-agent-memory-stream patterns of any kind.
-- Shadow or canary promotion of model-authored Skill drafts.
+### Lifecycle
 
-The single automated improvement vector is **periodic re-ingestion of connector documentation**. That refresh updates the reference material the LLM can search; it never touches Skills. Operators who want a feedback loop read the audit log and the execution telemetry and edit Skills by hand.
+```mermaid
+stateDiagram-v2
+  [*] --> proposed : pattern detected
+  proposed --> approved : human approves
+  proposed --> rejected : human rejects
+  proposed --> superseded : newer pattern replaces
+  approved --> [*] : promoted to Skill
+  rejected --> [*]
+  superseded --> [*]
+```
 
-This is a deliberate constraint. The trade-off is explicit: the engine gives up automated learning to gain a debuggable, reproducible AI surface with no silent drift between runs.
+### Pattern kinds
+
+| Kind | Detected from | Example |
+|---|---|---|
+| `repair_pattern` | Patch Candidates that were applied after a failure | "Stripe calls always need an idempotency key — three repairs added one" |
+| `failure_pattern` | Recurring step failures with a common root cause | "HubSpot pagination fails when `after` cursor exceeds 10 000" |
+| `success_pattern` | Consistently successful execution paths worth codifying | "Batch size of 50 with cursor pagination always succeeds on Shopify orders" |
+
+### Confidence levels
+
+| Level | Threshold |
+|---|---|
+| `high` | 8+ evidence items, 90%+ consistency ratio |
+| `medium` | 5+ evidence items, 80%+ consistency ratio |
+| `low` | Below medium thresholds |
+
+### How it works
+
+```mermaid
+flowchart LR
+  E[Execution outcomes] --> D[Pattern detectors]
+  D --> P[Propose candidate]
+  P --> H{Human review}
+  H -->|approve| S[Promote to active Skill]
+  H -->|reject| R[Rejected]
+```
+
+1. **Observe** -- the engine records execution outcomes, step failures, and applied patches.
+2. **Detect** -- three deterministic detectors (`repair_pattern`, `failure_pattern`, `success_pattern`) scan for recurring patterns and compute a fingerprint for deduplication.
+3. **Propose** -- matching patterns are inserted as `proposed` candidates with supporting evidence rows (`skill_candidate_evidence`). If a candidate with the same fingerprint already exists, it is updated in place; stale candidates for the same scope are marked `superseded`.
+4. **Review** -- a human inspects the candidate (via CLI, REST, or conversational approval) and either approves or rejects it.
+5. **Promote** -- on approval, the engine creates a new Skill from the candidate's title, body, examples, and scope, links it via `promoted_skill_id`, and marks the candidate `approved`.
+
+### Post-promotion tracking
+
+The `skill_effectiveness` table correlates failure rates before and after a promoted Skill was introduced, giving operators data to archive Skills that did not help.
+
+### Guardrail
+
+> **Skill Candidates are never auto-promoted. A human must approve every candidate before it becomes an active Skill.** This is enforced at the service layer -- the `approveSkillCandidate` function requires an explicit call with an `actor_id`. There is no background job, no quality-signal threshold, and no shadow promotion path.
+
+### CLI commands
+
+| Command | Description |
+|---|---|
+| `subkit skill-candidates list` | List candidates. Filters: `--status`, `--confidence`, `--scope`. |
+| `subkit skill-candidates get <id>` | Fetch a single candidate with full detail. |
+| `subkit skill-candidates approve <id>` | Approve and promote to Skill. Optional: `--title`, `--status` (draft/active). |
+| `subkit skill-candidates reject <id>` | Reject a candidate. Optional: `--reason`. |
+
+### REST endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/skill-candidates` | List candidates. Query params: `status`, `scope`, `connector_id`, `workflow_id`, `pattern_kind`, `confidence`, `limit`, `offset`. |
+| `GET` | `/v1/skill-candidates/:id` | Get a single candidate. |
+| `POST` | `/v1/skill-candidates/:id/approve` | Approve and promote. Body: `{ title?, body?, status? }`. |
+| `POST` | `/v1/skill-candidates/:id/reject` | Reject. Body: `{ reason? }`. |

@@ -66,9 +66,9 @@ flowchart LR
 
 Trade-off: shipping built-ins inside the binary keeps the default experience zero-config (a fresh tenant can immediately create a Stripe Connector), and a database override layer keeps tenants in control of their own catalog without touching deployment.
 
-## Starting set (v1)
+## Template catalog
 
-Ten providers, picked because they cover the "first three integrations a real customer asks for" surface across product analytics, CRM, dev tools, support, and collaboration.
+The engine ships 89 production-quality templates covering SaaS, developer tools, CRM, support, analytics, databases, messaging, and infrastructure. The original v1 starting set of 10 has been expanded to cover the "first ten integrations any enterprise asks for" across every major category.
 
 | Template | Auth | Notes |
 |---|---|---|
@@ -83,7 +83,7 @@ Ten providers, picked because they cover the "first three integrations a real cu
 | Notion | oauth2 | Integration tokens via OAuth. |
 | Linear | oauth2 | OAuth scopes for issues, projects, comments. |
 
-Each entry is one row in `templates.json`. None of them carry executable logic. None of them carry tenant-specific values.
+The table above shows the original 10. The full catalog of 89 templates is in `apps/engine/src/connectors/templates.json`. Each entry is one row — no executable logic, no tenant-specific values.
 
 ## Creating a Connector from a template
 

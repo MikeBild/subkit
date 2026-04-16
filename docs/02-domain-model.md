@@ -60,13 +60,28 @@ A per-role interceptor that runs before every outbound `request` Step. Receives 
 ## AI & Context
 
 ### Skill
-A hand-authored, statically curated LLM-context record. Scopes are `global`, `connector`, or `workflow`. Each Skill carries body, examples, best practices, pitfalls, doc references, version, and lifecycle (`draft | active | archived`). Skills are authored by operators through CLI, REST, or the admin surface; the engine never writes them automatically. Example: a Stripe Connector Skill that documents idempotency-key conventions and the platform's 429 behaviour.
+A curated LLM-context record. Scopes are `global`, `connector`, or `workflow`. Each Skill carries body, examples, best practices, pitfalls, doc references, version, and lifecycle (`draft | active | archived`). Skills are authored by operators through CLI, REST, or the admin surface, or promoted from Skill Candidates with human approval. Example: a Stripe Connector Skill that documents idempotency-key conventions and the platform's 429 behaviour.
+
+### Skill Candidate
+A proposed skill improvement detected from execution patterns. Kinds: `repair_pattern`, `failure_pattern`, `success_pattern`. Each candidate carries a confidence level (`low | medium | high`), evidence linking to source executions/patches, and a lifecycle (`proposed | approved | rejected | superseded`). Skill Candidates are never auto-promoted — a human must approve each one before it becomes an active Skill.
+
+### Knowledge Source
+A persistent, tenant-scoped knowledge base from uploaded files (PDF, DOCX, HTML, Markdown, plaintext, CSV, XLSX). Each source is chunked into `Knowledge Source Chunks` indexed via tsvector for semantic search. Scopes: `global` or `workflow`. Refresh strategies: `manual`, `scheduled` (cron), `webhook`. Loaded into Context Enhancement between Skills and Connector Docs at a 15% token budget allocation.
+
+### Knowledge Source Chunk
+A paragraph-level segment of a Knowledge Source, indexed for full-text search. Chunks carry content, tsvector index, byte size, and ordering within the parent source.
 
 ### Context Enhancement
-The prompt-assembly pipeline. A base prompt is augmented with Skills in scope order, then with Connector documentation, then with prior failures when the flow is a repair run, then with the user's turns. A per-tenant token budget caps the assembled prompt against the effective model's context window.
+The prompt-assembly pipeline. A base prompt is augmented with Skills in scope order, then with Knowledge Sources, then with Connector documentation, then with prior failures when the flow is a repair run, then with the user's turns. A per-tenant token budget caps the assembled prompt against the effective model's context window.
+
+### Discovery Run
+A one-shot LLM analysis of uploaded enterprise files. The engine analyzes files and synthesizes Discovery Artifacts — proposed Connectors, Skills, and Knowledge Sources inferred from the content. Each run tracks status (`pending | analyzing | synthesizing | completed | failed`) and links to uploaded Discovery Files.
+
+### Discovery Artifact
+A proposed entity (Connector, Skill, or Knowledge Source) inferred by a Discovery Run. Each artifact carries a confidence score (0–100), evidence (file excerpts + file IDs), and a lifecycle (`proposed | approved | rejected | superseded`). Approved artifacts are materialized into real entities.
 
 ### Conversation
-A persistent, resumable AI authoring session that targets a draft Workflow or Connector. Conversations stream over SSE on REST and over MCP progress notifications on the MCP surface. The tool-use loop is bounded with `stepCountIs(20–40)` and operates over a fixed palette of structured-intent tools (`list_skills`, `fetch_connector_docs`, `propose_step`, `update_param`, `connect_steps`, `dry_run_step`, `validate_draft`, `request_human_approval`, `commit_draft`). Sensitive tools pause the loop by creating an approval row and resume on decision.
+A persistent, resumable AI authoring session that targets a draft Workflow or Connector. Conversations stream over SSE on REST and over MCP progress notifications on the MCP surface. The tool-use loop is bounded and operates over a palette of 14+ structured-intent tools (`list_skills`, `fetch_connector_docs`, `propose_step`, `update_param`, `connect_steps`, `dry_run_step`, `validate_draft`, `request_human_approval`, `commit_draft`, `search_knowledge`, `propose_connector`, `propose_skill`, `list_skill_suggestions`). Sensitive tools pause the loop by creating an approval row and resume on decision.
 
 ### Self-healing
 The engine's bounded repair loop. When a Step fails with a drift signal, the engine diffs the response against the last known Schema Version, refreshes upstream documentation, runs a narrow LLM tool loop (`update_field_path`, `rename_param`, `change_type`, `add_header`), dry-runs candidate patches against a recorded Execution Fixture, and writes a Patch Candidate. The default auto-apply policy is safe-patches only; anything else parks for review.

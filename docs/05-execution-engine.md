@@ -1,6 +1,10 @@
 # 05 — Execution Engine
 
-The execution engine walks a Workflow DAG one Step at a time, enforces the policy and limit budget on each Step, records every transition into Postgres, and emits outbox Events for every externally visible side effect. It is a single in-process state machine inside the Bun binary; there is no separate orchestrator process.
+- Walks a Workflow DAG one Step at a time
+- Enforces the policy and limit budget on each Step
+- Records every transition into Postgres
+- Emits outbox Events for every externally visible side effect
+- Single in-process state machine inside the Bun binary — no separate orchestrator process
 
 ## Step state machine
 
@@ -21,9 +25,11 @@ stateDiagram-v2
   timed_out --> [*]
 ```
 
-A Step is `queued` from the moment its inputs are resolved and its predecessors are terminal. It becomes `running` when the worker takes it. `failed`, `aborted`, and `timed_out` all close the Step as terminal-error; the difference is the cause attribution recorded on the row.
+- `queued` — inputs are resolved and predecessors are terminal
+- `running` — worker has taken the Step
+- `failed`, `aborted`, `timed_out` — all terminal-error; the difference is the cause attribution recorded on the row
 
-The Execution wrapping the Step graph carries its own status (`queued | running | succeeded | failed | aborted | timed_out`) which is derived from the Step terminal states and the configured `onError` mode.
+The Execution wrapping the Step graph carries its own status (`queued | running | succeeded | failed | aborted | timed_out`), derived from the Step terminal states and the configured `onError` mode.
 
 ## Step kinds
 
@@ -47,7 +53,13 @@ base  = 1 second
 cap   = 60 seconds per individual sleep
 ```
 
-Retries are skipped for non-retryable error classes: schema validation failures on the Step input, Policy denials, Credential decryption failures, and any error the driver flags as `terminal`. A 429 response is retryable and is handled by the rate-limit branch below rather than the generic backoff.
+Retries are skipped for non-retryable error classes:
+- Schema validation failures on the Step input
+- Policy denials
+- Credential decryption failures
+- Any error the driver flags as `terminal`
+
+A 429 response is retryable and is handled by the rate-limit branch below rather than the generic backoff.
 
 ## Timeout tiers
 
@@ -78,15 +90,25 @@ Every Step declares one of two error modes:
 - **`page`** — increments a page-number query parameter and stops when the response page is empty or short.
 - **`cursor`** — extracts a cursor token from the previous response via a configured selector and forwards it as the next request's cursor parameter.
 
-All three honor a hard cap of **1,000 requests per Step**. The default page size is 1,000, clamped to `[1, 1000]`. Pagination output is always merged into a single concatenated array on the Step output unless the Step opts into a streaming variant.
+### Caps & Limits
 
-## Loop iteration cap
-
-`loop` Steps stop unconditionally after **10,000 iterations**. The cap fires regardless of source: a too-large input collection, an unbounded predicate, or a runaway sub-DAG that grows the queue. When the cap fires, the loop terminates as `failed` with a typed `loop_iteration_cap` error.
+| Concern | Limit | Behavior |
+|---|---|---|
+| Pagination requests per Step | **1,000 requests** | Hard cap across all three strategies (`offset`, `page`, `cursor`) |
+| Default page size | **1,000**, clamped to `[1, 1000]` | Output merged into a single concatenated array unless Step opts into streaming |
+| Loop iterations | **10,000 iterations** | Fires regardless of source (large collection, unbounded predicate, runaway sub-DAG); terminates as `failed` with `loop_iteration_cap` |
+| Large-payload offload threshold | **10 KB of JSON** | Payloads above threshold written to S3; row stores `result_storage_uri` + truncated preview |
+| Preview object depth | **5 levels** | Deeper values replaced with `"<truncated:depth>"` |
+| Preview array length | **5 elements** | Remainder replaced with `"<truncated:N more>"` |
+| Preview object keys | **1,000 keys** | Excess keys dropped with `"<truncated:N more keys>"` marker |
 
 ## Large-payload offload
 
-When a Step input or output serializes to **more than 10 KB of JSON**, the engine writes the full payload to object storage via the S3 driver and stores only a `result_storage_uri` reference plus a truncated preview on the row. Downstream Steps receive the full payload, lazily fetched on access. This keeps `executions` and `execution_steps` rows small enough to scan and search efficiently.
+- **Threshold**: Step input or output > **10 KB of JSON**
+- Full payload written to object storage via the S3 driver
+- Row stores only a `result_storage_uri` reference plus a truncated preview
+- Downstream Steps receive the full payload, lazily fetched on access
+- Keeps `executions` and `execution_steps` rows small enough to scan and search efficiently
 
 ## DB preview truncation
 
@@ -118,7 +140,11 @@ Filters compose: a Step can declare an ordered list of filters and the engine ap
 
 ## Data selectors
 
-Every Step output can be projected through a JSONPath-style **data selector** before it is exposed to downstream Steps. Selectors are evaluated after response filters and after pagination merging. A selector that resolves to nothing yields an empty result; a selector that resolves to multiple matches yields an array. Selectors are documented per Step on the Workflow definition; they are not Turing-complete, do not perform I/O, and are validated at Workflow upsert time.
+- Every Step output can be projected through a JSONPath-style **data selector** before exposure to downstream Steps
+- Evaluated after response filters and after pagination merging
+- Resolves to nothing → empty result; resolves to multiple matches → array
+- Documented per Step on the Workflow definition
+- Not Turing-complete, no I/O, validated at Workflow upsert time
 
 ## 429 and `Retry-After` handling
 
@@ -128,7 +154,9 @@ When a `request` Step receives a `429 Too Many Requests`, the engine inspects th
 - HTTP date: sleep until that timestamp, then retry.
 - Missing header: fall back to the standard exponential backoff with jitter.
 
-The total wait imposed by `Retry-After` is **capped at 1 hour**. A `Retry-After` larger than the cap is clamped to 1 hour and the Step proceeds; if the upstream is still 429 after the clamped wait, the standard retry counter still applies.
+- Total wait imposed by `Retry-After` is **capped at 1 hour**
+- Values larger than the cap are clamped to 1 hour
+- If upstream is still 429 after the clamped wait, the standard retry counter still applies
 
 ```mermaid
 sequenceDiagram
@@ -149,14 +177,16 @@ The 429 wait counts against the Step timeout tier but not against the retry-atte
 
 ## Abort and cancel propagation
 
-Cancellation is one mechanism end-to-end. The HTTP route `POST /v1/executions/:id/cancel` flips a row in Postgres and emits an `execution.status` outbox Event. Inside the worker, the Step is running with an `AbortController` whose `signal` is wired into:
+Cancellation is one mechanism end-to-end:
 
-- The `fetch` call in the HTTP driver and the underlying connection in the Postgres / S3 / GraphQL drivers.
-- The QuickJS interrupt handler for the `transform` JavaScript sandbox.
-- The `pg-boss` job heartbeat so the queue knows the job did not silently die.
-- Any in-flight `wait` Step, which yields immediately on signal.
-
-When the signal fires, the Step transitions to `aborted`, the Execution becomes `aborted`, and any downstream Steps remain `queued → aborted` without ever entering `running`. Sub-Executions started via `call` propagate the signal to the child via the same controller chain.
+- `POST /v1/executions/:id/cancel` flips a row in Postgres and emits an `execution.status` outbox Event
+- The Step runs with an `AbortController` whose `signal` is wired into:
+  - The `fetch` call in the HTTP driver and the underlying connection in the Postgres / S3 / GraphQL drivers
+  - The QuickJS interrupt handler for the `transform` JavaScript sandbox
+  - The `pg-boss` job heartbeat so the queue knows the job did not silently die
+  - Any in-flight `wait` Step, which yields immediately on signal
+- On signal: Step transitions to `aborted`, Execution becomes `aborted`, downstream Steps remain `queued → aborted` without ever entering `running`
+- Sub-Executions started via `call` propagate the signal to the child via the same controller chain
 
 ## Tool chaining via `call`
 
@@ -168,16 +198,21 @@ The `call` Step invokes another Workflow as a child Execution. The semantics are
 4. The child's terminal status is hoisted into the parent Step as the `call` Step's result.
 5. Cancellation propagates parent → child but not child → parent.
 
-Tool chains are how a Workflow assembles other Workflows into composite automations and how AI authoring flows compose previously committed Workflows as building blocks. Every chain hop is searchable on `request_source = tool-chain` and traceable through the `parent_execution_id` pointer.
+Tool chains are how a Workflow assembles other Workflows into composite automations. Every chain hop is searchable on `request_source = tool-chain` and traceable through the `parent_execution_id` pointer.
 
 ## Schema-version tracking
 
-Every successful `request` Step canonicalizes the response shape into a JSON schema and writes a row to `schema_versions` keyed by `(connector_id, endpoint_key)`. The endpoint key is `method + path-template`, not the materialized URL, so query parameters and path arguments do not fragment the version history.
-
-The latest Schema Version per endpoint is the reference shape used by self-healing to detect drift. Drift is the diff between a freshly observed shape and the most recent Schema Version that matches the same endpoint key — for example, a renamed field, a removed field, or a type widening.
+- Every successful `request` Step canonicalizes the response shape into a JSON schema
+- Writes a row to `schema_versions` keyed by `(connector_id, endpoint_key)`
+- Endpoint key is `method + path-template`, not the materialized URL — query parameters and path arguments do not fragment the version history
+- The latest Schema Version per endpoint is the reference shape used by self-healing to detect drift
+- Drift = diff between a freshly observed shape and the most recent Schema Version (e.g. renamed field, removed field, type widening)
 
 ## Execution fixture recording
 
-A Step that succeeds with a non-empty response is eligible to be recorded as an **Execution Fixture**: a `(request, response)` pair stored in `execution_fixtures` keyed by `(connector_id, endpoint_key)`. Fixtures are the dry-run corpus for the self-healing loop.
-
-Recording is sampled per endpoint to keep storage bounded: the engine retains the most recent N fixtures per `(connector_id, endpoint_key)` and discards older entries. Fixtures are always read-only after capture; self-healing patches are evaluated against them, never written through them. When a Patch Candidate is produced, the engine replays the patch against a stored Fixture to confirm that the patched call would still parse the historical response correctly before classifying the patch as `safe` or `unsafe`.
+- A Step that succeeds with a non-empty response is eligible for **Execution Fixture** recording
+- Stored as a `(request, response)` pair in `execution_fixtures` keyed by `(connector_id, endpoint_key)`
+- Fixtures are the dry-run corpus for the self-healing loop
+- Recording is sampled per endpoint; the engine retains the most recent N fixtures per key and discards older entries
+- Fixtures are read-only after capture — self-healing patches are evaluated against them, never written through them
+- Patch replay: the engine replays a Patch Candidate against a stored Fixture to confirm the patched call still parses the historical response correctly before classifying it as `safe` or `unsafe`

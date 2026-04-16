@@ -52,8 +52,15 @@ subkit tunnel-agent run
 subkit apikeys list | create | rotate | revoke
 subkit portal-tokens list | create | revoke
 subkit extract <file>
+subkit knowledge-sources list | get | create | search | delete
+subkit skill-candidates list | get | approve | reject
+subkit discovery run | list | get | artifacts | approve | reject
+subkit rbac permissions | roles | can
+subkit audit list | export
 subkit chat                               # conversational authoring
 subkit mcp                                # stdio MCP server pointed at a remote engine
+subkit health
+subkit update
 ```
 
 Notes on the less-obvious entries:
@@ -65,6 +72,11 @@ Notes on the less-obvious entries:
 - **`subkit tunnel-agent run`** — the **companion binary**. Same codebase as the CLI, separate `bun build --compile --target ...` build target. Opens the persistent outbound WebSocket and registers the agent's targets with the engine.
 - **`subkit mcp`** — runs an MCP server over stdio that proxies into the configured engine. IDE plugins and other MCP clients launch this command to talk to a remote engine through a local stdio transport.
 - **`subkit extract <file>`** — pipes a file through `/v1/extract` and prints the structured JSON to stdout.
+- **`subkit knowledge-sources`** — manage persistent knowledge from uploaded files. `create` accepts `--file`, `--scope`, `--workflow-id`, `--refresh`. See `35-knowledge-sources.md`.
+- **`subkit skill-candidates`** — review and approve/reject LLM-proposed skill improvements. Approved candidates become active Skills. See `18-skills.md`.
+- **`subkit discovery run`** — upload files for one-shot LLM analysis. Returns proposed connectors, skills, and knowledge sources. `artifacts` lists proposals, `approve`/`reject` materializes or discards them. See `36-discovery.md`.
+- **`subkit rbac`** — inspect permissions, roles, and run `can` queries against the RBAC engine.
+- **`subkit audit`** — query the immutable audit log with filters (actor, action, resource, time range). `export` dumps to NDJSON.
 
 ## `subkit chat` UX checklist
 

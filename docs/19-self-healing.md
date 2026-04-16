@@ -1,10 +1,13 @@
 # 19 — Self-healing
 
-Self-healing is the engine's bounded repair loop for upstream drift. When a Step fails with a recognized drift signal, the engine diffs the failing call against the last known Schema Version, refreshes upstream documentation, runs a tightly scoped LLM repair loop, dry-runs the candidate against a recorded Execution Fixture, and writes a Patch Candidate. Default policy auto-applies only `safe` patches; everything else parks for review and fires a `patch.proposed` chat notification.
+- Self-healing is the engine's bounded repair loop for upstream drift.
+- On a recognized drift signal: diff against last Schema Version, refresh upstream docs, run scoped LLM repair, dry-run against a recorded Execution Fixture, write a Patch Candidate.
+- Default policy auto-applies only `safe` patches; everything else parks for review and fires a `patch.proposed` chat notification.
 
 ## Drift signals
 
-A Step failure becomes a self-healing trigger when the engine recognizes one of five drift signals. Anything else is a normal failure and follows the retry/backoff path.
+- A Step failure triggers self-healing only when the engine recognizes one of five drift signals.
+- All other failures follow the normal retry/backoff path.
 
 | Signal | What the engine sees |
 |---|---|
@@ -14,11 +17,13 @@ A Step failure becomes a self-healing trigger when the engine recognizes one of 
 | **Schema introspection delta** | For drivers that introspect (Postgres, GraphQL), the introspection result differs from the previous snapshot in a way that touches a Step's projected fields. |
 | **Response schema diff** | The driver records a schema version on every successful call; a new call's canonicalized schema diverges from the most recent `schema_versions` row for the same endpoint. |
 
-Each signal is detected at the driver layer and surfaces to the orchestrator as a typed `drift` failure attached to the Step error. The repair queue is fed only by `drift` failures.
+- Each signal is detected at the driver layer and surfaces as a typed `drift` failure attached to the Step error.
+- The repair queue is fed only by `drift` failures.
 
 ## The `workflow.repair` loop
 
-The repair loop runs as a `workflow.repair` queue job. The job carries the failing `execution_id`, `step_key`, the captured drift signal, and the target Connector and endpoint.
+- Runs as a `workflow.repair` queue job.
+- Job payload: `execution_id`, `step_key`, drift signal, target Connector and endpoint.
 
 ```mermaid
 flowchart TD
@@ -40,20 +45,11 @@ flowchart TD
   L --> M
 ```
 
-Step by step:
-
-1. **Detect.** The Step driver flags a `drift` failure and enqueues a `workflow.repair` job.
-2. **Diff.** Load the last `schema_versions` row for the endpoint; canonicalize the failing response; produce a structured diff.
-3. **Refresh upstream docs.** If the Connector exposes a documentation source, run an incremental ingestion pass for the affected endpoint. Skipped when the source is offline or unchanged within the freshness window.
-4. **Assemble the repair prompt.** Walk the Context Enhancement pipeline with the repair-only "prior failures" section populated with the failing Step, the diff, and the failing response sample.
-5. **Run the LLM repair loop.** `streamObject` against the repair palette with `stepCountIs(20)` and a 120 s timeout. The loop is bounded — no escape hatches into other tools.
-6. **Dry-run.** The proposed patch is applied to a synthetic copy of the Step and executed against a recorded Execution Fixture for the same endpoint. The fixture dry-run is the final gate; a patch that fails the fixture is rejected and the loop iterates (within its step cap).
-7. **Write a Patch Candidate.** Persist the diff, classification, fixture id, status, and provenance into `patch_candidates`.
-8. **Apply or park.** Route based on the auto-apply policy (next section).
+The driver detects drift, diffs against the last `schema_versions` row, optionally refreshes upstream docs, then runs a bounded LLM repair loop (`stepCountIs(20)`, 120 s timeout) against the narrow repair palette. The proposed patch is dry-run against a recorded Execution Fixture; passing patches are written to `patch_candidates` and routed through the auto-apply policy, while failing patches re-enter the loop within its step cap.
 
 ## Repair tool palette
 
-Deliberately narrow. The repair loop can correct drift, not redesign the Step.
+Deliberately narrow — the repair loop corrects drift, not redesigns the Step.
 
 | Tool | Use |
 |---|---|
@@ -62,11 +58,12 @@ Deliberately narrow. The repair loop can correct drift, not redesign the Step.
 | `change_type` | Widen or shift a type on a parameter or response field (`string → string | null`, `int → number`). |
 | `add_header` | Add a new header to the request. |
 
-Anything outside this palette is out of scope for an automated patch. Repairs that would require new Steps, new Connectors, new auth modes, or rewritten transform logic are surfaced as a `patch.proposed` notification with no auto-apply path — operators handle those in a regular `converse` Conversation.
+- Anything outside this palette is out of scope for automated repair.
+- Repairs requiring new Steps, Connectors, auth modes, or rewritten transforms surface as a `patch.proposed` notification with no auto-apply path.
 
 ## Patch classification
 
-Every Patch Candidate carries a classification. The rule lives in app code as a small pure function that examines the structured diff.
+Every Patch Candidate carries a classification, determined by a small pure function that examines the structured diff.
 
 | Classification | Examples |
 |---|---|
@@ -92,9 +89,9 @@ function classify(diff: PatchDiff): "safe" | "unsafe" {
 
 ## Auto-apply policy
 
-The default policy is **`safe-patches only`**: a Patch Candidate is automatically applied if and only if its classification is `safe` *and* the fixture dry-run succeeded. Everything else lands in the review queue and fires a `patch.proposed` chat notification through the Notification Rule pipeline.
-
-Tenants can override the policy per Workflow:
+- Default: auto-apply only `safe` patches whose fixture dry-run succeeded.
+- Everything else lands in the review queue and fires a `patch.proposed` chat notification.
+- Tenants can override the policy per Workflow:
 
 | Policy | Behavior |
 |---|---|
@@ -102,20 +99,21 @@ Tenants can override the policy per Workflow:
 | `never-auto` | Never auto-apply. Every patch lands in the review queue. |
 | `dry-run-gate` | Auto-apply any patch — `safe` or `unsafe` — whose fixture dry-run passed. Use only for non-critical workflows. |
 
-The override is stored on the Workflow row. Trade-off: three named policies cover the practical operating modes without exposing a generic predicate language.
+Trade-off: three named policies (stored on the Workflow row) cover practical operating modes without exposing a generic predicate language.
 
 ## Grounding
 
-The repair prompt is grounded by the same Context Enhancement pipeline that powers conversational authoring, with two specifics:
+Grounded by the same Context Enhancement pipeline as conversational authoring:
 
-- **Skills load in the same order** (global → connector → workflow), and only `active` Skills are considered. Connector quirks and security best-practices Skills do most of the work in repair runs.
-- **Fresh connector documentation** for the affected endpoint is appended to the prompt section. If re-ingestion failed, the prompt still includes the most recent stored chunks and tags them with their `seen_at` so the model knows their age.
+- **Skills load in the same order** (global -> connector -> workflow); only `active` Skills are considered.
+- **Fresh connector documentation** for the affected endpoint is appended. If re-ingestion failed, the most recent stored chunks are included and tagged with their `seen_at`.
 
-The fixture dry-run is the final gate. No Patch Candidate is written unless the dry-run against a recorded `(request, response)` sample succeeded. A Connector with no Execution Fixtures cannot benefit from auto-apply at all — its patches always park for review regardless of policy.
+- The fixture dry-run is the final gate — no Patch Candidate is written unless the dry-run against a recorded `(request, response)` sample succeeded.
+- A Connector with no Execution Fixtures cannot benefit from auto-apply; its patches always park for review regardless of policy.
 
 ## Audit trail
 
-Every Patch Candidate write and every auto-apply writes to `audit_log`:
+Every Patch Candidate write and every auto-apply writes to `audit_log`.
 
 | Event | What gets recorded |
 |---|---|
@@ -124,7 +122,8 @@ Every Patch Candidate write and every auto-apply writes to `audit_log`:
 | `patch.rejected` | Patch Candidate id, rejecting actor, optional reason. |
 | `patch.superseded` | A newer Patch Candidate replaced this one before review. |
 
-The `audit_log.meta` JSONB column carries the full diff and provenance, so a reviewer reading the audit trail sees exactly what the model produced and what the engine matched against. Every auto-apply is replay-safe — the prior Workflow Version is preserved in `workflow_versions` and a single `subkit workflows restore` call rolls back any patch the engine applied.
+- `audit_log.meta` JSONB carries the full diff and provenance so reviewers see exactly what the model produced.
+- Every auto-apply is replay-safe — the prior Workflow Version is preserved in `workflow_versions` and `subkit workflows restore` rolls back any patch.
 
 ## Patch Candidate lifecycle
 
@@ -139,4 +138,5 @@ stateDiagram-v2
   superseded --> [*]
 ```
 
-`proposed` is the only entry state; `applied`, `rejected`, and `superseded` are terminal. Superseding is automatic — when a fresh repair run produces a candidate covering the same `(workflow_id, endpoint_key)` pair as a still-pending one, the older candidate transitions to `superseded` and stops emitting notifications.
+- `proposed` is the only entry state; `applied`, `rejected`, and `superseded` are terminal.
+- Superseding is automatic — a new candidate covering the same `(workflow_id, endpoint_key)` pair transitions the older one to `superseded`.

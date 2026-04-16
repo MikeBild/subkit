@@ -1,41 +1,64 @@
 # 32 — Deployment
 
-The engine ships as a single Bun-compiled binary that runs next to a Postgres instance. There is no application server, no language runtime to install, and no GUI. A small `docker-compose.yml` is the canonical local and small-production layout. The Tunnel agent is a separate distributable binary that runs on the customer side and is **not** part of the engine compose file.
+The engine ships as a single Bun-compiled binary that runs next to a Postgres instance.
+
+- No application server, no language runtime to install, and no GUI.
+- A `docker-compose.yml` is the canonical local and small-production layout.
+- The Tunnel agent is a separate distributable binary that runs on the customer side.
 
 ## Compiling the binary
 
-The engine compiles with one command per target triple. Trade-off: per-triple compilation multiplies build time, but the resulting artifact has zero runtime dependencies, which is what customers actually want.
+The engine and agent compile with one command per target triple. Version is injected at compile time via `BUILD_VERSION`.
+
+- Trade-off: per-triple compilation multiplies build time, but the resulting artifact has zero runtime dependencies.
 
 ```sh
-# Linux x64
-bun build --compile --target=bun-linux-x64 ./src/index.ts --outfile=workflow-engine-linux-x64
+# Engine — Linux x64
+bun build apps/engine/src/index.ts --compile --target=bun-linux-x64 \
+  --define "BUILD_VERSION=\"$(node -p 'require(\"./package.json\").version')\"" \
+  --outfile dist/engine-linux-x64
 
-# Linux arm64
-bun build --compile --target=bun-linux-arm64 ./src/index.ts --outfile=workflow-engine-linux-arm64
+# Engine — Linux arm64
+bun build apps/engine/src/index.ts --compile --target=bun-linux-arm64 \
+  --define "BUILD_VERSION=\"$(node -p 'require(\"./package.json\").version')\"" \
+  --outfile dist/engine-linux-arm64
 
-# macOS x64
-bun build --compile --target=bun-darwin-x64 ./src/index.ts --outfile=workflow-engine-darwin-x64
+# Engine — macOS x64
+bun build apps/engine/src/index.ts --compile --target=bun-darwin-x64 \
+  --define "BUILD_VERSION=\"$(node -p 'require(\"./package.json\").version')\"" \
+  --outfile dist/engine-darwin-x64
 
-# macOS arm64
-bun build --compile --target=bun-darwin-arm64 ./src/index.ts --outfile=workflow-engine-darwin-arm64
+# Engine — macOS arm64
+bun build apps/engine/src/index.ts --compile --target=bun-darwin-arm64 \
+  --define "BUILD_VERSION=\"$(node -p 'require(\"./package.json\").version')\"" \
+  --outfile dist/engine-darwin-arm64
 
-# Windows x64
-bun build --compile --target=bun-windows-x64 ./src/index.ts --outfile=workflow-engine-windows-x64.exe
+# Engine — Windows x64
+bun build apps/engine/src/index.ts --compile --target=bun-windows-x64 \
+  --define "BUILD_VERSION=\"$(node -p 'require(\"./package.json\").version')\"" \
+  --outfile dist/engine-windows-x64.exe
 ```
 
-The Tunnel agent compiles from the same codebase with a separate entry point:
+The Tunnel agent compiles from the same source tree with a separate entry point:
 
 ```sh
-bun build --compile --target=bun-linux-x64 ./src/agent.ts --outfile=tunnel-agent-linux-x64
+bun build apps/agent/src/index.ts --compile --target=bun-linux-x64 \
+  --define "BUILD_VERSION=\"$(node -p 'require(\"./package.json\").version')\"" \
+  --outfile dist/tunnel-agent-linux-x64
 ```
 
 ### macOS: ad-hoc code signing
 
-Bun-compiled binaries carry no code signature. On recent macOS (especially Apple Silicon) Apple Mobile File Integrity (AMFI) refuses to launch any unsigned executable with "completely unsigned code" and terminates the process before `main` runs. This is distinct from the Gatekeeper quarantine flag set by Safari downloads — it applies to any unsigned binary, including ones compiled locally. Only ad-hoc code signing fixes it.
+Bun-compiled binaries carry no code signature. On recent macOS (especially Apple Silicon) Apple Mobile File Integrity (AMFI) refuses to launch any unsigned executable and terminates the process before `main` runs.
 
-The repo ships a helper at `scripts/codesign-macos.sh` that ad-hoc signs a Mach-O with a synthetic identity and no-ops on non-Darwin hosts. The `build:engine`, `build:agent`, and `build:cli` package scripts chain it in automatically, so `bun run build:all` produces launchable binaries on macOS with no additional steps. Trade-off: ad-hoc signing is enough for local dev and trusted internal hosts, but public distribution still requires a real Developer ID signature plus notarization through Apple.
+- This is distinct from the Gatekeeper quarantine flag set by Safari downloads -- it applies to any unsigned binary, including ones compiled locally.
+- Only ad-hoc code signing fixes it.
 
-There is one Bun-specific quirk worth knowing about: a plain `codesign --sign - --force` on a freshly compiled Bun binary fails with `invalid or unsupported format for signature`, even though the Mach-O carries an `LC_CODE_SIGNATURE` load command. Calling `codesign --remove-signature` first resets the signature region and lets the subsequent sign succeed. The helper script does both steps. To sign an out-of-band binary manually:
+The repo ships a helper at `scripts/codesign-macos.sh` that ad-hoc signs a Mach-O with a synthetic identity and no-ops on non-Darwin hosts. The `build:engine`, `build:agent`, and `build:cli` package scripts chain it in automatically, so `bun run build:all` produces launchable binaries on macOS with no additional steps.
+
+- Trade-off: ad-hoc signing is enough for local dev and trusted internal hosts, but public distribution still requires a real Developer ID signature plus notarization through Apple.
+
+There is one Bun-specific quirk: a plain `codesign --sign - --force` on a freshly compiled Bun binary fails with `invalid or unsupported format for signature`, even though the Mach-O carries an `LC_CODE_SIGNATURE` load command. Calling `codesign --remove-signature` first resets the signature region and lets the subsequent sign succeed. The helper script does both steps. To sign an out-of-band binary manually:
 
 ```sh
 codesign --remove-signature path/to/binary 2>/dev/null || true
@@ -45,87 +68,150 @@ codesign -dv path/to/binary 2>&1 | grep Signature   # expect: Signature=adhoc
 
 ## Container image
 
-The container image is a distroless / scratch base with the compiled binary copied in. There is no shell, no package manager, and no language runtime in the runtime image. Trade-off: distroless images make container debugging harder (no `sh` to exec into) and pay back by shrinking the attack surface to almost nothing.
+The container image uses a slim Debian base with the compiled binary copied in. There is no package manager and no language runtime in the runtime image.
+
+- Trade-off: slim images shrink the attack surface while still providing basic debugging tools (`wget`, `sh`).
 
 ```dockerfile
-# Dockerfile
-FROM oven/bun:1 AS build
-WORKDIR /src
-COPY bun.lockb package.json ./
-RUN bun install --frozen-lockfile
-COPY . .
-RUN bun build --compile --target=bun-linux-x64 ./src/index.ts --outfile=/out/workflow-engine
+# docker/Dockerfile.engine
+FROM oven/bun:1.3-slim AS builder
+ARG TARGETARCH
+ARG ENGINE_VERSION=0.0.0-dev
+WORKDIR /app
 
-FROM gcr.io/distroless/cc-debian12:nonroot
-COPY --from=build /out/workflow-engine /workflow-engine
-USER nonroot
-EXPOSE 8080
-ENTRYPOINT ["/workflow-engine"]
+COPY package.json bun.lock bunfig.toml tsconfig.json tsconfig.base.json biome.json ./
+COPY apps ./apps
+COPY packages ./packages
+
+RUN bun install --frozen-lockfile
+
+RUN mkdir -p /out \
+    && BUN_TARGET="bun-linux-$(if [ "$TARGETARCH" = "amd64" ]; then echo x64; else echo arm64; fi)" \
+    && bun build apps/engine/src/index.ts \
+        --compile \
+        --target="$BUN_TARGET" \
+        --outfile=/out/engine
+
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tzdata wget \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /out/engine /usr/local/bin/engine
+ENV NODE_ENV=production PORT=3000
+EXPOSE 3000 3001
+USER nobody
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
+  CMD wget -qO- "http://127.0.0.1:${PORT:-3000}/v1/health" >/dev/null 2>&1 || exit 1
+ENTRYPOINT ["/usr/local/bin/engine"]
 ```
 
 ## docker-compose layout
 
-The compose file pins images to immutable digests. MinIO and `dockerd` are optional and gated by the `with-storage` and `with-sandbox` profiles respectively. Trade-off: profiles add a layer of indirection but let the same file serve both the minimal "just app + Postgres" and the full "app + Postgres + storage + custom-tool sandbox" cases.
+The compose file defines a `subkit` bridge network. MinIO and the tunnel agent are optional and gated by the `storage` and `tunnel` profiles respectively. One-shot `migrate` and `seed` services run before the engine starts.
+
+- Trade-off: profiles add a layer of indirection but let the same file serve both the minimal "just engine + Postgres" and the full stack.
 
 ```yaml
-# docker-compose.yml
-services:
-  app:
-    image: ghcr.io/example/workflow-engine@sha256:...
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgres://engine:engine@postgres:5432/engine
-      MASTER_KEY: ${MASTER_KEY}
-      LLM_PRIMARY: ${LLM_PRIMARY}
-      LLM_FALLBACK: ${LLM_FALLBACK}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
-      PORT: "8080"
-    ports: ["8080:8080"]
-    healthcheck:
-      test: ["CMD", "/workflow-engine", "healthcheck"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    networks: [internal]
-
-  postgres:
-    image: postgres:16@sha256:...
-    environment:
-      POSTGRES_USER: engine
-      POSTGRES_PASSWORD: engine
-      POSTGRES_DB: engine
-    volumes: [pgdata:/var/lib/postgresql/data]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U engine"]
-      interval: 5s
-      retries: 10
-    networks: [internal]
-
-  minio:
-    image: minio/minio@sha256:...
-    profiles: [with-storage]
-    command: ["server", "/data"]
-    environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
-    volumes: [miniodata:/data]
-    networks: [internal]
-
-  dockerd:
-    image: docker:25-dind@sha256:...
-    profiles: [with-sandbox]
-    privileged: true
-    environment: { DOCKER_TLS_CERTDIR: "" }
-    networks: [internal]
-
+# docker-compose.yml (simplified)
 networks:
-  internal:
+  subkit:
+    driver: bridge
 
 volumes:
-  pgdata:
-  miniodata:
+  subkit_pgdata:
+  subkit_minio:
+  subkit_blobs:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks: [subkit]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-subkit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-subkit}
+      POSTGRES_DB: ${POSTGRES_DB:-subkit}
+    ports: ["5432:5432"]
+    volumes: [subkit_pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-subkit} -d ${POSTGRES_DB:-subkit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.migrate
+    restart: "no"
+    networks: [subkit]
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-subkit}:${POSTGRES_PASSWORD:-subkit}@postgres:5432/${POSTGRES_DB:-subkit}
+      MASTER_KEY: ${MASTER_KEY}
+
+  seed:
+    image: subkit/migrate:local
+    entrypoint: ["bun", "run", "apps/engine/src/db/seed.ts"]
+    restart: "no"
+    networks: [subkit]
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-subkit}:${POSTGRES_PASSWORD:-subkit}@postgres:5432/${POSTGRES_DB:-subkit}
+      MASTER_KEY: ${MASTER_KEY}
+
+  engine:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.engine
+    restart: unless-stopped
+    networks: [subkit]
+    depends_on:
+      postgres: { condition: service_healthy }
+      seed: { condition: service_completed_successfully }
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgres://${POSTGRES_USER:-subkit}:${POSTGRES_PASSWORD:-subkit}@postgres:5432/${POSTGRES_DB:-subkit}
+      MASTER_KEY: ${MASTER_KEY}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      LLM_PRIMARY: ${LLM_PRIMARY:-}
+      LLM_FALLBACK: ${LLM_FALLBACK:-}
+    ports: ["3000:3000", "3001:3001"]
+    volumes: [subkit_blobs:/var/data/blobs]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/v1/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  minio:
+    image: minio/minio:latest
+    profiles: ["storage"]
+    networks: [subkit]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-subkit}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-subkitsubkit}
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [subkit_minio:/data]
+
+  agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    profiles: ["tunnel"]
+    networks: [subkit]
+    depends_on:
+      engine: { condition: service_healthy }
+    environment:
+      SUBKIT_ENGINE_URL: ${TUNNEL_ENGINE_URL:-ws://engine:3001}
+      SUBKIT_API_KEY: ${TUNNEL_AGENT_KEY:-}
+      SUBKIT_TARGETS: ${TUNNEL_TARGETS:-}
 ```
 
 ## Environment variables
@@ -135,15 +221,21 @@ The engine reads its configuration from environment variables. Per-Tenant and pe
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | Postgres connection string. |
-| `MASTER_KEY` | 32-byte base64 root key for AES-256-GCM. See `28-security.md`. |
+| `MASTER_KEY` | 32-byte hex root key for AES-256-GCM. See `28-security.md`. |
 | `LLM_PRIMARY` | Default primary LLM provider id. Per-Tenant override on the `tenants` row. |
 | `LLM_FALLBACK` | Default fallback LLM provider id. |
 | `S3_ENDPOINT` | Object storage endpoint for payload offload. Optional. |
 | `S3_ACCESS_KEY` | Object storage access key. Optional. |
 | `S3_SECRET_KEY` | Object storage secret key. Optional. |
-| `DOCKER_HOST` | URL of the Docker Engine for the custom-tool sandbox tier. Optional. |
-| `PORT` | TCP port the HTTP server binds to. |
+| `S3_BUCKET` | Object storage bucket name. Optional. |
+| `FILE_STORAGE_ENABLED` | Enable local file storage fallback. Optional. |
+| `FILE_STORAGE_ROOT` | Path to local blob storage directory. Optional. |
+| `PORT` | TCP port the HTTP server binds to (default `3000`). |
+| `TUNNEL_PORT` | TCP port for tunnel WebSocket connections (default `3001`). |
 | `PUBLIC_BASE_URL` | Externally reachable base URL. Used in webhook URLs, chat deeplinks, OIDC redirect URIs, MCP transport URLs. |
+| `ANTHROPIC_API_KEY` | Anthropic API key for LLM calls. |
+| `FIREBASE_PROJECT_ID` | Firebase project id for auth. |
+| `FIREBASE_LOGIN_URL` | Firebase hosted login page URL. |
 | `SLACK_SIGNING_SECRET` | Slack Events API signing secret. |
 | `SLACK_CLIENT_ID` | Slack OAuth client id. |
 | `SLACK_CLIENT_SECRET` | Slack OAuth client secret. |
@@ -158,7 +250,11 @@ Per-Workspace chat secrets (Slack bot tokens, Teams credentials, Google Chat tok
 
 ## Healthcheck
 
-The engine exposes `GET /v1/health`. The check is shallow (the process is up and the HTTP server is listening) by default, with an optional `?deep=1` mode that also pings Postgres and the configured queue. Trade-off: a deep check makes the orchestrator slower to mark the container ready; the shallow default is the right call for the load-balancer health check, with the deep variant reserved for an operator's own monitoring.
+The engine exposes `GET /v1/health`.
+
+- The check is shallow by default (process is up, HTTP server is listening).
+- An optional `?deep=1` mode also pings Postgres and the configured queue.
+- Trade-off: a deep check makes the orchestrator slower to mark the container ready; the shallow default is the right call for load-balancer health checks, with the deep variant reserved for operator monitoring.
 
 ```mermaid
 sequenceDiagram
@@ -202,23 +298,42 @@ flowchart TD
 
 | Concern | Practice |
 |---|---|
-| Postgres backup | `pg_dump -Fc` on a schedule. The full state of the engine — Workflows, Connectors, Credentials, Executions, audit log, queues — lives in Postgres. |
-| Postgres restore | `pg_restore -d engine` against a fresh database. The engine restarts cleanly because the durable queue and the outbox catch up from the cursor table. |
-| Object storage backup | If MinIO is in use, snapshot the `miniodata` volume on the same schedule. The offloaded payloads referenced by `result_storage_uri` live there. |
+| Postgres backup | `pg_dump -Fc` on a schedule. The full state of the engine -- Workflows, Connectors, Credentials, Executions, audit log, queues -- lives in Postgres. |
+| Postgres restore | `pg_restore -d subkit` against a fresh database. The engine restarts cleanly because the durable queue and the outbox catch up from the cursor table. |
+| Object storage backup | If MinIO is in use, snapshot the `subkit_minio` volume on the same schedule. The offloaded payloads referenced by `result_storage_uri` live there. |
 | Encryption keys | `MASTER_KEY` is **not** in the database backup. It must be backed up separately, in a secret manager, with the same rigor as a TLS private key. |
 
-Trade-off: separating the key from the data is the only safe place to be. A backup that contains both ciphertext and key is no better than plaintext.
+- Trade-off: separating the key from the data is the only safe place to be. A backup that contains both ciphertext and key is no better than plaintext.
 
 ## Publishing the Tunnel agent
 
-The Tunnel agent compiles from the same source tree, with `./src/agent.ts` as the entry point and a separate `bun build --compile` invocation per target triple. The agent is published as a standalone binary that customers install on a host inside their private network. It does not ship as a container image because the entire point of the agent is to live on a customer-controlled host with outbound network access to the engine.
+The Tunnel agent compiles from the same source tree, with `apps/agent/src/index.ts` as the entry point and a separate `bun build --compile` invocation per target triple.
+
+- The agent is published as a standalone binary that customers install on a host inside their private network.
+- It does not ship as a container image because the entire point of the agent is to live on a customer-controlled host with outbound network access to the engine.
+- However, the compose file does include an optional `agent` service under the `tunnel` profile for local development.
 
 ```sh
-bun build --compile --target=bun-linux-x64    ./src/agent.ts --outfile=tunnel-agent-linux-x64
-bun build --compile --target=bun-linux-arm64  ./src/agent.ts --outfile=tunnel-agent-linux-arm64
-bun build --compile --target=bun-darwin-x64   ./src/agent.ts --outfile=tunnel-agent-darwin-x64
-bun build --compile --target=bun-darwin-arm64 ./src/agent.ts --outfile=tunnel-agent-darwin-arm64
-bun build --compile --target=bun-windows-x64  ./src/agent.ts --outfile=tunnel-agent-windows-x64.exe
+bun build apps/agent/src/index.ts --compile --target=bun-linux-x64 \
+  --define "BUILD_VERSION=\"$(node -p 'require(\"./package.json\").version')\"" \
+  --outfile dist/tunnel-agent-linux-x64
+
+bun build apps/agent/src/index.ts --compile --target=bun-linux-arm64 \
+  --define "BUILD_VERSION=\"$(node -p 'require(\"./package.json\").version')\"" \
+  --outfile dist/tunnel-agent-linux-arm64
+
+bun build apps/agent/src/index.ts --compile --target=bun-darwin-x64 \
+  --define "BUILD_VERSION=\"$(node -p 'require(\"./package.json\").version')\"" \
+  --outfile dist/tunnel-agent-darwin-x64
+
+bun build apps/agent/src/index.ts --compile --target=bun-darwin-arm64 \
+  --define "BUILD_VERSION=\"$(node -p 'require(\"./package.json\").version')\"" \
+  --outfile dist/tunnel-agent-darwin-arm64
+
+bun build apps/agent/src/index.ts --compile --target=bun-windows-x64 \
+  --define "BUILD_VERSION=\"$(node -p 'require(\"./package.json\").version')\"" \
+  --outfile dist/tunnel-agent-windows-x64.exe
 ```
 
-The CLI surfaces it as `subkit tunnel-agent run`, but the underlying binary is shippable on its own for customers who do not want the full CLI on the agent host. Trade-off: shipping a separate agent binary adds release surface; the gain is that the agent has a tiny attack profile and zero engine dependencies.
+- The CLI surfaces it as `subkit tunnel-agent run`, but the underlying binary is shippable on its own for customers who do not want the full CLI on the agent host.
+- Trade-off: shipping a separate agent binary adds release surface; the gain is that the agent has a tiny attack profile and zero engine dependencies.

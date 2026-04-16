@@ -4,9 +4,13 @@ The engine has exactly one durable work primitive (pg-boss) and exactly one noti
 
 ## pg-boss as queue and cron engine
 
-**Trade-off**: pg-boss covers durable named queues and cron schedules in one library backed by the existing Postgres. Alternatives (BullMQ, RabbitMQ, NATS JetStream) all introduce a second stateful infrastructure component and a second client driver — pg-boss avoids both at the cost of pure Postgres throughput, which is sufficient for this engine's job mix.
+| Benefit | Cost | When Appropriate |
+|---|---|---|
+| Single Postgres backing store — no Redis, Kafka, or NATS | Throughput limited to Postgres capabilities | Job mix fits within Postgres throughput |
+| One library covers both durable queues and cron schedules | pg-boss-specific API surface to learn | Need both queue and cron in one stack |
+| Reuses existing `pg` driver (no second client) | Tight coupling to Postgres availability | Already running Postgres for domain data |
 
-pg-boss brings the `pg` driver as a transitive dependency. The engine reuses the same `pg` for the LISTEN/NOTIFY listener so there is no second Postgres client.
+Trade-off: pg-boss avoids a second stateful component at the cost of pure Postgres throughput, which is sufficient for this engine's job mix.
 
 ## Named queues
 
@@ -50,34 +54,34 @@ Between these, a periodic reconciler runs every **60 seconds** and re-reads the 
 
 ## Why LISTEN/NOTIFY alone is not enough
 
-Postgres `LISTEN/NOTIFY` is a fire-and-forget signal. It has three properties that make it unsafe as a sole notification primitive:
-
-- **It is not durable.** A NOTIFY emitted while no listener is connected is gone forever.
-- **It has no replay.** A listener that disconnects and reconnects has no way to ask "what did I miss".
-- **It has a payload size limit** of roughly 8 KB and no guarantee of ordering against the transaction that produced it under all replication topologies.
+- **Not durable** — a NOTIFY with no active listener is lost forever.
+- **No replay** — a reconnecting listener cannot retrieve missed notifications.
+- **~8 KB payload cap** — no ordering guarantees against the producing transaction under all replication topologies.
 
 The engine therefore always pairs NOTIFY with the **transactional outbox pattern**. NOTIFY is a wake-up signal; the outbox is the source of truth.
 
 ## The outbox pattern
 
-Every domain write that has externally visible consequences (an Execution finishing, a Workflow being upserted, a Patch Candidate being proposed, an API key being rotated, a Tunnel changing state) writes a row into the `events` outbox table **inside the same transaction** as the domain write. After the transaction commits, the same connection issues a `pg_notify` carrying only the new event id.
-
-Defer to `04-data-model.md` for the table shape. The relevant fields here are `id` (a monotonically increasing `bigserial` per channel), `channel`, `type`, and `payload`.
+- Every domain write with externally visible consequences (Execution finish, Workflow upsert, Patch Candidate proposal, API key rotation, Tunnel state change) writes a row into the `events` outbox table **inside the same transaction**.
+- After the transaction commits, the same connection issues a `pg_notify` carrying only the new event id.
+- See `04-data-model.md` for the table shape. Relevant fields: `id` (monotonically increasing `bigserial` per channel), `channel`, `type`, `payload`.
 
 ## NOTIFY wake-up payload
 
-The wake-up payload is intentionally tiny. Postgres caps `NOTIFY` payloads at roughly 8 KB; the engine stays well under that by carrying only the event id as a decimal string:
+- The wake-up payload carries only the event id as a decimal string, staying well under the ~8 KB `NOTIFY` cap.
 
 ```ts
 // inside the same transaction that wrote the domain row
 await tx.execute(sql`SELECT pg_notify(${channel}, ${String(eventId)})`);
 ```
 
-A consumer that receives a wake-up reads the event id, fetches the row from `events`, and dispatches it. A wake-up that races a slow transaction commit is harmless: the row will appear under the catch-up query on the next tick.
+- A consumer that receives a wake-up fetches the row from `events` and dispatches it.
+- A wake-up racing a slow commit is harmless — the row appears under the catch-up query on the next tick.
 
 ## `outbox_cursors` catch-up protocol
 
-For every channel the engine listens on, an `outbox_cursors` row tracks the highest event id that has been successfully dispatched. The catch-up query is the same in every code path:
+- For every channel, an `outbox_cursors` row tracks the highest event id successfully dispatched.
+- The catch-up query is identical in every code path:
 
 ```ts
 // pseudocode for the listener loop
@@ -102,7 +106,7 @@ The drain runs in three situations:
 - **On every NOTIFY wake-up**, because the wake-up is only a hint that *at least one* new row exists.
 - **On a periodic safety-net tick** (the same 60 s cadence as cron reconciliation) so a silently broken NOTIFY path still drains.
 
-Every consumer dedupes on `event_id`, so replaying a row that was already dispatched is a no-op. The protocol is intentionally simple because every component is idempotent.
+Trade-off: every consumer dedupes on `event_id`, so replayed rows are no-ops — simplicity is possible because every component is idempotent.
 
 ## The dedicated `pg.Client` listener
 
@@ -114,11 +118,12 @@ The listener is a single dedicated `pg.Client` (not a pooled connection — pool
 4. Process incoming `notification` events from the driver.
 5. On error or unexpected disconnect, disconnect cleanly, sleep with exponential-backoff and jitter, then reconnect and re-`LISTEN` from step 2.
 
-The reconnect backoff is the same shape as the Step retry backoff: base 1 s, cap 60 s, with full jitter. There is no maximum retry count — the listener reconnects forever, because losing the listener entirely would silently break every downstream consumer.
+Trade-off: the reconnect backoff (base 1 s, cap 60 s, full jitter) has no maximum retry count — the listener reconnects forever because losing it would silently break every downstream consumer.
 
 ## Channel specs
 
-The engine declares a fixed set of outbox channels. New event types fit into one of these channels rather than introducing new channels.
+- The engine declares a fixed set of outbox channels.
+- New event types fit into an existing channel rather than introducing new ones.
 
 | Channel | Carries |
 |---|---|
@@ -157,4 +162,5 @@ sequenceDiagram
   L->>DB: UPDATE outbox_cursors SET last_seen_id=42
 ```
 
-The wake-up dropped during the disconnect did not need to be retransmitted. The cursor-based catch-up query picked the row up the moment the listener came back, and the consumer's `event_id` dedup ensured that even if the wake-up had been redelivered later, no duplicate work would have occurred.
+- The dropped wake-up did not need retransmission — the cursor-based catch-up query picked the row up on reconnect.
+- The consumer's `event_id` dedup ensures no duplicate work even if the wake-up were redelivered later.

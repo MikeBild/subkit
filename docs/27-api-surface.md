@@ -197,6 +197,36 @@ Trade-off: trusting a `User-Agent` plus a `x-subkit-source` header from the CLI 
 |---|---|---|---|---|
 | `POST` | `/v1/extract` | Parse an uploaded file into structured JSON. Ephemeral. See `22-extract.md`. | `extract:run` | any |
 
+## Knowledge Sources
+
+| Method | Path | Purpose | Required scope | Auth |
+|---|---|---|---|---|
+| `GET`  | `/v1/knowledge-sources` | List Knowledge Sources. Filter by scope, status, workflow_id. | `knowledge:read` | any |
+| `POST` | `/v1/knowledge-sources` | Create a Knowledge Source (multipart file upload). | `knowledge:write` | any |
+| `GET`  | `/v1/knowledge-sources/:id` | Get a single Knowledge Source with chunk count. | `knowledge:read` | any |
+| `DELETE`| `/v1/knowledge-sources/:id` | Delete a Knowledge Source and its chunks. | `knowledge:write` | any |
+| `POST` | `/v1/knowledge-sources/search` | Semantic search across Knowledge Source chunks. | `knowledge:read` | any |
+
+## Skill Candidates
+
+| Method | Path | Purpose | Required scope | Auth |
+|---|---|---|---|---|
+| `GET`  | `/v1/skill-candidates` | List Skill Candidates. Filter by status, kind, confidence. | `skill:read` | any |
+| `GET`  | `/v1/skill-candidates/:id` | Get a single Skill Candidate with evidence. | `skill:read` | any |
+| `POST` | `/v1/skill-candidates/:id/approve` | Approve and promote to active Skill. | `skill:write` | any |
+| `POST` | `/v1/skill-candidates/:id/reject` | Reject a Skill Candidate. | `skill:write` | any |
+
+## Discovery
+
+| Method | Path | Purpose | Required scope | Auth |
+|---|---|---|---|---|
+| `POST` | `/v1/discovery/runs` | Create a Discovery Run (multipart file upload). | `discovery:write` | any |
+| `GET`  | `/v1/discovery/runs` | List Discovery Runs. | `discovery:read` | any |
+| `GET`  | `/v1/discovery/runs/:id` | Get a single Discovery Run with status and file count. | `discovery:read` | any |
+| `GET`  | `/v1/discovery/runs/:id/artifacts` | List artifacts from a Discovery Run. | `discovery:read` | any |
+| `POST` | `/v1/discovery/runs/:id/artifacts/:aid/approve` | Approve an artifact — materialize into real entity. | `discovery:write` | any |
+| `POST` | `/v1/discovery/runs/:id/artifacts/:aid/reject` | Reject an artifact. | `discovery:write` | any |
+
 ## Audit log
 
 | Method | Path | Purpose | Required scope | Auth |
