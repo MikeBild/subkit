@@ -250,9 +250,10 @@ export async function assembleEnhancedPrompt(
   const messagesTokens = countMessagesTokens(p.user_turns);
   let total = systemTokens + messagesTokens;
 
-  // Drop order: failure traces → user turns (never here — user turns are
-  // the call input) → docs → workflow skills → connector skills → global
-  // skills.
+  // Drop order (lowest priority dropped first):
+  //   failures → connector docs → knowledge chunks → user memory →
+  //   workflow skills → connector skills → global skills.
+  // User turns are never dropped (they are the call input).
   const recount = () => {
     system = render();
     systemTokens = countTokens(system);

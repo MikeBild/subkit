@@ -2,12 +2,13 @@
 // from applied patches.
 //
 // Input: Applied patches for a tenant (last 30 days)
-// Grouping key: (connector_id, patch kind, normalized path)
+// Grouping key: (workflow_id, patch kind, normalized path)
 // Threshold: >= 3 patches in group
-// Output: Connector-scoped PatternSignal
+// Output: Workflow-scoped PatternSignal (patches are workflow-level; connector
+//         context not available on patch_candidates rows)
 
 import { createHash } from "node:crypto";
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { patchCandidates } from "../../db/schema/executions.ts";
 import { computeConfidence, type PatternSignal } from "../types.ts";
@@ -16,7 +17,7 @@ const MIN_PATCH_COUNT = 3;
 const LOOKBACK_DAYS = 30;
 
 interface PatchGroup {
-  connector_id: string;
+  workflow_id: string;
   kind: string;
   path: string;
   count: number;
@@ -29,7 +30,6 @@ export async function detectRepairPatterns(
 ): Promise<PatternSignal[]> {
   const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
-  // Query applied patches from last 30 days
   const rows = await exec
     .select()
     .from(patchCandidates)
@@ -43,29 +43,32 @@ export async function detectRepairPatterns(
 
   if (rows.length === 0) return [];
 
-  // Group by (connector_id is on the workflow — we extract from diff metadata)
-  // The diff JSONB carries: { kind, description, path?, old_value?, new_value? }
+  // The diff JSONB carries: { kind, description, path?, field_path?, ... }
   const groups = new Map<string, PatchGroup>();
 
   for (const row of rows) {
     const diff = row.diff as Record<string, unknown> | null;
     if (!diff) continue;
 
-    const kind = (diff.kind as string) ?? "unknown";
-    const path = (diff.path as string) ?? (diff.field_path as string) ?? "";
+    const kind = typeof diff.kind === "string" ? diff.kind : "unknown";
+    const path =
+      typeof diff.path === "string"
+        ? diff.path
+        : typeof diff.field_path === "string"
+          ? diff.field_path
+          : "";
 
-    // We need the connector_id from the workflow context. Since patches
-    // don't carry connector_id directly, we derive a grouping key from
-    // (workflow_id, kind, path). This is still deterministic.
+    // Skip patches with no identifiable path — they can't form a pattern
+    if (!path) continue;
+
     const key = `${row.workflow_id}:${kind}:${path}`;
-
     const existing = groups.get(key);
     if (existing) {
       existing.count++;
       existing.patch_ids.push(row.id);
     } else {
       groups.set(key, {
-        connector_id: row.workflow_id, // used as scope reference
+        workflow_id: row.workflow_id,
         kind,
         path,
         count: 1,
@@ -74,18 +77,16 @@ export async function detectRepairPatterns(
     }
   }
 
-  // Filter groups meeting threshold and emit signals
   const signals: PatternSignal[] = [];
 
   for (const [, group] of groups) {
     if (group.count < MIN_PATCH_COUNT) continue;
 
-    // Count total patches for this connector to compute ratio
-    const totalForConnector = rows.filter((r) => r.workflow_id === group.connector_id).length;
-    const ratio = totalForConnector > 0 ? group.count / totalForConnector : 0;
+    const totalForWorkflow = rows.filter((r) => r.workflow_id === group.workflow_id).length;
+    const ratio = totalForWorkflow > 0 ? group.count / totalForWorkflow : 0;
 
     const fingerprint = createHash("sha256")
-      .update(`repair:${group.connector_id}:${group.kind}:${group.path}`)
+      .update(`repair:${group.workflow_id}:${group.kind}:${group.path}`)
       .digest("hex")
       .slice(0, 32);
 
@@ -99,18 +100,18 @@ export async function detectRepairPatterns(
     signals.push({
       pattern_kind: "repair_pattern",
       scope: "workflow",
-      workflow_id: group.connector_id,
-      title: `Recurring ${group.kind} on ${group.path || "response"}`,
+      workflow_id: group.workflow_id,
+      title: `Recurring ${group.kind} on ${group.path}`,
       body: description,
       examples: [`Applied ${group.count} times in the last ${LOOKBACK_DAYS} days`],
       best_practices: ["Document the naming convention to prevent future drift"],
-      pitfalls: [],
+      pitfalls: ["Drift may recur if the upstream API changes its naming convention again"],
       doc_refs: [],
       fingerprint,
       confidence: computeConfidence(group.count, ratio),
       evidence: group.patch_ids.map((id) => ({
         patch_candidate_id: id,
-        evidence_type: "patch_applied",
+        evidence_type: "patch_applied" as const,
         summary: `Patch applied: ${group.kind} on ${group.path}`,
       })),
     });
