@@ -2,7 +2,7 @@ name: release
 
 on:
   push:
-    tags: ['v*.*.*']
+    tags: ['v*.*.*', 'subkit-v*.*.*']
 
 permissions:
   contents: write
@@ -198,7 +198,8 @@ jobs:
       - name: Compile binary
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${GITHUB_REF_NAME#subkit-v}"
+          VERSION="${VERSION#v}"
           EXT=""
           TARGET_FLAG=""
           if [ "${{ matrix.os }}" = "windows" ]; then
@@ -269,7 +270,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: meta
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: TAG="${GITHUB_REF_NAME#subkit-v}"; echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - uses: digitalocean/action-doctl@v2
         with:
