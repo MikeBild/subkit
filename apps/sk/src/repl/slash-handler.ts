@@ -25,6 +25,8 @@ export interface SlashHandlerContext {
   allowedPermissions: readonly string[];
   /** Switch to a different profile by name. Provided by the REPL host. */
   switchProfile?: (name: string) => Promise<string>;
+  /** Override config file path (for testing). */
+  configPath?: string;
 }
 
 /**
@@ -152,7 +154,7 @@ export async function handleSlash(
     }
     case "profile":
     case "env": {
-      const cfg = loadConfig();
+      const cfg = loadConfig(ctx.configPath);
       const profileNames = Object.keys(cfg.profiles);
       const subArg = rawArgs[0];
 
@@ -168,7 +170,7 @@ export async function handleSlash(
         }
         // Fallback: persist the switch but can't re-wire the client in-flight
         cfg.active_profile = subArg;
-        saveConfig(cfg);
+        saveConfig(cfg, ctx.configPath);
         return `switched to "${subArg}" — restart sk to use the new profile`;
       }
 
