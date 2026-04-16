@@ -4,14 +4,18 @@
 // no table coupling). Persists to knowledge_sources + knowledge_chunks.
 
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql, sum } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
-import { KNOWLEDGE_SOURCE_MAX_BYTES, KnowledgeBudgetExceededError } from "./budgets.ts";
+import {
+  KNOWLEDGE_SOURCE_MAX_BYTES,
+  KNOWLEDGE_TENANT_MAX_BYTES,
+  KnowledgeBudgetExceededError,
+} from "./budgets.ts";
 import { detectFormat, parseFileToChunks } from "./parsers.ts";
 import type {
   CreateKnowledgeSourceParams,
@@ -88,6 +92,20 @@ export async function createKnowledgeSource(
       `File exceeds maximum size of ${KNOWLEDGE_SOURCE_MAX_BYTES} bytes`,
       byteSize,
       KNOWLEDGE_SOURCE_MAX_BYTES,
+    );
+  }
+
+  // Check tenant-level budget
+  const tenantUsage = await (exec ?? getDb())
+    .select({ total: sql<number>`coalesce(sum(${knowledgeSources.bytes_total}), 0)` })
+    .from(knowledgeSources)
+    .where(and(eq(knowledgeSources.tenant_id, p.tenant_id), isNull(knowledgeSources.deleted_at)));
+  const currentBytes = Number(tenantUsage[0]?.total ?? 0);
+  if (currentBytes + byteSize > KNOWLEDGE_TENANT_MAX_BYTES) {
+    throw new KnowledgeBudgetExceededError(
+      `Tenant knowledge budget exceeded (${currentBytes} + ${byteSize} > ${KNOWLEDGE_TENANT_MAX_BYTES})`,
+      currentBytes + byteSize,
+      KNOWLEDGE_TENANT_MAX_BYTES,
     );
   }
 
@@ -232,6 +250,14 @@ export async function updateKnowledgeSource(
 
     if (!existing[0]) return null;
     const before = toView(existing[0]);
+
+    // Validate scope+workflow_id constraint
+    const effectiveScope = p.patch.scope ?? existing[0].scope;
+    const effectiveWorkflowId =
+      p.patch.workflow_id !== undefined ? p.patch.workflow_id : existing[0].workflow_id;
+    if (effectiveScope === "workflow" && !effectiveWorkflowId) {
+      throw new Error("workflow_id is required when scope is 'workflow'");
+    }
 
     const updates: Record<string, unknown> = { updated_at: new Date() };
     if (p.patch.name !== undefined) updates.name = p.patch.name;

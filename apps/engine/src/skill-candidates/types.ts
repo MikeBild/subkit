@@ -69,6 +69,7 @@ export interface PatternSignal {
   examples: string[];
   best_practices: string[];
   pitfalls: string[];
+  doc_refs: string[];
   fingerprint: string;
   confidence: SkillCandidateConfidence;
   evidence: Array<{

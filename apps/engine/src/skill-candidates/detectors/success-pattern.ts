@@ -94,6 +94,7 @@ export async function detectSuccessPatterns(
             examples: [`Used in ${count} of ${selectorsWithMeta.length} successful request steps`],
             best_practices: ["Use this selector pattern for new steps targeting the same API"],
             pitfalls: [],
+            doc_refs: [],
             fingerprint,
             confidence: computeConfidence(count, ratio),
             evidence: selectorsWithMeta.slice(0, 50).map((s) => ({

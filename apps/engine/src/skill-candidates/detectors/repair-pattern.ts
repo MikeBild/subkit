@@ -105,6 +105,7 @@ export async function detectRepairPatterns(
       examples: [`Applied ${group.count} times in the last ${LOOKBACK_DAYS} days`],
       best_practices: ["Document the naming convention to prevent future drift"],
       pitfalls: [],
+      doc_refs: [],
       fingerprint,
       confidence: computeConfidence(group.count, ratio),
       evidence: group.patch_ids.map((id) => ({

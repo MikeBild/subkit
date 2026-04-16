@@ -54,6 +54,7 @@ import { registerNotificationRoutes } from "./routes/notifications.ts";
 import { registerPatchCandidateRoutes } from "./routes/patch-candidates.ts";
 import { registerRbacRoutes } from "./routes/rbac.ts";
 import { registerRequestHookRoutes } from "./routes/request-hooks.ts";
+import { registerDiscoveryRoutes } from "./routes/discovery.ts";
 import { registerKnowledgeSourceRoutes } from "./routes/knowledge-sources.ts";
 import { registerSkillCandidateRoutes } from "./routes/skill-candidates.ts";
 import { registerSkillRoutes } from "./routes/skills.ts";
@@ -168,6 +169,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerSkillRoutes(app);
   registerKnowledgeSourceRoutes(app);
   registerSkillCandidateRoutes(app);
+  registerDiscoveryRoutes(app);
   registerConversationRoutes(app);
   registerMcpCatalogRoutes(app);
   registerAiGenerateRoute(app);

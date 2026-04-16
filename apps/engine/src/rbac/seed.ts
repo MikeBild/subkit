@@ -42,6 +42,7 @@ function memberPermissionFilter(name: string): boolean {
   if (name === "api_key:revoke") return false;
   if (name.startsWith("credential:") && name !== "credential:read") return false;
   if (name.startsWith("tunnel:")) return false;
+  if (name === "discovery:approve") return false;
   if (name.endsWith(":delete")) return false;
   return true;
 }

@@ -87,7 +87,7 @@ export interface ConnectorDraft {
 }
 
 export interface SkillDraft {
-  scope: "global" | "connector";
+  scope: "global" | "connector" | "workflow";
   title: string;
   body: string;
   examples: string[];
