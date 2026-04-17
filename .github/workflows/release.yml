@@ -398,9 +398,15 @@ jobs:
             $COMPOSE up -d seed
             $COMPOSE up -d --no-deps engine
 
-            # Health check loop (30 attempts × 5s = 150s max)
+            # Health check loop (30 attempts × 5s = 150s max).
+            # The prod compose override `!reset []`'s the engine's host
+            # port publish, so the container is only reachable via the
+            # docker network. Use Docker's own HEALTHCHECK state, which
+            # matches what `docker ps` reports ("healthy" / "unhealthy").
+            ENGINE_ID=$($COMPOSE ps -q engine)
             for i in $(seq 1 30); do
-              if wget -qO- "http://127.0.0.1:3000/v1/health" 2>/dev/null | grep -q '"ok"'; then
+              HEALTH=$(docker inspect -f '{{.State.Health.Status}}' "$ENGINE_ID" 2>/dev/null || echo "")
+              if [ "$HEALTH" = "healthy" ]; then
                 echo "Engine v${VERSION} healthy"
                 break
               fi
