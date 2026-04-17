@@ -1,5 +1,10 @@
 # 34 — Installation
 
+> **Just want to get started?** Jump to the persona quickstart that fits:
+> [operator](quickstart/operator.md) · [developer](quickstart/developer.md)
+> · [end-user](quickstart/end-user.md). This page stays authoritative for
+> binaries, platforms, auto-update, and uninstall.
+
 This document covers installation, setup, auto-update, and uninstall for all platforms and all four binaries.
 
 ## Available Binaries

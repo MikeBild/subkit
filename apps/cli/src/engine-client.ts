@@ -191,6 +191,9 @@ export class EngineClient {
   archiveSkill(id: string): Promise<SkillSummary> {
     return this.request("POST", `/v1/skills/${id}/archive`);
   }
+  deleteSkill(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/skills/${id}`);
+  }
 
   // --------------------------- Executions ---------------------------
   listExecutions(query: Record<string, string | number | undefined> = {}) {

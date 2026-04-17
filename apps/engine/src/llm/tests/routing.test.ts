@@ -79,7 +79,7 @@ describe("llm/routing", () => {
       );
     expect(errorRows.length).toBe(1);
 
-    const triggered = events.find((e) => e.action === "llm.fallback.triggered");
+    const triggered = events.find((e) => e.action === "fallback.triggered");
     expect(triggered).toBeDefined();
   });
 });
