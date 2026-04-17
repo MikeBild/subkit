@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { daemonReachable, getDockerClient } from "../client.ts";
+import { daemonReachable, ensureImage, getDockerClient } from "../client.ts";
 import { containerExists, runContainer } from "../runner.ts";
 
 const reachable = await daemonReachable();
 if (!reachable) {
   console.log("[sandboxes.docker] daemon not reachable — skipping docker runner tests");
+} else {
+  // Pre-pull the image once for the whole suite — the tests below
+  // assume alpine:3 is local. Blocking at top-level keeps the tests
+  // themselves deterministic (no first-run slowness, no `No such
+  // image` surprises in CI).
+  await ensureImage("alpine:3");
 }
 
 describe.skipIf(!reachable)("docker runner", () => {
