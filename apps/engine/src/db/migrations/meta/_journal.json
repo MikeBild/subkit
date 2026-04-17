@@ -162,6 +162,13 @@
       "when": 1776355587028,
       "tag": "0022_fluffy_mister_fear",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1776404563291,
+      "tag": "0023_colossal_adam_warlock",
+      "breakpoints": true
     }
   ]
 }

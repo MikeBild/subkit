@@ -194,7 +194,7 @@ export const authProviderConfigs = pgTable(
     provider: text("provider").notNull(),
     priority: integer("priority").notNull(),
     enabled: boolean("enabled").default(true).notNull(),
-    // TODO(P5): wire AES-256-GCM from env.MASTER_KEY
+    // AES-256-GCM ciphertext (see apps/engine/src/crypto/aes-gcm.ts). Writers call encryptSecret(), readers decryptSecret(), keyed by env.MASTER_KEY.
     config_ciphertext: bytea("config_ciphertext"),
     config_iv: bytea("config_iv"),
     config_auth_tag: bytea("config_auth_tag"),

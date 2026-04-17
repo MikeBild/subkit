@@ -96,7 +96,7 @@ export const credentials = pgTable(
       .references(() => connectors.id, { onDelete: "cascade" }),
     environment: environmentEnum("environment").notNull(),
     mode: credentialModeEnum("mode").notNull(),
-    // TODO(P5): wire AES-256-GCM from env.MASTER_KEY
+    // AES-256-GCM ciphertext (see apps/engine/src/crypto/aes-gcm.ts). Writers call encryptSecret(), readers decryptSecret(), keyed by env.MASTER_KEY.
     ciphertext: bytea("ciphertext").notNull(),
     iv: bytea("iv").notNull(),
     auth_tag: bytea("auth_tag").notNull(),
@@ -122,7 +122,7 @@ export const endUserCredentials = pgTable(
       .references(() => connectors.id, { onDelete: "cascade" }),
     enduser_ref: text("enduser_ref").notNull(),
     combine_mode: endUserCombineModeEnum("combine_mode").notNull(),
-    // TODO(P5): wire AES-256-GCM from env.MASTER_KEY
+    // AES-256-GCM ciphertext (see apps/engine/src/crypto/aes-gcm.ts). Writers call encryptSecret(), readers decryptSecret(), keyed by env.MASTER_KEY.
     ciphertext: bytea("ciphertext").notNull(),
     iv: bytea("iv").notNull(),
     auth_tag: bytea("auth_tag").notNull(),

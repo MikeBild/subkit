@@ -6,6 +6,8 @@
 --    hand a canned input to execution.run when the cron fires.
 
 ALTER TABLE "outbox_cursors" DROP CONSTRAINT IF EXISTS "outbox_cursors_pkey";--> statement-breakpoint
-ALTER TABLE "outbox_cursors" ADD CONSTRAINT "outbox_cursors_pkey" PRIMARY KEY ("listener_id","channel");--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "outbox_cursors" ADD CONSTRAINT "outbox_cursors_pkey" PRIMARY KEY ("listener_id","channel");
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;--> statement-breakpoint
 
 ALTER TABLE "workflows_schedules" ADD COLUMN IF NOT EXISTS "input" jsonb;

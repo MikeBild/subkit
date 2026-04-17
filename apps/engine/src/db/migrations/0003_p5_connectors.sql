@@ -26,5 +26,9 @@ CREATE TABLE IF NOT EXISTS "connector_oauth_states" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "connector_oauth_states_state_key" ON "connector_oauth_states" USING btree ("state");--> statement-breakpoint
-ALTER TABLE "connector_oauth_states" ADD CONSTRAINT "connector_oauth_states_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "connector_oauth_states" ADD CONSTRAINT "connector_oauth_states_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE cascade ON UPDATE no action;
+DO $$ BEGIN
+  ALTER TABLE "connector_oauth_states" ADD CONSTRAINT "connector_oauth_states_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "connector_oauth_states" ADD CONSTRAINT "connector_oauth_states_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;

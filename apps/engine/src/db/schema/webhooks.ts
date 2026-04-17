@@ -45,7 +45,7 @@ export const subscriptions = pgTable(
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     event_pattern: text("event_pattern").notNull(),
     target_url: text("target_url").notNull(),
-    // TODO(P5): wire AES-256-GCM from env.MASTER_KEY
+    // AES-256-GCM ciphertext (see apps/engine/src/crypto/aes-gcm.ts). Writers call encryptSecret(), readers decryptSecret(), keyed by env.MASTER_KEY.
     secret_ciphertext: bytea("secret_ciphertext").notNull(),
     secret_iv: bytea("secret_iv").notNull(),
     secret_auth_tag: bytea("secret_auth_tag").notNull(),
