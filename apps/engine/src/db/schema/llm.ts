@@ -11,6 +11,7 @@
 import {
   bigint,
   bigserial,
+  boolean,
   index,
   integer,
   pgTable,
@@ -33,6 +34,7 @@ export const tenantLlmSettings = pgTable(
     llm_provider_credentials_iv: bytea("llm_provider_credentials_iv"),
     llm_provider_credentials_auth_tag: bytea("llm_provider_credentials_auth_tag"),
     llm_monthly_token_budget: integer("llm_monthly_token_budget"),
+    enable_prompt_cache: boolean("enable_prompt_cache").notNull().default(false),
     ...timestamps,
   },
   (t) => [uniqueIndex("tenant_llm_settings_tenant_key").on(t.tenant_id)],
@@ -48,12 +50,16 @@ export const llmUsage = pgTable(
     prompt_tokens: integer("prompt_tokens").notNull().default(0),
     completion_tokens: integer("completion_tokens").notNull().default(0),
     total_tokens: integer("total_tokens").notNull().default(0),
+    cache_read_tokens: integer("cache_read_tokens").notNull().default(0),
+    cache_creation_tokens: integer("cache_creation_tokens").notNull().default(0),
     latency_ms: integer("latency_ms").notNull().default(0),
     result: text("result").notNull(),
     error: text("error"),
     created_at: timestamps.created_at,
     // month bucket used by the budget accumulator. Stored as a bigint of
     // YYYYMM so we can `sum(total_tokens) where month_bucket = ?` cheaply.
+    // `total_tokens` here is the effective-cost weighting (cache reads at
+    // 10 %, cache creation at 125 %); see llm/pricing.ts.
     month_bucket: bigint("month_bucket", { mode: "number" }).notNull(),
   },
   (t) => [

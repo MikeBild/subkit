@@ -9,6 +9,7 @@ import { type Db, getDb } from "../db/client.ts";
 import { llmUsage, tenantLlmSettings } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { LlmQuotaExhausted } from "./errors.ts";
+import { weightedTotalTokens } from "./pricing.ts";
 import type { LlmCallLogEntry } from "./types.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -120,13 +121,23 @@ export async function checkAndDecrement(
 export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Promise<void> {
   const db = exec ?? getDb();
   const bucket = currentMonthBucket();
+  const cache_read_tokens = entry.cache_read_tokens ?? 0;
+  const cache_creation_tokens = entry.cache_creation_tokens ?? 0;
+  const total_tokens = weightedTotalTokens({
+    prompt_tokens: entry.prompt_tokens,
+    completion_tokens: entry.completion_tokens,
+    cache_read_tokens,
+    cache_creation_tokens,
+  });
   await db.insert(llmUsage).values({
     tenant_id: entry.tenant_id,
     flow: entry.flow,
     model: entry.model,
     prompt_tokens: entry.prompt_tokens,
     completion_tokens: entry.completion_tokens,
-    total_tokens: entry.prompt_tokens + entry.completion_tokens,
+    cache_read_tokens,
+    cache_creation_tokens,
+    total_tokens,
     latency_ms: entry.latency_ms,
     result: entry.result,
     error: entry.error ?? null,

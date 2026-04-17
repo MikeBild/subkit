@@ -16,6 +16,11 @@ import { assembleEnhancedPrompt } from "../context.ts";
 import { callWithFallback, resolveModelRoute } from "../provider.ts";
 import type { EnhancedPrompt, PriorFailure } from "../types.ts";
 
+// PatchProposalSchema is used both as the OpenAPI spec surface (via
+// `.openapi()`) and — via the SDK-native schema below — as the runtime
+// validator for `generateObject`. We keep them split because Zod v4's
+// `.openapi()` tag trips the SDK's inferred type machinery when the
+// schema is handed directly to `generateObject`.
 export const PatchProposalSchema = z
   .object({
     classification: z.enum(["safe", "unsafe"]),
@@ -25,6 +30,14 @@ export const PatchProposalSchema = z
     reasoning: z.string(),
   })
   .openapi("PatchProposal");
+
+const PatchProposalRuntimeSchema = z.object({
+  classification: z.enum(["safe", "unsafe"]),
+  kind: z.enum(["update_field_path", "rename_param", "change_type", "add_header", "other"]),
+  description: z.string(),
+  patch: z.record(z.string(), z.unknown()),
+  reasoning: z.string(),
+});
 
 export type PatchProposal = z.infer<typeof PatchProposalSchema>;
 
@@ -48,37 +61,6 @@ export interface RepairResult {
   tokens: EnhancedPrompt["token_counts"];
   model_used: string;
   fell_back: boolean;
-}
-
-function coerceProposal(obj: unknown, fallbackReason: string): PatchProposal {
-  // The mock provider returns `{patch, classification, notes}`. We
-  // normalise whatever shape we get into the documented PatchProposal
-  // envelope — missing fields fall back to conservative defaults.
-  const src = (obj ?? {}) as Record<string, unknown>;
-  const classification =
-    src.classification === "safe" || src.classification === "unsafe"
-      ? (src.classification as "safe" | "unsafe")
-      : "safe";
-  const kind =
-    src.kind === "update_field_path" ||
-    src.kind === "rename_param" ||
-    src.kind === "change_type" ||
-    src.kind === "add_header" ||
-    src.kind === "other"
-      ? (src.kind as PatchProposal["kind"])
-      : "update_field_path";
-  const description =
-    typeof src.description === "string" && src.description.length > 0
-      ? src.description
-      : typeof src.notes === "string"
-        ? src.notes
-        : "field path updated to match drifted response";
-  const patch =
-    (src.patch && typeof src.patch === "object" ? (src.patch as Record<string, unknown>) : {}) ??
-    {};
-  const reasoning =
-    typeof src.reasoning === "string" && src.reasoning.length > 0 ? src.reasoning : fallbackReason;
-  return { classification, kind, description, patch, reasoning };
 }
 
 export async function runRepairFlow(p: RepairParams, exec?: Db): Promise<RepairResult> {
@@ -112,22 +94,27 @@ export async function runRepairFlow(p: RepairParams, exec?: Db): Promise<RepairR
     },
     exec,
   );
-  const { result, model_used, fell_back } = await callWithFallback<unknown>(
-    { flow: "repair", route, prompt },
+  // `generateObject` with the runtime schema enforces validation at the
+  // SDK layer — the old rope-extraction + coerceProposal safety net is
+  // gone. On shape failures an `AI_NoObjectGeneratedError` propagates
+  // and the HTTP layer surfaces a 502.
+  const { result, model_used, fell_back } = await callWithFallback<PatchProposal>(
+    {
+      flow: "repair",
+      route,
+      prompt,
+      schema: PatchProposalRuntimeSchema,
+      telemetry_metadata: { execution_id: p.execution_id, failing_step: p.failing_step.id },
+    },
     exec,
   );
-  let parsed: unknown;
-  if (!result.object && result.text) {
-    try {
-      parsed = JSON.parse(result.text);
-    } catch {
-      // Text was not pure JSON — object extraction already attempted by dispatch.
-    }
+  if (!result.object) {
+    // Only reachable when the mock provider returns an undefined object
+    // — real calls validate against the schema and throw instead.
+    throw new Error("repair flow: provider returned empty object");
   }
-  const raw = result.object ?? parsed ?? {};
-  const proposal = coerceProposal(raw, `Drift diff observed in step ${p.failing_step.id}`);
   return {
-    patch_proposal: proposal,
+    patch_proposal: result.object,
     raw_text: result.text,
     included_skill_ids: prompt.included_skill_ids,
     included_chunk_ids: prompt.included_chunk_ids,
