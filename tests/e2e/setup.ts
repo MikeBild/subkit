@@ -296,6 +296,10 @@ export async function cli(
       // Force non-interactive.
       CI: "1",
       NO_COLOR: "1",
+      // The update check hits api.github.com; the fetch has no timeout
+      // and keeps the CLI process alive past the test's 5s budget in
+      // sandboxed CI. Disable it for every e2e CLI invocation.
+      NO_UPDATE_CHECK: "1",
       ...opts.extraEnv,
     },
     stdout: "pipe",

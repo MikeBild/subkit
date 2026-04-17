@@ -135,3 +135,58 @@ export async function daemonReachable(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Check whether a specific image is available locally. Returns false
+ * on any error or if the image is not present.
+ */
+export async function imageAvailable(ref: string): Promise<boolean> {
+  try {
+    const client = getDockerClient();
+    const res = await client.request(`/images/${encodeURIComponent(ref)}/json`, { method: "GET" });
+    return res.status === 200;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ensure an image is available locally. If it's already there the
+ * call is a no-op; otherwise it triggers a `POST /images/create` and
+ * drains the streaming response so the function doesn't return until
+ * the pull is actually complete. Throws on unreachable daemon or pull
+ * errors — tests should only invoke this after `daemonReachable()` is
+ * true.
+ */
+export async function ensureImage(ref: string): Promise<void> {
+  if (await imageAvailable(ref)) return;
+  const client = getDockerClient();
+  // `fromImage` + optional `tag` — the Engine API accepts either
+  // `alpine:3` as `fromImage` or the pair `alpine` + `3`. Splitting
+  // once avoids mis-parsing digests (`@sha256:…`).
+  const [name, tag] = ref.includes("@") ? [ref, undefined] : ref.split(":");
+  const qs = new URLSearchParams();
+  qs.set("fromImage", name ?? ref);
+  if (tag) qs.set("tag", tag);
+  const res = await client.request(`/images/create?${qs.toString()}`, { method: "POST" });
+  if (res.status !== 200) {
+    const body = await res.text();
+    throw new Error(`docker pull ${ref} failed: ${res.status} ${body}`);
+  }
+  // The body is a stream of ndjson progress frames. Drain it so the
+  // pull is complete before the function resolves — Bun's `fetch`
+  // returns the response as soon as headers arrive.
+  const text = await res.text();
+  const lines = text.split("\n").filter((l) => l.length > 0);
+  for (const line of lines) {
+    try {
+      const frame = JSON.parse(line) as { error?: string };
+      if (frame.error) {
+        throw new Error(`docker pull ${ref} reported error: ${frame.error}`);
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("docker pull")) throw e;
+      // Non-JSON line — ignore.
+    }
+  }
+}
