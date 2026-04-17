@@ -29,6 +29,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, Next } from "hono";
+import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { audit } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import type { Db } from "../../../db/client.ts";
@@ -44,7 +45,6 @@ import { PayloadTooLargeError, UnsupportedMediaTypeError } from "../../errors.ts
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { ErrorSchema } from "../identity/schemas.ts";
 
 /** 100 MB — see docs/30-defaults-and-limits.md § File and payload sizes. */
 export const EXTRACT_BODY_CAP_BYTES = 100 * 1024 * 1024;

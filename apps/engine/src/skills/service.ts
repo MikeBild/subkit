@@ -8,12 +8,14 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { skills } from "../db/schema/index.ts";
+import { log } from "../logging/logger.ts";
 import type {
   CreateSkillInput,
   Skill,
   SkillExamplesBlob,
   SkillLifecycle,
   SkillScope,
+  SkillSource,
   UpdateSkillInput,
 } from "./types.ts";
 
@@ -46,6 +48,7 @@ function rowToSkill(row: SkillRow): Skill {
     pitfalls: fields.pitfalls,
     doc_refs: fields.doc_refs,
     status: row.lifecycle as SkillLifecycle,
+    source: row.source as SkillSource,
     version: row.version,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
@@ -98,6 +101,7 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
         body: p.input.body,
         examples: blob,
         lifecycle: p.input.status ?? "active",
+        source: p.input.source ?? "manual",
         version: 1,
       })
       .returning();
@@ -120,6 +124,13 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
       },
       tx,
     );
+    log.skill.created({
+      skill_id: row.id,
+      tenant_id: p.tenant_id,
+      scope: row.scope,
+      source: row.source,
+      lifecycle: row.lifecycle,
+    });
     return rowToSkill(row);
   });
 }
@@ -214,6 +225,12 @@ export async function updateSkill(
       },
       tx,
     );
+    log.skill.updated({
+      skill_id: id,
+      tenant_id,
+      version: row.version,
+      actor_id,
+    });
     return rowToSkill(row);
   });
 }
@@ -253,6 +270,13 @@ export async function activateSkill(
       },
       tx,
     );
+    log.skill.lifecycle({
+      skill_id: id,
+      tenant_id,
+      from: prior.lifecycle,
+      to: "active",
+      actor_id,
+    });
     return rowToSkill(row);
   });
 }
@@ -292,6 +316,13 @@ export async function archiveSkill(
       },
       tx,
     );
+    log.skill.lifecycle({
+      skill_id: id,
+      tenant_id,
+      from: prior.lifecycle,
+      to: "archived",
+      actor_id,
+    });
     return rowToSkill(row);
   });
 }
@@ -328,6 +359,11 @@ export async function deleteSkill(
       },
       tx,
     );
+    log.skill.deleted({
+      skill_id: id,
+      tenant_id,
+      actor_id,
+    });
     return true;
   });
 }

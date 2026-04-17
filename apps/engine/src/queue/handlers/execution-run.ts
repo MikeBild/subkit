@@ -10,7 +10,7 @@ import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import { runExecution } from "../../execution/engine.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
-import { logger } from "../../logging/logger.ts";
+import { log } from "../../logging/logger.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queues.ts";
 
 export interface RegisterExecutionRunOptions {
@@ -20,9 +20,7 @@ export interface RegisterExecutionRunOptions {
 
 async function handleOne(job: Job<ExecutionRunJob>, db: Db): Promise<void> {
   const data = job.data;
-  logger.info({
-    module: "queue",
-    action: "job.dequeued",
+  log.queue.job.dequeued({
     msg: "execution.run job dequeued",
     queue: EXECUTION_RUN_QUEUE,
     job_id: job.id,
@@ -46,9 +44,7 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db): Promise<void> {
       input: data.input ?? null,
       options: runOptions,
     });
-    logger.info({
-      module: "queue",
-      action: "job.completed",
+    log.queue.job.completed({
       msg: "execution.run job completed",
       queue: EXECUTION_RUN_QUEUE,
       job_id: job.id,
@@ -58,9 +54,7 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db): Promise<void> {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error({
-      module: "queue",
-      action: "job.failed",
+    log.queue.job.failed({
       msg: "execution.run job failed",
       queue: EXECUTION_RUN_QUEUE,
       job_id: job.id,
@@ -84,9 +78,7 @@ export async function registerExecutionRunHandler(
       }
     },
   );
-  logger.info({
-    module: "queue",
-    action: "worker.registered",
+  log.queue.worker.registered({
     msg: "execution.run worker registered",
     worker_id: workerId,
   });

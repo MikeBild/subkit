@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
 import { computeConfidence, type PatternSignal } from "../types.ts";
 
 const MIN_FAILURE_COUNT = 3;
@@ -44,7 +45,16 @@ export async function detectFailurePatterns(tenant_id: string, exec: Db): Promis
       ),
     );
 
-  if (rows.length === 0) return [];
+  if (rows.length === 0) {
+    logger.debug({
+      module: "skill",
+      action: "detector.failure.empty",
+      msg: "no failed steps in lookback window",
+      tenant_id,
+      lookback_days: LOOKBACK_DAYS,
+    });
+    return [];
+  }
 
   // Group by (workflow_id, step_key, error_kind)
   const groups = new Map<string, FailureGroup>();
@@ -110,5 +120,14 @@ export async function detectFailurePatterns(tenant_id: string, exec: Db): Promis
     });
   }
 
+  logger.debug({
+    module: "skill",
+    action: "detector.failure.result",
+    msg: "failure pattern detector finished",
+    tenant_id,
+    failures_scanned: rows.length,
+    groups_found: signals.length,
+    threshold: MIN_FAILURE_COUNT,
+  });
   return signals;
 }

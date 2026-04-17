@@ -9,6 +9,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { deliveries } from "../../db/schema/index.ts";
@@ -22,9 +23,7 @@ import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
 
-const IdParam = z.object({ id: z.string().uuid() });
 const ReplayParams = z.object({
   id: z.string().uuid(),
   delivery_id: z.string().uuid(),

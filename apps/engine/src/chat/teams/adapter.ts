@@ -11,6 +11,7 @@
 //   - Approval prompt: Adaptive Card 1.5 with two Action.Submit buttons.
 
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { logger } from "../../logging/logger.ts";
 import type { ChatAdapter } from "../adapter.ts";
 import type { ApprovalCard, ChatDelivery, ChatEvent, VerifiedEvent } from "../types.ts";
 import { TeamsAuth, type TeamsAuthOptions } from "./auth.ts";
@@ -42,7 +43,16 @@ export class TeamsAdapter implements ChatAdapter {
     const body = await req.text();
     const authz = req.headers.get("authorization") ?? "";
     const m = authz.match(/^Bearer\s+(.+)$/i);
-    if (!m) return null;
+    if (!m) {
+      logger.warn({
+        module: "chat",
+        action: "verify.rejected",
+        msg: "teams request missing Bearer authorization header",
+        platform: "teams",
+        reason: "missing_bearer",
+      });
+      return null;
+    }
     if (!this.jwks) {
       // Skipping verification (trusted transport). Tests that do not
       // set jwksUrl still need a way in — return the parsed body.
@@ -58,7 +68,15 @@ export class TeamsAdapter implements ChatAdapter {
       if (this.opts.audience) verifyOpts.audience = this.opts.audience;
       await jwtVerify(m[1] ?? "", this.jwks, verifyOpts);
       return { platform: "teams", raw: JSON.parse(body) };
-    } catch {
+    } catch (err) {
+      logger.warn({
+        module: "chat",
+        action: "verify.rejected",
+        msg: "teams jwt verification failed",
+        platform: "teams",
+        reason: "jwt_invalid",
+        error: err instanceof Error ? err.message : String(err),
+      });
       return null;
     }
   }

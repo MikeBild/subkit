@@ -12,6 +12,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
 import { lintHookSource } from "../../auth/hooks.ts";
 import { policy } from "../../auth/policy.ts";
 import { writeAudit } from "../../db/audit.ts";
@@ -20,9 +21,6 @@ import { BadRequestError, ForbiddenError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
-
-const IdParam = z.object({ id: z.string().uuid() });
 
 const HookSchema = z
   .object({
@@ -38,7 +36,7 @@ const HookSchema = z
   })
   .openapi("RequestHook");
 
-const ListResponse = z.object({ items: z.array(HookSchema) }).openapi("RequestHookListResponse");
+const ListResponse = paginatedResponse(HookSchema, "RequestHookListResponse");
 
 const CreateBody = z
   .object({

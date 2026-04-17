@@ -8,6 +8,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
+import { log } from "../logging/logger.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
 
@@ -100,6 +101,12 @@ export async function createWorkflow(
   const db = exec ?? getDb();
   const validation = validateWorkflowDef(input.def);
   if (!validation.ok || !validation.workflow) {
+    log.workflow.validation.failed({
+      tenant_id: input.tenant_id,
+      op: "create",
+      error_count: validation.errors.length,
+      first_error: validation.errors[0]?.message ?? null,
+    });
     return { errors: validation.errors.map((e) => `${e.path}: ${e.message}`) };
   }
   const def = validation.workflow;
@@ -141,6 +148,14 @@ export async function createWorkflow(
     );
     return wf.id;
   });
+  log.workflow.committed({
+    workflow_id: result,
+    tenant_id: input.tenant_id,
+    slug,
+    version: 1,
+    step_count: def.steps.length,
+    actor_id: input.actor_id,
+  });
   const view = await loadWorkflowView(input.tenant_id, result, db);
   if (!view) throw new Error("loadWorkflowView returned null after create");
   return { workflow: view };
@@ -160,6 +175,13 @@ export async function updateWorkflow(
   const db = exec ?? getDb();
   const validation = validateWorkflowDef(input.def);
   if (!validation.ok || !validation.workflow) {
+    log.workflow.validation.failed({
+      tenant_id: input.tenant_id,
+      workflow_id: input.id,
+      op: "update",
+      error_count: validation.errors.length,
+      first_error: validation.errors[0]?.message ?? null,
+    });
     return { errors: validation.errors.map((e) => `${e.path}: ${e.message}`) };
   }
   const def = validation.workflow;
@@ -212,6 +234,14 @@ export async function updateWorkflow(
       },
       tx,
     );
+    log.workflow.committed({
+      workflow_id: wf.id,
+      tenant_id: input.tenant_id,
+      slug: wf.slug,
+      version: next,
+      step_count: def.steps.length,
+      actor_id: input.actor_id,
+    });
     return wf.id;
   });
   if (!updated) return { errors: ["workflow not found"] };
@@ -398,6 +428,13 @@ export async function restoreWorkflowVersion(
       },
       tx,
     );
+    log.workflow.restored({
+      workflow_id: id,
+      tenant_id,
+      restored_from: version,
+      new_version: next,
+      actor_id,
+    });
     return id;
   });
   if (!updatedId) return null;

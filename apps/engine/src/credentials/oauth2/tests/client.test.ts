@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { upsertCredential } from "../../credentials/service.ts";
-import { connectors, credentials, tenants } from "../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { connectors, credentials, tenants } from "../../../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { upsertCredential } from "../../service.ts";
 import { __resetOAuth2CacheForTests, runClientCredentialsGrant } from "../client.ts";
 import { type MockOAuthServer, startMockOAuthServer } from "./mock-server.ts";
 

@@ -21,11 +21,11 @@
 
 import { eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
-import { rotateOAuth2Tokens } from "../credentials/service.ts";
-import type { DecryptedCredential } from "../credentials/types.ts";
-import type { Db } from "../db/client.ts";
-import { connectors, credentials } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import type { Db } from "../../db/client.ts";
+import { connectors, credentials } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
+import { rotateOAuth2Tokens } from "../service.ts";
+import type { DecryptedCredential } from "../types.ts";
 import { runRefreshTokenGrant } from "./client.ts";
 import type { OAuth2ClientConfig } from "./types.ts";
 
@@ -151,7 +151,7 @@ async function handleRefreshJob(db: Db, data: RefreshOAuthJob): Promise<void> {
   if (!row.oauth2_refresh_ciphertext) return;
   // Decrypt via the service to keep AAD logic in one place. Lazy import
   // to avoid a cycle with the HTTP driver.
-  const { getCredentialForConnector } = await import("../credentials/service.ts");
+  const { getCredentialForConnector } = await import("../service.ts");
   const fetched = await getCredentialForConnector(
     data.tenant_id,
     row.connector_id,

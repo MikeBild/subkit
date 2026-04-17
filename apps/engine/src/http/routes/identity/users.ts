@@ -1,7 +1,7 @@
 // GET /v1/identity/users — admin; paginated.
 // GET /v1/identity/users/:id — admin or self.
 
-import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { policy } from "../../../auth/policy.ts";
 import * as identity from "../../../identity/service.ts";
 import { NotFoundError } from "../../errors.ts";
@@ -9,9 +9,9 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { enforce } from "../../middleware/policy.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { ErrorSchema, IdParam, PaginationQuery, UserSchema } from "./schemas.ts";
+import { ErrorSchema, IdParam, PaginationQuery, paginatedResponse, UserSchema } from "./schemas.ts";
 
-const UserListResponse = z.object({ items: z.array(UserSchema) }).openapi("UserListResponse");
+const UserListResponse = paginatedResponse(UserSchema, "UserListResponse");
 
 const listRoute = createRoute({
   method: "get",

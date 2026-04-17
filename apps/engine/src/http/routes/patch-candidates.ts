@@ -12,15 +12,13 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
+import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { patchCandidates } from "../../db/schema/index.ts";
 import { approvePatchCandidate, rejectPatchCandidate } from "../../self-healing/service.ts";
 import { ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
-
-const IdParam = z.object({ id: z.string().uuid() });
 
 const PatchCandidateSchema = z
   .object({

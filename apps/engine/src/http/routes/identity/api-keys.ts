@@ -8,9 +8,15 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { enforce } from "../../middleware/policy.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { ApiKeyIssuedSchema, ApiKeySchema, ErrorSchema, IdParam } from "./schemas.ts";
+import {
+  ApiKeyIssuedSchema,
+  ApiKeySchema,
+  ErrorSchema,
+  IdParam,
+  paginatedResponse,
+} from "./schemas.ts";
 
-const ApiKeyListResponse = z.object({ items: z.array(ApiKeySchema) }).openapi("ApiKeyListResponse");
+const ApiKeyListResponse = paginatedResponse(ApiKeySchema, "ApiKeyListResponse");
 
 const IssueApiKeyBody = z
   .object({

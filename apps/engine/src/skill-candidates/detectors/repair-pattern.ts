@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { patchCandidates } from "../../db/schema/executions.ts";
+import { logger } from "../../logging/logger.ts";
 import { computeConfidence, type PatternSignal } from "../types.ts";
 
 const MIN_PATCH_COUNT = 3;
@@ -38,7 +39,16 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
       ),
     );
 
-  if (rows.length === 0) return [];
+  if (rows.length === 0) {
+    logger.debug({
+      module: "skill",
+      action: "detector.repair.empty",
+      msg: "no applied patches in lookback window",
+      tenant_id,
+      lookback_days: LOOKBACK_DAYS,
+    });
+    return [];
+  }
 
   // The diff JSONB carries: { kind, description, path?, field_path?, ... }
   const groups = new Map<string, PatchGroup>();
@@ -114,5 +124,14 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
     });
   }
 
+  logger.debug({
+    module: "skill",
+    action: "detector.repair.result",
+    msg: "repair pattern detector finished",
+    tenant_id,
+    patches_scanned: rows.length,
+    groups_found: signals.length,
+    threshold: MIN_PATCH_COUNT,
+  });
   return signals;
 }

@@ -2,8 +2,8 @@
 
 import type { PgBoss } from "pg-boss";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
+import { registerOAuth2RefreshHandler } from "../../credentials/oauth2/refresh-worker.ts";
 import type { Db } from "../../db/client.ts";
-import { registerOAuth2RefreshHandler } from "../../oauth2/refresh-worker.ts";
 import { registerApiKeyFlushHandler } from "./apikey-flush.ts";
 import { registerEventFanoutHandler } from "./event-fanout.ts";
 import { registerExecutionRunHandler } from "./execution-run.ts";

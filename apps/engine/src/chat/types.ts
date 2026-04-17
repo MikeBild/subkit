@@ -65,9 +65,10 @@ export interface ApprovalCard {
 }
 
 /**
- * Per-platform rate declarations. TODO(P13): enforce these with a
- * token bucket around the adapter outbound path. P12 only exposes the
- * table so operators can see the limits we'll honor later.
+ * Per-platform rate declarations. Notifications flow honors these via
+ * `notifications/rate-limit.ts` token bucket. Direct adapter.send
+ * traffic from `conversations/dispatcher.ts` is not yet wrapped —
+ * deferred work applies the same limiter to all outbound adapter methods.
  */
 export const CHAT_RATES: Record<ChatPlatform, { per_minute: number; burst: number }> = {
   slack: { per_minute: 60, burst: 20 },

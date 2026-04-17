@@ -11,6 +11,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
+import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../conversations/service.ts";
 import { replayEvents, serializeEvent } from "../../conversations/streaming.ts";
 import type { ConversationStatus } from "../../conversations/types.ts";
@@ -22,9 +23,7 @@ import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
 
-const IdParam = z.object({ id: z.string().uuid() });
 const ApprovalParam = z.object({
   id: z.string().uuid(),
   approval_id: z.string().uuid(),

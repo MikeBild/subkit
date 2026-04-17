@@ -10,6 +10,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversationMessages, conversations, conversationToolCalls } from "../db/schema/index.ts";
 import { getMockProvider } from "../llm/mock-provider.ts";
+import { log } from "../logging/logger.ts";
 import { listApprovalsForConversation, resolveApproval } from "./approval.ts";
 import { loadDraft, undoLastSnapshot } from "./draft.ts";
 import { type RunLoopResult, runLoop } from "./loop.ts";
@@ -78,6 +79,16 @@ export async function createConversation(
     })
     .returning();
   if (!row) throw new Error("conversations insert returned no row");
+
+  log.conversation.created({
+    conversation_id: row.id,
+    tenant_id: p.tenant_id,
+    actor_id: p.actor_id,
+    connector_id: p.connector_id ?? null,
+    workflow_id: p.workflow_id ?? null,
+    has_initial_message: Boolean(p.initial_message),
+    memory_included: Boolean(memory),
+  });
 
   await auditAwait(
     {
@@ -159,6 +170,13 @@ export async function appendUserMessage(
 ): Promise<ConversationTurnOutcome> {
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
+  log.conversation.appended({
+    conversation_id: p.conversation_id,
+    tenant_id: p.tenant_id,
+    actor_id: p.actor_id,
+    message_length: p.message.length,
+    memory_included: typeof p.memory === "string",
+  });
   const memory =
     typeof p.memory === "string" && p.memory.length > 0
       ? p.memory
@@ -237,6 +255,21 @@ export async function decideApproval(
     exec,
   );
   if (!approval) throw new Error("approval not found");
+
+  if (p.decision === "approved") {
+    log.conversation.approval.approved({
+      conversation_id: p.conversation_id,
+      approval_id: p.approval_id,
+      actor_id: p.actor_id,
+    });
+  } else {
+    log.conversation.approval.rejected({
+      conversation_id: p.conversation_id,
+      approval_id: p.approval_id,
+      actor_id: p.actor_id,
+      reason: p.reason ?? null,
+    });
+  }
 
   // Flip the conversation back to active so the loop can resume.
   await exec
@@ -533,6 +566,13 @@ export async function compactConversation(
     },
     exec,
   );
+
+  log.conversation.compacted({
+    conversation_id: p.conversation_id,
+    collapsed: collapseCount,
+    kept: Math.min(keepLast, total),
+    total,
+  });
 
   return {
     conversation: rowToRecord(updated),

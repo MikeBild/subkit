@@ -1,7 +1,7 @@
 // GET /v1/identity/tenants — admin only; returns the principal's tenant.
 // GET /v1/identity/tenants/:id — admin only.
 
-import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { policy } from "../../../auth/policy.ts";
 import * as identity from "../../../identity/service.ts";
 import { NotFoundError } from "../../errors.ts";
@@ -9,9 +9,9 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { enforce } from "../../middleware/policy.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { ErrorSchema, IdParam, TenantSchema } from "./schemas.ts";
+import { ErrorSchema, IdParam, paginatedResponse, TenantSchema } from "./schemas.ts";
 
-const TenantListResponse = z.object({ items: z.array(TenantSchema) }).openapi("TenantListResponse");
+const TenantListResponse = paginatedResponse(TenantSchema, "TenantListResponse");
 
 const listRoute = createRoute({
   method: "get",

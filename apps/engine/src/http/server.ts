@@ -15,6 +15,7 @@ import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
 import { AuthProviderRegistry } from "../auth/registry.ts";
 import { ChatAdapterRegistry } from "../chat/registry.ts";
 import type { Db } from "../db/client.ts";
+import { logger } from "../logging/logger.ts";
 import { registerMcpHttpRoutes } from "../mcp/transports/streamable-http.ts";
 import { metricsMiddleware } from "../observability/middleware.ts";
 import { HttpError } from "./errors.ts";
@@ -121,6 +122,20 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
         err.status as 400 | 401 | 403 | 404 | 409 | 413 | 415 | 500,
       );
     }
+    // Unhandled / non-HttpError. Log the full diagnostic (message +
+    // stack) so operators can reconstruct a 500 from ndjson alone — the
+    // middleware's catch never sees this path because Hono's router
+    // resolves the onError handler first.
+    logger.error({
+      module: "http",
+      action: "request.failed",
+      msg: "unhandled error",
+      method: c.req.method,
+      path: c.req.path,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+      trace_id: c.get("trace_id"),
+    });
     return c.json(
       {
         code: "internal_error",

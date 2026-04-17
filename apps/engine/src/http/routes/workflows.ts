@@ -2,6 +2,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";
+import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { workflows, workflowVersions } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { createExecution } from "../../execution/state.ts";
@@ -12,7 +13,6 @@ import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
 
 const WorkflowSchema = z
   .object({
@@ -77,7 +77,6 @@ const ExecutionResponseSchema = z
   })
   .openapi("WorkflowRunResponse");
 
-const IdParam = z.object({ id: z.string().uuid() });
 const IdVersionParam = z.object({ id: z.string().uuid(), version: z.string() });
 
 function serializeWorkflow(w: svc.WorkflowView) {

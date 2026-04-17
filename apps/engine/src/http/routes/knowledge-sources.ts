@@ -4,6 +4,7 @@
 // These endpoints exist for SDK consumers, CI/CD pipelines, and admin tools.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { KNOWLEDGE_SOURCE_MAX_BYTES } from "../../knowledge/budgets.ts";
 import * as svc from "../../knowledge/service.ts";
 import {
@@ -15,9 +16,6 @@ import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
-
-const IdParam = z.object({ id: z.string().uuid() });
 
 const KnowledgeSourceListResponse = z
   .object({ items: z.array(KnowledgeSourceSchema) })

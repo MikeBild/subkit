@@ -68,7 +68,7 @@ export function recordWebhookDelivery(args: {
 
 export function recordChatDelivery(args: {
   platform: string;
-  status: "delivered" | "failed";
+  status: "delivered" | "failed" | "rate_limited";
 }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.CHAT_DELIVERY_TOTAL, {

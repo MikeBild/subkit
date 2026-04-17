@@ -35,11 +35,13 @@ import {
   workflows as workflowsTable,
 } from "../db/schema/index.ts";
 import { createExecution } from "../execution/state.ts";
+import { log, logger } from "../logging/logger.ts";
+import { tryAcquire } from "../notifications/rate-limit.ts";
 import { recordChatDelivery } from "../observability/instrumentation.ts";
 import { can } from "../rbac/evaluator.ts";
 import { getWorkflow, getWorkflowBySlug } from "../workflows/service.ts";
 import type { ChatAdapter } from "./adapter.ts";
-import type { ApprovalCard, ChatEvent } from "./types.ts";
+import { type ApprovalCard, CHAT_RATES, type ChatEvent, type ChatPlatform } from "./types.ts";
 
 /** Envelope handed to the injected enqueue callback when a slash-run
  * fires. Mirrors the shape of `ExecutionRunJob` so callers can forward
@@ -74,17 +76,67 @@ export interface DispatchOutcome {
   workflow_id?: string;
 }
 
+/**
+ * Gate outbound chat sends through the same token bucket the
+ * notifications flow uses. Key is `(tenant_id, workspace_id, channel_id)`
+ * so conversation replies and notification dispatches share the bucket
+ * for a given channel — platform caps in `CHAT_RATES` are honored
+ * regardless of which path got there first. On rate-limit trip we do
+ * NOT throw (conversation paths would fail noisily); instead we record
+ * `dropped_rate_limited` in metrics and return a synthetic
+ * `platform_message_id` so the caller's state machine still advances.
+ */
 async function sendTracked(
   adapter: ChatAdapter,
   platform: string,
   delivery: Parameters<ChatAdapter["send"]>[0],
 ): Promise<{ platform_message_id: string }> {
+  const platformRate = CHAT_RATES[platform as ChatPlatform]?.per_minute;
+  if (platformRate && platformRate > 0) {
+    const gate = tryAcquire(
+      {
+        tenant_id: delivery.tenant_id,
+        workspace_id: delivery.workspace_id,
+        channel_id: delivery.channel_id,
+      },
+      platformRate,
+      1,
+    );
+    if (!gate.ok) {
+      recordChatDelivery({ platform, status: "rate_limited" });
+      logger.warn({
+        module: "chat",
+        action: "outbound.rate_limited",
+        msg: "chat adapter send rate-limited by token bucket",
+        platform,
+        tenant_id: delivery.tenant_id,
+        workspace_id: delivery.workspace_id,
+        channel: delivery.channel_id,
+        per_minute: platformRate,
+        retry_after_ms: gate.retryAfterMs,
+      });
+      return { platform_message_id: `rate_limited_${Date.now()}` };
+    }
+  }
   try {
     const out = await adapter.send(delivery);
     recordChatDelivery({ platform, status: "delivered" });
+    log.chat.outbound.delivered({
+      platform,
+      channel: delivery.channel_id,
+      platform_message_id: out.platform_message_id,
+    });
     return out;
   } catch (err) {
     recordChatDelivery({ platform, status: "failed" });
+    logger.error({
+      module: "chat",
+      action: "outbound.failed",
+      msg: "chat adapter send failed",
+      platform,
+      channel: delivery.channel_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
     throw err;
   }
 }

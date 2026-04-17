@@ -8,15 +8,13 @@
 //                                          (signature IS the auth)
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { getBoss } from "../../queue/boss.ts";
 import * as svc from "../../webhooks/inbound/service.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
-
-const IdParam = z.object({ id: z.string().uuid() });
 
 const InboundSchema = z
   .object({

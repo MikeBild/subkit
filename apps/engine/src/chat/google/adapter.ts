@@ -9,6 +9,7 @@
 //   - Approval prompt: Card v2 with a buttonList of two buttons.
 
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { logger } from "../../logging/logger.ts";
 import type { ChatAdapter } from "../adapter.ts";
 import type { ApprovalCard, ChatDelivery, ChatEvent, VerifiedEvent } from "../types.ts";
 import { GoogleAuth, type GoogleAuthOptions } from "./auth.ts";
@@ -40,7 +41,16 @@ export class GoogleChatAdapter implements ChatAdapter {
     const body = await req.text();
     const authz = req.headers.get("authorization") ?? "";
     const m = authz.match(/^Bearer\s+(.+)$/i);
-    if (!m) return null;
+    if (!m) {
+      logger.warn({
+        module: "chat",
+        action: "verify.rejected",
+        msg: "google chat request missing Bearer authorization header",
+        platform: "google_chat",
+        reason: "missing_bearer",
+      });
+      return null;
+    }
     if (!this.jwks) {
       try {
         return { platform: "google_chat", raw: JSON.parse(body) };
@@ -54,7 +64,15 @@ export class GoogleChatAdapter implements ChatAdapter {
       if (this.opts.audience) verifyOpts.audience = this.opts.audience;
       await jwtVerify(m[1] ?? "", this.jwks, verifyOpts);
       return { platform: "google_chat", raw: JSON.parse(body) };
-    } catch {
+    } catch (err) {
+      logger.warn({
+        module: "chat",
+        action: "verify.rejected",
+        msg: "google chat jwt verification failed",
+        platform: "google_chat",
+        reason: "jwt_invalid",
+        error: err instanceof Error ? err.message : String(err),
+      });
       return null;
     }
   }

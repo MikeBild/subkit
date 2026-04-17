@@ -11,7 +11,7 @@ import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import * as docs from "../../docs-ingestion/service.ts";
 import type { DocSourceType } from "../../docs-ingestion/types.ts";
-import { logger } from "../../logging/logger.ts";
+import { log } from "../../logging/logger.ts";
 
 export const INGEST_DOCS_QUEUE = "connector.ingest-docs" as const;
 
@@ -31,9 +31,7 @@ export interface RegisterIngestDocsOptions {
 
 async function handleOne(job: Job<IngestDocsJob>, db: Db): Promise<void> {
   const data = job.data;
-  logger.info({
-    module: "queue",
-    action: "job.dequeued",
+  log.queue.job.dequeued({
     msg: "connector.ingest-docs job dequeued",
     queue: INGEST_DOCS_QUEUE,
     job_id: job.id,
@@ -55,9 +53,7 @@ async function handleOne(job: Job<IngestDocsJob>, db: Db): Promise<void> {
       },
       db,
     );
-    logger.info({
-      module: "queue",
-      action: "job.completed",
+    log.queue.job.completed({
       msg: "connector.ingest-docs job completed",
       queue: INGEST_DOCS_QUEUE,
       job_id: job.id,
@@ -69,9 +65,7 @@ async function handleOne(job: Job<IngestDocsJob>, db: Db): Promise<void> {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error({
-      module: "queue",
-      action: "job.failed",
+    log.queue.job.failed({
       msg: "connector.ingest-docs job failed",
       queue: INGEST_DOCS_QUEUE,
       job_id: job.id,
@@ -93,9 +87,7 @@ export async function registerIngestDocsHandler(opts: RegisterIngestDocsOptions)
       }
     },
   );
-  logger.info({
-    module: "queue",
-    action: "worker.registered",
+  log.queue.worker.registered({
     msg: "connector.ingest-docs worker registered",
     worker_id: workerId,
   });

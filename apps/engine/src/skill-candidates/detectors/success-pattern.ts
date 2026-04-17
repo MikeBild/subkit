@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
 import { computeConfidence, type PatternSignal } from "../types.ts";
 
 const MIN_SUCCESS_COUNT = 10;
@@ -43,7 +44,18 @@ export async function detectSuccessPatterns(tenant_id: string, exec: Db): Promis
       ),
     );
 
-  if (rows.length < MIN_SUCCESS_COUNT) return [];
+  if (rows.length < MIN_SUCCESS_COUNT) {
+    logger.debug({
+      module: "skill",
+      action: "detector.success.below_threshold",
+      msg: "not enough successful steps to derive patterns",
+      tenant_id,
+      rows: rows.length,
+      threshold: MIN_SUCCESS_COUNT,
+      lookback_days: LOOKBACK_DAYS,
+    });
+    return [];
+  }
 
   // Group by workflow_id (proxy for connector context)
   const byWorkflow = new Map<string, StepRecord[]>();
@@ -107,5 +119,13 @@ export async function detectSuccessPatterns(tenant_id: string, exec: Db): Promis
     }
   }
 
+  logger.debug({
+    module: "skill",
+    action: "detector.success.result",
+    msg: "success pattern detector finished",
+    tenant_id,
+    steps_scanned: rows.length,
+    groups_found: signals.length,
+  });
   return signals;
 }

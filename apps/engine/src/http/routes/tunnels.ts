@@ -12,6 +12,7 @@
 // `startTunnelWsServer` helper (Bun.serve required).
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { tunnelRegistry } from "../../tunnels/registry.ts";
@@ -26,7 +27,6 @@ import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
 
 const TunnelTargetSchema = z
   .object({
@@ -50,7 +50,7 @@ const TunnelSchema = z
   })
   .openapi("Tunnel");
 
-const TunnelListResponse = z.object({ items: z.array(TunnelSchema) }).openapi("TunnelListResponse");
+const TunnelListResponse = paginatedResponse(TunnelSchema, "TunnelListResponse");
 
 const CreateTunnelBody = z
   .object({
@@ -65,8 +65,6 @@ const CreateTunnelBody = z
       .min(1),
   })
   .openapi("CreateTunnelBody");
-
-const IdParam = z.object({ id: z.string().uuid() });
 
 const listRoute = createRoute({
   method: "get",

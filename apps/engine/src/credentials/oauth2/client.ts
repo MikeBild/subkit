@@ -10,7 +10,7 @@
 // `randomPKCECodeVerifier()`, `calculatePKCECodeChallenge()`.
 
 import * as oauth from "openid-client";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../../logging/logger.ts";
 import type { OAuth2ClientConfig, OAuth2TokenBundle } from "./types.ts";
 
 const configCache = new Map<string, oauth.Configuration>();
