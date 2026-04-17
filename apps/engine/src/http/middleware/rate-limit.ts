@@ -25,7 +25,7 @@ export function rateLimitMiddleware(opts: RateLimitOptions = {}): MiddlewareHand
   const buckets = new Map<string, Bucket>();
   let lastPrune = Date.now();
 
-  return async (c, next): Promise<void | Response> => {
+  return async (c, next): Promise<undefined | Response> => {
     const now = Date.now();
 
     // Periodic prune of expired buckets.
@@ -67,5 +67,6 @@ export function rateLimitMiddleware(opts: RateLimitOptions = {}): MiddlewareHand
     }
 
     await next();
+    return undefined;
   };
 }

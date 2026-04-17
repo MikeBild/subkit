@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initialSessionState } from "@cli-core/index.ts";
 import { defaultConfig, loadConfig, resolveProfile, saveConfig, saveProfile } from "../config.ts";
+import type { EngineClient } from "../engine-client.ts";
 import { handleSlash } from "../repl/slash-handler.ts";
 
 let dir: string;
@@ -209,7 +210,7 @@ describe("/profile slash handler", () => {
   // Minimal mock context for slash handler tests
   function mockCtx(configPath: string) {
     return {
-      client: {} as any,
+      client: {} as unknown as EngineClient,
       profile: resolveProfile({ path: configPath }),
       session: initialSessionState(null),
       setConversationId: () => {},
@@ -233,7 +234,7 @@ describe("/profile slash handler", () => {
       path,
     );
     // Set SK_HOME to use our temp config
-    const origHome = process.env.HOME;
+    const _origHome = process.env.HOME;
     // The handler calls loadConfig() which reads from ~/.sk/config.json
     // We need to test the handler output format
     const result = await handleSlash("profile", [], {

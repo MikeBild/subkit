@@ -33,7 +33,7 @@ afterAll(async () => {
 // ---------------------------------------------------------------------------
 // Shared: admin creates a workflow for other personas to interact with
 // ---------------------------------------------------------------------------
-let workflowId: string;
+let _workflowId: string;
 
 beforeAll(async () => {
   // Admin creates a workflow.
@@ -48,7 +48,7 @@ beforeAll(async () => {
     env,
     persona: "admin",
   });
-  workflowId = (Array.isArray(wfs) ? wfs : [wfs])[0]!.id;
+  _workflowId = (Array.isArray(wfs) ? wfs : [wfs])[0]!.id;
 }, 30_000);
 
 // ---------------------------------------------------------------------------

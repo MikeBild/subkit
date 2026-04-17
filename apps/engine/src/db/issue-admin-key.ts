@@ -86,7 +86,7 @@ async function main(): Promise<void> {
       ` user:    ${adminUser.email}`,
       ` key:     ${key.plaintext}`,
       "----------------------------------------------------------------",
-      " next:    sk login --api-key " + key.plaintext,
+      ` next:    sk login --api-key ${key.plaintext}`,
       "",
     ].join("\n");
     process.stdout.write(`${banner}\n`);

@@ -86,7 +86,7 @@ describe("browser-login", () => {
         engine_url: "http://localhost:0",
         timeout_ms: 10_000,
         quiet: false, // need output to capture port
-        fetchImpl: async (url, init) => {
+        fetchImpl: async (_url, init) => {
           // Mock the engine token exchange
           const body = JSON.parse(init?.body as string);
           expect(body.id_token).toBe("test-token");

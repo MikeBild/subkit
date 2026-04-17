@@ -7,7 +7,7 @@
 // Output: Workflow-scoped PatternSignal
 
 import { createHash } from "node:crypto";
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
 import { computeConfidence, type PatternSignal } from "../types.ts";

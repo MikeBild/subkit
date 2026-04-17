@@ -18,7 +18,7 @@
 // provider is not 'mock'.
 
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { generateObject, generateText } from "ai";
+import { generateText } from "ai";
 import { and, eq } from "drizzle-orm";
 import { type Db, getDb } from "../db/client.ts";
 import { tenantLlmSettings, tenants } from "../db/schema/index.ts";

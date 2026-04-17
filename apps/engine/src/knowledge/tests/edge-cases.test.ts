@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { KNOWLEDGE_SOURCE_MAX_BYTES, KnowledgeBudgetExceededError } from "../budgets.ts";
 import {
   createKnowledgeSource,
   deleteKnowledgeSource,
