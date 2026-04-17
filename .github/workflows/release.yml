@@ -256,6 +256,9 @@ jobs:
   publish-release:
     name: publish-release
     needs: build-cli-binaries
+    # Skip when dispatched from a branch for build-matrix validation —
+    # action-gh-release needs a tag ref to attach assets to.
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -289,7 +292,7 @@ jobs:
   build-and-push:
     name: build-and-push
     needs: test
-    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    if: ${{ vars.DEPLOY_ENABLED == 'true' && startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -335,7 +338,7 @@ jobs:
   deploy:
     name: deploy
     needs: build-and-push
-    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    if: ${{ vars.DEPLOY_ENABLED == 'true' && startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.build-and-push.outputs.version }}
@@ -390,7 +393,7 @@ jobs:
   smoke:
     name: smoke
     needs: [build-and-push, deploy]
-    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    if: ${{ vars.DEPLOY_ENABLED == 'true' && startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.build-and-push.outputs.version }}
