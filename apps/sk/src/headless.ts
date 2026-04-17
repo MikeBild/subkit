@@ -214,6 +214,10 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       assistant_text: lastAssistantText(streamState),
       messages: streamState.messages,
       tool_calls: streamState.toolCalls,
+      // Surface the open askUser.* elicitation (if any) so scripted
+      // consumers can POST to `/elicitations/:id/respond` without
+      // having to re-parse the event stream themselves.
+      pending_elicitation: streamState.pendingElicitation,
       committed_workflow_id: streamState.committedWorkflowId,
       validation_errors: streamState.validationErrors,
       usage: streamState.usage,
