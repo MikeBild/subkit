@@ -39,6 +39,7 @@ import { maybeOffload } from "../../execution/offload.ts";
 import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
+import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import {
   CONVERSATION_TOOL_PREFIX,
@@ -484,17 +485,17 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       } catch (err) {
         state.bridge?.stop();
         if (state.executionId) cancel(state.executionId);
-        const message = err instanceof Error ? err.message : String(err);
+        const text = toMcpErrorText(err);
         logger.error({
           module: "mcp",
           action: "mcp.tool.error",
           msg: "mcp tool call failed",
           tool: name,
-          error: message,
+          error: text,
         });
         return {
           isError: true,
-          content: [{ type: "text" as const, text: `error: ${message}` }],
+          content: [{ type: "text" as const, text: `error: ${text}` }],
         };
       }
     },

@@ -12,6 +12,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { policy } from "../../auth/policy.ts";
@@ -30,7 +31,6 @@ import { BadRequestError, ForbiddenError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
 
 const ListResponseSchema = z
   .object({
@@ -76,7 +76,6 @@ const FromTemplateBody = z
   .openapi("ConnectorFromTemplateBody");
 
 const SlugParam = z.object({ slug: z.string().min(1) });
-const IdParam = z.object({ id: z.string().uuid() });
 
 const listRoute = createRoute({
   method: "get",

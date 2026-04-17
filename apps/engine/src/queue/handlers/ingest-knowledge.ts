@@ -6,7 +6,7 @@
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import { ingestKnowledgeSource } from "../../knowledge/service.ts";
-import { logger } from "../../logging/logger.ts";
+import { log } from "../../logging/logger.ts";
 
 export const INGEST_KNOWLEDGE_QUEUE = "knowledge.ingest" as const;
 
@@ -26,9 +26,7 @@ export interface RegisterIngestKnowledgeOptions {
 
 async function handleOne(job: Job<IngestKnowledgeJob>, db: Db): Promise<void> {
   const data = job.data;
-  logger.info({
-    module: "queue",
-    action: "job.dequeued",
+  log.queue.job.dequeued({
     msg: "knowledge.ingest job dequeued",
     queue: INGEST_KNOWLEDGE_QUEUE,
     job_id: job.id,
@@ -50,9 +48,7 @@ async function handleOne(job: Job<IngestKnowledgeJob>, db: Db): Promise<void> {
       },
       db,
     );
-    logger.info({
-      module: "queue",
-      action: "job.completed",
+    log.queue.job.completed({
       msg: "knowledge.ingest job completed",
       queue: INGEST_KNOWLEDGE_QUEUE,
       job_id: job.id,
@@ -63,9 +59,7 @@ async function handleOne(job: Job<IngestKnowledgeJob>, db: Db): Promise<void> {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error({
-      module: "queue",
-      action: "job.failed",
+    log.queue.job.failed({
       msg: "knowledge.ingest job failed",
       queue: INGEST_KNOWLEDGE_QUEUE,
       job_id: job.id,
@@ -89,9 +83,7 @@ export async function registerIngestKnowledgeHandler(
       }
     },
   );
-  logger.info({
-    module: "queue",
-    action: "worker.registered",
+  log.queue.worker.registered({
     msg: "knowledge.ingest worker registered",
     worker_id: workerId,
   });

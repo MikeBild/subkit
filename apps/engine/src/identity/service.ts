@@ -15,6 +15,7 @@ import {
   tenants,
   users,
 } from "../db/schema/index.ts";
+import { log } from "../logging/logger.ts";
 import { generateKey, hashKey } from "./api-key.ts";
 import { generatePortalToken } from "./portal-token.ts";
 
@@ -290,6 +291,15 @@ export async function issueApiKey(
       },
       tx,
     );
+    log.identity.apiKey.issued({
+      api_key_id: row.id,
+      tenant_id: input.tenant_id,
+      prefix: row.prefix,
+      owner_kind: input.owner_kind,
+      has_expiry: row.expires_at !== null,
+      rotated_from_id: input.rotated_from_id ?? null,
+      actor_id: input.actor_id,
+    });
     return { view: toApiKeyView(row), plaintext: key.plaintext };
   });
 }
@@ -391,6 +401,16 @@ export async function rotateApiKey(
       tx,
     );
 
+    log.identity.apiKey.rotated({
+      rotated_from_id: existing.id,
+      rotated_to_id: created.id,
+      tenant_id: existing.tenant_id,
+      old_prefix: existing.prefix,
+      new_prefix: created.prefix,
+      overlap_minutes: input.overlap_minutes ?? 60,
+      actor_id: input.actor_id,
+    });
+
     return {
       old: toApiKeyView(rotatedOut),
       new: toApiKeyView(created),
@@ -436,6 +456,12 @@ export async function revokeApiKey(
       },
       tx,
     );
+    log.identity.apiKey.revoked({
+      api_key_id: row.id,
+      tenant_id: input.tenant_id,
+      prefix: row.prefix,
+      actor_id: input.actor_id,
+    });
     return toApiKeyView(row);
   });
 }
@@ -526,6 +552,14 @@ export async function issuePortalToken(
       },
       tx,
     );
+    log.identity.portalToken.issued({
+      portal_token_id: row.id,
+      tenant_id: input.tenant_id,
+      enduser_ref: input.user_id,
+      workflow_count: input.allowed_workflows.length,
+      ttl_ms: ttlMs,
+      actor_id: input.actor_id,
+    });
     return { view: toPortalTokenView(row), plaintext: key.plaintext };
   });
 }
@@ -564,6 +598,11 @@ export async function revokePortalToken(input: RevokePortalTokenInput, exec?: Ex
       },
       tx,
     );
+    log.identity.portalToken.revoked({
+      portal_token_id: row.id,
+      tenant_id: input.tenant_id,
+      actor_id: input.actor_id,
+    });
     return toPortalTokenView(row);
   });
 }

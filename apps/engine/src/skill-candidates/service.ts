@@ -8,6 +8,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
+import { log } from "../logging/logger.ts";
 import { createSkill } from "../skills/service.ts";
 import {
   detectFailurePatterns,
@@ -190,10 +191,22 @@ async function upsertFromSignal(
       const row = existing[0];
       // If rejected or superseded, don't re-propose
       if (row.status === "rejected" || row.status === "superseded") {
+        log.skill.candidate.dedup({
+          candidate_id: row.id,
+          tenant_id,
+          pattern_kind: signal.pattern_kind,
+          reason: row.status,
+        });
         return { action: "skipped" as const };
       }
       // If already approved, skip
       if (row.status === "approved") {
+        log.skill.candidate.dedup({
+          candidate_id: row.id,
+          tenant_id,
+          pattern_kind: signal.pattern_kind,
+          reason: "approved",
+        });
         return { action: "skipped" as const };
       }
       // Update existing proposed candidate (bump version, update confidence)
@@ -341,6 +354,14 @@ async function upsertFromSignal(
       tx,
     );
 
+    log.skill.candidate.proposed({
+      candidate_id: row.id,
+      tenant_id,
+      pattern_kind: signal.pattern_kind,
+      confidence: signal.confidence,
+      superseded_count: stale.length,
+    });
+
     return { action: "proposed" as const };
   });
 }
@@ -371,6 +392,19 @@ export async function runPatternAnalysis(
     if (result.action === "proposed") proposed++;
     if (result.action === "updated") updated++;
   }
+
+  log.info({
+    module: "skill",
+    action: "pattern_analysis.completed",
+    msg: "pattern analysis pass completed",
+    tenant_id: params.tenant_id,
+    patterns_checked: allSignals.length,
+    candidates_proposed: proposed,
+    candidates_updated: updated,
+    repair_signals: repairSignals.length,
+    failure_signals: failureSignals.length,
+    success_signals: successSignals.length,
+  });
 
   return {
     candidates_proposed: proposed,
@@ -417,6 +451,7 @@ export async function approveSkillCandidate(
           title: p.overrides?.title ?? row.title,
           body: p.overrides?.body ?? row.body,
           status: p.overrides?.status ?? "draft",
+          source: "candidate",
           examples: (blob.examples as string[]) ?? [],
           best_practices: (blob.best_practices as string[]) ?? [],
           pitfalls: (blob.pitfalls as string[]) ?? [],
@@ -454,6 +489,13 @@ export async function approveSkillCandidate(
       },
       tx,
     );
+
+    log.skill.candidate.approved({
+      candidate_id: p.candidate_id,
+      skill_id: skill.id,
+      pattern_kind: row.pattern_kind,
+      actor_id: p.actor_id,
+    });
 
     return {
       candidate: updated ? toView(updated) : toView(row),
@@ -505,6 +547,12 @@ export async function rejectSkillCandidate(
       },
       tx,
     );
+
+    log.skill.candidate.rejected({
+      candidate_id: p.candidate_id,
+      actor_id: p.actor_id,
+      reason: p.reason ?? null,
+    });
 
     return true;
   });

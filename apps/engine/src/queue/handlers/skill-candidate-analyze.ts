@@ -5,7 +5,7 @@
 
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { log } from "../../logging/logger.ts";
 import { runPatternAnalysis } from "../../skill-candidates/service.ts";
 
 export const SKILL_CANDIDATE_ANALYZE_QUEUE = "skill-candidate.analyze" as const;
@@ -21,9 +21,7 @@ export interface RegisterSkillCandidateAnalyzeOptions {
 
 async function handleOne(job: Job<SkillCandidateAnalyzeJob>, db: Db): Promise<void> {
   const data = job.data;
-  logger.info({
-    module: "queue",
-    action: "job.dequeued",
+  log.queue.job.dequeued({
     msg: "skill-candidate.analyze job dequeued",
     queue: SKILL_CANDIDATE_ANALYZE_QUEUE,
     job_id: job.id,
@@ -32,9 +30,7 @@ async function handleOne(job: Job<SkillCandidateAnalyzeJob>, db: Db): Promise<vo
   const started = Date.now();
   try {
     const result = await runPatternAnalysis({ tenant_id: data.tenant_id }, db);
-    logger.info({
-      module: "queue",
-      action: "job.completed",
+    log.queue.job.completed({
       msg: "skill-candidate.analyze job completed",
       queue: SKILL_CANDIDATE_ANALYZE_QUEUE,
       job_id: job.id,
@@ -45,9 +41,7 @@ async function handleOne(job: Job<SkillCandidateAnalyzeJob>, db: Db): Promise<vo
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error({
-      module: "queue",
-      action: "job.failed",
+    log.queue.job.failed({
       msg: "skill-candidate.analyze job failed",
       queue: SKILL_CANDIDATE_ANALYZE_QUEUE,
       job_id: job.id,
@@ -71,9 +65,7 @@ export async function registerSkillCandidateAnalyzeHandler(
       }
     },
   );
-  logger.info({
-    module: "queue",
-    action: "worker.registered",
+  log.queue.worker.registered({
     msg: "skill-candidate.analyze worker registered",
     worker_id: workerId,
   });

@@ -54,7 +54,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
   const fetchImpl = p.fetchImpl ?? fetch;
   logger.info({
     module: "docs",
-    action: "log.docs.ingest.started",
+    action: "ingest.started",
     msg: "doc ingest started",
     tenant_id: p.tenant_id,
     connector_id: p.connector_id,
@@ -130,7 +130,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     const msg = err instanceof Error ? err.message : String(err);
     logger.error({
       module: "docs",
-      action: "log.docs.ingest.failed",
+      action: "ingest.failed",
       msg: "doc ingest failed",
       tenant_id: p.tenant_id,
       connector_id: p.connector_id,
@@ -207,7 +207,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
       const c = accepted[i]!;
       logger.debug({
         module: "docs",
-        action: "log.docs.ingest.chunk",
+        action: "ingest.chunk",
         msg: "doc ingest chunk persisted",
         ordinal: i,
         bytes: c.byte_size,
@@ -258,7 +258,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
 
   logger.info({
     module: "docs",
-    action: "log.docs.ingest.completed",
+    action: "ingest.completed",
     msg: "doc ingest completed",
     tenant_id: p.tenant_id,
     connector_id: p.connector_id,

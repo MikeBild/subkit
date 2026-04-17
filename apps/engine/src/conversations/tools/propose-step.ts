@@ -39,10 +39,16 @@ export const proposeStepTool: ConversationTool = {
     // return the errors so the loop can feed them back to the model.
     const validation = validateWorkflowDef(draft);
     if (!validation.ok) {
+      // The loop emits `conversation.tool.failed` (with duration +
+      // data summary) on `ok:false`, so we only need to surface
+      // per-tool context through the return payload — loop picks it
+      // up via `summarizeToolData`.
       return {
         ok: false,
         data: {
           errors: validation.errors,
+          step_id: stepId ?? null,
+          step_type: typeof args.step.type === "string" ? args.step.type : null,
           message: "step invalid — see errors and retry with update_param or another propose_step",
         },
       };
@@ -52,6 +58,9 @@ export const proposeStepTool: ConversationTool = {
       ok: true,
       data: {
         steps: draft.steps.length,
+        step_id: stepId ?? null,
+        step_type: typeof args.step.type === "string" ? args.step.type : null,
+        replaced: stepId !== undefined && draft.steps.findIndex((s) => s.id === stepId) >= 0,
         last_step_id: draft.steps[draft.steps.length - 1]?.id ?? null,
       },
     };

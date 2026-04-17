@@ -6,11 +6,11 @@
 // stage, auto-apply, or reject.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { runRepairFlow } from "../../../llm/flows/repair.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { ErrorSchema } from "../identity/schemas.ts";
 
 const RepairBody = z
   .object({

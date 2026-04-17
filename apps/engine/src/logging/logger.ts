@@ -144,9 +144,15 @@ export const log = {
   },
   queue: {
     job: {
-      dequeued: (ctx: Ctx) => logger.debug({ module: "queue", action: "job.dequeued", ...ctx }),
+      // Info (not debug) because operators already alert on dequeue cadence
+      // in existing dashboards; downgrading to debug would silence them.
+      dequeued: (ctx: Ctx) => logger.info({ module: "queue", action: "job.dequeued", ...ctx }),
       completed: (ctx: Ctx) => logger.info({ module: "queue", action: "job.completed", ...ctx }),
       failed: (ctx: Ctx) => logger.error({ module: "queue", action: "job.failed", ...ctx }),
+    },
+    worker: {
+      registered: (ctx: Ctx) =>
+        logger.info({ module: "queue", action: "worker.registered", ...ctx }),
     },
   },
   execution: {
@@ -158,15 +164,26 @@ export const log = {
     call: (ctx: Ctx) => logger.info({ module: "llm", action: "call", ...ctx }),
     error: (ctx: Ctx) => logger.error({ module: "llm", action: "error", ...ctx }),
   },
-  webhook: {
+  webhooks: {
+    // Module name is plural to match the `webhooks/` directory and the
+    // existing raw callers that already emit `module: "webhooks.outbound"`
+    // / `module: "webhooks.inbound"`.
     inbound: {
       received: (ctx: Ctx) =>
-        logger.info({ module: "webhook", action: "inbound.received", ...ctx }),
+        logger.info({ module: "webhooks.inbound", action: "received", ...ctx }),
+      rejected: (ctx: Ctx) =>
+        logger.warn({ module: "webhooks.inbound", action: "rejected", ...ctx }),
     },
     outbound: {
       delivered: (ctx: Ctx) =>
-        logger.info({ module: "webhook", action: "outbound.delivered", ...ctx }),
-      failed: (ctx: Ctx) => logger.error({ module: "webhook", action: "outbound.failed", ...ctx }),
+        logger.info({ module: "webhooks.outbound", action: "delivered", ...ctx }),
+      failed: (ctx: Ctx) => logger.error({ module: "webhooks.outbound", action: "failed", ...ctx }),
+      retried: (ctx: Ctx) =>
+        logger.info({ module: "webhooks.outbound", action: "retried", ...ctx }),
+      breaker: {
+        open: (ctx: Ctx) =>
+          logger.warn({ module: "webhooks.outbound", action: "breaker.open", ...ctx }),
+      },
     },
   },
   chat: {
@@ -181,5 +198,88 @@ export const log = {
   auth: {
     resolved: (ctx: Ctx) => logger.info({ module: "auth", action: "resolved", ...ctx }),
     denied: (ctx: Ctx) => logger.warn({ module: "auth", action: "denied", ...ctx }),
+  },
+  conversation: {
+    created: (ctx: Ctx) => logger.info({ module: "conversation", action: "created", ...ctx }),
+    appended: (ctx: Ctx) => logger.debug({ module: "conversation", action: "appended", ...ctx }),
+    completed: (ctx: Ctx) => logger.info({ module: "conversation", action: "completed", ...ctx }),
+    compacted: (ctx: Ctx) => logger.info({ module: "conversation", action: "compacted", ...ctx }),
+    approval: {
+      requested: (ctx: Ctx) =>
+        logger.info({ module: "conversation", action: "approval.requested", ...ctx }),
+      approved: (ctx: Ctx) =>
+        logger.info({ module: "conversation", action: "approval.approved", ...ctx }),
+      rejected: (ctx: Ctx) =>
+        logger.warn({ module: "conversation", action: "approval.rejected", ...ctx }),
+    },
+    tool: {
+      called: (ctx: Ctx) => logger.debug({ module: "conversation", action: "tool.called", ...ctx }),
+      succeeded: (ctx: Ctx) =>
+        logger.debug({ module: "conversation", action: "tool.succeeded", ...ctx }),
+      failed: (ctx: Ctx) => logger.warn({ module: "conversation", action: "tool.failed", ...ctx }),
+    },
+  },
+  skill: {
+    created: (ctx: Ctx) => logger.info({ module: "skill", action: "created", ...ctx }),
+    updated: (ctx: Ctx) => logger.info({ module: "skill", action: "updated", ...ctx }),
+    deleted: (ctx: Ctx) => logger.info({ module: "skill", action: "deleted", ...ctx }),
+    lifecycle: (ctx: Ctx) => logger.info({ module: "skill", action: "lifecycle", ...ctx }),
+    candidate: {
+      proposed: (ctx: Ctx) =>
+        logger.info({ module: "skill", action: "candidate.proposed", ...ctx }),
+      approved: (ctx: Ctx) =>
+        logger.info({ module: "skill", action: "candidate.approved", ...ctx }),
+      rejected: (ctx: Ctx) =>
+        logger.warn({ module: "skill", action: "candidate.rejected", ...ctx }),
+      // `promoted` deliberately omitted — candidate.approved already
+      // carries the `promoted_skill_id`; a second event would be
+      // redundant.
+      dedup: (ctx: Ctx) => logger.debug({ module: "skill", action: "candidate.dedup", ...ctx }),
+    },
+  },
+  knowledge: {
+    ingested: (ctx: Ctx) => logger.info({ module: "knowledge", action: "ingested", ...ctx }),
+    searched: (ctx: Ctx) => logger.debug({ module: "knowledge", action: "searched", ...ctx }),
+  },
+  selfHealing: {
+    drift: {
+      detected: (ctx: Ctx) =>
+        logger.warn({ module: "self-healing", action: "drift.detected", ...ctx }),
+    },
+    patch: {
+      proposed: (ctx: Ctx) =>
+        logger.info({ module: "self-healing", action: "patch.proposed", ...ctx }),
+      applied: (ctx: Ctx) =>
+        logger.info({ module: "self-healing", action: "patch.applied", ...ctx }),
+      rejected: (ctx: Ctx) =>
+        logger.warn({ module: "self-healing", action: "patch.rejected", ...ctx }),
+    },
+    fixture: {
+      passed: (ctx: Ctx) =>
+        logger.info({ module: "self-healing", action: "fixture.passed", ...ctx }),
+      failed: (ctx: Ctx) =>
+        logger.warn({ module: "self-healing", action: "fixture.failed", ...ctx }),
+    },
+  },
+  workflow: {
+    committed: (ctx: Ctx) => logger.info({ module: "workflow", action: "committed", ...ctx }),
+    restored: (ctx: Ctx) => logger.info({ module: "workflow", action: "restored", ...ctx }),
+    validation: {
+      failed: (ctx: Ctx) =>
+        logger.warn({ module: "workflow", action: "validation.failed", ...ctx }),
+    },
+  },
+  identity: {
+    apiKey: {
+      issued: (ctx: Ctx) => logger.info({ module: "identity", action: "api_key.issued", ...ctx }),
+      rotated: (ctx: Ctx) => logger.info({ module: "identity", action: "api_key.rotated", ...ctx }),
+      revoked: (ctx: Ctx) => logger.warn({ module: "identity", action: "api_key.revoked", ...ctx }),
+    },
+    portalToken: {
+      issued: (ctx: Ctx) =>
+        logger.info({ module: "identity", action: "portal_token.issued", ...ctx }),
+      revoked: (ctx: Ctx) =>
+        logger.warn({ module: "identity", action: "portal_token.revoked", ...ctx }),
+    },
   },
 } as const;

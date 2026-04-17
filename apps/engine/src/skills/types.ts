@@ -6,6 +6,7 @@ import { z } from "@hono/zod-openapi";
 
 export const SkillScopeSchema = z.enum(["global", "connector", "workflow"]);
 export const SkillLifecycleSchema = z.enum(["draft", "active", "archived"]);
+export const SkillSourceSchema = z.enum(["manual", "candidate", "template", "memory"]);
 
 /**
  * Authoring shape (what operators see). The persisted row collapses
@@ -26,6 +27,7 @@ export const SkillSchema = z
     pitfalls: z.array(z.string()).default([]),
     doc_refs: z.array(z.string()).default([]),
     status: SkillLifecycleSchema,
+    source: SkillSourceSchema,
     version: z.number().int().min(1),
     created_at: z.string(),
     updated_at: z.string(),
@@ -44,6 +46,7 @@ export const CreateSkillSchema = z
     pitfalls: z.array(z.string()).optional(),
     doc_refs: z.array(z.string()).optional(),
     status: SkillLifecycleSchema.optional(),
+    source: SkillSourceSchema.optional(),
   })
   .openapi("CreateSkillBody");
 
@@ -62,6 +65,7 @@ export const UpdateSkillSchema = z
 export type Skill = z.infer<typeof SkillSchema>;
 export type SkillScope = z.infer<typeof SkillScopeSchema>;
 export type SkillLifecycle = z.infer<typeof SkillLifecycleSchema>;
+export type SkillSource = z.infer<typeof SkillSourceSchema>;
 export type CreateSkillInput = z.infer<typeof CreateSkillSchema>;
 export type UpdateSkillInput = z.infer<typeof UpdateSkillSchema>;
 

@@ -14,6 +14,9 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
+import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { auditAwait } from "../../audit/audit.ts";
+import { AuditAction } from "../../audit/types.ts";
 import {
   type NotificationChannelRow,
   type NotificationRuleRow,
@@ -25,9 +28,6 @@ import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
-
-const IdParam = z.object({ id: z.string().uuid() });
 
 const SeverityEnum = z.enum(["debug", "info", "warn", "error", "critical"]);
 
@@ -394,6 +394,23 @@ export function registerNotificationRoutes(app: OpenAPIHono<AppEnv>): void {
       })
       .returning();
     if (!row) throw new Error("notifications: insert failed");
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        action: AuditAction.NOTIFICATION_CHANNEL_CREATED,
+        resource_type: "notification_channel",
+        resource_id: row.id,
+        result: "success",
+        metadata: {
+          platform: row.platform,
+          workspace_id: row.workspace_id,
+          channel_id: row.channel_id,
+        },
+      },
+      db,
+    );
     return c.json(serializeChannel(row), 201);
   });
 
@@ -418,6 +435,19 @@ export function registerNotificationRoutes(app: OpenAPIHono<AppEnv>): void {
       )
       .returning();
     if (!row) throw new NotFoundError("notification_channel");
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        action: AuditAction.NOTIFICATION_CHANNEL_UPDATED,
+        resource_type: "notification_channel",
+        resource_id: row.id,
+        result: "success",
+        metadata: { changed_fields: Object.keys(updates).filter((k) => k !== "updated_at") },
+      },
+      db,
+    );
     return c.json(serializeChannel(row), 200);
   });
 
@@ -435,6 +465,19 @@ export function registerNotificationRoutes(app: OpenAPIHono<AppEnv>): void {
       )
       .returning({ id: notificationChannels.id });
     if (deleted.length === 0) throw new NotFoundError("notification_channel");
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        action: AuditAction.NOTIFICATION_CHANNEL_DELETED,
+        resource_type: "notification_channel",
+        resource_id: id,
+        result: "success",
+        metadata: {},
+      },
+      db,
+    );
     return c.json({ deleted: true }, 200);
   });
 
@@ -467,6 +510,23 @@ export function registerNotificationRoutes(app: OpenAPIHono<AppEnv>): void {
       })
       .returning();
     if (!row) throw new Error("notifications: rule insert failed");
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        action: AuditAction.NOTIFICATION_RULE_CREATED,
+        resource_type: "notification_rule",
+        resource_id: row.id,
+        result: "success",
+        metadata: {
+          name: row.name,
+          event_pattern: row.event_pattern,
+          severity: row.severity,
+        },
+      },
+      db,
+    );
     return c.json(serializeRule(row), 201);
   });
 
@@ -494,6 +554,19 @@ export function registerNotificationRoutes(app: OpenAPIHono<AppEnv>): void {
       )
       .returning();
     if (!row) throw new NotFoundError("notification_rule");
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        action: AuditAction.NOTIFICATION_RULE_UPDATED,
+        resource_type: "notification_rule",
+        resource_id: row.id,
+        result: "success",
+        metadata: { changed_fields: Object.keys(updates).filter((k) => k !== "updated_at") },
+      },
+      db,
+    );
     return c.json(serializeRule(row), 200);
   });
 
@@ -508,6 +581,19 @@ export function registerNotificationRoutes(app: OpenAPIHono<AppEnv>): void {
       )
       .returning({ id: notificationRules.id });
     if (deleted.length === 0) throw new NotFoundError("notification_rule");
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        action: AuditAction.NOTIFICATION_RULE_DELETED,
+        resource_type: "notification_rule",
+        resource_id: id,
+        result: "success",
+        metadata: {},
+      },
+      db,
+    );
     return c.json({ deleted: true }, 200);
   });
 

@@ -18,6 +18,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { stream as honoStream } from "hono/streaming";
+import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
 import {
   type AuditQueryFilters,
   getAuditRowById,
@@ -30,7 +31,6 @@ import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
 
 const AuditEntrySchema = z
   .object({
@@ -53,12 +53,7 @@ const AuditEntrySchema = z
   })
   .openapi("AuditEntry");
 
-const ListResponse = z
-  .object({
-    items: z.array(AuditEntrySchema),
-    next_cursor: z.string().nullable(),
-  })
-  .openapi("AuditLogListResponse");
+const ListResponse = paginatedResponse(AuditEntrySchema, "AuditLogListResponse");
 
 // ---------- Query shape ----------
 
@@ -80,8 +75,6 @@ const ListQuery = FilterQuery.extend({
   limit: z.coerce.number().int().positive().max(500).optional(),
   before: z.string().datetime().optional(),
 }).openapi("AuditLogListQuery");
-
-const IdParam = z.object({ id: z.string().uuid() });
 
 // ---------- OpenAPI routes ----------
 

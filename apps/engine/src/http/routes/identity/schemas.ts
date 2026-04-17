@@ -1,6 +1,16 @@
-// Shared zod schemas for the identity routes.
+// Identity-specific zod schemas. Shared schemas that apply to more than
+// one subsystem (ErrorSchema, PaginationQuery, IdParam) live in
+// `apps/engine/src/api/common-schemas.ts`. Re-exported below for
+// backwards compatibility with callers that still import from here.
 
 import { z } from "@hono/zod-openapi";
+
+export {
+  ErrorSchema,
+  IdParam,
+  PaginationQuery,
+  paginatedResponse,
+} from "../../../api/common-schemas.ts";
 
 export const TenantSchema = z
   .object({
@@ -73,24 +83,3 @@ export const PortalTokenSchema = z
 export const PortalTokenIssuedSchema = PortalTokenSchema.extend({
   plaintext_token: z.string(),
 }).openapi("PortalTokenIssued");
-
-export const ErrorSchema = z
-  .object({
-    code: z.string(),
-    message: z.string(),
-    trace_id: z.string().optional(),
-    details: z.record(z.string(), z.any()).optional(),
-  })
-  .openapi("Error");
-
-export const PaginationQuery = z.object({
-  limit: z.coerce.number().int().positive().max(200).optional(),
-  offset: z.coerce.number().int().nonnegative().optional(),
-});
-
-export const IdParam = z.object({
-  id: z
-    .string()
-    .uuid()
-    .openapi({ param: { name: "id", in: "path" } }),
-});

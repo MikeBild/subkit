@@ -11,6 +11,7 @@ import { type Db, getDb } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
+import { log } from "../logging/logger.ts";
 import {
   KNOWLEDGE_SOURCE_MAX_BYTES,
   KNOWLEDGE_TENANT_MAX_BYTES,
@@ -431,6 +432,16 @@ export async function ingestKnowledgeSource(
     );
   });
 
+  log.knowledge.ingested({
+    knowledge_source_id: p.knowledge_source_id,
+    tenant_id: p.tenant_id,
+    actor_id: p.actor_id,
+    format,
+    chunk_count: accepted.length,
+    skipped_count: skipped,
+    bytes_total: totalBytes,
+  });
+
   return {
     knowledge_source_id: p.knowledge_source_id,
     ingested_count: accepted.length,
@@ -500,7 +511,7 @@ export async function searchKnowledge(
     rank: number | string;
   };
 
-  return (out.rows as Row[]).map((r) => ({
+  const hits = (out.rows as Row[]).map((r) => ({
     id: r.id,
     knowledge_source_id: r.knowledge_source_id,
     title: r.title,
@@ -508,4 +519,15 @@ export async function searchKnowledge(
     snippet: r.snippet,
     rank: typeof r.rank === "string" ? parseFloat(r.rank) : r.rank,
   }));
+
+  log.knowledge.searched({
+    tenant_id: p.tenant_id,
+    query_length: p.query.length,
+    scope: p.scope ?? null,
+    workflow_id: p.workflow_id ?? null,
+    hit_count: hits.length,
+    limit,
+  });
+
+  return hits;
 }

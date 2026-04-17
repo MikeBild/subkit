@@ -6,11 +6,12 @@
 //   - receive(): normalize a VerifiedEvent into a ChatEvent.
 //   - send / update / sendApproval: outbound API calls.
 //
-// Progressive-edit coalescing is intentionally out of scope for P12;
-// the dispatcher calls `send` and later `update` directly without
-// debouncing. TODO(P13): wire a per-delivery coalescer in front of
-// update() and bucket rate-limit enforcement around all three
-// outbound methods (see CHAT_RATES).
+// Rate-limiting is enforced for NOTIFICATIONS via `notifications/rate-limit.ts`
+// (token bucket per channel). Direct `conversations/dispatcher.ts` traffic
+// (user-driven chat turns) currently bypasses the bucket — deferred P13
+// work will wrap `send`/`update`/`sendApproval` with the same limiter
+// plus a per-delivery coalescer for progressive edits. `CHAT_RATES` in
+// `./types.ts` declares the per-platform ceilings the limiter should honor.
 
 import type {
   ApprovalCard,

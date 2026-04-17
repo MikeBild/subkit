@@ -14,6 +14,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { probeConnector } from "../../connectors/drivers/index.ts";
@@ -23,20 +24,19 @@ import {
   CreateConnectorSchema,
   UpdateConnectorSchema,
 } from "../../connectors/types.ts";
-import * as credsvc from "../../credentials/service.ts";
-import { encryptSecret } from "../../crypto/aes-gcm.ts";
-import { connectorOauthStates, credentials, endUserCredentials } from "../../db/schema/index.ts";
 import {
   completeAuthorizationCode,
   runClientCredentialsGrant,
   startAuthorizationCode,
-} from "../../oauth2/client.ts";
-import type { OAuth2ClientConfig } from "../../oauth2/types.ts";
+} from "../../credentials/oauth2/client.ts";
+import type { OAuth2ClientConfig } from "../../credentials/oauth2/types.ts";
+import * as credsvc from "../../credentials/service.ts";
+import { encryptSecret } from "../../crypto/aes-gcm.ts";
+import { connectorOauthStates, credentials, endUserCredentials } from "../../db/schema/index.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
 
 const ConnectorSchema = z
   .object({
@@ -67,8 +67,6 @@ const ProbeResultSchema = z
     detail: z.string().optional(),
   })
   .openapi("ConnectorProbeResult");
-
-const IdParam = z.object({ id: z.string().uuid() });
 
 const CredentialBody = z
   .object({

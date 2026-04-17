@@ -96,6 +96,13 @@ export const AuditAction = {
   CHAT_MESSAGE_DENIED: "chat.message.denied",
   CHAT_MESSAGE_SENT: "chat.message.sent",
 
+  NOTIFICATION_CHANNEL_CREATED: "notification_channel.created",
+  NOTIFICATION_CHANNEL_UPDATED: "notification_channel.updated",
+  NOTIFICATION_CHANNEL_DELETED: "notification_channel.deleted",
+  NOTIFICATION_RULE_CREATED: "notification_rule.created",
+  NOTIFICATION_RULE_UPDATED: "notification_rule.updated",
+  NOTIFICATION_RULE_DELETED: "notification_rule.deleted",
+
   TUNNEL_REGISTERED: "tunnel.registered",
   TUNNEL_UNREGISTERED: "tunnel.unregistered",
   TUNNEL_DISCONNECTED: "tunnel.disconnected",

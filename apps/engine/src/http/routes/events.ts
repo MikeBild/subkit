@@ -11,6 +11,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, desc, eq, gt } from "drizzle-orm";
 import { streamSSE } from "hono/streaming";
+import { ErrorSchema, paginatedResponse } from "../../api/common-schemas.ts";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { writeEvent } from "../../db/events.ts";
@@ -22,7 +23,6 @@ import { BadRequestError, ForbiddenError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
 
 const EventSchema = z
   .object({
@@ -35,7 +35,7 @@ const EventSchema = z
   })
   .openapi("OutboxEvent");
 
-const ListResponse = z.object({ items: z.array(EventSchema) }).openapi("OutboxEventListResponse");
+const ListResponse = paginatedResponse(EventSchema, "OutboxEventListResponse");
 
 const EmitBody = z
   .object({

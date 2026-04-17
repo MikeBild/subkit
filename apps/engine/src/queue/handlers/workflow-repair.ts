@@ -7,7 +7,7 @@
 
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { log } from "../../logging/logger.ts";
 import { runSelfHealingLoop } from "../../self-healing/service.ts";
 import type { WorkflowRepairJob } from "../../self-healing/types.ts";
 
@@ -20,9 +20,7 @@ export interface RegisterWorkflowRepairOptions {
 
 async function handleOne(job: Job<WorkflowRepairJob>, db: Db): Promise<void> {
   const data = job.data;
-  logger.info({
-    module: "queue",
-    action: "job.dequeued",
+  log.queue.job.dequeued({
     msg: "workflow.repair job dequeued",
     queue: WORKFLOW_REPAIR_QUEUE,
     job_id: job.id,
@@ -34,9 +32,7 @@ async function handleOne(job: Job<WorkflowRepairJob>, db: Db): Promise<void> {
   const started = Date.now();
   try {
     const result = await runSelfHealingLoop(data, db);
-    logger.info({
-      module: "queue",
-      action: "job.completed",
+    log.queue.job.completed({
       msg: "workflow.repair job completed",
       queue: WORKFLOW_REPAIR_QUEUE,
       job_id: job.id,
@@ -49,9 +45,7 @@ async function handleOne(job: Job<WorkflowRepairJob>, db: Db): Promise<void> {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error({
-      module: "queue",
-      action: "job.failed",
+    log.queue.job.failed({
       msg: "workflow.repair job failed",
       queue: WORKFLOW_REPAIR_QUEUE,
       job_id: job.id,
@@ -75,9 +69,7 @@ export async function registerWorkflowRepairHandler(
       }
     },
   );
-  logger.info({
-    module: "queue",
-    action: "worker.registered",
+  log.queue.worker.registered({
     msg: "workflow.repair worker registered",
     worker_id: workerId,
   });

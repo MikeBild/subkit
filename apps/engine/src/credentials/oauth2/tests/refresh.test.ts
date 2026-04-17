@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { getCredentialForConnector, upsertCredential } from "../../credentials/service.ts";
-import { connectors, tenants } from "../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { connectors, tenants } from "../../../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { getCredentialForConnector, upsertCredential } from "../../service.ts";
 import { __resetOAuth2CacheForTests, runClientCredentialsGrant } from "../client.ts";
 import { refreshIfStale } from "../refresh-worker.ts";
 import { type MockOAuthServer, startMockOAuthServer } from "./mock-server.ts";

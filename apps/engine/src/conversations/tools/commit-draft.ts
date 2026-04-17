@@ -31,9 +31,15 @@ export const commitDraftTool: ConversationTool = {
       .limit(1);
     const head = rows[0];
     if (!head || head.status !== "approved") {
+      // Loop emits `conversation.tool.failed` with our `error` field in
+      // the data summary, so no tool-level log is needed.
       return {
         ok: false,
-        data: { error: "commit_draft requires an approved commit_draft approval" },
+        data: {
+          error: "commit_draft requires an approved commit_draft approval",
+          reason: "no_approval",
+          latest_approval_status: head?.status ?? null,
+        },
       };
     }
 
@@ -54,7 +60,14 @@ export const commitDraftTool: ConversationTool = {
       ctx.db,
     );
     if ("errors" in result) {
-      return { ok: false, data: { errors: result.errors } };
+      return {
+        ok: false,
+        data: {
+          errors: result.errors,
+          reason: "invalid_final_draft",
+          step_count: def.steps.length,
+        },
+      };
     }
     const workflow = result.workflow;
     await ctx.db

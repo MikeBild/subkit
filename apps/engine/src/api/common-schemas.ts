@@ -1,0 +1,72 @@
+// Cross-surface Zod schemas. Import from here — not from
+// `http/routes/identity/schemas.ts` — whenever the schema applies to more
+// than one subsystem (errors, pagination, the {id} URL param).
+//
+// These are the shared spine every REST route and MCP capability reads
+// from so the API envelope stays identical across surfaces.
+
+import { z } from "@hono/zod-openapi";
+
+/**
+ * Uniform error envelope stamped by `http/middleware/error.ts`. Every REST
+ * surface returns this shape on any 4xx/5xx. The CLI + MCP error adapters
+ * parse the same fields.
+ */
+export const ErrorSchema = z
+  .object({
+    code: z.string(),
+    message: z.string(),
+    trace_id: z.string().optional(),
+    details: z.record(z.string(), z.any()).optional(),
+  })
+  .openapi("Error");
+
+/**
+ * Standard `?limit=&offset=` query for list endpoints. The 200 ceiling is
+ * enforced by `max(200)`; endpoints that intentionally expose a higher
+ * ceiling (e.g. audit-log at 500) declare their own.
+ */
+export const PaginationQuery = z.object({
+  limit: z.coerce.number().int().positive().max(200).optional(),
+  offset: z.coerce.number().int().nonnegative().optional(),
+});
+
+/**
+ * The `{id}` URL path parameter — a UUID, with the OpenAPI `param`
+ * annotation so the generated schema carries `in: path, name: id`.
+ */
+export const IdParam = z.object({
+  id: z
+    .string()
+    .uuid()
+    .openapi({ param: { name: "id", in: "path" } }),
+});
+
+/**
+ * Builder for `{ items, next_cursor? }` list-response schemas. `next_cursor`
+ * is optional so existing offset-paginated routes can adopt the envelope
+ * without adding a cursor backend; cursor-enabled routes (audit-log, and
+ * over time the others) fill it when there are more rows.
+ *
+ *   const ListResponse = paginatedResponse(ConnectorSchema, "ConnectorList");
+ *
+ * The `name` argument drives the OpenAPI `components.schemas` key so the
+ * generated client types are stable.
+ */
+export function paginatedResponse<Z extends z.ZodTypeAny>(
+  item: Z,
+  name: string,
+): z.ZodObject<{
+  items: z.ZodArray<Z>;
+  next_cursor: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}> {
+  return z
+    .object({
+      items: z.array(item),
+      // `null` means "no more pages"; omitted means the endpoint does not
+      // expose a cursor (offset-paginated callers). Accepting both keeps
+      // the shared envelope compatible with every existing list route.
+      next_cursor: z.string().nullable().optional(),
+    })
+    .openapi(name);
+}

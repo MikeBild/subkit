@@ -17,6 +17,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import * as svc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
+import { toMcpErrorText } from "../error-adapter.ts";
 
 export const CONVERSATION_TOOL_PREFIX = "conversation.";
 
@@ -197,8 +198,7 @@ export async function handleConversationTool(
 
     return errorText(`unknown conversation tool: ${name}`);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return errorText(msg);
+    return errorText(toMcpErrorText(err));
   }
 }
 

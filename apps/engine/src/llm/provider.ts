@@ -243,7 +243,7 @@ export async function callWithFallback<T = unknown>(
     const latency = Date.now() - start;
     logger.info({
       module: "llm",
-      action: "llm.call",
+      action: "call",
       msg: "llm call completed",
       flow: args.flow,
       model: args.route.primary,
@@ -278,7 +278,7 @@ export async function callWithFallback<T = unknown>(
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn({
       module: "llm",
-      action: "llm.call.failed",
+      action: "call.failed",
       msg: "llm primary call failed",
       flow: args.flow,
       model: args.route.primary,
@@ -304,7 +304,7 @@ export async function callWithFallback<T = unknown>(
     }
     logger.warn({
       module: "llm",
-      action: "llm.fallback.triggered",
+      action: "fallback.triggered",
       msg: "llm fallback engaged",
       flow: args.flow,
       primary: args.route.primary,
@@ -317,7 +317,7 @@ export async function callWithFallback<T = unknown>(
       const fbLatency = Date.now() - fbStart;
       logger.info({
         module: "llm",
-        action: "llm.call",
+        action: "call",
         msg: "llm fallback call completed",
         flow: args.flow,
         model: args.route.fallback,

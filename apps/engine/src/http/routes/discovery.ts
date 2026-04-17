@@ -5,13 +5,13 @@
 // tooling that prefer batch file analysis.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { ErrorSchema } from "../../api/common-schemas.ts";
 import * as svc from "../../discovery/service.ts";
 import { DiscoveryArtifactSchema, DiscoveryRunSchema } from "../../discovery/types.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
 
 const RunIdParam = z.object({ id: z.string().uuid() });
 const ArtifactIdParam = z.object({ id: z.string().uuid() });

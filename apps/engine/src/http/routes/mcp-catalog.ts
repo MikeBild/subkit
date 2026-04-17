@@ -10,6 +10,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
+import { paginatedResponse } from "../../api/common-schemas.ts";
 import { connectors, skills } from "../../db/schema/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -41,15 +42,9 @@ const McpToolSchema = z
   })
   .openapi("McpTool");
 
-const McpPromptsResponse = z
-  .object({ items: z.array(McpPromptSchema) })
-  .openapi("McpPromptsResponse");
-
-const McpResourcesResponse = z
-  .object({ items: z.array(McpResourceSchema) })
-  .openapi("McpResourcesResponse");
-
-const McpToolsResponse = z.object({ items: z.array(McpToolSchema) }).openapi("McpToolsResponse");
+const McpPromptsResponse = paginatedResponse(McpPromptSchema, "McpPromptsResponse");
+const McpResourcesResponse = paginatedResponse(McpResourceSchema, "McpResourcesResponse");
+const McpToolsResponse = paginatedResponse(McpToolSchema, "McpToolsResponse");
 
 const promptsRoute = createRoute({
   method: "get",

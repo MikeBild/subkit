@@ -9,6 +9,7 @@
 //     calls land on a local Hono server.
 
 import { WebClient } from "@slack/web-api";
+import { logger } from "../../logging/logger.ts";
 import type { ChatAdapter } from "../adapter.ts";
 import type {
   ApprovalCard,
@@ -59,7 +60,16 @@ export class SlackAdapter implements ChatAdapter {
         ...(this.opts.now ? { now: this.opts.now } : {}),
       },
     );
-    if (!result.ok) return null;
+    if (!result.ok) {
+      logger.warn({
+        module: "chat",
+        action: "verify.rejected",
+        msg: "slack request failed signature verification",
+        platform: "slack",
+        reason: result.reason,
+      });
+      return null;
+    }
 
     const contentType = req.headers.get("content-type") ?? "";
     if (contentType.includes("application/json")) {

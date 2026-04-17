@@ -21,18 +21,16 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as connectorSvc from "../../connectors/service.ts";
+import { runRefreshTokenGrant } from "../../credentials/oauth2/client.ts";
+import type { OAuth2ClientConfig } from "../../credentials/oauth2/types.ts";
 import { getCredentialForConnector, rotateOAuth2Tokens } from "../../credentials/service.ts";
 import { credentials } from "../../db/schema/index.ts";
-import { runRefreshTokenGrant } from "../../oauth2/client.ts";
-import type { OAuth2ClientConfig } from "../../oauth2/types.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
-
-const IdParam = z.object({ id: z.string().uuid() });
 
 const CredentialRowSchema = z
   .object({

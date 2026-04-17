@@ -7,10 +7,10 @@
 // Instead, the request step imports `applyAuthToRequest` below to mix
 // connector auth into its existing HTTP pipeline.
 
+import { refreshIfStale } from "../../credentials/oauth2/refresh-worker.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
-import { refreshIfStale } from "../../oauth2/refresh-worker.ts";
 import { tunnelRegistry } from "../../tunnels/registry.ts";
 import type { TunnelResponse } from "../../tunnels/types.ts";
 import type { ConnectorView } from "../types.ts";

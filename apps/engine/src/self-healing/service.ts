@@ -35,7 +35,7 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { type PatchProposal, runRepairFlow } from "../llm/flows/repair.ts";
-import { logger } from "../logging/logger.ts";
+import { log, logger } from "../logging/logger.ts";
 import { recordPatchCandidate } from "../observability/instrumentation.ts";
 import { getLatestShape } from "../schema-versions/service.ts";
 import { classifyPatch } from "./classifier.ts";
@@ -254,9 +254,7 @@ export async function runSelfHealingLoop(
     return emptyResult("no drift signal");
   }
 
-  logger.info({
-    module: "self-healing",
-    action: "drift.detected",
+  log.selfHealing.drift.detected({
     msg: "drift signal detected",
     tenant_id: params.tenant_id,
     workflow_id: params.workflow_id,
@@ -308,16 +306,20 @@ export async function runSelfHealingLoop(
     });
     dryRunOk = dryRun.ok;
     if (!dryRun.ok) dryRunError = dryRun.error;
-    logger.info({
-      module: "self-healing",
-      action: "fixture.dry_run",
-      msg: "fixture dry-run complete",
-      tenant_id: params.tenant_id,
-      workflow_id: params.workflow_id,
-      fixture_id: fixture.id,
-      ok: dryRun.ok,
-      error: dryRun.error,
-    });
+    if (dryRun.ok) {
+      log.selfHealing.fixture.passed({
+        tenant_id: params.tenant_id,
+        workflow_id: params.workflow_id,
+        fixture_id: fixture.id,
+      });
+    } else {
+      log.selfHealing.fixture.failed({
+        tenant_id: params.tenant_id,
+        workflow_id: params.workflow_id,
+        fixture_id: fixture.id,
+        error: dryRun.error,
+      });
+    }
   } else {
     logger.info({
       module: "self-healing",
@@ -335,6 +337,18 @@ export async function runSelfHealingLoop(
     classification: decision.classification,
     fixture_passed: dryRunOk,
     has_fixture: !!fixture,
+  });
+  logger.info({
+    module: "self-healing",
+    action: "policy.resolved",
+    msg: "auto-heal policy resolved",
+    tenant_id: params.tenant_id,
+    workflow_id: params.workflow_id,
+    policy,
+    classification: decision.classification,
+    has_fixture: Boolean(fixture),
+    fixture_passed: dryRunOk,
+    auto_apply: autoApply,
   });
 
   // 8. Write the patch_candidates row + audit + optionally auto-apply
@@ -386,6 +400,15 @@ export async function runSelfHealingLoop(
     );
 
     // patch.proposed outbox event.
+    log.selfHealing.patch.proposed({
+      candidate_id: candidate.id,
+      workflow_id: params.workflow_id,
+      tenant_id: params.tenant_id,
+      classification: decision.classification,
+      policy,
+      dry_run_ok: dryRunOk,
+      auto_apply: autoApply,
+    });
     await writeEvent(tx, {
       tenant_id: params.tenant_id,
       channel: "notification.emitted",
@@ -526,6 +549,13 @@ export async function approvePatchCandidate(
       tx,
     );
     recordPatchCandidate({ classification: "manual", decision: "approved" });
+    log.selfHealing.patch.applied({
+      candidate_id: row.id,
+      workflow_id: row.workflow_id,
+      new_workflow_version_id: applied,
+      actor_id: params.actor_id,
+      decision: "manual_approve",
+    });
     return applied;
   });
 }
@@ -567,6 +597,11 @@ export async function rejectPatchCandidate(
       tx,
     );
     recordPatchCandidate({ classification: "manual", decision: "rejected" });
+    log.selfHealing.patch.rejected({
+      candidate_id: params.candidate_id,
+      actor_id: params.actor_id,
+      reason: params.reason ?? null,
+    });
     return true;
   });
 }

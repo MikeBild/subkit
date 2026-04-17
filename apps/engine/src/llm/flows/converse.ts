@@ -1,17 +1,12 @@
-// `converse` flow — single-turn stub of the authoring conversation.
+// `converse` flow — single-turn LLM call used by ad-hoc `/ai/generate`
+// and repair-flow style paths. It assembles an enhanced prompt and
+// runs the model for a single turn with no tool palette.
 //
-// v1 assembles the same enhanced prompt as the other flows and runs the
-// model for a single turn with an empty tool palette. The full
-// multi-turn tool-using loop (reader tools, connector probes, workflow
-// edits, etc.) ships in P10.
-//
-// TODO(P10): replace this stub with a real tool-calling loop. The loop
-// should:
-//   - pull the prior conversation turns from `conversations` + `messages`
-//   - expose a typed tool palette (list_skills, search_docs, ...)
-//   - iterate until the model returns a final assistant turn or tool
-//     budget is exhausted
-//   - persist each turn + tool call back to the conversations tables
+// The full multi-turn tool-using authoring loop lives in
+// `apps/engine/src/conversations/loop.ts` (typed tool palette, draft
+// snapshots, approval pauses, token-budget accounting). Callers that
+// need authoring should drive `runLoop(...)` there; this flow stays
+// deliberately narrow for single-shot completions.
 
 import type { Db } from "../../db/client.ts";
 import { assembleEnhancedPrompt } from "../context.ts";

@@ -1,6 +1,15 @@
-// Hono routes + OpenAPI definitions land here in P2.
-// Route groups planned: /v1/workflows, /v1/executions, /v1/connectors,
-// /v1/credentials, /v1/schedules, /v1/skills, /v1/conversations, /v1/hooks,
-// /v1/subscriptions, /v1/events, /v1/notifications, /v1/tunnels, /v1/extract,
-// /v1/identity/*, /v1/health, /openapi.json, /docs.
-export {};
+// Cross-surface API contract.
+//
+// The spine: `common-schemas.ts` hosts the Zod shapes every HTTP route
+// and MCP capability share (error envelope, pagination query, `{id}`
+// URL parameter). Per-entity schemas live with their owning subsystem
+// (see `http/routes/identity/schemas.ts`, `conversations/`, `skills/`,
+// etc.) but ANY schema referenced by more than one subsystem belongs
+// here.
+
+export {
+  ErrorSchema,
+  IdParam,
+  PaginationQuery,
+  paginatedResponse,
+} from "./common-schemas.ts";

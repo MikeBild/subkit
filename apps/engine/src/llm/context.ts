@@ -260,31 +260,64 @@ export async function assembleEnhancedPrompt(
     total = systemTokens + messagesTokens;
   };
 
+  const trimmed: string[] = [];
   while (total > cap) {
     if (failures.length > 0) {
       failures = [];
+      trimmed.push("failures");
     } else if (chunks.length > 0) {
       chunks.pop();
+      trimmed.push("docs");
     } else if (knowledgeChunks.length > 0) {
       knowledgeChunks.pop();
+      trimmed.push("knowledge");
     } else if (userMemory) {
       // Drop user memory AFTER docs/failures so grounding survives
       // overflow; before skills because skills are never trimmed
       // by contract (see docs/16-ai-flows.md).
       userMemory = "";
+      trimmed.push("user_memory");
     } else if (workflowSkills.length > 0) {
       workflowSkills.pop();
+      trimmed.push("workflow_skill");
     } else if (connectorSkills.length > 0) {
       connectorSkills.pop();
+      trimmed.push("connector_skill");
     } else if (globalSkills.length > 0) {
       globalSkills.pop();
+      trimmed.push("global_skill");
     } else {
+      logger.error({
+        module: "llm",
+        action: "context.overflow",
+        msg: "prompt exceeds model context window after trimming",
+        tenant_id: p.tenant_id,
+        flow: p.flow,
+        model: p.model ?? null,
+        total,
+        cap,
+        trimmed,
+      });
       throw new LlmContextTooLarge("prompt exceeds model context window after trimming", {
         total,
         cap,
       });
     }
     recount();
+  }
+
+  if (trimmed.length > 0) {
+    logger.warn({
+      module: "llm",
+      action: "context.trimmed",
+      msg: "context assembly dropped sections to fit model cap",
+      tenant_id: p.tenant_id,
+      flow: p.flow,
+      model: p.model ?? null,
+      cap,
+      total_after: total,
+      dropped: trimmed,
+    });
   }
 
   const includedSkills = [...globalSkills, ...connectorSkills, ...workflowSkills];

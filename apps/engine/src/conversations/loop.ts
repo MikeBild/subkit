@@ -26,6 +26,7 @@ import { monthlyUsage } from "../llm/budgets.ts";
 import { assembleEnhancedPrompt } from "../llm/context.ts";
 import { getMockProvider } from "../llm/mock-provider.ts";
 import { callWithFallback, resolveModelRoute } from "../llm/provider.ts";
+import { log } from "../logging/logger.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import { type ConversationTool, getTool, type ToolContext } from "./tools/index.ts";
 import type { DraftDocument, TurnEvent } from "./types.ts";
@@ -53,6 +54,40 @@ export interface RunLoopResult {
 }
 
 const DEFAULT_BUDGET = 20;
+
+/**
+ * Compact summary of a tool's return payload so every tool.succeeded
+ * log carries *some* shape info without each tool having to add bespoke
+ * fields. Array lengths, object key counts, and `errors[].length` land
+ * here; primitive payloads are ignored.
+ */
+function summarizeToolData(data: unknown): Record<string, number | string | boolean> {
+  if (data === null || data === undefined) return {};
+  if (Array.isArray(data)) return { data_length: data.length };
+  if (typeof data !== "object") return {};
+  const obj = data as Record<string, unknown>;
+  const out: Record<string, number | string | boolean> = {};
+  // Well-known fields that tools tend to return.
+  if (Array.isArray(obj.errors)) out.error_count = (obj.errors as unknown[]).length;
+  if (Array.isArray(obj.hits)) out.hit_count = (obj.hits as unknown[]).length;
+  if (Array.isArray(obj.skills)) out.skill_count = (obj.skills as unknown[]).length;
+  if (Array.isArray(obj.items)) out.item_count = (obj.items as unknown[]).length;
+  if (typeof obj.steps === "number") out.steps = obj.steps;
+  if (typeof obj.step_count === "number") out.step_count = obj.step_count;
+  if (typeof obj.workflow_id === "string") out.workflow_id = obj.workflow_id;
+  if (typeof obj.connector_id === "string") out.connector_id = obj.connector_id;
+  if (typeof obj.skill_id === "string") out.skill_id = obj.skill_id;
+  if (typeof obj.step_id === "string") out.step_id = obj.step_id;
+  if (typeof obj.last_step_id === "string") out.last_step_id = obj.last_step_id;
+  if (typeof obj.step_type === "string") out.step_type = obj.step_type;
+  if (typeof obj.slug === "string") out.slug = obj.slug;
+  if (typeof obj.approval_id === "string") out.approval_id = obj.approval_id;
+  if (typeof obj.reason === "string") out.reason = obj.reason;
+  if (typeof obj.error === "string") out.error = obj.error;
+  if (typeof obj.replaced === "boolean") out.replaced = obj.replaced;
+  out.data_keys = Object.keys(obj).length;
+  return out;
+}
 
 function isPlanDone(obj: unknown): boolean {
   return obj !== null && typeof obj === "object" && (obj as Record<string, unknown>).done === true;
@@ -112,6 +147,18 @@ async function loadPriorTurns(
 export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const events: TurnEvent[] = [];
   const budget = p.step_budget ?? DEFAULT_BUDGET;
+
+  log.debug({
+    module: "conversation",
+    action: "loop.started",
+    msg: "turn started",
+    conversation_id: p.conversation_id,
+    tenant_id: p.tenant_id,
+    actor_id: p.actor_id,
+    has_user_message: Boolean(p.user_message),
+    step_budget: budget,
+    model_override: p.model_override ?? null,
+  });
 
   // Snapshot the tenant's monthly usage before the turn so we can
   // compute a turn_tokens delta at the end. Safe on test dbs — a
@@ -225,6 +272,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       })
       .returning();
 
+    log.conversation.tool.called({
+      conversation_id: p.conversation_id,
+      tool: parsed.tool,
+      step,
+    });
+
     if (!tool) {
       const output = { error: `unknown tool: ${parsed.tool}` };
       events.push({ type: "tool_result", tool: parsed.tool, output });
@@ -234,11 +287,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           .set({ output: output as Record<string, unknown> })
           .where(eq(conversationToolCalls.id, callRow.id));
       }
+      log.conversation.tool.failed({
+        conversation_id: p.conversation_id,
+        tool: parsed.tool,
+        reason: "unknown_tool",
+      });
       lastToolFeedback = output;
       continue;
     }
 
     let result: Awaited<ReturnType<ConversationTool["execute"]>>;
+    const toolStartedAt = Date.now();
     try {
       result = await tool.execute(ctx, parsed.args);
     } catch (err) {
@@ -251,8 +310,34 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           .set({ output: output as Record<string, unknown> })
           .where(eq(conversationToolCalls.id, callRow.id));
       }
+      log.conversation.tool.failed({
+        conversation_id: p.conversation_id,
+        tool: parsed.tool,
+        error: msg,
+        duration_ms: Date.now() - toolStartedAt,
+      });
       lastToolFeedback = output;
       continue;
+    }
+
+    const dataSummary = summarizeToolData(result.data);
+    const toolCtx = {
+      conversation_id: p.conversation_id,
+      tool: parsed.tool,
+      ok: result.ok,
+      paused: Boolean(result.pause),
+      committed: Boolean(result.committed_workflow_id),
+      duration_ms: Date.now() - toolStartedAt,
+      ...dataSummary,
+    };
+    // `ok: false` from a tool is a soft failure (e.g. validation
+    // rejection that feeds back into the loop) — surface it as
+    // `tool.failed` so operators filtering failures catch both thrown
+    // exceptions and soft-no results.
+    if (result.ok) {
+      log.conversation.tool.succeeded(toolCtx);
+    } else {
+      log.conversation.tool.failed(toolCtx);
     }
 
     if (callRow) {
@@ -295,6 +380,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         ...(result.pause.diff !== undefined ? { diff: result.pause.diff } : {}),
         ...(result.pause.target !== undefined ? { target: result.pause.target } : {}),
       });
+      log.conversation.approval.requested({
+        conversation_id: p.conversation_id,
+        approval_id: result.pause.approval_id,
+        kind: result.pause.kind,
+      });
       status = "awaiting_approval";
       pendingApprovalId = result.pause.approval_id;
       break;
@@ -302,10 +392,26 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     if (result.committed_workflow_id) {
       events.push({ type: "committed", workflow_id: result.committed_workflow_id });
       events.push({ type: "completed", status: "committed" });
+      log.conversation.completed({
+        conversation_id: p.conversation_id,
+        final_status: "committed",
+        committed_workflow_id: result.committed_workflow_id,
+        steps_taken: step + 1,
+      });
       status = "committed";
       committedWorkflowId = result.committed_workflow_id;
       break;
     }
+  }
+
+  if (status === "active" && events.length > 0 && events[events.length - 1]?.type !== "message") {
+    log.warn({
+      module: "conversation",
+      action: "loop.budget_exhausted",
+      msg: "turn stopped without done/approval/commit (budget reached)",
+      conversation_id: p.conversation_id,
+      step_budget: budget,
+    });
   }
 
   if (status === "active") {

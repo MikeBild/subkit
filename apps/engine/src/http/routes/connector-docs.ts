@@ -10,6 +10,7 @@
 // middleware.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as connectorSvc from "../../connectors/service.ts";
 import { PageTooLargeError } from "../../docs-ingestion/budgets.ts";
 import * as docs from "../../docs-ingestion/service.ts";
@@ -18,9 +19,7 @@ import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
-import { ErrorSchema } from "./identity/schemas.ts";
 
-const IdParam = z.object({ id: z.string().uuid() });
 const DocIdParam = z.object({ id: z.string().uuid(), document_id: z.string().uuid() });
 
 const IngestBody = z
