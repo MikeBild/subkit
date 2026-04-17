@@ -77,7 +77,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        binary: [sk, subkit, tunnel-agent, engine]
+        # Using `include` only (no base dimensions) so every listed
+        # combination produces exactly one job. A previous base
+        # `binary: [...]` dimension made GitHub Actions merge each
+        # base entry with the LAST matching include, silently dropping
+        # every non-windows build. See git log for the fix.
         include:
           # darwin-arm64
           - binary: sk
