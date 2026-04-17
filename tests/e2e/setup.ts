@@ -279,7 +279,7 @@ export async function cli(
 ): Promise<CliResult> {
   const bin = binary === "subkit" ? SUBKIT_BIN : SK_BIN;
   const persona = opts.persona ? opts.env.personas[opts.persona] : opts.env.personas.admin;
-  const configDir =
+  const _configDir =
     binary === "subkit" ? path.join(persona.homeDir, ".subkit") : path.join(persona.homeDir, ".sk");
 
   const proc = Bun.spawn([bin, ...args], {

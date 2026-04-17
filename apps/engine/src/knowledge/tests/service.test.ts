@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { auditLog, knowledgeChunks, knowledgeSources } from "../../db/schema/index.ts";
+import { auditLog, knowledgeChunks } from "../../db/schema/index.ts";
 import {
   createKnowledgeSource,
   deleteKnowledgeSource,
@@ -169,7 +169,7 @@ describe.skipIf(skip)("knowledge/service", () => {
     // Get current chunk count
     const before = await getKnowledgeSource(ctx.tenantId, createdId, ctx.testDb.db);
     expect(before).not.toBeNull();
-    const chunksBefore = before!.chunk_count;
+    const _chunksBefore = before!.chunk_count;
 
     // Re-ingest with different content
     const result = await ingestKnowledgeSource(
