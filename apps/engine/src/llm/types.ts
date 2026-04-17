@@ -17,6 +17,13 @@ export interface ModelRoute {
   context_cap: number;
   /** Monthly budget for the tenant; null = unlimited. */
   monthly_budget: number | null;
+  /**
+   * Per-tenant toggle for Anthropic ephemeral prompt caching. When set
+   * the provider attaches `providerOptions.anthropic.cacheControl` to
+   * the system prompt so stable heads (skills, docs) are re-billed at
+   * ~10 % of their input-token cost. Default false at rollout.
+   */
+  enable_prompt_cache: boolean;
 }
 
 /** User turn in the prompt — kept intentionally narrow. */
@@ -103,6 +110,17 @@ export interface LlmCallLogEntry {
   model: string;
   prompt_tokens: number;
   completion_tokens: number;
+  /**
+   * Tokens served from Anthropic's ephemeral prompt cache. Counted as
+   * part of `prompt_tokens` by Anthropic's usage object; subtracted and
+   * re-added at `CACHE_READ_WEIGHT` in `total_tokens` for budget math.
+   */
+  cache_read_tokens?: number;
+  /**
+   * Tokens written into Anthropic's ephemeral prompt cache this call.
+   * Counted as part of `prompt_tokens`; re-added at `CACHE_CREATE_WEIGHT`.
+   */
+  cache_creation_tokens?: number;
   latency_ms: number;
   result: "success" | "quota_exhausted" | "context_too_large" | "error";
   error?: string;

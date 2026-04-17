@@ -33,6 +33,12 @@ export interface MockResult<T = unknown> {
   object?: T;
   prompt_tokens: number;
   completion_tokens: number;
+  /**
+   * Anthropic ephemeral cache metrics. Mock provider reports 0/0; real
+   * provider pulls from `providerMetadata.anthropic`.
+   */
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
 }
 
 export type MockFailure = "rate_limit" | "overloaded" | "context_length_exceeded";
@@ -142,10 +148,15 @@ class MockProvider {
         return { text: JSON.stringify(obj), object: obj };
       }
       case "repair": {
+        // Canned PatchProposal. Shape matches PatchProposalSchema so the
+        // real-provider code path (`generateObject` with the schema)
+        // sees the same envelope as the mock short-circuit.
         const obj = {
-          patch: { op: "replace", path: "/data/id", value: "data/result/id" },
           classification: "safe" as const,
-          notes: `Rewrote field path based on drift: ${lastUser.slice(0, 80)}`,
+          kind: "update_field_path" as const,
+          description: "Rewrote field path to match drifted response shape",
+          patch: { op: "replace", path: "/data/id", value: "data/result/id" },
+          reasoning: `Drift observed: ${lastUser.slice(0, 80)}`,
         };
         return { text: JSON.stringify(obj), object: obj };
       }

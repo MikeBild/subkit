@@ -1,9 +1,19 @@
 // `extract` flow — unstructured sample → canonical schema + data.
 
+import { z } from "zod";
 import type { Db } from "../../db/client.ts";
 import { assembleEnhancedPrompt } from "../context.ts";
 import { callWithFallback, resolveModelRoute } from "../provider.ts";
 import type { EnhancedPrompt } from "../types.ts";
+
+// Extract envelope — only the outer shape is validated; the inner
+// `schema` is whatever the model discovered from the sample.
+const ExtractEnvelopeSchema = z.object({
+  schema: z.unknown(),
+  data: z.unknown(),
+});
+
+type ExtractEnvelope = z.infer<typeof ExtractEnvelopeSchema>;
 
 export interface ExtractParams {
   tenant_id: string;
@@ -33,23 +43,14 @@ export async function runExtractFlow(p: ExtractParams, exec?: Db): Promise<Extra
     },
     exec,
   );
-  const { result, model_used, fell_back } = await callWithFallback<{
-    schema: unknown;
-    data: unknown;
-  }>({ flow: "extract", route, prompt }, exec);
-  let parsed: { schema: unknown; data: unknown } | undefined;
-  if (!result.object && result.text) {
-    try {
-      parsed = JSON.parse(result.text) as { schema: unknown; data: unknown };
-    } catch {
-      // Text was not pure JSON — object extraction already attempted by dispatch.
-    }
-  }
-  const obj = (result.object as { schema: unknown; data: unknown } | undefined) ??
-    parsed ?? { schema: null, data: null };
+  const { result, model_used, fell_back } = await callWithFallback<ExtractEnvelope>(
+    { flow: "extract", route, prompt, schema: ExtractEnvelopeSchema },
+    exec,
+  );
+  const obj = result.object ?? { schema: null, data: null };
   return {
-    schema: obj?.schema ?? null,
-    data: obj?.data ?? null,
+    schema: obj.schema ?? null,
+    data: obj.data ?? null,
     raw_text: result.text,
     tokens: prompt.token_counts,
     model_used,

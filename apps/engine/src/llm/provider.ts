@@ -18,8 +18,9 @@
 // provider is not 'mock'.
 
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { generateText } from "ai";
+import { createProviderRegistry, generateObject, generateText, NoObjectGeneratedError } from "ai";
 import { and, eq } from "drizzle-orm";
+import type { ZodType } from "zod";
 import { type Db, getDb } from "../db/client.ts";
 import { tenantLlmSettings, tenants } from "../db/schema/index.ts";
 import { env } from "../env.ts";
@@ -51,6 +52,20 @@ function currentProvider(): LlmProviderKind {
   // Default: prefer anthropic when the API key is set, else mock for
   // local-first/test friendliness.
   return env.ANTHROPIC_API_KEY ? "anthropic" : "mock";
+}
+
+// Single provider registry. `registry.languageModel("anthropic:claude-...")`
+// handles the `provider:model` prefix natively; we no longer need to
+// hand-strip a leading "anthropic:" on model ids.
+const anthropicProvider = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY ?? "" });
+export const modelRegistry = createProviderRegistry({ anthropic: anthropicProvider });
+
+function anthropicModel(modelId: string): ReturnType<typeof anthropicProvider.languageModel> {
+  // Strip any `anthropic:` prefix the registry would otherwise consume,
+  // so tenant-configured model ids (which may or may not carry one) all
+  // resolve against our single Anthropic provider instance.
+  const bare = modelId.startsWith("anthropic:") ? modelId.slice("anthropic:".length) : modelId;
+  return anthropicProvider.languageModel(bare);
 }
 
 export async function resolveModelRoute(tenant_id: string, exec?: Executor): Promise<ModelRoute> {
@@ -88,13 +103,26 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     provider,
     context_cap: contextCapFor(primary),
     monthly_budget,
+    enable_prompt_cache: settings?.enable_prompt_cache ?? false,
   };
 }
 
-interface CallArgs {
+interface CallArgs<T = unknown> {
   flow: LlmFlow;
   route: ModelRoute;
   prompt: EnhancedPrompt;
+  /**
+   * When set, the flow wants a validated, typed object. `generateObject`
+   * replaces `generateText` and the SDK enforces the schema — an
+   * `AI_NoObjectGeneratedError` propagates on validation failure instead
+   * of silent extraction.
+   */
+  schema?: ZodType<T>;
+  /**
+   * Optional conversation id / correlation id for telemetry metadata.
+   * Landed in OTel span attributes via `experimental_telemetry`.
+   */
+  telemetry_metadata?: Record<string, string | number | boolean>;
 }
 
 function shouldFallback(err: unknown): boolean {
@@ -104,27 +132,120 @@ function shouldFallback(err: unknown): boolean {
   );
 }
 
-async function dispatchAnthropic<T>(model: string, args: CallArgs): Promise<MockResult<T>> {
-  const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY ?? "" });
-  // Model names may carry a "provider:" prefix (e.g. "anthropic:claude-sonnet-4-5").
-  const modelId = model.includes(":") ? model.split(":").slice(1).join(":") : model;
+interface AnthropicUsageRaw {
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+/**
+ * Pull `cache_read_input_tokens` / `cache_creation_input_tokens` out of
+ * Anthropic's raw usage payload. These land in
+ * `providerMetadata.anthropic.usage` as a JSON blob; the AI SDK v6 type
+ * models the field as `JSONObject` so we narrow here.
+ */
+function extractCacheTokens(providerMetadata: Record<string, unknown> | undefined): {
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+} {
+  const anthropicMeta = (providerMetadata?.anthropic ?? {}) as {
+    usage?: AnthropicUsageRaw;
+    cacheCreationInputTokens?: number | null;
+  };
+  const raw = anthropicMeta.usage ?? {};
+  return {
+    cache_read_tokens: Number(raw.cache_read_input_tokens ?? 0),
+    cache_creation_tokens: Number(
+      raw.cache_creation_input_tokens ?? anthropicMeta.cacheCreationInputTokens ?? 0,
+    ),
+  };
+}
+
+/**
+ * Build the system-message array. When `enable_prompt_cache` is set on
+ * the route we attach an Anthropic `ephemeral` cache breakpoint to the
+ * system message so the stable context (skills palette + ingested docs)
+ * is reused across calls and re-billed at ~10 % of its input cost.
+ *
+ * Caching is currently applied to the whole assembled system string —
+ * the A5 follow-up will split `EnhancedPrompt.system` into stable vs
+ * turn-specific blocks to narrow the cached region further.
+ */
+function buildSystem(
+  prompt: EnhancedPrompt,
+  enable_cache: boolean,
+): Array<{
+  role: "system";
+  content: string;
+  providerOptions?: { anthropic: { cacheControl: { type: "ephemeral"; ttl?: "5m" | "1h" } } };
+}> {
+  if (prompt.system.length === 0) return [];
+  const base = { role: "system" as const, content: prompt.system };
+  if (!enable_cache) return [base];
+  return [
+    {
+      ...base,
+      providerOptions: {
+        anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } },
+      },
+    },
+  ];
+}
+
+async function dispatchAnthropic<T>(model: string, args: CallArgs<T>): Promise<MockResult<T>> {
+  const system = buildSystem(args.prompt, args.route.enable_prompt_cache);
   const messages = args.prompt.messages.map((m) => ({
     role: m.role as "user" | "assistant",
     content: m.content,
   }));
 
+  const telemetry = {
+    isEnabled: true as const,
+    functionId: args.flow,
+    metadata: {
+      tenant_id: args.route.tenant_id,
+      model,
+      provider: args.route.provider,
+      ...(args.telemetry_metadata ?? {}),
+    },
+  };
+
+  if (args.schema) {
+    const result = await generateObject({
+      model: anthropicModel(model),
+      ...(system.length > 0 ? { system } : {}),
+      messages,
+      schema: args.schema,
+      abortSignal: AbortSignal.timeout(120_000),
+      maxRetries: 0,
+      experimental_telemetry: telemetry,
+    });
+    const cache = extractCacheTokens(result.providerMetadata);
+    return {
+      text: JSON.stringify(result.object),
+      object: result.object as T,
+      prompt_tokens: result.usage?.inputTokens ?? args.prompt.token_counts.total,
+      completion_tokens: result.usage?.outputTokens ?? 0,
+      cache_read_tokens: cache.cache_read_tokens,
+      cache_creation_tokens: cache.cache_creation_tokens,
+    };
+  }
+
   const result = await generateText({
-    model: anthropic(modelId),
-    system: args.prompt.system,
+    model: anthropicModel(model),
+    ...(system.length > 0 ? { system } : {}),
     messages,
     abortSignal: AbortSignal.timeout(120_000),
+    maxRetries: 0,
+    experimental_telemetry: telemetry,
   });
-
+  const cache = extractCacheTokens(result.providerMetadata);
   return {
     text: result.text,
     object: (args.flow === "converse" ? undefined : extractJson<T>(result.text)) as T,
     prompt_tokens: result.usage?.inputTokens ?? args.prompt.token_counts.total,
     completion_tokens: result.usage?.outputTokens ?? 0,
+    cache_read_tokens: cache.cache_read_tokens,
+    cache_creation_tokens: cache.cache_creation_tokens,
   };
 }
 
@@ -164,7 +285,7 @@ function extractJson<T>(text: string): T | undefined {
   return undefined;
 }
 
-async function dispatch<T>(model: string, args: CallArgs): Promise<MockResult<T>> {
+async function dispatch<T>(model: string, args: CallArgs<T>): Promise<MockResult<T>> {
   if (args.route.provider === "mock") {
     return getMockProvider().call<T>({
       flow: args.flow,
@@ -175,6 +296,13 @@ async function dispatch<T>(model: string, args: CallArgs): Promise<MockResult<T>
   try {
     return await dispatchAnthropic<T>(model, args);
   } catch (err) {
+    // `AI_NoObjectGeneratedError` escapes unchanged so the HTTP error
+    // mapper can surface it as a 502 without wrapping. Everything else
+    // collapses into the provider-kind classification used by the
+    // fallback policy.
+    if (NoObjectGeneratedError.isInstance(err)) {
+      throw err;
+    }
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("rate_limit") || msg.includes("429")) {
       throw new LlmProviderError("rate_limit", msg);
@@ -195,7 +323,7 @@ async function dispatch<T>(model: string, args: CallArgs): Promise<MockResult<T>
  * attempt. Per-tenant budget is checked before the first attempt.
  */
 export async function callWithFallback<T = unknown>(
-  args: CallArgs,
+  args: CallArgs<T>,
   exec?: Executor,
 ): Promise<{ result: MockResult<T>; model_used: string; fell_back: boolean }> {
   const db = exec ?? getDb();
@@ -249,6 +377,8 @@ export async function callWithFallback<T = unknown>(
       model: args.route.primary,
       prompt_tokens: primaryResult.prompt_tokens,
       completion_tokens: primaryResult.completion_tokens,
+      cache_read_tokens: primaryResult.cache_read_tokens ?? 0,
+      cache_creation_tokens: primaryResult.cache_creation_tokens ?? 0,
       latency_ms: latency,
       result: "success",
     });
@@ -259,6 +389,12 @@ export async function callWithFallback<T = unknown>(
         model: args.route.primary,
         prompt_tokens: primaryResult.prompt_tokens,
         completion_tokens: primaryResult.completion_tokens,
+        ...(primaryResult.cache_read_tokens !== undefined
+          ? { cache_read_tokens: primaryResult.cache_read_tokens }
+          : {}),
+        ...(primaryResult.cache_creation_tokens !== undefined
+          ? { cache_creation_tokens: primaryResult.cache_creation_tokens }
+          : {}),
         latency_ms: latency,
         result: "success",
       },
@@ -323,6 +459,8 @@ export async function callWithFallback<T = unknown>(
         model: args.route.fallback,
         prompt_tokens: fbResult.prompt_tokens,
         completion_tokens: fbResult.completion_tokens,
+        cache_read_tokens: fbResult.cache_read_tokens ?? 0,
+        cache_creation_tokens: fbResult.cache_creation_tokens ?? 0,
         latency_ms: fbLatency,
         result: "success",
       });
@@ -333,6 +471,12 @@ export async function callWithFallback<T = unknown>(
           model: args.route.fallback,
           prompt_tokens: fbResult.prompt_tokens,
           completion_tokens: fbResult.completion_tokens,
+          ...(fbResult.cache_read_tokens !== undefined
+            ? { cache_read_tokens: fbResult.cache_read_tokens }
+            : {}),
+          ...(fbResult.cache_creation_tokens !== undefined
+            ? { cache_creation_tokens: fbResult.cache_creation_tokens }
+            : {}),
           latency_ms: fbLatency,
           result: "success",
         },
