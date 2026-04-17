@@ -1,8 +1,23 @@
 name: release
 
 on:
+  # Manual `git push origin <tag>` triggers release as the pushing user
+  # (downstream workflows fire normally).
   push:
     tags: ['v*.*.*', 'subkit-v*.*.*']
+  # release-please publishes a GitHub Release using GITHUB_TOKEN, which
+  # by design does NOT fire `push tags` triggers (GitHub policy to
+  # prevent recursion). Listening on `release: published` catches that
+  # path and fires this workflow on the tag release-please just cut.
+  release:
+    types: [published]
+  # Manual recovery — `gh workflow run release.yml --ref <tag>` re-runs
+  # the release pipeline against a specific tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. subkit-v1.2.0)"
+        required: true
 
 permissions:
   contents: write

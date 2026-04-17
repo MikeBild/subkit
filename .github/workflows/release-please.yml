@@ -16,3 +16,12 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          # If a PAT is set as `RELEASE_PLEASE_TOKEN`, use it so the
+          # tag/release it creates fire downstream workflows (the
+          # `release` workflow builds binaries + publishes). Without
+          # the PAT we fall back to GITHUB_TOKEN and downstream must
+          # be kicked off manually via
+          # `gh workflow run release.yml --ref <tag>` — GitHub's
+          # no-recursion policy suppresses chain-triggers from
+          # GITHUB_TOKEN events.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
