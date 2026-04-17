@@ -11,13 +11,21 @@ on:
   # path and fires this workflow on the tag release-please just cut.
   release:
     types: [published]
-  # Manual recovery — `gh workflow run release.yml --ref <tag>` re-runs
-  # the release pipeline against a specific tag.
+  # Manual recovery — two modes:
+  #   1. `gh workflow run release.yml --ref <tag>` — dispatch IS the tag;
+  #      github.ref becomes the tag ref and the workflow runs as if the
+  #      tag were just pushed. Uses the workflow file AT THAT TAG.
+  #   2. `gh workflow run release.yml --ref main -f tag=<tag>` — runs
+  #      the CURRENT main's workflow file but checks out `<tag>` for the
+  #      build + attaches assets to that tag's release. Use this when a
+  #      past tag's workflow file is broken (e.g. stuck macos-13 runners)
+  #      and you need main's fixes.
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release (e.g. subkit-v1.2.0)"
-        required: true
+        description: "Tag to build+release against (leave blank to use github.ref)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -50,6 +58,8 @@ jobs:
       SKIP_DOCKER: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -212,6 +222,8 @@ jobs:
             entry: apps/engine/src/index.ts
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -219,8 +231,10 @@ jobs:
 
       - name: Compile binary
         shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.tag || github.ref_name }}
         run: |
-          VERSION="${GITHUB_REF_NAME#subkit-v}"
+          VERSION="${RELEASE_REF#subkit-v}"
           VERSION="${VERSION#v}"
           EXT=""
           TARGET_FLAG=""
@@ -256,9 +270,11 @@ jobs:
   publish-release:
     name: publish-release
     needs: build-cli-binaries
-    # Skip when dispatched from a branch for build-matrix validation —
-    # action-gh-release needs a tag ref to attach assets to.
-    if: startsWith(github.ref, 'refs/tags/')
+    # Publish when we have a tag context — either a tag-ref trigger
+    # (push/release events) or a workflow_dispatch with inputs.tag set.
+    # Skips for branch-only dispatches that are validating the build
+    # matrix.
+    if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.tag != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -277,6 +293,7 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: |
             artifacts/*/sk_*
             artifacts/*/subkit_*
@@ -292,14 +309,18 @@ jobs:
   build-and-push:
     name: build-and-push
     needs: test
-    if: ${{ vars.DEPLOY_ENABLED == 'true' && startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - id: meta
-        run: TAG="${GITHUB_REF_NAME#subkit-v}"; echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASE_REF: ${{ inputs.tag || github.ref_name }}
+        run: TAG="${RELEASE_REF#subkit-v}"; echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - uses: digitalocean/action-doctl@v2
         with:
@@ -338,7 +359,7 @@ jobs:
   deploy:
     name: deploy
     needs: build-and-push
-    if: ${{ vars.DEPLOY_ENABLED == 'true' && startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.build-and-push.outputs.version }}
@@ -393,12 +414,14 @@ jobs:
   smoke:
     name: smoke
     needs: [build-and-push, deploy]
-    if: ${{ vars.DEPLOY_ENABLED == 'true' && startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.build-and-push.outputs.version }}
       URL: ${{ secrets.DEPLOY_URL }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - name: Run smoke tests
         run: ./scripts/smoke.sh "$URL" "$VERSION"
