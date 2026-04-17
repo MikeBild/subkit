@@ -24,6 +24,7 @@
     "test:e2e": "bun run build:cli && bun run build:sk && bun test tests/e2e/",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run apps/engine/src/db/migrate.ts",
+    "gen:openapi-client": "bun run scripts/gen-openapi-client.ts",
     "db:seed": "bun run apps/engine/src/db/seed.ts",
     "db:issue-admin-key": "bun run apps/engine/src/db/issue-admin-key.ts",
     "compose:up": "sh scripts/ensure-env.sh && docker compose up -d --build",
