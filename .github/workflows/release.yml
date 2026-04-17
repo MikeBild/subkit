@@ -285,10 +285,37 @@ jobs:
     if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.tag != '' }}
     runs-on: ubuntu-latest
     steps:
+      # actions/download-artifact@v4 reliably fails when pulling 20+
+      # artifacts in parallel ("Artifact download failed after 5
+      # retries" — Azure blob transient). Iterate via `gh run download`
+      # with per-artifact retries instead.
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts/
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          for binary in sk subkit tunnel-agent engine; do
+            for os in darwin linux windows; do
+              for arch in x64 arm64; do
+                if [ "$os" = "windows" ] && [ "$arch" = "arm64" ]; then continue; fi
+                name="${binary}_${os}_${arch}"
+                for attempt in 1 2 3 4 5; do
+                  if gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n "$name" --dir "artifacts/$name" 2>&1; then
+                    break
+                  fi
+                  if [ "$attempt" -eq 5 ]; then
+                    echo "FATAL: failed to download $name after 5 attempts"
+                    exit 1
+                  fi
+                  echo "retry $attempt for $name"
+                  sleep $((attempt * 5))
+                done
+              done
+            done
+          done
+          find artifacts -type f | sort
 
       - name: Generate SHA256SUMS
         run: |
