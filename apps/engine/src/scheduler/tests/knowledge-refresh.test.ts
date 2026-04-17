@@ -4,28 +4,32 @@
 import { describe, expect, test } from "bun:test";
 import { isCronDue } from "../reconciler.ts";
 
+// Fixed clocks pinned away from 5-minute cron boundaries so the tests
+// are not flaky when the wall clock happens to tick past `*:00`,
+// `*:05`, etc., between lastFiredAt and now. Using `new Date()`
+// directly was the root cause of a previous CI flake.
+const NOW = new Date("2026-04-17T10:02:30.000Z");
+const JUST_FIRED = new Date("2026-04-17T10:02:00.000Z"); // 30s before NOW, same 5-minute bucket
+
 describe("scheduler/knowledge-refresh", () => {
   test("isCronDue returns true when never fired", () => {
-    expect(isCronDue("*/5 * * * *", null, new Date())).toBe(true);
+    expect(isCronDue("*/5 * * * *", null, NOW)).toBe(true);
   });
 
   test("isCronDue returns false when recently fired", () => {
-    const now = new Date();
-    const justFired = new Date(now.getTime() - 30_000); // 30 seconds ago
-    // 5-minute cron should not be due after 30 seconds
-    expect(isCronDue("*/5 * * * *", justFired, now)).toBe(false);
+    // 5-minute cron: lastFired at :02:00, now :02:30 — next boundary
+    // is :05:00 so not yet due.
+    expect(isCronDue("*/5 * * * *", JUST_FIRED, NOW)).toBe(false);
   });
 
   test("isCronDue with every: shorthand", () => {
-    const now = new Date();
-    const fiveSecsAgo = new Date(now.getTime() - 5_000);
-    expect(isCronDue("every:3", fiveSecsAgo, now)).toBe(true);
-    expect(isCronDue("every:10", fiveSecsAgo, now)).toBe(false);
+    const fiveSecsAgo = new Date(NOW.getTime() - 5_000);
+    expect(isCronDue("every:3", fiveSecsAgo, NOW)).toBe(true);
+    expect(isCronDue("every:10", fiveSecsAgo, NOW)).toBe(false);
   });
 
   test("isCronDue with invalid cron returns false", () => {
-    expect(isCronDue("not a cron", null, new Date())).toBe(true);
-    // Invalid cron with a past lastFiredAt
-    expect(isCronDue("not valid at all", new Date(), new Date())).toBe(false);
+    expect(isCronDue("not a cron", null, NOW)).toBe(true);
+    expect(isCronDue("not valid at all", NOW, NOW)).toBe(false);
   });
 });
