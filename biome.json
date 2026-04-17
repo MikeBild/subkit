@@ -14,7 +14,9 @@
       "!**/docs",
       "!**/.github",
       "!**/bun.lock",
-      "!**/bun.lockb"
+      "!**/bun.lockb",
+      "!packages/cli-core/src/engine-api/openapi.d.ts",
+      "!packages/cli-core/src/engine-api/openapi.json"
     ]
   },
   "formatter": {

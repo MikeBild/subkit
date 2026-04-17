@@ -16,6 +16,12 @@ export {
   type DeviceFlowResult,
   runDeviceFlow,
 } from "./device-flow.ts";
+export {
+  createEngineClient,
+  type EngineClient,
+  type EngineClientOptions,
+  type paths as EngineApiPaths,
+} from "./engine-api/client.ts";
 export { readSse, type SseFrame } from "./sse.ts";
 export {
   applyTurnEvent,
