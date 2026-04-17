@@ -4,6 +4,17 @@ import { tenants } from "./identity.ts";
 
 export const skillScopeEnum = pgEnum("skill_scope", ["global", "connector", "workflow"]);
 export const skillLifecycleEnum = pgEnum("skill_lifecycle", ["draft", "active", "archived"]);
+// Provenance of a Skill row. Operators use this to distinguish
+// handwritten ("manual") from pattern-promoted ("candidate") from
+// connector-template-seeded ("template") from memory-ingested ("memory").
+// Every row carries this value; `manual` is the default for existing
+// rows on migration.
+export const skillSourceEnum = pgEnum("skill_source", [
+  "manual",
+  "candidate",
+  "template",
+  "memory",
+]);
 
 export const skills = pgTable(
   "skills",
@@ -20,6 +31,7 @@ export const skills = pgTable(
     // hint per-skill input names. Shape: [{name, description, enum?, default?}].
     arguments: jsonb("arguments"),
     lifecycle: skillLifecycleEnum("lifecycle").notNull(),
+    source: skillSourceEnum("source").notNull().default("manual"),
     version: integer("version").notNull().default(1),
     ...timestamps,
   },

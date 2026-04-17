@@ -25,7 +25,7 @@ export const chatWorkspaces = pgTable(
     platform: chatPlatformEnum("platform").notNull(),
     workspace_id: text("workspace_id").notNull(),
     default_channel: text("default_channel"),
-    // TODO(P5): wire AES-256-GCM from env.MASTER_KEY
+    // AES-256-GCM ciphertext (see apps/engine/src/crypto/aes-gcm.ts). Writers call encryptSecret(), readers decryptSecret(), keyed by env.MASTER_KEY.
     bot_ciphertext: bytea("bot_ciphertext").notNull(),
     bot_iv: bytea("bot_iv").notNull(),
     bot_auth_tag: bytea("bot_auth_tag").notNull(),
