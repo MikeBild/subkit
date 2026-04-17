@@ -1,34 +1,29 @@
-// Conversation tool-use loop.
+// Conversation tool-use loop, SDK-driven.
 //
-// The loop drives one turn at a time:
-//
-//   1. Append the user message (if provided).
-//   2. Repeatedly ask the LLM for the next tool call via the
-//      `converse` flow. In tests the mock provider returns a canned
-//      plan keyed by conversation id; in production this seam swaps
-//      in a real tool-calling SDK call.
-//   3. For each tool call:
-//        a. persist `conversation_tool_calls` row
-//        b. execute the tool
-//        c. persist the tool result
-//        d. emit a `tool_call` + `tool_result` TurnEvent
-//   4. Stop when the LLM signals `done`, a tool pauses for approval,
-//      or the step budget is hit.
-//
-// The loop is step-count bounded (default 20) to keep runaway plans
-// in check. Validation errors from a tool are fed back into the LLM
-// as additional context on the next iteration.
+// The loop hands turn execution to `streamText` with our tool palette
+// wrapped via `tool()`. Stop conditions halt the run on step-count
+// exhaustion, `request_human_approval` (pause for operator), or a
+// `commit_draft` that returned a `committed_workflow_id`. Each tool's
+// side-effects (DB row inserts, event emission, logging, approval
+// creation) happen inside the `sdk-wrap` adapter — this file's job is
+// composing the call, mapping callbacks into DB writes + events, and
+// resolving the final per-turn status.
 
-import { asc, eq } from "drizzle-orm";
+import { hasToolCall, stepCountIs, streamText } from "ai";
+import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { conversationMessages, conversations, conversationToolCalls } from "../db/schema/index.ts";
-import { monthlyUsage } from "../llm/budgets.ts";
+import { conversations } from "../db/schema/index.ts";
+import { checkAndDecrement, checkBudget, monthlyUsage, recordUsage } from "../llm/budgets.ts";
 import { assembleEnhancedPrompt } from "../llm/context.ts";
-import { getMockProvider } from "../llm/mock-provider.ts";
-import { callWithFallback, resolveModelRoute } from "../llm/provider.ts";
-import { log } from "../logging/logger.ts";
-import { appendSnapshot, loadDraft } from "./draft.ts";
-import { type ConversationTool, getTool, type ToolContext } from "./tools/index.ts";
+import { LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
+import { createMockLanguageModel } from "../llm/mock-stream.ts";
+import { modelRegistry, resolveModelRoute } from "../llm/provider.ts";
+import { log, logger } from "../logging/logger.ts";
+import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instrumentation.ts";
+import { loadDraft } from "./draft.ts";
+import { appendMessage, buildModelMessages } from "./persist.ts";
+import type { ToolContext } from "./tools/index.ts";
+import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import type { DraftDocument, TurnEvent } from "./types.ts";
 
 export interface RunLoopParams {
@@ -56,92 +51,111 @@ export interface RunLoopResult {
 const DEFAULT_BUDGET = 20;
 
 /**
- * Compact summary of a tool's return payload so every tool.succeeded
- * log carries *some* shape info without each tool having to add bespoke
- * fields. Array lengths, object key counts, and `errors[].length` land
- * here; primitive payloads are ignored.
+ * Resolve the SDK language model for this run. The mock provider
+ * returns a fresh `MockLanguageModelV3` that reads from the shared
+ * plan-cursor singleton; real providers go through the provider
+ * registry (A1) so the `anthropic:` prefix is stripped natively.
  */
-function summarizeToolData(data: unknown): Record<string, number | string | boolean> {
-  if (data === null || data === undefined) return {};
-  if (Array.isArray(data)) return { data_length: data.length };
-  if (typeof data !== "object") return {};
-  const obj = data as Record<string, unknown>;
-  const out: Record<string, number | string | boolean> = {};
-  // Well-known fields that tools tend to return.
-  if (Array.isArray(obj.errors)) out.error_count = (obj.errors as unknown[]).length;
-  if (Array.isArray(obj.hits)) out.hit_count = (obj.hits as unknown[]).length;
-  if (Array.isArray(obj.skills)) out.skill_count = (obj.skills as unknown[]).length;
-  if (Array.isArray(obj.items)) out.item_count = (obj.items as unknown[]).length;
-  if (typeof obj.steps === "number") out.steps = obj.steps;
-  if (typeof obj.step_count === "number") out.step_count = obj.step_count;
-  if (typeof obj.workflow_id === "string") out.workflow_id = obj.workflow_id;
-  if (typeof obj.connector_id === "string") out.connector_id = obj.connector_id;
-  if (typeof obj.skill_id === "string") out.skill_id = obj.skill_id;
-  if (typeof obj.step_id === "string") out.step_id = obj.step_id;
-  if (typeof obj.last_step_id === "string") out.last_step_id = obj.last_step_id;
-  if (typeof obj.step_type === "string") out.step_type = obj.step_type;
-  if (typeof obj.slug === "string") out.slug = obj.slug;
-  if (typeof obj.approval_id === "string") out.approval_id = obj.approval_id;
-  if (typeof obj.reason === "string") out.reason = obj.reason;
-  if (typeof obj.error === "string") out.error = obj.error;
-  if (typeof obj.replaced === "boolean") out.replaced = obj.replaced;
-  out.data_keys = Object.keys(obj).length;
-  return out;
+function resolveLanguageModel(provider: string, modelId: string) {
+  if (provider === "mock") return createMockLanguageModel(modelId);
+  const bare = modelId.startsWith("anthropic:") ? modelId.slice("anthropic:".length) : modelId;
+  return modelRegistry.languageModel(`anthropic:${bare}`);
 }
 
-function isPlanDone(obj: unknown): boolean {
-  return obj !== null && typeof obj === "object" && (obj as Record<string, unknown>).done === true;
+/**
+ * Stop after a step that invoked `commit_draft` and produced a
+ * `committed_workflow_id` — the loop is done the moment the workflow
+ * row is persisted.
+ *
+ * Typed `any` against the SDK's StopCondition generic because our
+ * concrete tool map and the SDK's variadic ToolSet do not reconcile
+ * at the type level; the runtime contract is a predicate over
+ * `steps[last].toolResults`.
+ */
+const committedStopCondition = ({
+  steps,
+}: {
+  steps: ReadonlyArray<{
+    toolResults: ReadonlyArray<{ toolName: string; output?: unknown }>;
+  }>;
+}): boolean => {
+  const last = steps[steps.length - 1];
+  if (!last) return false;
+  return last.toolResults.some((r) => {
+    if (r.toolName !== "commit_draft") return false;
+    const output = r.output;
+    return (
+      !!output &&
+      typeof output === "object" &&
+      "committed_workflow_id" in (output as Record<string, unknown>) &&
+      typeof (output as { committed_workflow_id?: unknown }).committed_workflow_id === "string"
+    );
+  });
+};
+
+interface StepUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
 }
 
-function parseToolStep(obj: unknown): { tool: string; args: Record<string, unknown> } | null {
-  if (!obj || typeof obj !== "object") return null;
-  const rec = obj as Record<string, unknown>;
-  if (typeof rec.tool !== "string") return null;
-  const args = (rec.args ?? {}) as Record<string, unknown>;
-  return { tool: rec.tool, args };
+/**
+ * Classify an error thrown from `streamText` into our provider-kind
+ * taxonomy so the fallback policy can decide whether to retry. Mirrors
+ * the classifier in `llm/provider.ts:306-316` that runs for non-stream
+ * flows. Anthropic's AI SDK provider surfaces rate limits and
+ * overload as messages like "rate_limit" / "overloaded" / 429 / 529.
+ */
+function classifyStreamError(err: unknown): LlmProviderError | null {
+  if (err instanceof LlmProviderError) return err;
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("rate_limit") || msg.includes("429")) {
+    return new LlmProviderError("rate_limit", msg);
+  }
+  if (msg.includes("overloaded") || msg.includes("529")) {
+    return new LlmProviderError("overloaded", msg);
+  }
+  if (msg.includes("context_length") || msg.includes("too many tokens")) {
+    return new LlmProviderError("context_length_exceeded", msg);
+  }
+  return null;
 }
 
-async function appendMessage(
-  db: Db,
-  tenant_id: string,
-  conversation_id: string,
-  role: "user" | "assistant" | "tool" | "system",
-  content: unknown,
-): Promise<void> {
-  await db
-    .insert(conversationMessages)
-    .values({ tenant_id, conversation_id, role, content: content as Record<string, unknown> });
+function shouldFallback(err: LlmProviderError): boolean {
+  return (
+    err.kind === "rate_limit" || err.kind === "overloaded" || err.kind === "context_length_exceeded"
+  );
 }
 
-async function buildConversationUserPrompt(
-  conversation_id: string,
-  lastUser: string,
-): Promise<string> {
-  // The mock provider pulls the conversation id out of this envelope
-  // to look up the canned plan cursor.
-  return `[conv:${conversation_id}] ${lastUser}`;
-}
-
-async function loadPriorTurns(
-  db: Db,
-  conversation_id: string,
-): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
-  const rows = await db
-    .select({ role: conversationMessages.role, content: conversationMessages.content })
-    .from(conversationMessages)
-    .where(eq(conversationMessages.conversation_id, conversation_id))
-    .orderBy(asc(conversationMessages.created_at));
-  return rows
-    .filter((r) => r.role === "user" || r.role === "assistant")
-    .map((r) => ({
-      role: r.role as "user" | "assistant",
-      content:
-        typeof r.content === "object" && r.content !== null && "text" in r.content
-          ? String((r.content as { text: string }).text)
-          : typeof r.content === "string"
-            ? r.content
-            : JSON.stringify(r.content),
-    }));
+function readStepUsage(step: {
+  usage: {
+    inputTokens?: number | undefined;
+    outputTokens?: number | undefined;
+    inputTokenDetails?: {
+      cacheReadTokens?: number | undefined;
+      cacheWriteTokens?: number | undefined;
+    };
+  };
+  providerMetadata?: Record<string, unknown> | undefined;
+}): StepUsage {
+  const inputTokens = step.usage.inputTokens ?? 0;
+  const outputTokens = step.usage.outputTokens ?? 0;
+  let cacheReadTokens = step.usage.inputTokenDetails?.cacheReadTokens ?? 0;
+  let cacheCreationTokens = step.usage.inputTokenDetails?.cacheWriteTokens ?? 0;
+  // Anthropic surfaces cache tokens via providerMetadata.anthropic.usage
+  // when the unified usage fields are unset. Prefer the flat fields and
+  // fall back to provider metadata.
+  const anthropic = step.providerMetadata?.anthropic as
+    | { usage?: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+    | undefined;
+  if (!cacheReadTokens && anthropic?.usage?.cache_read_input_tokens) {
+    cacheReadTokens = Number(anthropic.usage.cache_read_input_tokens);
+  }
+  if (!cacheCreationTokens && anthropic?.usage?.cache_creation_input_tokens) {
+    cacheCreationTokens = Number(anthropic.usage.cache_creation_input_tokens);
+  }
+  return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
 }
 
 export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
@@ -160,9 +174,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     model_override: p.model_override ?? null,
   });
 
-  // Snapshot the tenant's monthly usage before the turn so we can
-  // compute a turn_tokens delta at the end. Safe on test dbs — a
-  // missing llm_usage row family returns 0.
   const usageBefore = await monthlyUsage(p.tenant_id, p.db).catch(() => 0);
 
   if (p.user_message) {
@@ -170,9 +181,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     events.push({ type: "message", role: "user", content: { text: p.user_message } });
   }
 
-  // Load current draft into memory for the duration of this turn.
+  // Draft state for the turn — tools mutate via ctx.setDraft, which
+  // snapshots to conversation_drafts for audit/undo.
   let draft: DraftDocument = await loadDraft(p.tenant_id, p.conversation_id, p.db);
-
   const ctx: ToolContext = {
     db: p.db,
     tenant_id: p.tenant_id,
@@ -183,241 +194,250 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     getDraft: () => draft,
     setDraft: async (next) => {
       draft = next;
+      const { appendSnapshot } = await import("./draft.ts");
       await appendSnapshot(p.tenant_id, p.conversation_id, next, p.db);
     },
   };
 
-  let lastToolFeedback: unknown = null;
-  let status: RunLoopResult["status"] = "active";
-  let committedWorkflowId: string | undefined;
-  let pendingApprovalId: string | undefined;
+  const route = await resolveModelRoute(p.tenant_id, p.db);
+  const effectiveModel = p.model_override ?? route.primary;
 
-  for (let step = 0; step < budget; step++) {
-    // Ask the model for the next tool call.
-    const lastUserText =
-      typeof lastToolFeedback === "object" && lastToolFeedback !== null
-        ? JSON.stringify(lastToolFeedback)
-        : (p.user_message ?? "continue");
-    const route = await resolveModelRoute(p.tenant_id, p.db);
-    const effectiveModel = p.model_override ?? route.primary;
-    // Load prior messages for real LLM providers. The mock provider
-    // doesn't need them (it tracks state via plan cursors), but the
-    // real provider needs the full conversation context.
-    const priorTurns = await loadPriorTurns(p.db, p.conversation_id);
-    // Build user_turns: prior conversation history + current turn.
-    const currentTurn = {
-      role: "user" as const,
-      content: await buildConversationUserPrompt(p.conversation_id, lastUserText),
-    };
-    // If we have prior history, use it; otherwise just the current turn.
-    const user_turns = priorTurns.length > 0 ? priorTurns : [currentTurn];
-    // Only append the current turn if it's not already the last message
-    // (it will be if appendMessage already persisted it above).
-    if (priorTurns.length > 0 && priorTurns[priorTurns.length - 1]?.content !== lastUserText) {
-      user_turns.push(currentTurn);
+  // Pre-check budget. Worst case: `budget` steps × ~1 K output each +
+  // the assembled prompt. Matches the envelope `callWithFallback`
+  // used before A5.
+  const currentUserText = p.user_message ?? "continue";
+  const prompt = await assembleEnhancedPrompt(
+    {
+      tenant_id: p.tenant_id,
+      flow: "converse",
+      ...(p.connector_id ? { connector_id: p.connector_id } : {}),
+      ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
+      user_turns: [{ role: "user", content: currentUserText }],
+      max_tokens: route.context_cap,
+      model: effectiveModel,
+      ...(p.user_memory ? { user_memory: p.user_memory } : {}),
+    },
+    p.db,
+  );
+  const estimated = prompt.token_counts.total + budget * 1024;
+  try {
+    await checkBudget(p.tenant_id, estimated, route.monthly_budget, p.db);
+    const verdict = await checkAndDecrement(p.tenant_id, estimated, p.db);
+    if (!verdict.ok) {
+      throw new LlmQuotaExhausted("llm_quota_exhausted", {
+        used: verdict.used,
+        projected_tokens: verdict.projected_tokens,
+        budget: verdict.budget,
+        remaining: verdict.remaining,
+      });
     }
-    const prompt = await assembleEnhancedPrompt(
+  } catch (err) {
+    if (err instanceof LlmQuotaExhausted) {
+      await recordUsage(
+        {
+          tenant_id: p.tenant_id,
+          flow: "converse",
+          model: effectiveModel,
+          prompt_tokens: prompt.token_counts.total,
+          completion_tokens: 0,
+          latency_ms: 0,
+          result: "quota_exhausted",
+          error: "llm_quota_exhausted",
+        },
+        p.db,
+      );
+      recordLlmQuotaExhausted({ tenant_id: p.tenant_id });
+    }
+    throw err;
+  }
+
+  const messages = await buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
+    conversationEnvelope: true,
+    conversation_id: p.conversation_id,
+  });
+
+  const signals: TurnSignals = { step: 0, toolChain: Promise.resolve() };
+  const tools = wrapTools(ctx, signals, events, p.db);
+
+  /**
+   * Run `streamText` once against `modelId`. Wired-in side-effects
+   * (tool execution, DB writes, events) happen inside the tool
+   * wrapper and `onStepFinish`; the caller only sees success or
+   * error. Usage rows are written per-step with `modelId` as the
+   * `model` column so fallback attempts show up as distinct rows.
+   */
+  async function runOnce(modelId: string): Promise<void> {
+    let lastStepEnd = Date.now();
+    // Rebuild messages every attempt so a fallback retry picks up any
+    // tool calls that the failed primary already persisted.
+    const attemptMessages = await buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
+      conversationEnvelope: true,
+      conversation_id: p.conversation_id,
+    });
+    // The SDK wraps provider-level errors thrown from `doStream` inside
+    // `AI_NoOutputGeneratedError` when no step was recorded, which hides
+    // the original error kind our fallback classifier needs. `onError`
+    // is the only place we can observe the raw error, so we capture it
+    // here and re-throw it on drain failure. See
+    // apps/engine/src/llm/errors.ts for our classification taxonomy.
+    let capturedError: unknown;
+    const result = streamText({
+      model: resolveLanguageModel(route.provider, modelId),
+      system: prompt.system,
+      messages: attemptMessages,
+      tools,
+      toolChoice: "auto",
+      stopWhen: [
+        stepCountIs(budget),
+        hasToolCall("request_human_approval"),
+        // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
+        committedStopCondition as any,
+      ],
+      maxRetries: 0,
+      abortSignal: AbortSignal.timeout(Math.min(10 * 60_000, 30_000 * budget)),
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: "converse",
+        metadata: {
+          tenant_id: p.tenant_id,
+          conversation_id: p.conversation_id,
+          provider: route.provider,
+          model: modelId,
+        },
+      },
+      onError: ({ error }) => {
+        if (!capturedError) capturedError = error;
+      },
+      onStepFinish: async (step) => {
+        const u = readStepUsage(step);
+        const now = Date.now();
+        const latency_ms = Math.max(0, now - lastStepEnd);
+        lastStepEnd = now;
+        await recordUsage(
+          {
+            tenant_id: p.tenant_id,
+            flow: "converse",
+            model: modelId,
+            prompt_tokens: u.inputTokens,
+            completion_tokens: u.outputTokens,
+            cache_read_tokens: u.cacheReadTokens,
+            cache_creation_tokens: u.cacheCreationTokens,
+            latency_ms,
+            result: "success",
+          },
+          p.db,
+        );
+        recordLlmTokens({
+          tenant_id: p.tenant_id,
+          model: modelId,
+          flow: "converse",
+          prompt_tokens: u.inputTokens,
+          completion_tokens: u.outputTokens,
+        });
+        if (step.text && step.text.length > 0) {
+          await appendMessage(p.db, p.tenant_id, p.conversation_id, "assistant", {
+            text: step.text,
+          });
+          events.push({ type: "message", role: "assistant", content: { text: step.text } });
+        }
+      },
+    });
+    try {
+      await result.finishReason;
+    } catch (err) {
+      // Prefer the original provider-level error captured via onError
+      // so our fallback classifier can see `rate_limit`/`overloaded`.
+      if (capturedError) throw capturedError;
+      throw err;
+    }
+  }
+
+  void messages; // messages rebuilt per-attempt inside runOnce
+  try {
+    await runOnce(effectiveModel);
+  } catch (primaryErr) {
+    const providerErr = classifyStreamError(primaryErr);
+    const msg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+    logger.warn({
+      module: "llm",
+      action: "converse.failed",
+      msg: "streamText primary error",
+      conversation_id: p.conversation_id,
+      model: effectiveModel,
+      kind: providerErr?.kind ?? "other",
+      error: msg,
+    });
+    await recordUsage(
       {
         tenant_id: p.tenant_id,
         flow: "converse",
-        ...(p.connector_id ? { connector_id: p.connector_id } : {}),
-        ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
-        user_turns,
-        max_tokens: route.context_cap,
         model: effectiveModel,
-        ...(p.user_memory ? { user_memory: p.user_memory } : {}),
+        prompt_tokens: prompt.token_counts.total,
+        completion_tokens: 0,
+        latency_ms: 0,
+        result: "error",
+        error: msg,
       },
       p.db,
     );
-    // In tests the mock is the only provider, so we read the next
-    // step directly via `nextConverseStep` to keep the plan cursor
-    // source-of-truth inside the mock. The `callWithFallback` return
-    // value carries the LLM's plain text response — we use it as the
-    // assistant message when no tool plan is active (or completes).
-    const llmResult = await callWithFallback<unknown>({ flow: "converse", route, prompt }, p.db);
-    const planStep = getMockProvider().nextConverseStep(p.conversation_id);
-    // No canned plan (production path) OR plan exhausted — emit the
-    // LLM's text as a plain assistant message and exit the loop.
-    if (planStep === null || isPlanDone(planStep)) {
-      const text =
-        typeof llmResult.result.text === "string" && llmResult.result.text.length > 0
-          ? llmResult.result.text
-          : "";
-      if (text.length > 0) {
-        await appendMessage(p.db, p.tenant_id, p.conversation_id, "assistant", { text });
-        events.push({ type: "message", role: "assistant", content: { text } });
-      }
-      status = "active";
-      break;
+    if (!providerErr || !shouldFallback(providerErr) || route.fallback === effectiveModel) {
+      throw primaryErr;
     }
-    const parsed = parseToolStep(planStep);
-    if (!parsed) {
-      // Canned plan entry isn't a tool call — treat as assistant text.
-      const content = planStep;
-      await appendMessage(p.db, p.tenant_id, p.conversation_id, "assistant", content);
-      events.push({ type: "message", role: "assistant", content });
-      break;
-    }
-
-    const tool: ConversationTool | undefined = getTool(parsed.tool);
-    events.push({ type: "tool_call", tool: parsed.tool, input: parsed.args });
-    const [callRow] = await p.db
-      .insert(conversationToolCalls)
-      .values({
-        tenant_id: p.tenant_id,
-        conversation_id: p.conversation_id,
-        tool: parsed.tool,
-        input: parsed.args,
-        approval_required: parsed.tool === "request_human_approval",
-      })
-      .returning();
-
-    log.conversation.tool.called({
+    logger.warn({
+      module: "llm",
+      action: "fallback.triggered",
+      msg: "llm fallback engaged",
+      flow: "converse",
       conversation_id: p.conversation_id,
-      tool: parsed.tool,
-      step,
+      primary: effectiveModel,
+      fallback: route.fallback,
+      kind: providerErr.kind,
     });
-
-    if (!tool) {
-      const output = { error: `unknown tool: ${parsed.tool}` };
-      events.push({ type: "tool_result", tool: parsed.tool, output });
-      if (callRow) {
-        await p.db
-          .update(conversationToolCalls)
-          .set({ output: output as Record<string, unknown> })
-          .where(eq(conversationToolCalls.id, callRow.id));
-      }
-      log.conversation.tool.failed({
-        conversation_id: p.conversation_id,
-        tool: parsed.tool,
-        reason: "unknown_tool",
-      });
-      lastToolFeedback = output;
-      continue;
-    }
-
-    let result: Awaited<ReturnType<ConversationTool["execute"]>>;
-    const toolStartedAt = Date.now();
     try {
-      result = await tool.execute(ctx, parsed.args);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const output = { error: msg };
-      events.push({ type: "tool_result", tool: parsed.tool, output });
-      if (callRow) {
-        await p.db
-          .update(conversationToolCalls)
-          .set({ output: output as Record<string, unknown> })
-          .where(eq(conversationToolCalls.id, callRow.id));
-      }
-      log.conversation.tool.failed({
+      await runOnce(route.fallback);
+    } catch (fbErr) {
+      const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);
+      logger.warn({
+        module: "llm",
+        action: "converse.failed",
+        msg: "streamText fallback error",
         conversation_id: p.conversation_id,
-        tool: parsed.tool,
-        error: msg,
-        duration_ms: Date.now() - toolStartedAt,
+        model: route.fallback,
+        error: fbMsg,
       });
-      lastToolFeedback = output;
-      continue;
-    }
-
-    const dataSummary = summarizeToolData(result.data);
-    const toolCtx = {
-      conversation_id: p.conversation_id,
-      tool: parsed.tool,
-      ok: result.ok,
-      paused: Boolean(result.pause),
-      committed: Boolean(result.committed_workflow_id),
-      duration_ms: Date.now() - toolStartedAt,
-      ...dataSummary,
-    };
-    // `ok: false` from a tool is a soft failure (e.g. validation
-    // rejection that feeds back into the loop) — surface it as
-    // `tool.failed` so operators filtering failures catch both thrown
-    // exceptions and soft-no results.
-    if (result.ok) {
-      log.conversation.tool.succeeded(toolCtx);
-    } else {
-      log.conversation.tool.failed(toolCtx);
-    }
-
-    if (callRow) {
-      await p.db
-        .update(conversationToolCalls)
-        .set({ output: result.data as Record<string, unknown> })
-        .where(eq(conversationToolCalls.id, callRow.id));
-    }
-    events.push({ type: "tool_result", tool: parsed.tool, output: result.data });
-
-    // Persist a `tool` role message so the audit trail of the turn is
-    // self-contained.
-    await appendMessage(p.db, p.tenant_id, p.conversation_id, "tool", {
-      tool: parsed.tool,
-      output: result.data,
-    });
-
-    // Surface validation errors as their own event so the SSE stream
-    // can highlight them.
-    if (
-      !result.ok &&
-      typeof result.data === "object" &&
-      result.data !== null &&
-      Array.isArray((result.data as { errors?: unknown }).errors)
-    ) {
-      events.push({
-        type: "validation_error",
-        errors: (result.data as { errors: Array<{ path: string; message: string }> }).errors,
-      });
-    }
-
-    lastToolFeedback = result.data;
-
-    if (result.pause) {
-      events.push({
-        type: "approval_request",
-        approval_id: result.pause.approval_id,
-        kind: result.pause.kind,
-        summary: result.pause.summary,
-        ...(result.pause.diff !== undefined ? { diff: result.pause.diff } : {}),
-        ...(result.pause.target !== undefined ? { target: result.pause.target } : {}),
-      });
-      log.conversation.approval.requested({
-        conversation_id: p.conversation_id,
-        approval_id: result.pause.approval_id,
-        kind: result.pause.kind,
-      });
-      status = "awaiting_approval";
-      pendingApprovalId = result.pause.approval_id;
-      break;
-    }
-    if (result.committed_workflow_id) {
-      events.push({ type: "committed", workflow_id: result.committed_workflow_id });
-      events.push({ type: "completed", status: "committed" });
-      log.conversation.completed({
-        conversation_id: p.conversation_id,
-        final_status: "committed",
-        committed_workflow_id: result.committed_workflow_id,
-        steps_taken: step + 1,
-      });
-      status = "committed";
-      committedWorkflowId = result.committed_workflow_id;
-      break;
+      await recordUsage(
+        {
+          tenant_id: p.tenant_id,
+          flow: "converse",
+          model: route.fallback,
+          prompt_tokens: prompt.token_counts.total,
+          completion_tokens: 0,
+          latency_ms: 0,
+          result: "error",
+          error: fbMsg,
+        },
+        p.db,
+      );
+      throw fbErr;
     }
   }
 
-  if (status === "active" && events.length > 0 && events[events.length - 1]?.type !== "message") {
-    log.warn({
-      module: "conversation",
-      action: "loop.budget_exhausted",
-      msg: "turn stopped without done/approval/commit (budget reached)",
-      conversation_id: p.conversation_id,
-      step_budget: budget,
-    });
-  }
-
-  if (status === "active") {
-    // Either we ran out of budget or the LLM returned done. Mark the
-    // conversation back to active if it is not already committed /
-    // awaiting_approval.
+  // Resolve final status.
+  let status: RunLoopResult["status"] = "active";
+  let committedWorkflowId: string | undefined;
+  let pendingApprovalId: string | undefined;
+  if (signals.committed) {
+    status = "committed";
+    committedWorkflowId = signals.committed.workflow_id;
+    events.push({ type: "completed", status: "committed" });
+  } else if (signals.pendingApproval) {
+    status = "awaiting_approval";
+    pendingApprovalId = signals.pendingApproval.approval_id;
+  } else {
+    // Either budget exhausted or the model stopped with text only.
+    // Check if the row flipped to awaiting_approval via some other
+    // path (defensive — today we expect signals.pendingApproval to
+    // have caught it).
     const rows = await p.db
       .select()
       .from(conversations)
@@ -426,32 +446,30 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     if (rows[0]?.status === "awaiting_approval") {
       status = "awaiting_approval";
     }
+    if (signals.step >= budget && !signals.pendingApproval) {
+      log.warn({
+        module: "conversation",
+        action: "loop.budget_exhausted",
+        msg: "turn stopped without done/approval/commit (budget reached)",
+        conversation_id: p.conversation_id,
+        step_budget: budget,
+      });
+    }
     events.push({ type: "completed", status: "active" });
   }
 
-  // Attach usage to the final `completed` frame so the `sk` status
-  // line and `/cost` slash can surface it. `turn_tokens` is the
-  // monthly-ledger delta across this call; `remaining_monthly_budget`
-  // is budget - usageAfter when the tenant has a budget.
+  // Attach turn usage to every `completed` frame (sk status-line
+  // reads `turn_tokens` + `remaining_monthly_budget_tokens`).
   const usageAfter = await monthlyUsage(p.tenant_id, p.db).catch(() => usageBefore);
   const turnTokens = Math.max(0, usageAfter - usageBefore);
-  // Resolve the model route once more to read the tenant's monthly
-  // budget — resolveModelRoute caches the tenant row read.
-  const route = await resolveModelRoute(p.tenant_id, p.db).catch(() => null);
   const remaining =
-    route && typeof route.monthly_budget === "number"
-      ? Math.max(0, route.monthly_budget - usageAfter)
-      : null;
-  // Replace every `completed` event we pushed with one that carries usage.
+    route.monthly_budget != null ? Math.max(0, route.monthly_budget - usageAfter) : null;
   for (let i = events.length - 1; i >= 0; i--) {
     const ev = events[i];
     if (ev && ev.type === "completed") {
       events[i] = {
         ...ev,
-        usage: {
-          turn_tokens: turnTokens,
-          remaining_monthly_budget_tokens: remaining,
-        },
+        usage: { turn_tokens: turnTokens, remaining_monthly_budget_tokens: remaining },
       };
     }
   }
