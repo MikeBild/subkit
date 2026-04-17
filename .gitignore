@@ -13,3 +13,5 @@ bun.lockb
 tsconfig.tsbuildinfo
 firebase/firebase-sdk-config.json
 firebase/.firebase/
+.claude/settings.local.json
+
