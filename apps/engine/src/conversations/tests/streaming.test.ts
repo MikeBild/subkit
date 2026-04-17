@@ -1,8 +1,9 @@
 // SSE streaming test.
 //
 // Drives a full list-users conversation through the REST create
-// endpoint, approves the pending approval, and then opens
-// /v1/conversations/:id/stream to read back the replayed event frames.
+// endpoint, answers the pending askUser.confirm elicitation, and
+// then opens /v1/conversations/:id/stream to read back the replayed
+// event frames.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -43,7 +44,7 @@ afterAll(async () => {
 
 describe("http/conversations streaming", () => {
   test("SSE stream replays the full event trace after an approved commit", async () => {
-    // 1. Create + drive first turn — pauses at approval.
+    // 1. Create + drive first turn — pauses at an askUser elicitation.
     const createRes = await fetch(`${http.baseUrl}/v1/conversations`, {
       method: "POST",
       headers: {
@@ -59,26 +60,29 @@ describe("http/conversations streaming", () => {
     const created = (await createRes.json()) as {
       conversation: { id: string; status: string };
       status: string;
-      pending_approval_id?: string;
+      pending_elicitation_id?: string;
     };
-    expect(created.status).toBe("awaiting_approval");
-    expect(created.pending_approval_id).toBeDefined();
+    expect(created.status).toBe("awaiting_input");
+    expect(created.pending_elicitation_id).toBeDefined();
 
-    // 2. Approve → loop resumes and commits.
-    const approveRes = await fetch(
-      `${http.baseUrl}/v1/conversations/${created.conversation.id}/approvals/${created.pending_approval_id}/approve`,
+    // 2. Respond to the elicitation with `{confirmed: true}` → the
+    //    loop resumes and commits the draft.
+    const respondRes = await fetch(
+      `${http.baseUrl}/v1/conversations/${created.conversation.id}/elicitations/${created.pending_elicitation_id}/respond`,
       {
         method: "POST",
-        headers: { authorization: `Bearer ${http.apiKey}` },
+        headers: {
+          authorization: `Bearer ${http.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ output: { confirmed: true } }),
       },
     );
-    expect(approveRes.status).toBe(200);
-    const approved = (await approveRes.json()) as {
+    expect(respondRes.status).toBe(200);
+    const responded = (await respondRes.json()) as {
       status: string;
-      committed_workflow_id?: string;
     };
-    expect(approved.status).toBe("committed");
-    expect(approved.committed_workflow_id).toBeDefined();
+    expect(responded.status).toBe("committed");
 
     // 3. Read the SSE stream.
     const streamRes = await fetch(
@@ -94,7 +98,8 @@ describe("http/conversations streaming", () => {
     const events = eventLines.map((l) => l.slice("event:".length).trim());
 
     expect(events).toContain("message"); // user + tool messages
-    expect(events).toContain("tool_call");
+    expect(events).toContain("tool_call_start");
+    expect(events).toContain("tool_call_end");
     expect(events).toContain("tool_result");
     expect(events).toContain("committed");
     expect(events).toContain("completed");

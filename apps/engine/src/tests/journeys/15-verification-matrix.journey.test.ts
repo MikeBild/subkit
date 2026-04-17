@@ -115,7 +115,7 @@ describe("journey: verification matrix (docs/33)", () => {
     expect(skillRes.status).toBe(201);
   });
 
-  test("04. AI authoring via REST — create + approve conversation", async () => {
+  test("04. AI authoring via REST — create + respond to elicitation", async () => {
     const createRes = await journeyFetch(ctx, "/v1/conversations", {
       method: "POST",
       body: JSON.stringify({
@@ -125,18 +125,17 @@ describe("journey: verification matrix (docs/33)", () => {
     });
     const out = (await createRes.json()) as {
       conversation: { id: string };
-      pending_approval_id?: string;
+      pending_elicitation_id?: string;
       status: string;
     };
-    expect(out.status).toBe("awaiting_approval");
-    const approve = await journeyFetch(
+    expect(out.status).toBe("awaiting_input");
+    const respond = await journeyFetch(
       ctx,
-      `/v1/conversations/${out.conversation.id}/approvals/${out.pending_approval_id}/approve`,
-      { method: "POST", body: JSON.stringify({}) },
+      `/v1/conversations/${out.conversation.id}/elicitations/${out.pending_elicitation_id}/respond`,
+      { method: "POST", body: JSON.stringify({ output: { confirmed: true } }) },
     );
-    const approved = (await approve.json()) as { status: string; committed_workflow_id?: string };
+    const approved = (await respond.json()) as { status: string };
     expect(approved.status).toBe("committed");
-    expect(approved.committed_workflow_id).toBeTruthy();
   });
 
   test("05. Trigger workflow via REST (request_source=api)", async () => {

@@ -11,9 +11,33 @@
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { ConversationItem } from "@chat-ui/index.ts";
 import type { SkSessionState } from "@cli-core/index.ts";
 import { loadConfig, type ResolvedProfile, saveConfig } from "../config.ts";
-import type { EngineClient } from "../engine-client.ts";
+import type { EngineClient, StatusSummary } from "../engine-client.ts";
+
+/**
+ * Rich pane descriptions returned by slash commands that open a modal
+ * instead of (or in addition to) a one-line banner. The Ink host
+ * renders the right component based on `kind`. Adding a new pane kind
+ * means: extend this union, handle it in the host's modal slot, and
+ * the readline fallback's text mirror.
+ */
+export type PaneSpec =
+  | {
+      kind: "status";
+      title?: string;
+      subtitle?: string;
+      rows: ReadonlyArray<readonly [string, string | number | null | undefined]>;
+    }
+  | { kind: "conversations"; items: ReadonlyArray<ConversationItem> }
+  | {
+      kind: "text";
+      title: string;
+      subtitle?: string;
+      /** Lines rendered verbatim inside the pane, one `<Text>` per line. */
+      lines: ReadonlyArray<string>;
+    };
 
 export interface SlashHandlerContext {
   client: EngineClient;
@@ -25,8 +49,42 @@ export interface SlashHandlerContext {
   allowedPermissions: readonly string[];
   /** Switch to a different profile by name. Provided by the REPL host. */
   switchProfile?: (name: string) => Promise<string>;
+  /**
+   * Latest `/v1/status` snapshot — populated by the Ink host, refreshed
+   * after every completed turn. Provides connector count + today's
+   * tokens + tenant slug for `/status` and the status-line ticker.
+   */
+  statusSnapshot?: StatusSummary | null;
+  /**
+   * Open a modal pane in the Ink host. When omitted (e.g. the readline
+   * fallback REPL), pane-returning commands fall back to a text banner.
+   */
+  openPane?: (spec: PaneSpec) => void;
   /** Override config file path (for testing). */
   configPath?: string;
+}
+
+/**
+ * Helper: when an Ink host is available, open a "text" pane in the
+ * modal slot and return null (no banner). Otherwise fall back to
+ * joining the body lines into a single banner string so the readline
+ * REPL stays functional.
+ */
+function panify(
+  ctx: SlashHandlerContext,
+  title: string,
+  lines: readonly string[],
+  subtitle?: string,
+): string | null {
+  if (ctx.openPane) {
+    ctx.openPane(
+      subtitle !== undefined
+        ? { kind: "text", title, subtitle, lines }
+        : { kind: "text", title, lines },
+    );
+    return null;
+  }
+  return [title, "", ...lines].join("\n");
 }
 
 /**
@@ -42,19 +100,67 @@ export async function handleSlash(
 ): Promise<string | null> {
   switch (name) {
     case "status": {
-      return (
-        `profile ${ctx.profile.name} · persona ${ctx.profile.persona_hint ?? "user"} · ` +
-        `engine ${ctx.profile.engine_url} · tenant ${ctx.profile.active_tenant_id ?? "(none)"} · ` +
-        `session ${ctx.session.conversationId ?? "(none)"} · status ${ctx.session.status}`
-      );
+      const snap = ctx.statusSnapshot ?? null;
+      const tenant = snap?.tenant.slug ?? snap?.tenant.id ?? ctx.profile.active_tenant_id ?? null;
+      const budget = snap?.monthly_budget_tokens;
+      const remaining = snap?.remaining_monthly_budget_tokens;
+      const rows: Array<readonly [string, string | number | null | undefined]> = [
+        ["user", snap?.user.email ?? snap?.user.id ?? "(unknown)"],
+        ["auth", snap ? "signed_in" : "signed_out"],
+        ["profile", ctx.profile.name],
+        ["persona", ctx.profile.persona_hint ?? "user"],
+        ["tenant", tenant],
+        ["engine", ctx.profile.engine_url],
+        ["engine version", snap?.version],
+        ["session", ctx.session.conversationId ?? "(none)"],
+        ["session status", ctx.session.status],
+        ["connectors", snap?.connectors_count],
+        ["skills", snap?.skills_count],
+        ["tokens · this turn", ctx.session.usage?.turn_tokens],
+        ["tokens · today", snap?.tokens_today],
+        ["tokens · month", snap?.tokens_month],
+        ["budget · monthly", budget == null ? "∞" : `${budget.toLocaleString()} tok`],
+        ["budget · remaining", remaining == null ? "∞" : `${remaining.toLocaleString()} tok`],
+      ];
+      if (ctx.openPane) {
+        ctx.openPane({
+          kind: "status",
+          title: "status",
+          subtitle: ctx.profile.name,
+          rows,
+        });
+        return null;
+      }
+      // Readline fallback: render as a multi-line banner.
+      return rows
+        .map(
+          ([label, value]) =>
+            `${label.padEnd(20, " ")} ${value === undefined || value === null ? "—" : value}`,
+        )
+        .join("\n");
     }
     case "cost": {
-      if (!ctx.session.usage) return "no usage recorded yet this session";
-      const remaining =
-        ctx.session.usage.remaining_monthly_budget_tokens == null
-          ? "∞"
-          : String(ctx.session.usage.remaining_monthly_budget_tokens);
-      return `turn_tokens=${ctx.session.usage.turn_tokens} · remaining=${remaining}`;
+      const snap = ctx.statusSnapshot ?? null;
+      const usage = ctx.session.usage;
+      const lines: string[] = [];
+      if (usage) {
+        const remaining =
+          usage.remaining_monthly_budget_tokens == null
+            ? "∞"
+            : usage.remaining_monthly_budget_tokens.toLocaleString();
+        lines.push(`tokens · this turn   ${usage.turn_tokens.toLocaleString()}`);
+        lines.push(`remaining · monthly  ${remaining}`);
+      } else {
+        lines.push("no turn-level usage recorded yet this session");
+      }
+      if (snap) {
+        lines.push(`tokens · today       ${snap.tokens_today.toLocaleString()}`);
+        lines.push(`tokens · month       ${snap.tokens_month.toLocaleString()}`);
+        if (snap.monthly_budget_tokens !== null) {
+          lines.push(`budget · monthly     ${snap.monthly_budget_tokens.toLocaleString()} tok`);
+        }
+      }
+      return panify(ctx, "cost", lines);
     }
     case "clear":
     case "new": {
@@ -62,8 +168,21 @@ export async function handleSlash(
       return "session cleared";
     }
     case "resume": {
-      const res = await ctx.client.listConversations({ owner: "me", limit: 10 });
+      const res = await ctx.client.listConversations({ owner: "me", limit: 25 });
       if (res.items.length === 0) return "no prior conversations to resume";
+      if (ctx.openPane) {
+        ctx.openPane({
+          kind: "conversations",
+          items: res.items.map((it) => ({
+            id: it.id,
+            title: it.title ?? null,
+            updated_at: it.updated_at,
+            status: it.status ?? null,
+          })),
+        });
+        return null;
+      }
+      // Readline fallback: silently attach to the most recent.
       const first = res.items[0];
       if (!first) return "no prior conversations to resume";
       ctx.setConversationId(first.id);
@@ -73,7 +192,14 @@ export async function handleSlash(
     case "compact": {
       if (!ctx.session.conversationId) return "no session to compact";
       const r = await ctx.client.compactConversation(ctx.session.conversationId, { keep_last: 4 });
-      return `compacted ${r.messages_collapsed} message(s)`;
+      const lines: string[] = [
+        `collapsed ${r.messages_collapsed} message(s)`,
+        `kept last 4 · retained conversation id ${ctx.session.conversationId.slice(0, 8)}`,
+        "",
+        "summary:",
+        ...(r.summary ? r.summary.split(/\r?\n/) : ["(no summary returned)"]),
+      ];
+      return panify(ctx, "compact", lines);
     }
     case "model": {
       const model = rawArgs[0];
@@ -84,7 +210,8 @@ export async function handleSlash(
     case "skills": {
       const r = await ctx.client.listSkills();
       if (r.items.length === 0) return "no skills in scope";
-      return r.items.map((s) => `${s.scope} · ${s.title}`).join("\n");
+      const lines = r.items.map((s) => `${s.scope.padEnd(8)} ${s.title}`);
+      return panify(ctx, "skills", lines, `${r.items.length} in scope`);
     }
     case "mcp": {
       const [prompts, resources, tools] = await Promise.all([
@@ -95,28 +222,34 @@ export async function handleSlash(
       const lines: string[] = [];
       lines.push(`prompts (${prompts.items.length}):`);
       for (const p of prompts.items) lines.push(`  /mcp__${p.name} — ${p.description ?? ""}`);
+      lines.push("");
       lines.push(`resources (${resources.items.length}):`);
       for (const r of resources.items) lines.push(`  ${r.uri} · ${r.name}`);
+      lines.push("");
       lines.push(`tools (${tools.items.length}):`);
       for (const t of tools.items) lines.push(`  ${t.name} — ${t.description}`);
-      return lines.join("\n");
+      return panify(ctx, "mcp catalog", lines);
     }
     case "permissions": {
       if (ctx.allowedPermissions.length === 0) return "no permissions probe cached";
-      return `granted permissions:\n${ctx.allowedPermissions.map((p) => `  ${p}`).join("\n")}`;
+      return panify(
+        ctx,
+        "permissions",
+        ctx.allowedPermissions.map((p) => `  ${p}`),
+        `${ctx.allowedPermissions.length} granted`,
+      );
     }
     case "audit": {
       const res = await ctx.client.tailAuditLog({ limit: 20 });
       const rows = res.items.slice(0, 20);
       if (rows.length === 0) return "no audit rows visible to this principal";
-      return rows
-        .map((r) => {
-          const action = typeof r.action === "string" ? r.action : "";
-          const ts = typeof r.ts === "string" ? r.ts : "";
-          const rid = typeof r.resource_id === "string" ? r.resource_id.slice(0, 8) : "";
-          return `${ts} ${action} ${rid}`;
-        })
-        .join("\n");
+      const lines = rows.map((r) => {
+        const action = typeof r.action === "string" ? r.action : "";
+        const ts = typeof r.ts === "string" ? r.ts : "";
+        const rid = typeof r.resource_id === "string" ? r.resource_id.slice(0, 8) : "";
+        return `${ts}  ${action.padEnd(28)} ${rid}`;
+      });
+      return panify(ctx, "audit log", lines, `latest ${rows.length}`);
     }
     case "memory": {
       const path = join(homedir(), ".sk", "SUBKIT.md");

@@ -4,14 +4,14 @@
 //   GET    /v1/conversations                               — list
 //   GET    /v1/conversations/:id                           — fetch detail
 //   POST   /v1/conversations/:id/messages                  — append user message + drive turn
-//   POST   /v1/conversations/:id/approvals/:approval_id/approve
-//   POST   /v1/conversations/:id/approvals/:approval_id/reject
+//   POST   /v1/conversations/:id/elicitations/:elicitation_id/respond
 //   POST   /v1/conversations/:id/cancel
 //   GET    /v1/conversations/:id/stream                    — SSE replay of the latest run
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { buildMessagesV2 } from "../../conversations/parts.ts";
 import * as svc from "../../conversations/service.ts";
 import { replayEvents, serializeEvent } from "../../conversations/streaming.ts";
 import type { ConversationStatus } from "../../conversations/types.ts";
@@ -24,10 +24,17 @@ import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
-const ApprovalParam = z.object({
+const ElicitationParam = z.object({
   id: z.string().uuid(),
-  approval_id: z.string().uuid(),
+  elicitation_id: z.string().uuid(),
 });
+
+const RespondElicitationBody = z
+  .object({
+    output: z.unknown(),
+    reason: z.string().optional(),
+  })
+  .openapi("RespondElicitationBody");
 
 const ConversationSchema = z
   .object({
@@ -48,13 +55,26 @@ const ConversationListResponse = z
   .object({ items: z.array(ConversationSchema) })
   .openapi("ConversationListResponse");
 
+const UIMessageSchema = z
+  .object({
+    id: z.string(),
+    role: z.string(),
+    parts: z.array(z.unknown()),
+    created_at: z.string(),
+  })
+  .openapi("UIMessage");
+
 const ConversationDetailSchema = z
   .object({
     conversation: ConversationSchema,
-    messages: z.array(z.unknown()),
+    /**
+     * Parts-based `UIMessage` array — mirrors Vercel AI SDK UI's message
+     * shape. Built by `buildMessagesV2` over the persisted message +
+     * tool-call rows.
+     */
+    messages: z.array(UIMessageSchema),
     tool_calls: z.array(z.unknown()),
     draft: z.unknown(),
-    approvals: z.array(z.unknown()),
   })
   .openapi("ConversationDetail");
 
@@ -97,15 +117,13 @@ const CompactConversationResponse = z
   })
   .openapi("CompactConversationResponse");
 
-const RejectBody = z.object({ reason: z.string().optional() }).openapi("RejectApprovalBody");
-
 const RunOutcomeSchema = z
   .object({
     conversation: ConversationSchema,
     events: z.array(z.any()),
     status: z.string(),
     committed_workflow_id: z.string().optional(),
-    pending_approval_id: z.string().optional(),
+    pending_elicitation_id: z.string().optional(),
   })
   .openapi("ConversationRunOutcome");
 
@@ -125,7 +143,7 @@ type RunOutcomeJson = {
   events: unknown[];
   status: string;
   committed_workflow_id?: string;
-  pending_approval_id?: string;
+  pending_elicitation_id?: string;
 };
 
 const listRoute = createRoute({
@@ -137,7 +155,7 @@ const listRoute = createRoute({
   request: {
     query: z
       .object({
-        status: z.enum(["active", "awaiting_approval", "committed", "abandoned"]).optional(),
+        status: z.enum(["active", "awaiting_input", "committed", "abandoned"]).optional(),
         /**
          * When `me`, restrict to conversations owned by the calling
          * principal (conversations.owner_id). Other values are
@@ -202,28 +220,51 @@ const appendRoute = createRoute({
   },
 });
 
-const approveRoute = createRoute({
-  method: "post",
-  path: "/v1/conversations/{id}/approvals/{approval_id}/approve",
+const ContextSnapshotSchema = z
+  .object({
+    conversation_id: z.string(),
+    connector_id: z.string().nullable(),
+    workflow_id: z.string().nullable(),
+    skills: z.object({
+      global: z.array(z.object({ id: z.string(), title: z.string() })),
+      connector: z.array(z.object({ id: z.string(), title: z.string() })),
+      workflow: z.array(z.object({ id: z.string(), title: z.string() })),
+      total: z.number(),
+    }),
+    messages: z.object({
+      total: z.number(),
+      last_role: z.string().nullable(),
+    }),
+    tool_calls_total: z.number(),
+    pending_elicitations: z.number(),
+  })
+  .openapi("ContextSnapshot");
+
+const contextSnapshotRoute = createRoute({
+  method: "get",
+  path: "/v1/conversations/{id}/context-snapshot",
   tags: ["conversations"],
-  summary: "Approve a pending approval and resume the loop",
+  summary: "Summary of the context currently in scope for a conversation",
   security: [{ bearerAuth: [] }],
-  request: { params: ApprovalParam },
+  request: { params: IdParam },
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: RunOutcomeSchema } } },
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: ContextSnapshotSchema } },
+    },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
-const rejectRoute = createRoute({
+const respondElicitationRoute = createRoute({
   method: "post",
-  path: "/v1/conversations/{id}/approvals/{approval_id}/reject",
+  path: "/v1/conversations/{id}/elicitations/{elicitation_id}/respond",
   tags: ["conversations"],
-  summary: "Reject a pending approval",
+  summary: "Resolve a pending ask_user_* elicitation with the user's answer",
   security: [{ bearerAuth: [] }],
   request: {
-    params: ApprovalParam,
-    body: { content: { "application/json": { schema: RejectBody } } },
+    params: ElicitationParam,
+    body: { content: { "application/json": { schema: RespondElicitationBody } } },
   },
   responses: {
     200: { description: "OK", content: { "application/json": { schema: RunOutcomeSchema } } },
@@ -292,7 +333,7 @@ function serializeConversation(c: svc.ConversationTurnOutcome): RunOutcomeJson {
     status: c.result.status,
   };
   if (c.result.committed_workflow_id) out.committed_workflow_id = c.result.committed_workflow_id;
-  if (c.result.pending_approval_id) out.pending_approval_id = c.result.pending_approval_id;
+  if (c.result.pending_elicitation_id) out.pending_elicitation_id = c.result.pending_elicitation_id;
   return out;
 }
 
@@ -329,11 +370,11 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/conversations/:id/messages/upload", async (c, next) => {
     return requireAnyPermission(["conversation:write", "knowledge:write"])(c, next);
   });
-  app.use("/v1/conversations/:id/approvals/:approval_id/approve", async (c, next) => {
+  app.use("/v1/conversations/:id/elicitations/:elicitation_id/respond", async (c, next) => {
     return requireAnyPermission(["conversation:approve", "workflow:write"])(c, next);
   });
-  app.use("/v1/conversations/:id/approvals/:approval_id/reject", async (c, next) => {
-    return requireAnyPermission(["conversation:approve", "workflow:write"])(c, next);
+  app.use("/v1/conversations/:id/context-snapshot", async (c, next) => {
+    return requireAnyPermission(["conversation:read", "workflow:read"])(c, next);
   });
   app.use("/v1/conversations/:id/cancel", async (c, next) => {
     return requireAnyPermission(["conversation:cancel", "workflow:write"])(c, next);
@@ -385,7 +426,16 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const detail = await svc.getConversation(principal.tenant_id, id, db);
     if (!detail) throw new NotFoundError("conversation");
-    return c.json(detail, 200);
+    const messages = buildMessagesV2(detail.messages, detail.tool_calls);
+    return c.json(
+      {
+        conversation: detail.conversation,
+        messages,
+        tool_calls: detail.tool_calls,
+        draft: detail.draft,
+      },
+      200,
+    );
   });
 
   app.openapi(appendRoute, async (c) => {
@@ -406,42 +456,6 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(serializeConversation(outcome), 200);
   });
 
-  app.openapi(approveRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id, approval_id } = c.req.valid("param");
-    const outcome = await svc.decideApproval(
-      {
-        tenant_id: principal.tenant_id,
-        conversation_id: id,
-        approval_id,
-        actor_id: principal.id,
-        decision: "approved",
-      },
-      db,
-    );
-    return c.json(serializeConversation(outcome), 200);
-  });
-
-  app.openapi(rejectRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id, approval_id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const outcome = await svc.decideApproval(
-      {
-        tenant_id: principal.tenant_id,
-        conversation_id: id,
-        approval_id,
-        actor_id: principal.id,
-        decision: "rejected",
-        ...(body.reason ? { reason: body.reason } : {}),
-      },
-      db,
-    );
-    return c.json(serializeConversation(outcome), 200);
-  });
-
   app.openapi(cancelRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -449,6 +463,34 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     const row = await svc.cancelConversation(principal.tenant_id, id, principal.id, db);
     if (!row) throw new NotFoundError("conversation");
     return c.json(row, 200);
+  });
+
+  app.openapi(contextSnapshotRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const snapshot = await svc.getContextSnapshot(principal.tenant_id, id, db);
+    if (!snapshot) throw new NotFoundError("conversation");
+    return c.json(snapshot, 200);
+  });
+
+  app.openapi(respondElicitationRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id, elicitation_id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const outcome = await svc.respondElicitation(
+      {
+        tenant_id: principal.tenant_id,
+        conversation_id: id,
+        elicitation_id,
+        actor_id: principal.id,
+        output: body.output,
+        ...(body.reason ? { reason: body.reason } : {}),
+      },
+      db,
+    );
+    return c.json(serializeConversation(outcome), 200);
   });
 
   app.openapi(compactRoute, async (c) => {
@@ -498,8 +540,15 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!detail) throw new NotFoundError("conversation");
 
     return streamSSE(c, async (stream) => {
-      // Replay all persisted tool calls + messages + approvals as
-      // discrete events so the caller can rebuild the UI state.
+      const { listElicitationsForConversation } = await import(
+        "../../conversations/elicitations.ts"
+      );
+      const pending = (await listElicitationsForConversation(principal.tenant_id, id, db)).filter(
+        (e) => e.status === "pending",
+      );
+      // Replay all persisted messages + tool calls + pending
+      // elicitations as discrete events so the caller can rebuild UI
+      // state from scratch.
       for (const msg of detail.messages) {
         const frame = serializeEvent({
           type: "message",
@@ -510,28 +559,37 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
       }
       for (const call of detail.tool_calls) {
         await stream.writeSSE(
-          serializeEvent({ type: "tool_call", tool: call.tool, input: call.input }),
+          serializeEvent({
+            type: "tool_call_start",
+            call_id: call.id,
+            tool: call.tool,
+            input_partial: call.input,
+          }),
+        );
+        await stream.writeSSE(
+          serializeEvent({ type: "tool_call_end", call_id: call.id, input: call.input }),
         );
         if (call.output !== null && call.output !== undefined) {
           await stream.writeSSE(
-            serializeEvent({ type: "tool_result", tool: call.tool, output: call.output }),
-          );
-        }
-      }
-      for (const approval of detail.approvals) {
-        if (approval.status === "pending") {
-          await stream.writeSSE(
             serializeEvent({
-              type: "approval_request",
-              approval_id: approval.id,
-              kind: approval.kind,
-              summary: approval.summary,
-              ...(approval.diff !== null && approval.diff !== undefined
-                ? { diff: approval.diff }
-                : {}),
+              type: "tool_result",
+              call_id: call.id,
+              tool: call.tool,
+              output: call.output,
             }),
           );
         }
+      }
+      for (const elicit of pending) {
+        await stream.writeSSE(
+          serializeEvent({
+            type: "elicit_request",
+            elicitation_id: elicit.id,
+            tool_name: elicit.tool_name,
+            summary: elicit.summary,
+            input: elicit.input ?? {},
+          }),
+        );
       }
       if (detail.conversation.status === "committed" && detail.conversation.target_workflow_id) {
         await stream.writeSSE(

@@ -5,8 +5,7 @@
 //
 //   - conversation.start(connector_id?, workflow_id?, message)
 //   - conversation.append(conversation_id, message)
-//   - conversation.approve(conversation_id, approval_id)
-//   - conversation.reject(conversation_id, approval_id, reason?)
+//   - conversation.respond_elicitation(conversation_id, elicitation_id, output, reason?)
 //   - conversation.commit(conversation_id)
 //
 // These are additive to the P7 `wf.<slug>` workflow tools — the list
@@ -49,37 +48,27 @@ export function listConversationTools(): Tool[] {
       },
     },
     {
-      name: "conversation.approve",
-      description: "Approve a pending approval request and resume the loop.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          conversation_id: { type: "string" },
-          approval_id: { type: "string" },
-        },
-        required: ["conversation_id", "approval_id"],
-      },
-    },
-    {
-      name: "conversation.reject",
-      description: "Reject a pending approval request.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          conversation_id: { type: "string" },
-          approval_id: { type: "string" },
-          reason: { type: "string" },
-        },
-        required: ["conversation_id", "approval_id"],
-      },
-    },
-    {
       name: "conversation.commit",
       description: "Return the committed workflow id for a committed conversation.",
       inputSchema: {
         type: "object",
         properties: { conversation_id: { type: "string" } },
         required: ["conversation_id"],
+      },
+    },
+    {
+      name: "conversation.respond_elicitation",
+      description:
+        "Resolve a pending ask_user_* elicitation with the user's answer and resume the loop.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          conversation_id: { type: "string" },
+          elicitation_id: { type: "string" },
+          output: {},
+          reason: { type: "string" },
+        },
+        required: ["conversation_id", "elicitation_id", "output"],
       },
     },
   ];
@@ -120,8 +109,8 @@ export async function handleConversationTool(
       return successText({
         conversation_id: outcome.conversation.id,
         status: outcome.result.status,
-        ...(outcome.result.pending_approval_id
-          ? { pending_approval_id: outcome.result.pending_approval_id }
+        ...(outcome.result.pending_elicitation_id
+          ? { pending_elicitation_id: outcome.result.pending_elicitation_id }
           : {}),
         ...(outcome.result.committed_workflow_id
           ? { committed_workflow_id: outcome.result.committed_workflow_id }
@@ -152,19 +141,19 @@ export async function handleConversationTool(
       });
     }
 
-    if (name === "conversation.approve" || name === "conversation.reject") {
+    if (name === "conversation.respond_elicitation") {
       const conversation_id = args.conversation_id;
-      const approval_id = args.approval_id;
-      if (typeof conversation_id !== "string" || typeof approval_id !== "string") {
-        return errorText("conversation_id and approval_id are required");
+      const elicitation_id = args.elicitation_id;
+      if (typeof conversation_id !== "string" || typeof elicitation_id !== "string") {
+        return errorText("conversation_id and elicitation_id are required");
       }
-      const outcome = await svc.decideApproval(
+      const outcome = await svc.respondElicitation(
         {
           tenant_id: principal.tenant_id,
           conversation_id,
-          approval_id,
+          elicitation_id,
           actor_id: principal.id,
-          decision: name === "conversation.approve" ? "approved" : "rejected",
+          output: args.output,
           ...(typeof args.reason === "string" ? { reason: args.reason } : {}),
         },
         db,
@@ -172,9 +161,6 @@ export async function handleConversationTool(
       return successText({
         conversation_id: outcome.conversation.id,
         status: outcome.result.status,
-        ...(outcome.result.committed_workflow_id
-          ? { committed_workflow_id: outcome.result.committed_workflow_id }
-          : {}),
         events: outcome.result.events,
       });
     }

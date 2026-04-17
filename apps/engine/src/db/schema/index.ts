@@ -8,6 +8,7 @@ export * from "./chat-extras.ts";
 export * from "./connector_docs.ts";
 export * from "./connector_templates.ts";
 export * from "./connectors.ts";
+export * from "./conversation_elicitations.ts";
 export * from "./conversations.ts";
 export * from "./conversations-extras.ts";
 export * from "./discovery.ts";

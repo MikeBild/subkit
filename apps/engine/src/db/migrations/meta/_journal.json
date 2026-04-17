@@ -176,6 +176,20 @@
       "when": 1776416475046,
       "tag": "0024_llm_cache_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1776427932912,
+      "tag": "0025_p11_conversation_elicitations",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1776429011095,
+      "tag": "0026_p11_drop_approvals",
+      "breakpoints": true
     }
   ]
 }

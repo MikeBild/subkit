@@ -94,7 +94,7 @@ describe("chat dispatcher", () => {
       .from(conversations)
       .where(eq(conversations.id, card.conversation_id))
       .limit(1);
-    expect(conv1[0]?.status).toBe("awaiting_approval");
+    expect(conv1[0]?.status).toBe("awaiting_input");
 
     // Simulate Slack interaction (click Approve) → dispatcher runs decideApproval.
     const interaction: ChatEvent = {

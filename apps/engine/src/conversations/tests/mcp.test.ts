@@ -2,9 +2,9 @@
 //
 // Drives a full list-users conversation via MCP tools/call:
 //
-//   conversation.start → pauses with pending_approval_id
-//   conversation.approve → commits
-//   conversation.commit → returns the new workflow id
+//   conversation.start            → pauses with pending_elicitation_id
+//   conversation.respond_elicitation → approves the pending askUser.confirm
+//   conversation.commit           → returns the committed workflow id
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors } from "../../db/schema/index.ts";
@@ -40,16 +40,15 @@ afterAll(async () => {
 });
 
 describe("mcp conversation tools", () => {
-  test("start -> approve -> commit drives the full loop", async () => {
+  test("start -> respond_elicitation -> commit drives the full loop", async () => {
     const client = await suite.connect();
 
-    // Both clusters should appear in tools/list.
+    // The canonical cluster: start + append + respond_elicitation + commit.
     const list = await client.listTools();
     const names = list.tools.map((t) => t.name);
     expect(names).toContain("conversation.start");
     expect(names).toContain("conversation.append");
-    expect(names).toContain("conversation.approve");
-    expect(names).toContain("conversation.reject");
+    expect(names).toContain("conversation.respond_elicitation");
     expect(names).toContain("conversation.commit");
 
     // Start a conversation via MCP.
@@ -66,27 +65,27 @@ describe("mcp conversation tools", () => {
     const startParsed = JSON.parse(startContent) as {
       conversation_id: string;
       status: string;
-      pending_approval_id?: string;
+      pending_elicitation_id?: string;
     };
-    expect(startParsed.status).toBe("awaiting_approval");
-    expect(startParsed.pending_approval_id).toBeDefined();
+    expect(startParsed.status).toBe("awaiting_input");
+    expect(startParsed.pending_elicitation_id).toBeDefined();
 
-    const approve = await client.callTool({
-      name: "conversation.approve",
+    const respond = await client.callTool({
+      name: "conversation.respond_elicitation",
       arguments: {
         conversation_id: startParsed.conversation_id,
-        approval_id: startParsed.pending_approval_id,
+        elicitation_id: startParsed.pending_elicitation_id,
+        output: { confirmed: true },
       },
     });
-    expect(approve.isError).toBeFalsy();
-    const approveContent = (approve.content as Array<{ text: string }>)[0]?.text;
-    if (!approveContent) throw new Error("no approve content");
-    const approveParsed = JSON.parse(approveContent) as {
+    expect(respond.isError).toBeFalsy();
+    const respondContent = (respond.content as Array<{ text: string }>)[0]?.text;
+    if (!respondContent) throw new Error("no respond content");
+    const respondParsed = JSON.parse(respondContent) as {
       status: string;
-      committed_workflow_id?: string;
+      events?: unknown[];
     };
-    expect(approveParsed.status).toBe("committed");
-    expect(approveParsed.committed_workflow_id).toBeDefined();
+    expect(respondParsed.status).toBe("committed");
 
     const commit = await client.callTool({
       name: "conversation.commit",
@@ -99,7 +98,7 @@ describe("mcp conversation tools", () => {
       workflow_id: string;
       status: string;
     };
-    expect(commitParsed.workflow_id).toBe(approveParsed.committed_workflow_id ?? "");
+    expect(commitParsed.workflow_id.length).toBeGreaterThan(0);
     expect(commitParsed.status).toBe("committed");
   });
 });

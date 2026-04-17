@@ -1,13 +1,35 @@
-// Tests for the H2/H3 conversation tools: search_knowledge, list_skill_suggestions.
-// These are unit tests that verify the tool registration and basic execution.
+// Tests for conversation tool registration — covers the H2/H3 tools
+// (search_knowledge, list_skill_suggestions, propose_*) plus the
+// `ask_user_*` family that paused-loop elicitations dispatch through.
 
 import { describe, expect, test } from "bun:test";
 import { getTool, listTools } from "../tools/index.ts";
 
-describe("conversation tools — H2/H3 registration", () => {
-  test("all 13 tools are registered", () => {
+describe("conversation tools — registration", () => {
+  test("the expected tool palette is registered", () => {
     const tools = listTools();
-    expect(tools.length).toBe(13);
+    const names = tools.map((t) => t.name).sort();
+    expect(names).toEqual(
+      [
+        "ask_user_choice",
+        "ask_user_confirm",
+        "ask_user_form",
+        "ask_user_multi",
+        "ask_user_text",
+        "commit_draft",
+        "connect_steps",
+        "dry_run_step",
+        "fetch_connector_docs",
+        "list_skill_suggestions",
+        "list_skills",
+        "propose_connector",
+        "propose_skill",
+        "propose_step",
+        "search_knowledge",
+        "update_param",
+        "validate_draft",
+      ].sort(),
+    );
   });
 
   test("search_knowledge tool is registered", () => {

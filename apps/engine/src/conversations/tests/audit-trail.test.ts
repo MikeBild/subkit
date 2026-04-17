@@ -14,7 +14,7 @@ import {
   llmUsage,
   workflows,
 } from "../../db/schema/index.ts";
-import { createConversation, decideApproval } from "../service.ts";
+import { createConversation, respondElicitation } from "../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 let ctx: ConversationTestCtx;
@@ -38,9 +38,9 @@ describe("conversations/audit-trail", () => {
       },
       ctx.testDb.db,
     );
-    expect(created.result.status).toBe("awaiting_approval");
-    const approvalId = created.result.pending_approval_id;
-    if (!approvalId) throw new Error("expected pending_approval_id after first turn");
+    expect(created.result.status).toBe("awaiting_input");
+    const elicitationId = created.result.pending_elicitation_id;
+    if (!elicitationId) throw new Error("expected pending_elicitation_id after first turn");
 
     // ----- After first (paused) turn -----
     const toolCallsAfterPause = await ctx.testDb.db
@@ -54,16 +54,16 @@ describe("conversations/audit-trail", () => {
       "propose_step",
       "propose_step",
       "validate_draft",
-      "request_human_approval",
+      "ask_user_confirm",
     ];
     expect(toolCallsAfterPause.map((r) => r.tool)).toEqual(expectedToolsPause);
     // Every tool-call row has an output written (sdk-wrap updates the row).
     expect(toolCallsAfterPause.every((r) => r.output !== null && r.output !== undefined)).toBe(
       true,
     );
-    // `approval_required` flag flips only on request_human_approval.
+    // `approval_required` flag flips only on ask_user_* tools.
     expect(toolCallsAfterPause.filter((r) => r.approval_required).map((r) => r.tool)).toEqual([
-      "request_human_approval",
+      "ask_user_confirm",
     ]);
 
     // One llm_usage row per SDK step. With the MockLanguageModelV3, each
@@ -110,14 +110,14 @@ describe("conversations/audit-trail", () => {
       .where(and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.action, "approval.requested")));
     expect(anyApprovalRequested.length).toBe(1);
 
-    // ----- Resume after approval -----
-    const resumed = await decideApproval(
+    // ----- Resume after user confirms -----
+    const resumed = await respondElicitation(
       {
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
-        approval_id: approvalId,
+        elicitation_id: elicitationId,
         actor_id: ctx.user_id,
-        decision: "approved",
+        output: { confirmed: true },
       },
       ctx.testDb.db,
     );

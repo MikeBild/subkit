@@ -22,36 +22,49 @@ describe("sk turn-event reducer", () => {
     expect(s.messages[0]?.content).toBe("hello there");
   });
 
-  test("tool_call followed by tool_result marks the call done", () => {
+  test("tool_call_start followed by tool_result marks the call done", () => {
     let s = initialSessionState("c1");
-    s = applyTurnEvent(s, { type: "tool_call", tool: "propose_step", input: { x: 1 }, id: "t1" });
+    s = applyTurnEvent(s, {
+      type: "tool_call_start",
+      call_id: "t1",
+      tool: "propose_step",
+      input_partial: { x: 1 },
+    });
     s = applyTurnEvent(s, {
       type: "tool_result",
+      call_id: "t1",
       tool: "propose_step",
       output: { ok: true },
-      id: "t1",
     });
     expect(s.toolCalls.length).toBe(1);
     expect(s.toolCalls[0]?.status).toBe("done");
     expect((s.toolCalls[0]?.result as { ok: boolean }).ok).toBe(true);
   });
 
-  test("approval_request flips the session status and stores the diff payload", () => {
+  test("elicit_request flips the session status and stores the input payload", () => {
     let s = initialSessionState("c1");
     s = applyTurnEvent(s, {
-      type: "approval_request",
-      approval_id: "a1",
-      kind: "commit_draft",
+      type: "elicit_request",
+      elicitation_id: "a1",
+      tool_name: "ask_user_confirm",
       summary: "commit 1-step workflow",
-      diff: { name: "new-workflow", steps: [{ id: "s1", kind: "transform" }] },
+      input: {
+        question: "Commit?",
+        kind: "commit_draft",
+        diff: { name: "new-workflow", steps: [{ id: "s1", kind: "transform" }] },
+      },
     });
-    expect(s.status).toBe("awaiting_approval");
-    expect(s.pendingApproval?.id).toBe("a1");
-    expect(s.pendingApproval?.kind).toBe("commit_draft");
-    expect(s.pendingApproval?.summary).toBe("commit 1-step workflow");
-    const diff = s.pendingApproval?.diff as { name?: string; steps?: unknown[] };
-    expect(diff?.name).toBe("new-workflow");
-    expect(Array.isArray(diff?.steps)).toBe(true);
+    expect(s.status).toBe("awaiting_input");
+    expect(s.pendingElicitation?.id).toBe("a1");
+    expect(s.pendingElicitation?.tool_name).toBe("ask_user_confirm");
+    expect(s.pendingElicitation?.summary).toBe("commit 1-step workflow");
+    const input = s.pendingElicitation?.input as {
+      kind?: string;
+      diff?: { name?: string; steps?: unknown[] };
+    };
+    expect(input.kind).toBe("commit_draft");
+    expect(input.diff?.name).toBe("new-workflow");
+    expect(Array.isArray(input.diff?.steps)).toBe(true);
   });
 
   test("committed + completed chain marks the session committed", () => {

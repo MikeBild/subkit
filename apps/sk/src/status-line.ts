@@ -9,24 +9,42 @@
 //
 //   2. Local template: `settings.statusLine.format` is a simple
 //      `{placeholder}` template rendered client-side. No shell
-//      round-trip. Default: `{persona}@{tenant} · {model} · {turn_tokens}t`.
+//      round-trip. The default template is tailored to subkit —
+//      it shows the signed-in user, tenant, engine URL, model,
+//      connector count, today's token usage, and the permission
+//      mode. Empty placeholders collapse (no `—` dashes) so the
+//      line stays compact on fresh sessions.
 //
-// Both paths are rate-limited by `refreshMs` (default 500ms) so a
+// Both paths are rate-limited by `refreshMs` (default 500 ms) so a
 // slow hook can't block the REPL's render loop.
 
 import { type ChildProcess, spawn } from "node:child_process";
 import path from "node:path";
 
+export type AuthStatus = "signed_in" | "signed_out";
+export type PermissionMode = "ask" | "auto" | "plan";
+
 export interface StatusLineInput {
   schema_version: 1;
   profile: string;
   persona: string;
+  /** Authenticated user identifier (email for users, id for system accounts). */
+  user: string | null;
+  auth_status: AuthStatus;
   tenant: string | null;
   engine_url: string;
   model: string | null;
   session_id: string | null;
   turn_tokens: number | null;
   remaining_monthly_budget_tokens: number | null;
+  /** Running total for the current day (UTC midnight rollover). */
+  tokens_today: number | null;
+  /** Active connector count in tenant scope. */
+  connectors_count: number | null;
+  /** Optional ephemeral status message shown after the main line (e.g. "updating…"). */
+  status_message: string | null;
+  /** Active permission mode — `ask` / `auto` / `plan`. */
+  permission_mode: PermissionMode;
   cwd: string;
   git_branch: string | null;
   timestamp: string;
@@ -38,40 +56,94 @@ export interface StatusLineConfig {
   refreshMs?: number | undefined;
 }
 
-const DEFAULT_FORMAT = "{persona}@{tenant} · {model} · {turn_tokens}t / {remaining_tokens} left";
+const DEFAULT_FORMAT =
+  "{user}{@tenant} · {engine_host} · {model} · conn:{connectors_count} · {turn_tokens}t (today {tokens_today}t) · [{permission_mode}]{status_message}";
 const DEFAULT_REFRESH_MS = 500;
 
 /**
- * Render a `{placeholder}` template against a StatusLineInput.
- * Unknown placeholders expand to the empty string. Numeric zero is
- * rendered verbatim; nulls render as `"—"` for visibility.
+ * Expand a `{placeholder}` template against a StatusLineInput. Empty
+ * values collapse — the whole placeholder disappears along with any
+ * surrounding separator chain (` · `, `/`, `@`). This keeps the line
+ * tidy for fresh sessions where many fields are still null.
+ *
+ * Special placeholders:
+ *   `{@tenant}`  — renders `"@<tenant>"` when tenant is set; empty otherwise.
+ *   `{engine_host}` — hostname component of engine_url (port included).
+ *   `{tokens_today}` — always numeric; 0 when no usage has been recorded yet.
  */
 export function renderTemplate(template: string, input: StatusLineInput): string {
-  const map: Record<string, string> = {
+  const resolved = resolvePlaceholders(input);
+  const expanded = template.replace(/\{([@#]?\w+)\}/g, (_match, key: string) => {
+    return Object.hasOwn(resolved, key) ? (resolved[key] ?? "") : "";
+  });
+  return collapseSeparators(expanded);
+}
+
+function resolvePlaceholders(input: StatusLineInput): Record<string, string> {
+  const tokensTodayStr = input.tokens_today == null ? "0" : String(input.tokens_today);
+  const turnTokensStr = input.turn_tokens == null ? "0" : String(input.turn_tokens);
+  const remaining =
+    input.remaining_monthly_budget_tokens == null
+      ? "∞"
+      : String(input.remaining_monthly_budget_tokens);
+  const connectors = input.connectors_count == null ? "0" : String(input.connectors_count);
+  const statusMessage = input.status_message ? ` · ${input.status_message}` : "";
+
+  let engineHost = "";
+  try {
+    const u = new URL(input.engine_url);
+    engineHost = u.port ? `${u.hostname}:${u.port}` : u.hostname;
+  } catch {
+    engineHost = input.engine_url;
+  }
+
+  return {
     profile: input.profile,
     persona: input.persona,
-    tenant: input.tenant ?? "—",
+    user: input.user ?? "",
+    auth_status: input.auth_status,
+    tenant: input.tenant ?? "",
+    "@tenant": input.tenant ? `@${input.tenant}` : "",
     engine_url: input.engine_url,
-    model: input.model ?? "—",
-    session_id: input.session_id ? input.session_id.slice(0, 8) : "—",
-    turn_tokens: input.turn_tokens == null ? "—" : String(input.turn_tokens),
-    remaining_tokens:
-      input.remaining_monthly_budget_tokens == null
-        ? "∞"
-        : String(input.remaining_monthly_budget_tokens),
+    engine_host: engineHost,
+    model: input.model ?? "",
+    session_id: input.session_id ? input.session_id.slice(0, 8) : "",
+    turn_tokens: turnTokensStr,
+    remaining_tokens: remaining,
+    tokens_today: tokensTodayStr,
+    connectors_count: connectors,
+    permission_mode: input.permission_mode,
+    status_message: statusMessage,
     cwd: path.basename(input.cwd),
     git_branch: input.git_branch ?? "",
     timestamp: input.timestamp,
   };
-  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
-    Object.hasOwn(map, key) ? (map[key] ?? "") : "",
-  );
+}
+
+/**
+ * After placeholder expansion, empty values leave stranded separators
+ * like ` ·  · ` or double slashes. Collapse them so the line reads
+ * cleanly. We operate on the expanded string because template authors
+ * shouldn't have to special-case every optional field.
+ */
+function collapseSeparators(s: string): string {
+  let out = s;
+  // Collapse repeated `·` / `/` / `,` / pipes separated only by
+  // whitespace into a single instance.
+  out = out.replace(/(\s*·\s*){2,}/g, " · ");
+  out = out.replace(/(\s*\/\s*){2,}/g, " / ");
+  out = out.replace(/(\s*\|\s*){2,}/g, " | ");
+  // Trim a trailing / leading separator that was left orphaned by a
+  // collapsed placeholder at either end.
+  out = out.replace(/^\s*[·/|,]+\s*/, "");
+  out = out.replace(/\s*[·/|,]+\s*$/, "");
+  return out.trim();
 }
 
 /**
  * Execute the user's status-line shell command with a JSON blob on
  * stdin. Resolves with the first line of stdout, trimmed. Rejects
- * on non-zero exit, timeout (2s), or stderr > 0 bytes.
+ * on non-zero exit, timeout (2 s), or stderr > 0 bytes.
  */
 export async function runStatusLineHook(
   command: string,

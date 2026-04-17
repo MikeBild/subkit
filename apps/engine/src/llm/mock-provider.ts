@@ -224,9 +224,9 @@ export function getMockProvider(): MockProvider {
 /**
  * Canned "list users" plan — the loop walks through this sequence when
  * the user asks to list users from an API. Covers propose_step →
- * validate_draft → request_human_approval → commit_draft with an
- * intentional first-pass validation-error (missing url) so the
- * self-correct loop is exercised.
+ * validate_draft → ask_user_confirm → commit_draft with an intentional
+ * first-pass validation-error (missing url) so the self-correct loop
+ * is exercised.
  */
 export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
   return [
@@ -251,10 +251,14 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
     },
     { tool: "validate_draft", args: {} },
     {
-      tool: "request_human_approval",
-      args: { kind: "commit_draft", summary: "commit 1-step workflow" },
+      tool: "ask_user_confirm",
+      args: {
+        question: "Commit this 1-step workflow?",
+        kind: "commit_draft",
+        summary: "commit 1-step workflow",
+      },
     },
-    // Resume after approval:
+    // Resume after the user answers:
     { tool: "commit_draft", args: {} },
   ];
 }

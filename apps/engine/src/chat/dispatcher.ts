@@ -24,7 +24,11 @@ import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { RunLoopResult } from "../conversations/loop.ts";
-import { appendUserMessage, createConversation, decideApproval } from "../conversations/service.ts";
+import {
+  appendUserMessage,
+  createConversation,
+  respondElicitation,
+} from "../conversations/service.ts";
 import type { Db } from "../db/client.ts";
 import {
   chatIdentities,
@@ -294,26 +298,26 @@ export async function handleChatEvent(
     db,
   );
 
-  // Interactions short-circuit to approval resolution.
+  // Interactions short-circuit to elicitation resolution.
   if (ev.kind === "interaction" && ev.interaction) {
     const { action_id, value: actionValue } = ev.interaction;
     const m = /^(approve|reject):(.+)$/.exec(action_id);
     if (!m) return { status: "ignored" };
-    const decision = m[1] === "approve" ? ("approved" as const) : ("rejected" as const);
-    const approval_id = m[2] ?? "";
+    const confirmed = m[1] === "approve";
+    const elicitation_id = m[2] ?? "";
     const conversation_id = actionValue ?? "";
-    await decideApproval(
+    await respondElicitation(
       {
         tenant_id,
         conversation_id,
-        approval_id,
+        elicitation_id,
         actor_id: user_id,
-        decision,
+        output: { confirmed },
       },
       db,
     );
     return {
-      status: decision === "approved" ? "approved" : "rejected",
+      status: confirmed ? "approved" : "rejected",
       conversation_id,
     };
   }
@@ -542,19 +546,19 @@ export async function handleChatEvent(
   }
 
   let approval_sent = false;
-  if (outcome.status === "awaiting_approval" && outcome.pending_approval_id) {
-    const summaryEvent = outcome.events.find((e) => e.type === "approval_request");
+  if (outcome.status === "awaiting_input" && outcome.pending_elicitation_id) {
+    const summaryEvent = outcome.events.find((e) => e.type === "elicit_request");
     const summary =
-      summaryEvent && summaryEvent.type === "approval_request"
+      summaryEvent && summaryEvent.type === "elicit_request"
         ? summaryEvent.summary
-        : "Approval required";
+        : "Input required";
     const card: ApprovalCard = {
       tenant_id,
       workspace_id: ev.workspace_id,
       channel_id: ev.channel_id,
       ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
       conversation_id,
-      approval_id: outcome.pending_approval_id,
+      approval_id: outcome.pending_elicitation_id,
       summary,
     };
     try {

@@ -1,34 +1,28 @@
-// ASCII welcome banner — the first thing a user sees when they run
-// `sk` interactively. Inspired by Claude Code's LogoV2/WelcomeV2
-// component: a themed unicode-block logo + a version line + a tiny
-// hint about the slash-command surface.
+// Welcome banner — the first thing a user sees in `sk`. Claude-Code-style:
+// no box border, a sparkle + bold title, a dimmed subtitle, and a
+// three-line context block (persona · tenant · engine), all
+// theme-token colored so the host can swap palettes without editing
+// this file. The rotating tip gets a muted tip glyph and sits under
+// the context block.
 //
-// The banner is a pure function of (version, persona, tenant,
-// engineUrl) so it can be memoized by the React tree. React's own
-// reconciliation avoids re-rendering it on every keystroke as long
-// as the parent passes stable props.
+// The banner is memoized — React re-renders it only when one of its
+// pure props changes.
 
+import { useTheme } from "@chat-ui/index.ts";
+import { VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
-
-const VERSION = "0.0.1";
 
 export interface WelcomeBannerProps {
   persona: string;
   tenant: string | null;
   engineUrl: string;
   profileName?: string;
-  /** One-line tip shown under the version. Rotate these in the caller. */
+  /** One-line tip shown under the context block. Rotate these in the caller. */
   tip?: string;
 }
 
-/**
- * Compact boxed banner. Avoids a heavy ASCII logo so the terminal
- * feels immediately chat-ready. Uses Unicode box drawing so it
- * renders crisply in every terminal theme without bespoke theme
- * detection. Centered title + two info lines + an optional tip.
- */
 const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
   persona,
   tenant,
@@ -36,52 +30,64 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
   profileName,
   tip,
 }) => {
+  const theme = useTheme();
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor="cyan"
-      paddingX={1}
-      marginBottom={1}
-    >
+    <Box flexDirection="column" marginBottom={1}>
+      {/* Title row — sparkle + bold "sk" + version + tagline. */}
       <Box>
-        <Text bold color="cyanBright">
+        <Text color={theme.role.assistant} bold>
           ✻ sk
         </Text>
-        <Text dimColor> v{VERSION} — end-user CLI for subkit-backend</Text>
+        <Text color={theme.severity.dim}> · v{VERSION} · subkit conversation CLI</Text>
       </Box>
-      <Box>
-        <Text>
-          <Text dimColor>signed in as </Text>
-          <Text bold color="green">
+
+      {/* Session context — aligned ▸ rows, easier to scan than inline. */}
+      <Box flexDirection="column" marginTop={1}>
+        <Box>
+          <Text color={theme.severity.dim}>▸ </Text>
+          <Text>persona </Text>
+          <Text color={theme.role.user} bold>
             {persona}
           </Text>
-          <Text dimColor> on </Text>
-          <Text bold>{tenant ?? "(no tenant)"}</Text>
           {profileName ? (
             <>
-              <Text dimColor> · </Text>
-              <Text color="cyan">{profileName}</Text>
+              <Text color={theme.severity.dim}> · profile </Text>
+              <Text color={theme.role.assistant}>{profileName}</Text>
             </>
           ) : null}
-          <Text dimColor> · </Text>
-          <Text>{engineUrl}</Text>
-        </Text>
-      </Box>
-      {tip ? (
+        </Box>
         <Box>
-          <Text color="yellow">💡 </Text>
-          <Text dimColor>{tip}</Text>
+          <Text color={theme.severity.dim}>▸ </Text>
+          <Text>tenant </Text>
+          <Text bold>{tenant ?? "(none)"}</Text>
+        </Box>
+        <Box>
+          <Text color={theme.severity.dim}>▸ </Text>
+          <Text>engine </Text>
+          <Text color={theme.severity.dim}>{engineUrl}</Text>
+        </Box>
+      </Box>
+
+      {/* Tip row (rotates). */}
+      {tip ? (
+        <Box marginTop={1}>
+          <Text color={theme.severity.warning}>◦ </Text>
+          <Text color={theme.severity.dim}>{tip}</Text>
         </Box>
       ) : null}
-      <Box>
-        <Text dimColor>type a prompt · </Text>
-        <Text color="cyan">/help</Text>
-        <Text dimColor> for commands · </Text>
-        <Text color="cyan">↑/↓</Text>
-        <Text dimColor> for history · </Text>
-        <Text color="cyan">/exit</Text>
-        <Text dimColor> to leave</Text>
+
+      {/* Quick-hint footer — single line of colored keys. */}
+      <Box marginTop={1}>
+        <Text color={theme.severity.dim}>type a prompt · </Text>
+        <Text color={theme.role.assistant}>/help</Text>
+        <Text color={theme.severity.dim}> · </Text>
+        <Text color={theme.role.assistant}>@</Text>
+        <Text color={theme.severity.dim}>file · </Text>
+        <Text color={theme.role.assistant}>↑/↓</Text>
+        <Text color={theme.severity.dim}> history · </Text>
+        <Text color={theme.role.assistant}>Ctrl-C</Text>
+        <Text color={theme.severity.dim}> cancel · </Text>
+        <Text color={theme.role.assistant}>/exit</Text>
       </Box>
     </Box>
   );
@@ -94,12 +100,13 @@ export const WelcomeBanner = memo(WelcomeBannerImpl);
  * banner stays fresh without nagging. Extend freely.
  */
 export const BANNER_TIPS: readonly string[] = [
-  "press Ctrl-T to open the full-screen transcript, Ctrl-T again to exit",
+  "press Ctrl-T for full-screen transcript, Ctrl-T again to exit",
   "type `@path/to/file` to inline a file, `@workflow:<slug>` to fetch a workflow",
   "drop a `SUBKIT.md` in cwd and sk will inject it as memory on every turn",
   'run `sk -p "your prompt"` for headless / script-friendly output',
   "customize the status line via `statusLine.command` in ~/.sk/settings.json",
-  "`/compact` collapses old history so sk keeps responding quickly on long sessions",
+  "`/compact` collapses old history so sk stays responsive on long sessions",
+  "`/approve` or `/reject` resolves the current elicitation inline",
 ] as const;
 
 export function pickTip(seed: number = Date.now()): string {

@@ -59,6 +59,7 @@ import { registerRbacRoutes } from "./routes/rbac.ts";
 import { registerRequestHookRoutes } from "./routes/request-hooks.ts";
 import { registerSkillCandidateRoutes } from "./routes/skill-candidates.ts";
 import { registerSkillRoutes } from "./routes/skills.ts";
+import { registerStatusRoute } from "./routes/status.ts";
 import { registerSubscriptionRoutes } from "./routes/subscriptions.ts";
 import { registerTunnelRoutes } from "./routes/tunnels.ts";
 import { registerWorkflowRoutes } from "./routes/workflows.ts";
@@ -165,6 +166,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   app.use("*", portalTokenWorkflowGuard());
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
+  registerStatusRoute(app);
   registerMetricsRoute(app);
   registerTenantRoutes(app);
   registerUserRoutes(app);

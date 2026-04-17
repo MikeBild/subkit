@@ -4,8 +4,8 @@
 //
 //   1. Probes the caller's permissions via /v1/rbac/can + /whoami.
 //   2. Lazily imports ink + React so `sk -p "..."` never loads them.
-//   3. Renders <InkApp> with onPrompt / onSlash / onApproval callbacks
-//      wired to the EngineClient and the sessions cache.
+//   3. Renders <InkApp> with onPrompt / onSlash / onElicitResponse
+//      callbacks wired to the EngineClient and the sessions cache.
 //   4. Waits for the app to exit.
 //
 // When the caller requests the REPL but stdout is NOT a TTY (e.g.
@@ -13,12 +13,12 @@
 // still see line-based output.
 
 import type { SkSessionState, TurnEvent } from "@cli-core/index.ts";
-import { initialSessionState } from "@cli-core/index.ts";
+import { VERSION } from "@cli-core/version.ts";
 import { loadConfig, type ResolvedProfile, resolveProfile, saveConfig } from "./config.ts";
-import { EngineClient } from "./engine-client.ts";
+import { EngineClient, type StatusSummary } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
-import { handleSlash } from "./repl/slash-handler.ts";
+import { handleSlash, type PaneSpec } from "./repl/slash-handler.ts";
 import { runRepl } from "./repl.ts";
 import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";
@@ -127,7 +127,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     engine_url: opts.profile.engine_url,
     api_key: opts.profile.api_key,
     tenant: opts.profile.active_tenant_id,
-    user_agent: "sk-cli/0.0.1 (ink)",
+    user_agent: `sk-cli/${VERSION} (ink)`,
   });
 
   const persona = await resolvePersona(client, opts.profile);
@@ -138,12 +138,25 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   const { InkApp } = appModule;
 
   let currentConversationId: string | null = opts.resumeConversationId ?? null;
-  // We keep a cheap mirror of the session state here so the slash
-  // handler can read `session.usage`, `session.status`, and the
-  // current conversation id without forcing the Ink tree to round-
-  // trip state up through props. React's state stays authoritative
-  // for rendering; this mirror is strictly a feed for slash commands.
-  let mirrorSession: SkSessionState = initialSessionState(currentConversationId);
+  let currentClient = client;
+  let currentProfile = opts.profile;
+
+  // Composite status snapshot (connector count, tokens today, tenant
+  // slug, monthly budget). Fetched once on mount, then refreshed after
+  // every completed turn via `refreshStatus()` so the status-line
+  // ticker always shows fresh numbers.
+  let statusSnapshot: StatusSummary | null = await client.statusSummary().catch(() => null);
+  const statusListeners = new Set<(snap: StatusSummary | null) => void>();
+  const refreshStatus = async (): Promise<void> => {
+    try {
+      statusSnapshot = await currentClient.statusSummary();
+    } catch {
+      // Leave the previous value in place on transient failures; the
+      // status line stays usable (with the last-known numbers) instead
+      // of flickering to blanks.
+    }
+    for (const listener of statusListeners) listener(statusSnapshot);
+  };
 
   const onPrompt = async (
     text: string,
@@ -197,9 +210,16 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
 
     // Wrap the events array in an async iterable so the Ink app can
     // consume them the same way it consumed streamConversationFrames.
+    // Tap `completed` at the tail so we can refresh the status snapshot
+    // (tokens_today, budget remaining) once the turn has settled.
     async function* iterTurnEvents(): AsyncGenerator<TurnEvent, void, void> {
       for (const ev of outcome.events as TurnEvent[]) {
         yield ev;
+        if (ev.type === "completed") {
+          // Fire-and-forget — the next frame will pick up whatever new
+          // numbers the status listener pushed.
+          void refreshStatus();
+        }
       }
     }
     return {
@@ -208,17 +228,20 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     };
   };
 
-  const onApproval = async (
-    approvalId: string,
-    decision: "approved" | "rejected",
+  const onElicitResponse = async (
+    elicitationId: string,
+    output: unknown,
     reason?: string,
   ): Promise<void> => {
     if (!currentConversationId) return;
-    await currentClient.decideApproval(currentConversationId, approvalId, decision, reason);
+    await currentClient.respondElicitation(currentConversationId, elicitationId, output, reason);
+    void refreshStatus();
   };
 
-  let currentClient = client;
-  let currentProfile = opts.profile;
+  const onSelectConversation = async (id: string): Promise<void> => {
+    currentConversationId = id;
+    void refreshStatus();
+  };
 
   const switchProfileFn = async (name: string): Promise<string> => {
     const cfg = loadConfig();
@@ -233,13 +256,12 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       engine_url: newProfile.engine_url,
       api_key: newProfile.api_key,
       tenant: newProfile.active_tenant_id,
-      user_agent: "sk-cli/0.0.1 (ink)",
+      user_agent: `sk-cli/${VERSION} (ink)`,
     });
 
     currentClient = newClient;
     currentProfile = newProfile;
     currentConversationId = null;
-    mirrorSession = initialSessionState(null);
 
     // Verify connectivity
     try {
@@ -250,19 +272,25 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     }
   };
 
-  const onSlash = async (name: string, raw: string): Promise<string | null> => {
+  const onSlash = async (
+    name: string,
+    raw: string,
+    openPane: (spec: PaneSpec) => void,
+    liveSession: SkSessionState,
+  ): Promise<string | null> => {
     const rawArgs = raw.split(/\s+/).slice(1);
     try {
       const line = await handleSlash(name, rawArgs, {
         client: currentClient,
         profile: currentProfile,
-        session: mirrorSession,
+        session: liveSession,
         setConversationId: (next) => {
           currentConversationId = next;
-          mirrorSession = initialSessionState(next);
         },
         allowedPermissions: Array.from(persona.allowed ?? []),
         switchProfile: switchProfileFn,
+        statusSnapshot,
+        openPane,
       });
       return line;
     } catch (err) {
@@ -270,8 +298,20 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     }
   };
 
-  const instance = ink.render(
-    React.createElement(InkApp, {
+  // Small root wrapper that subscribes to `refreshStatus` updates and
+  // feeds the latest snapshot into `<InkApp>` as a prop. This lets the
+  // status line re-render whenever the engine returns new numbers
+  // without having to bubble a state setter out of InkApp itself.
+  const RootApp: React.FC = () => {
+    const [snap, setSnap] = React.useState<StatusSummary | null>(statusSnapshot);
+    React.useEffect(() => {
+      const listener = (next: StatusSummary | null): void => setSnap(next);
+      statusListeners.add(listener);
+      return () => {
+        statusListeners.delete(listener);
+      };
+    }, []);
+    return React.createElement(InkApp, {
       persona: {
         label: persona.label,
         // Prefer the whoami-resolved tenant (slug) over the profile's
@@ -285,11 +325,15 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       initialConversationId: currentConversationId,
       model: settings.merged.model ?? null,
       cwd: process.cwd(),
+      statusSnapshot: snap,
       onPrompt,
-      onApproval,
+      onElicitResponse,
       onSlash,
-    }),
-  );
+      onSelectConversation,
+    });
+  };
+
+  const instance = ink.render(React.createElement(RootApp));
   await instance.waitUntilExit();
   return 0;
 }

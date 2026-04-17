@@ -16,14 +16,16 @@ import { type Tool, tool } from "ai";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
-import type { ApprovalKind, TurnEvent } from "../types.ts";
+import type { TurnEvent } from "../types.ts";
 import { type ConversationTool, listTools, type ToolContext, type ToolResult } from "./index.ts";
 
 export interface TurnSignals {
-  pendingApproval?: {
-    approval_id: string;
-    kind: ApprovalKind;
+  pendingElicitation?: {
+    elicitation_id: string;
+    tool_name: string;
+    kind?: string;
     summary: string;
+    input?: unknown;
     diff?: unknown;
     target?: unknown;
   };
@@ -119,9 +121,15 @@ function wrapOne(
           conversation_id: ctx.conversation_id,
           tool: inner.name,
           input: rawArgs,
-          approval_required: inner.name === "request_human_approval",
+          approval_required: inner.name.startsWith("ask_user_"),
         });
-        events.push({ type: "tool_call", tool: inner.name, input: rawArgs });
+        events.push({
+          type: "tool_call_start",
+          call_id: toolCallId,
+          tool: inner.name,
+          input_partial: rawArgs,
+        });
+        events.push({ type: "tool_call_end", call_id: toolCallId, input: rawArgs });
         log.conversation.tool.called({
           conversation_id: ctx.conversation_id,
           tool: inner.name,
@@ -135,7 +143,12 @@ function wrapOne(
           const msg = err instanceof Error ? err.message : String(err);
           const output = { error: msg };
           await updateToolCallOutput(db, toolCallId, output);
-          events.push({ type: "tool_result", tool: inner.name, output });
+          events.push({
+            type: "tool_result",
+            call_id: toolCallId,
+            tool: inner.name,
+            output,
+          });
           log.conversation.tool.failed({
             conversation_id: ctx.conversation_id,
             tool: inner.name,
@@ -146,7 +159,12 @@ function wrapOne(
         }
 
         await updateToolCallOutput(db, toolCallId, result.data);
-        events.push({ type: "tool_result", tool: inner.name, output: result.data });
+        events.push({
+          type: "tool_result",
+          call_id: toolCallId,
+          tool: inner.name,
+          output: result.data,
+        });
 
         const dataSummary = summarizeToolData(result.data);
         const logCtx = {
@@ -181,25 +199,33 @@ function wrapOne(
         }
 
         if (result.pause) {
+          // Prefer the full input payload; fall back to reconstructing
+          // from legacy {kind, diff, target} fields.
+          const inputPayload =
+            result.pause.input !== undefined
+              ? result.pause.input
+              : {
+                  ...(result.pause.kind !== undefined ? { kind: result.pause.kind } : {}),
+                  ...(result.pause.diff !== undefined ? { diff: result.pause.diff } : {}),
+                  ...(result.pause.target !== undefined ? { target: result.pause.target } : {}),
+                };
           events.push({
-            type: "approval_request",
-            approval_id: result.pause.approval_id,
-            kind: result.pause.kind,
+            type: "elicit_request",
+            elicitation_id: result.pause.elicitation_id,
+            tool_name: result.pause.tool_name,
             summary: result.pause.summary,
-            ...(result.pause.diff !== undefined ? { diff: result.pause.diff } : {}),
-            ...(result.pause.target !== undefined ? { target: result.pause.target } : {}),
+            input: inputPayload,
           });
           log.conversation.approval.requested({
             conversation_id: ctx.conversation_id,
-            approval_id: result.pause.approval_id,
-            kind: result.pause.kind,
+            approval_id: result.pause.elicitation_id,
+            kind: result.pause.kind ?? result.pause.tool_name,
           });
-          signals.pendingApproval = {
-            approval_id: result.pause.approval_id,
-            kind: result.pause.kind,
+          signals.pendingElicitation = {
+            elicitation_id: result.pause.elicitation_id,
+            tool_name: result.pause.tool_name,
             summary: result.pause.summary,
-            ...(result.pause.diff !== undefined ? { diff: result.pause.diff } : {}),
-            ...(result.pause.target !== undefined ? { target: result.pause.target } : {}),
+            input: inputPayload,
           };
         }
 

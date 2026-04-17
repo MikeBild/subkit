@@ -5,7 +5,8 @@
     "paths": {
       "@engine/*": ["apps/engine/src/*"],
       "@shared/*": ["packages/shared/src/*"],
-      "@cli-core/*": ["packages/cli-core/src/*"]
+      "@cli-core/*": ["packages/cli-core/src/*"],
+      "@chat-ui/*": ["packages/chat-ui/src/*"]
     }
   },
   "include": [
@@ -18,6 +19,8 @@
     "apps/sk/src/**/*.tsx",
     "packages/shared/src/**/*.ts",
     "packages/cli-core/src/**/*.ts",
+    "packages/chat-ui/src/**/*.ts",
+    "packages/chat-ui/src/**/*.tsx",
     "drizzle.config.ts"
   ],
   "exclude": ["node_modules", "dist", "docs"]

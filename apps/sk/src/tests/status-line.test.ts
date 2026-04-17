@@ -14,12 +14,18 @@ const INPUT: StatusLineInput = {
   schema_version: 1,
   profile: "default",
   persona: "member",
+  user: "mike@mikebild.com",
+  auth_status: "signed_in",
   tenant: "t-1",
   engine_url: "http://localhost:8080",
   model: "claude-sonnet-4-6",
   session_id: "abcdef01-1111-1111-1111-111111111111",
   turn_tokens: 42,
   remaining_monthly_budget_tokens: 9958,
+  tokens_today: 128,
+  connectors_count: 7,
+  status_message: null,
+  permission_mode: "ask",
   cwd: "/Users/me/work/project",
   git_branch: "main",
   timestamp: "2026-04-15T12:00:00.000Z",
@@ -28,31 +34,48 @@ const INPUT: StatusLineInput = {
 describe("sk status line", () => {
   test("renderTemplate expands known placeholders and drops unknowns", () => {
     const out = renderTemplate(
-      "{persona}@{tenant} · {model} · {turn_tokens}t / {remaining_tokens} · {unknown}",
+      "{user}{@tenant} · {model} · {turn_tokens}t / {remaining_tokens} · {unknown}",
       INPUT,
     );
-    expect(out).toBe("member@t-1 · claude-sonnet-4-6 · 42t / 9958 · ");
+    expect(out).toBe("mike@mikebild.com@t-1 · claude-sonnet-4-6 · 42t / 9958");
   });
 
-  test("renderTemplate surfaces nulls as em-dash or ∞ where expected", () => {
+  test("renderTemplate collapses empty values and their surrounding separators", () => {
     const sparse: StatusLineInput = {
       ...INPUT,
+      user: null,
       tenant: null,
       model: null,
       session_id: null,
       turn_tokens: null,
+      tokens_today: null,
+      connectors_count: null,
       remaining_monthly_budget_tokens: null,
     };
     const out = renderTemplate(
-      "{persona}@{tenant} · {model} · {turn_tokens}t / {remaining_tokens}",
+      "{user}{@tenant} · {model} · {turn_tokens}t (today {tokens_today}t) · [{permission_mode}]",
       sparse,
     );
-    expect(out).toBe("member@— · — · —t / ∞");
+    // No `—` filler; empty fields collapse along with the adjacent ` · ` pair.
+    expect(out).toBe("0t (today 0t) · [ask]");
+  });
+
+  test("renderTemplate renders engine_host as hostname[:port]", () => {
+    const out = renderTemplate("{engine_host}", INPUT);
+    expect(out).toBe("localhost:8080");
   });
 
   test("renderTemplate shortens session_id to 8 chars", () => {
     const out = renderTemplate("sess={session_id}", INPUT);
     expect(out).toBe("sess=abcdef01");
+  });
+
+  test("renderTemplate prefixes status_message with separator only when set", () => {
+    const withMessage: StatusLineInput = { ...INPUT, status_message: "updating…" };
+    expect(renderTemplate("[{permission_mode}]{status_message}", withMessage)).toBe(
+      "[ask] · updating…",
+    );
+    expect(renderTemplate("[{permission_mode}]{status_message}", INPUT)).toBe("[ask]");
   });
 
   test("renderTemplate uses cwd basename, not absolute path", () => {
@@ -63,7 +86,10 @@ describe("sk status line", () => {
   test("buildStatusLine falls back to template when no command set", async () => {
     const r = await buildStatusLine(undefined, INPUT);
     expect(r.source).toBe("template");
-    expect(r.line).toContain("member@t-1");
+    expect(r.line).toContain("mike@mikebild.com");
+    expect(r.line).toContain("conn:7");
+    expect(r.line).toContain("today 128t");
+    expect(r.line).toContain("[ask]");
   });
 
   test("buildStatusLine runs a shell hook and surfaces its stdout", async () => {

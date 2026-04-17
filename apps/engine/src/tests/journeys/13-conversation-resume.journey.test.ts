@@ -2,17 +2,18 @@
 // and re-attach to an in-progress conversation and resume without
 // losing state.
 // Acceptance criteria:
-//   - AC1: The first SSE stream after an awaiting_approval turn surfaces
-//          the tool-call trace plus a pending approval_request frame.
+//   - AC1: The first SSE stream after an awaiting_input turn surfaces
+//          the tool-call trace plus a pending elicit_request frame.
 //   - AC2: Closing the stream and re-opening with the same conversation
 //          id re-plays the same state plus any subsequent events.
-//   - AC3: After approving, a reconnect surfaces a `committed` frame
-//          referencing the materialised workflow.
+//   - AC3: After responding to the elicitation with `{confirmed:true}`,
+//          a reconnect surfaces a `committed` frame referencing the
+//          materialised workflow.
 //   - AC4: Aborting an in-flight SSE read mid-stream and reconnecting
 //          replays the same events in the same order (the server
 //          re-delivers the persisted snapshot on every GET), then a
-//          follow-up turn + approval produces a `committed` frame on
-//          the subsequent reconnect.
+//          follow-up turn + elicit response produces a `committed`
+//          frame on the subsequent reconnect.
 // Spec refs: docs/17-conversations.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -22,7 +23,7 @@ import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 let ctx: JourneyCtx;
 let connectorId = "";
 let conversationId = "";
-let pendingApprovalId = "";
+let pendingElicitationId = "";
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("conv-resume");
@@ -57,7 +58,7 @@ async function streamEvents(id: string): Promise<string[]> {
 }
 
 describe("journey: conversation resume", () => {
-  test("AC1: initial turn pauses at approval and SSE surfaces the trace", async () => {
+  test("AC1: initial turn pauses at an elicitation and SSE surfaces the trace", async () => {
     const createRes = await journeyFetch(ctx, "/v1/conversations", {
       method: "POST",
       body: JSON.stringify({
@@ -68,39 +69,37 @@ describe("journey: conversation resume", () => {
     expect(createRes.status).toBe(201);
     const out = (await createRes.json()) as {
       conversation: { id: string };
-      pending_approval_id?: string;
+      pending_elicitation_id?: string;
       status: string;
     };
-    expect(out.status).toBe("awaiting_approval");
+    expect(out.status).toBe("awaiting_input");
     conversationId = out.conversation.id;
-    pendingApprovalId = out.pending_approval_id!;
+    pendingElicitationId = out.pending_elicitation_id!;
 
     const evts = await streamEvents(conversationId);
     expect(evts).toContain("message");
-    expect(evts).toContain("tool_call");
+    expect(evts).toContain("tool_call_start");
     expect(evts).toContain("tool_result");
-    expect(evts).toContain("approval_request");
+    expect(evts).toContain("elicit_request");
   });
 
   test("AC2: reconnecting with the same conversation_id replays the snapshot", async () => {
     const evts = await streamEvents(conversationId);
-    expect(evts).toContain("tool_call");
-    expect(evts).toContain("approval_request");
+    expect(evts).toContain("tool_call_start");
+    expect(evts).toContain("elicit_request");
   });
 
-  test("AC3: approving drives the conversation to committed; next stream emits committed", async () => {
-    const approveRes = await journeyFetch(
+  test("AC3: responding to the elicitation drives the conversation to committed; next stream emits committed", async () => {
+    const respondRes = await journeyFetch(
       ctx,
-      `/v1/conversations/${conversationId}/approvals/${pendingApprovalId}/approve`,
-      { method: "POST", body: JSON.stringify({}) },
+      `/v1/conversations/${conversationId}/elicitations/${pendingElicitationId}/respond`,
+      { method: "POST", body: JSON.stringify({ output: { confirmed: true } }) },
     );
-    expect(approveRes.status).toBe(200);
-    const out = (await approveRes.json()) as {
+    expect(respondRes.status).toBe(200);
+    const out = (await respondRes.json()) as {
       status: string;
-      committed_workflow_id?: string;
     };
     expect(out.status).toBe("committed");
-    expect(out.committed_workflow_id).toBeTruthy();
 
     const evts = await streamEvents(conversationId);
     expect(evts).toContain("committed");
@@ -110,9 +109,10 @@ describe("journey: conversation resume", () => {
   test("AC4: mid-stream abort + reconnect replays existing events then commit arrives on the next reconnect", async () => {
     // Fresh conversation so we don't disturb the AC1-3 state machine
     // above. This conversation drives through its own
-    // awaiting_approval → approve → committed transition end-to-end
-    // so we can assert that a reconnect after the abort re-serves the
-    // same prefix of events the original stream already delivered.
+    // awaiting_input → respond_elicitation → committed transition
+    // end-to-end so we can assert that a reconnect after the abort
+    // re-serves the same prefix of events the original stream already
+    // delivered.
     const createRes = await journeyFetch(ctx, "/v1/conversations", {
       method: "POST",
       body: JSON.stringify({
@@ -123,12 +123,12 @@ describe("journey: conversation resume", () => {
     expect(createRes.status).toBe(201);
     const created = (await createRes.json()) as {
       conversation: { id: string };
-      pending_approval_id?: string;
+      pending_elicitation_id?: string;
       status: string;
     };
-    expect(created.status).toBe("awaiting_approval");
+    expect(created.status).toBe("awaiting_input");
     const convId = created.conversation.id;
-    const approvalId = created.pending_approval_id!;
+    const elicitationId = created.pending_elicitation_id!;
 
     // Rename the live draft so the eventual commit produces a
     // workflow with a unique slug. AC3 above commits its own draft
@@ -220,19 +220,20 @@ describe("journey: conversation resume", () => {
     expect(replayed.length).toBeGreaterThanOrEqual(firstTwo.length);
     expect(replayed.slice(0, firstTwo.length)).toEqual(firstTwo);
 
-    // 3) Approve the pending approval to drive the conversation to
-    //    `committed`. In this harness the approve endpoint itself is
-    //    the continuation trigger; `POST /messages` would just queue
+    // 3) Respond to the pending askUser.confirm elicitation with
+    //    `{confirmed:true}` to drive the conversation to `committed`.
+    //    In this harness the respond endpoint itself is the
+    //    continuation trigger; `POST /messages` would just queue
     //    another LLM turn and is not required for AC4's commit
     //    assertion.
-    const approveRes = await journeyFetch(
+    const respondRes = await journeyFetch(
       ctx,
-      `/v1/conversations/${convId}/approvals/${approvalId}/approve`,
-      { method: "POST", body: JSON.stringify({}) },
+      `/v1/conversations/${convId}/elicitations/${elicitationId}/respond`,
+      { method: "POST", body: JSON.stringify({ output: { confirmed: true } }) },
     );
-    expect(approveRes.status).toBe(200);
-    const approveOut = (await approveRes.json()) as { status: string };
-    expect(approveOut.status).toBe("committed");
+    expect(respondRes.status).toBe(200);
+    const respondOut = (await respondRes.json()) as { status: string };
+    expect(respondOut.status).toBe("committed");
 
     // 4) Reconnect one more time; the replayed stream must now include
     //    a `committed` frame that the first stream didn't carry.
