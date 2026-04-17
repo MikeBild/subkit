@@ -76,6 +76,17 @@ export interface DispatchOutcome {
   workflow_id?: string;
 }
 
+interface SendOptions {
+  /**
+   * When true, skip the platform-cap token-bucket gate inside this
+   * helper. The notifications dispatch path passes `true` because
+   * `notifications/service.ts` already runs its own `tryAcquire`
+   * against the same bucket; gating twice would double-consume
+   * tokens and break the notifications rate-limit semantics.
+   */
+  skipRateLimit?: boolean;
+}
+
 /**
  * Gate outbound chat sends through the same token bucket the
  * notifications flow uses. Key is `(tenant_id, workspace_id, channel_id)`
@@ -90,9 +101,10 @@ async function sendTracked(
   adapter: ChatAdapter,
   platform: string,
   delivery: Parameters<ChatAdapter["send"]>[0],
+  opts: SendOptions = {},
 ): Promise<{ platform_message_id: string }> {
   const platformRate = CHAT_RATES[platform as ChatPlatform]?.per_minute;
-  if (platformRate && platformRate > 0) {
+  if (!opts.skipRateLimit && platformRate && platformRate > 0) {
     const gate = tryAcquire(
       {
         tenant_id: delivery.tenant_id,
@@ -146,14 +158,15 @@ async function sendTracked(
  * P-GC5 notifications). Wraps `adapter.send` with the same metric
  * tracking `sendTracked` uses internally, so notification
  * dispatches get counted alongside conversation replies. The
- * notification service passes a normalized `ChatDelivery` and
- * handles circuit-breaker / rate-limit accounting on its side.
+ * notification service runs its own token-bucket + circuit-breaker
+ * gate before calling `deliver`, so the internal rate-limit is
+ * skipped here to avoid double-consuming tokens.
  */
 export async function deliver(
   adapter: ChatAdapter,
   delivery: Parameters<ChatAdapter["send"]>[0],
 ): Promise<{ platform_message_id: string }> {
-  return await sendTracked(adapter, adapter.platform, delivery);
+  return await sendTracked(adapter, adapter.platform, delivery, { skipRateLimit: true });
 }
 
 function parseSlashCommand(
