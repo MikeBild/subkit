@@ -1,8 +1,9 @@
 // propose_skill — draft a Skill from file evidence or detected patterns.
-// Triggers request_human_approval so the operator can review before creation.
+// Pauses on an `ask_user_confirm` elicitation so the operator can review
+// before creation.
 
 import { z } from "@hono/zod-openapi";
-import { createApprovalRequest } from "../approval.ts";
+import { createElicitation } from "../elicitations.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -36,14 +37,22 @@ export const proposeSkillTool: ConversationTool = {
       pitfalls: args.pitfalls ?? [],
     };
 
-    const approval = await createApprovalRequest(
+    const summary = `Create ${args.scope} skill "${args.title}"`;
+    const input = {
+      question: `Create ${args.scope} skill "${args.title}"?`,
+      kind: "external_write",
+      summary: `${summary}: ${args.reason}`,
+      diff: draft,
+      target: `skill:${args.title}`,
+    };
+    const elicitation = await createElicitation(
       {
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
         tool_call_id: null,
-        kind: "external_write",
-        summary: `Create ${args.scope} skill "${args.title}"`,
-        diff: draft,
+        tool_name: "ask_user_confirm",
+        summary,
+        input,
         actor_id: ctx.actor_id,
       },
       ctx.db,
@@ -54,12 +63,14 @@ export const proposeSkillTool: ConversationTool = {
       data: {
         message: `Proposed skill "${args.title}". Awaiting operator approval.`,
         draft,
-        approval_id: approval.id,
+        elicitation_id: elicitation.id,
       },
       pause: {
+        tool_name: "ask_user_confirm",
         kind: "external_write",
-        summary: `Create ${args.scope} skill "${args.title}": ${args.reason}`,
-        approval_id: approval.id,
+        summary,
+        elicitation_id: elicitation.id,
+        input,
         diff: draft,
         target: `skill:${args.title}`,
       },

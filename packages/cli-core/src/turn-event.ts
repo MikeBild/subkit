@@ -16,24 +16,58 @@ export type TurnEvent =
       content: unknown;
       id?: string;
     }
-  | { type: "tool_call"; tool: string; input: unknown; id?: string }
-  | { type: "tool_result"; tool: string; output: unknown; id?: string }
+  | {
+      type: "tool_call_start";
+      call_id: string;
+      tool: string;
+      input_partial?: unknown;
+    }
+  | { type: "tool_call_delta"; call_id: string; input_patch: unknown }
+  | { type: "tool_call_end"; call_id: string; input: unknown }
+  | {
+      type: "tool_result";
+      call_id: string;
+      tool: string;
+      output: unknown;
+    }
+  | { type: "data_part"; data_type: string; payload: unknown }
   | {
       type: "validation_error";
       errors: Array<{ path: string; message: string }>;
     }
   | {
-      type: "approval_request";
-      approval_id: string;
-      kind: string;
+      type: "elicit_request";
+      elicitation_id: string;
+      /** Which `ask_user_*` tool paused the loop. */
+      tool_name: string;
+      /** Short row-level summary (audit + list view). */
       summary: string;
-      /** Structured diff / payload surfaced by the engine's approval tools. */
-      diff?: unknown;
-      /** Free-form target descriptor ({url, method, …}) for external writes. */
-      target?: unknown;
+      /** Full tool input payload (question, options, fields, diff, target, etc). */
+      input: unknown;
     }
   | { type: "committed"; workflow_id: string }
   | { type: "completed"; status: string; usage?: TurnUsage };
+
+/**
+ * Pending user-input request — populated when the loop pauses on any
+ * `askUser.*` tool. The client renders a component based on
+ * `tool_name` and posts the answer to
+ * `POST /v1/conversations/:id/elicitations/:eid/respond`.
+ */
+export interface PendingElicitation {
+  id: string;
+  tool_name: string;
+  /** Question / summary shown above the prompt. */
+  summary: string;
+  /** Tool-specific input — options list, form fields, confirm diff, etc. */
+  input: unknown;
+}
+
+/** Application-defined data part (AI SDK UI's `data-*` convention). */
+export interface DataPartState {
+  data_type: string;
+  payload: unknown;
+}
 
 export type ToolStatus = "pending" | "running" | "done" | "failed";
 
@@ -51,22 +85,13 @@ export interface MessageState {
   content: string;
 }
 
-export interface PendingApproval {
-  id: string;
-  kind: string;
-  summary: string;
-  /** Structured diff payload (passthrough from the engine). */
-  diff: unknown;
-  /** Free-form target descriptor (url, workflow path, etc). */
-  target: unknown;
-}
-
 export interface SkSessionState {
   messages: MessageState[];
   toolCalls: ToolCallState[];
-  pendingApproval: PendingApproval | null;
+  pendingElicitation: PendingElicitation | null;
+  dataParts: DataPartState[];
   conversationId: string | null;
-  status: "running" | "awaiting_approval" | "completed" | "error";
+  status: "running" | "awaiting_input" | "completed" | "error";
   committedWorkflowId: string | null;
   validationErrors: Array<{ path: string; message: string }>;
   usage: TurnUsage | null;
@@ -76,7 +101,8 @@ export function initialSessionState(conversationId: string | null): SkSessionSta
   return {
     messages: [],
     toolCalls: [],
-    pendingApproval: null,
+    pendingElicitation: null,
+    dataParts: [],
     conversationId,
     status: "running",
     committedWorkflowId: null,
@@ -99,14 +125,6 @@ function stringifyContent(content: unknown): string {
   }
 }
 
-function findLastRunningIndex(calls: ToolCallState[], tool: string): number {
-  for (let i = calls.length - 1; i >= 0; i--) {
-    const call = calls[i];
-    if (call && call.name === tool && call.status === "running") return i;
-  }
-  return -1;
-}
-
 /**
  * Pure reducer that folds a TurnEvent into the existing SessionState.
  * Kept as a free function so tests can drive it synchronously.
@@ -119,24 +137,15 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
         messages: [...state.messages, { role: ev.role, content: stringifyContent(ev.content) }],
       };
     }
-    case "tool_call": {
-      const id = ev.id ?? `tool-${state.toolCalls.length + 1}`;
-      return {
-        ...state,
-        toolCalls: [...state.toolCalls, { id, name: ev.tool, args: ev.input, status: "running" }],
-      };
-    }
     case "tool_result": {
       const calls = [...state.toolCalls];
-      const idx = ev.id
-        ? calls.findIndex((c) => c.id === ev.id)
-        : findLastRunningIndex(calls, ev.tool);
+      const idx = calls.findIndex((c) => c.id === ev.call_id);
       if (idx >= 0) {
         const existing = calls[idx];
         if (existing) calls[idx] = { ...existing, status: "done", result: ev.output };
       } else {
         calls.push({
-          id: `tool-${calls.length + 1}`,
+          id: ev.call_id,
           name: ev.tool,
           args: undefined,
           status: "done",
@@ -148,26 +157,70 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
     case "validation_error": {
       return { ...state, status: "error", validationErrors: ev.errors };
     }
-    case "approval_request": {
+    case "elicit_request": {
       return {
         ...state,
-        status: "awaiting_approval",
-        pendingApproval: {
-          id: ev.approval_id,
-          kind: ev.kind,
+        status: "awaiting_input",
+        pendingElicitation: {
+          id: ev.elicitation_id,
+          tool_name: ev.tool_name,
           summary: ev.summary,
-          diff: ev.diff ?? null,
-          target: ev.target ?? null,
+          input: ev.input,
         },
+      };
+    }
+    case "tool_call_start": {
+      const input = ev.input_partial === undefined ? undefined : ev.input_partial;
+      return {
+        ...state,
+        toolCalls: [
+          ...state.toolCalls,
+          { id: ev.call_id, name: ev.tool, args: input, status: "running" },
+        ],
+      };
+    }
+    case "tool_call_delta": {
+      const calls = [...state.toolCalls];
+      const idx = calls.findIndex((c) => c.id === ev.call_id);
+      if (idx >= 0) {
+        const existing = calls[idx];
+        if (existing) {
+          const merged =
+            typeof existing.args === "object" && existing.args !== null
+              ? {
+                  ...(existing.args as Record<string, unknown>),
+                  ...(ev.input_patch as Record<string, unknown>),
+                }
+              : ev.input_patch;
+          calls[idx] = { ...existing, args: merged };
+        }
+      }
+      return { ...state, toolCalls: calls };
+    }
+    case "tool_call_end": {
+      const calls = [...state.toolCalls];
+      const idx = calls.findIndex((c) => c.id === ev.call_id);
+      if (idx >= 0) {
+        const existing = calls[idx];
+        if (existing) calls[idx] = { ...existing, args: ev.input };
+      }
+      return { ...state, toolCalls: calls };
+    }
+    case "data_part": {
+      return {
+        ...state,
+        dataParts: [...state.dataParts, { data_type: ev.data_type, payload: ev.payload }],
       };
     }
     case "committed": {
       return { ...state, committedWorkflowId: ev.workflow_id };
     }
     case "completed": {
+      const nextStatus: SkSessionState["status"] =
+        ev.status === "awaiting_input" ? "awaiting_input" : "completed";
       return {
         ...state,
-        status: "completed",
+        status: nextStatus,
         usage: ev.usage ?? state.usage,
       };
     }

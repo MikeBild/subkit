@@ -7,6 +7,7 @@
 // The MCP SDK imports are lazy so users running `sk -p "..."` never
 // pay for the MCP module tree.
 
+import { VERSION } from "@cli-core/version.ts";
 import type { ResolvedProfile } from "./config.ts";
 import { EngineClient } from "./engine-client.ts";
 
@@ -21,10 +22,10 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
     engine_url: profile.engine_url,
     api_key: profile.api_key,
     tenant: profile.active_tenant_id,
-    user_agent: "sk-cli/0.0.1 (mcp)",
+    user_agent: `sk-cli/${VERSION} (mcp)`,
   });
 
-  const server = new Server({ name: "sk-cli", version: "0.0.1" }, { capabilities: { tools: {} } });
+  const server = new Server({ name: "sk-cli", version: VERSION }, { capabilities: { tools: {} } });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [

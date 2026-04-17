@@ -137,6 +137,16 @@ export class EngineClient {
     return this.request("GET", "/v1/health");
   }
 
+  // --------------------------- Status snapshot ---------------------------
+  /**
+   * Composite status snapshot used by the Ink status-line ticker and the
+   * `/status` pane. One round-trip instead of fanning out to /connectors
+   * + /skills + /usage. Tenant-scoped by the engine.
+   */
+  statusSummary(): Promise<StatusSummary> {
+    return this.request("GET", "/v1/status");
+  }
+
   // --------------------------- RBAC probe ---------------------------
   /**
    * Probe whether the caller (or a specified principal id) holds a
@@ -204,17 +214,15 @@ export class EngineClient {
   }> {
     return this.request("POST", `/v1/conversations/${id}/compact`, body);
   }
-  decideApproval(
+  respondElicitation(
     conversationId: string,
-    approvalId: string,
-    decision: "approved" | "rejected",
+    elicitationId: string,
+    output: unknown,
     reason?: string,
   ): Promise<ConversationRunOutcome> {
-    const path =
-      decision === "approved"
-        ? `/v1/conversations/${conversationId}/approvals/${approvalId}/approve`
-        : `/v1/conversations/${conversationId}/approvals/${approvalId}/reject`;
-    const body = decision === "rejected" && reason ? { reason } : undefined;
+    const path = `/v1/conversations/${conversationId}/elicitations/${elicitationId}/respond`;
+    const body: Record<string, unknown> = { output };
+    if (reason) body.reason = reason;
     return this.request("POST", path, body);
   }
   cancelConversation(id: string): Promise<unknown> {
@@ -299,4 +307,16 @@ export interface ConversationDetail {
   tool_calls: unknown[];
   draft: unknown;
   approvals: unknown[];
+}
+
+export interface StatusSummary {
+  user: { id: string; email: string | null; kind: "user" | "system_account" };
+  tenant: { id: string; slug: string | null };
+  connectors_count: number;
+  skills_count: number;
+  tokens_today: number;
+  tokens_month: number;
+  monthly_budget_tokens: number | null;
+  remaining_monthly_budget_tokens: number | null;
+  version: string;
 }

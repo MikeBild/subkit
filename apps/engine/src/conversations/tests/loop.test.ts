@@ -7,8 +7,9 @@
 //   3. Loop self-corrects with a second propose_step carrying a real
 //      url → passes
 //   4. validate_draft confirms clean
-//   5. request_human_approval pauses the loop
-//   6. Approve → loop resumes → commit_draft → new workflow
+//   5. ask_user_confirm pauses the loop
+//   6. User answers { confirmed: true } → loop resumes → commit_draft
+//      → new workflow
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -16,8 +17,8 @@ import { conversationDrafts, workflows } from "../../db/schema/index.ts";
 import {
   appendUserMessage,
   createConversation,
-  decideApproval,
   getConversation,
+  respondElicitation,
 } from "../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
@@ -43,15 +44,15 @@ describe("conversations/loop", () => {
       ctx.testDb.db,
     );
 
-    // The first run stops at the approval pause.
-    expect(outcome.result.status).toBe("awaiting_approval");
-    expect(outcome.result.pending_approval_id).toBeDefined();
+    // The first run stops at the ask_user_confirm pause.
+    expect(outcome.result.status).toBe("awaiting_input");
+    expect(outcome.result.pending_elicitation_id).toBeDefined();
 
     // Walk through the recorded events and make sure the expected
     // trace is there.
-    const toolCallEvents = outcome.result.events.filter((e) => e.type === "tool_call") as Array<{
-      tool: string;
-    }>;
+    const toolCallEvents = outcome.result.events.filter(
+      (e) => e.type === "tool_call_start",
+    ) as Array<{ tool: string }>;
     const toolResultEvents = outcome.result.events.filter(
       (e) => e.type === "tool_result",
     ) as Array<{ tool: string; output: unknown }>;
@@ -59,14 +60,14 @@ describe("conversations/loop", () => {
 
     // Expected tool call sequence:
     //   list_skills, fetch_connector_docs, propose_step (fail),
-    //   propose_step (fix), validate_draft, request_human_approval
+    //   propose_step (fix), validate_draft, ask_user_confirm
     expect(toolCallEvents.map((e) => e.tool)).toEqual([
       "list_skills",
       "fetch_connector_docs",
       "propose_step",
       "propose_step",
       "validate_draft",
-      "request_human_approval",
+      "ask_user_confirm",
     ]);
 
     // First propose_step must have fed a validation error back.
@@ -82,16 +83,16 @@ describe("conversations/loop", () => {
       .where(eq(conversationDrafts.conversation_id, outcome.conversation.id));
     expect(snapshots.length).toBeGreaterThanOrEqual(1);
 
-    // Now approve and resume — the plan continues with commit_draft.
-    const approvalId = outcome.result.pending_approval_id;
-    if (!approvalId) throw new Error("expected pending_approval_id");
-    const resumed = await decideApproval(
+    // Now confirm and resume — the plan continues with commit_draft.
+    const elicitationId = outcome.result.pending_elicitation_id;
+    if (!elicitationId) throw new Error("expected pending_elicitation_id");
+    const resumed = await respondElicitation(
       {
         tenant_id: ctx.tenant_id,
         conversation_id: outcome.conversation.id,
-        approval_id: approvalId,
+        elicitation_id: elicitationId,
         actor_id: ctx.user_id,
-        decision: "approved",
+        output: { confirmed: true },
       },
       ctx.testDb.db,
     );
@@ -125,7 +126,7 @@ describe("conversations/loop", () => {
       ctx.testDb.db,
     );
     // No canned plan matched — the run should end with no tool calls.
-    const toolCalls = outcome.result.events.filter((e) => e.type === "tool_call");
+    const toolCalls = outcome.result.events.filter((e) => e.type === "tool_call_start");
     expect(toolCalls.length).toBe(0);
     // Appending another message still works and is a no-op.
     const cont = await appendUserMessage(

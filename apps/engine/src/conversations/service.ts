@@ -1,8 +1,8 @@
 // Conversations service — public API used by REST + MCP.
 //
 // Thin wrapper over loop.ts that also creates the conversation record,
-// handles approve/reject resume, and exposes a `get` that returns the
-// whole conversation (messages, tool calls, approvals, live draft).
+// handles elicitation response + resume, and exposes a `get` that
+// returns the whole conversation (messages, tool calls, live draft).
 
 import { and, asc, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
@@ -11,7 +11,6 @@ import type { Db } from "../db/client.ts";
 import { conversationMessages, conversations, conversationToolCalls } from "../db/schema/index.ts";
 import { getMockProvider } from "../llm/mock-provider.ts";
 import { log } from "../logging/logger.ts";
-import { listApprovalsForConversation, resolveApproval } from "./approval.ts";
 import { loadDraft, undoLastSnapshot } from "./draft.ts";
 import { type RunLoopResult, runLoop } from "./loop.ts";
 import type {
@@ -231,74 +230,64 @@ export async function appendUserMessage(
   return { conversation: updated.conversation, result };
 }
 
-export interface ApprovalDecisionParams {
+export interface RespondElicitationParams {
   tenant_id: string;
   conversation_id: string;
-  approval_id: string;
+  elicitation_id: string;
   actor_id: string | null;
-  decision: "approved" | "rejected";
+  /** User's answer — shape depends on the tool (choice/multi/text/form/confirm). */
+  output: unknown;
   reason?: string;
 }
 
-export async function decideApproval(
-  p: ApprovalDecisionParams,
+/**
+ * Resolve an `askUser.*` elicitation with the user's answer and
+ * resume the conversation loop. This is the only pause-resume path —
+ * the legacy approval flow has been removed.
+ */
+export async function respondElicitation(
+  p: RespondElicitationParams,
   exec: Db,
 ): Promise<ConversationTurnOutcome> {
-  const approval = await resolveApproval(
+  const { resolveElicitation, getElicitation } = await import("./elicitations.ts");
+  const elicitation = await getElicitation(p.tenant_id, p.elicitation_id, exec);
+  if (!elicitation) throw new Error("elicitation not found");
+  const resolved = await resolveElicitation(
     {
       tenant_id: p.tenant_id,
-      id: p.approval_id,
-      status: p.decision,
+      id: p.elicitation_id,
+      output: p.output,
       decided_by: p.actor_id,
       ...(p.reason ? { reason: p.reason } : {}),
     },
     exec,
   );
-  if (!approval) throw new Error("approval not found");
+  if (!resolved) throw new Error("elicitation not found");
 
-  if (p.decision === "approved") {
-    log.conversation.approval.approved({
-      conversation_id: p.conversation_id,
-      approval_id: p.approval_id,
-      actor_id: p.actor_id,
-    });
-  } else {
-    log.conversation.approval.rejected({
-      conversation_id: p.conversation_id,
-      approval_id: p.approval_id,
-      actor_id: p.actor_id,
-      reason: p.reason ?? null,
-    });
-  }
+  log.conversation.approval.approved({
+    conversation_id: p.conversation_id,
+    approval_id: p.elicitation_id,
+    actor_id: p.actor_id,
+  });
 
-  // Flip the conversation back to active so the loop can resume.
   await exec
     .update(conversations)
     .set({ status: "active", updated_at: new Date() })
     .where(eq(conversations.id, p.conversation_id));
 
-  // Inject the decision as a tool message for audit / visibility.
   await exec.insert(conversationMessages).values({
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     role: "tool",
     content: {
-      tool: "request_human_approval",
-      decision: p.decision,
+      tool: elicitation.tool_name,
+      output: p.output,
       reason: p.reason ?? null,
     } as Record<string, unknown>,
   });
 
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
-
-  // On reject we do not drive another turn — the loop stays paused
-  // until the caller sends another user message explaining the next
-  // step. On approve we resume the loop with no new user message so
-  // the plan continues from its cursor.
-  if (p.decision === "rejected") {
-    return { conversation: conv.conversation, result: { events: [], status: "active" } };
-  }
 
   const result = await runLoop({
     db: exec,
@@ -327,6 +316,88 @@ export async function decideApproval(
     );
   }
   return { conversation: updated.conversation, result };
+}
+
+export interface ContextSnapshot {
+  conversation_id: string;
+  connector_id: string | null;
+  workflow_id: string | null;
+  skills: {
+    global: Array<{ id: string; title: string }>;
+    connector: Array<{ id: string; title: string }>;
+    workflow: Array<{ id: string; title: string }>;
+    total: number;
+  };
+  messages: {
+    total: number;
+    last_role: string | null;
+  };
+  tool_calls_total: number;
+  pending_elicitations: number;
+}
+
+/**
+ * Read-only snapshot of the context the engine would inject if we
+ * assembled a prompt right now. Powers the `/context` CLI panel —
+ * skill counts / names in scope, recent activity, pending
+ * elicitations. Does not invoke the LLM provider.
+ */
+export async function getContextSnapshot(
+  tenant_id: string,
+  conversation_id: string,
+  exec: Db,
+): Promise<ContextSnapshot | null> {
+  const detail = await getConversation(tenant_id, conversation_id, exec);
+  if (!detail) return null;
+
+  const { retrieveApplicableSkills } = await import("../skills/service.ts");
+  const { listElicitationsForConversation } = await import("./elicitations.ts");
+
+  const applicable = await retrieveApplicableSkills(
+    {
+      tenant_id,
+      ...(detail.conversation.target_connector_id
+        ? { connector_ids: [detail.conversation.target_connector_id] }
+        : {}),
+      ...(detail.conversation.target_workflow_id
+        ? { workflow_ids: [detail.conversation.target_workflow_id] }
+        : {}),
+    },
+    exec,
+  );
+
+  const elicitations = await listElicitationsForConversation(tenant_id, conversation_id, exec);
+  const pending = elicitations.filter((e) => e.status === "pending").length;
+
+  const byScope = {
+    global: applicable
+      .filter((s) => s.scope === "global")
+      .map((s) => ({ id: s.id, title: s.title })),
+    connector: applicable
+      .filter((s) => s.scope === "connector")
+      .map((s) => ({ id: s.id, title: s.title })),
+    workflow: applicable
+      .filter((s) => s.scope === "workflow")
+      .map((s) => ({ id: s.id, title: s.title })),
+  };
+
+  const lastMessage = detail.messages[detail.messages.length - 1];
+
+  return {
+    conversation_id,
+    connector_id: detail.conversation.target_connector_id,
+    workflow_id: detail.conversation.target_workflow_id,
+    skills: {
+      ...byScope,
+      total: applicable.length,
+    },
+    messages: {
+      total: detail.messages.length,
+      last_role: lastMessage ? lastMessage.role : null,
+    },
+    tool_calls_total: detail.tool_calls.length,
+    pending_elicitations: pending,
+  };
 }
 
 export async function cancelConversation(
@@ -379,7 +450,6 @@ export async function getConversation(
     .where(eq(conversationToolCalls.conversation_id, id))
     .orderBy(asc(conversationToolCalls.created_at));
   const draft = await loadDraft(tenant_id, id, exec);
-  const approvals = await listApprovalsForConversation(tenant_id, id, exec);
   return {
     conversation: rowToRecord(row),
     messages: msgs.map(
@@ -403,7 +473,6 @@ export async function getConversation(
       }),
     ),
     draft,
-    approvals,
   };
 }
 

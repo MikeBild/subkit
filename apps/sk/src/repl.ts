@@ -267,15 +267,17 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
 
   const renderFrame = (ev: TurnEvent): void => {
     switch (ev.type) {
-      case "tool_call":
-        line(`  ∙ tool_call ${ev.tool} ${JSON.stringify(ev.input).slice(0, 120)}`);
+      case "tool_call_start":
+        line(
+          `  ∙ tool_call ${ev.tool}${ev.input_partial !== undefined ? ` ${JSON.stringify(ev.input_partial).slice(0, 120)}` : ""}`,
+        );
         break;
       case "tool_result":
         line(`  ∙ tool_result ${ev.tool} ok`);
         break;
-      case "approval_request":
-        line(`  ! approval requested: ${ev.kind} — ${ev.summary}`);
-        line(`    run '/approve ${ev.approval_id}' or '/reject ${ev.approval_id} <reason>'`);
+      case "elicit_request":
+        line(`  ! input needed: ${ev.tool_name} — ${ev.summary}`);
+        line(`    run '/respond ${ev.elicitation_id} <value>'`);
         break;
       case "validation_error":
         for (const e of ev.errors) line(`  × validation: ${e.path}: ${e.message}`);
@@ -385,26 +387,49 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         return;
       }
       case "approve": {
-        const approvalId = args[0];
-        if (!session.conversationId || !approvalId) {
-          line("usage: /approve <approval_id>");
+        const elicitationId = args[0] ?? session.pendingElicitation?.id;
+        if (!session.conversationId || !elicitationId) {
+          line("usage: /approve [elicitation_id]");
           return;
         }
-        await client.decideApproval(session.conversationId, approvalId, "approved");
-        session = { ...session, pendingApproval: null, status: "running" };
+        await client.respondElicitation(session.conversationId, elicitationId, { confirmed: true });
+        session = { ...session, pendingElicitation: null, status: "running" };
         line("approval sent");
         return;
       }
       case "reject": {
-        const approvalId = args[0];
-        if (!session.conversationId || !approvalId) {
-          line("usage: /reject <approval_id> [reason]");
+        const elicitationId = args[0] ?? session.pendingElicitation?.id;
+        if (!session.conversationId || !elicitationId) {
+          line("usage: /reject [elicitation_id] [reason]");
           return;
         }
         const reason = args.slice(1).join(" ") || undefined;
-        await client.decideApproval(session.conversationId, approvalId, "rejected", reason);
-        session = { ...session, pendingApproval: null, status: "running" };
+        await client.respondElicitation(
+          session.conversationId,
+          elicitationId,
+          { confirmed: false },
+          reason,
+        );
+        session = { ...session, pendingElicitation: null, status: "running" };
         line("rejection sent");
+        return;
+      }
+      case "respond": {
+        const elicitationId = args[0] ?? session.pendingElicitation?.id;
+        if (!session.conversationId || !elicitationId) {
+          line("usage: /respond [elicitation_id] <value-as-json>");
+          return;
+        }
+        const raw = args.slice(1).join(" ");
+        let output: unknown;
+        try {
+          output = raw ? JSON.parse(raw) : null;
+        } catch {
+          output = { text: raw };
+        }
+        await client.respondElicitation(session.conversationId, elicitationId, output);
+        session = { ...session, pendingElicitation: null, status: "running" };
+        line("response sent");
         return;
       }
       case "memory": {

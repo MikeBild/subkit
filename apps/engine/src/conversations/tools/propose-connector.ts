@@ -1,8 +1,9 @@
-// propose_connector — draft a Connector from file evidence.
-// Triggers request_human_approval so the operator can review before creation.
+// propose_connector — draft a Connector from file evidence. Pauses on
+// an `ask_user_confirm` elicitation so the operator can review before
+// creation.
 
 import { z } from "@hono/zod-openapi";
-import { createApprovalRequest } from "../approval.ts";
+import { createElicitation } from "../elicitations.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -36,14 +37,22 @@ export const proposeConnectorTool: ConversationTool = {
       auth_type: args.auth_type,
     };
 
-    const approval = await createApprovalRequest(
+    const summary = `Create connector "${args.name}" (${args.driver})`;
+    const input = {
+      question: `Create connector "${args.name}"?`,
+      kind: "external_write",
+      summary: `${summary}: ${args.reason}`,
+      diff: draft,
+      target: `connector:${args.slug ?? args.name}`,
+    };
+    const elicitation = await createElicitation(
       {
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
         tool_call_id: null,
-        kind: "external_write",
-        summary: `Create connector "${args.name}" (${args.driver})`,
-        diff: draft,
+        tool_name: "ask_user_confirm",
+        summary,
+        input,
         actor_id: ctx.actor_id,
       },
       ctx.db,
@@ -54,12 +63,14 @@ export const proposeConnectorTool: ConversationTool = {
       data: {
         message: `Proposed connector "${args.name}". Awaiting operator approval.`,
         draft,
-        approval_id: approval.id,
+        elicitation_id: elicitation.id,
       },
       pause: {
+        tool_name: "ask_user_confirm",
         kind: "external_write",
-        summary: `Create connector "${args.name}" (${args.driver}): ${args.reason}`,
-        approval_id: approval.id,
+        summary,
+        elicitation_id: elicitation.id,
+        input,
         diff: draft,
         target: `connector:${args.slug ?? args.name}`,
       },

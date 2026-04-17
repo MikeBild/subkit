@@ -192,24 +192,25 @@ describe("journey: AI chat authoring", () => {
     expect(createRes.status).toBe(201);
     const outcome = (await createRes.json()) as {
       conversation: { id: string; status: string };
-      pending_approval_id?: string;
+      pending_elicitation_id?: string;
       status: string;
     };
-    expect(outcome.status).toBe("awaiting_approval");
-    expect(outcome.pending_approval_id).toBeDefined();
-    const approvalId = outcome.pending_approval_id!;
+    expect(outcome.status).toBe("awaiting_input");
+    expect(outcome.pending_elicitation_id).toBeDefined();
+    const elicitationId = outcome.pending_elicitation_id!;
     const convId = outcome.conversation.id;
 
-    // Approve via REST.
+    // Answer the pending askUser.confirm elicitation with
+    // `{confirmed: true}` — the engine resumes the loop and commits.
     const approveRes = await fetch(
-      `${ctx.baseUrl}/v1/conversations/${convId}/approvals/${approvalId}/approve`,
+      `${ctx.baseUrl}/v1/conversations/${convId}/elicitations/${elicitationId}/respond`,
       {
         method: "POST",
         headers: {
           authorization: `Bearer ${ctx.apiKey}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ output: { confirmed: true } }),
       },
     );
     expect(approveRes.status).toBe(200);

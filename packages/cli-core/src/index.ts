@@ -11,6 +11,7 @@ export {
   type BrowserLoginResult,
   runBrowserLogin,
 } from "./browser-login.ts";
+export { osc52Copy, ringBell } from "./clipboard.ts";
 export {
   type DeviceFlowOptions,
   type DeviceFlowResult,
@@ -22,13 +23,19 @@ export {
   type EngineClientOptions,
   type paths as EngineApiPaths,
 } from "./engine-api/client.ts";
+export {
+  type InterruptController,
+  type InterruptPhase,
+  makeInterruptController,
+} from "./interrupt.ts";
 export { readSse, type SseFrame } from "./sse.ts";
 export {
   applyTurnEvent,
+  type DataPartState,
   initialSessionState,
   lastAssistantText,
   type MessageState,
-  type PendingApproval,
+  type PendingElicitation,
   type SkSessionState,
   type ToolCallState,
   type ToolStatus,

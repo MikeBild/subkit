@@ -14,7 +14,7 @@ import { tenants } from "./identity.ts";
 
 export const conversationStatusEnum = pgEnum("conversation_status", [
   "active",
-  "awaiting_approval",
+  "awaiting_input",
   "committed",
   "abandoned",
 ]);

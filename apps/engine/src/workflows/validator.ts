@@ -24,8 +24,12 @@ export function validateWorkflowDef(input: unknown): {
     return {
       ok: false,
       errors: parsed.error.issues.map((i) => ({
-        path: i.path.join("."),
-        message: i.message,
+        path: i.path.map((p) => String(p)).join("."),
+        // `i.message` is typed string, but some Zod variants (discriminated
+        // union errors, refinements that throw objects) leak non-strings
+        // into this field. Coerce defensively so the client never renders
+        // "[object Object]" in the validation-error panel.
+        message: typeof i.message === "string" ? i.message : JSON.stringify(i.message),
       })),
     };
   }

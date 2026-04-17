@@ -3,7 +3,7 @@
 
 import type { WorkflowDef } from "../workflows/types.ts";
 
-export type ConversationStatus = "active" | "awaiting_approval" | "committed" | "abandoned";
+export type ConversationStatus = "active" | "awaiting_input" | "committed" | "abandoned";
 
 export type ConversationRole = "user" | "assistant" | "tool" | "system";
 
@@ -62,47 +62,50 @@ export interface DraftDocument {
   output_schema?: Record<string, unknown>;
 }
 
-export type ApprovalKind = "commit_draft" | "external_write" | "other";
-export type ApprovalStatus = "pending" | "approved" | "rejected" | "timeout";
-
-export interface ApprovalRequestRecord {
-  id: string;
-  conversation_id: string;
-  tool_call_id: string | null;
-  kind: ApprovalKind;
-  summary: string;
-  diff: unknown;
-  status: ApprovalStatus;
-  decision_reason: string | null;
-  created_at: string;
-}
-
 /**
  * One frame in the conversation event stream. Emitted by the service
  * loop and consumed by the SSE route and the MCP progress bridge.
+ *
+ * Mirrors Vercel AI SDK UI's wire model:
+ *   - `tool_call_start / tool_call_delta / tool_call_end / tool_result`
+ *     carry the `partial-call → call → result` lifecycle keyed by
+ *     `call_id`.
+ *   - `data_part` is the `data-*` generative-UI channel.
+ *   - `elicit_request` represents an `askUser.*` pause; the client
+ *     renders a component based on `tool_name` and posts the answer
+ *     to `POST /v1/conversations/:id/elicitations/:eid/respond`.
  */
 export type TurnEvent =
   | { type: "message"; role: ConversationRole; content: unknown }
-  | { type: "tool_call"; tool: string; input: unknown }
-  | { type: "tool_result"; tool: string; output: unknown }
+  | {
+      type: "tool_call_start";
+      call_id: string;
+      tool: string;
+      input_partial?: unknown;
+    }
+  | { type: "tool_call_delta"; call_id: string; input_patch: unknown }
+  | { type: "tool_call_end"; call_id: string; input: unknown }
+  | {
+      type: "tool_result";
+      call_id: string;
+      tool: string;
+      output: unknown;
+    }
+  | { type: "data_part"; data_type: string; payload: unknown }
   | { type: "validation_error"; errors: Array<{ path: string; message: string }> }
   | {
-      type: "approval_request";
-      approval_id: string;
-      kind: ApprovalKind;
+      type: "elicit_request";
+      elicitation_id: string;
+      /** Which `askUser.*` tool paused the loop. */
+      tool_name: string;
+      /** Short summary stored on the elicitation row (audit + list view). */
       summary: string;
       /**
-       * Structured diff for commit_draft kinds (before/after JSON).
-       * Arbitrary opaque payload for other kinds — client-side
-       * approval router decides how to render.
+       * Full tool input payload — options list, form fields, question
+       * text, confirm diff/target, etc. Clients dispatch on
+       * `tool_name` and read this record to render the right prompt.
        */
-      diff?: unknown;
-      /**
-       * Free-form target descriptor for external_write kinds
-       * (`{url, method}` or `{workflow_id, path}` etc). Surfaced in
-       * the UI as a `Target: <...>` line above the diff.
-       */
-      target?: unknown;
+      input: unknown;
     }
   | { type: "committed"; workflow_id: string }
   | { type: "completed"; status: ConversationStatus; usage?: TurnUsage };
@@ -112,7 +115,34 @@ export interface ConversationDetail {
   messages: ConversationMessageRecord[];
   tool_calls: ConversationToolCallRecord[];
   draft: DraftDocument | null;
-  approvals: ApprovalRequestRecord[];
+}
+
+/**
+ * Parts-based message shape, mirroring Vercel AI SDK UI's `UIMessage`.
+ * The engine persists `ConversationMessageRecord.content` as JSONB;
+ * the `toMessageParts` adapter in `parts.ts` reconstructs a
+ * `UIMessage` for the detail endpoint. Tool calls, tool results,
+ * reasoning blocks, and `data_part` payloads all render through
+ * per-part components instead of a single opaque blob.
+ */
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
+  | {
+      type: "tool_call";
+      call_id: string;
+      tool: string;
+      input: unknown;
+      phase: "partial" | "called" | "result";
+    }
+  | { type: "tool_result"; call_id: string; tool: string; output: unknown }
+  | { type: "data"; data_type: string; payload: unknown };
+
+export interface UIMessage {
+  id: string;
+  role: ConversationRole;
+  parts: ContentPart[];
+  created_at: string;
 }
 
 // Re-export for callers.

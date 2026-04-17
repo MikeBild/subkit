@@ -6,13 +6,13 @@
 // tool-call panel, approval modal, committed frame, validation
 // errors, slash autocomplete, exit flows).
 //
-// Tests avoid network by passing stubbed `onPrompt` / `onApproval`
+// Tests avoid network by passing stubbed `onPrompt` / `onElicitResponse`
 // / `onSlash` callbacks — the same shape `ink-repl.ts` builds at
 // runtime. Async iterables for the SSE stream are synthesized
 // per test via a tiny `framesOf(...)` helper.
 
 import { afterEach, describe, expect, test } from "bun:test";
-import type { PendingApproval, TurnEvent } from "@cli-core/index.ts";
+import type { PendingElicitation, TurnEvent } from "@cli-core/index.ts";
 import { cleanup, render } from "ink-testing-library";
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
 import type { PersonaProbe } from "../slash.ts";
@@ -112,11 +112,15 @@ describe("ink-app: journey 01 — admin mounts the REPL", () => {
     const frame = instance.lastFrame() ?? "";
     // Compact boxed banner — asserts on stable substrings only so
     // cosmetic tweaks to the framing don't require test churn.
-    expect(frame).toContain("sk v0.0.1");
+    // Matches any semver-looking string (e.g. `sk v1.6.0` or
+    // `sk · v0.0.0-dev` — the `·` separator arrived with the Claude
+    // Code UX adoption).
+    expect(frame).toMatch(/sk[\s·]+v\d+\.\d+\.\d+/);
     expect(frame).toContain("admin");
     expect(frame).toContain("tenant-alpha");
     expect(frame).toContain("http://localhost:8080");
-    expect(frame).toContain("sk>");
+    // Composer prefix — `▎⟫` when idle, `⣾ ⟫` when busy. Match either.
+    expect(frame).toMatch(/▎⟫|⣾ ⟫/);
     instance.unmount();
   });
 
@@ -131,7 +135,10 @@ describe("ink-app: journey 01 — admin mounts the REPL", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("P=admin");
     expect(frame).toContain("M=claude-sonnet-4-6");
-    expect(frame).toContain("T=—");
+    // Null `turn_tokens` now renders as `0` (not em-dash) so fresh
+    // sessions show a numeric counter. Lines up with the subkit-tailored
+    // status line's default template.
+    expect(frame).toContain("T=0");
     instance.unmount();
   });
 
@@ -139,11 +146,13 @@ describe("ink-app: journey 01 — admin mounts the REPL", () => {
     const instance = renderApp();
     await tick();
     const frame = instance.lastFrame() ?? "";
-    // Banner uses 💡 as the tip prefix; match against any of the
-    // six BANNER_TIPS by name so pickTip()'s random choice can't
+    // Banner uses `◦` as the tip prefix; match against any of the
+    // known BANNER_TIPS by name so pickTip()'s random choice can't
     // make this flaky.
-    expect(frame).toContain("💡");
-    expect(frame).toMatch(/Ctrl-T|@path\/to\/file|SUBKIT\.md|sk -p|statusLine|\/compact/);
+    expect(frame).toMatch(/◦|💡/);
+    expect(frame).toMatch(
+      /Ctrl-T|@path\/to\/file|SUBKIT\.md|sk -p|statusLine|\/compact|\/approve|\/reject/,
+    );
     instance.unmount();
   });
 });
@@ -171,7 +180,9 @@ describe("ink-app: journey 02 — admin submits a prompt", () => {
     await tick(80);
     expect(received.current).toBe("hi there");
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("assistant");
+    // Claude-Code-style glyphs replace the verbose "assistant:" prefix:
+    // `◆` for assistant, `▸` for user, `·` for system/tool.
+    expect(frame).toMatch(/◆/);
     expect(frame).toContain("hello back");
     instance.unmount();
   });
@@ -215,8 +226,13 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     const instance = renderApp({
       onPrompt: async () => ({
         events: framesOf(
-          { type: "tool_call", tool: "propose_step", input: { kind: "http" }, id: "t1" },
-          { type: "tool_result", tool: "propose_step", output: { ok: true }, id: "t1" },
+          {
+            type: "tool_call_start",
+            call_id: "t1",
+            tool: "propose_step",
+            input_partial: { kind: "http" },
+          },
+          { type: "tool_result", call_id: "t1", tool: "propose_step", output: { ok: true } },
           { type: "completed", status: "active" },
         ),
         conversationId: "c-tool-1",
@@ -227,7 +243,9 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     await pressEnter(instance);
     await tick(80);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("tool calls");
+    // ToolCard renders each call inline (no separate "tool calls"
+    // header) with a `⎿` tree-glyph prefix and a status icon.
+    expect(frame).toMatch(/⎿/);
     expect(frame).toContain("propose_step");
     instance.unmount();
   });
@@ -247,7 +265,8 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     await pressEnter(instance);
     await tick(80);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("sk>");
+    // Composer prefix — `▎⟫` when idle, `⣾ ⟫` when busy. Match either.
+    expect(frame).toMatch(/▎⟫|⣾ ⟫/);
     // No thinking verb lingering on screen.
     expect(frame).not.toMatch(/thinking…|planning…|drafting…/);
     instance.unmount();
@@ -284,24 +303,28 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
 
 // ---------- Journey 4 — Approval modal + approve / reject ----------
 
-describe("ink-app: journey 04 — approval lifecycle", () => {
+describe("ink-app: journey 04 — elicitation lifecycle", () => {
   const approvalFrame: TurnEvent = {
-    type: "approval_request",
-    approval_id: "a1-abcdefab-0000-0000-0000-000000000000",
-    kind: "commit_draft",
+    type: "elicit_request",
+    elicitation_id: "a1-abcdefab-0000-0000-0000-000000000000",
+    tool_name: "ask_user_confirm",
     summary: "commit 2-step workflow",
-    diff: {
-      name: "invoice-digest",
-      slug: "invoice-digest",
-      description: "Overnight invoice summarizer",
-      steps: [
-        { id: "fetch", kind: "request" },
-        { id: "summarize", kind: "transform" },
-      ],
+    input: {
+      question: "Commit invoice-digest?",
+      kind: "commit_draft",
+      diff: {
+        name: "invoice-digest",
+        slug: "invoice-digest",
+        description: "Overnight invoice summarizer",
+        steps: [
+          { id: "fetch", kind: "request" },
+          { id: "summarize", kind: "transform" },
+        ],
+      },
     },
   };
 
-  test("AC1: approval_request renders the commit-draft router body", async () => {
+  test("AC1: elicit_request renders the commit-draft router body", async () => {
     const instance = renderApp({
       onPrompt: async () => ({
         events: framesOf(approvalFrame, {
@@ -316,27 +339,28 @@ describe("ink-app: journey 04 — approval lifecycle", () => {
     await pressEnter(instance);
     await tick(100);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("approval required");
-    expect(frame).toContain("commit_draft");
+    // ConfirmPrompt renders `confirm: <kind>` as the title line; the
+    // full diff body follows. Lines up with the ElicitRouter dispatch
+    // in @chat-ui.
+    expect(frame).toContain("confirm: commit_draft");
     expect(frame).toContain("commit 2-step workflow");
     expect(frame).toContain("invoice-digest");
-    expect(frame).toContain("steps:");
     expect(frame).toContain("fetch");
     instance.unmount();
   });
 
-  test("AC2: /approve sends the decision to onApproval and clears the modal", async () => {
-    const decisions: Array<{ id: string; decision: string; reason?: string }> = [];
+  test("AC2: /approve sends { confirmed: true } to onElicitResponse and clears the modal", async () => {
+    const decisions: Array<{ id: string; output: unknown; reason?: string }> = [];
     const instance = renderApp({
       onPrompt: async () => ({
         events: framesOf(approvalFrame, {
           type: "completed",
-          status: "awaiting_approval" as never,
+          status: "awaiting_input",
         } as TurnEvent),
         conversationId: "c-appr-approve",
       }),
-      onApproval: async (id, decision, reason) => {
-        decisions.push({ id, decision, ...(reason ? { reason } : {}) });
+      onElicitResponse: async (id, output, reason) => {
+        decisions.push({ id, output, ...(reason ? { reason } : {}) });
       },
     });
     await tick();
@@ -348,24 +372,24 @@ describe("ink-app: journey 04 — approval lifecycle", () => {
     await tick(60);
     expect(decisions.length).toBe(1);
     expect(decisions[0]?.id).toBe("a1-abcdefab-0000-0000-0000-000000000000");
-    expect(decisions[0]?.decision).toBe("approved");
+    expect((decisions[0]?.output as { confirmed: boolean }).confirmed).toBe(true);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).not.toContain("approval required");
+    expect(frame).not.toContain("input needed");
     instance.unmount();
   });
 
   test("AC3: /reject with a reason passes the reason through", async () => {
-    const decisions: Array<{ id: string; decision: string; reason?: string }> = [];
+    const decisions: Array<{ id: string; output: unknown; reason?: string }> = [];
     const instance = renderApp({
       onPrompt: async () => ({
         events: framesOf(approvalFrame, {
           type: "completed",
-          status: "awaiting_approval" as never,
+          status: "awaiting_input",
         } as TurnEvent),
         conversationId: "c-appr-reject",
       }),
-      onApproval: async (id, decision, reason) => {
-        decisions.push({ id, decision, ...(reason ? { reason } : {}) });
+      onElicitResponse: async (id, output, reason) => {
+        decisions.push({ id, output, ...(reason ? { reason } : {}) });
       },
     });
     await tick();
@@ -376,7 +400,7 @@ describe("ink-app: journey 04 — approval lifecycle", () => {
     await pressEnter(instance);
     await tick(60);
     expect(decisions.length).toBe(1);
-    expect(decisions[0]?.decision).toBe("rejected");
+    expect((decisions[0]?.output as { confirmed: boolean }).confirmed).toBe(false);
     expect(decisions[0]?.reason).toBe("step 1 missing connector_id");
     instance.unmount();
   });
@@ -481,11 +505,17 @@ describe("ink-app: journey 07 — enduser persona", () => {
     await type(instance, "/help");
     await pressEnter(instance);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("/clear");
-    expect(frame).toContain("/compact");
-    expect(frame).not.toContain("/skills");
-    expect(frame).not.toContain("/audit");
-    expect(frame).not.toContain("/approve");
+    // Help opens as a boxed modal pane; scope the "not contains"
+    // assertions to just the pane body so the rotating banner tip at
+    // the top of the screen (which may reference `/approve` etc.)
+    // doesn't poison the test.
+    const paneMatch = frame.match(/╭[\s\S]*?╰[^╰]*?╯/);
+    const paneBody = paneMatch?.[0] ?? "";
+    expect(paneBody).toContain("/clear");
+    expect(paneBody).toContain("/compact");
+    expect(paneBody).not.toContain("/skills");
+    expect(paneBody).not.toContain("/audit");
+    expect(paneBody).not.toContain("/approve");
     instance.unmount();
   });
 
@@ -582,7 +612,7 @@ describe("ink-app: journey 09 — exit flows", () => {
     instance.unmount();
   });
 
-  test("AC3: Ctrl-C triggers onExit", async () => {
+  test("AC3: double Ctrl-C triggers onExit (first press arms the confirm banner)", async () => {
     let exited = false;
     const instance = renderApp({
       onExit: () => {
@@ -590,6 +620,11 @@ describe("ink-app: journey 09 — exit flows", () => {
       },
     });
     await tick();
+    // First press: arms the "press again to exit" banner, does not call onExit.
+    instance.stdin.write("\x03");
+    await tick(20);
+    expect(exited).toBe(false);
+    // Second press: exits.
     instance.stdin.write("\x03");
     await tick(30);
     expect(exited).toBe(true);
@@ -665,12 +700,193 @@ describe("ink-app: journey 10 — onSlash callback dispatch", () => {
   });
 });
 
+// ---------- Journey 12 — Modal pane slots (status / conversations) ----------
+//
+// The Ink host reserves a single modal slot below the transcript.
+// Slash commands that opt into structured output (currently `/status`
+// and `/resume`) call `openPane(spec)` from the onSlash callback;
+// the host renders the matching component. This journey verifies
+// the contract end-to-end through the Ink test harness.
+
+describe("ink-app: journey 12 — modal panes", () => {
+  test("AC1: /status renders a StatusPane with the host-supplied rows", async () => {
+    const instance = renderApp({
+      onSlash: async (_name, _raw, openPane) => {
+        openPane({
+          kind: "status",
+          title: "status",
+          subtitle: "journey",
+          rows: [
+            ["user", "mike@mikebild.com"],
+            ["tenant", "tenant-alpha"],
+            ["connectors", 7],
+            ["tokens · today", 128],
+          ],
+        });
+        return null;
+      },
+    });
+    await tick();
+    await type(instance, "/status");
+    await pressEnter(instance);
+    await tick(60);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("status");
+    expect(frame).toContain("mike@mikebild.com");
+    expect(frame).toContain("tenant-alpha");
+    expect(frame).toContain("connectors");
+    expect(frame).toContain("128");
+    expect(frame).toContain("Esc to close");
+    instance.unmount();
+  });
+
+  test("AC1b: /help renders in the modal slot as a text pane, not inline", async () => {
+    const instance = renderApp();
+    await tick();
+    await type(instance, "/help");
+    await pressEnter(instance);
+    await tick(60);
+    const frame = instance.lastFrame() ?? "";
+    // Pane title carries the "sk — slash commands" line.
+    expect(frame).toContain("sk — slash commands");
+    // Persona subtitle lands on the pane header.
+    expect(frame).toContain("admin");
+    // Body content came through.
+    expect(frame).toContain("/clear");
+    // The pane's Esc-to-close hint is visible.
+    expect(frame).toContain("Esc to close");
+    instance.unmount();
+  });
+
+  test("AC1c: /cost opens a text pane sourced from session usage + status snapshot", async () => {
+    const instance = renderApp({
+      onSlash: async (_name, _raw, openPane) => {
+        openPane({
+          kind: "text",
+          title: "cost",
+          lines: [
+            "tokens · this turn   42",
+            "remaining · monthly  9,958",
+            "tokens · today       128",
+          ],
+        });
+        return null;
+      },
+    });
+    await tick();
+    await type(instance, "/cost");
+    await pressEnter(instance);
+    await tick(60);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("cost");
+    expect(frame).toContain("tokens · this turn");
+    expect(frame).toContain("9,958");
+    expect(frame).toContain("Esc to close");
+    instance.unmount();
+  });
+
+  test("AC2: /resume opens a ConversationBrowser and Enter calls onSelectConversation", async () => {
+    const selected: { current: string | null } = { current: null };
+    const instance = renderApp({
+      onSlash: async (_name, _raw, openPane) => {
+        openPane({
+          kind: "conversations",
+          items: [
+            { id: "c-aaaaaaaa-0000", title: "invoice digest", updated_at: "2026-04-17T14:00:00Z" },
+            { id: "c-bbbbbbbb-1111", title: "hubspot export", updated_at: "2026-04-16T09:30:00Z" },
+          ],
+        });
+        return null;
+      },
+      onSelectConversation: async (id) => {
+        selected.current = id;
+      },
+    });
+    await tick();
+    await type(instance, "/resume");
+    await pressEnter(instance);
+    await tick(60);
+    let frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("resume conversation");
+    expect(frame).toContain("invoice digest");
+    expect(frame).toContain("hubspot export");
+    // Enter on the first (highlighted) row picks c-aaaaaaaa-0000 and
+    // dismisses the pane.
+    instance.stdin.write("\r");
+    await tick(60);
+    expect(selected.current).toBe("c-aaaaaaaa-0000");
+    frame = instance.lastFrame() ?? "";
+    expect(frame).not.toContain("resume conversation");
+    instance.unmount();
+  });
+});
+
+// ---------- Journey 13 — Ctrl-R history search ----------
+
+describe("ink-app: journey 13 — Ctrl-R history search", () => {
+  test("AC1: Ctrl-R opens the history pane populated from prior prompts", async () => {
+    const instance = renderApp({
+      onPrompt: async () => ({
+        events: framesOf({ type: "completed", status: "active" }),
+        conversationId: "c-hs-1",
+      }),
+    });
+    await tick();
+    // Seed the prompt-ring with two real submissions so the pane has
+    // something to show.
+    await type(instance, "first prompt");
+    await pressEnter(instance);
+    await tick(40);
+    await type(instance, "second prompt");
+    await pressEnter(instance);
+    await tick(40);
+
+    // Ctrl-R (0x12) opens the history pane.
+    instance.stdin.write("\x12");
+    await tick(40);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("history");
+    expect(frame).toContain("2 / 2");
+    expect(frame).toContain("second prompt");
+    expect(frame).toContain("first prompt");
+    instance.unmount();
+  });
+
+  test("AC2: Enter in the history pane restores the highlighted prompt into the composer", async () => {
+    const instance = renderApp({
+      onPrompt: async () => ({
+        events: framesOf({ type: "completed", status: "active" }),
+        conversationId: "c-hs-2",
+      }),
+    });
+    await tick();
+    await type(instance, "invoice digest draft");
+    await pressEnter(instance);
+    await tick(40);
+    await type(instance, "hubspot workflow");
+    await pressEnter(instance);
+    await tick(40);
+
+    instance.stdin.write("\x12");
+    await tick(40);
+    // First-row is the newest ("hubspot workflow"); Enter picks it.
+    instance.stdin.write("\r");
+    await tick(60);
+    const frame = instance.lastFrame() ?? "";
+    // The pane is gone (no `╭`-bordered box on screen), and the
+    // composer line holds the restored prompt.
+    expect(frame).not.toMatch(/╭.{20,}╮[\s\S]*history/);
+    expect(frame).toContain("hubspot workflow");
+    instance.unmount();
+  });
+});
+
 // ---------- Journey 11 — Approval hygiene edge cases ----------
 
 describe("ink-app: journey 11 — approval hygiene", () => {
-  test("AC1: /approve with no pending approval surfaces `no pending approval`", async () => {
+  test("AC1: /approve with no pending elicitation surfaces a helpful message", async () => {
     const instance = renderApp({
-      onApproval: async () => {
+      onElicitResponse: async () => {
         throw new Error("should not be called");
       },
     });
@@ -678,29 +894,28 @@ describe("ink-app: journey 11 — approval hygiene", () => {
     await type(instance, "/approve");
     await pressEnter(instance);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("no pending approval");
+    expect(frame).toContain("no pending elicitation");
     instance.unmount();
   });
 
-  test("AC2: approval modal with an `other` kind falls back to generic body", async () => {
-    const other: PendingApproval = {
+  test("AC2: elicitation with a generic confirm falls back to the generic body", async () => {
+    const other: PendingElicitation = {
       id: "a9-00000000-0000-0000-0000-000000000000",
-      kind: "other",
+      tool_name: "ask_user_confirm",
       summary: "review the change",
-      diff: { note: "freeform" },
-      target: null,
+      input: { kind: "generic", diff: { note: "freeform" } },
     };
     const instance = renderApp({
       onPrompt: async () => ({
         events: framesOf(
           {
-            type: "approval_request",
-            approval_id: other.id,
-            kind: other.kind,
+            type: "elicit_request",
+            elicitation_id: other.id,
+            tool_name: other.tool_name,
             summary: other.summary,
-            diff: other.diff,
+            input: other.input,
           },
-          { type: "completed", status: "awaiting_approval" as never } as TurnEvent,
+          { type: "completed", status: "awaiting_input" },
         ),
         conversationId: "c-other",
       }),
@@ -710,10 +925,10 @@ describe("ink-app: journey 11 — approval hygiene", () => {
     await pressEnter(instance);
     await tick(100);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("approval required");
-    expect(frame).toContain("other");
+    // Generic ConfirmPrompt — "confirm: generic" is the title; summary
+    // comes through verbatim.
+    expect(frame).toContain("confirm: generic");
     expect(frame).toContain("review the change");
-    expect(frame).toContain("diff:");
     instance.unmount();
   });
 });

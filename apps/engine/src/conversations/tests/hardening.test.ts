@@ -99,11 +99,14 @@ describe("conversations/hardening", () => {
     // Event order must be strictly: call, result, call, result, call, result.
     const kinds = events.map((e) => e.type);
     expect(kinds).toEqual([
-      "tool_call",
+      "tool_call_start",
+      "tool_call_end",
       "tool_result",
-      "tool_call",
+      "tool_call_start",
+      "tool_call_end",
       "tool_result",
-      "tool_call",
+      "tool_call_start",
+      "tool_call_end",
       "tool_result",
     ]);
   });
@@ -145,7 +148,7 @@ describe("conversations/hardening", () => {
       },
       ctx.testDb.db,
     );
-    expect(outcome.result.status).toBe("awaiting_approval");
+    expect(outcome.result.status).toBe("awaiting_input");
 
     // Usage rows split: 1 error on primary, at least 1 success on fallback.
     const primaryErr = await ctx.testDb.db
@@ -171,7 +174,7 @@ describe("conversations/hardening", () => {
         ),
       );
     // After fallback takes over, the full list-users plan completes
-    // through request_human_approval = 6 steps.
+    // through ask_user_confirm = 6 steps.
     expect(fallbackSuccess.length).toBeGreaterThanOrEqual(1);
   });
 });

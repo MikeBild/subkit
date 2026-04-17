@@ -95,12 +95,35 @@ describe("journey: sk-cli slash handler", () => {
     await ctx.cleanup();
   });
 
-  test("AC1: /status reports profile + session", async () => {
+  test("AC1: /status reports profile + persona + session (multi-line when no openPane host)", async () => {
     const line = await handleSlash("status", [], slashCtx());
-    expect(line).toContain("profile journey");
-    expect(line).toContain("persona admin");
-    expect(line).toContain("engine");
-    expect(line).toContain("tenant");
+    expect(line).not.toBeNull();
+    // The readline-fallback format is `<label>  <value>` — assert
+    // each field survives on its own line.
+    expect(line).toMatch(/profile\s+journey/);
+    expect(line).toMatch(/persona\s+admin/);
+    expect(line).toMatch(/engine\s+http/);
+    expect(line).toMatch(/tenant/);
+  });
+
+  test("AC1b: /status in an Ink host opens a StatusPane via openPane", async () => {
+    // When the host supplies `openPane`, /status delegates rendering
+    // to the modal slot and returns null (no inline banner).
+    const opened: Array<Parameters<NonNullable<Parameters<typeof handleSlash>[2]["openPane"]>>[0]> =
+      [];
+    const line = await handleSlash("status", [], {
+      ...slashCtx(),
+      openPane: (spec) => opened.push(spec),
+    });
+    expect(line).toBeNull();
+    expect(opened.length).toBe(1);
+    const spec = opened[0];
+    if (spec?.kind !== "status") throw new Error("expected status pane");
+    const labels = spec.rows.map(([label]) => label);
+    expect(labels).toContain("profile");
+    expect(labels).toContain("persona");
+    expect(labels).toContain("engine");
+    expect(labels).toContain("tenant");
   });
 
   test("AC2: /clear resets the session id", async () => {
@@ -122,7 +145,11 @@ describe("journey: sk-cli slash handler", () => {
     );
     setConversationId(outcome.conversation.id);
     const line = await handleSlash("compact", [], slashCtx());
-    expect(line).toMatch(/compacted \d+ message/);
+    // Readline-fallback body: "compact" title + blank + "collapsed N
+    // message(s)" + summary. The Ink host opens it as a modal pane;
+    // the banner form is checked here since the test ctx doesn't
+    // supply `openPane`.
+    expect(line).toMatch(/collapsed \d+ message/);
   });
 
   test("AC4: /model <id> patches the conversation and reports the switch", async () => {
@@ -158,7 +185,10 @@ describe("journey: sk-cli slash handler", () => {
 
   test("AC8: /permissions lists the granted permissions", async () => {
     const line = await handleSlash("permissions", [], slashCtx());
-    expect(line).toContain("granted permissions");
+    // Banner form: "permissions" header + blank line + "  <permission>"
+    // rows. The "granted" count arrives via the pane's subtitle when
+    // an Ink host supplies `openPane`.
+    expect(line).toContain("permissions");
     for (const p of ALLOWED) expect(line).toContain(p);
   });
 

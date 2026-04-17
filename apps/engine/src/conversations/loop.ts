@@ -43,9 +43,9 @@ export interface RunLoopParams {
 
 export interface RunLoopResult {
   events: TurnEvent[];
-  status: "awaiting_approval" | "committed" | "active" | "exhausted";
+  status: "awaiting_input" | "committed" | "active" | "exhausted";
   committed_workflow_id?: string;
-  pending_approval_id?: string;
+  pending_elicitation_id?: string;
 }
 
 const DEFAULT_BUDGET = 20;
@@ -289,7 +289,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       toolChoice: "auto",
       stopWhen: [
         stepCountIs(budget),
-        hasToolCall("request_human_approval"),
+        hasToolCall("ask_user_choice"),
+        hasToolCall("ask_user_multi"),
+        hasToolCall("ask_user_text"),
+        hasToolCall("ask_user_form"),
+        hasToolCall("ask_user_confirm"),
         // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
         committedStopCondition as any,
       ],
@@ -425,32 +429,30 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // Resolve final status.
   let status: RunLoopResult["status"] = "active";
   let committedWorkflowId: string | undefined;
-  let pendingApprovalId: string | undefined;
+  let pendingElicitationId: string | undefined;
   if (signals.committed) {
     status = "committed";
     committedWorkflowId = signals.committed.workflow_id;
     events.push({ type: "completed", status: "committed" });
-  } else if (signals.pendingApproval) {
-    status = "awaiting_approval";
-    pendingApprovalId = signals.pendingApproval.approval_id;
+  } else if (signals.pendingElicitation) {
+    status = "awaiting_input";
+    pendingElicitationId = signals.pendingElicitation.elicitation_id;
+    events.push({ type: "completed", status: "awaiting_input" });
   } else {
     // Either budget exhausted or the model stopped with text only.
-    // Check if the row flipped to awaiting_approval via some other
-    // path (defensive — today we expect signals.pendingApproval to
-    // have caught it).
     const rows = await p.db
       .select()
       .from(conversations)
       .where(eq(conversations.id, p.conversation_id))
       .limit(1);
-    if (rows[0]?.status === "awaiting_approval") {
-      status = "awaiting_approval";
+    if (rows[0]?.status === "awaiting_input") {
+      status = "awaiting_input";
     }
-    if (signals.step >= budget && !signals.pendingApproval) {
+    if (signals.step >= budget && !signals.pendingElicitation) {
       log.warn({
         module: "conversation",
         action: "loop.budget_exhausted",
-        msg: "turn stopped without done/approval/commit (budget reached)",
+        msg: "turn stopped without done/elicitation/commit (budget reached)",
         conversation_id: p.conversation_id,
         step_budget: budget,
       });
@@ -476,6 +478,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
 
   const out: RunLoopResult = { events, status };
   if (committedWorkflowId) out.committed_workflow_id = committedWorkflowId;
-  if (pendingApprovalId) out.pending_approval_id = pendingApprovalId;
+  if (pendingElicitationId) out.pending_elicitation_id = pendingElicitationId;
   return out;
 }
