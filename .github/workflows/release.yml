@@ -108,30 +108,32 @@ jobs:
             runner: macos-14
             target: ""
             entry: apps/engine/src/index.ts
-          # darwin-x64
+          # darwin-x64 (cross-compiled from macos-14 arm64; macos-13
+          # runners queue for 20+ min and are slated for GitHub
+          # deprecation. Ad-hoc codesign (`--sign -`) works cross-arch.)
           - binary: sk
             os: darwin
             arch: x64
-            runner: macos-13
-            target: ""
+            runner: macos-14
+            target: bun-darwin-x64
             entry: apps/sk/src/index.ts
           - binary: subkit
             os: darwin
             arch: x64
-            runner: macos-13
-            target: ""
+            runner: macos-14
+            target: bun-darwin-x64
             entry: apps/cli/src/index.ts
           - binary: tunnel-agent
             os: darwin
             arch: x64
-            runner: macos-13
-            target: ""
+            runner: macos-14
+            target: bun-darwin-x64
             entry: apps/agent/src/index.ts
           - binary: engine
             os: darwin
             arch: x64
-            runner: macos-13
-            target: ""
+            runner: macos-14
+            target: bun-darwin-x64
             entry: apps/engine/src/index.ts
           # linux-x64
           - binary: sk
