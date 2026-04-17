@@ -6,6 +6,7 @@ import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
 import { logger } from "./logging/logger.ts";
+import { startTracing } from "./observability/tracing.ts";
 import { startListener, stopListener } from "./pubsub/listener.ts";
 import { startBoss, stopBoss } from "./queue/boss.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
@@ -82,6 +83,12 @@ async function runServer(): Promise<void> {
   // instance so notification dispatch can find adapters that were
   // registered via the /chat/install flow.
   const chatRegistry = new ChatAdapterRegistry();
+
+  // OpenTelemetry tracer — bootstrap before anything that might emit
+  // spans so the LLM `experimental_telemetry` calls, pg-boss handlers,
+  // and HTTP routes all land in the same trace context. No-op when no
+  // exporter env vars are set.
+  const stopTracing = await startTracing();
 
   // Start pg-boss + register handlers before the HTTP server so enqueue
   // requests hitting the first byte always find a live boss.
@@ -178,6 +185,10 @@ async function runServer(): Promise<void> {
           resolve();
       });
       await closeDb();
+      // Flush + shutdown the OTel tracer last so any shutdown-related
+      // spans land at the exporter. Best-effort — exporter failure
+      // here cannot stop process exit.
+      await stopTracing();
     } catch (err) {
       logger.error({
         module: "engine",
