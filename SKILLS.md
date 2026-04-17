@@ -1,0 +1,50 @@
+# Skills Index
+
+Project-local skills for Claude Code, stored under `.claude/skills/<slug>/SKILL.md`.
+Each skill is a self-contained guide that can be invoked via `/<slug>` or referenced
+by an agent. See `AGENTS.md` for the canonical repo-wide contract and
+`.claude/CLAUDE.md` for the Claude Code bootstrap.
+
+## Guardrail / routing
+
+- [`subkit-operating-model`](.claude/skills/subkit-operating-model/SKILL.md) —
+  Map a task intent to the right engine subsystem + canonical doc. Start here when
+  the task description is generic.
+- [`subkit-testing-and-validation`](.claude/skills/subkit-testing-and-validation/SKILL.md) —
+  Pick the right test layer (unit / integration / e2e) and run the quality gate.
+- [`subkit-api-and-openapi`](.claude/skills/subkit-api-and-openapi/SKILL.md) —
+  Zod-first discipline for HTTP routes and MCP tools. OpenAPI is generated; don't
+  hand-edit.
+- [`subkit-rbac-and-policy`](.claude/skills/subkit-rbac-and-policy/SKILL.md) —
+  Permissions, roles, resource grants, API keys, portal tokens, before-request hooks.
+  Every surface enforces the same policy engine.
+- [`subkit-observability`](.claude/skills/subkit-observability/SKILL.md) —
+  Metrics, structured logs, traces, drift signals, token-budget accounting.
+  Structured logger only; low-cardinality metric labels.
+
+## Domain / procedural
+
+- [`subkit-connector-patterns`](.claude/skills/subkit-connector-patterns/SKILL.md) —
+  Add a connector template, driver tweak, or OAuth2 flow. References the 89 existing
+  templates and 4 drivers.
+- [`subkit-ai-context-pipeline`](.claude/skills/subkit-ai-context-pipeline/SKILL.md) —
+  Work on Skills, Knowledge Sources, Skill Candidates, Conversations, Self-Healing,
+  and Discovery. Human-in-the-loop rules are strict.
+- [`subkit-self-healing`](.claude/skills/subkit-self-healing/SKILL.md) —
+  Drift detection, bounded repair loop, Execution Fixture dry-runs, Patch Candidates.
+  Never auto-apply.
+
+## Sub-agents (not skills, but related)
+
+Specialists under `.claude/agents/`:
+
+- `domain-architect` (opus) — plan cross-subsystem features.
+- `connector-builder` (sonnet) — implement bounded connector work.
+- `test-generator` (sonnet) — generate tests at the right layer.
+
+## Commands
+
+Under `.claude/commands/`:
+
+- `/verify` — run the quality gate (lint + typecheck + test:unit).
+- `/review` — audit the current diff against subkit's non-negotiables.

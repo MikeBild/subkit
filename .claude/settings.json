@@ -1,0 +1,48 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pre-bash-dispatch.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(bun run lint)",
+      "Bash(bun run lint:fix)",
+      "Bash(bun run format)",
+      "Bash(bun run typecheck)",
+      "Bash(bun run test)",
+      "Bash(bun run test:unit)",
+      "Bash(bun run test:integration)",
+      "Bash(bun run test:e2e)",
+      "Bash(bun run build:all)",
+      "Bash(bun run build:engine)",
+      "Bash(bun run build:agent)",
+      "Bash(bun run build:cli)",
+      "Bash(bun run build:sk)",
+      "Bash(bun run db:generate)",
+      "Bash(bun run db:migrate)",
+      "Bash(bun run db:seed)",
+      "Bash(bun run metrics)",
+      "Bash(bun test:*)",
+      "Bash(bun install)",
+      "Bash(bun install --frozen-lockfile)",
+      "Bash(biome check .)",
+      "Bash(biome check --write .)",
+      "Bash(tsc --noEmit)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)"
+    ]
+  }
+}

@@ -293,6 +293,16 @@ Full technical reference in [`docs/`](docs/) — 36 documents covering architect
 
 ---
 
+## For AI coding agents
+
+subkit is prepared for agentic coding (Claude Code, Copilot, Codex, Cursor).
+Start with [`AGENTS.md`](AGENTS.md) — canonical repo-wide rules, subsystem map,
+quality gates. See [`SKILLS.md`](SKILLS.md) for the skill index and
+[`docs/00-agent-navigation.md`](docs/00-agent-navigation.md) for the
+task → subsystem cross-reference.
+
+---
+
 ## License
 
 [MIT](LICENSE) — Copyright (c) 2026 Mike Bild
