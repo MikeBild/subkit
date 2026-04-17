@@ -276,10 +276,14 @@ jobs:
             artifacts/SHA256SUMS
 
   # ── Docker images ──
+  # Gated: only runs when DigitalOcean registry credentials are set.
+  # Absent-secret + always-fail is a footgun for public repos / forks —
+  # graceful skip lets CLI binary publishing succeed independently.
 
   build-and-push:
     name: build-and-push
     needs: test
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -325,6 +329,7 @@ jobs:
   deploy:
     name: deploy
     needs: build-and-push
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.build-and-push.outputs.version }}
@@ -379,6 +384,7 @@ jobs:
   smoke:
     name: smoke
     needs: [build-and-push, deploy]
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.build-and-push.outputs.version }}
