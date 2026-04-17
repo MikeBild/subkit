@@ -7,15 +7,21 @@ import { emitList, emitOne } from "../utils/format.ts";
 
 const listCmd = defineCommand({
   meta: { name: "list", description: "List skills" },
-  args: clientArgs,
+  args: {
+    ...clientArgs,
+    "show-source": {
+      type: "boolean",
+      description: "Include the provenance column (manual/candidate/template/memory)",
+      default: false,
+    },
+  },
   async run({ args }) {
     const { client, asJson } = makeClient(args as Record<string, unknown>);
     const body = await client.listSkills();
-    emitList(
-      asJson,
-      ["id", "name", "scope", "lifecycle"],
-      body.items as unknown as Record<string, unknown>[],
-    );
+    const columns = args["show-source"]
+      ? ["id", "title", "scope", "source", "status"]
+      : ["id", "title", "scope", "status"];
+    emitList(asJson, columns, body.items as unknown as Record<string, unknown>[]);
   },
 });
 
@@ -87,6 +93,22 @@ const archiveCmd = defineCommand({
   },
 });
 
+const deleteCmd = defineCommand({
+  meta: {
+    name: "delete",
+    description: "Hard-delete a skill (prefer `archive` for operator-visible flows)",
+  },
+  args: {
+    ...clientArgs,
+    id: { type: "positional", description: "Skill id", required: true },
+  },
+  async run({ args }) {
+    const { client, asJson } = makeClient(args as Record<string, unknown>);
+    await client.deleteSkill(args.id as string);
+    emitOne(asJson, { deleted: true, id: args.id as string });
+  },
+});
+
 export const skillsCommand = defineCommand({
   meta: { name: "skills", description: "Skill management" },
   subCommands: {
@@ -96,5 +118,6 @@ export const skillsCommand = defineCommand({
     edit: editCmd,
     activate: activateCmd,
     archive: archiveCmd,
+    delete: deleteCmd,
   },
 });

@@ -18,17 +18,30 @@ export interface ClientOptions {
 
 export class SkEngineError extends Error {
   readonly status: number;
+  readonly code: string;
+  readonly trace_id: string | null;
+  readonly details: unknown;
   readonly body: unknown;
   constructor(status: number, body: unknown) {
+    const parsed =
+      typeof body === "object" && body !== null
+        ? (body as { code?: unknown; message?: unknown; trace_id?: unknown; details?: unknown })
+        : null;
     const msg =
-      typeof body === "object" && body !== null && "message" in body
-        ? String((body as { message: unknown }).message)
+      parsed && typeof parsed.message === "string"
+        ? parsed.message
         : typeof body === "string"
           ? body
           : `HTTP ${status}`;
     super(msg);
     this.name = "SkEngineError";
     this.status = status;
+    this.code = parsed && typeof parsed.code === "string" ? parsed.code : `http_${status}`;
+    this.trace_id =
+      parsed && typeof parsed.trace_id === "string" && parsed.trace_id.length > 0
+        ? parsed.trace_id
+        : null;
+    this.details = parsed?.details ?? null;
     this.body = body;
   }
 }

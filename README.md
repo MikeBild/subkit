@@ -120,6 +120,14 @@ graph TB
 
 ## Quick Start
 
+Pick the path that matches how you'll use subkit:
+
+- **Operator** — you run the engine for a team: [`docs/quickstart/operator.md`](docs/quickstart/operator.md)
+- **Developer** — you contribute to subkit: [`docs/quickstart/developer.md`](docs/quickstart/developer.md)
+- **End-user** — you use `sk`, chat, or MCP: [`docs/quickstart/end-user.md`](docs/quickstart/end-user.md)
+
+Or the one-liner:
+
 ```bash
 # Install
 curl -fsSL https://raw.githubusercontent.com/mikebild/subkit/main/scripts/install.sh | bash

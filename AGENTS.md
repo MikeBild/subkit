@@ -160,12 +160,12 @@ Three test layers (picked by subsystem and command):
 
 | Layer | Command | When | What runs |
 |---|---|---|---|
-| unit | `bun run test:unit` | Fast inner loop. No Docker, no DB. | `observability`, `logging`, `audit`, `llm`, `workflows`, `execution/tests` |
-| integration | `bun run test:integration` | Needs Postgres + pg-boss (Docker Compose). | `db`, `queue`, `http`, `webhooks` |
+| unit | `bun run test:unit` | Fast inner loop. Requires a running Postgres (compose) for the subset that uses `createTestDb`; otherwise no external dependencies. | `observability`, `logging`, `audit`, `llm`, `workflows`, `execution/tests` |
+| integration | `bun run test:integration` | Needs Postgres + pg-boss (Docker Compose). | `db`, `queue`, `http`, `webhooks`, `credentials/oauth2` |
 | e2e | `bun run test:e2e` | Compiles `subkit` + `sk` binaries, runs against a live engine. | `tests/e2e/` |
 
 - Unit tests co-located as `*.test.ts` alongside source.
-- Integration tests use `testcontainers` for database isolation.
+- Integration tests use a disposable Postgres database per test file (`createTestDb`) against the running compose instance.
 - E2E tests drive compiled CLIs — they will build them if missing.
 - CI runs lint + typecheck + unit + integration on every PR; e2e on success.
 

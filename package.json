@@ -20,7 +20,7 @@
     "format": "biome format --write .",
     "test": "bun test",
     "test:unit": "SKIP_DOCKER=1 SKIP_DB_TESTS=1 bun test apps/engine/src/observability apps/engine/src/logging apps/engine/src/audit apps/engine/src/llm apps/engine/src/workflows apps/engine/src/execution/tests",
-    "test:integration": "bun test apps/engine/src/db apps/engine/src/queue apps/engine/src/http apps/engine/src/webhooks",
+    "test:integration": "bun test apps/engine/src/db apps/engine/src/queue apps/engine/src/http apps/engine/src/webhooks apps/engine/src/credentials/oauth2",
     "test:e2e": "bun run build:cli && bun run build:sk && bun test tests/e2e/",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run apps/engine/src/db/migrate.ts",
