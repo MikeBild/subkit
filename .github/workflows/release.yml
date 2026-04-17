@@ -1,16 +1,17 @@
 name: release
 
 on:
-  # Manual `git push origin <tag>` triggers release as the pushing user
-  # (downstream workflows fire normally).
+  # Triggered by:
+  #   - `git push origin <tag>` (human or CI tagging)
+  #   - release-please's tag push when RELEASE_PLEASE_TOKEN (a PAT, not
+  #     GITHUB_TOKEN) is configured — only a non-GITHUB_TOKEN push bypasses
+  #     GitHub's recursion guard and fires downstream workflows.
+  #
+  # We intentionally do NOT listen on `release: published` — having both
+  # triggers causes the workflow to fan out twice for the same tag when
+  # release-please creates the tag AND publishes the release in one step.
   push:
     tags: ['v*.*.*', 'subkit-v*.*.*']
-  # release-please publishes a GitHub Release using GITHUB_TOKEN, which
-  # by design does NOT fire `push tags` triggers (GitHub policy to
-  # prevent recursion). Listening on `release: published` catches that
-  # path and fires this workflow on the tag release-please just cut.
-  release:
-    types: [published]
   # Manual recovery — two modes:
   #   1. `gh workflow run release.yml --ref <tag>` — dispatch IS the tag;
   #      github.ref becomes the tag ref and the workflow runs as if the
@@ -29,6 +30,13 @@ on:
 
 permissions:
   contents: write
+
+# Only one release workflow per tag can run at a time — guards against
+# accidental double-fires (e.g. a retag) overwriting each other in DOCR
+# or racing the droplet deploy.
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: registry.digitalocean.com
