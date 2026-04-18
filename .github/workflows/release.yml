@@ -30,6 +30,11 @@ on:
 
 permissions:
   contents: write
+  # `gh run download` in publish-release reads artifacts produced by
+  # earlier jobs of the same run — requires `actions: read`. Without
+  # this, the step fails with HTTP 403 (Resource not accessible by
+  # integration) and no binaries get attached to the GitHub release.
+  actions: read
 
 # Only one release workflow per tag can run at a time — guards against
 # accidental double-fires (e.g. a retag) overwriting each other in DOCR
