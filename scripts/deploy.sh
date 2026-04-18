@@ -102,16 +102,25 @@ run() {
 }
 
 # ---------------------------------------------------------------------------
-# Concurrency guard
+# Concurrency guard — portable mkdir-based lock (macOS has no flock).
+# mkdir is atomic across POSIX; if two concurrent runs race, only the
+# first mkdir succeeds, the other fails with "File exists".
 # ---------------------------------------------------------------------------
 
 LOCK=/tmp/subkit-deploy.lock
 if [ "$DRY_RUN" -eq 0 ]; then
-  exec 9>"$LOCK"
-  if ! flock -n 9; then
-    fail "another deploy is running ($LOCK held) — refusing to race"
-    exit 1
+  if ! mkdir "$LOCK" 2>/dev/null; then
+    # If the lock dir is stale (owning PID dead), clean it up and retry.
+    if [ -f "$LOCK/pid" ] && ! kill -0 "$(cat "$LOCK/pid" 2>/dev/null)" 2>/dev/null; then
+      rm -rf "$LOCK"
+      mkdir "$LOCK"
+    else
+      fail "another deploy is running ($LOCK held by PID $(cat "$LOCK/pid" 2>/dev/null || echo unknown)) — refusing to race"
+      exit 1
+    fi
   fi
+  echo $$ > "$LOCK/pid"
+  trap 'rm -rf "$LOCK"' EXIT INT TERM
 fi
 
 # ---------------------------------------------------------------------------
