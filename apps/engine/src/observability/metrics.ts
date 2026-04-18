@@ -312,6 +312,9 @@ export const METRIC_NAMES = {
   HTTP_REQUEST_DURATION_MS: "http_request_duration_ms",
   RBAC_CHECKS_TOTAL: "rbac_checks_total",
   AUDIT_ROWS_WRITTEN_TOTAL: "audit_rows_written_total",
+  CONVERSATION_TOOL_CALLS_TOTAL: "conversation_tool_calls_total",
+  CONVERSATION_TOOL_DURATION_MS: "conversation_tool_duration_ms",
+  CONVERSATION_CONFIRMATIONS_TOTAL: "conversation_confirmations_total",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -403,6 +406,22 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.AUDIT_ROWS_WRITTEN_TOTAL,
     help: "Audit log rows successfully persisted, partitioned by action and result.",
     labels: ["action", "result"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.CONVERSATION_TOOL_CALLS_TOTAL,
+    help: "Conversation tool invocations, partitioned by category + outcome.",
+    labels: ["category", "tool", "outcome"],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.CONVERSATION_TOOL_DURATION_MS,
+    help: "Conversation tool execution latency in milliseconds.",
+    labels: ["category", "tool"],
+    buckets: HISTOGRAM_DURATION_BUCKETS_MS,
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.CONVERSATION_CONFIRMATIONS_TOTAL,
+    help: "Confirmation state transitions, partitioned by to_state.",
+    labels: ["to_state", "tool"],
   });
 
   return reg;

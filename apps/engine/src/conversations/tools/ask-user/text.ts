@@ -19,6 +19,7 @@ export const askUserTextTool: ConversationTool = {
   description:
     "Ask the user to type a free-form answer. The client renders a text input (multiline optional); the submitted string resumes the loop.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     return pauseForUserInput(ctx, {

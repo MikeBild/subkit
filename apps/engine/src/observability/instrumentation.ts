@@ -154,3 +154,34 @@ export function recordPatchCandidate(args: { classification: string; decision: s
     });
   });
 }
+
+export function recordConversationToolCall(args: {
+  category: "draft_write" | "tenant_read" | "tenant_write";
+  tool: string;
+  outcome: "ok" | "error" | "denied";
+  duration_ms: number;
+}): void {
+  safe(() => {
+    const reg = getMetrics();
+    reg.inc(METRIC_NAMES.CONVERSATION_TOOL_CALLS_TOTAL, {
+      category: args.category,
+      tool: args.tool,
+      outcome: args.outcome,
+    });
+    if (Number.isFinite(args.duration_ms)) {
+      reg.observe(METRIC_NAMES.CONVERSATION_TOOL_DURATION_MS, args.duration_ms, {
+        category: args.category,
+        tool: args.tool,
+      });
+    }
+  });
+}
+
+export function recordConfirmationTransition(args: { to_state: string; tool: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.CONVERSATION_CONFIRMATIONS_TOTAL, {
+      to_state: args.to_state,
+      tool: args.tool,
+    });
+  });
+}

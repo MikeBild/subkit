@@ -1,13 +1,11 @@
 // `extract` flow — unstructured sample → canonical schema + data.
+// Thin wrapper around `core/invoke.ts`.
 
 import { z } from "zod";
 import type { Db } from "../../db/client.ts";
-import { assembleEnhancedPrompt } from "../context.ts";
-import { callWithFallback, resolveModelRoute } from "../provider.ts";
+import { invoke } from "../core/invoke.ts";
 import type { EnhancedPrompt } from "../types.ts";
 
-// Extract envelope — only the outer shape is validated; the inner
-// `schema` is whatever the model discovered from the sample.
 const ExtractEnvelopeSchema = z.object({
   schema: z.unknown(),
   data: z.unknown(),
@@ -31,29 +29,23 @@ export interface ExtractResult {
 }
 
 export async function runExtractFlow(p: ExtractParams, exec?: Db): Promise<ExtractResult> {
-  const route = await resolveModelRoute(p.tenant_id, exec);
   const userContent = p.hint ? `Hint: ${p.hint}\n\nSample:\n${p.sample}` : `Sample:\n${p.sample}`;
-  const prompt = await assembleEnhancedPrompt(
+  const r = await invoke<ExtractEnvelope>(
     {
-      tenant_id: p.tenant_id,
       flow: "extract",
+      tenant_id: p.tenant_id,
       user_turns: [{ role: "user", content: userContent }],
-      max_tokens: route.context_cap,
-      model: route.primary,
+      schema: ExtractEnvelopeSchema,
     },
     exec,
   );
-  const { result, model_used, fell_back } = await callWithFallback<ExtractEnvelope>(
-    { flow: "extract", route, prompt, schema: ExtractEnvelopeSchema },
-    exec,
-  );
-  const obj = result.object ?? { schema: null, data: null };
+  const obj = r.object ?? { schema: null, data: null };
   return {
     schema: obj.schema ?? null,
     data: obj.data ?? null,
-    raw_text: result.text,
-    tokens: prompt.token_counts,
-    model_used,
-    fell_back,
+    raw_text: r.text,
+    tokens: r.assembled.prompt.token_counts,
+    model_used: r.model_used,
+    fell_back: r.fell_back,
   };
 }

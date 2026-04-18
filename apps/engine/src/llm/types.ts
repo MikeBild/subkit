@@ -81,6 +81,14 @@ export interface AssembleContextParams {
    * Skills but after docs / history on overflow.
    */
   user_memory?: string;
+  /**
+   * Skill ids (or titles) the caller has explicitly loaded for this
+   * conversation via `load_skill`. Their full body is injected into
+   * the stable cache block on every turn — in addition to the
+   * scope-based `retrieveApplicableSkills` result — so on-demand
+   * domain knowledge actually reaches the model.
+   */
+  loaded_skill_slugs?: string[];
 }
 
 /** Result of Context Enhancement — ready for an SDK call. */

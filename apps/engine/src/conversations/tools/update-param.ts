@@ -17,6 +17,7 @@ export const updateParamTool: ConversationTool = {
   name: "update_param",
   description: "Replace a single field on an existing step in the draft.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const draft = structuredClone(ctx.getDraft()) as DraftDocument;

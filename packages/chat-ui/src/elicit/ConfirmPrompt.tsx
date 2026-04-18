@@ -1,18 +1,27 @@
 // askUser.confirm prompt — unified replacement for the legacy
 // `ApprovalPrompt` / `ApprovalRouter` pair. Digit keybinds (1
 // Approve / 3 Reject), arrow+Enter fallback, Tab reveals a
-// textarea for a `decision_reason`. The `kind` input picks the
-// sub-body (commit-draft diff, external-write target, generic).
+// reason text area for a `decision_reason`. The `kind` input picks
+// the sub-body (commit-draft diff, external-write target, generic).
 //
 // `destructive: true` flips the default selection to Reject and
 // colors the title red.
+//
+// All input flows through a single `useInput` owned by this
+// component. When the reason panel is open, printable chars /
+// Backspace route into `reason`; Tab closes the panel; Enter commits
+// the reason and closes the panel (it does NOT submit the form — the
+// user must then press 1, 3, or arrow+Enter to decide). This matches
+// the claude-code single-owner pattern and avoids the bug where the
+// embedded `@inkjs/ui` TextInput would swallow Tab and treat Enter as
+// "submit the whole form".
 
-import { TextInput } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
 import { StructuredDiff } from "../diff/StructuredDiff.tsx";
 import { useTheme } from "../theme/Provider.tsx";
+import { ControlledTextField } from "./ControlledTextField.tsx";
 
 export type ConfirmKind = "commit_draft" | "external_write" | "generic";
 
@@ -27,6 +36,13 @@ export interface ConfirmPromptProps {
   defaultChoice?: "approve" | "reject" | undefined;
   onResponse: (value: { confirmed: boolean; decision_reason?: string }) => void;
   inputDisabled?: boolean | undefined;
+}
+
+function isPrintable(input: string, key: { ctrl: boolean; meta: boolean }): boolean {
+  if (key.ctrl || key.meta) return false;
+  if (input.length !== 1) return false;
+  const code = input.charCodeAt(0);
+  return code >= 0x20 && code !== 0x7f;
 }
 
 export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
@@ -56,14 +72,30 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
   useInput(
     (input, key) => {
       if (reasonOpen) {
-        if (key.escape) setReasonOpen(false);
+        if (key.escape || key.tab) {
+          setReasonOpen(false);
+          return;
+        }
+        if (key.return) {
+          // Commit the typed reason and close the panel — do NOT submit.
+          setReasonOpen(false);
+          return;
+        }
+        if (key.backspace || key.delete) {
+          setReason((r) => r.slice(0, -1));
+          return;
+        }
+        if (isPrintable(input, key)) {
+          setReason((r) => r + input);
+        }
         return;
       }
+
       if (input === "1") submit(true);
       else if (input === "3") submit(false);
       else if (key.leftArrow) setFocused(0);
       else if (key.rightArrow) setFocused(1);
-      else if (key.tab) setReasonOpen((v) => !v);
+      else if (key.tab) setReasonOpen(true);
       else if (key.return) submit(focused === 0);
     },
     { isActive: !inputDisabled },
@@ -104,17 +136,14 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
       {reasonOpen && !inputDisabled ? (
         <Box marginTop={1} flexDirection="column">
           <Text color={theme.severity.dim}>reason (optional):</Text>
-          <TextInput
-            placeholder="why?"
-            onChange={(v) => setReason(v)}
-            onSubmit={(v) => {
-              setReason(v);
-              setReasonOpen(false);
-            }}
-          />
+          <ControlledTextField value={reason} focused={true} placeholder="why?" />
+          <Text color={theme.severity.dim}>Enter to keep · Tab/Esc to close</Text>
         </Box>
       ) : (
-        <Text color={theme.severity.dim}>Tab for reason · Enter to submit</Text>
+        <Text color={theme.severity.dim}>
+          Tab for reason · Enter to submit
+          {reason.trim() ? ` (reason: "${reason.trim()}")` : ""}
+        </Text>
       )}
     </Box>
   );

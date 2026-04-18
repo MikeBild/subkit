@@ -125,13 +125,19 @@ export async function createConversation(
     );
   }
 
-  // Seed the mock provider plan for the list-users canned flow when
-  // the initial message matches. In production this is a no-op
-  // because `LLM_PROVIDER` isn't `mock` and the canned plan map stays
-  // empty. Tests flip the provider to `mock` in setup.
-  if (p.initial_message && /list.*users/i.test(p.initial_message)) {
-    const { cannedListUsersPlan } = await import("../llm/mock-provider.ts");
-    getMockProvider().setConversePlan(row.id, cannedListUsersPlan(p.connector_id ?? undefined));
+  // Seed the mock provider plan for known canned flows when the initial
+  // message matches. In production this is a no-op because `LLM_PROVIDER`
+  // isn't `mock` and the canned plan map stays empty. Tests flip the
+  // provider to `mock` in setup.
+  if (p.initial_message) {
+    const msg = p.initial_message;
+    if (/open.?meteo|berlin.*weather|tomorrow.*forecast/i.test(msg)) {
+      const { cannedOpenMeteoBerlinPlan } = await import("../llm/mock-provider.ts");
+      getMockProvider().setConversePlan(row.id, cannedOpenMeteoBerlinPlan());
+    } else if (/list.*users/i.test(msg)) {
+      const { cannedListUsersPlan } = await import("../llm/mock-provider.ts");
+      getMockProvider().setConversePlan(row.id, cannedListUsersPlan(p.connector_id ?? undefined));
+    }
   }
 
   const result = p.initial_message
@@ -161,6 +167,10 @@ export interface AppendMessageParams {
   message: string;
   /** Optional user-supplied memory payload to attach to this turn. */
   memory?: string | null;
+  /** Surface for per-variant prompts — threaded to runLoop. */
+  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web";
+  /** Live-event emitter — enables SSE streaming. */
+  onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
 }
 
 export async function appendUserMessage(
@@ -224,6 +234,8 @@ export async function appendUserMessage(
     user_message: p.message,
     user_memory: effectiveMemory,
     model_override: conv.conversation.model,
+    ...(p.surface ? { surface: p.surface } : {}),
+    ...(p.onEvent ? { onEvent: p.onEvent } : {}),
   });
   const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!updated) throw new Error("conversation disappeared");

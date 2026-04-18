@@ -44,6 +44,13 @@ export const conversations = pgTable(
     model: text("model"),
     title: text("title"),
     memory: text("memory"),
+    // Skills the conversation has loaded on-demand via `load_skill`.
+    // Persisted so resuming a session keeps the same skill palette in
+    // the LLM context.
+    loaded_skills: jsonb("loaded_skills").$type<string[]>().default([]).notNull(),
+    // Per-tool execution policy overrides (tool name → mode).
+    // { run_workflow: "confirm_before_execution", list_workflows: "no_confirm" }
+    tool_policies: jsonb("tool_policies").$type<Record<string, string>>().default({}).notNull(),
     ...timestamps,
   },
   (t) => [
@@ -83,6 +90,18 @@ export const conversationToolCalls = pgTable(
     approval_required: boolean("approval_required").default(false).notNull(),
     approved_at: timestamp("approved_at", { withTimezone: true }),
     approved_by_user_id: uuid("approved_by_user_id"),
+    // Multi-state confirmation machine (replaces simple approval_required):
+    //   proposed | tested | confirmed | declined | partial | oauth_success
+    //   | oauth_failure | auto_declined
+    confirmation_state: text("confirmation_state"),
+    confirmation_data: jsonb("confirmation_data"),
+    // Append-only UI-action log per tool call.
+    // [{ type: "user_tested" | "user_confirmed" | "user_partial" | "user_declined"
+    //    | "auto_declined" | "retry", ts, meta? }]
+    interaction_log: jsonb("interaction_log")
+      .$type<Array<{ type: string; ts: string; meta?: Record<string, unknown> }>>()
+      .default([])
+      .notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index("conversation_tool_calls_conv_created_idx").on(t.conversation_id, t.created_at)],

@@ -26,6 +26,7 @@ export const askUserMultiTool: ConversationTool = {
   description:
     "Ask the user to pick any subset of options from a list. The client renders a multi-select prompt; the user's chosen values resume the loop.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     return pauseForUserInput(ctx, {

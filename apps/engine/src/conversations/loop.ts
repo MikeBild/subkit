@@ -14,13 +14,14 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
 import { checkAndDecrement, checkBudget, monthlyUsage, recordUsage } from "../llm/budgets.ts";
-import { assembleEnhancedPrompt } from "../llm/context.ts";
+import { assembleEnhancedPrompt } from "../llm/core/context-assembler.ts";
+import { resolveModelRoute, resolveLanguageModel as resolveSdkModel } from "../llm/core/invoke.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
 import { createMockLanguageModel } from "../llm/mock-stream.ts";
-import { modelRegistry, resolveModelRoute } from "../llm/provider.ts";
 import { log, logger } from "../logging/logger.ts";
 import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instrumentation.ts";
 import { loadDraft } from "./draft.ts";
+import { EventSink } from "./event-sink.ts";
 import { appendMessage, buildModelMessages } from "./persist.ts";
 import type { ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
@@ -39,6 +40,20 @@ export interface RunLoopParams {
   user_memory?: string | null;
   /** Optional per-turn model override resolved from conversations.model. */
   model_override?: string | null;
+  /**
+   * Surface the conversation is running on. Selects the per-surface
+   * system-prompt variant (terse for sk_headless, conversational for
+   * sk_interactive, machine-readable for mcp, etc).
+   */
+  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web";
+  /**
+   * Live emitter — invoked synchronously every time the loop pushes a
+   * TurnEvent. Used by the HTTP SSE route and MCP progress bridge to
+   * stream frames as they occur rather than waiting for the loop to
+   * complete. The same events are also buffered in the return value
+   * for replay / persistence.
+   */
+  onEvent?: (ev: TurnEvent) => void;
 }
 
 export interface RunLoopResult {
@@ -56,10 +71,10 @@ const DEFAULT_BUDGET = 20;
  * plan-cursor singleton; real providers go through the provider
  * registry (A1) so the `anthropic:` prefix is stripped natively.
  */
-function resolveLanguageModel(provider: string, modelId: string) {
+async function resolveLanguageModel(provider: string, modelId: string) {
   if (provider === "mock") return createMockLanguageModel(modelId);
-  const bare = modelId.startsWith("anthropic:") ? modelId.slice("anthropic:".length) : modelId;
-  return modelRegistry.languageModel(`anthropic:${bare}`);
+  // biome-ignore lint/suspicious/noExplicitAny: LlmProviderKind is broader
+  return await resolveSdkModel(provider as any, modelId);
 }
 
 /**
@@ -159,7 +174,13 @@ function readStepUsage(step: {
 }
 
 export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
-  const events: TurnEvent[] = [];
+  // Live event streaming: callers that want real-time frames pass
+  // `onEvent`. Buffered replay stays available via `result.events`.
+  const sink = new EventSink(p.onEvent);
+  // Proxy-backed view over the EventSink — existing `events.push(ev)`
+  // call-sites continue to work, but every push is also emitted live
+  // via `p.onEvent` when supplied.
+  const events: TurnEvent[] = sink.asArrayProxy();
   const budget = p.step_budget ?? DEFAULT_BUDGET;
 
   log.debug({
@@ -184,6 +205,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // Draft state for the turn — tools mutate via ctx.setDraft, which
   // snapshots to conversation_drafts for audit/undo.
   let draft: DraftDocument = await loadDraft(p.tenant_id, p.conversation_id, p.db);
+  const { EngineClient } = await import("../engine-client/index.ts");
   const ctx: ToolContext = {
     db: p.db,
     tenant_id: p.tenant_id,
@@ -191,6 +213,19 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     actor_id: p.actor_id,
     connector_id: p.connector_id,
     workflow_id: p.workflow_id,
+    engineClient: new EngineClient({
+      tenant_id: p.tenant_id,
+      actor_id: p.actor_id,
+      // The loop is driven by HTTP/MCP requests whose principal may be a
+      // human user (session) or a system_account (API key). We don't
+      // plumb the principal kind through RunLoopParams yet — default to
+      // `user` when actor_id is set (chat sessions), `system` otherwise.
+      // API-key driven conversations get the correct "system_account"
+      // actor_type once the principal is threaded through, tracked as a
+      // follow-up.
+      actor_type: p.actor_id ? "user" : "system",
+      db: p.db,
+    }),
     getDraft: () => draft,
     setDraft: async (next) => {
       draft = next;
@@ -206,6 +241,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // the assembled prompt. Matches the envelope `callWithFallback`
   // used before A5.
   const currentUserText = p.user_message ?? "continue";
+  // Thread loaded skills from the conversation row into the prompt so
+  // on-demand knowledge from `load_skill(slug)` actually reaches the
+  // model. Also thread `surface` so per-surface prompt variants fire.
+  const loadedSkillsRowForPrompt = await p.db
+    .select({ loaded_skills: conversations.loaded_skills })
+    .from(conversations)
+    .where(eq(conversations.id, p.conversation_id))
+    .limit(1);
+  const loadedSkillSlugs = (loadedSkillsRowForPrompt[0]?.loaded_skills ?? []) as string[];
   const prompt = await assembleEnhancedPrompt(
     {
       tenant_id: p.tenant_id,
@@ -216,6 +260,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       max_tokens: route.context_cap,
       model: effectiveModel,
       ...(p.user_memory ? { user_memory: p.user_memory } : {}),
+      ...(loadedSkillSlugs.length > 0 ? { loaded_skill_slugs: loadedSkillSlugs } : {}),
+      ...(p.surface ? { surface: p.surface } : {}),
     },
     p.db,
   );
@@ -256,8 +302,26 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     conversation_id: p.conversation_id,
   });
 
+  // Load the conversation's `loaded_skills` + `tool_policies` so
+  // skill-gated tools are filtered out until the matching
+  // `load_skill(slug)` is called and policy-gated tools see the
+  // right pre-execution mode.
+  const skillAndPolicyRow = await p.db
+    .select({
+      loaded_skills: conversations.loaded_skills,
+      tool_policies: conversations.tool_policies,
+    })
+    .from(conversations)
+    .where(eq(conversations.id, p.conversation_id))
+    .limit(1);
+  const loadedSkills = (skillAndPolicyRow[0]?.loaded_skills ?? []) as string[];
+  const loopToolPolicies = (skillAndPolicyRow[0]?.tool_policies ?? {}) as Record<
+    string,
+    "no_confirm" | "confirm_before_execution" | "confirm_after_execution"
+  >;
+
   const signals: TurnSignals = { step: 0, toolChain: Promise.resolve() };
-  const tools = wrapTools(ctx, signals, events, p.db);
+  const tools = wrapTools(ctx, signals, events, p.db, loadedSkills, loopToolPolicies);
 
   /**
    * Run `streamText` once against `modelId`. Wired-in side-effects
@@ -281,8 +345,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     // here and re-throw it on drain failure. See
     // apps/engine/src/llm/errors.ts for our classification taxonomy.
     let capturedError: unknown;
+    const resolvedModel = await resolveLanguageModel(route.provider, modelId);
     const result = streamText({
-      model: resolveLanguageModel(route.provider, modelId),
+      model: resolvedModel,
       system: prompt.system,
       messages: attemptMessages,
       tools,
@@ -347,6 +412,18 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       },
     });
     try {
+      // Drain the text stream so we can emit `text_delta` events as
+      // assistant tokens arrive. The onStepFinish callback still runs
+      // after the stream completes and appends the full assistant
+      // message — text_delta is for live rendering, `message` is the
+      // persisted record.
+      try {
+        for await (const chunk of result.textStream) {
+          if (chunk.length > 0) events.push({ type: "text_delta", text: chunk });
+        }
+      } catch {
+        // Drain errors surface via onError/capturedError below; ignore here.
+      }
       await result.finishReason;
     } catch (err) {
       // Prefer the original provider-level error captured via onError

@@ -122,6 +122,13 @@ export const patchCandidates = pgTable(
     classification: patchClassificationEnum("classification").notNull(),
     fixture_id: uuid("fixture_id"),
     status: patchStatusEnum("status").notNull(),
+    // Outcome window: set when the patch is applied; a background job
+    // counts the next N executions on this workflow and fills in the
+    // outcome_{successes,failures}_after numbers so operators can see
+    // whether the patch actually prevented recurrence.
+    outcome_window_ended_at: timestamp("outcome_window_ended_at", { withTimezone: true }),
+    outcome_successes_after: integer("outcome_successes_after").default(0).notNull(),
+    outcome_failures_after: integer("outcome_failures_after").default(0).notNull(),
     ...timestamps,
   },
   (t) => [

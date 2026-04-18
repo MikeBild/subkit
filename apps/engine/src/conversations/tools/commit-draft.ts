@@ -16,6 +16,7 @@ export const commitDraftTool: ConversationTool = {
   name: "commit_draft",
   description: "Persist the draft as a real workflow. Requires a prior approval.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, _args): Promise<ToolResult> {
     // Must have at least one resolved `ask_user_confirm` elicitation
     // whose input.kind is "commit_draft" and output.confirmed is true.

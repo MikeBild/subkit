@@ -1,0 +1,16 @@
+{
+  "name": "provider-error-classifier",
+  "description": "Provider-error classifier maps status codes and message fragments to the right fallback kind.",
+  "flow": "converse",
+  "input": {
+    "cases": [
+      { "err": { "statusCode": 429 }, "expect": "rate_limit" },
+      { "err": { "statusCode": 503 }, "expect": "network_5xx" },
+      { "err": { "statusCode": 529 }, "expect": "overloaded" },
+      { "err": { "message": "rate limit exceeded" }, "expect": "rate_limit" },
+      { "err": { "message": "ETIMEDOUT while reading" }, "expect": "timeout" },
+      { "err": { "message": "context_length exceeded" }, "expect": "context_length_exceeded" },
+      { "err": { "message": "nothing retryable here" }, "expect": "other" }
+    ]
+  }
+}

@@ -20,6 +20,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
 import {
   type CallStep,
   type StepDef,
@@ -262,6 +263,18 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   void previewOf; // re-export safety
 
   await finalizeExecution(db, tenant_id, execution_id, finalStatus, offload.storage_uri);
+  // Closed-loop patch-candidate outcome tracking: every finalised
+  // execution updates any open outcome window for this workflow so
+  // operators can see whether a recently-applied patch actually
+  // prevented recurrence. Best-effort — tracker swallows errors.
+  await recordExecutionOutcome(
+    {
+      tenant_id,
+      workflow_id,
+      outcome: finalStatus === "succeeded" ? "success" : "failure",
+    },
+    db,
+  );
   await auditAwait(
     {
       tenant_id,

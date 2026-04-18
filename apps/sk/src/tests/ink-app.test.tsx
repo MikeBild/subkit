@@ -12,6 +12,9 @@
 // per test via a tiny `framesOf(...)` helper.
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { PendingElicitation, TurnEvent } from "@cli-core/index.ts";
 import { cleanup, render } from "ink-testing-library";
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
@@ -41,6 +44,15 @@ const PERSONAS = {
   } as PersonaProbe,
 };
 
+// Tmpdir cache — each renderApp call gets a fresh history file so
+// tests don't bleed across runs or touch the real ~/.sk.
+const histDirs: string[] = [];
+function tmpHistory(): string {
+  const d = mkdtempSync(join(tmpdir(), "sk-ink-hist-"));
+  histDirs.push(d);
+  return join(d, "history.jsonl");
+}
+
 function defaultProps(overrides: Partial<InkAppProps> = {}): InkAppProps {
   return {
     persona: {
@@ -57,6 +69,7 @@ function defaultProps(overrides: Partial<InkAppProps> = {}): InkAppProps {
     initialConversationId: null,
     model: "claude-sonnet-4-6",
     cwd: "/tmp/ws",
+    historyPath: tmpHistory(),
     onPrompt: async () => ({
       events: framesOf({ type: "completed", status: "active" }),
       conversationId: "c0-00000000-0000-0000-0000-000000000000",
@@ -101,6 +114,16 @@ function renderApp(overrides: Partial<InkAppProps> = {}) {
 
 afterEach(() => {
   cleanup();
+  while (histDirs.length > 0) {
+    const d = histDirs.pop();
+    if (d) {
+      try {
+        rmSync(d, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
+    }
+  }
 });
 
 // ---------- Journey 1 — Admin mount + banner ----------
@@ -119,8 +142,9 @@ describe("ink-app: journey 01 — admin mounts the REPL", () => {
     expect(frame).toContain("admin");
     expect(frame).toContain("tenant-alpha");
     expect(frame).toContain("http://localhost:8080");
-    // Composer prefix — `▎⟫` when idle, `⣾ ⟫` when busy. Match either.
-    expect(frame).toMatch(/▎⟫|⣾ ⟫/);
+    // Composer prefix — `❯` when idle, a SPINNER_FRAMES glyph (e.g. `⣾`)
+    // when busy. Match either.
+    expect(frame).toMatch(/❯|⣾|⣽|⣻|⢿|⡿|⣟|⣯|⣷/);
     instance.unmount();
   });
 
@@ -151,7 +175,7 @@ describe("ink-app: journey 01 — admin mounts the REPL", () => {
     // make this flaky.
     expect(frame).toMatch(/◦|💡/);
     expect(frame).toMatch(
-      /Ctrl-T|@path\/to\/file|SUBKIT\.md|sk -p|statusLine|\/compact|\/approve|\/reject/,
+      /Ctrl-T|@path\/to\/file|SUBKIT\.md|sk -p|statusLine|\/compact|\/approve|\/reject|Shift-Tab|\/resume|@workflow/,
     );
     instance.unmount();
   });
@@ -265,8 +289,9 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     await pressEnter(instance);
     await tick(80);
     const frame = instance.lastFrame() ?? "";
-    // Composer prefix — `▎⟫` when idle, `⣾ ⟫` when busy. Match either.
-    expect(frame).toMatch(/▎⟫|⣾ ⟫/);
+    // Composer prefix — `❯` when idle, a SPINNER_FRAMES glyph (e.g. `⣾`)
+    // when busy. Match either.
+    expect(frame).toMatch(/❯|⣾|⣽|⣻|⢿|⡿|⣟|⣯|⣷/);
     // No thinking verb lingering on screen.
     expect(frame).not.toMatch(/thinking…|planning…|drafting…/);
     instance.unmount();
@@ -557,8 +582,11 @@ describe("ink-app: journey 08 — portal-token persona", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("/clear");
     expect(frame).toContain("/compact");
-    expect(frame).not.toContain("/resume");
-    expect(frame).not.toContain("/audit");
+    // Assert on the command-definition line format (`/cmd — help`) so
+    // the rotating tip mentioning `/resume` / `/audit` doesn't produce
+    // a false positive.
+    expect(frame).not.toMatch(/\/resume\s+—/);
+    expect(frame).not.toMatch(/\/audit\s+—/);
     instance.unmount();
   });
 
@@ -823,8 +851,8 @@ describe("ink-app: journey 12 — modal panes", () => {
 
 // ---------- Journey 13 — Ctrl-R history search ----------
 
-describe("ink-app: journey 13 — Ctrl-R history search", () => {
-  test("AC1: Ctrl-R opens the history pane populated from prior prompts", async () => {
+describe("ink-app: journey 13 — Ctrl-R inline history search", () => {
+  test("AC1: Ctrl-R opens the inline reverse-i-search above the composer", async () => {
     const instance = renderApp({
       onPrompt: async () => ({
         events: framesOf({ type: "completed", status: "active" }),
@@ -832,8 +860,7 @@ describe("ink-app: journey 13 — Ctrl-R history search", () => {
       }),
     });
     await tick();
-    // Seed the prompt-ring with two real submissions so the pane has
-    // something to show.
+    // Seed two prompts so the search has real entries to show.
     await type(instance, "first prompt");
     await pressEnter(instance);
     await tick(40);
@@ -841,18 +868,17 @@ describe("ink-app: journey 13 — Ctrl-R history search", () => {
     await pressEnter(instance);
     await tick(40);
 
-    // Ctrl-R (0x12) opens the history pane.
+    // Ctrl-R (0x12) opens the inline search widget.
     instance.stdin.write("\x12");
     await tick(40);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("history");
-    expect(frame).toContain("2 / 2");
+    expect(frame).toContain("reverse-i-search");
+    expect(frame).toMatch(/1 \/ 2/); // cursor / total
     expect(frame).toContain("second prompt");
-    expect(frame).toContain("first prompt");
     instance.unmount();
   });
 
-  test("AC2: Enter in the history pane restores the highlighted prompt into the composer", async () => {
+  test("AC2: Enter in the inline search restores the highlighted prompt", async () => {
     const instance = renderApp({
       onPrompt: async () => ({
         events: framesOf({ type: "completed", status: "active" }),
@@ -869,13 +895,12 @@ describe("ink-app: journey 13 — Ctrl-R history search", () => {
 
     instance.stdin.write("\x12");
     await tick(40);
-    // First-row is the newest ("hubspot workflow"); Enter picks it.
+    // The newest prompt is highlighted first; Enter commits it.
     instance.stdin.write("\r");
     await tick(60);
     const frame = instance.lastFrame() ?? "";
-    // The pane is gone (no `╭`-bordered box on screen), and the
-    // composer line holds the restored prompt.
-    expect(frame).not.toMatch(/╭.{20,}╮[\s\S]*history/);
+    expect(frame).not.toContain("reverse-i-search");
+    // Composer line holds the restored prompt.
     expect(frame).toContain("hubspot workflow");
     instance.unmount();
   });

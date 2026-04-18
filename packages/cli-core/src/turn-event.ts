@@ -16,6 +16,15 @@ export type TurnEvent =
       content: unknown;
       id?: string;
     }
+  | { type: "text_delta"; text: string }
+  | {
+      type: "tool_log";
+      call_id: string;
+      tool: string;
+      level: "debug" | "info" | "warn" | "error";
+      message: string;
+      ts: string;
+    }
   | {
       type: "tool_call_start";
       call_id: string;
@@ -85,6 +94,14 @@ export interface MessageState {
   content: string;
 }
 
+export interface ToolLogEntry {
+  call_id: string;
+  tool: string;
+  level: "debug" | "info" | "warn" | "error";
+  message: string;
+  ts: string;
+}
+
 export interface SkSessionState {
   messages: MessageState[];
   toolCalls: ToolCallState[];
@@ -95,6 +112,10 @@ export interface SkSessionState {
   committedWorkflowId: string | null;
   validationErrors: Array<{ path: string; message: string }>;
   usage: TurnUsage | null;
+  /** Live streaming buffer — assistant text being built token-by-token. */
+  streamingAssistantText: string;
+  /** Live per-tool-call log entries (cleared when the tool result arrives). */
+  toolLogs: ToolLogEntry[];
 }
 
 export function initialSessionState(conversationId: string | null): SkSessionState {
@@ -108,6 +129,8 @@ export function initialSessionState(conversationId: string | null): SkSessionSta
     committedWorkflowId: null,
     validationErrors: [],
     usage: null,
+    streamingAssistantText: "",
+    toolLogs: [],
   };
 }
 
@@ -132,9 +155,33 @@ function stringifyContent(content: unknown): string {
 export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionState {
   switch (ev.type) {
     case "message": {
+      // The persisted message text supersedes any partial streaming
+      // buffer — clear it so Ink stops double-rendering.
       return {
         ...state,
         messages: [...state.messages, { role: ev.role, content: stringifyContent(ev.content) }],
+        streamingAssistantText: ev.role === "assistant" ? "" : state.streamingAssistantText,
+      };
+    }
+    case "text_delta": {
+      return {
+        ...state,
+        streamingAssistantText: state.streamingAssistantText + ev.text,
+      };
+    }
+    case "tool_log": {
+      return {
+        ...state,
+        toolLogs: [
+          ...state.toolLogs,
+          {
+            call_id: ev.call_id,
+            tool: ev.tool,
+            level: ev.level,
+            message: ev.message,
+            ts: ev.ts,
+          },
+        ],
       };
     }
     case "tool_result": {

@@ -20,6 +20,7 @@ export const proposeStepTool: ConversationTool = {
   description:
     "Add a step to the draft workflow. Returns validation errors when the step is malformed.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const draft = structuredClone(ctx.getDraft()) as DraftDocument;

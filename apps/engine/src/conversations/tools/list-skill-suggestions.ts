@@ -13,6 +13,7 @@ export const listSkillSuggestionsTool: ConversationTool = {
     "List pending skill improvement suggestions relevant to the current conversation context. " +
     "Returns proposed Skill Candidates that the operator can approve or dismiss.",
   inputSchema,
+  category: "tenant_read" as const,
   async execute(ctx, _rawArgs): Promise<ToolResult> {
     const candidates = await listSkillCandidates(
       {

@@ -124,3 +124,49 @@ describe("applyTurnEvent — data parts + status", () => {
     expect((s1.pendingElicitation?.input as { question: string }).question).toBe("Pick one");
   });
 });
+
+describe("applyTurnEvent — streaming frames", () => {
+  test("text_delta accumulates into streamingAssistantText", () => {
+    let s = initialSessionState("conv-stream");
+    s = applyTurnEvent(s, { type: "text_delta", text: "Hello" });
+    s = applyTurnEvent(s, { type: "text_delta", text: ", " });
+    s = applyTurnEvent(s, { type: "text_delta", text: "world" });
+    expect(s.streamingAssistantText).toBe("Hello, world");
+  });
+
+  test("message event clears streamingAssistantText for assistant role", () => {
+    let s = initialSessionState("conv-stream2");
+    s = applyTurnEvent(s, { type: "text_delta", text: "partial" });
+    expect(s.streamingAssistantText).toBe("partial");
+    s = applyTurnEvent(s, {
+      type: "message",
+      role: "assistant",
+      content: { text: "partial finalised" },
+    });
+    expect(s.streamingAssistantText).toBe("");
+    expect(s.messages[s.messages.length - 1]?.content).toBe("partial finalised");
+  });
+
+  test("tool_log appends per-call entries to toolLogs", () => {
+    let s = initialSessionState("conv-logs");
+    s = applyTurnEvent(s, {
+      type: "tool_log",
+      call_id: "c1",
+      tool: "run_workflow",
+      level: "info",
+      message: "step 1/3",
+      ts: "2026-04-18T00:00:00.000Z",
+    });
+    s = applyTurnEvent(s, {
+      type: "tool_log",
+      call_id: "c1",
+      tool: "run_workflow",
+      level: "info",
+      message: "step 2/3",
+      ts: "2026-04-18T00:00:01.000Z",
+    });
+    expect(s.toolLogs).toHaveLength(2);
+    expect(s.toolLogs[0]?.message).toBe("step 1/3");
+    expect(s.toolLogs[1]?.message).toBe("step 2/3");
+  });
+});
