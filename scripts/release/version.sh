@@ -16,11 +16,12 @@
 set -euo pipefail
 
 # Resolve repo root from this file's location so calls work regardless
-# of the operator's cwd.
-_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-REPO_ROOT=$(cd "$_SCRIPT_DIR/../.." && pwd)
-MANIFEST="$REPO_ROOT/.release-please-manifest.json"
-PKG="$REPO_ROOT/package.json"
+# of the operator's cwd. Prefixed names so sourcing this into another
+# script (deploy.sh) doesn't clobber the caller's own `_SCRIPT_DIR`.
+_VERSION_SH_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+_VERSION_SH_REPO=$(cd "$_VERSION_SH_DIR/../.." && pwd)
+MANIFEST="$_VERSION_SH_REPO/.release-please-manifest.json"
+PKG="$_VERSION_SH_REPO/package.json"
 
 current_version() {
   # `.` is the release-please package name for this repo.
