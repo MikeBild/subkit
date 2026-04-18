@@ -24,8 +24,21 @@ MANIFEST="$_VERSION_SH_REPO/.release-please-manifest.json"
 PKG="$_VERSION_SH_REPO/package.json"
 
 current_version() {
-  # `.` is the release-please package name for this repo.
-  node -e "process.stdout.write(require('$MANIFEST')['.'])"
+  # Return max(manifest, package.json). release-please treats
+  # `.release-please-manifest.json[.]` as authoritative, but the
+  # laptop path has historically bumped `package.json` directly when
+  # iterating on hotfixes — take the higher so we never downgrade on
+  # the first `bun run release` after a hand-bump.
+  node -e "
+    const m = require('$MANIFEST')['.'];
+    const p = require('$PKG').version;
+    const cmp = (a, b) => {
+      const [A, B] = [a.split('.').map(Number), b.split('.').map(Number)];
+      for (let i = 0; i < 3; i++) if (A[i] !== B[i]) return A[i] - B[i];
+      return 0;
+    };
+    process.stdout.write(cmp(m, p) >= 0 ? m : p);
+  "
 }
 
 tag_name() {
