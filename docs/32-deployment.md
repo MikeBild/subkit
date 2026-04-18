@@ -337,3 +337,61 @@ bun build apps/agent/src/index.ts --compile --target=bun-windows-x64 \
 
 - The CLI surfaces it as `subkit tunnel-agent run`, but the underlying binary is shippable on its own for customers who do not want the full CLI on the agent host.
 - Trade-off: shipping a separate agent binary adds release surface; the gain is that the agent has a tiny attack profile and zero engine dependencies.
+
+## Releasing
+
+Two paths ship the same bits; both scp **`scripts/release/deploy-body.sh`** onto the droplet and pipe it into `bash -s`. One file, one behavior — local and CI cannot drift.
+
+### Laptop path
+
+```sh
+bun run release          # patch bump (default), full pipeline
+bun run release:minor    # 1.6.x → 1.7.0
+bun run release:major    # 1.x.x → 2.0.0
+bun run release:dry      # print each step, no side effects
+bun run release:build    # just build + push engine/migrate images
+bun run release:verify   # health poll + smoke + engine log scan
+```
+
+The orchestrator (`scripts/deploy.sh`) runs seven stages, abort-on-fail:
+
+1. **preflight** — clean tree, `main` branch, `doctl` authed, SSH key present, `flock /tmp/subkit-deploy.lock`.
+2. **gate** — `bun run lint && bun run typecheck && bun test apps/ packages/`. Skip with `--skip-tests` for hotfix iterations.
+3. **bump** — `scripts/release/version.sh` writes both `.release-please-manifest.json` and `package.json` atomically; makes a local `chore(release)` commit and `subkit-v<X.Y.Z>` tag.
+4. **build + push** — `scripts/release/build-push.sh` runs `docker buildx build --platform linux/amd64 --push` for engine (with `ENGINE_VERSION` build-arg) and migrate. Serial pushes — Docker Desktop's internal proxy drops concurrent large blob uploads. Auto-relogins DOCR once on 401.
+5. **deploy** — `ssh $DROPLET_USER@$DROPLET_HOST 'ENGINE_VERSION=... bash -s' < scripts/release/deploy-body.sh`. The body: `doctl registry login → compose pull → up -d migrate → wait migrate → up -d --no-deps engine → 150s HEALTHCHECK poll → rollback on failure → caddy bounce → prune`.
+6. **verify** — `scripts/release/verify.sh` polls `/v1/health` until the live `version` matches the tag, runs `scripts/smoke.sh`, then tails the engine log for any new `error|fatal` frames in the last 2 min.
+7. **publish** — on success only, `git push origin main subkit-v<X.Y.Z>`. On any earlier failure the local bump commit is reset so `main` stays clean.
+
+### CI path
+
+Conventional commits on `main` → release-please PR → merge → tag push fires `.github/workflows/release.yml`:
+
+1. **test** — lint, typecheck, db migrate, `bun test apps/ packages/`.
+2. **build-and-push** — identical `docker buildx` commands; tags as `registry.digitalocean.com/subkit/{engine,migrate}:<ver>` and `:latest`.
+3. **deploy** — checks out the tag, then `ssh ... 'ENGINE_VERSION=$VERSION bash -s' < scripts/release/deploy-body.sh`. Same file the laptop executes.
+4. **smoke** — `scripts/smoke.sh`.
+
+### Version source of truth
+
+`.release-please-manifest.json` carries the canonical version; release-please's PR updates it along with `package.json`. The laptop `bump_version` writes both files atomically so a CI run and a laptop run that land the same tag read the same string. `version.sh current_version` returns `max(manifest, package.json)` — if the operator hand-bumped `package.json` for a hotfix, the next `bun run release` picks up from that number instead of downgrading.
+
+Tag format is `subkit-v<semver>` (matches `release.yml:14` trigger and `googleapis/release-please-action` config).
+
+### One-time operator setup
+
+- DO PAT with `registry:update` scope: `doctl auth init --access-token <pat>`. A read-only PAT 403s at push time.
+- Optional `.env.deploy` in the repo root to override defaults:
+  ```
+  DROPLET_HOST=46.101.236.142          # or leave unset to use `doctl compute ssh subkit-engine`
+  DROPLET_USER=root
+  SSH_KEY_PATH=~/.ssh/id_rsa
+  DEPLOY_URL=https://subkit-api.mikebild.dev
+  DROPLET_NAME=subkit-engine
+  ```
+
+### Recovery
+
+- Local `bun run release` failed before publish → the orchestrator resets the local bump commit; re-run when the cause is fixed.
+- Droplet went unhealthy mid-deploy → `deploy-body.sh` captures `PREV_VERSION` and re-executes `compose up -d --no-deps engine` with the old tag.
+- CI workflow stuck → `gh workflow run release.yml --ref <tag>` or `gh workflow run release.yml --ref main -f tag=<tag>`; both paths re-run the same `deploy-body.sh`, which is idempotent.
