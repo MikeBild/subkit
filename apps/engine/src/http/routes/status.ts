@@ -9,7 +9,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { connectors, llmUsage, skills, tenants } from "../../db/schema/index.ts";
 import { monthlyUsage, resolveMonthlyBudget } from "../../llm/budgets.ts";
 import { requireAuth } from "../middleware/auth.ts";
-import type { AppEnv } from "../openapi.ts";
+import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 
 const StatusSchema = z
   .object({
@@ -109,7 +109,11 @@ export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
         tokens_month: Number(monthTokens),
         monthly_budget_tokens: budget,
         remaining_monthly_budget_tokens: remaining,
-        version: process.env.npm_package_version ?? "dev",
+        // `OPENAPI_INFO.version` is the single source of truth for
+        // engine version in HTTP surfaces — matches `/v1/health`.
+        // `process.env.npm_package_version` is not set in the compiled
+        // Bun binary, so that path returned "dev" in production.
+        version: OPENAPI_INFO.version,
       },
       200,
     );
