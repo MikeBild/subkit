@@ -1,25 +1,23 @@
-// Welcome banner — the first thing a user sees in `sk`. Claude-Code-style:
-// no box border, a sparkle + bold title, a dimmed subtitle, and a
-// three-line context block (persona · tenant · engine), all
-// theme-token colored so the host can swap palettes without editing
-// this file. The rotating tip gets a muted tip glyph and sits under
-// the context block.
-//
-// The banner is memoized — React re-renders it only when one of its
-// pure props changes.
+// Welcome banner — the first thing a user sees in `sk`. Adopts the
+// Claude-Code layout: a block-glyph mascot on the left, a meta panel on
+// the right (sk · version / persona@tenant / engine / cwd), a rotating
+// tip row, and a single-line quick-hint footer. Everything is plain
+// Ink — no external dependencies — and all colors flow through the
+// theme tokens so the host can swap palettes without editing this file.
 
 import { useTheme } from "@chat-ui/index.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+import { Logo } from "./logo.tsx";
 
 export interface WelcomeBannerProps {
   persona: string;
   tenant: string | null;
   engineUrl: string;
   profileName?: string;
-  /** One-line tip shown under the context block. Rotate these in the caller. */
+  /** One-line tip shown under the hint row. Rotate via `pickTip`. */
   tip?: string;
 }
 
@@ -31,40 +29,36 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
   tip,
 }) => {
   const theme = useTheme();
+  const personaSlot = tenant ? `${persona}@${tenant}` : persona;
   return (
     <Box flexDirection="column" marginBottom={1}>
-      {/* Title row — sparkle + bold "sk" + version + tagline. */}
-      <Box>
-        <Text color={theme.role.assistant} bold>
-          ✻ sk
-        </Text>
-        <Text color={theme.severity.dim}> · v{VERSION} · subkit conversation CLI</Text>
-      </Box>
-
-      {/* Session context — aligned ▸ rows, easier to scan than inline. */}
-      <Box flexDirection="column" marginTop={1}>
-        <Box>
-          <Text color={theme.severity.dim}>▸ </Text>
-          <Text>persona </Text>
-          <Text color={theme.role.user} bold>
-            {persona}
-          </Text>
+      {/* Mascot + meta panel — two-column layout. Subkit-native fields
+          only: persona@tenant, engine, profile. No cwd / model — sk is
+          a workflow-authoring CLI, not an IDE agent. */}
+      <Box flexDirection="row">
+        <Logo />
+        <Box flexDirection="column" marginLeft={2}>
+          <Box>
+            <Text bold>sk </Text>
+            <Text color={theme.severity.dim}>· v{VERSION}</Text>
+            <Text color={theme.severity.dim}> · subkit conversation CLI</Text>
+          </Box>
+          <Box>
+            <Text color={theme.severity.dim}>persona </Text>
+            <Text color={theme.role.user} bold>
+              {personaSlot}
+            </Text>
+          </Box>
+          <Box>
+            <Text color={theme.severity.dim}>engine </Text>
+            <Text color={theme.severity.dim}>{engineUrl}</Text>
+          </Box>
           {profileName ? (
-            <>
-              <Text color={theme.severity.dim}> · profile </Text>
+            <Box>
+              <Text color={theme.severity.dim}>profile </Text>
               <Text color={theme.role.assistant}>{profileName}</Text>
-            </>
+            </Box>
           ) : null}
-        </Box>
-        <Box>
-          <Text color={theme.severity.dim}>▸ </Text>
-          <Text>tenant </Text>
-          <Text bold>{tenant ?? "(none)"}</Text>
-        </Box>
-        <Box>
-          <Text color={theme.severity.dim}>▸ </Text>
-          <Text>engine </Text>
-          <Text color={theme.severity.dim}>{engineUrl}</Text>
         </Box>
       </Box>
 
@@ -76,7 +70,7 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
         </Box>
       ) : null}
 
-      {/* Quick-hint footer — single line of colored keys. */}
+      {/* Quick-hint footer — colored keys, shown once on first paint. */}
       <Box marginTop={1}>
         <Text color={theme.severity.dim}>type a prompt · </Text>
         <Text color={theme.role.assistant}>/help</Text>
@@ -101,12 +95,14 @@ export const WelcomeBanner = memo(WelcomeBannerImpl);
  */
 export const BANNER_TIPS: readonly string[] = [
   "press Ctrl-T for full-screen transcript, Ctrl-T again to exit",
-  "type `@path/to/file` to inline a file, `@workflow:<slug>` to fetch a workflow",
-  "drop a `SUBKIT.md` in cwd and sk will inject it as memory on every turn",
+  "`@path/to/file` inlines a file; `@workflow:<slug>` fetches a committed workflow from the engine",
+  "drop a `SUBKIT.md` next to your project and sk injects it as memory every turn",
   'run `sk -p "your prompt"` for headless / script-friendly output',
   "customize the status line via `statusLine.command` in ~/.sk/settings.json",
-  "`/compact` collapses old history so sk stays responsive on long sessions",
+  "`/compact` trims the running turn context so long conversations stay within token budget",
   "`/approve` or `/reject` resolves the current elicitation inline",
+  "Shift-Tab cycles ask / auto-approve / plan — watch the footer for the active mode",
+  "`/resume` browses past conversations; `/status` shows tenant connectors and token usage",
 ] as const;
 
 export function pickTip(seed: number = Date.now()): string {

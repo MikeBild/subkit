@@ -16,6 +16,7 @@ export const searchKnowledgeTool: ConversationTool = {
   description:
     "Search the tenant's Knowledge Sources for relevant domain knowledge. Returns matching chunks ranked by relevance.",
   inputSchema,
+  category: "tenant_read" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const hits = await searchKnowledge(

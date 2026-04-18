@@ -24,6 +24,7 @@ export const askUserChoiceTool: ConversationTool = {
   description:
     "Ask the user to pick exactly one option from a list of choices. The client renders a Select prompt; the user's selected value resumes the loop.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     return pauseForUserInput(ctx, {

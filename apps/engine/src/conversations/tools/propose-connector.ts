@@ -25,6 +25,7 @@ export const proposeConnectorTool: ConversationTool = {
     "The operator must approve before the Connector is created. " +
     "Use this when you identify an API, database, or service the tenant should integrate with.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
 

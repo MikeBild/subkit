@@ -38,6 +38,7 @@ describe("conversations/hardening", () => {
       description: "serialization marker tool",
       // biome-ignore lint/suspicious/noExplicitAny: test fixture schema
       inputSchema: { parse: (x: unknown) => x } as any,
+      category: "draft_write",
       async execute(_ctx: ToolContext, rawArgs: unknown): Promise<ToolResult> {
         const args = rawArgs as { id: string; delay: number };
         started.push(args.id);
@@ -47,6 +48,7 @@ describe("conversations/hardening", () => {
       },
     };
 
+    const { EngineClient } = await import("../../engine-client/index.ts");
     const toolCtx: ToolContext = {
       db: ctx.testDb.db as unknown as Db,
       tenant_id: ctx.tenant_id,
@@ -54,6 +56,11 @@ describe("conversations/hardening", () => {
       actor_id: null,
       connector_id: null,
       workflow_id: null,
+      engineClient: new EngineClient({
+        tenant_id: ctx.tenant_id,
+        actor_id: null,
+        db: ctx.testDb.db as unknown as Db,
+      }),
       getDraft: () => ({ name: "t", steps: [] }),
       setDraft: async () => {},
     };

@@ -15,9 +15,14 @@ import type { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
+import { recordConversationToolCall } from "../../observability/instrumentation.ts";
+import { recordTransition } from "../confirmation.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
+import { resolveToolMode, type ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
+import { filterBySkillGate } from "./gated.ts";
 import { type ConversationTool, listTools, type ToolContext, type ToolResult } from "./index.ts";
+import { truncateForLlm } from "./truncate.ts";
 
 export interface TurnSignals {
   pendingElicitation?: {
@@ -95,6 +100,7 @@ function wrapOne(
   signals: TurnSignals,
   events: TurnEvent[],
   db: Db,
+  toolPolicies: ToolPolicies,
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
   // Cast the Zod-openapi schema to the SDK's `z.ZodType` shape — the
   // two packages ship their own Zod re-exports and the variances do not
@@ -136,9 +142,122 @@ function wrapOne(
           step,
         });
 
+        // Per-call correlated log callback. Tools that want to emit
+        // progress updates during long-running work call
+        // `ctx.onLog("info", "...")` — each emission becomes a
+        // `tool_log` TurnEvent the client can render live.
+        const perCallCtx: ToolContext = {
+          ...ctx,
+          onLog: (level, message) => {
+            events.push({
+              type: "tool_log",
+              call_id: toolCallId,
+              tool: inner.name,
+              level,
+              message,
+              ts: new Date().toISOString(),
+            });
+          },
+        };
+
+        // Resolve the effective execution mode (per-conversation
+        // override → dynamic compute-from-input → category default).
+        // The resolved mode is recorded in the interaction_log's
+        // `proposed` transition so operators / observability see it,
+        // and a `policy_confirm_required` elicit_request is emitted
+        // when the mode demands confirmation before execution.
+        const resolvedMode = resolveToolMode({
+          tool: inner.name,
+          category: inner.category,
+          input: rawArgs,
+          overrides: toolPolicies,
+        });
+        const policyMarker = (rawArgs as { __policy_confirmed?: boolean }).__policy_confirmed;
+        const needsPreConfirmation =
+          resolvedMode === "confirm_before_execution" &&
+          inner.category === "tenant_write" &&
+          !policyMarker;
+
+        // Confirmation-state machine entry: tenant_write tools stage a
+        // `proposed` state before execution. On success we transition
+        // to `confirmed`, on failure to `declined`. Read-only tools
+        // skip this entirely — the state columns stay null.
+        if (inner.category === "tenant_write") {
+          await recordTransition(db, {
+            tool_call_id: toolCallId,
+            tenant_id: ctx.tenant_id,
+            to_state: "proposed",
+            actor_id: ctx.actor_id,
+            tool: inner.name,
+            data: { resolved_mode: resolvedMode },
+          });
+        }
+
+        // Policy-gated pre-execution confirmation: emit an elicitation
+        // without invoking the tool. The operator's `respond` posts an
+        // interaction_log entry; the model re-issues the same tool call
+        // with `__policy_confirmed: true` on a subsequent turn.
+        if (needsPreConfirmation) {
+          const elicitationId = `policy-${toolCallId}`;
+          const output = {
+            pending: true,
+            policy_mode: resolvedMode,
+            note: "policy_confirm_required — operator must confirm before the tool executes. Re-issue the same call with __policy_confirmed: true after receiving confirmation.",
+          };
+          await updateToolCallOutput(db, toolCallId, output);
+          events.push({
+            type: "tool_result",
+            call_id: toolCallId,
+            tool: inner.name,
+            output,
+          });
+          events.push({
+            type: "elicit_request",
+            elicitation_id: elicitationId,
+            tool_name: "ask_user_confirm",
+            summary: `Confirm ${inner.name} (policy: ${resolvedMode})`,
+            input: {
+              kind: "external_write",
+              question: `Policy requires confirmation before running ${inner.name}. Proceed?`,
+              target: { tool: inner.name, args: rawArgs },
+            },
+          });
+          signals.pendingElicitation = {
+            elicitation_id: elicitationId,
+            tool_name: "ask_user_confirm",
+            kind: "external_write",
+            summary: `Confirm ${inner.name}`,
+            input: {
+              kind: "external_write",
+              question: `Policy requires confirmation before running ${inner.name}. Proceed?`,
+              target: { tool: inner.name, args: rawArgs },
+            },
+          };
+          recordConversationToolCall({
+            category: inner.category,
+            tool: inner.name,
+            outcome: "denied",
+            duration_ms: Date.now() - startedAt,
+          });
+          return {
+            ok: false,
+            data: output,
+            pause: {
+              elicitation_id: elicitationId,
+              tool_name: "ask_user_confirm",
+              summary: `Confirm ${inner.name}`,
+              kind: "external_write",
+              input: {
+                kind: "external_write",
+                target: { tool: inner.name, args: rawArgs },
+              },
+            },
+          };
+        }
+
         let result: ToolResult;
         try {
-          result = await inner.execute(ctx, rawArgs);
+          result = await inner.execute(perCallCtx, rawArgs);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           const output = { error: msg };
@@ -149,6 +268,22 @@ function wrapOne(
             tool: inner.name,
             output,
           });
+          if (inner.category === "tenant_write") {
+            await recordTransition(db, {
+              tool_call_id: toolCallId,
+              tenant_id: ctx.tenant_id,
+              to_state: "declined",
+              actor_id: ctx.actor_id,
+              tool: inner.name,
+              data: { reason: msg, stage: "execute_threw" },
+            });
+          }
+          recordConversationToolCall({
+            category: inner.category,
+            tool: inner.name,
+            outcome: "error",
+            duration_ms: Date.now() - startedAt,
+          });
           log.conversation.tool.failed({
             conversation_id: ctx.conversation_id,
             tool: inner.name,
@@ -157,13 +292,36 @@ function wrapOne(
           });
           return { ok: false, data: output };
         }
+        if (inner.category === "tenant_write") {
+          await recordTransition(db, {
+            tool_call_id: toolCallId,
+            tenant_id: ctx.tenant_id,
+            to_state: result.ok ? "confirmed" : "declined",
+            actor_id: ctx.actor_id,
+            tool: inner.name,
+            ...(result.ok ? {} : { data: { reason: "tool returned ok=false" } }),
+          });
+        }
 
+        // Persist the FULL output to the conversation_tool_calls row
+        // (for audit / replay), but feed only a TRUNCATED view back to
+        // the model so a 200-row list doesn't blow subsequent context
+        // budgets. `raw_ref` carries a handle the model can fetch via
+        // `get_raw_result` when it actually needs the rest.
         await updateToolCallOutput(db, toolCallId, result.data);
+        const truncated = truncateForLlm(result.data);
         events.push({
           type: "tool_result",
           call_id: toolCallId,
           tool: inner.name,
-          output: result.data,
+          output: truncated.truncated
+            ? {
+                ...(truncated.data as Record<string, unknown>),
+                _truncated: true,
+                _raw_ref: truncated.raw_ref,
+                _note: truncated.note,
+              }
+            : result.data,
         });
 
         const dataSummary = summarizeToolData(result.data);
@@ -178,9 +336,17 @@ function wrapOne(
         };
         if (result.ok) log.conversation.tool.succeeded(logCtx);
         else log.conversation.tool.failed(logCtx);
+        recordConversationToolCall({
+          category: inner.category,
+          tool: inner.name,
+          outcome: result.ok ? "ok" : "error",
+          duration_ms: Date.now() - startedAt,
+        });
 
         // Mirror the old loop: a `tool` role message keeps the audit
         // trail of the turn self-contained in `conversation_messages`.
+        // The persisted message carries the full output (not truncated)
+        // for faithful replay.
         await appendMessage(db, ctx.tenant_id, ctx.conversation_id, "tool", {
           tool: inner.name,
           output: result.data,
@@ -269,10 +435,14 @@ export function wrapTools(
   signals: TurnSignals,
   events: TurnEvent[],
   db: Db,
+  loadedSkills: ReadonlyArray<string> = [],
+  toolPolicies: ToolPolicies = {},
 ): Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> {
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
-  for (const t of listTools()) {
-    out[t.name] = wrapOne(t, ctx, signals, events, db);
+  // Apply skill-gate: tools whose `requires_skill` isn't in loadedSkills
+  // are hidden from the model until the matching `load_skill` call.
+  for (const t of filterBySkillGate(listTools(), loadedSkills)) {
+    out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies);
   }
   return out;
 }

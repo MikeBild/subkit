@@ -1,16 +1,9 @@
 // `converse` flow — single-turn LLM call used by ad-hoc `/ai/generate`
-// and repair-flow style paths. It assembles an enhanced prompt and
-// runs the model for a single turn with no tool palette.
-//
-// The full multi-turn tool-using authoring loop lives in
-// `apps/engine/src/conversations/loop.ts` (typed tool palette, draft
-// snapshots, approval pauses, token-budget accounting). Callers that
-// need authoring should drive `runLoop(...)` there; this flow stays
-// deliberately narrow for single-shot completions.
+// and repair-style paths. Multi-turn tool-using authoring lives in
+// `apps/engine/src/conversations/loop.ts`.
 
 import type { Db } from "../../db/client.ts";
-import { assembleEnhancedPrompt } from "../context.ts";
-import { callWithFallback, resolveModelRoute } from "../provider.ts";
+import { invoke } from "../core/invoke.ts";
 import type { EnhancedPrompt } from "../types.ts";
 
 export interface ConverseParams {
@@ -31,32 +24,22 @@ export interface ConverseResult {
 }
 
 export async function runConverseFlow(p: ConverseParams, exec?: Db): Promise<ConverseResult> {
-  const route = await resolveModelRoute(p.tenant_id, exec);
-  const prompt = await assembleEnhancedPrompt(
+  const r = await invoke(
     {
-      tenant_id: p.tenant_id,
       flow: "converse",
+      tenant_id: p.tenant_id,
+      user_turns: [{ role: "user", content: p.user_message }],
       ...(p.connector_id ? { connector_id: p.connector_id } : {}),
       ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
-      user_turns: [{ role: "user", content: p.user_message }],
-      max_tokens: route.context_cap,
-      model: route.primary,
     },
     exec,
   );
-  const { result, model_used, fell_back } = await callWithFallback<{ text?: string }>(
-    { flow: "converse", route, prompt },
-    exec,
-  );
-  // With an empty tool palette the model just returns a single text
-  // turn. We surface the plain text to the caller.
-  const assistant_message = result.text ?? "";
   return {
-    assistant_message,
+    assistant_message: r.text ?? "",
     conversation_id: p.conversation_id ?? null,
-    included_skill_ids: prompt.included_skill_ids,
-    tokens: prompt.token_counts,
-    model_used,
-    fell_back,
+    included_skill_ids: r.assembled.prompt.included_skill_ids,
+    tokens: r.assembled.prompt.token_counts,
+    model_used: r.model_used,
+    fell_back: r.fell_back,
   };
 }

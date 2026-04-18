@@ -1,19 +1,28 @@
-// Context Enhancement pipeline.
+// Context assembler — single entry point for LLM-bound prompt construction.
 //
-// Assembles the prompt from (base system prompt → global skills → connector
-// skills → workflow skills → ingested connector docs → prior failures for
-// repair → user turns) and enforces a per-tenant token budget via
-// js-tiktoken. See docs/16-ai-flows.md for the full flow.
+// Responsibilities:
+//   1) Load applicable skills (global → connector → workflow scope)
+//   2) Load connector docs + knowledge-source chunks via semantic search
+//   3) Format sections (skills, docs, knowledge, failures, user memory)
+//   4) Enforce a per-model token budget via js-tiktoken, gracefully
+//      dropping lowest-priority sections until it fits (never the user
+//      turn). The trimmed list is surfaced on the return value.
+//   5) Split the resulting system prompt into stable + volatile cache
+//      blocks so the provider can cache the head and recompute only the
+//      tail each turn.
+//
+// Replaces the prior `llm/context.ts` implementation entirely — all
+// callers now import from this module.
 
-import type { Db } from "../db/client.ts";
-import { getDb } from "../db/client.ts";
-import { searchDocs } from "../docs-ingestion/service.ts";
-import { searchKnowledge } from "../knowledge/service.ts";
-import { logger } from "../logging/logger.ts";
-import { retrieveApplicableSkills } from "../skills/service.ts";
-import type { Skill } from "../skills/types.ts";
-import { LlmContextTooLarge } from "./errors.ts";
-import { contextCapFor, countMessagesTokens, countTokens } from "./tokens.ts";
+import type { Db } from "../../db/client.ts";
+import { getDb } from "../../db/client.ts";
+import { searchDocs } from "../../docs-ingestion/service.ts";
+import { searchKnowledge } from "../../knowledge/service.ts";
+import { logger } from "../../logging/logger.ts";
+import { getSkill, listSkills, retrieveApplicableSkills } from "../../skills/service.ts";
+import type { Skill } from "../../skills/types.ts";
+import { LlmContextTooLarge } from "../errors.ts";
+import { contextCapFor, countMessagesTokens, countTokens } from "../tokens.ts";
 import type {
   AssembleContextParams,
   EnhancedPrompt,
@@ -22,9 +31,56 @@ import type {
   LlmFlow,
   PriorFailure,
   UserTurn,
-} from "./types.ts";
+} from "../types.ts";
+import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web";
+
+function converseBasePrompt(surface: ConversationSurface): string {
+  const verbosity =
+    surface === "sk_headless"
+      ? "Respond tersely — the user is using the CLI and parsing output. One paragraph per turn max unless listing structured data."
+      : surface === "sk_interactive"
+        ? "Respond concisely in conversational prose. Use short bullet lists for enumerations. Never dump raw JSON; summarise."
+        : surface === "mcp"
+          ? "You are responding to an external MCP client (another AI agent or tool). Prefer machine-readable, stable output. No pleasantries."
+          : "Respond conversationally with clear structure.";
+
+  return `You are subkit's authoring + operator assistant. You can both introspect the tenant's existing state AND draft new workflows.
+
+IDEAL USER FLOW:
+1. Gather context. Before proposing anything, call \`get_engine_status\` to see what the tenant has, and \`list_workflows\` / \`list_connectors\` / \`list_executions\` when the user references existing state.
+2. Distinguish intent. "List my X" / "Show me X" / "What is the status of X" → tenant_read tools. "Create / draft / build / add" → draft tools. "Run / approve / apply / dismiss / rotate" → tenant_write tools (destructive — elicit confirmation via ask_user_confirm).
+3. For authoring: use \`list_skills\` + \`fetch_connector_docs\` + \`search_knowledge\` before proposing. Then \`propose_step\` / \`propose_connector\` / \`update_param\` / \`connect_steps\`. Validate with \`dry_run_step\` + \`validate_draft\`. Commit only after explicit user confirmation via \`ask_user_confirm(kind: "commit_draft")\`.
+4. For running or approving: confirm first (ask_user_confirm kind: "external_write"), then execute. Always report the audit_log entry id back to the user.
+5. Load domain skills on demand. If a task requires specialised knowledge (self-healing classifications, OAuth flows, connector specifics), call \`load_skill(slug)\` first. A skill-gated tool will refuse until its skill is loaded.
+
+USER FLOW RULES:
+- NEVER invent an id. If you need one, list_* first, then pick from the returned data.
+- NEVER fabricate an endpoint, parameter, header, or URL — always ground from a skill or connector doc.
+- NEVER re-run a destructive tool_write without a new confirmation.
+- ALWAYS surface the \`audit_log\` row id to the user after a tenant_write.
+- ALWAYS report partial failures explicitly — don't summarise "done" when some steps errored.
+
+ACCESS RULES (RBAC):
+- If a tool returns \`{ok: false, data: { error: "permission_denied" }}\`, explain that the current role does not permit this request. Do NOT suggest workarounds; the user should contact an admin.
+- Never attempt to bypass a denied tool by rephrasing the request.
+
+AUDIT + ELICITATION:
+- Every tenant_write you execute writes an audit_log entry via the tool. Surface that back.
+- ask_user_confirm pauses the loop until the operator answers. On \`confirmed\`: proceed. On \`declined\`: explain the next option. On \`partial\`: apply only the approved subset.
+
+VERBOSITY:
+- ${verbosity}
+
+TOOL INTERACTION LOGS:
+- Tool results may include an \`interactionLog\` array recording user UI actions on that specific tool call. Treat it as immutable history. A \`user_tested\` entry does NOT mean the change was applied — only \`user_confirmed\` or \`user_partial\` mean applied.
+
+SYSTEM KNOWLEDGE:
+- Use skills and connector docs silently. Never say "as the skills say…"; just ground your output in them.`;
+}
 
 const BASE_SYSTEM_PROMPTS: Record<LlmFlow, string> = {
   generate: [
@@ -49,11 +105,9 @@ const BASE_SYSTEM_PROMPTS: Record<LlmFlow, string> = {
     "Classify the patch as `safe` (schema-only), `risky` (semantic), or `blocked` (requires human review).",
     "Return one JSON object with `patch`, `classification`, and `notes`.",
   ].join(" "),
-  converse: [
-    "You are the subkit workflow engine's converse flow.",
-    "Hold a multi-turn authoring conversation with the operator.",
-    "Ground every turn in the provided Skills and connector docs. Ask for clarification only when necessary.",
-  ].join(" "),
+  // `converse` is replaced dynamically per-surface via converseBasePrompt.
+  // The constant here is only used when no surface is supplied.
+  converse: converseBasePrompt("sk_interactive"),
   discover: [
     "You are the subkit workflow engine's discovery flow.",
     "Analyze the given file content to identify three kinds of artifacts:",
@@ -65,6 +119,12 @@ const BASE_SYSTEM_PROMPTS: Record<LlmFlow, string> = {
     "Return a JSON object with an `artifacts` array.",
   ].join(" "),
 };
+
+/** Return the system prompt for a flow, honouring the conversation surface. */
+export function basePromptFor(flow: LlmFlow, surface?: ConversationSurface): string {
+  if (flow === "converse" && surface) return converseBasePrompt(surface);
+  return BASE_SYSTEM_PROMPTS[flow];
+}
 
 function formatSkill(s: Skill): string {
   const bp = s.best_practices.length > 0 ? `\nBest practices: ${s.best_practices.join("; ")}` : "";
@@ -99,8 +159,11 @@ function formatFailure(f: PriorFailure): string {
   return parts.join("\n");
 }
 
+function formatUserMemory(s: string): string {
+  return `# User memory\n${s}`;
+}
+
 function buildQuery(turns: UserTurn[]): string {
-  // Use the last few turns as a synthetic query for doc search.
   const tail = turns.slice(-3).map((t) => t.content);
   return tail.join(" ").slice(0, 512);
 }
@@ -124,9 +187,6 @@ async function loadChunks(
       tokens: countTokens(h.snippet),
     }));
   } catch (err) {
-    // Doc search is best-effort in the context pipeline. A search failure
-    // (for example when the tsvector index is missing in a throwaway test
-    // db) should not fail the flow.
     logger.debug({
       module: "llm",
       action: "llm.context.doc_search_skipped",
@@ -173,19 +233,43 @@ async function loadKnowledgeChunks(
   }
 }
 
+export interface BudgetReport {
+  cap_tokens: number;
+  total_tokens: number;
+  stable_tokens: number;
+  volatile_tokens: number;
+  messages_tokens: number;
+  included: {
+    skills: number;
+    knowledge: number;
+    docs: number;
+    failures: number;
+  };
+  /** Sections dropped by the trimmer, in order. Empty = fit comfortably. */
+  dropped_sections: string[];
+}
+
+export interface AssembledContext {
+  prompt: EnhancedPrompt;
+  blocks: CacheBlocks;
+  budget_report: BudgetReport;
+}
+
 /**
  * Assemble an EnhancedPrompt for the given tenant + flow. Enforces a
  * token budget against the effective model's context cap and drops
- * lowest-priority sections first when the prompt overflows.
+ * lowest-priority sections first when the prompt overflows. Throws
+ * LlmContextTooLarge only when *even* the base system prompt does not fit
+ * — i.e. all optional context has been dropped.
  */
 export async function assembleEnhancedPrompt(
-  p: AssembleContextParams,
+  p: AssembleContextParams & { surface?: ConversationSurface },
   exec?: Executor,
-): Promise<EnhancedPrompt> {
+): Promise<EnhancedPrompt & { dropped_sections: string[] }> {
   const db = exec ?? getDb();
   const cap = Math.min(p.max_tokens, contextCapFor(p.model ?? "default"));
 
-  const baseSystem = BASE_SYSTEM_PROMPTS[p.flow];
+  const baseSystem = basePromptFor(p.flow, p.surface);
   const skillsApplicable = await retrieveApplicableSkills(
     {
       tenant_id: p.tenant_id,
@@ -195,10 +279,37 @@ export async function assembleEnhancedPrompt(
     db,
   );
 
-  // Bucket skills by scope for the drop policy below.
   const globalSkills = skillsApplicable.filter((s) => s.scope === "global");
   const connectorSkills = skillsApplicable.filter((s) => s.scope === "connector");
   const workflowSkills = skillsApplicable.filter((s) => s.scope === "workflow");
+
+  // On-demand skills (load_skill). Each slug is either a skill id or
+  // title. We fetch by id first (fast path) and fall back to a titled
+  // lookup via listSkills when the slug isn't a UUID. Skills already
+  // covered by scope-based retrieval are de-duped by id.
+  const loadedSkillSlugs = p.loaded_skill_slugs ?? [];
+  const loadedSkills = [] as Skill[];
+  if (loadedSkillSlugs.length > 0) {
+    const existingIds = new Set(skillsApplicable.map((s) => s.id));
+    const allTenantSkills = await listSkills({ tenant_id: p.tenant_id }, db);
+    for (const slug of loadedSkillSlugs) {
+      if (existingIds.has(slug)) continue;
+      let match = allTenantSkills.find((s) => s.id === slug);
+      if (!match) {
+        match = allTenantSkills.find((s) => s.title.toLowerCase() === slug.toLowerCase());
+      }
+      if (!match) {
+        // Last-resort by-id fetch — covers the case where listSkills
+        // was paginated and the id isn't in the first page.
+        const fetched = await getSkill(p.tenant_id, slug, db);
+        if (fetched) match = fetched;
+      }
+      if (match && !existingIds.has(match.id)) {
+        loadedSkills.push(match);
+        existingIds.add(match.id);
+      }
+    }
+  }
 
   const query = buildQuery(p.user_turns);
 
@@ -225,19 +336,14 @@ export async function assembleEnhancedPrompt(
   }
 
   let failures = p.prior_failures ?? [];
-
-  // User memory is an optional free-form payload sourced from the
-  // caller's SUBKIT.md file. It lives between workflow skills and
-  // ingested connector docs so it can influence grounding, and is
-  // trimmed after failures + docs but before skills on overflow.
   let userMemory = typeof p.user_memory === "string" ? p.user_memory.trim() : "";
-  const formatUserMemory = (s: string) => `# User memory\n${s}`;
 
   const render = () => {
     const sections: string[] = [baseSystem];
     for (const s of globalSkills) sections.push(formatSkill(s));
     for (const s of connectorSkills) sections.push(formatSkill(s));
     for (const s of workflowSkills) sections.push(formatSkill(s));
+    for (const s of loadedSkills) sections.push(formatSkill(s));
     for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
     if (userMemory) sections.push(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
@@ -253,7 +359,6 @@ export async function assembleEnhancedPrompt(
   // Drop order (lowest priority dropped first):
   //   failures → connector docs → knowledge chunks → user memory →
   //   workflow skills → connector skills → global skills.
-  // User turns are never dropped (they are the call input).
   const recount = () => {
     system = render();
     systemTokens = countTokens(system);
@@ -272,11 +377,11 @@ export async function assembleEnhancedPrompt(
       knowledgeChunks.pop();
       trimmed.push("knowledge");
     } else if (userMemory) {
-      // Drop user memory AFTER docs/failures so grounding survives
-      // overflow; before skills because skills are never trimmed
-      // by contract (see docs/16-ai-flows.md).
       userMemory = "";
       trimmed.push("user_memory");
+    } else if (loadedSkills.length > 0) {
+      loadedSkills.pop();
+      trimmed.push("loaded_skill");
     } else if (workflowSkills.length > 0) {
       workflowSkills.pop();
       trimmed.push("workflow_skill");
@@ -320,8 +425,8 @@ export async function assembleEnhancedPrompt(
     });
   }
 
-  const includedSkills = [...globalSkills, ...connectorSkills, ...workflowSkills];
-  const prompt: EnhancedPrompt = {
+  const includedSkills = [...globalSkills, ...connectorSkills, ...workflowSkills, ...loadedSkills];
+  return {
     system,
     messages: p.user_turns,
     token_counts: {
@@ -339,6 +444,40 @@ export async function assembleEnhancedPrompt(
     included_skills: includedSkills,
     included_chunks: chunks,
     included_knowledge_chunks: knowledgeChunks,
+    dropped_sections: trimmed,
   };
-  return prompt;
+}
+
+/**
+ * High-level entry point — wraps `assembleEnhancedPrompt` with the
+ * stable/volatile cache-block split and a structured `BudgetReport`.
+ * `core/invoke.ts` uses this before dispatching to the AiSdkModel.
+ */
+export async function assembleContext(
+  params: AssembleContextParams,
+  exec?: Executor,
+): Promise<AssembledContext> {
+  const prompt = await assembleEnhancedPrompt(params, exec);
+  const blocks = splitPromptIntoBlocks(prompt, params.flow);
+
+  const { dropped_sections, ...promptWithoutDropped } = prompt;
+
+  return {
+    prompt: promptWithoutDropped,
+    blocks,
+    budget_report: {
+      cap_tokens: params.max_tokens,
+      total_tokens: prompt.token_counts.total,
+      stable_tokens: blocks.token_counts.stable,
+      volatile_tokens: blocks.token_counts.volatile,
+      messages_tokens: prompt.token_counts.messages,
+      included: {
+        skills: prompt.included_skill_ids.length,
+        knowledge: prompt.included_knowledge_chunk_ids.length,
+        docs: prompt.included_chunk_ids.length,
+        failures: (params.prior_failures ?? []).length,
+      },
+      dropped_sections,
+    },
+  };
 }

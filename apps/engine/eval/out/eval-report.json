@@ -1,0 +1,40 @@
+{
+  "started_at": "2026-04-18T06:22:04.967Z",
+  "finished_at": "2026-04-18T06:22:04.968Z",
+  "total": 4,
+  "passed": 4,
+  "failed": 0,
+  "items": [
+    {
+      "name": "provider-error-classifier",
+      "flow": "converse",
+      "pass": true,
+      "duration_ms": 37,
+      "metrics": {
+        "cases": 7
+      }
+    },
+    {
+      "name": "schema-normalizer-basic",
+      "flow": "generate",
+      "pass": true,
+      "duration_ms": 2
+    },
+    {
+      "name": "ai-sdk-submit-loop",
+      "flow": "generate",
+      "pass": true,
+      "duration_ms": 5,
+      "metrics": {
+        "input_tokens": 10,
+        "output_tokens": 2
+      }
+    },
+    {
+      "name": "cache-block-split",
+      "flow": "converse",
+      "pass": true,
+      "duration_ms": 75
+    }
+  ]
+}

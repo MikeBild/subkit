@@ -11,6 +11,7 @@ export const listSkillsTool: ConversationTool = {
   name: "list_skills",
   description: "List applicable skills for the current conversation scope.",
   inputSchema,
+  category: "tenant_read" as const,
   async execute(ctx, _args): Promise<ToolResult> {
     const skills = await retrieveApplicableSkills(
       {

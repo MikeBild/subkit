@@ -7,6 +7,7 @@
 
 import type { z } from "@hono/zod-openapi";
 import type { Db } from "../../db/client.ts";
+import type { EngineClient } from "../../engine-client/index.ts";
 import type { DraftDocument } from "../types.ts";
 import {
   askUserChoiceTool,
@@ -28,6 +29,11 @@ import { searchKnowledgeTool } from "./search-knowledge.ts";
 import { updateParamTool } from "./update-param.ts";
 import { validateDraftTool } from "./validate-draft.ts";
 
+/**
+ * Tool execution context handed to every conversation tool. Carries the
+ * tenant-scoped EngineClient so `tenant_read` / `tenant_write` tools can
+ * introspect and mutate tenant state without reimplementing RBAC/audit.
+ */
 export interface ToolContext {
   db: Db;
   tenant_id: string;
@@ -35,8 +41,17 @@ export interface ToolContext {
   actor_id: string | null;
   connector_id: string | null;
   workflow_id: string | null;
+  engineClient: EngineClient;
   getDraft: () => DraftDocument;
   setDraft: (next: DraftDocument) => Promise<void>;
+  /**
+   * Optional live-log callback. Long-running tools (run_workflow,
+   * dry_run_step, refresh_connector_docs) call this to emit progress
+   * updates that surface as `tool_log` TurnEvents, rendered live by sk
+   * Ink and streamed via HTTP SSE / MCP notifications. Short tools
+   * leave it unused.
+   */
+  onLog?: (level: "debug" | "info" | "warn" | "error", message: string) => void;
 }
 
 export interface ToolResult {
@@ -78,10 +93,19 @@ export interface ToolResult {
   committed_workflow_id?: string;
 }
 
+/**
+ * Tool category — controls parallel-read mutex and surfaces filtering.
+ *   - `draft_write`: mutates the conversation's working draft (serialised).
+ *   - `tenant_read`: reads tenant state via EngineClient (parallelisable).
+ *   - `tenant_write`: mutates tenant state (serialised + confirmation).
+ */
+export type ToolCategory = "draft_write" | "tenant_read" | "tenant_write";
+
 export interface ConversationTool {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: z.ZodTypeAny;
+  readonly category: ToolCategory;
   execute(ctx: ToolContext, args: unknown): Promise<ToolResult>;
 }
 
@@ -108,6 +132,37 @@ register(askUserMultiTool);
 register(askUserTextTool);
 register(askUserFormTool);
 register(askUserConfirmTool);
+
+// load_skill — on-demand skill injection, unlocking gated tools.
+import { loadSkillTool } from "./load-skill.ts";
+
+register(loadSkillTool);
+
+// get_raw_result — fetch untruncated payload of a prior tool call.
+import { getRawResultTool } from "./get-raw-result.ts";
+
+register(getRawResultTool);
+
+// web_search — Tavily escalation when search_knowledge is empty.
+import { webSearchTool } from "./web-search.ts";
+
+register(webSearchTool);
+
+// test_rbac_expression — conversational RBAC probe.
+import { testRbacExpressionTool } from "./test-rbac-expression.ts";
+
+register(testRbacExpressionTool);
+
+// Auto-generated read tools covering every §5.10.1 domain:
+// workflows, connectors, executions, skills, skill-candidates,
+// patch-candidates, knowledge-sources, audit, metrics, identity
+// (whoami + users + api-keys + portal-tokens + system-accounts),
+// rbac (roles + permissions), hooks, subscriptions, tunnels, status.
+import { ALL_GENERATED_READ_TOOLS } from "./generated/index.ts";
+import { ALL_GENERATED_WRITE_TOOLS } from "./generated/writes/index.ts";
+
+for (const t of ALL_GENERATED_READ_TOOLS) register(t);
+for (const t of ALL_GENERATED_WRITE_TOOLS) register(t);
 
 export function getTool(name: string): ConversationTool | undefined {
   return registry.get(name);

@@ -17,7 +17,7 @@ import { replayEvents, serializeEvent } from "../../conversations/streaming.ts";
 import type { ConversationStatus } from "../../conversations/types.ts";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { monthlyUsage } from "../../llm/budgets.ts";
-import { resolveModelRoute } from "../../llm/provider.ts";
+import { resolveModelRoute } from "../../llm/core/invoke.ts";
 import { logger } from "../../logging/logger.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";

@@ -33,6 +33,7 @@ export const askUserConfirmTool: ConversationTool = {
   description:
     "Ask the user to approve or reject a specific action. The client renders a styled confirm prompt with an optional feedback reason; the resolved boolean resumes the loop.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     return pauseForUserInput(ctx, {

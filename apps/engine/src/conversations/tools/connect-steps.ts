@@ -20,6 +20,7 @@ export const connectStepsTool: ConversationTool = {
   name: "connect_steps",
   description: "Declare an ordering edge between two steps in the draft.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const draft = structuredClone(ctx.getDraft()) as DraftDocument;

@@ -25,6 +25,7 @@ export const askUserFormTool: ConversationTool = {
   description:
     "Ask the user to fill in a small form of typed fields. The client renders a stacked input; the submitted {name:value} map resumes the loop.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     return pauseForUserInput(ctx, {

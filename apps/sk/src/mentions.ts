@@ -1,11 +1,22 @@
 // `@` mention resolver.
 //
 // The REPL composer and the headless driver both call `resolveMentions`
-// on a raw user prompt. Three forms are supported:
+// on a raw user prompt. Supported mention kinds:
 //
-//   @path/to/file              — inline file contents (cwd-scoped)
-//   @workflow:<slug|uuid>      — fetch workflow JSON from the engine
-//   @execution:<id>            — fetch execution detail from the engine
+//   @path/to/file                  — inline file contents (cwd-scoped)
+//   @workflow:<slug|uuid>          — fetch workflow JSON from the engine
+//   @execution:<id>                — fetch execution detail
+//   @connector:<slug|uuid>         — fetch connector detail
+//   @skill:<id>                    — fetch skill body
+//   @skill-candidate:<id>          — fetch skill-candidate record
+//   @patch-candidate:<id>          — fetch patch-candidate record
+//   @api-key:<id>                  — fetch API-key metadata
+//   @user:<id>                     — fetch user record
+//   @audit:<id>                    — fetch audit-log entry
+//
+// All entity mentions auto-invoke the matching generated read tool on
+// the engine side (via HTTP GET paths); the LLM sees the resolved
+// payload pinned in the prompt as an appendix before the turn begins.
 //
 // File reads are confined to cwd and any `additionalDirectories` the
 // user declares in settings. Path-traversal attempts (`..`) are
@@ -66,32 +77,36 @@ export async function resolveMentions(
     const [kind, rest] = ref.includes(":")
       ? [ref.slice(0, ref.indexOf(":")), ref.slice(ref.indexOf(":") + 1)]
       : [null, null];
-    if (kind === "workflow" && rest && opts.client) {
+    // Entity mentions — each maps 1:1 onto a real engine GET path. The
+    // generated read-tool family on the engine shares the same Zod
+    // schemas and tenant scoping, so the payload surfaced here is
+    // equivalent to what the conversation tool would return.
+    //
+    // Paths verified against apps/engine/src/http/routes/*. identity/*
+    // endpoints live under `/v1/identity/...`; audit-log is a query
+    // endpoint (list with `?id=`), not a by-id path.
+    const ENTITY_PATHS: Record<string, (id: string) => string> = {
+      workflow: (id) => `/v1/workflows/${encodeURIComponent(id)}`,
+      execution: (id) => `/v1/executions/${encodeURIComponent(id)}`,
+      connector: (id) => `/v1/connectors/${encodeURIComponent(id)}`,
+      skill: (id) => `/v1/skills/${encodeURIComponent(id)}`,
+      "skill-candidate": (id) => `/v1/skill-candidates/${encodeURIComponent(id)}`,
+      "patch-candidate": (id) => `/v1/patch-candidates/${encodeURIComponent(id)}`,
+      "api-key": (id) => `/v1/identity/api-keys/${encodeURIComponent(id)}`,
+      user: (id) => `/v1/identity/users/${encodeURIComponent(id)}`,
+      audit: (id) => `/v1/audit-log?id=${encodeURIComponent(id)}`,
+      "knowledge-source": (id) => `/v1/knowledge-sources/${encodeURIComponent(id)}`,
+    };
+    if (kind && rest && opts.client && ENTITY_PATHS[kind]) {
       try {
-        const wf = (await opts.client.request(
-          "GET",
-          `/v1/workflows/${encodeURIComponent(rest)}`,
-        )) as Record<string, unknown>;
+        const payload = (await opts.client.request("GET", ENTITY_PATHS[kind](rest))) as Record<
+          string,
+          unknown
+        >;
         artifacts.push({
           mention: full,
-          title: `Workflow ${rest}`,
-          body: JSON.stringify(wf, null, 2),
-        });
-      } catch (err) {
-        warnings.push(`${full}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-      continue;
-    }
-    if (kind === "execution" && rest && opts.client) {
-      try {
-        const ex = (await opts.client.request(
-          "GET",
-          `/v1/executions/${encodeURIComponent(rest)}`,
-        )) as Record<string, unknown>;
-        artifacts.push({
-          mention: full,
-          title: `Execution ${rest}`,
-          body: JSON.stringify(ex, null, 2),
+          title: `${kind.charAt(0).toUpperCase()}${kind.slice(1)} ${rest}`,
+          body: JSON.stringify(payload, null, 2),
         });
       } catch (err) {
         warnings.push(`${full}: ${err instanceof Error ? err.message : String(err)}`);

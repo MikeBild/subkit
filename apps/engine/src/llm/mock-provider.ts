@@ -168,6 +168,23 @@ class MockProvider {
         const text = `Acknowledged: ${lastUser.slice(0, 200)}. (mock)`;
         return { text, object: { text } };
       }
+      case "discover": {
+        // Canned DiscoverEnvelope so generateObject returns a real
+        // object even when LLM_PROVIDER=mock.
+        const obj = {
+          artifacts: [
+            {
+              kind: "connector" as const,
+              title: "mock-discovered-connector",
+              description: `Inferred from: ${lastUser.slice(0, 80)}`,
+              draft: { base_url: "https://example.com" },
+              evidence_excerpts: ["mocked excerpt"],
+              confidence: 82,
+            },
+          ],
+        };
+        return { text: JSON.stringify(obj), object: obj };
+      }
       default:
         return { text: "(mock)", object: null };
     }
@@ -265,4 +282,70 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
 
 export function resetMockProvider(): void {
   singleton.reset();
+}
+
+/**
+ * Canned "open-meteo weather" authoring plan. Drives the conversation
+ * loop through: get_engine_status → list_connectors → propose_connector
+ * → propose_step (Berlin forecast) → validate_draft → ask_user_confirm
+ * → commit_draft. Intentionally grounded in the open-meteo forecast
+ * endpoint which needs no API key:
+ *   https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&daily=temperature_2m_max,temperature_2m_min&forecast_days=2
+ * The final step filters tomorrow's row via a transform step.
+ */
+export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
+  return [
+    { tool: "get_engine_status", args: {} },
+    { tool: "list_connectors", args: {} },
+    {
+      tool: "propose_connector",
+      args: {
+        name: "Open-Meteo",
+        slug: "open-meteo",
+        driver: "http",
+        auth_type: "none",
+        base_url: "https://api.open-meteo.com",
+        reason: "Public weather API — no auth required, used for tomorrow's forecast in Berlin.",
+      },
+    },
+    {
+      tool: "propose_step",
+      args: {
+        step: {
+          kind: "request",
+          id: "forecast-berlin",
+          method: "GET",
+          url: "https://api.open-meteo.com/v1/forecast",
+          query: {
+            latitude: 52.52,
+            longitude: 13.41,
+            daily: "temperature_2m_max,temperature_2m_min",
+            forecast_days: 2,
+          },
+        },
+      },
+    },
+    {
+      tool: "propose_step",
+      args: {
+        step: {
+          kind: "transform",
+          id: "tomorrow-only",
+          expression:
+            "daily.{date: time[1], tmax: temperature_2m_max[1], tmin: temperature_2m_min[1]}",
+          language: "jsonata",
+        },
+      },
+    },
+    { tool: "validate_draft", args: {} },
+    {
+      tool: "ask_user_confirm",
+      args: {
+        question: "Commit the Berlin tomorrow-weather workflow?",
+        kind: "commit_draft",
+        summary: "commit weather workflow",
+      },
+    },
+    { tool: "commit_draft", args: {} },
+  ];
 }

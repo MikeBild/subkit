@@ -175,6 +175,20 @@ export async function buildModelMessages(
         ],
       });
       if (call.output !== null && call.output !== undefined) {
+        // Splice confirmation state + interaction_log into the
+        // tool-result payload the model sees on the next turn. This
+        // lets the model distinguish "user tested" from "user
+        // confirmed" and re-issue the tool with `__policy_confirmed`
+        // when appropriate — faithful replay of
+        // `conversation_tool_calls.interaction_log` append-only rows.
+        const confirmationState = call.confirmation_state;
+        const interactionLog = Array.isArray(call.interaction_log)
+          ? (call.interaction_log as Array<Record<string, unknown>>)
+          : [];
+        const rawOutput = call.output as Record<string, unknown>;
+        const augmented: Record<string, unknown> = { ...rawOutput };
+        if (confirmationState) augmented.confirmationState = confirmationState;
+        if (interactionLog.length > 0) augmented.interactionLog = interactionLog;
         out.push({
           role: "tool",
           content: [
@@ -182,7 +196,7 @@ export async function buildModelMessages(
               type: "tool-result",
               toolCallId: call.id,
               toolName: call.tool,
-              output: { type: "json", value: call.output as Parameters<typeof JSON.stringify>[0] },
+              output: { type: "json", value: augmented as Parameters<typeof JSON.stringify>[0] },
             },
           ],
         });

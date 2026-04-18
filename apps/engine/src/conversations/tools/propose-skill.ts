@@ -25,6 +25,7 @@ export const proposeSkillTool: ConversationTool = {
     "The operator must approve before the Skill is created (as a draft). " +
     "Use this when you identify operational rules, best practices, or conventions.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
 

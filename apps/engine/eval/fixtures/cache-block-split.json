@@ -1,0 +1,8 @@
+{
+  "name": "cache-block-split",
+  "description": "Cache-block splitter classifies skills/docs/knowledge as stable and memory/failures as volatile.",
+  "flow": "converse",
+  "input": {
+    "system": "You are subkit.\n\n# Skill: Test (global)\nbody\n\n## Doc: x — /y\ncontent\n\n## Knowledge: G\nterms\n\n# User memory\nremember this\n\n## Prior failure: step-1\nerror"
+  }
+}

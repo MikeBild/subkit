@@ -18,6 +18,7 @@ export const dryRunStepTool: ConversationTool = {
   name: "dry_run_step",
   description: "Preview the output of a single step without committing the workflow.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const draft = ctx.getDraft();

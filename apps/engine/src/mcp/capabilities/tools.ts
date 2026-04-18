@@ -46,6 +46,7 @@ import {
   handleConversationTool,
   listConversationTools,
 } from "./conversations.ts";
+import { handleTenantTool, listTenantTools, TENANT_TOOL_PREFIX } from "./tenant-tools.ts";
 
 const TOOL_PREFIX = "wf.";
 const PROGRESS_POLL_MS = 250;
@@ -205,9 +206,20 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
 
   server.registerCapabilities({ tools: { listChanged: false } });
 
+  // Writes via tenant.* are gated by an env flag — default off, matching
+  // the plan's safety story. Operators running a controlled MCP deployment
+  // for trusted clients set SK_MCP_ALLOW_WRITES=1 to flip it on.
+  const allowTenantWrites = process.env.SK_MCP_ALLOW_WRITES === "1";
+
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = await listWorkflowTools({ db, principal });
-    return { tools: [...tools, ...listConversationTools()] };
+    return {
+      tools: [
+        ...tools,
+        ...listConversationTools(),
+        ...listTenantTools({ allowWrites: allowTenantWrites }),
+      ],
+    };
   });
 
   server.setRequestHandler(
@@ -254,6 +266,52 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           isError: result.isError,
           content: result.content.map((c) => ({ type: "text" as const, text: c.text })),
         };
+      }
+
+      if (name.startsWith(TENANT_TOOL_PREFIX)) {
+        // MCP progress-token bridge: when the caller supplies a
+        // progressToken, send start + completion notifications so the
+        // client can show a spinner. Tools that emit finer-grained
+        // progress signal it via `ctx.onLog` (see sdk-wrap); the
+        // handler doesn't have access to that stream today, but the
+        // boundary frames give clients a deterministic start/stop.
+        const notifyProgress = progressToken
+          ? async (progress: number, message: string) => {
+              try {
+                await extra.sendNotification({
+                  method: "notifications/progress",
+                  params: { progressToken, progress, total: 1, message },
+                });
+              } catch {
+                // best-effort — notifier errors never fail the tool call
+              }
+            }
+          : undefined;
+        if (notifyProgress) await notifyProgress(0, `starting ${name}`);
+        const result = await handleTenantTool({
+          db,
+          principal,
+          name,
+          args: args as Record<string, unknown>,
+          allowWrites: allowTenantWrites,
+          ...(notifyProgress ? { onProgress: notifyProgress } : {}),
+        });
+        if (result) {
+          if (notifyProgress) await notifyProgress(1, `done ${name}`);
+          logger.info({
+            module: "mcp",
+            action: "mcp.tool.result",
+            msg: "mcp tenant tool call completed",
+            tool: name,
+            duration_ms: Date.now() - started,
+            is_error: result.isError,
+            progress_token: progressToken ?? null,
+          });
+          return {
+            isError: result.isError,
+            content: result.content.map((c) => ({ type: "text" as const, text: c.text })),
+          };
+        }
       }
 
       if (!name.startsWith(TOOL_PREFIX)) {

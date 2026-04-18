@@ -30,11 +30,38 @@ import {
 } from "@chat-ui/index.ts";
 import type { SkSessionState, ToolCallState, TurnEvent } from "@cli-core/index.ts";
 import { applyTurnEvent, initialSessionState } from "@cli-core/index.ts";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
 import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusSummary } from "./engine-client.ts";
 import { AlternateScreen } from "./repl/alt-screen.tsx";
+import { classifyAttachment, readClipboard } from "./repl/clipboard-read.ts";
+import { Footer } from "./repl/footer.tsx";
+import { appendHistory, defaultHistoryPath, loadPromptRing } from "./repl/history-store.ts";
+import { InlineHistorySearch } from "./repl/inline-history-search.tsx";
+import {
+  apply as applyInput,
+  buffer,
+  cursorPosition,
+  EMPTY_BUFFER,
+  type InputBuffer,
+  lineEnd,
+  lineStart,
+  splitLines,
+} from "./repl/input-buffer.ts";
+import {
+  applyMention,
+  extractMention,
+  type MentionCandidate,
+  MentionPicker,
+} from "./repl/mention-picker.tsx";
+import {
+  createPasteStore,
+  expandRefs,
+  looksLikePaste,
+  type PasteStore,
+} from "./repl/paste-store.ts";
+import { createQueue } from "./repl/queue.ts";
 import type { PaneSpec } from "./repl/slash-handler.ts";
 import { Spinner } from "./repl/spinner.tsx";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
@@ -72,6 +99,11 @@ export interface InkAppProps {
   statusSnapshot?: StatusSummary | null;
   /** Active permission mode for the status line badge. */
   permissionMode?: PermissionMode;
+  /**
+   * Override the persistent-history file path. Tests pass a tmpdir
+   * path so they don't read / mutate the real `~/.sk/history.jsonl`.
+   */
+  historyPath?: string;
   /** Called when the user submits a plain prompt (non-slash). */
   onPrompt: (text: string) => Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }>;
   /** Called when the user submits a slash command other than `/exit`. */
@@ -190,21 +222,78 @@ const StatusBar: React.FC<{ statusLine: string }> = memo(({ statusLine }) => {
 StatusBar.displayName = "StatusBar";
 
 // ---------- Composer ----------
+//
+// Bordered-input layout, Claude-Code style:
+//
+//   ─────────────────────────────────────────
+//   ❯ <typed text><blinking cursor>
+//   ─────────────────────────────────────────
+//
+// The horizontal rules render `─` repeated to the terminal width so the
+// composer frame follows window resizes. When the app is waiting on a
+// turn, the `❯` glyph rotates through SPINNER_FRAMES instead of
+// blinking — same spinner verbs the ToolCard uses, so the REPL feels
+// cohesive.
 
-const Composer: React.FC<{ input: string; busy: boolean }> = memo(({ input, busy }) => {
+const DEFAULT_RULE_WIDTH = 80;
+
+interface ComposerProps {
+  input: InputBuffer;
+  busy: boolean;
+  placeholder?: string;
+}
+
+const Composer: React.FC<ComposerProps> = memo(({ input, busy, placeholder }) => {
   const theme = useTheme();
+  const { stdout } = useStdout();
+  const columns = stdout?.columns ?? DEFAULT_RULE_WIDTH;
   const [cursorOn, setCursorOn] = useState(true);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setCursorOn((c) => !c), 500);
     return () => clearInterval(id);
   }, []);
+  useEffect(() => {
+    if (!busy) return;
+    const id = setInterval(() => setTick((t) => t + 1), 80);
+    return () => clearInterval(id);
+  }, [busy]);
+  const ruleWidth = Math.max(8, Math.min(columns, 160));
+  const rule = "─".repeat(ruleWidth);
+  const glyph = busy ? (SPINNER_FRAMES[tick % SPINNER_FRAMES.length] ?? "⣾") : "❯";
+
+  const { row, column } = cursorPosition(input);
+  const lines = splitLines(input.value);
+  const isEmpty = input.value.length === 0;
+  const cursorChar = cursorOn ? "▊" : "·";
+  const cursorColor = cursorOn ? theme.role.assistant : theme.severity.dim;
+  const prefixColor = busy ? theme.severity.warning : theme.role.assistant;
+
   return (
-    <Box>
-      <Text color={busy ? theme.severity.warning : theme.role.assistant} bold>
-        {busy ? "⣾ ⟫ " : "▎⟫ "}
-      </Text>
-      <Text>{input}</Text>
-      <Text color={cursorOn ? theme.role.assistant : theme.severity.dim}>▊</Text>
+    <Box flexDirection="column">
+      <Text color={theme.severity.dim}>{rule}</Text>
+      {lines.map((line, i) => {
+        const prefix = i === 0 ? `${glyph} ` : "  ";
+        const before = i === row ? line.slice(0, column) : line;
+        const after = i === row ? line.slice(column) : "";
+        return (
+          <Box key={`composer-row-${i}`}>
+            <Text color={prefixColor} bold>
+              {prefix}
+            </Text>
+            {i === 0 && isEmpty && placeholder ? (
+              <Text color={theme.severity.dim}>{placeholder}</Text>
+            ) : (
+              <>
+                <Text>{before}</Text>
+                {i === row ? <Text color={cursorColor}>{cursorChar}</Text> : null}
+                <Text>{after}</Text>
+              </>
+            )}
+          </Box>
+        );
+      })}
+      <Text color={theme.severity.dim}>{rule}</Text>
     </Box>
   );
 });
@@ -241,6 +330,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   cwd,
   statusSnapshot,
   permissionMode = "ask",
+  historyPath,
   onPrompt,
   onSlash,
   onSelectConversation,
@@ -254,7 +344,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   const deferredMessages = useDeferredValue(session.messages);
   const deferredToolCalls = useDeferredValue(session.toolCalls);
 
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState<InputBuffer>(EMPTY_BUFFER);
   const [busy, setBusy] = useState(false);
   // Synchronous guard against Enter auto-repeat. `setBusy(true)` is
   // async, so without this ref two Enter presses ~1ms apart both see
@@ -265,22 +355,41 @@ export const InkApp: React.FC<InkAppProps> = ({
   const [statusLine, setStatusLine] = useState<string>("");
   const [banner, setBanner] = useState<string | null>(null);
   const [pane, setPane] = useState<PaneSpec | null>(null);
-  // History-search pane is opened purely by Ctrl-R; it reads from the
-  // prompt-ring ref that lives next to the composer, so it's simpler
-  // to keep as a sibling boolean rather than widening PaneSpec.
+  // Inline Ctrl-R history search (above-composer widget). The old
+  // modal `<HistorySearch>` pane is still available via `historyOpen`
+  // as a fallback for constrained terminals.
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [inlineSearchOpen, setInlineSearchOpen] = useState(false);
   // Permission mode — cycled by Shift-Tab. Seed from the prop so hosts
   // that persist a preference can drive it, but own the state locally
   // once the user interacts.
   const [activeMode, setActiveMode] = useState<PermissionMode>(permissionMode);
   const tip = useRef<string>(pickTip());
-  // Prompt history ring — up/down cycles through prior submitted
-  // prompts the same way a readline-style shell would. Cursor sits
-  // at `length` when the user is composing a fresh line; pressing
-  // Up moves it backward, Down moves forward again. The cursor
-  // never goes below 0 or above `length`.
+
+  // -------- Persistent prompt history --------
+  // Load ~/.sk/history.jsonl on mount so ↑/↓ works across sessions.
+  // The ring is kept as a ref so rapid keypresses don't trigger
+  // re-renders on every navigation.
   const historyRef = useRef<string[]>([]);
   const historyCursorRef = useRef<number>(0);
+  // Draft preservation — when the user presses ↑ on a non-empty
+  // buffer, stash the in-progress draft so ↓-past-zero restores it.
+  const historyDraftRef = useRef<InputBuffer | null>(null);
+  const effectiveHistoryPath = historyPath ?? defaultHistoryPath();
+  useEffect(() => {
+    try {
+      const ring = loadPromptRing(effectiveHistoryPath, { tenant: persona.tenant });
+      historyRef.current = ring;
+      historyCursorRef.current = ring.length;
+    } catch {
+      // silent — missing / locked file shouldn't crash the REPL
+    }
+  }, [effectiveHistoryPath, persona.tenant]);
+
+  // -------- Paste store + busy-turn command queue --------
+  const pasteStoreRef = useRef<PasteStore>(createPasteStore());
+  const queueRef = useRef(createQueue());
+  const [queuedCount, setQueuedCount] = useState(0);
 
   // -------- Status line ticker --------
   useEffect(() => {
@@ -338,11 +447,111 @@ export const InkApp: React.FC<InkAppProps> = ({
     activeMode,
   ]);
 
+  // -------- Slash command handlers that live inside ink-app --------
+  //
+  // `/paste` — read the system clipboard, classify as text / image,
+  // push into the paste store, insert the ref at the cursor.
+  // `/attach <path>` — read a file path, classify by extension, add
+  // to paste store, insert ref at cursor.
+  // `/queue` — print queued prompts into the transient banner.
+  // `/history` — show / clear the persistent history file.
+  //
+  // Other slash commands fall through to the host's `onSlash`.
+  const handleBuiltinSlash = useCallback(
+    async (trimmed: string): Promise<boolean> => {
+      const [head, ...rest] = trimmed.split(/\s+/);
+      const name = (head ?? "").replace(/^\//, "");
+      if (name === "paste") {
+        const clip = readClipboard();
+        if (clip.kind === "none") {
+          setBanner("/paste: clipboard is empty");
+          return true;
+        }
+        if (clip.kind === "text") {
+          const { ref, lines } = pasteStoreRef.current.addText(clip.text);
+          setInput((prev) => applyInput(prev, { type: "insert", text: ref }));
+          setBanner(`/paste: inserted ${ref} (${lines + 1} line${lines === 0 ? "" : "s"})`);
+          return true;
+        }
+        const img = pasteStoreRef.current.addImage({
+          path: clip.path,
+          mediaType: clip.mediaType,
+          bytes: clip.bytes,
+        });
+        setInput((prev) => applyInput(prev, { type: "insert", text: img.ref }));
+        setBanner(`/paste: inserted ${img.ref} (${clip.bytes} bytes)`);
+        return true;
+      }
+      if (name === "attach" || name === "file") {
+        const raw = rest.join(" ").trim();
+        if (raw.length === 0) {
+          setBanner("/attach: needs a path — e.g. `/attach ./invoice.pdf`");
+          return true;
+        }
+        const { statSync, existsSync: exists } = await import("node:fs");
+        const { resolve: res, basename: base } = await import("node:path");
+        const abs = res(cwd ?? process.cwd(), raw);
+        if (!exists(abs)) {
+          setBanner(`/attach: not found: ${raw}`);
+          return true;
+        }
+        const st = statSync(abs);
+        if (!st.isFile()) {
+          setBanner(`/attach: not a file: ${raw}`);
+          return true;
+        }
+        const cls = classifyAttachment(abs);
+        if (cls.kind === "image") {
+          const added = pasteStoreRef.current.addImage({
+            path: abs,
+            mediaType: cls.mediaType,
+            bytes: st.size,
+          });
+          setInput((prev) => applyInput(prev, { type: "insert", text: added.ref }));
+          setBanner(`/attach: inserted ${added.ref} (${cls.mediaType}, ${st.size} bytes)`);
+          return true;
+        }
+        const added = pasteStoreRef.current.addFile({
+          path: abs,
+          filename: base(abs),
+          bytes: st.size,
+        });
+        setInput((prev) => applyInput(prev, { type: "insert", text: added.ref }));
+        setBanner(`/attach: inserted ${added.ref} (${cls.mediaType}, ${st.size} bytes)`);
+        return true;
+      }
+      if (name === "queue") {
+        const items = [...queueRef.current.items];
+        if (items.length === 0) setBanner("/queue: empty");
+        else setBanner(`/queue: ${items.length} pending — ${items.slice(0, 3).join(" ; ")}`);
+        return true;
+      }
+      if (name === "history") {
+        const sub = rest[0];
+        if (sub === "clear") {
+          const { clearHistory } = await import("./repl/history-store.ts");
+          clearHistory(defaultHistoryPath());
+          historyRef.current = [];
+          historyCursorRef.current = 0;
+          setBanner("/history: cleared");
+          return true;
+        }
+        setBanner(
+          `/history: ${historyRef.current.length} prompt(s) stored at ${defaultHistoryPath()}`,
+        );
+        return true;
+      }
+      return false;
+    },
+    [cwd],
+  );
+
   // -------- Input handling (printable chars, enter, backspace, Ctrl-C, Ctrl-T) --------
   const handleSubmit = useCallback(
     async (raw: string): Promise<void> => {
       const trimmed = raw.trim();
-      setInput("");
+      setInput(EMPTY_BUFFER);
+      historyDraftRef.current = null;
       if (!trimmed) return;
       if (trimmed === "/exit" || trimmed === "/quit") {
         exit();
@@ -350,6 +559,10 @@ export const InkApp: React.FC<InkAppProps> = ({
         return;
       }
       if (trimmed.startsWith("/")) {
+        // Built-in slash commands that ink-app owns (paste, attach,
+        // queue, history). Short-circuit so the host's `onSlash`
+        // doesn't see them.
+        if (await handleBuiltinSlash(trimmed)) return;
         const cmd = findSlashCommand(trimmed.split(/\s+/)[0] ?? "");
         if (!cmd) {
           setBanner(`unknown slash: ${trimmed}`);
@@ -360,12 +573,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           return;
         }
         if (cmd.name === "help") {
-          // Open the help catalog in the modal slot so it reads as a
-          // proper reference card. `renderHelp` already emits multi-
-          // line text — split into lines for the Pane.
           const helpLines = renderHelp(persona.probe).split("\n");
-          // First line is the title (`sk — slash commands`); drop it
-          // so Pane's own header doesn't duplicate it.
           const [title = "slash commands", ...body] = helpLines;
           setPane({
             kind: "text",
@@ -404,23 +612,44 @@ export const InkApp: React.FC<InkAppProps> = ({
         return;
       }
 
-      // Plain prompt → drive a turn. We do NOT push the user message
-      // locally — the engine loop emits `{type:"message", role:"user"}`
-      // as the first event of the turn and the reducer picks it up.
-      // Pushing locally would duplicate it when the turn events arrive.
-      //
-      // Synchronous guard: Enter auto-repeat can fire this callback
-      // tens of times before `setBusy(true)` flushes through React.
-      // The ref closes that window without waiting for the next
-      // render.
-      if (busyRef.current) return;
+      // Plain prompt → drive a turn. Busy-guard first: if a turn is
+      // already in flight, enqueue the prompt and let the draining
+      // loop pick it up after the current turn completes.
+      if (busyRef.current) {
+        queueRef.current.enqueue(trimmed);
+        setQueuedCount(queueRef.current.length);
+        setBanner(`queued (${queueRef.current.length}) — runs after the current turn`);
+        return;
+      }
       busyRef.current = true;
       setBusy(true);
-      // Record this prompt in the history ring so up/down can recall it.
+
+      // Expand paste-store refs back inline, fan out image / file
+      // refs as `@path` mentions so the existing mention resolver
+      // can attach their contents.
+      const {
+        prompt: expanded,
+        attachmentPaths,
+        consumedIds,
+      } = expandRefs(trimmed, pasteStoreRef.current);
+      const finalPrompt =
+        attachmentPaths.length > 0
+          ? `${expanded}${attachmentPaths.map((p) => ` @${p}`).join("")}`
+          : expanded;
+
+      // Record in the in-memory ring + persist (subkit-tenant scoped).
       historyRef.current.push(trimmed);
       historyCursorRef.current = historyRef.current.length;
       try {
-        const { events, conversationId } = await onPrompt(trimmed);
+        appendHistory(trimmed, { path: effectiveHistoryPath, tenant: persona.tenant ?? null });
+      } catch {
+        // best-effort
+      }
+      // Free consumed paste items after a successful submit.
+      for (const id of consumedIds) pasteStoreRef.current.delete(id);
+
+      try {
+        const { events, conversationId } = await onPrompt(finalPrompt);
         let next: SkSessionState = { ...session, conversationId };
         setSession(next);
         for await (const ev of events) {
@@ -432,9 +661,29 @@ export const InkApp: React.FC<InkAppProps> = ({
       } finally {
         busyRef.current = false;
         setBusy(false);
+        // Drain the queue — one prompt at a time.
+        const nextQueued = queueRef.current.dequeue();
+        setQueuedCount(queueRef.current.length);
+        if (nextQueued) {
+          // Defer to let React flush the `busy=false` frame before
+          // we start the next turn.
+          setTimeout(() => {
+            void handleSubmit(nextQueued);
+          }, 0);
+        }
       }
     },
-    [exit, onElicitResponse, onExit, onPrompt, onSlash, persona.probe, session],
+    [
+      exit,
+      onElicitResponse,
+      onExit,
+      onPrompt,
+      onSlash,
+      persona.probe,
+      persona.tenant,
+      session,
+      handleBuiltinSlash,
+    ],
   );
 
   // Gate the main composer input while an elicit prompt is open or a
@@ -450,58 +699,181 @@ export const InkApp: React.FC<InkAppProps> = ({
   // would grow a non-slash prompt) are gated off so the elicit's own
   // keybindings stay authoritative.
   const elicitOpen = session.pendingElicitation !== null;
-  const composerActive = pane === null && !historyOpen;
-  const slashMode = input.startsWith("/");
+  const composerActive = pane === null && !historyOpen && !inlineSearchOpen;
+  const slashMode = input.value.startsWith("/");
+  // In-progress @mention — drives the inline mention picker.
+  const mentionSpec = useMemo(
+    () => (composerActive ? extractMention(input.value, input.cursor) : null),
+    [composerActive, input.value, input.cursor],
+  );
   useInput(
     (char, key) => {
+      // --- Global shortcuts (active even under modal / busy) ----------
       if (key.ctrl && char === "t") {
         setAltScreen((prev) => !prev);
         return;
       }
-      // Shift-Tab cycles the permission mode: ask → auto → plan → ask.
-      // Works at any time — even while elicitation is open or the
-      // composer is gated — because the status badge needs to respond
-      // regardless of what's on screen.
       if (key.shift && key.tab) {
         setActiveMode((m) => (m === "ask" ? "auto" : m === "auto" ? "plan" : "ask"));
         return;
       }
-      // Ctrl-R opens the prompt-history search pane (mirrors the
-      // readline/zsh shortcut users expect). The composer is gated
-      // while the pane is open; picking a prompt restores input.
+      // Ctrl-R opens inline history-search (Claude-Code-style
+      // above-composer widget). The modal pane is still reachable
+      // via `/resume` for users who prefer it.
       if (key.ctrl && char === "r") {
-        if (historyRef.current.length > 0) setHistoryOpen(true);
+        if (historyRef.current.length > 0) setInlineSearchOpen(true);
         return;
       }
-      if (busyRef.current) return;
-      // Elicitation is open: only let the composer consume input that
-      // is part of a slash command (either starting one, or adding to
-      // one already being typed).
+      // Ctrl-L clears the terminal scroll buffer.
+      if (key.ctrl && char === "l") {
+        process.stdout.write("\x1b[2J\x1b[H");
+        return;
+      }
+      if (busyRef.current) {
+        // While busy, still accept keystrokes into the buffer so the
+        // user can type ahead. Enter enqueues instead of spawning a
+        // concurrent turn (see handleSubmit).
+      }
+      // Elicitation is open: only accept input that is part of a
+      // slash command so the user can still /approve or /reject.
       if (elicitOpen && !slashMode && char !== "/") return;
+
+      // --- History navigation via arrow keys -------------------------
       if (key.upArrow) {
+        // Mention picker wraps Up/Down itself; if a mention is open
+        // and the picker captured nothing, fall through to history
+        // only when the buffer is on the first row.
+        if (mentionSpec) return;
+        const pos = cursorPosition(input);
+        if (pos.row > 0) {
+          // Move up one row within the buffer instead of cycling history.
+          const targetOffset = Math.max(0, input.cursor - pos.column - 1);
+          setInput(applyInput(input, { type: "set", value: input.value, cursor: targetOffset }));
+          return;
+        }
         if (historyRef.current.length === 0) return;
+        if (historyCursorRef.current === historyRef.current.length && input.value.length > 0) {
+          historyDraftRef.current = input;
+        }
         const next = Math.max(0, historyCursorRef.current - 1);
         historyCursorRef.current = next;
-        setInput(historyRef.current[next] ?? "");
+        const entry = historyRef.current[next] ?? "";
+        setInput(buffer(entry));
         return;
       }
       if (key.downArrow) {
+        if (mentionSpec) return;
+        const pos = cursorPosition(input);
+        const totalRows = splitLines(input.value).length;
+        if (pos.row < totalRows - 1) {
+          const thisEnd = lineEnd(input.value, input.cursor);
+          const nextStart = thisEnd + 1;
+          const nextEnd = lineEnd(input.value, nextStart);
+          const targetOffset = Math.min(
+            nextEnd,
+            nextStart + (input.cursor - lineStart(input.value, input.cursor)),
+          );
+          setInput(applyInput(input, { type: "set", value: input.value, cursor: targetOffset }));
+          return;
+        }
         if (historyRef.current.length === 0) return;
         const next = Math.min(historyRef.current.length, historyCursorRef.current + 1);
         historyCursorRef.current = next;
-        setInput(historyRef.current[next] ?? "");
+        if (next === historyRef.current.length) {
+          // Past the newest entry — restore the stashed draft (if any)
+          // or land on an empty buffer.
+          setInput(historyDraftRef.current ?? EMPTY_BUFFER);
+          historyDraftRef.current = null;
+        } else {
+          setInput(buffer(historyRef.current[next] ?? ""));
+        }
+        return;
+      }
+
+      // --- Cursor navigation -----------------------------------------
+      if (key.leftArrow) {
+        if (key.meta || key.ctrl) {
+          setInput((prev) => applyInput(prev, { type: "moveWordLeft" }));
+        } else {
+          setInput((prev) => applyInput(prev, { type: "moveLeft" }));
+        }
+        return;
+      }
+      if (key.rightArrow) {
+        if (key.meta || key.ctrl) {
+          setInput((prev) => applyInput(prev, { type: "moveWordRight" }));
+        } else {
+          setInput((prev) => applyInput(prev, { type: "moveRight" }));
+        }
+        return;
+      }
+      // Home / End
+      if (key.ctrl && char === "a") {
+        setInput((prev) => applyInput(prev, { type: "moveLineStart" }));
+        return;
+      }
+      if (key.ctrl && char === "e") {
+        setInput((prev) => applyInput(prev, { type: "moveLineEnd" }));
+        return;
+      }
+      // Readline-style kill bindings
+      if (key.ctrl && char === "u") {
+        setInput((prev) => applyInput(prev, { type: "killLine" }));
+        return;
+      }
+      if (key.ctrl && char === "k") {
+        setInput((prev) => applyInput(prev, { type: "killToEnd" }));
+        return;
+      }
+      if (key.ctrl && char === "w") {
+        setInput((prev) => applyInput(prev, { type: "killPrevWord" }));
+        return;
+      }
+      // Alt / Meta Backspace — also "kill previous word" (terminal may
+      // send `\x1b` + DEL or similar; Ink normalizes it to meta + delete).
+      if (key.meta && (key.backspace || key.delete)) {
+        setInput((prev) => applyInput(prev, { type: "killPrevWord" }));
+        return;
+      }
+      // Alt+D — kill next word (emacs / bash convention)
+      if (key.meta && char === "d") {
+        setInput((prev) => applyInput(prev, { type: "killNextWord" }));
+        return;
+      }
+
+      // --- Newline vs submit ----------------------------------------
+      // Ctrl-J (line feed) inserts a newline — the tmux / emacs
+      // convention. Plain Enter (carriage return) submits the buffer.
+      if (key.ctrl && char === "j") {
+        setInput((prev) => applyInput(prev, { type: "newline" }));
         return;
       }
       if (key.return) {
-        void handleSubmit(input);
+        void handleSubmit(input.value);
         return;
       }
-      if (key.backspace || key.delete) {
-        setInput((prev) => prev.slice(0, -1));
+
+      // --- Backspace / delete ---------------------------------------
+      if (key.backspace) {
+        setInput((prev) => applyInput(prev, { type: "deletePrev" }));
         return;
       }
+      if (key.delete) {
+        setInput((prev) => applyInput(prev, { type: "deleteNext" }));
+        return;
+      }
+
+      // --- Printable char(s) / paste heuristic ----------------------
       if (char && char.length > 0 && !key.ctrl && !key.meta) {
-        setInput((prev) => prev + char);
+        if (char.length > 1 && looksLikePaste(char)) {
+          // Big chunk — stash in the paste store, insert the ref
+          // inline. Keeps the buffer compact and cursor math sane.
+          const { ref } = pasteStoreRef.current.addText(char);
+          setInput((prev) => applyInput(prev, { type: "insert", text: ref }));
+          setBanner(`pasted ${ref} — sent inline at submit`);
+          return;
+        }
+        setInput((prev) => applyInput(prev, { type: "insert", text: char }));
       }
     },
     { isActive: composerActive },
@@ -518,8 +890,33 @@ export const InkApp: React.FC<InkAppProps> = ({
     const m = deferredMessages[i];
     if (m) transcriptRows.push(<MessageRow key={`msg-${i}`} role={m.role} content={m.content} />);
   }
+  // Live streaming assistant buffer — rendered below finalised messages
+  // until the next `message` frame arrives and clears it. Keeps the REPL
+  // responsive as tokens arrive rather than waiting for the turn to end.
+  if (session.streamingAssistantText.length > 0) {
+    transcriptRows.push(
+      <MessageRow
+        key="live-delta"
+        role={"assistant" as const}
+        content={session.streamingAssistantText}
+      />,
+    );
+  }
   for (const c of deferredToolCalls) {
     transcriptRows.push(<ToolCard key={`tc-${c.id}`} call={c} />);
+    // Live tool-log lines for this call, if any.
+    const logs = session.toolLogs.filter((l) => l.call_id === c.id);
+    if (logs.length > 0) {
+      transcriptRows.push(
+        <Box key={`tl-${c.id}`} flexDirection="column" marginLeft={2}>
+          {logs.map((log, idx) => (
+            <Text key={`${c.id}-${idx}`} color="gray">
+              · [{log.level}] {log.message}
+            </Text>
+          ))}
+        </Box>,
+      );
+    }
   }
 
   const content = (
@@ -529,6 +926,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           persona={persona.label}
           tenant={persona.tenant}
           engineUrl={persona.engineUrl}
+          profileName={persona.profileName}
           tip={tip.current}
         />
       ) : null}
@@ -603,10 +1001,24 @@ export const InkApp: React.FC<InkAppProps> = ({
           entries={historyRef.current}
           onSelect={(prompt) => {
             setHistoryOpen(false);
-            setInput(prompt);
+            setInput(buffer(prompt));
             historyCursorRef.current = historyRef.current.length;
           }}
           onDismiss={() => setHistoryOpen(false)}
+        />
+      ) : null}
+      {/* Inline Ctrl-R search — Claude-Code-style above-composer
+          reverse-i-search widget. Commits replace the buffer; cancel
+          restores it. */}
+      {inlineSearchOpen ? (
+        <InlineHistorySearch
+          entries={historyRef.current}
+          onCommit={(prompt) => {
+            setInlineSearchOpen(false);
+            setInput(buffer(prompt));
+            historyCursorRef.current = historyRef.current.length;
+          }}
+          onCancel={() => setInlineSearchOpen(false)}
         />
       ) : null}
 
@@ -627,14 +1039,60 @@ export const InkApp: React.FC<InkAppProps> = ({
       {/* Thinking spinner */}
       <Spinner active={busy} turnTokens={session.usage?.turn_tokens ?? null} />
 
-      {/* Status line — subkit-tailored: user · tenant · engine · model · conn · tokens · [mode] */}
+      {/* Subkit-specific telemetry line — tokens, connector count,
+          optional shell-hook output. Sits above the footer so the
+          footer's identity chrome stays on the last two rows. */}
       <StatusBar statusLine={statusLine} />
 
-      {/* Composer — double-angle caret, busy mode swaps the prefix. */}
+      {/* Bordered composer — ────── / ❯ input / ────── */}
       <Composer input={input} busy={busy} />
 
+      {/* Two-line footer — subkit identity + permission mode. Holds
+          only engine-facing context (user, tenant, engine, session,
+          mode); no cwd / model chrome — sk is not an IDE. */}
+      <Footer
+        user={statusSnapshot?.user.email ?? statusSnapshot?.user.id ?? persona.label}
+        tenant={statusSnapshot?.tenant.slug ?? statusSnapshot?.tenant.id ?? persona.tenant}
+        engineUrl={persona.engineUrl}
+        sessionId={session.conversationId}
+        mode={activeMode}
+      />
+
+      {/* Inline @-mention picker — shown when the buffer has an
+          unresolved `@<query>` token at the cursor. Picks splice the
+          chosen value back into the buffer. */}
+      {mentionSpec && pane === null && !inlineSearchOpen ? (
+        <MentionPicker
+          query={mentionSpec.query}
+          cwd={cwd ?? process.cwd()}
+          onPick={(candidate: MentionCandidate) => {
+            setInput((prev) => {
+              const next = applyMention(prev.value, prev.cursor, mentionSpec.start, candidate);
+              return { value: next.value, cursor: next.cursor };
+            });
+          }}
+          onDismiss={() => {
+            // Soft dismiss — leave the `@<query>` token untouched and
+            // let the user keep typing. The picker will re-render when
+            // the token changes.
+          }}
+        />
+      ) : null}
+
+      {/* Queued-commands indicator — shows when the user typed more
+          prompts while the turn was running. Drained FIFO once the
+          current turn finishes. */}
+      {queuedCount > 0 ? (
+        <Box>
+          <Text color="yellow">⏸ </Text>
+          <Text dimColor>{queuedCount} queued — drains when turn completes</Text>
+        </Box>
+      ) : null}
+
       {/* Fuzzy slash-command suggestions (hidden while a pane is open) */}
-      {pane === null ? <SuggestionList query={input} probe={persona.probe} /> : null}
+      {pane === null && !mentionSpec ? (
+        <SuggestionList query={input.value} probe={persona.probe} />
+      ) : null}
 
       {/* Double-Ctrl-C exit flow (always-on input — even when a pane captures keys) */}
       <ExitFlow

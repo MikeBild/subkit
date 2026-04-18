@@ -15,6 +15,7 @@ export const fetchConnectorDocsTool: ConversationTool = {
   name: "fetch_connector_docs",
   description: "Search the scoped connector docs and return the top chunks.",
   inputSchema,
+  category: "tenant_read" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     if (!ctx.connector_id) {

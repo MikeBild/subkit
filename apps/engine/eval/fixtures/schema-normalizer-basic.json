@@ -1,0 +1,15 @@
+{
+  "name": "schema-normalizer-basic",
+  "description": "Schema normalizer correctly strips patternProperties and wraps array roots.",
+  "flow": "generate",
+  "input": {
+    "schema": {
+      "type": "array",
+      "items": { "type": "object", "patternProperties": { "^x-": { "type": "string" } } }
+    }
+  },
+  "expected": {
+    "type": "object",
+    "wrappedInResult": true
+  }
+}

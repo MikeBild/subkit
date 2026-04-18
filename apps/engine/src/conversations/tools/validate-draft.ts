@@ -13,6 +13,7 @@ export const validateDraftTool: ConversationTool = {
   name: "validate_draft",
   description: "Validate the current draft and return the list of errors.",
   inputSchema,
+  category: "draft_write" as const,
   async execute(ctx, _args): Promise<ToolResult> {
     const draft = ctx.getDraft();
     const validation = validateWorkflowDef(draft);

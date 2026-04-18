@@ -77,6 +77,26 @@ export interface DraftDocument {
  */
 export type TurnEvent =
   | { type: "message"; role: ConversationRole; content: unknown }
+  /**
+   * Incremental assistant-text delta. Emitted as `streamText` produces
+   * tokens. Clients (sk Ink, HTTP SSE, MCP) should concatenate `text`
+   * for live rendering; the final `message` event carries the full
+   * assistant turn text for persisted replay.
+   */
+  | { type: "text_delta"; text: string }
+  /**
+   * Per-tool progress log. Emitted during long-running tool execution
+   * (run_workflow, dry_run_step, etc.) so the user sees incremental
+   * state rather than waiting for the tool to finish silently.
+   */
+  | {
+      type: "tool_log";
+      call_id: string;
+      tool: string;
+      level: "debug" | "info" | "warn" | "error";
+      message: string;
+      ts: string;
+    }
   | {
       type: "tool_call_start";
       call_id: string;

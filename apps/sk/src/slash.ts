@@ -103,6 +103,27 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "audit", help: "Tail your audit log", category: "admin", requires: "audit:read" },
   { name: "exit", aliases: ["quit"], help: "Exit the REPL", category: "util" },
   { name: "bug", help: "Open a GitHub issue report", category: "util" },
+  {
+    name: "paste",
+    help: "Insert clipboard content (text or image) as a paste ref",
+    category: "context",
+  },
+  {
+    name: "attach",
+    aliases: ["file"],
+    help: "Attach a local file (`/attach path/to/file.pdf`) as a paste ref",
+    category: "context",
+  },
+  {
+    name: "queue",
+    help: "Show pending queued prompts (typed while a turn was running)",
+    category: "util",
+  },
+  {
+    name: "history",
+    help: "Show or `clear` the persistent prompt history",
+    category: "util",
+  },
 ] as const;
 
 export interface PersonaProbe {
