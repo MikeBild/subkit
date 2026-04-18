@@ -31,7 +31,13 @@
     "compose:down": "docker compose down",
     "compose:logs": "docker compose logs -f",
     "compose:reset": "docker compose down -v && sh scripts/ensure-env.sh && docker compose up -d --build",
-    "metrics": "curl -sS http://localhost:${PORT:-3000}/metrics"
+    "metrics": "curl -sS http://localhost:${PORT:-3000}/metrics",
+    "release": "scripts/deploy.sh patch",
+    "release:minor": "scripts/deploy.sh minor",
+    "release:major": "scripts/deploy.sh major",
+    "release:dry": "scripts/deploy.sh patch --dry-run",
+    "release:build": "scripts/release/build-push.sh",
+    "release:verify": "scripts/release/verify.sh"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.69",

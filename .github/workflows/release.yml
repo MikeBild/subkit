@@ -399,58 +399,27 @@ jobs:
     env:
       VERSION: ${{ needs.build-and-push.outputs.version }}
     steps:
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1
+      - uses: actions/checkout@v4
         with:
-          host: ${{ secrets.DROPLET_HOST }}
-          username: ${{ secrets.DROPLET_USER }}
-          key: ${{ secrets.DROPLET_SSH_KEY }}
-          envs: VERSION
-          script: |
-            set -euo pipefail
-            cd /opt/subkit
-            doctl registry login --expiry-seconds 600
-            export ENGINE_VERSION="$VERSION"
-            COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
-
-            # Capture current version for rollback
-            PREV_VERSION=$($COMPOSE ps -q engine 2>/dev/null | xargs -r docker inspect -f '{{index .Config.Env}}' 2>/dev/null | grep -oP 'ENGINE_VERSION=\K[^ ]+' || echo "")
-
-            $COMPOSE pull engine migrate
-
-            # Run migrations — abort on failure
-            $COMPOSE up -d migrate
-            $COMPOSE wait migrate || { echo "FATAL: migration failed"; exit 1; }
-
-            $COMPOSE up -d seed
-            $COMPOSE up -d --no-deps engine
-
-            # Health check loop (30 attempts × 5s = 150s max).
-            # The prod compose override `!reset []`'s the engine's host
-            # port publish, so the container is only reachable via the
-            # docker network. Use Docker's own HEALTHCHECK state, which
-            # matches what `docker ps` reports ("healthy" / "unhealthy").
-            ENGINE_ID=$($COMPOSE ps -q engine)
-            for i in $(seq 1 30); do
-              HEALTH=$(docker inspect -f '{{.State.Health.Status}}' "$ENGINE_ID" 2>/dev/null || echo "")
-              if [ "$HEALTH" = "healthy" ]; then
-                echo "Engine v${VERSION} healthy"
-                break
-              fi
-              if [ "$i" -eq 30 ]; then
-                echo "FATAL: health check failed after 150s"
-                if [ -n "$PREV_VERSION" ]; then
-                  echo "Rolling back to $PREV_VERSION"
-                  export ENGINE_VERSION="$PREV_VERSION"
-                  $COMPOSE up -d --no-deps engine
-                fi
-                exit 1
-              fi
-              sleep 5
-            done
-
-            $COMPOSE up -d caddy
-            docker image prune -f
+          ref: ${{ inputs.tag || github.ref }}
+      # The deploy body lives in `scripts/release/deploy-body.sh` and
+      # is shared with the laptop `scripts/deploy.sh` orchestrator — both
+      # paths pipe this exact file into `bash -s` on the droplet so they
+      # cannot drift. Behavior: doctl registry login → compose pull →
+      # migrate → engine recreate (--no-deps) → Docker HEALTHCHECK poll
+      # with auto-rollback → caddy bounce → prune.
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.DROPLET_HOST }}" >> ~/.ssh/known_hosts
+      - name: Run deploy-body.sh on droplet
+        run: |
+          ssh -i ~/.ssh/id_rsa \
+            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
+            "ENGINE_VERSION='$VERSION' bash -s" \
+            < scripts/release/deploy-body.sh
 
   smoke:
     name: smoke
