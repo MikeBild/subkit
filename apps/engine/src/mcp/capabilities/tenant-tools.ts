@@ -22,6 +22,7 @@ import type {
   ToolContext,
 } from "../../conversations/tools/index.ts";
 import { listTools } from "../../conversations/tools/index.ts";
+import { compileDescription } from "../../conversations/tools/describe.ts";
 import type { Db } from "../../db/client.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -70,7 +71,7 @@ export function listTenantTools(opts: ListTenantToolsOptions): Tool[] {
     if (!includeTool(t.category, opts.allowWrites)) continue;
     out.push({
       name: `${TENANT_TOOL_PREFIX}${t.name}`,
-      description: t.description,
+      description: compileDescription(t),
       inputSchema: zodToMcpSchema(t.inputSchema),
     });
   }

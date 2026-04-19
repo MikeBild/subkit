@@ -18,6 +18,7 @@ import { log } from "../../logging/logger.ts";
 import { recordConversationToolCall } from "../../observability/instrumentation.ts";
 import { recordTransition } from "../confirmation.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
+import { compileDescription } from "./describe.ts";
 import { resolveToolMode, type ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
 import { filterBySkillGate } from "./gated.ts";
@@ -108,7 +109,7 @@ function wrapOne(
   // identical.
   const inputSchema = inner.inputSchema as unknown as z.ZodType<Record<string, unknown>>;
   return tool<Record<string, unknown>, WrappedToolOutput>({
-    description: inner.description,
+    description: compileDescription(inner),
     inputSchema,
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
       // Serialize against other tool executions in this turn — see
