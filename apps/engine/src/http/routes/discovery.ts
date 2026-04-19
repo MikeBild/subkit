@@ -1,6 +1,6 @@
 // Discovery HTTP surface (programmatic / SDK access).
 //
-// The primary UX is conversational (file attachments + propose_connector/
+// The primary UX is conversational (file attachments + start_connector_from_*/
 // propose_skill tools). These endpoints exist for SDK consumers and admin
 // tooling that prefer batch file analysis.
 

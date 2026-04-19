@@ -3824,6 +3824,149 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/conversations/{id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConversationAttachmentList"];
+                    };
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConversationAttachmentUpload"];
+                };
+            };
+            responses: {
+                /** @description Uploaded */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConversationAttachment"];
+                    };
+                };
+                /** @description bad_input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description too_large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/attachments/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/mcp/prompts": {
         parameters: {
             query?: never;
@@ -4071,6 +4214,55 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["AiRepairResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ai/summarize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Summarize arbitrary text into a compact plain-text response */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AiSummarizeBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AiSummarizeResponse"];
                     };
                 };
                 /** @description Bad request */
@@ -5643,6 +5835,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/diagnostics/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operator-facing setup validation for live engine configuration */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DiagnosticsSetupResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6399,6 +6645,27 @@ export interface components {
             messages: components["schemas"]["UIMessage"][];
             tool_calls: unknown[];
             draft?: unknown;
+            resume_summary?: {
+                active_target: {
+                    /** @enum {string} */
+                    kind: "connector" | "workflow" | "none";
+                    name: string | null;
+                    slug: string | null;
+                    id: string | null;
+                    environment: string | null;
+                };
+                stage: string;
+                last_successful_probe: string | null;
+                last_successful_preview: string | null;
+                unsaved: boolean;
+                pending_approval: {
+                    id: string;
+                    tool_name: string;
+                    summary: string;
+                } | null;
+                next_action: string;
+                one_sentence: string;
+            } | null;
         };
         UIMessage: {
             id: string;
@@ -6414,6 +6681,13 @@ export interface components {
             conversation_id: string;
             connector_id: string | null;
             workflow_id: string | null;
+            draft_mode: string;
+            draft_summary: {
+                readiness: string;
+                next_action: string | null;
+                missing_fields: string[];
+                progress_label: string | null;
+            } | null;
             skills: {
                 global: {
                     id: string;
@@ -6435,6 +6709,28 @@ export interface components {
             };
             tool_calls_total: number;
             pending_elicitations: number;
+            attachments: {
+                total: number;
+                items: {
+                    slug: string;
+                    filename: string | null;
+                    bytes: number | null;
+                }[];
+            };
+            latest_probe: {
+                ok: boolean;
+                summary: string | null;
+                failure_code: string | null;
+            } | null;
+            latest_preview: {
+                ok: boolean;
+                summary: string | null;
+                step_id: string | null;
+            } | null;
+            workflow_version: {
+                workflow_id: string;
+                current_version: number | null;
+            } | null;
         };
         RespondElicitationBody: {
             output?: unknown;
@@ -6451,6 +6747,28 @@ export interface components {
         PatchConversationBody: {
             model?: string | null;
             title?: string | null;
+        };
+        ConversationAttachment: {
+            slug: string;
+            original_filename: string;
+            content_type: string | null;
+            size_bytes: number;
+            sha256: string;
+            preview: string | null;
+            created_at: string;
+        };
+        ConversationAttachmentUpload: {
+            filename: string;
+            content_type?: string;
+            content: string;
+            /**
+             * @default utf8
+             * @enum {string}
+             */
+            content_encoding: "utf8" | "base64";
+        };
+        ConversationAttachmentList: {
+            attachments: components["schemas"]["ConversationAttachment"][];
         };
         McpPromptsResponse: {
             items: components["schemas"]["McpPrompt"][];
@@ -6542,6 +6860,17 @@ export interface components {
             connector_id?: string;
             failing_request?: unknown;
             failing_response?: unknown;
+        };
+        AiSummarizeResponse: {
+            summary: string;
+            tokens: {
+                [key: string]: number;
+            };
+            model_used: string;
+            fell_back: boolean;
+        };
+        AiSummarizeBody: {
+            prompt: string;
         };
         PatchCandidateListResponse: {
             items: components["schemas"]["PatchCandidate"][];
@@ -6822,10 +7151,37 @@ export interface components {
         DiagnosticsLlmStatus: {
             provider_env: string | null;
             inferred_provider: string;
+            fallback_provider_env: string | null;
+            fallback_inferred_provider: string;
+            summarize_provider_env: string | null;
+            summarize_inferred_provider: string;
+            summarize_model: string | null;
+            summarize_configuration_error: string | null;
+            configuration_error: string | null;
             anthropic_key_set: boolean;
             gateway_key_set: boolean;
+            gateway_model_set: boolean;
+            openai_key_set: boolean;
+            gemini_key_set: boolean;
+            azure_key_set: boolean;
+            bedrock_key_set: boolean;
+            vertex_api_key_set: boolean;
+            vertex_service_account_set: boolean;
             default_primary: string;
             default_fallback: string;
+        };
+        DiagnosticsSetupResponse: {
+            /** @enum {string} */
+            overall_status: "ok" | "warn" | "blocked";
+            issues: components["schemas"]["DiagnosticsSetupIssue"][];
+            recommendations: string[];
+        };
+        DiagnosticsSetupIssue: {
+            id: string;
+            /** @enum {string} */
+            severity: "blocker" | "warning";
+            title: string;
+            detail: string;
         };
     };
     responses: never;

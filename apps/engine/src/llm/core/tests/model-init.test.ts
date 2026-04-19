@@ -1,19 +1,27 @@
-// `initializeModel` — gateway-first resolver.
-//
-// Only two real outcomes exist now:
-//   - Mock (tests + local without a gateway key).
-//   - Gateway (Vercel AI Gateway, which itself routes to anthropic /
-//     openai / google / bedrock / vertex / azure via the model string).
-// The legacy per-provider SDK branches (`@ai-sdk/anthropic`,
-// `@ai-sdk/openai`, `@ai-sdk/google`) were deleted — they were the root
-// cause of a production 500 cluster (the compiled engine binary was
-// missing the dynamically-imported packages).
-
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { initializeModel, ProviderMisconfiguredError } from "../model-init.ts";
 
 const SAVED_ENV: Record<string, string | undefined> = {};
-const TRACKED = ["AI_GATEWAY_API_KEY", "AI_GATEWAY_MODEL", "LLM_PROVIDER"];
+const TRACKED = [
+  "AI_GATEWAY_API_KEY",
+  "AI_GATEWAY_MODEL",
+  "LLM_PROVIDER",
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_MODEL",
+  "OPENAI_API_KEY",
+  "OPENAI_MODEL",
+  "GEMINI_API_KEY",
+  "GEMINI_MODEL",
+  "AZURE_API_KEY",
+  "AZURE_MODEL",
+  "AZURE_RESOURCE_NAME",
+  "AWS_REGION",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "BEDROCK_MODEL",
+  "VERTEX_API_KEY",
+  "VERTEX_MODEL",
+] as const;
 
 function snapshotEnv() {
   for (const k of TRACKED) SAVED_ENV[k] = process.env[k];
@@ -48,13 +56,15 @@ describe("initializeModel", () => {
     expect(r.model).toBe("mock:never-dispatched");
   });
 
-  it("returns the mock sentinel when providerOverride=mock (tests bypass env)", async () => {
+  it("returns the mock sentinel when providerOverride=mock", async () => {
     const r = await initializeModel({ providerOverride: "mock" });
     expect(r.provider).toBe("mock");
     expect(r.model).toBe("mock:never-dispatched");
   });
 
-  it("returns the gateway model string when AI_GATEWAY_API_KEY is set", async () => {
+  it("prefers gateway mode when both gateway vars are set", async () => {
+    process.env.LLM_PROVIDER = "anthropic";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     process.env.AI_GATEWAY_API_KEY = "gw-key";
     process.env.AI_GATEWAY_MODEL = "anthropic/claude-sonnet-4-5";
     const r = await initializeModel();
@@ -63,25 +73,52 @@ describe("initializeModel", () => {
     expect(r.model).toBe("anthropic/claude-sonnet-4-5");
   });
 
-  it("uses the default model when AI_GATEWAY_MODEL is not set", async () => {
-    process.env.AI_GATEWAY_API_KEY = "gw-key";
-    const r = await initializeModel({ defaultModel: "anthropic/claude-haiku-4-5" });
-    expect(r.provider).toBe("gateway");
-    expect(r.modelId).toBe("anthropic/claude-haiku-4-5");
+  it("returns a direct anthropic model when LLM_PROVIDER=anthropic", async () => {
+    process.env.LLM_PROVIDER = "anthropic";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    process.env.ANTHROPIC_MODEL = "claude-sonnet-4-5";
+    const r = await initializeModel();
+    expect(r.provider).toBe("anthropic");
+    expect(r.modelId).toBe("claude-sonnet-4-5");
+    expect(typeof r.model).toBe("object");
   });
 
-  it("modelOverride wins over AI_GATEWAY_MODEL", async () => {
+  it("returns a direct openai model when LLM_PROVIDER=openai", async () => {
+    process.env.LLM_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "sk-openai-test";
+    process.env.OPENAI_MODEL = "gpt-4.1";
+    const r = await initializeModel();
+    expect(r.provider).toBe("openai");
+    expect(r.modelId).toBe("gpt-4.1");
+    expect(typeof r.model).toBe("object");
+  });
+
+  it("honours providerOverride over env-driven gateway selection", async () => {
     process.env.AI_GATEWAY_API_KEY = "gw-key";
     process.env.AI_GATEWAY_MODEL = "anthropic/claude-sonnet-4-5";
-    const r = await initializeModel({ modelOverride: "anthropic/claude-haiku-4-5" });
-    expect(r.modelId).toBe("anthropic/claude-haiku-4-5");
+    process.env.OPENAI_API_KEY = "sk-openai-test";
+    const r = await initializeModel({
+      providerOverride: "openai",
+      modelOverride: "gpt-4.1",
+    });
+    expect(r.provider).toBe("openai");
+    expect(r.modelId).toBe("gpt-4.1");
+    expect(typeof r.model).toBe("object");
   });
 
-  it("throws ProviderMisconfiguredError when neither mock nor a gateway key is configured", async () => {
-    // The real regression the old test cluster covered: we must NOT fall
-    // back to the mock sentinel silently when LLM_PROVIDER is unset and
-    // AI_GATEWAY_API_KEY is also unset. That previously caused every
-    // production conversation to 500 via `mock:never-dispatched`.
+  it("throws when gateway is selected but AI_GATEWAY_MODEL is missing", async () => {
+    process.env.AI_GATEWAY_API_KEY = "gw-key";
+    await expect(initializeModel({ providerOverride: "gateway" })).rejects.toBeInstanceOf(
+      ProviderMisconfiguredError,
+    );
+  });
+
+  it("throws when LLM_PROVIDER is set but the matching key is missing", async () => {
+    process.env.LLM_PROVIDER = "anthropic";
+    await expect(initializeModel()).rejects.toBeInstanceOf(ProviderMisconfiguredError);
+  });
+
+  it("throws when neither gateway nor a provider env is configured", async () => {
     await expect(initializeModel()).rejects.toBeInstanceOf(ProviderMisconfiguredError);
   });
 

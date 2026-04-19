@@ -27,7 +27,6 @@ import { conversationAttachments } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 
 export const ATTACHMENT_PREFIX = "@attachment:";
-const ATTACHMENT_PREFIX_LEN = ATTACHMENT_PREFIX.length;
 const ATTACHMENT_RE = /@attachment:([a-z0-9][a-z0-9_-]{0,62})\b/g;
 
 export interface ResolverOptions {

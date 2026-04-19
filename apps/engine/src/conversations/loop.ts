@@ -21,6 +21,12 @@ import { LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
 import { createMockLanguageModel } from "../llm/mock-stream.ts";
 import { log, logger } from "../logging/logger.ts";
 import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instrumentation.ts";
+import {
+  CONVERSATION_CANCELLED_REASON,
+  mergeAbortSignals,
+  registerConversationAbort,
+  unregisterConversationAbort,
+} from "./abort.ts";
 import { loadDraft } from "./draft.ts";
 import { EventSink } from "./event-sink.ts";
 import { appendMessage, buildModelMessages } from "./persist.ts";
@@ -59,7 +65,7 @@ export interface RunLoopParams {
 
 export interface RunLoopResult {
   events: TurnEvent[];
-  status: "awaiting_input" | "committed" | "active" | "exhausted";
+  status: "awaiting_input" | "committed" | "active" | "abandoned" | "exhausted";
   committed_workflow_id?: string;
   pending_elicitation_id?: string;
 }
@@ -165,6 +171,14 @@ function shouldFallback(err: LlmProviderError): boolean {
   );
 }
 
+function isAbortError(err: unknown): boolean {
+  if (err instanceof DOMException) {
+    return err.name === "AbortError" || err.name === "TimeoutError";
+  }
+  if (err instanceof Error) return /abort|cancel/i.test(err.message);
+  return /abort|cancel/i.test(String(err));
+}
+
 function readStepUsage(step: {
   usage: {
     inputTokens?: number | undefined;
@@ -204,6 +218,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // via `p.onEvent` when supplied.
   const events: TurnEvent[] = sink.asArrayProxy();
   const budget = p.step_budget ?? DEFAULT_BUDGET;
+  const turnAbortCtrl = registerConversationAbort(p.conversation_id);
 
   log.debug({
     module: "conversation",
@@ -254,6 +269,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       const { appendSnapshot } = await import("./draft.ts");
       await appendSnapshot(p.tenant_id, p.conversation_id, next, p.db);
     },
+    abortSignal: turnAbortCtrl.signal,
   };
 
   const route = await resolveModelRoute(p.tenant_id, p.db);
@@ -370,6 +386,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     // apps/engine/src/llm/errors.ts for our classification taxonomy.
     let capturedError: unknown;
     const resolvedModel = await resolveLanguageModel(route.provider, modelId);
+    const streamAbortSignal = mergeAbortSignals([
+      turnAbortCtrl.signal,
+      AbortSignal.timeout(Math.min(10 * 60_000, 30_000 * budget)),
+    ]);
     const result = streamText({
       model: resolvedModel,
       system: prompt.system,
@@ -389,7 +409,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         committedStopCondition as any,
       ],
       maxRetries: 0,
-      abortSignal: AbortSignal.timeout(Math.min(10 * 60_000, 30_000 * budget)),
+      abortSignal: streamAbortSignal,
       experimental_telemetry: {
         isEnabled: true,
         functionId: "converse",
@@ -461,126 +481,143 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
 
   void messages; // messages rebuilt per-attempt inside runOnce
   try {
-    await runOnce(effectiveModel);
-  } catch (primaryErr) {
-    const providerErr = classifyStreamError(primaryErr);
-    const msg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
-    logger.warn({
-      module: "llm",
-      action: "converse.failed",
-      msg: "streamText primary error",
-      conversation_id: p.conversation_id,
-      model: effectiveModel,
-      kind: providerErr?.kind ?? "other",
-      error: msg,
-    });
-    await recordUsage(
-      {
-        tenant_id: p.tenant_id,
-        flow: "converse",
-        model: effectiveModel,
-        prompt_tokens: prompt.token_counts.total,
-        completion_tokens: 0,
-        latency_ms: 0,
-        result: "error",
-        error: msg,
-      },
-      p.db,
-    );
-    if (!providerErr || !shouldFallback(providerErr) || route.fallback === effectiveModel) {
-      throw primaryErr;
-    }
-    logger.warn({
-      module: "llm",
-      action: "fallback.triggered",
-      msg: "llm fallback engaged",
-      flow: "converse",
-      conversation_id: p.conversation_id,
-      primary: effectiveModel,
-      fallback: route.fallback,
-      kind: providerErr.kind,
-    });
+    let cancelled = false;
     try {
-      await runOnce(route.fallback);
-    } catch (fbErr) {
-      const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);
-      logger.warn({
-        module: "llm",
-        action: "converse.failed",
-        msg: "streamText fallback error",
-        conversation_id: p.conversation_id,
-        model: route.fallback,
-        error: fbMsg,
-      });
-      await recordUsage(
-        {
-          tenant_id: p.tenant_id,
+      await runOnce(effectiveModel);
+    } catch (primaryErr) {
+      if (turnAbortCtrl.signal.aborted && isAbortError(primaryErr)) {
+        cancelled = true;
+      } else {
+        const providerErr = classifyStreamError(primaryErr);
+        const msg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+        logger.warn({
+          module: "llm",
+          action: "converse.failed",
+          msg: "streamText primary error",
+          conversation_id: p.conversation_id,
+          model: effectiveModel,
+          kind: providerErr?.kind ?? "other",
+          error: msg,
+        });
+        await recordUsage(
+          {
+            tenant_id: p.tenant_id,
+            flow: "converse",
+            model: effectiveModel,
+            prompt_tokens: prompt.token_counts.total,
+            completion_tokens: 0,
+            latency_ms: 0,
+            result: "error",
+            error: msg,
+          },
+          p.db,
+        );
+        if (!providerErr || !shouldFallback(providerErr) || route.fallback === effectiveModel) {
+          throw primaryErr;
+        }
+        logger.warn({
+          module: "llm",
+          action: "fallback.triggered",
+          msg: "llm fallback engaged",
           flow: "converse",
-          model: route.fallback,
-          prompt_tokens: prompt.token_counts.total,
-          completion_tokens: 0,
-          latency_ms: 0,
-          result: "error",
-          error: fbMsg,
-        },
-        p.db,
-      );
-      throw fbErr;
+          conversation_id: p.conversation_id,
+          primary: effectiveModel,
+          fallback: route.fallback,
+          kind: providerErr.kind,
+        });
+        try {
+          await runOnce(route.fallback);
+        } catch (fbErr) {
+          if (turnAbortCtrl.signal.aborted && isAbortError(fbErr)) {
+            cancelled = true;
+          } else {
+            const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);
+            logger.warn({
+              module: "llm",
+              action: "converse.failed",
+              msg: "streamText fallback error",
+              conversation_id: p.conversation_id,
+              model: route.fallback,
+              error: fbMsg,
+            });
+            await recordUsage(
+              {
+                tenant_id: p.tenant_id,
+                flow: "converse",
+                model: route.fallback,
+                prompt_tokens: prompt.token_counts.total,
+                completion_tokens: 0,
+                latency_ms: 0,
+                result: "error",
+                error: fbMsg,
+              },
+              p.db,
+            );
+            throw fbErr;
+          }
+        }
+      }
     }
-  }
 
-  // Resolve final status.
-  let status: RunLoopResult["status"] = "active";
-  let committedWorkflowId: string | undefined;
-  let pendingElicitationId: string | undefined;
-  if (signals.committed) {
-    status = "committed";
-    committedWorkflowId = signals.committed.workflow_id;
-    events.push({ type: "completed", status: "committed" });
-  } else if (signals.pendingElicitation) {
-    status = "awaiting_input";
-    pendingElicitationId = signals.pendingElicitation.elicitation_id;
-    events.push({ type: "completed", status: "awaiting_input" });
-  } else {
-    // Either budget exhausted or the model stopped with text only.
+    // Resolve final status.
+    let status: RunLoopResult["status"] = "active";
+    let committedWorkflowId: string | undefined;
+    let pendingElicitationId: string | undefined;
     const rows = await p.db
       .select()
       .from(conversations)
       .where(eq(conversations.id, p.conversation_id))
       .limit(1);
-    if (rows[0]?.status === "awaiting_input") {
+    const persistedStatus = rows[0]?.status ?? null;
+    const conversationCancelled =
+      cancelled ||
+      persistedStatus === "abandoned" ||
+      turnAbortCtrl.signal.reason === CONVERSATION_CANCELLED_REASON;
+    if (conversationCancelled) {
+      status = "abandoned";
+      events.push({ type: "completed", status: "abandoned" });
+    } else if (signals.committed) {
+      status = "committed";
+      committedWorkflowId = signals.committed.workflow_id;
+      events.push({ type: "completed", status: "committed" });
+    } else if (signals.pendingElicitation || persistedStatus === "awaiting_input") {
       status = "awaiting_input";
+      pendingElicitationId = signals.pendingElicitation?.elicitation_id;
+      events.push({ type: "completed", status: "awaiting_input" });
+    } else {
+      if (signals.step >= budget && !signals.pendingElicitation) {
+        log.warn({
+          module: "conversation",
+          action: "loop.budget_exhausted",
+          msg: "turn stopped without done/elicitation/commit (budget reached)",
+          conversation_id: p.conversation_id,
+          step_budget: budget,
+        });
+      }
+      events.push({ type: "completed", status: "active" });
     }
-    if (signals.step >= budget && !signals.pendingElicitation) {
-      log.warn({
-        module: "conversation",
-        action: "loop.budget_exhausted",
-        msg: "turn stopped without done/elicitation/commit (budget reached)",
-        conversation_id: p.conversation_id,
-        step_budget: budget,
-      });
-    }
-    events.push({ type: "completed", status: "active" });
-  }
 
-  // Attach turn usage to every `completed` frame (sk status-line
-  // reads `turn_tokens` + `remaining_monthly_budget_tokens`).
-  const usageAfter = await monthlyUsage(p.tenant_id, p.db).catch(() => usageBefore);
-  const turnTokens = Math.max(0, usageAfter - usageBefore);
-  const remaining =
-    route.monthly_budget != null ? Math.max(0, route.monthly_budget - usageAfter) : null;
-  for (let i = events.length - 1; i >= 0; i--) {
-    const ev = events[i];
-    if (ev && ev.type === "completed") {
-      events[i] = {
-        ...ev,
-        usage: { turn_tokens: turnTokens, remaining_monthly_budget_tokens: remaining },
-      };
+    // Attach turn usage to every `completed` frame (sk status-line
+    // reads `turn_tokens` + `remaining_monthly_budget_tokens`).
+    const usageAfter = await monthlyUsage(p.tenant_id, p.db).catch(() => usageBefore);
+    const turnTokens = Math.max(0, usageAfter - usageBefore);
+    const remaining =
+      route.monthly_budget != null ? Math.max(0, route.monthly_budget - usageAfter) : null;
+    for (let i = events.length - 1; i >= 0; i--) {
+      const ev = events[i];
+      if (ev && ev.type === "completed") {
+        events[i] = {
+          ...ev,
+          usage: { turn_tokens: turnTokens, remaining_monthly_budget_tokens: remaining },
+        };
+      }
     }
-  }
 
-  const out: RunLoopResult = { events, status };
-  if (committedWorkflowId) out.committed_workflow_id = committedWorkflowId;
-  if (pendingElicitationId) out.pending_elicitation_id = pendingElicitationId;
-  return out;
+    const out: RunLoopResult = { events, status };
+    if (committedWorkflowId) out.committed_workflow_id = committedWorkflowId;
+    if (pendingElicitationId) out.pending_elicitation_id = pendingElicitationId;
+    return out;
+  } finally {
+    unregisterConversationAbort(p.conversation_id, turnAbortCtrl);
+  }
 }

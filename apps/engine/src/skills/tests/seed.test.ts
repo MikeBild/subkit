@@ -13,12 +13,7 @@ import path from "node:path";
 import { and, eq } from "drizzle-orm";
 import { skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import {
-  applySkillSeeds,
-  applySkillSeedsForAllTenants,
-  loadSkillSeedsFromDisk,
-  type SeededSkill,
-} from "../seed.ts";
+import { applySkillSeeds, applySkillSeedsForAllTenants, loadSkillSeedsFromDisk } from "../seed.ts";
 
 let ctx: TestDb;
 let tenantA: string;

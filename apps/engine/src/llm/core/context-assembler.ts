@@ -156,6 +156,12 @@ const BASE_SYSTEM_PROMPTS: Record<LlmFlow, string> = {
     "Be precise. Only propose artifacts you have strong evidence for. Never invent URLs, endpoints, or credentials.",
     "Return a JSON object with an `artifacts` array.",
   ].join(" "),
+  summarize: [
+    "You are the subkit workflow engine's summarize flow.",
+    "Compress the user's input into a short operator-facing summary.",
+    "Keep the result factual, compact, and plain text.",
+    "Do not add markdown headings, bullet lists, or JSON unless the user explicitly asks for them.",
+  ].join(" "),
 };
 
 /** Return the system prompt for a flow, honouring the conversation surface. */

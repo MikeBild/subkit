@@ -15,7 +15,12 @@ import type { ConversationItem } from "@chat-ui/index.ts";
 import type { SkSessionState } from "@cli-core/index.ts";
 import { loadConfig, type ResolvedProfile, saveConfig } from "../config.ts";
 import { debugLogPath, debugLogTail, isDebugMode, setDebugMode } from "../debug.ts";
-import type { EngineClient, StatusSummary } from "../engine-client.ts";
+import type {
+  ConversationContextSnapshot,
+  ConversationDetail,
+  EngineClient,
+  StatusSummary,
+} from "../engine-client.ts";
 
 /**
  * Rich pane descriptions returned by slash commands that open a modal
@@ -32,6 +37,109 @@ export type PaneSpec =
       rows: ReadonlyArray<readonly [string, string | number | null | undefined]>;
     }
   | { kind: "conversations"; items: ReadonlyArray<ConversationItem> }
+  | {
+      kind: "template-picker";
+      title: string;
+      current_template: string | null;
+      connector_name: string | null;
+      lines: ReadonlyArray<string>;
+    }
+  | {
+      kind: "connector-draft";
+      title: string;
+      connector: {
+        name: string;
+        slug: string;
+        driver: string;
+        environment: string;
+        auth_type: string;
+        base_url: string;
+        dsn: string;
+        template: string;
+        saved_id: string;
+      };
+      missing_fields: ReadonlyArray<string>;
+      latest_probe: {
+        ok: boolean;
+        method: string;
+        path: string;
+        environment: string;
+        status: string;
+        duration: string;
+        summary: string;
+        failure_code: string;
+      } | null;
+    }
+  | {
+      kind: "workflow-draft";
+      title: string;
+      workflow: {
+        name: string;
+        slug: string;
+        description: string;
+        steps: ReadonlyArray<{ id: string; kind: string }>;
+      };
+      latest_preview: {
+        ok: boolean;
+        step: string;
+        summary: string;
+      } | null;
+    }
+  | {
+      kind: "step-detail";
+      title: string;
+      step: {
+        id: string;
+        kind: string;
+        ordinal: number;
+        lines: ReadonlyArray<string>;
+      };
+    }
+  | {
+      kind: "context";
+      title: string;
+      snapshot: ConversationContextSnapshot;
+    }
+  | {
+      kind: "probe-results";
+      title: string;
+      probe: {
+        ok: boolean;
+        method: string;
+        path: string;
+        environment: string;
+        http: string;
+        duration: string;
+        summary: string;
+        failure_code: string;
+      };
+    }
+  | {
+      kind: "preview-results";
+      title: string;
+      preview: {
+        ok: boolean;
+        step: string;
+        summary: string;
+        lines: ReadonlyArray<string>;
+      };
+    }
+  | {
+      kind: "version-browser";
+      title: string;
+      workflow_id: string;
+      items: ReadonlyArray<{ version: number; created_at: string; note: string | null }>;
+    }
+  | {
+      kind: "approval-history";
+      title: string;
+      items: ReadonlyArray<{
+        tool: string;
+        created_at: string;
+        summary: string;
+        status: string;
+      }>;
+    }
   | {
       kind: "text";
       title: string;
@@ -123,6 +231,55 @@ function scalarString(value: unknown, fallback = "—"): string {
 
 function draftRecord(value: unknown): Record<string, unknown> | null {
   return asRecord(value);
+}
+
+function conversationDetailRecord(value: unknown): ConversationDetail {
+  return value as ConversationDetail;
+}
+
+function workflowStepsFromDraft(
+  draft: Record<string, unknown> | null,
+): Array<Record<string, unknown>> {
+  const workflow = draft ? asRecord(draft.workflow) : null;
+  return Array.isArray(workflow?.steps)
+    ? workflow.steps.filter((step): step is Record<string, unknown> => asRecord(step) !== null)
+    : [];
+}
+
+function approvalHistoryFromDetail(detail: ConversationDetail): Array<{
+  tool: string;
+  created_at: string;
+  summary: string;
+  status: string;
+}> {
+  return (Array.isArray(detail.tool_calls) ? detail.tool_calls : [])
+    .map((call) => asRecord(call))
+    .filter(
+      (call): call is Record<string, unknown> =>
+        call !== null &&
+        (call.tool === "ask_user_confirm" ||
+          call.tool === "ask_user_choice" ||
+          call.tool === "ask_user_multi"),
+    )
+    .map((call) => {
+      const output = asRecord(call.output);
+      const input = asRecord(call.input);
+      const confirmed = output?.confirmed;
+      const status =
+        confirmed === true
+          ? "approved"
+          : confirmed === false
+            ? "rejected"
+            : typeof call.approval_required === "boolean" && call.approval_required
+              ? "awaiting"
+              : "recorded";
+      return {
+        tool: recordString(call.tool),
+        created_at: recordString(call.created_at),
+        summary: recordString(input?.summary ?? input?.question, "—"),
+        status,
+      };
+    });
 }
 
 function formatDraftSummaryLines(draft: Record<string, unknown> | null): string[] {
@@ -327,66 +484,43 @@ export async function handleSlash(
       }
       const validation = asRecord(connector.validation);
       const latestProbe = asRecord(connector.latest_probe);
-      const validationOk = validation?.ok === true;
       const probeOk = latestProbe?.ok === true;
       if (ctx.openPane) {
         ctx.openPane({
-          kind: "structured",
+          kind: "connector-draft",
           title: "connector draft",
-          sections: [
-            {
-              heading: "identity",
-              tone: "info",
-              rows: [
-                ["name", recordString(connector.name)],
-                ["slug", recordString(connector.slug)],
-                ["driver", recordString(connector.driver)],
-                ["environment", recordString(connector.environment)],
-                ["auth", recordString(connector.auth_type)],
-                ["base_url", recordString(connector.base_url)],
-                ["dsn", recordString(connector.dsn)],
-                [
-                  "template",
-                  recordString(connector.template_name ?? connector.template_id, "scratch"),
-                ],
-                ["saved id", recordString(connector.saved_connector_id)],
-              ],
-            },
-            {
-              heading: `validation · ${validationOk ? "ok" : "needs work"}`,
-              tone: validationOk ? "ok" : "warn",
-              rows: Array.isArray(validation?.missing_fields)
-                ? validation.missing_fields
-                    .filter((f): f is string => typeof f === "string")
-                    .map((f): readonly [string, string] => ["missing", f])
-                : [],
-            },
-            {
-              heading: `latest probe · ${latestProbe ? (probeOk ? "ok" : "failed") : "none"}`,
-              tone: latestProbe ? (probeOk ? "ok" : "fail") : "info",
-              rows: latestProbe
-                ? [
-                    ["method", recordString(latestProbe.method)],
-                    ["path", recordString(latestProbe.path)],
-                    ["environment", recordString(latestProbe.environment)],
-                    [
-                      "status",
-                      typeof latestProbe.status_code === "number"
-                        ? String(latestProbe.status_code)
-                        : "—",
-                    ],
-                    [
-                      "duration",
-                      typeof latestProbe.duration_ms === "number"
-                        ? `${latestProbe.duration_ms}ms`
-                        : "—",
-                    ],
-                    ["summary", scalarString(latestProbe.summary)],
-                    ["failure code", scalarString(latestProbe.failure_code, "—")],
-                  ]
-                : [],
-            },
-          ],
+          connector: {
+            name: recordString(connector.name),
+            slug: recordString(connector.slug),
+            driver: recordString(connector.driver),
+            environment: recordString(connector.environment),
+            auth_type: recordString(connector.auth_type),
+            base_url: recordString(connector.base_url),
+            dsn: recordString(connector.dsn),
+            template: recordString(connector.template_name ?? connector.template_id, "scratch"),
+            saved_id: recordString(connector.saved_connector_id),
+          },
+          missing_fields: Array.isArray(validation?.missing_fields)
+            ? validation.missing_fields.filter((f): f is string => typeof f === "string")
+            : [],
+          latest_probe: latestProbe
+            ? {
+                ok: probeOk,
+                method: recordString(latestProbe.method),
+                path: recordString(latestProbe.path),
+                environment: recordString(latestProbe.environment),
+                status:
+                  typeof latestProbe.status_code === "number"
+                    ? String(latestProbe.status_code)
+                    : "—",
+                duration:
+                  typeof latestProbe.duration_ms === "number"
+                    ? `${latestProbe.duration_ms}ms`
+                    : "—",
+                summary: scalarString(latestProbe.summary),
+                failure_code: scalarString(latestProbe.failure_code, "—"),
+              }
+            : null,
         });
         return null;
       }
@@ -401,44 +535,49 @@ export async function handleSlash(
       if (!workflow) {
         return panify(ctx, "workflow draft", ["no workflow draft in this conversation"]);
       }
-      const steps = Array.isArray(workflow.steps) ? workflow.steps : [];
+      const steps = workflowStepsFromDraft(draft);
+      const requestedStepId = rawArgs[0];
+      if (requestedStepId) {
+        const match = steps.find((step) => scalarString(step.id, "") === requestedStepId);
+        if (!match) {
+          return `no workflow step named ${requestedStepId}`;
+        }
+        if (ctx.openPane) {
+          ctx.openPane({
+            kind: "step-detail",
+            title: `step ${requestedStepId}`,
+            step: {
+              id: scalarString(match.id, requestedStepId),
+              kind: scalarString(match.kind),
+              ordinal: steps.indexOf(match) + 1,
+              lines: JSON.stringify(match, null, 2).split("\n"),
+            },
+          });
+          return null;
+        }
+        return panify(ctx, `step ${requestedStepId}`, JSON.stringify(match, null, 2).split("\n"));
+      }
       const previewOk = preview?.ok === true;
       if (ctx.openPane) {
         ctx.openPane({
-          kind: "structured",
+          kind: "workflow-draft",
           title: "workflow draft",
-          sections: [
-            {
-              heading: "identity",
-              tone: "info",
-              rows: [
-                ["name", recordString(workflow.name)],
-                ["slug", recordString(workflow.slug)],
-                ["description", recordString(workflow.description)],
-                ["steps", String(steps.length)],
-              ],
-            },
-            {
-              heading: `steps · ${steps.length}`,
-              tone: steps.length > 0 ? "ok" : "warn",
-              rows: steps.slice(0, 10).map((s, i): readonly [string, string] => {
-                const rec = asRecord(s);
-                const kind = rec ? scalarString(rec.kind, "(no kind)") : "(no kind)";
-                const id = rec ? scalarString(rec.id, `#${i + 1}`) : `#${i + 1}`;
-                return [id, kind];
-              }),
-            },
-            {
-              heading: `latest preview · ${preview ? (previewOk ? "ok" : "failed") : "none"}`,
-              tone: preview ? (previewOk ? "ok" : "fail") : "info",
-              rows: preview
-                ? [
-                    ["step", scalarString(preview.step_id, "—")],
-                    ["summary", scalarString(preview.summary)],
-                  ]
-                : [],
-            },
-          ],
+          workflow: {
+            name: recordString(workflow.name),
+            slug: recordString(workflow.slug),
+            description: recordString(workflow.description),
+            steps: steps.slice(0, 50).map((step, i) => ({
+              id: scalarString(step.id, `#${i + 1}`),
+              kind: scalarString(step.kind, "(no kind)"),
+            })),
+          },
+          latest_preview: preview
+            ? {
+                ok: previewOk,
+                step: scalarString(preview.step_id, "—"),
+                summary: scalarString(preview.summary),
+              }
+            : null,
         });
         return null;
       }
@@ -463,6 +602,16 @@ export async function handleSlash(
         "",
         "Templates are optional — describe the system in your own words any time.",
       );
+      if (ctx.openPane) {
+        ctx.openPane({
+          kind: "template-picker",
+          title: "connector templates",
+          current_template: scalarString(connector?.template_name ?? connector?.template_id, ""),
+          connector_name: scalarString(connector?.name, ""),
+          lines,
+        });
+        return null;
+      }
       return panify(ctx, "connector templates", lines);
     }
     case "probe": {
@@ -486,26 +635,18 @@ export async function handleSlash(
         const ok = probe.ok === true;
         if (ctx.openPane) {
           ctx.openPane({
-            kind: "structured",
+            kind: "probe-results",
             title: "latest probe",
-            sections: [
-              {
-                heading: `status · ${ok ? "ok" : "failed"}`,
-                tone: ok ? "ok" : "fail",
-                rows: [
-                  ["method", recordString(probe.method, "GET")],
-                  ["path", recordString(probe.path, "/")],
-                  ["environment", recordString(probe.environment, "dev")],
-                  ["http", typeof probe.status_code === "number" ? String(probe.status_code) : "—"],
-                  [
-                    "duration",
-                    typeof probe.duration_ms === "number" ? `${probe.duration_ms}ms` : "—",
-                  ],
-                  ["summary", scalarString(probe.summary)],
-                  ["failure code", scalarString(probe.failure_code, "—")],
-                ],
-              },
-            ],
+            probe: {
+              ok,
+              method: recordString(probe.method, "GET"),
+              path: recordString(probe.path, "/"),
+              environment: recordString(probe.environment, "dev"),
+              http: typeof probe.status_code === "number" ? String(probe.status_code) : "—",
+              duration: typeof probe.duration_ms === "number" ? `${probe.duration_ms}ms` : "—",
+              summary: scalarString(probe.summary),
+              failure_code: scalarString(probe.failure_code, "—"),
+            },
           });
           return null;
         }
@@ -516,7 +657,8 @@ export async function handleSlash(
           `environment: ${recordString(probe.environment, "dev")}`,
         ]);
       }
-      // Default: trigger a new probe by appending a directive message.
+      // Default (or explicit `/probe run`): trigger a new probe by
+      // appending a directive message.
       // The model interprets it and invokes probe_connector_draft.
       await ctx.client.appendConversationMessage(ctx.session.conversationId, {
         message:
@@ -537,9 +679,22 @@ export async function handleSlash(
         const lines: string[] = [`status: ${preview.ok ? "ok" : "failed"}`];
         if (preview.step_id) lines.push(`step: ${scalarString(preview.step_id)}`);
         if (preview.summary) lines.push("", scalarString(preview.summary));
+        if (ctx.openPane) {
+          ctx.openPane({
+            kind: "preview-results",
+            title: "latest preview",
+            preview: {
+              ok: preview.ok === true,
+              step: scalarString(preview.step_id, "—"),
+              summary: scalarString(preview.summary),
+              lines,
+            },
+          });
+          return null;
+        }
         return panify(ctx, "latest preview", lines);
       }
-      const stepArg = rawArgs[0];
+      const stepArg = sub === "run" ? rawArgs[1] : rawArgs[0];
       const hint = stepArg
         ? `Run dry_run_step against step \`${stepArg}\`. Report the classification and one-line summary.`
         : "Run dry_run_workflow against the current draft. Report the classification of every step that executed.";
@@ -556,6 +711,15 @@ export async function handleSlash(
       const res = await ctx.client.listWorkflowVersions(conv.target_workflow_id);
       if (res.items.length === 0) {
         return panify(ctx, "versions", ["no versions recorded for this workflow"]);
+      }
+      if (ctx.openPane) {
+        ctx.openPane({
+          kind: "version-browser",
+          title: "versions",
+          workflow_id: conv.target_workflow_id,
+          items: res.items,
+        });
+        return null;
       }
       const lines = [
         `workflow: ${conv.target_workflow_id}`,
@@ -587,6 +751,14 @@ export async function handleSlash(
     case "context": {
       if (!ctx.session.conversationId) return "no active conversation";
       const snapshot = await ctx.client.getConversationContextSnapshot(ctx.session.conversationId);
+      if (ctx.openPane) {
+        ctx.openPane({
+          kind: "context",
+          title: "conversation context",
+          snapshot,
+        });
+        return null;
+      }
       const lines = [
         `draft mode: ${snapshot.draft_mode}`,
         `readiness: ${snapshot.draft_summary?.readiness ?? "—"}`,
@@ -631,6 +803,29 @@ export async function handleSlash(
         );
       }
       return panify(ctx, "conversation context", lines);
+    }
+    case "approvals": {
+      if (!ctx.session.conversationId) return "no active conversation";
+      const detail = conversationDetailRecord(
+        await ctx.client.getConversation(ctx.session.conversationId),
+      );
+      const items = approvalHistoryFromDetail(detail);
+      if (items.length === 0) {
+        return panify(ctx, "approval history", ["no approval requests recorded yet."]);
+      }
+      if (ctx.openPane) {
+        ctx.openPane({
+          kind: "approval-history",
+          title: "approval history",
+          items,
+        });
+        return null;
+      }
+      return panify(
+        ctx,
+        "approval history",
+        items.map((item) => `${item.status.padEnd(9)} ${item.tool} · ${item.summary}`),
+      );
     }
     case "clear":
     case "new": {

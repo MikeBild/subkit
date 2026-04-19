@@ -29,73 +29,7 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
 
   if (draft) {
     const mode = draft.mode ?? "onboarding";
-    lines.push(`- Mode: ${mode}`);
-    if (draft.summary) {
-      lines.push(`- Readiness: ${draft.summary.readiness}`);
-      if (draft.summary.next_action) {
-        lines.push(`- Next recommended action: ${draft.summary.next_action}`);
-      }
-      if (draft.summary.missing_fields.length > 0) {
-        lines.push(`- Missing: ${draft.summary.missing_fields.join(", ")}`);
-      }
-    }
-    const connector = draft.connector;
-    if (connector) {
-      const bits: string[] = [];
-      if (connector.name) bits.push(`name="${connector.name}"`);
-      if (connector.slug) bits.push(`slug=${connector.slug}`);
-      if (connector.driver) bits.push(`driver=${connector.driver}`);
-      if (connector.environment) bits.push(`env=${connector.environment}`);
-      if (connector.auth_type) bits.push(`auth=${connector.auth_type}`);
-      if (connector.base_url) bits.push(`base_url=${connector.base_url}`);
-      // Never render connector.config, connector.dsn, or any credentials.
-      if (typeof connector.saved_connector_id === "string") {
-        bits.push(`saved_id=${connector.saved_connector_id}`);
-      }
-      lines.push(`- Connector draft: ${bits.length > 0 ? bits.join(" ") : "(empty)"}`);
-      if (connector.validation) {
-        const v = connector.validation;
-        if (!v.ok && v.missing_fields.length > 0) {
-          lines.push(`  - Missing connector fields: ${v.missing_fields.join(", ")}`);
-        }
-      }
-      if (connector.latest_probe) {
-        const p = connector.latest_probe;
-        lines.push(
-          `  - Latest probe: ${p.ok ? "ok" : "failed"}${
-            p.status_code !== undefined ? ` (HTTP ${p.status_code})` : ""
-          } — ${p.summary}`,
-        );
-      }
-    }
-    const workflowSteps =
-      draft.workflow?.steps?.length ?? (Array.isArray(draft.steps) ? draft.steps.length : 0);
-    if (workflowSteps > 0) {
-      const name = draft.workflow?.name ?? draft.name ?? "(unnamed)";
-      const slug = draft.workflow?.slug ?? draft.slug;
-      lines.push(
-        `- Workflow draft: "${name}"${slug ? ` (${slug})` : ""} with ${workflowSteps} step${
-          workflowSteps === 1 ? "" : "s"
-        }`,
-      );
-      const firstSteps = (draft.workflow?.steps ?? draft.steps ?? []).slice(0, 6);
-      for (const raw of firstSteps) {
-        if (!raw || typeof raw !== "object") continue;
-        const step = raw as Record<string, unknown>;
-        const id = typeof step.id === "string" ? step.id : "(no id)";
-        const kind = typeof step.kind === "string" ? step.kind : "(no kind)";
-        lines.push(`  - ${id}: ${kind}`);
-      }
-      if (workflowSteps > 6) {
-        lines.push(`  - …and ${workflowSteps - 6} more`);
-      }
-    }
-    if (draft.latest_preview) {
-      const p = draft.latest_preview;
-      lines.push(
-        `- Latest preview: ${p.ok ? "ok" : "failed"}${p.step_id ? ` (step=${p.step_id})` : ""} — ${p.summary}`,
-      );
-    }
+    lines.push(...renderModeEnvelope(mode, draft));
   }
 
   if (input.pending_approval) {
@@ -141,4 +75,99 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
   }
 
   return lines.join("\n");
+}
+
+function renderModeEnvelope(
+  mode: NonNullable<DraftDocument["mode"]> | "onboarding",
+  draft: DraftDocument,
+): string[] {
+  const lines: string[] = [`- Mode: ${mode}`];
+  if (draft.summary) {
+    lines.push(`- Readiness: ${draft.summary.readiness}`);
+    if (draft.summary.next_action) {
+      lines.push(`- Next recommended action: ${draft.summary.next_action}`);
+    }
+    if (draft.summary.missing_fields.length > 0) {
+      lines.push(`- Missing: ${draft.summary.missing_fields.join(", ")}`);
+    }
+  }
+
+  if (mode === "connector_authoring") {
+    lines.push(...renderConnectorLines(draft));
+    return lines;
+  }
+  if (mode === "workflow_authoring") {
+    lines.push(...renderWorkflowLines(draft));
+    return lines;
+  }
+  if (mode === "resume_review") {
+    lines.push(...renderConnectorLines(draft));
+    lines.push(...renderWorkflowLines(draft));
+    return lines;
+  }
+  lines.push(...renderConnectorLines(draft));
+  lines.push(...renderWorkflowLines(draft));
+  return lines;
+}
+
+function renderConnectorLines(draft: DraftDocument): string[] {
+  const connector = draft.connector;
+  if (!connector) return ["- Connector draft: (none)"];
+  const bits: string[] = [];
+  if (connector.name) bits.push(`name="${connector.name}"`);
+  if (connector.slug) bits.push(`slug=${connector.slug}`);
+  if (connector.driver) bits.push(`driver=${connector.driver}`);
+  if (connector.environment) bits.push(`env=${connector.environment}`);
+  if (connector.auth_type) bits.push(`auth=${connector.auth_type}`);
+  if (connector.base_url) bits.push(`base_url=${connector.base_url}`);
+  if (typeof connector.saved_connector_id === "string") {
+    bits.push(`saved_id=${connector.saved_connector_id}`);
+  }
+  const lines = [`- Connector draft: ${bits.length > 0 ? bits.join(" ") : "(empty)"}`];
+  if (
+    connector.validation &&
+    !connector.validation.ok &&
+    connector.validation.missing_fields.length > 0
+  ) {
+    lines.push(`  - Missing connector fields: ${connector.validation.missing_fields.join(", ")}`);
+  }
+  if (connector.latest_probe) {
+    const probe = connector.latest_probe;
+    lines.push(
+      `  - Latest probe: ${probe.ok ? "ok" : "failed"}${
+        probe.status_code !== undefined ? ` (HTTP ${probe.status_code})` : ""
+      } — ${probe.summary}`,
+    );
+  }
+  return lines;
+}
+
+function renderWorkflowLines(draft: DraftDocument): string[] {
+  const workflow = draft.workflow;
+  const workflowSteps = workflow.steps.length;
+  if (workflowSteps === 0) {
+    return ['- Workflow draft: "(empty)" with 0 steps'];
+  }
+  const lines = [
+    `- Workflow draft: "${workflow.name}"${workflow.slug ? ` (${workflow.slug})` : ""} with ${workflowSteps} step${
+      workflowSteps === 1 ? "" : "s"
+    }`,
+  ];
+  for (const raw of workflow.steps.slice(0, 6)) {
+    if (!raw || typeof raw !== "object") continue;
+    const step = raw as Record<string, unknown>;
+    const id = typeof step.id === "string" ? step.id : "(no id)";
+    const kind = typeof step.kind === "string" ? step.kind : "(no kind)";
+    lines.push(`  - ${id}: ${kind}`);
+  }
+  if (workflowSteps > 6) {
+    lines.push(`  - …and ${workflowSteps - 6} more`);
+  }
+  if (draft.latest_preview) {
+    const preview = draft.latest_preview;
+    lines.push(
+      `- Latest preview: ${preview.ok ? "ok" : "failed"}${preview.step_id ? ` (step=${preview.step_id})` : ""} — ${preview.summary}`,
+    );
+  }
+  return lines;
 }

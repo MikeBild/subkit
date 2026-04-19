@@ -95,7 +95,7 @@ function stripTerminal(text: string): string {
     .replace(BELL_RE, "");
 }
 
-async function runInteractiveScenario(steps: readonly ExpectStep[]): Promise<void> {
+async function runInteractiveScenario(steps: readonly ExpectStep[]): Promise<string> {
   if (!EXPECT_BIN) throw new Error("missing `expect` command for PTY smoke test");
   const persona = env.personas.admin;
   const proc = Bun.spawn([EXPECT_BIN, "-c", buildExpectScript(steps)], {
@@ -129,9 +129,22 @@ async function runInteractiveScenario(steps: readonly ExpectStep[]): Promise<voi
         `stderr:\n${stripTerminal(stderr).slice(-1000)}`,
     );
   }
+  return visible;
 }
 
 describe("sk interactive smoke", () => {
+  test("boots through whoami + RBAC + status without surfacing the startup 500 banner", async () => {
+    if (!EXPECT_BIN) return;
+    const visible = await runInteractiveScenario([
+      { kind: "wait", pattern: "(?i)quick start", label: "quick-start" },
+      { kind: "wait", pattern: "(?i)subkit conversation CLI", label: "banner" },
+      { kind: "send", text: "/exit\r" },
+    ]);
+    expect(visible).not.toContain("HTTP 500 internal_error");
+    expect(visible).not.toContain("trace_id");
+    expect(true).toBe(true);
+  }, 40_000);
+
   test("starter action 2 seeds the guided connector onboarding prompt", async () => {
     if (!EXPECT_BIN) return;
     await runInteractiveScenario([
@@ -142,6 +155,34 @@ describe("sk interactive smoke", () => {
         kind: "wait",
         pattern: "Suggest a template only if it clearly helps",
         label: "connector-guidance",
+      },
+      { kind: "send", text: "/exit\r" },
+    ]);
+    expect(true).toBe(true);
+  }, 40_000);
+
+  test("starter action 3 seeds the guided workflow authoring prompt", async () => {
+    if (!EXPECT_BIN) return;
+    await runInteractiveScenario([
+      { kind: "wait", pattern: "(?i)quick start", label: "quick-start" },
+      { kind: "send", text: "3" },
+      { kind: "wait", pattern: "I want to build a workflow\\.", label: "workflow-starter" },
+      { kind: "wait", pattern: "Preview before commit", label: "workflow-guidance" },
+      { kind: "send", text: "/exit\r" },
+    ]);
+    expect(true).toBe(true);
+  }, 40_000);
+
+  test("starter action 4 seeds the docs-first import prompt", async () => {
+    if (!EXPECT_BIN) return;
+    await runInteractiveScenario([
+      { kind: "wait", pattern: "(?i)quick start", label: "quick-start" },
+      { kind: "send", text: "4" },
+      { kind: "wait", pattern: "I want to import docs or an API spec", label: "import-starter" },
+      {
+        kind: "wait",
+        pattern: "Guide me through the minimum information you need",
+        label: "import-guidance",
       },
       { kind: "send", text: "/exit\r" },
     ]);

@@ -63,7 +63,7 @@ export async function loadSkillSeedsFromDisk(dir: string = DEFAULT_SEED_DIR): Pr
   let entries: string[];
   try {
     entries = await fs.readdir(dir);
-  } catch (err) {
+  } catch (_err) {
     // If the directory does not exist (fresh clone without seeds), return
     // an empty result. The engine boots without seeded skills, not a crash.
     logger.info({

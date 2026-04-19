@@ -70,7 +70,7 @@ function makeCtx(): ToolContext {
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({ tenant_id, actor_id: null, db: ctx.db }),
-    getDraft: () => ({ name: "", steps: [] }),
+    getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
   };
 }

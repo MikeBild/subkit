@@ -112,7 +112,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   // Draft mutations auto-execute — they stage changes that commit_draft
   // later explicitly confirms via ask_user_confirm.
   propose_step: { defaultMode: "no_confirm" },
-  propose_connector: { defaultMode: "no_confirm" },
   propose_skill: { defaultMode: "no_confirm" },
   suggest_connector_templates: { defaultMode: "no_confirm" },
   start_connector_from_template: { defaultMode: "no_confirm" },

@@ -15,4 +15,4 @@ sed -i.bak "s/^MASTER_KEY=.*/MASTER_KEY=$MASTER_KEY/" "$ENV_FILE"
 rm -f "$ENV_FILE.bak"
 
 echo "[subkit] created .env with auto-generated MASTER_KEY"
-echo "[subkit] edit .env to set ANTHROPIC_API_KEY and other secrets"
+echo "[subkit] edit .env to set AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL or LLM_PROVIDER + matching provider secrets"

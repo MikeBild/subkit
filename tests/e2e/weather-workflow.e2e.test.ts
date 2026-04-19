@@ -6,7 +6,7 @@
 // converse plan in `apps/engine/src/llm/mock-provider.ts:cannedOpenMeteoBerlinPlan`
 // drives a deterministic sequence:
 //
-//   get_engine_status → list_connectors → propose_connector(open-meteo)
+//   get_engine_status → list_connectors → start_connector_from_description(open-meteo)
 //   → propose_step(forecast-berlin) → propose_step(tomorrow-only)
 //   → validate_draft → ask_user_confirm → commit_draft
 //
@@ -76,11 +76,13 @@ describe("weather workflow (open-meteo, no API key)", () => {
       tool_calls?: Array<{ tool: string }>;
     };
     const toolNames = (detail.tool_calls ?? []).map((x) => x.tool);
-    // propose_connector declares a `pause` payload (ask_user_confirm
-    // for an external-write), so the loop halts there on the first
-    // turn. propose_step / validate_draft / commit_draft land on the
-    // follow-up turn after the user resolves the elicitation.
-    for (const expected of ["get_engine_status", "list_connectors", "propose_connector"]) {
+    // start_connector_from_description seeds the connector draft on the
+    // first turn. The later steps land after a follow-up authoring turn.
+    for (const expected of [
+      "get_engine_status",
+      "list_connectors",
+      "start_connector_from_description",
+    ]) {
       expect(toolNames).toContain(expected);
     }
   }, 120_000);

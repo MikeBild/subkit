@@ -17,7 +17,7 @@
 #   - DO_TOKEN env var set (for droplet-side doctl auth)
 #   - mikebild.dev zone already hosted on DO nameservers
 #   - ~/.ssh/subkit_deploy{,.pub} exists (or SSH_KEY_PATH overrides)
-#   - $ANTHROPIC_API_KEY env var set (used to seed /opt/subkit/.env)
+#   - real-LLM env configured in /opt/subkit/.env after bootstrap
 
 set -euo pipefail
 
@@ -155,7 +155,9 @@ else
   $SSH 'chmod 600 /opt/subkit/.env'
   warn "Seeded /opt/subkit/.env from template. You MUST edit it with real secrets:"
   warn "    ssh -i $SSH_KEY_PATH root@$DROPLET_IP 'vi /opt/subkit/.env'"
-  warn "Required edits: MASTER_KEY, POSTGRES_PASSWORD, DATABASE_URL password, ANTHROPIC_API_KEY"
+  warn "Required edits: MASTER_KEY, POSTGRES_PASSWORD, DATABASE_URL password, and either:"
+  warn "  - AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL"
+  warn "  - or LLM_PROVIDER + matching provider credentials"
 fi
 
 # --------------------------------------------------------------------------

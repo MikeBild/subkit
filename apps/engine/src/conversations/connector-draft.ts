@@ -1,4 +1,10 @@
+import { getBuiltinTemplate } from "../connectors/templates.ts";
 import type { CreateConnectorInput } from "../connectors/types.ts";
+import {
+  allowedTemplateAuthTypes,
+  defaultTemplateAuthType,
+  extractTemplatePlaceholders,
+} from "./connector-template-intelligence.ts";
 import type { ConnectorDraftDocument } from "./types.ts";
 
 export interface ConnectorDraftValidation {
@@ -35,10 +41,17 @@ export function validateConnectorDraft(
   if (connector.driver === "http" || connector.driver === "graphql" || connector.driver === "s3") {
     if (!connector.base_url) missing_fields.push("base_url");
     else {
-      try {
-        new URL(connector.base_url);
-      } catch {
-        pushError(errors, "base_url", "base_url must be a valid URL");
+      const placeholders = extractTemplatePlaceholders(connector.base_url);
+      if (placeholders.length > 0) {
+        for (const field of placeholders) {
+          missing_fields.push(`base_url.${field}`);
+        }
+      } else {
+        try {
+          new URL(connector.base_url);
+        } catch {
+          pushError(errors, "base_url", "base_url must be a valid URL");
+        }
       }
     }
   }
@@ -53,6 +66,21 @@ export function validateConnectorDraft(
   }
   if (connector.slug && !/^[a-z0-9][a-z0-9-]*$/u.test(connector.slug)) {
     pushError(errors, "slug", "slug must match /^[a-z0-9][a-z0-9-]*$/");
+  }
+  if (connector.template_id) {
+    const template = getBuiltinTemplate(connector.template_id);
+    if (!template) {
+      pushError(errors, "template_id", "template_id must reference a known built-in template");
+    } else if (connector.auth_type) {
+      const allowed = allowedTemplateAuthTypes(template);
+      if (!allowed.includes(connector.auth_type)) {
+        pushError(
+          errors,
+          "auth_type",
+          `auth_type must match the selected template (${allowed.join(", ")}; default ${defaultTemplateAuthType(template)})`,
+        );
+      }
+    }
   }
   return {
     ok: missing_fields.length === 0 && errors.length === 0,

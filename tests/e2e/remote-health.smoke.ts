@@ -50,6 +50,11 @@ const READ_PROBES: ReadProbe[] = [
     path: "/v1/diagnostics/llm",
     expect: { status: 401 },
   },
+  {
+    name: "Diagnostics — /v1/diagnostics/setup requires auth (401 without credentials)",
+    path: "/v1/diagnostics/setup",
+    expect: { status: 401 },
+  },
 ];
 
 async function runReadProbes(): Promise<number> {
@@ -111,19 +116,59 @@ async function probeLlmRouting(): Promise<number> {
   const body = (await r.json()) as {
     inferred_provider?: string;
     provider_env?: string | null;
+    configuration_error?: string | null;
   };
   const inferred = body.inferred_provider ?? "(missing)";
-  if (inferred === "mock") {
+  if (inferred === "mock" || inferred === "unconfigured") {
     console.log(
-      "✘ LLM routing — inferred_provider=mock; the engine cannot serve real conversations.",
+      `✘ LLM routing — inferred_provider=${inferred}; the engine cannot serve real conversations.`,
     );
+    if (body.configuration_error) console.log(`  detail: ${body.configuration_error}`);
     console.log(
-      "  fix: set LLM_PROVIDER + the matching API key (e.g. ANTHROPIC_API_KEY) on the engine container.",
+      "  fix: set AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL, or LLM_PROVIDER plus matching provider credentials.",
     );
     return 1;
   }
   console.log(
     `✓ LLM routing — provider_env=${body.provider_env ?? "(unset)"} inferred_provider=${inferred}`,
+  );
+  return 0;
+}
+
+async function probeSetupValidation(): Promise<number> {
+  if (!SMOKE_KEY) {
+    console.log(
+      "⚠ /v1/diagnostics/setup — skipped (SK_SMOKE_API_KEY not set). MUST be set post-deploy.",
+    );
+    return 0;
+  }
+  const r = await fetch(`${BASE}/v1/diagnostics/setup`, {
+    headers: { authorization: `Bearer ${SMOKE_KEY}`, accept: "application/json" },
+  });
+  if (r.status === 403) {
+    console.log("✘ /v1/diagnostics/setup — 403 (smoke key lacks audit:read)");
+    return 1;
+  }
+  if (!r.ok) {
+    console.log(`✘ /v1/diagnostics/setup — status ${r.status}`);
+    return 1;
+  }
+  const body = (await r.json()) as {
+    overall_status?: "ok" | "warn" | "blocked";
+    issues?: Array<{ severity?: string; title?: string; detail?: string }>;
+  };
+  const issues = Array.isArray(body.issues) ? body.issues : [];
+  const blockers = issues.filter((issue) => issue.severity === "blocker");
+  if (body.overall_status === "blocked" || blockers.length > 0) {
+    console.log(`✘ Setup validation — overall_status=${body.overall_status ?? "(missing)"}`);
+    for (const issue of blockers) {
+      console.log(`  blocker: ${issue.title ?? "(untitled)"} — ${issue.detail ?? ""}`);
+    }
+    return 1;
+  }
+  const warningCount = issues.filter((issue) => issue.severity === "warning").length;
+  console.log(
+    `✓ Setup validation — overall_status=${body.overall_status ?? "ok"} warnings=${warningCount}`,
   );
   return 0;
 }
@@ -182,6 +227,7 @@ async function probeConversationCreate(): Promise<number> {
 async function run(): Promise<number> {
   let failed = await runReadProbes();
   failed += await probeLlmRouting();
+  failed += await probeSetupValidation();
   failed += await probeConversationCreate();
   return failed === 0 ? 0 : 1;
 }

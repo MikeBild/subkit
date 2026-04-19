@@ -1,66 +1,52 @@
-# Guided-authoring — landed vs. still open
+# Guided Authoring Status
 
-## Landed through 1.10.0
+## Original plan status
 
-Foundational (1.8.0):
-- Real step + workflow preview with budget + cancel + classification
-- Driver-parity probe for HTTP / GraphQL / Postgres / S3
-- Probe-before-save and preview-before-commit gates with audited `force`
-  override (`CONNECTOR_SAVED_OVERRIDE` / `WORKFLOW_COMMITTED_OVERRIDE`)
-- Resume-review mode + `buildResumeSummary`
-- Authoring context block (secrets masked)
-- Onboarding policy + `start_workflow_from_goal`
-- 5 structured sk cards (probe/preview/save/commit/resume)
-- Status-line authoring fields + resume banner
-- sk slash commands `/templates`, `/probe`, `/preview`, `/versions`,
-  `/restore`
-- Brand-name hygiene gate, pre-push hook
+The guided-authoring plan that shipped across `1.8.x` through `1.11.x`
+is now closed at the implementation floor:
 
-1.9.0:
-- Preview parity across **all 8 step kinds**
-- `/probe` / `/preview` trigger real actions
-- `structured` PaneSpec kind (tone-coloured sections)
-- Richer context snapshot (attachments, latest probe, latest preview,
-  workflow version)
-- Secure `submit_connector_credential` tool + `password` + `sensitive`
-  field types
-- Draft-model dedup via normalize-on-read
-- Failure-streak banner removed
+- real step + workflow preview across all 8 step kinds
+- driver-parity probe for HTTP / GraphQL / Postgres / S3
+- probe-before-save and preview-before-commit gates with audited `force`
+- resume-review mode + `buildResumeSummary`
+- masked authoring context block with mode-aware envelopes
+- onboarding policy + `start_workflow_from_goal`
+- all 8 structured authoring cards
+- dedicated authoring panes in `sk`
+- status line authoring fields + resume banner
+- route-doc parity gate
+- `propose_connector` removal and canonical `start_connector_from_*`
+- canonical nested `draft.workflow`
+- conversation-run cancellation that aborts active previews/probes cleanly
 
-1.10.0:
-- **Masked keystroke echo** for `password` / `sensitive` form fields —
-  plaintext never appears on terminal.
-- **3 more authoring cards**: `ConnectorDraftCard` (start/update/
-  validate/inspect connector), `WorkflowDraftCard` (propose_step / build
-  / connect / validate / inspect with inline errors), `ApprovalCard`
-  (ask_user_confirm / choice with pending + resolved states). All 8
-  cards from the original plan now shipped.
-- **Route-doc parity contract gate** — fails on any drift between
-  engine `createRoute` declarations and `docs/17-conversations.md` +
-  `docs/09-connectors.md`, or between sk slash registry and
-  `docs/27-sk-cli.md`.
+## Verification coverage
 
-## Intentionally deferred (structural, needs own change)
+The authoring floor is now exercised across:
 
-- **Dedicated React pane components beyond `structured`** —
-  `template-picker`, `step-detail`, `preview-results`, `version-browser`,
-  `approval-history` would each be 150–300 lines + visual tests. The
-  structured pane covers the content floor; dedicated components are
-  interactive polish.
-- **Deeper connector template intelligence** — template-specific
-  required fields, auth-shape validation, region/base-URL variants,
-  knowledge-pipeline-ranked template suggestion. Needs a template
-  schema design doc.
-- **Mode-specific hidden-context envelopes** — single-shape block
-  today. Splitting per mode (onboarding / connector / workflow /
-  resume) requires a context-assembler refactor.
-- **`propose_connector` → `start_connector_from_*` migration** —
-  entrenched in canned plans, 4+ e2e tests, skill docs, discovery
-  service. Redundancy, not bug. Collapse in its own branch.
-- **Additional dedicated E2E journey tests** — credential entry /
-  OAuth / template decline / driver-specific probing / journey
-  scenarios. Existing suite covers the hard behaviours; these are
-  additive coverage.
+- unit/integration tests in `apps/engine/src/conversations/**` and
+  `apps/sk/src/tests/**`
+- `tests/e2e/guided-authoring.e2e.test.ts`
+- `tests/e2e/authoring-regressions.e2e.test.ts`
+- `tests/e2e/sk-interactive-smoke.e2e.test.ts`
 
-Every landed item has tests in unit, integration, or e2e. The pre-push
-hook enforces the full CI gate locally.
+These suites cover:
+
+- onboarding with and without templates
+- pending-approval resume state
+- workflow version restore
+- probe failures (`401`, timeout)
+- preview failure and preview cancellation
+- tenant isolation on conversation reads
+- GraphQL / Postgres / S3 draft probe parity
+- startup smoke for the compiled `sk` binary
+- quick-start starter flows for resume / connector / workflow / import / help
+
+## Remaining work
+
+No known gaps remain against the original guided-authoring implementation
+plan. Future work should be treated as additive scope, not deferred plan
+closure. Examples:
+
+- richer template metadata and ranking heuristics
+- broader docs-ingestion journeys beyond the current guided import floor
+- more production smoke probes or operator automation around deploys

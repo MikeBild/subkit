@@ -29,6 +29,7 @@ import type { Db } from "../../db/client.ts";
 import { connectors as connectorsTable } from "../../db/schema/index.ts";
 import { resolvePlaceholders } from "../../llm/substitution/resolver.ts";
 import { logger } from "../../logging/logger.ts";
+import { mergeAbortSignals } from "../abort.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
 
@@ -48,6 +49,7 @@ const ProbeInput = z
     query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
     body: z.unknown().optional(),
     environment: Environment.default("dev"),
+    timeout_ms: z.number().int().min(100).max(60_000).default(15_000),
   })
   .openapi("ProbeConnectorToolInput");
 
@@ -119,6 +121,16 @@ function denyResult(code: string, message: string): ToolResult {
   };
 }
 
+function isTimeoutError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === "TimeoutError" || error.name === "AbortError";
+  }
+  if (error instanceof Error) {
+    return /timed? out|timeout|aborted/i.test(error.message);
+  }
+  return /timed? out|timeout|aborted/i.test(String(error));
+}
+
 // ---- the tool --------------------------------------------------------------
 
 export const probeConnectorTool: ConversationTool = {
@@ -132,7 +144,7 @@ export const probeConnectorTool: ConversationTool = {
     "Rate-limited to 20 probes / minute / conversation; over the limit the tool returns `probe_rate_limited`.",
     "Audit row (action=conversation.probe_connector) captures the connector slug + URL host + status, never the full URL or body.",
     "For non-GET methods or prod environment, the upstream policy inserts a confirm_before_execution elicitation; the LLM must wait for the operator.",
-    "Use `${cred.<slug>.<field>}` in headers/query/body — the resolver substitutes credentials safely and records placeholder names (not values) on the audit row.",
+    `Use \`\${cred.<slug>.<field>}\` in headers/query/body — the resolver substitutes credentials safely and records placeholder names (not values) on the audit row.`,
   ],
   requires_skill: "http-connectors",
   example_input: {
@@ -254,12 +266,16 @@ export const probeConnectorTool: ConversationTool = {
           url: plan.url,
           headers: plan.headers,
           body: typeof init.body === "string" ? init.body : null,
-          timeoutMs: 30_000,
+          timeoutMs: args.timeout_ms,
         });
         status = tunnelRes.status;
         responseBody = tunnelRes.body;
       } else {
-        const res = await fetch(plan.url, init);
+        const timeoutSignal = AbortSignal.timeout(args.timeout_ms);
+        const signal = ctx.abortSignal
+          ? mergeAbortSignals([ctx.abortSignal, timeoutSignal])
+          : timeoutSignal;
+        const res = await fetch(plan.url, { ...init, signal });
         status = res.status;
         const ct = res.headers.get("content-type") ?? "";
         const text = await res.text();
@@ -318,11 +334,15 @@ export const probeConnectorTool: ConversationTool = {
     );
 
     if (errorDetail) {
+      const timeout = isTimeoutError(errorDetail);
       return {
         ok: false,
         data: {
           persistence: "none" as const,
-          error: { code: "probe_fetch_failed", message: errorDetail },
+          error: {
+            code: timeout ? "probe_timeout" : "probe_fetch_failed",
+            message: timeout ? `Probe timed out after ${args.timeout_ms}ms.` : errorDetail,
+          },
           metadata: {
             connector_slug: args.connector_slug,
             method: args.method,

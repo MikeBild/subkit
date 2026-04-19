@@ -7,8 +7,7 @@ import { renderAuthoringContextBlock } from "../core/authoring-context-block.ts"
 
 function draft(overrides: Partial<DraftDocument> = {}): DraftDocument {
   return {
-    name: "new-workflow",
-    steps: [],
+    workflow: { name: "new-workflow", steps: [] },
     ...overrides,
   } as DraftDocument;
 }
@@ -72,7 +71,6 @@ describe("renderAuthoringContextBlock", () => {
       draft: draft({
         mode: "workflow_authoring",
         workflow: { name: "my-flow", steps },
-        steps,
       }),
     });
     expect(block).not.toBeNull();

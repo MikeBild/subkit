@@ -3016,6 +3016,98 @@
           },
           "draft": {
             "nullable": true
+          },
+          "resume_summary": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "active_target": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "connector",
+                      "workflow",
+                      "none"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "slug": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "id": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "environment": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name",
+                  "slug",
+                  "id",
+                  "environment"
+                ]
+              },
+              "stage": {
+                "type": "string"
+              },
+              "last_successful_probe": {
+                "type": "string",
+                "nullable": true
+              },
+              "last_successful_preview": {
+                "type": "string",
+                "nullable": true
+              },
+              "unsaved": {
+                "type": "boolean"
+              },
+              "pending_approval": {
+                "type": "object",
+                "nullable": true,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "tool_name": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "tool_name",
+                  "summary"
+                ]
+              },
+              "next_action": {
+                "type": "string"
+              },
+              "one_sentence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "active_target",
+              "stage",
+              "last_successful_probe",
+              "last_successful_preview",
+              "unsaved",
+              "pending_approval",
+              "next_action",
+              "one_sentence"
+            ]
           }
         },
         "required": [
@@ -3078,6 +3170,38 @@
           "workflow_id": {
             "type": "string",
             "nullable": true
+          },
+          "draft_mode": {
+            "type": "string"
+          },
+          "draft_summary": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "readiness": {
+                "type": "string"
+              },
+              "next_action": {
+                "type": "string",
+                "nullable": true
+              },
+              "missing_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "progress_label": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "readiness",
+              "next_action",
+              "missing_fields",
+              "progress_label"
+            ]
           },
           "skills": {
             "type": "object",
@@ -3168,16 +3292,119 @@
           },
           "pending_elicitations": {
             "type": "number"
+          },
+          "attachments": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "number"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "slug": {
+                      "type": "string"
+                    },
+                    "filename": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "bytes": {
+                      "type": "number",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "slug",
+                    "filename",
+                    "bytes"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "total",
+              "items"
+            ]
+          },
+          "latest_probe": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "summary": {
+                "type": "string",
+                "nullable": true
+              },
+              "failure_code": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "ok",
+              "summary",
+              "failure_code"
+            ]
+          },
+          "latest_preview": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "summary": {
+                "type": "string",
+                "nullable": true
+              },
+              "step_id": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "ok",
+              "summary",
+              "step_id"
+            ]
+          },
+          "workflow_version": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "workflow_id": {
+                "type": "string"
+              },
+              "current_version": {
+                "type": "number",
+                "nullable": true
+              }
+            },
+            "required": [
+              "workflow_id",
+              "current_version"
+            ]
           }
         },
         "required": [
           "conversation_id",
           "connector_id",
           "workflow_id",
+          "draft_mode",
+          "draft_summary",
           "skills",
           "messages",
           "tool_calls_total",
-          "pending_elicitations"
+          "pending_elicitations",
+          "attachments",
+          "latest_probe",
+          "latest_preview",
+          "workflow_version"
         ]
       },
       "RespondElicitationBody": {
@@ -3233,6 +3460,86 @@
             "nullable": true
           }
         }
+      },
+      "ConversationAttachment": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "original_filename": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string",
+            "nullable": true
+          },
+          "size_bytes": {
+            "type": "number"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "original_filename",
+          "content_type",
+          "size_bytes",
+          "sha256",
+          "preview",
+          "created_at"
+        ]
+      },
+      "ConversationAttachmentUpload": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "content_type": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "content": {
+            "type": "string"
+          },
+          "content_encoding": {
+            "type": "string",
+            "enum": [
+              "utf8",
+              "base64"
+            ],
+            "default": "utf8"
+          }
+        },
+        "required": [
+          "filename",
+          "content"
+        ]
+      },
+      "ConversationAttachmentList": {
+        "type": "object",
+        "properties": {
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationAttachment"
+            }
+          }
+        },
+        "required": [
+          "attachments"
+        ]
       },
       "McpPromptsResponse": {
         "type": "object",
@@ -3570,6 +3877,45 @@
           "execution_id",
           "failing_step_id",
           "drift_diff"
+        ]
+      },
+      "AiSummarizeResponse": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string"
+          },
+          "tokens": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "model_used": {
+            "type": "string"
+          },
+          "fell_back": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "summary",
+          "tokens",
+          "model_used",
+          "fell_back"
+        ]
+      },
+      "AiSummarizeBody": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000
+          }
+        },
+        "required": [
+          "prompt"
         ]
       },
       "PatchCandidateListResponse": {
@@ -4709,10 +5055,57 @@
           "inferred_provider": {
             "type": "string"
           },
+          "fallback_provider_env": {
+            "type": "string",
+            "nullable": true
+          },
+          "fallback_inferred_provider": {
+            "type": "string"
+          },
+          "summarize_provider_env": {
+            "type": "string",
+            "nullable": true
+          },
+          "summarize_inferred_provider": {
+            "type": "string"
+          },
+          "summarize_model": {
+            "type": "string",
+            "nullable": true
+          },
+          "summarize_configuration_error": {
+            "type": "string",
+            "nullable": true
+          },
+          "configuration_error": {
+            "type": "string",
+            "nullable": true
+          },
           "anthropic_key_set": {
             "type": "boolean"
           },
           "gateway_key_set": {
+            "type": "boolean"
+          },
+          "gateway_model_set": {
+            "type": "boolean"
+          },
+          "openai_key_set": {
+            "type": "boolean"
+          },
+          "gemini_key_set": {
+            "type": "boolean"
+          },
+          "azure_key_set": {
+            "type": "boolean"
+          },
+          "bedrock_key_set": {
+            "type": "boolean"
+          },
+          "vertex_api_key_set": {
+            "type": "boolean"
+          },
+          "vertex_service_account_set": {
             "type": "boolean"
           },
           "default_primary": {
@@ -4725,10 +5118,81 @@
         "required": [
           "provider_env",
           "inferred_provider",
+          "fallback_provider_env",
+          "fallback_inferred_provider",
+          "summarize_provider_env",
+          "summarize_inferred_provider",
+          "summarize_model",
+          "summarize_configuration_error",
+          "configuration_error",
           "anthropic_key_set",
           "gateway_key_set",
+          "gateway_model_set",
+          "openai_key_set",
+          "gemini_key_set",
+          "azure_key_set",
+          "bedrock_key_set",
+          "vertex_api_key_set",
+          "vertex_service_account_set",
           "default_primary",
           "default_fallback"
+        ]
+      },
+      "DiagnosticsSetupResponse": {
+        "type": "object",
+        "properties": {
+          "overall_status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "warn",
+              "blocked"
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticsSetupIssue"
+            }
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "overall_status",
+          "issues",
+          "recommendations"
+        ]
+      },
+      "DiagnosticsSetupIssue": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "blocker",
+              "warning"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "severity",
+          "title",
+          "detail"
         ]
       }
     },
@@ -9131,6 +9595,170 @@
         }
       }
     },
+    "/v1/conversations/{id}/attachments": {
+      "post": {
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationAttachmentUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Uploaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationAttachment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad_input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "too_large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationAttachmentList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/attachments/{slug}": {
+      "delete": {
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/mcp/prompts": {
       "get": {
         "tags": [
@@ -9366,6 +9994,50 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AiRepairResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ai/summarize": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Summarize arbitrary text into a compact plain-text response",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiSummarizeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSummarizeResponse"
                 }
               }
             }
@@ -11221,6 +11893,51 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DiagnosticsLlmStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/diagnostics/setup": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Operator-facing setup validation for live engine configuration",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsSetupResponse"
                 }
               }
             }

@@ -23,7 +23,7 @@ import { and, eq } from "drizzle-orm";
 import { type ZodType, z } from "zod";
 import { type Db, getDb } from "../../db/client.ts";
 import { tenantLlmSettings, tenants } from "../../db/schema/index.ts";
-import { env } from "../../env.ts";
+import { env, listLlmEnvironmentIssues } from "../../env.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordLlmQuotaExhausted, recordLlmTokens } from "../../observability/instrumentation.ts";
 import { checkAndDecrement, checkBudget, recordUsage } from "../budgets.ts";
@@ -35,7 +35,7 @@ import { AiSdkModel, classifyProviderError, isFallbackEligible } from "./ai-sdk-
 import type { SubkitLlmMessage } from "./base-types.ts";
 import { toSystemMessages } from "./cache-blocks.ts";
 import { type AssembledContext, assembleContext } from "./context-assembler.ts";
-import { initializeModel } from "./model-init.ts";
+import { detectConfiguredProvider, initializeModel } from "./model-init.ts";
 import { account } from "./token-accountant.ts";
 
 /**
@@ -49,11 +49,15 @@ import { account } from "./token-accountant.ts";
  * just a namespacing nicety that lived in tenant routes.
  */
 export async function resolveLanguageModel(
-  _provider: LlmProviderKind,
+  provider: LlmProviderKind,
   modelId: string,
 ): Promise<LanguageModel | string> {
   const bare = modelId.includes(":") ? modelId.slice(modelId.indexOf(":") + 1) : modelId;
-  const resolved = await initializeModel({ defaultModel: bare });
+  const resolved = await initializeModel({
+    providerOverride: provider,
+    defaultModel: bare,
+    modelOverride: bare,
+  });
   return resolved.model;
 }
 
@@ -80,31 +84,76 @@ const DEFAULT_FALLBACK = "claude-haiku-4-5-20251001";
  */
 export interface GlobalLlmStatus {
   provider_env: string | null;
-  inferred_provider: LlmProviderKind;
-  anthropic_key_set: boolean;
+  inferred_provider: LlmProviderKind | "unconfigured";
+  fallback_provider_env: string | null;
+  fallback_inferred_provider: LlmProviderKind | "unconfigured";
+  summarize_provider_env: string | null;
+  summarize_inferred_provider: LlmProviderKind | "unconfigured";
+  summarize_model: string | null;
+  summarize_configuration_error: string | null;
   gateway_key_set: boolean;
+  gateway_model_set: boolean;
+  anthropic_key_set: boolean;
+  openai_key_set: boolean;
+  gemini_key_set: boolean;
+  azure_key_set: boolean;
+  bedrock_key_set: boolean;
+  vertex_api_key_set: boolean;
+  vertex_service_account_set: boolean;
+  configuration_error: string | null;
   default_primary: string;
   default_fallback: string;
 }
 
 export function globalLlmStatus(): GlobalLlmStatus {
+  const inferred = detectConfiguredProvider();
+  const fallbackInferred = detectConfiguredProvider({ providerEnvVar: "LLM_FALLBACK_PROVIDER" });
+  const summarizeProviderEnvVar = process.env.SUMMARIZE_LLM_PROVIDER
+    ? "SUMMARIZE_LLM_PROVIDER"
+    : "LLM_PROVIDER";
+  const summarizeInferred = detectConfiguredProvider({ providerEnvVar: summarizeProviderEnvVar });
+  const primaryIssues = listLlmEnvironmentIssues(process.env, { requireConfigured: true });
+  const summarizeIssues = listLlmEnvironmentIssues(process.env, {
+    providerEnvVar: summarizeProviderEnvVar,
+    fallbackProviderEnvVar: null,
+    requireConfigured: true,
+  });
   return {
     provider_env: process.env.LLM_PROVIDER ?? null,
-    inferred_provider: currentProvider(),
-    anthropic_key_set: Boolean(env.ANTHROPIC_API_KEY),
+    inferred_provider: inferred,
+    fallback_provider_env: process.env.LLM_FALLBACK_PROVIDER ?? null,
+    fallback_inferred_provider: fallbackInferred,
+    summarize_provider_env: process.env.SUMMARIZE_LLM_PROVIDER ?? null,
+    summarize_inferred_provider: summarizeInferred,
+    summarize_model: process.env.SUMMARIZE_MODEL ?? null,
+    summarize_configuration_error: summarizeIssues.length > 0 ? summarizeIssues.join(" | ") : null,
     gateway_key_set: Boolean(process.env.AI_GATEWAY_API_KEY),
+    gateway_model_set: Boolean(process.env.AI_GATEWAY_MODEL),
+    anthropic_key_set: Boolean(process.env.ANTHROPIC_API_KEY),
+    openai_key_set: Boolean(process.env.OPENAI_API_KEY),
+    gemini_key_set: Boolean(process.env.GEMINI_API_KEY),
+    azure_key_set: Boolean(process.env.AZURE_API_KEY),
+    bedrock_key_set: Boolean(
+      process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION,
+    ),
+    vertex_api_key_set: Boolean(process.env.VERTEX_API_KEY),
+    vertex_service_account_set: Boolean(
+      process.env.VERTEX_CLIENT_EMAIL && process.env.VERTEX_PRIVATE_KEY,
+    ),
+    configuration_error: primaryIssues.length > 0 ? primaryIssues.join(" | ") : null,
     default_primary: env.LLM_PRIMARY ?? DEFAULT_PRIMARY,
     default_fallback: env.LLM_FALLBACK ?? DEFAULT_FALLBACK,
   };
 }
 
 function currentProvider(): LlmProviderKind {
-  const raw = (process.env.LLM_PROVIDER ?? "").toLowerCase();
-  if (raw === "mock") return "mock";
-  // Real-LLM path: always the Vercel AI Gateway. Multi-provider switching
-  // happens inside the gateway URL/model string, not in this code.
-  if (process.env.AI_GATEWAY_API_KEY) return "gateway";
-  return "mock";
+  const detected = detectConfiguredProvider();
+  return detected === "unconfigured" ? "gateway" : detected;
+}
+
+function currentFallbackProvider(primaryProvider: LlmProviderKind): LlmProviderKind {
+  const detected = detectConfiguredProvider({ providerEnvVar: "LLM_FALLBACK_PROVIDER" });
+  return detected === "unconfigured" ? primaryProvider : detected;
 }
 
 export async function resolveModelRoute(tenant_id: string, exec?: Executor): Promise<ModelRoute> {
@@ -129,6 +178,7 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
   const fallback =
     settings?.llm_fallback_model ?? tenant?.llm_fallback ?? env.LLM_FALLBACK ?? DEFAULT_FALLBACK;
   const provider = (settings?.llm_provider as LlmProviderKind | undefined) ?? currentProvider();
+  const fallback_provider = currentFallbackProvider(provider);
   const monthly_budget =
     settings?.llm_monthly_token_budget ??
     (tenant?.llm_monthly_token_budget != null ? Number(tenant.llm_monthly_token_budget) : null);
@@ -138,6 +188,7 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     primary,
     fallback,
     provider,
+    fallback_provider,
     context_cap: contextCapFor(primary),
     monthly_budget,
     enable_prompt_cache: settings?.enable_prompt_cache ?? false,
@@ -369,8 +420,14 @@ async function dispatchReal<T>(
   ];
 
   const model = new AiSdkModel({
+    providerOverride: route.provider,
     defaultModel: route.primary,
-    fallback: { defaultModel: route.fallback },
+    modelOverride: route.primary,
+    fallback: {
+      providerOverride: route.fallback_provider,
+      defaultModel: route.fallback,
+      modelOverride: route.fallback,
+    },
   });
 
   const telemetryMeta = {

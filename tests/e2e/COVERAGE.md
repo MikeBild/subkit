@@ -18,7 +18,43 @@ LLM provider differs:
 The mock track exists for tests that pin a specific tool sequence (the
 canned plans in `apps/engine/src/llm/mock-provider.ts`). Prefer real
 + outcome-based assertions ("a connector was persisted") over
-trace-based ("propose_connector was called with slug X").
+trace-based ("start_connector_from_description was called for vendor X").
+
+---
+
+## Authoring regressions (mock LLM, deterministic tool plans)
+
+`tests/e2e/authoring-regressions.e2e.test.ts`
+
+| Journey | Status |
+|---------|--------|
+| onboarding without template | ✅ |
+| onboarding with template | ✅ |
+| resume pending approval | ✅ |
+| workflow version restore | ✅ |
+| HTTP probe 401 | ✅ |
+| HTTP probe timeout | ✅ |
+| preview failure placeholder path | ✅ |
+| preview cancellation | ✅ |
+| tenant isolation on conversation read | ✅ |
+| GraphQL / Postgres / S3 draft probe parity | ✅ |
+
+`tests/e2e/guided-authoring.e2e.test.ts`
+
+| Journey | Status |
+|---------|--------|
+| connector-first guided onboarding through save + commit approvals | ✅ |
+
+`tests/e2e/sk-interactive-smoke.e2e.test.ts`
+
+| Journey | Status |
+|---------|--------|
+| startup boot path (`whoami` / RBAC / `status`) | ✅ |
+| quick-start starter action 1: resume | ✅ |
+| quick-start starter action 2: connector onboarding prompt | ✅ |
+| quick-start starter action 3: workflow onboarding prompt | ✅ |
+| quick-start starter action 4: docs/spec import prompt | ✅ |
+| quick-start starter action 5: help | ✅ |
 
 ---
 

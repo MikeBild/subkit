@@ -9,7 +9,7 @@
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { upsertCredential } from "../../../credentials/service.ts";
 import { auditLog, connectors, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -44,16 +44,25 @@ beforeAll(async () => {
       body += chunk;
     });
     req.on("end", () => {
+      const url = req.url ?? "";
       const headers: Record<string, string> = {};
       for (const [k, v] of Object.entries(req.headers)) {
         if (typeof v === "string") headers[k.toLowerCase()] = v;
       }
       captured.push({
         method: req.method ?? "GET",
-        url: req.url ?? "",
+        url,
         headers,
         body,
       });
+      if (url.includes("/slow")) {
+        setTimeout(() => {
+          const h = nextResponse.headers ?? { "content-type": "application/json" };
+          res.writeHead(nextResponse.status, h);
+          res.end(nextResponse.body);
+        }, 250);
+        return;
+      }
       const h = nextResponse.headers ?? { "content-type": "application/json" };
       res.writeHead(nextResponse.status, h);
       res.end(nextResponse.body);
@@ -154,7 +163,7 @@ function makeToolContext(env: { tenant_id: string; conversation_id: string }): T
     connector_id: null,
     workflow_id: null,
     engineClient,
-    getDraft: () => ({ name: "", steps: [] }),
+    getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
   };
 }
@@ -189,7 +198,7 @@ describe("probe_connector — dispatch + credential substitution", () => {
     expect(req.method).toBe("GET");
     expect(req.url).toContain("/v1/customers");
     expect(req.url).toContain("limit=2");
-    expect(req.headers["authorization"]).toBe(`Bearer ${CANARY}`);
+    expect(req.headers.authorization).toBe(`Bearer ${CANARY}`);
   });
 
   test("unresolved placeholder in custom header fails before dispatch", async () => {
@@ -203,7 +212,7 @@ describe("probe_connector — dispatch + credential substitution", () => {
       connector_slug: "hd1",
       method: "GET",
       path: "/status",
-      headers: { "x-request-id": "req-${input.trace}" },
+      headers: { "x-request-id": `req-\${input.trace}` },
       environment: "dev",
     });
 
@@ -214,7 +223,7 @@ describe("probe_connector — dispatch + credential substitution", () => {
       details?: { unresolved?: Array<{ token: string }> };
     };
     expect(err.code).toBe("placeholder_unresolved");
-    expect(err.details?.unresolved?.[0]?.token).toBe("${input.trace}");
+    expect(err.details?.unresolved?.[0]?.token).toBe(`\${input.trace}`);
     expect(captured.length).toBe(0);
   });
 
@@ -353,5 +362,21 @@ describe("probe_connector — downstream error handling", () => {
     expect(result.ok).toBe(false);
     const err = (result.data as { error: { code: string } }).error;
     expect(err.code).toBe("probe_fetch_failed");
+  });
+
+  test("timeout returns ok:false with probe_timeout", async () => {
+    const env = await seedProbeConnector({ slug: "slow_probe", authType: "none" });
+    const tctx = makeToolContext(env);
+    const result = await probeConnectorTool.execute(tctx, {
+      connector_slug: "slow_probe",
+      method: "GET",
+      path: "/slow",
+      environment: "dev",
+      timeout_ms: 100,
+    });
+    expect(result.ok).toBe(false);
+    const err = (result.data as { error: { code: string; message: string } }).error;
+    expect(err.code).toBe("probe_timeout");
+    expect(err.message).toContain("timed out");
   });
 });

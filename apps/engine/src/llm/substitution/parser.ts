@@ -113,7 +113,7 @@ export function parsePlaceholders(text: string): ParseResult {
       if (bodyEnd < 0) {
         errors.push({
           code: "unclosed_placeholder",
-          message: "placeholder started with '${' but no matching '}'",
+          message: `placeholder started with '\${' but no matching '}'`,
           span: { start, end: n },
         });
         break;
@@ -197,7 +197,7 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
   if (body.length === 0) {
     return {
       ok: false,
-      error: { code: "empty_placeholder", message: "${} is not a valid placeholder", span },
+      error: { code: "empty_placeholder", message: `\${} is not a valid placeholder`, span },
     };
   }
   const parts = body.split(".");
@@ -211,7 +211,7 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
           ok: false,
           error: {
             code: "malformed_cred",
-            message: "expected ${cred.<slug>.<field>}",
+            message: `expected \${cred.<slug>.<field>}`,
             span,
           },
         };
@@ -236,7 +236,7 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
           ok: false,
           error: {
             code: "malformed_connector",
-            message: "expected ${connector.<slug>.base_url} or ${connector.<slug>.config.<path>}",
+            message: `expected \${connector.<slug>.base_url} or \${connector.<slug>.config.<path>}`,
             span,
           },
         };
@@ -255,7 +255,7 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
             ok: false,
             error: {
               code: "malformed_connector",
-              message: "${connector.<slug>.base_url} takes no further path",
+              message: `\${connector.<slug>.base_url} takes no further path`,
               span,
             },
           };
@@ -271,7 +271,7 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
             ok: false,
             error: {
               code: "malformed_connector",
-              message: "expected ${connector.<slug>.config.<path>}",
+              message: `expected \${connector.<slug>.config.<path>}`,
               span,
             },
           };
@@ -309,7 +309,7 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
           ok: false,
           error: {
             code: "malformed_input",
-            message: "expected ${input.<path>}",
+            message: `expected \${input.<path>}`,
             span,
           },
         };
@@ -332,7 +332,7 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
           ok: false,
           error: {
             code: "malformed_scope",
-            message: "expected ${scope.<step_id>.<path>}",
+            message: `expected \${scope.<step_id>.<path>}`,
             span,
           },
         };

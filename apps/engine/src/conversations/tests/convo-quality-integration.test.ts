@@ -118,7 +118,7 @@ function makeToolContext(): ToolContext {
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({ tenant_id, actor_id: null, db: ctx.db }),
-    getDraft: () => ({ name: "", steps: [] }),
+    getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
   };
 }
@@ -153,8 +153,8 @@ describe("convo-quality integration chain", () => {
           id: "fetch",
           kind: "request",
           method: "GET",
-          url: "${connector.stripe_mock.base_url}/v1/customers",
-          headers: { Authorization: "Bearer ${cred.stripe_mock.token}" },
+          url: `\${connector.stripe_mock.base_url}/v1/customers`,
+          headers: { Authorization: `Bearer \${cred.stripe_mock.token}` },
           query: { limit: "10" },
           onError: { mode: "retry", max_retries: 3 },
         },

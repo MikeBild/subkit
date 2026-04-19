@@ -28,7 +28,7 @@ function mkCtx(client: EngineClient, conversationId = "conv-1") {
 }
 
 describe("authoring slash panes", () => {
-  test("/draft opens a structured draft overview pane", async () => {
+  test("/draft opens the draft overview pane", async () => {
     const client = {
       getConversation: async () => ({
         conversation: {} as never,
@@ -64,7 +64,7 @@ describe("authoring slash panes", () => {
     );
   });
 
-  test("/context opens the conversation context pane", async () => {
+  test("/context opens the dedicated conversation context pane", async () => {
     const snapshot: ConversationContextSnapshot = {
       conversation_id: "conv-1",
       connector_id: null,
@@ -97,11 +97,81 @@ describe("authoring slash panes", () => {
     const result = await handleSlash("context", [], ctx);
     expect(result).toBeNull();
     const pane = panes[0];
-    expect(pane?.kind).toBe("text");
+    expect(pane?.kind).toBe("context");
     expect((pane as { title: string }).title).toBe("conversation context");
-    expect((pane as { lines: readonly string[] }).lines.join("\n")).toContain("workflow skill");
-    expect((pane as { lines: readonly string[] }).lines.join("\n")).toContain(
-      "Preview a step or the whole workflow",
-    );
+    expect(
+      (pane as { snapshot: ConversationContextSnapshot }).snapshot.skills.workflow[0]?.title,
+    ).toBe("workflow skill");
+    expect(
+      (pane as { snapshot: ConversationContextSnapshot }).snapshot.draft_summary?.next_action,
+    ).toContain("Preview a step or the whole workflow");
+  });
+
+  test("/approvals opens approval history from tool calls", async () => {
+    const client = {
+      getConversation: async () => ({
+        conversation: {} as never,
+        messages: [],
+        draft: { workflow: { name: "wf", steps: [] } },
+        approvals: [],
+        tool_calls: [
+          {
+            tool: "ask_user_confirm",
+            created_at: "2026-04-19T10:00:00.000Z",
+            approval_required: true,
+            input: { summary: "Commit the workflow?" },
+            output: { confirmed: true },
+          },
+        ],
+      }),
+    } as unknown as EngineClient;
+    const { ctx, panes } = mkCtx(client);
+    const result = await handleSlash("approvals", [], ctx);
+    expect(result).toBeNull();
+    const pane = panes[0];
+    expect(pane?.kind).toBe("approval-history");
+    expect(
+      (pane as unknown as { items: Array<{ status: string; summary: string }> }).items[0]?.status,
+    ).toBe("approved");
+    expect(
+      (pane as unknown as { items: Array<{ status: string; summary: string }> }).items[0]?.summary,
+    ).toContain("Commit the workflow");
+  });
+
+  test("/probe run appends an explicit probe request message", async () => {
+    const appended: string[] = [];
+    const client = {
+      getConversation: async () => ({
+        conversation: {} as never,
+        messages: [],
+        draft: {
+          workflow: { name: "wf", steps: [] },
+          connector: { name: "Probe API", driver: "http", environment: "dev", auth_type: "none" },
+        },
+        tool_calls: [],
+      }),
+      appendConversationMessage: async (_id: string, body: { message: string }) => {
+        appended.push(body.message);
+        return {} as never;
+      },
+    } as unknown as EngineClient;
+    const { ctx } = mkCtx(client);
+    const result = await handleSlash("probe", ["run"], ctx);
+    expect(result).toContain("probe requested");
+    expect(appended[0]).toContain("Run probe_connector_draft");
+  });
+
+  test("/preview run step-id appends an explicit step preview request", async () => {
+    const appended: string[] = [];
+    const client = {
+      appendConversationMessage: async (_id: string, body: { message: string }) => {
+        appended.push(body.message);
+        return {} as never;
+      },
+    } as unknown as EngineClient;
+    const { ctx } = mkCtx(client);
+    const result = await handleSlash("preview", ["run", "fetch"], ctx);
+    expect(result).toContain("preview requested");
+    expect(appended[0]).toContain("Run dry_run_step against step `fetch`");
   });
 });

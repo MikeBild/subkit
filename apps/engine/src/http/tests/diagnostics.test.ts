@@ -124,3 +124,49 @@ describe("/v1/diagnostics/errors", () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe("/v1/diagnostics/setup", () => {
+  test("returns operator-facing setup validation for admins", async () => {
+    const saved = {
+      llm: process.env.LLM_PROVIDER,
+      publicBaseUrl: process.env.PUBLIC_BASE_URL,
+      summarizeProvider: process.env.SUMMARIZE_LLM_PROVIDER,
+      anthropicKey: process.env.ANTHROPIC_API_KEY,
+    };
+    process.env.LLM_PROVIDER = "mock";
+    delete process.env.PUBLIC_BASE_URL;
+    process.env.SUMMARIZE_LLM_PROVIDER = "anthropic";
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
+        headers: adminHeaders(),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        overall_status: "ok" | "warn" | "blocked";
+        issues: Array<{ id: string; severity: string; detail: string }>;
+        recommendations: string[];
+      };
+      expect(body.overall_status).toBe("blocked");
+      expect(body.issues.some((issue) => issue.id === "llm-summarize")).toBe(true);
+      expect(body.issues.some((issue) => issue.id === "public-base-url")).toBe(true);
+      expect(body.recommendations.length).toBeGreaterThan(0);
+    } finally {
+      if (saved.llm === undefined) delete process.env.LLM_PROVIDER;
+      else process.env.LLM_PROVIDER = saved.llm;
+      if (saved.publicBaseUrl === undefined) delete process.env.PUBLIC_BASE_URL;
+      else process.env.PUBLIC_BASE_URL = saved.publicBaseUrl;
+      if (saved.summarizeProvider === undefined) delete process.env.SUMMARIZE_LLM_PROVIDER;
+      else process.env.SUMMARIZE_LLM_PROVIDER = saved.summarizeProvider;
+      if (saved.anthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = saved.anthropicKey;
+    }
+  });
+
+  test("audit:read is required — member gets 403", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
+      headers: { authorization: `Bearer ${memberKey}` },
+    });
+    expect(res.status).toBe(403);
+  });
+});

@@ -136,7 +136,7 @@ export const dryRunTransformTool: ConversationTool = {
   important_notes: [
     "Does NOT persist anything — no draft mutation, no execution row.",
     "JSONata evaluator is identical to the one used by `transform` steps; the JSONPath dialect mirrors `data_selector`.",
-    "Template dialect resolves ${input.*} and ${scope.*} only; ${cred.*}/${connector.*} are not looked up and produce placeholder_unresolved.",
+    `Template dialect resolves \${input.*} and \${scope.*} only; \${cred.*}/\${connector.*} are not looked up and produce placeholder_unresolved.`,
     "Expression is timed out at 1s by default (max 2s) to keep authoring UX responsive.",
     "Audit metadata records only an expression hash + dialect — the raw expression may contain PII and is never written.",
   ],

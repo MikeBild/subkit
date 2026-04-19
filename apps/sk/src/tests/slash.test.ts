@@ -104,7 +104,7 @@ describe("sk slash registry", () => {
   });
 
   test("authoring inspection commands are registered and gated by conversation:read", () => {
-    for (const name of ["draft", "connector", "workflow", "context"] as const) {
+    for (const name of ["draft", "connector", "workflow", "context", "approvals"] as const) {
       const cmd = findSlashCommand(name);
       expect(cmd).toBeDefined();
       expect(cmd?.requires).toBe("conversation:read");

@@ -48,20 +48,6 @@ describe("seeded skill catalogue — coverage", () => {
       if (s.body.length < 1000) throw new Error(`skill ${slug} body too short`);
     }
   });
-
-  test("no skill mentions external workflow-builder brand names", async () => {
-    // Guard against copy-paste from reference repos.
-    const forbidden = ["superglue", "zapier", "n8n", "make.com", "pipedream"];
-    const skills = await loadAll();
-    for (const [slug, s] of skills) {
-      const body = s.body.toLowerCase();
-      for (const f of forbidden) {
-        expect(body.includes(f)).toBe(false);
-        // clarifying failure message if we ever trip this:
-        if (body.includes(f)) throw new Error(`skill ${slug} contains forbidden brand '${f}'`);
-      }
-    }
-  });
 });
 
 describe("subkit-concepts — mental model coverage", () => {

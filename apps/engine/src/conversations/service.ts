@@ -16,6 +16,7 @@ import {
 } from "../db/schema/index.ts";
 import { getMockProvider } from "../llm/mock-provider.ts";
 import { log } from "../logging/logger.ts";
+import { cancelConversationAbort } from "./abort.ts";
 import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { loadDraft, undoLastSnapshot } from "./draft.ts";
 import { type RunLoopResult, runLoop } from "./loop.ts";
@@ -620,6 +621,7 @@ export async function cancelConversation(
     },
     exec,
   );
+  cancelConversationAbort(conversation_id);
   return rowToRecord(row);
 }
 

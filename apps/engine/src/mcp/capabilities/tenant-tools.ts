@@ -139,7 +139,7 @@ export async function handleTenantTool(
     connector_id: null,
     workflow_id: null,
     engineClient,
-    getDraft: () => ({ name: "", steps: [] }),
+    getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
     // Forward tool progress emissions into MCP progress notifications
     // when the caller supplied a progressToken. Fractional progress is

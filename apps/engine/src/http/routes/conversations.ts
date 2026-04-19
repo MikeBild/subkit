@@ -77,6 +77,31 @@ const ConversationDetailSchema = z
     messages: z.array(UIMessageSchema),
     tool_calls: z.array(z.unknown()),
     draft: z.unknown(),
+    resume_summary: z
+      .object({
+        active_target: z.object({
+          kind: z.enum(["connector", "workflow", "none"]),
+          name: z.string().nullable(),
+          slug: z.string().nullable(),
+          id: z.string().nullable(),
+          environment: z.string().nullable(),
+        }),
+        stage: z.string(),
+        last_successful_probe: z.string().nullable(),
+        last_successful_preview: z.string().nullable(),
+        unsaved: z.boolean(),
+        pending_approval: z
+          .object({
+            id: z.string(),
+            tool_name: z.string(),
+            summary: z.string(),
+          })
+          .nullable(),
+        next_action: z.string(),
+        one_sentence: z.string(),
+      })
+      .nullable()
+      .optional(),
   })
   .openapi("ConversationDetail");
 
@@ -474,6 +499,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
         messages,
         tool_calls: detail.tool_calls,
         draft: detail.draft,
+        ...(detail.resume_summary ? { resume_summary: detail.resume_summary } : {}),
       },
       200,
     );

@@ -166,7 +166,8 @@ Trade-off: pinning image digests slows opportunistic updates but eliminates "ups
 - Secrets the engine reads:
 
 - `MASTER_KEY` — 32-byte base64 root key for AES-256-GCM.
-- `LLM_PRIMARY` and `LLM_FALLBACK` — provider names; the per-provider API keys live alongside (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) and are referenced explicitly in `32-deployment.md`.
+- `AI_GATEWAY_API_KEY` and `AI_GATEWAY_MODEL` — gateway-mode LLM routing inputs.
+- `LLM_PROVIDER` and optional `LLM_FALLBACK_PROVIDER`, plus the matching provider credentials (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `AZURE_API_KEY`, AWS credentials for Bedrock, or Vertex credentials) — direct Vercel AI SDK provider mode.
 - `SLACK_SIGNING_SECRET`, `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `TEAMS_APP_ID`, `TEAMS_APP_PASSWORD`, `GOOGLE_CHAT_PROJECT_ID`, `GOOGLE_CHAT_SERVICE_ACCOUNT_JSON` — chat platform installation secrets. Per-workspace secrets (the bot tokens themselves) are encrypted in `chat_workspaces`.
 - `S3_ACCESS_KEY` / `S3_SECRET_KEY` — object storage credentials when payload offload is configured.
 

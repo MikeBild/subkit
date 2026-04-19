@@ -65,30 +65,38 @@ export interface E2EEnv {
   cleanup: () => Promise<void>;
 }
 
-/** Two tracks: real (default, multi-provider, talks to actual LLM) or mock. */
+/** Two tracks: real (default, gateway or direct provider) or mock. */
 export interface BootOpts {
   /** Pin the in-process mock LLM. Default: real provider from .env. */
   llm?: "mock";
 }
 
 /**
- * Multi-provider real-LLM detection. Mirrors the precedence in
- * `apps/engine/src/llm/core/model-init.ts` so the harness picks the
- * same provider the engine would pick at runtime. Throws if none
- * configured.
+ * Real-LLM detection. Mirrors the precedence in
+ * `apps/engine/src/llm/core/model-init.ts`: gateway first when both
+ * gateway vars are present, otherwise direct provider via LLM_PROVIDER.
  */
 function detectRealProvider(): { provider: string; reason: string } {
   const explicit = process.env.LLM_PROVIDER?.toLowerCase();
   if (explicit === "mock") {
     return { provider: "mock", reason: "LLM_PROVIDER=mock" };
   }
-  if (process.env.AI_GATEWAY_API_KEY) {
-    return { provider: "gateway", reason: "AI_GATEWAY_API_KEY set" };
+  if (process.env.AI_GATEWAY_API_KEY && process.env.AI_GATEWAY_MODEL) {
+    return { provider: "gateway", reason: "AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL set" };
+  }
+  if (
+    explicit === "anthropic" ||
+    explicit === "openai" ||
+    explicit === "gemini" ||
+    explicit === "azure" ||
+    explicit === "bedrock" ||
+    explicit === "vertex"
+  ) {
+    return { provider: explicit, reason: `LLM_PROVIDER=${explicit}` };
   }
   throw new Error(
-    "E2E boot() needs either LLM_PROVIDER=mock (for hermetic runs) " +
-      "or AI_GATEWAY_API_KEY (for real-LLM runs against the Vercel AI Gateway). " +
-      "Per-provider SDK packages are no longer supported.",
+    "E2E boot() needs either LLM_PROVIDER=mock, AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL, " +
+      "or LLM_PROVIDER set to anthropic/openai/gemini/azure/bedrock/vertex with the matching credentials.",
   );
 }
 
@@ -156,8 +164,7 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
     const { resetMockProvider } = await import("../../apps/engine/src/llm/mock-provider.ts");
     resetMockProvider();
   } else {
-    const detected = detectRealProvider();
-    if (!process.env.LLM_PROVIDER) process.env.LLM_PROVIDER = detected.provider;
+    detectRealProvider();
   }
 
   const safeLabel = label.toLowerCase().replace(/[^a-z0-9]/g, "-");

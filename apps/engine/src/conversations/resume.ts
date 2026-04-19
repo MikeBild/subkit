@@ -51,7 +51,7 @@ export function shouldShowResumeSummary(params: BuildResumeSummaryParams): boole
   if (conversation.status === "committed" || conversation.status === "abandoned") return false;
   if (!draft) return false;
   const hasConnectorDraft = draft.connector !== undefined && draft.connector !== null;
-  const hasWorkflowSteps = Array.isArray(draft.steps) && draft.steps.length > 0;
+  const hasWorkflowSteps = draft.workflow.steps.length > 0;
   const hasPreview = draft.latest_preview !== null && draft.latest_preview !== undefined;
   const hasProbe =
     draft.connector?.latest_probe !== null && draft.connector?.latest_probe !== undefined;
@@ -63,8 +63,9 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
   const d: Partial<DraftDocument> = draft ?? {};
   const connector = d.connector ?? null;
   const connectorSaved = typeof connector?.saved_connector_id === "string";
-  const workflowSteps = Array.isArray(d.steps) ? d.steps.length : 0;
-  const hasWorkflow = workflowSteps > 0 || Boolean(d.workflow?.steps?.length);
+  const workflow = d.workflow;
+  const workflowSteps = workflow?.steps.length ?? 0;
+  const hasWorkflow = workflowSteps > 0;
 
   let activeKind: "connector" | "workflow" | "none" = "none";
   let targetName: string | null = null;
@@ -79,8 +80,8 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
     environment = connector.environment ?? null;
   } else if (hasWorkflow) {
     activeKind = "workflow";
-    targetName = d.workflow?.name ?? d.name ?? null;
-    targetSlug = d.workflow?.slug ?? d.slug ?? null;
+    targetName = workflow?.name ?? null;
+    targetSlug = workflow?.slug ?? null;
     targetId = conversation.target_workflow_id ?? null;
   } else if (connectorSaved) {
     activeKind = "connector";

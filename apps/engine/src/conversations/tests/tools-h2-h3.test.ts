@@ -28,7 +28,6 @@ describe("conversation tools — registration", () => {
     "preview_attachment",
     "probe_connector",
     "probe_connector_draft",
-    "propose_connector",
     "propose_skill",
     "propose_step",
     "save_connector_draft",
@@ -118,13 +117,6 @@ describe("conversation tools — registration", () => {
     expect(tool).toBeDefined();
     expect(tool!.name).toBe("list_skill_suggestions");
     expect(tool!.description).toContain("skill");
-  });
-
-  test("propose_connector tool is registered", () => {
-    const tool = getTool("propose_connector");
-    expect(tool).toBeDefined();
-    expect(tool!.name).toBe("propose_connector");
-    expect(tool!.description).toContain("Connector");
   });
 
   test("propose_skill tool is registered", () => {

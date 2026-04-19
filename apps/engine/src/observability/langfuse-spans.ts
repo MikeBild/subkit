@@ -139,7 +139,7 @@ function isSensitiveValue(v: string): boolean {
 function redactString(s: string): string {
   // Known placeholder tokens stay readable (they're not secrets) but
   // get a visible marker so operators know redaction ran.
-  let out = s.replace(PLACEHOLDER_TOKEN_RE, "${cred.REDACTED}");
+  let out = s.replace(PLACEHOLDER_TOKEN_RE, `\${cred.REDACTED}`);
   if (isSensitiveValue(out)) {
     out = "[REDACTED]";
   }

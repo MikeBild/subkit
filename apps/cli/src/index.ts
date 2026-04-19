@@ -30,6 +30,7 @@ import { schedulesCommand } from "./commands/schedules.ts";
 import { skillCandidatesCommand } from "./commands/skill-candidates.ts";
 import { skillsCommand } from "./commands/skills.ts";
 import { subscriptionsCommand } from "./commands/subscriptions.ts";
+import { summarizeCommand } from "./commands/summarize.ts";
 import { tenantsCommand } from "./commands/tenants.ts";
 import { tunnelAgentCommand } from "./commands/tunnel-agent.ts";
 import { tunnelsCommand } from "./commands/tunnels.ts";
@@ -68,6 +69,7 @@ export const main = defineCommand({
     rbac: rbacCommand,
     audit: auditCommand,
     extract: extractCommand,
+    summarize: summarizeCommand,
     chat: chatCommand,
     mcp: mcpCommand,
     update: updateCommand,

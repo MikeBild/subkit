@@ -121,13 +121,12 @@ export interface AuthoringSummary {
 }
 
 /**
- * Unified authoring-state document. The top-level workflow fields are
- * intentionally kept for compatibility with older workflow-only tools
- * and tests; `workflow` is the canonical nested view.
+ * Unified authoring-state document. `workflow` is the only supported
+ * workflow shape; callers should not rely on mirrored top-level fields.
  */
-export interface DraftDocument extends WorkflowDraftDocument {
+export interface DraftDocument {
   mode?: AuthoringMode;
-  workflow?: WorkflowDraftDocument;
+  workflow: WorkflowDraftDocument;
   connector?: ConnectorDraftDocument | null;
   summary?: AuthoringSummary;
   latest_preview?: WorkflowDraftPreviewSummary | null;

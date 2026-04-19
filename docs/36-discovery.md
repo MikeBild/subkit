@@ -169,7 +169,7 @@ When an artifact is approved:
 4. `materialized_type` records the object type (`connector`, `skill`, `knowledge_source`).
 5. An audit event `discovery.artifact_approved` is emitted.
 
-In the conversational flow, materialization goes through the `propose_connector` / `propose_skill` conversation tools, which trigger `request_human_approval` before creating the domain object.
+In the conversational flow, materialization goes through the `start_connector_from_description` / `start_connector_from_template` and `propose_skill` conversation tools, which stage the draft and then move through the normal confirmation flow before creating the domain object.
 
 ## Run status transitions
 
@@ -233,14 +233,14 @@ All CLI commands accept standard `--profile`, `--json`, and `--server` flags.
 
 Discovery integrates with the conversation system through two conversation tools:
 
-- **`propose_connector`** -- invoked by the LLM when it identifies an API, database, or service in analyzed files. Produces a `ConnectorDraft` and triggers `request_human_approval`.
+- **`start_connector_from_description` / `start_connector_from_template`** -- invoked by the LLM when it identifies an API, database, or service in analyzed files. Produces a `ConnectorDraft` that then moves through probe/save confirmation.
 - **`propose_skill`** -- invoked by the LLM when it identifies operational rules, best practices, or conventions. Produces a `SkillDraft` and triggers `request_human_approval`.
 
 Flow within a conversation:
 
 1. Operator attaches files to a conversation.
 2. Engine creates a `discovery_run` linked via `conversation_id`.
-3. LLM analyzes file content and calls `propose_connector` / `propose_skill` tools.
+3. LLM analyzes file content and calls `start_connector_from_description` / `start_connector_from_template` / `propose_skill`.
 4. Each tool call creates an approval request -- the conversation pauses.
 5. Operator approves or rejects each proposal inline.
 6. Approved proposals are materialized into domain objects.

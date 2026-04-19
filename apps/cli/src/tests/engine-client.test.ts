@@ -111,4 +111,51 @@ describe("EngineClient", () => {
     expect(seenUrl).toContain("limit=3");
     expect(seenUrl).toContain("status=active");
   });
+
+  test("hits setup validation through the typed helper", async () => {
+    let seenUrl = "";
+    const client = new EngineClient({
+      engine_url: "http://engine",
+      api_key: "k",
+      fetchImpl: makeFetch((url) => {
+        seenUrl = url;
+        return new Response(
+          JSON.stringify({ overall_status: "ok", issues: [], recommendations: [] }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }),
+    });
+    const body = await client.setupValidation();
+    expect(seenUrl).toContain("/v1/diagnostics/setup");
+    expect(body.overall_status).toBe("ok");
+  });
+
+  test("posts summarize requests through the typed helper", async () => {
+    let seenBody = "";
+    const client = new EngineClient({
+      engine_url: "http://engine",
+      api_key: "k",
+      fetchImpl: makeFetch((_url, init) => {
+        seenBody = typeof init.body === "string" ? init.body : "";
+        return new Response(
+          JSON.stringify({
+            summary: "Summary: done",
+            tokens: { total: 42 },
+            model_used: "claude-sonnet-4-5",
+            fell_back: false,
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }),
+    });
+    const body = await client.summarize({ prompt: "hello world" });
+    expect(JSON.parse(seenBody)).toEqual({ prompt: "hello world" });
+    expect(body.summary).toBe("Summary: done");
+  });
 });

@@ -468,6 +468,248 @@ const StickyErrorPanel: React.FC<{ message: string }> = memo(({ message }) => (
 ));
 StickyErrorPanel.displayName = "StickyErrorPanel";
 
+const PaneLabelRow: React.FC<{ label: string; value: string; dim?: boolean }> = memo(
+  ({ label, value, dim = false }) => (
+    <Box>
+      <Text dimColor>{label}: </Text>
+      {dim ? <Text color="gray">{value}</Text> : <Text>{value}</Text>}
+    </Box>
+  ),
+);
+PaneLabelRow.displayName = "PaneLabelRow";
+
+const TemplatePickerPane: React.FC<{
+  pane: Extract<PaneSpec, { kind: "template-picker" }>;
+  onDismiss: () => void;
+}> = memo(({ pane, onDismiss }) => (
+  <Pane title={pane.title} onDismiss={onDismiss}>
+    {pane.connector_name ? <PaneLabelRow label="connector" value={pane.connector_name} /> : null}
+    {pane.current_template ? (
+      <PaneLabelRow label="current template" value={pane.current_template} />
+    ) : null}
+    <Box flexDirection="column" marginTop={1}>
+      {pane.lines.map((line, i) => (
+        <Text key={`tpl-${i}`}>{line}</Text>
+      ))}
+    </Box>
+  </Pane>
+));
+TemplatePickerPane.displayName = "TemplatePickerPane";
+
+const ConnectorDraftPane: React.FC<{
+  pane: Extract<PaneSpec, { kind: "connector-draft" }>;
+  onDismiss: () => void;
+}> = memo(({ pane, onDismiss }) => (
+  <Pane title={pane.title} onDismiss={onDismiss}>
+    <PaneLabelRow label="name" value={pane.connector.name} />
+    <PaneLabelRow label="slug" value={pane.connector.slug} />
+    <PaneLabelRow label="driver" value={pane.connector.driver} />
+    <PaneLabelRow label="environment" value={pane.connector.environment} />
+    <PaneLabelRow label="auth" value={pane.connector.auth_type} />
+    <PaneLabelRow label="base_url" value={pane.connector.base_url} />
+    <PaneLabelRow label="dsn" value={pane.connector.dsn} />
+    <PaneLabelRow label="template" value={pane.connector.template} />
+    <PaneLabelRow label="saved id" value={pane.connector.saved_id} />
+    {pane.missing_fields.length > 0 ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color="yellow" bold>
+          validation
+        </Text>
+        <Text color="yellow">missing: {pane.missing_fields.join(", ")}</Text>
+      </Box>
+    ) : null}
+    {pane.latest_probe ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color={pane.latest_probe.ok ? "green" : "red"} bold>
+          latest probe
+        </Text>
+        <PaneLabelRow
+          label="request"
+          value={`${pane.latest_probe.method} ${pane.latest_probe.path}`}
+        />
+        <PaneLabelRow label="environment" value={pane.latest_probe.environment} />
+        <PaneLabelRow label="http" value={pane.latest_probe.status} />
+        <PaneLabelRow label="duration" value={pane.latest_probe.duration} />
+        <PaneLabelRow label="summary" value={pane.latest_probe.summary} />
+        <PaneLabelRow label="failure code" value={pane.latest_probe.failure_code} />
+      </Box>
+    ) : null}
+  </Pane>
+));
+ConnectorDraftPane.displayName = "ConnectorDraftPane";
+
+const WorkflowDraftPane: React.FC<{
+  pane: Extract<PaneSpec, { kind: "workflow-draft" }>;
+  onDismiss: () => void;
+}> = memo(({ pane, onDismiss }) => (
+  <Pane title={pane.title} onDismiss={onDismiss}>
+    <PaneLabelRow label="name" value={pane.workflow.name} />
+    <PaneLabelRow label="slug" value={pane.workflow.slug} />
+    <PaneLabelRow label="description" value={pane.workflow.description} />
+    <Box flexDirection="column" marginTop={1}>
+      <Text color={pane.workflow.steps.length > 0 ? "green" : "yellow"} bold>
+        steps · {pane.workflow.steps.length}
+      </Text>
+      {pane.workflow.steps.map((step) => (
+        <Text key={`wf-step-${step.id}`}>
+          {step.id} · {step.kind}
+        </Text>
+      ))}
+    </Box>
+    {pane.latest_preview ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color={pane.latest_preview.ok ? "green" : "red"} bold>
+          latest preview
+        </Text>
+        <PaneLabelRow label="step" value={pane.latest_preview.step} />
+        <PaneLabelRow label="summary" value={pane.latest_preview.summary} />
+      </Box>
+    ) : null}
+  </Pane>
+));
+WorkflowDraftPane.displayName = "WorkflowDraftPane";
+
+const StepDetailPane: React.FC<{
+  pane: Extract<PaneSpec, { kind: "step-detail" }>;
+  onDismiss: () => void;
+}> = memo(({ pane, onDismiss }) => (
+  <Pane title={pane.title} onDismiss={onDismiss}>
+    <PaneLabelRow label="ordinal" value={String(pane.step.ordinal)} />
+    <PaneLabelRow label="id" value={pane.step.id} />
+    <PaneLabelRow label="kind" value={pane.step.kind} />
+    <Box flexDirection="column" marginTop={1}>
+      {pane.step.lines.map((line, i) => (
+        <Text key={`step-line-${i}`}>{line}</Text>
+      ))}
+    </Box>
+  </Pane>
+));
+StepDetailPane.displayName = "StepDetailPane";
+
+const ContextPane: React.FC<{
+  pane: Extract<PaneSpec, { kind: "context" }>;
+  onDismiss: () => void;
+}> = memo(({ pane, onDismiss }) => (
+  <Pane title={pane.title} onDismiss={onDismiss}>
+    <PaneLabelRow label="draft mode" value={pane.snapshot.draft_mode} />
+    <PaneLabelRow label="readiness" value={pane.snapshot.draft_summary?.readiness ?? "—"} />
+    <PaneLabelRow label="next action" value={pane.snapshot.draft_summary?.next_action ?? "—"} />
+    <PaneLabelRow label="messages" value={String(pane.snapshot.messages.total)} />
+    <PaneLabelRow label="last role" value={pane.snapshot.messages.last_role ?? "—"} />
+    <PaneLabelRow label="tool calls" value={String(pane.snapshot.tool_calls_total)} />
+    <PaneLabelRow label="pending elicitations" value={String(pane.snapshot.pending_elicitations)} />
+    <Box flexDirection="column" marginTop={1}>
+      <Text color="cyan" bold>
+        skills
+      </Text>
+      <Text>
+        global: {pane.snapshot.skills.global.map((skill) => skill.title).join(", ") || "—"}
+      </Text>
+      <Text>
+        connector: {pane.snapshot.skills.connector.map((skill) => skill.title).join(", ") || "—"}
+      </Text>
+      <Text>
+        workflow: {pane.snapshot.skills.workflow.map((skill) => skill.title).join(", ") || "—"}
+      </Text>
+    </Box>
+    {pane.snapshot.attachments.total > 0 ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color="cyan" bold>
+          attachments
+        </Text>
+        {pane.snapshot.attachments.items.map((item) => (
+          <Text key={`ctx-attachment-${item.slug}`}>
+            @attachment:{item.slug}
+            {item.filename ? ` (${item.filename})` : ""}
+          </Text>
+        ))}
+      </Box>
+    ) : null}
+  </Pane>
+));
+ContextPane.displayName = "ContextPane";
+
+const ProbeResultsPane: React.FC<{
+  pane: Extract<PaneSpec, { kind: "probe-results" }>;
+  onDismiss: () => void;
+}> = memo(({ pane, onDismiss }) => (
+  <Pane title={pane.title} onDismiss={onDismiss}>
+    <Text color={pane.probe.ok ? "green" : "red"} bold>
+      {pane.probe.ok ? "probe ok" : "probe failed"}
+    </Text>
+    <PaneLabelRow label="request" value={`${pane.probe.method} ${pane.probe.path}`} />
+    <PaneLabelRow label="environment" value={pane.probe.environment} />
+    <PaneLabelRow label="http" value={pane.probe.http} />
+    <PaneLabelRow label="duration" value={pane.probe.duration} />
+    <PaneLabelRow label="summary" value={pane.probe.summary} />
+    <PaneLabelRow label="failure code" value={pane.probe.failure_code} />
+  </Pane>
+));
+ProbeResultsPane.displayName = "ProbeResultsPane";
+
+const PreviewResultsPane: React.FC<{
+  pane: Extract<PaneSpec, { kind: "preview-results" }>;
+  onDismiss: () => void;
+}> = memo(({ pane, onDismiss }) => (
+  <Pane title={pane.title} onDismiss={onDismiss}>
+    <Text color={pane.preview.ok ? "green" : "red"} bold>
+      {pane.preview.ok ? "preview ok" : "preview failed"}
+    </Text>
+    <PaneLabelRow label="step" value={pane.preview.step} />
+    <PaneLabelRow label="summary" value={pane.preview.summary} />
+    <Box flexDirection="column" marginTop={1}>
+      {pane.preview.lines.map((line, i) => (
+        <Text key={`preview-line-${i}`}>{line}</Text>
+      ))}
+    </Box>
+  </Pane>
+));
+PreviewResultsPane.displayName = "PreviewResultsPane";
+
+const VersionBrowserPane: React.FC<{
+  pane: Extract<PaneSpec, { kind: "version-browser" }>;
+  onDismiss: () => void;
+}> = memo(({ pane, onDismiss }) => (
+  <Pane title={pane.title} onDismiss={onDismiss}>
+    <PaneLabelRow label="workflow" value={pane.workflow_id} />
+    <Box flexDirection="column" marginTop={1}>
+      {pane.items.map((item) => (
+        <Text key={`version-${item.version}`}>
+          v{item.version} · {item.created_at}
+          {item.note ? ` · ${item.note}` : ""}
+        </Text>
+      ))}
+    </Box>
+    <Box marginTop={1}>
+      <Text dimColor>Use /restore &lt;version&gt; to restore a version.</Text>
+    </Box>
+  </Pane>
+));
+VersionBrowserPane.displayName = "VersionBrowserPane";
+
+const ApprovalHistoryPane: React.FC<{
+  pane: Extract<PaneSpec, { kind: "approval-history" }>;
+  onDismiss: () => void;
+}> = memo(({ pane, onDismiss }) => (
+  <Pane title={pane.title} onDismiss={onDismiss}>
+    {pane.items.map((item, i) => (
+      <Box key={`approval-${i}`} flexDirection="column" marginBottom={1}>
+        <Text
+          color={
+            item.status === "approved" ? "green" : item.status === "rejected" ? "red" : "yellow"
+          }
+          bold
+        >
+          {item.status} · {item.tool}
+        </Text>
+        <Text>{item.summary}</Text>
+        <Text dimColor>{item.created_at}</Text>
+      </Box>
+    ))}
+  </Pane>
+));
+ApprovalHistoryPane.displayName = "ApprovalHistoryPane";
+
 // ---------- Top-level App ----------
 
 export const InkApp: React.FC<InkAppProps> = ({
@@ -1327,6 +1569,33 @@ export const InkApp: React.FC<InkAppProps> = ({
           }}
           onDismiss={() => setPane(null)}
         />
+      ) : null}
+      {pane?.kind === "template-picker" ? (
+        <TemplatePickerPane pane={pane} onDismiss={() => setPane(null)} />
+      ) : null}
+      {pane?.kind === "connector-draft" ? (
+        <ConnectorDraftPane pane={pane} onDismiss={() => setPane(null)} />
+      ) : null}
+      {pane?.kind === "workflow-draft" ? (
+        <WorkflowDraftPane pane={pane} onDismiss={() => setPane(null)} />
+      ) : null}
+      {pane?.kind === "step-detail" ? (
+        <StepDetailPane pane={pane} onDismiss={() => setPane(null)} />
+      ) : null}
+      {pane?.kind === "context" ? (
+        <ContextPane pane={pane} onDismiss={() => setPane(null)} />
+      ) : null}
+      {pane?.kind === "probe-results" ? (
+        <ProbeResultsPane pane={pane} onDismiss={() => setPane(null)} />
+      ) : null}
+      {pane?.kind === "preview-results" ? (
+        <PreviewResultsPane pane={pane} onDismiss={() => setPane(null)} />
+      ) : null}
+      {pane?.kind === "version-browser" ? (
+        <VersionBrowserPane pane={pane} onDismiss={() => setPane(null)} />
+      ) : null}
+      {pane?.kind === "approval-history" ? (
+        <ApprovalHistoryPane pane={pane} onDismiss={() => setPane(null)} />
       ) : null}
       {pane?.kind === "text" ? (
         <Pane

@@ -11,7 +11,8 @@
 #   ENGINE_VERSION — semver (e.g. "1.6.7"); pulled from DOCR as
 #                    registry.digitalocean.com/subkit/{engine,migrate}:<ver>
 #   /opt/subkit/.env — bound at rest; contains DATABASE_URL, MASTER_KEY,
-#                      ANTHROPIC_API_KEY, etc. Not touched here.
+#                      AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL or
+#                      LLM_PROVIDER + matching provider credentials. Not touched here.
 #
 # Behavior:
 #   1. Log in to DOCR (600 s token).

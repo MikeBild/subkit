@@ -103,7 +103,7 @@ Every command is a declarative entry in `apps/sk/src/slash.ts`. Adding one is a 
 | `/config` | — | Open the merged settings JSON |
 | `/permissions` | — | Bulk `POST /v1/rbac/can` probe |
 | `/audit` | `audit:read` | Tail `/v1/audit-log?actor_id=me` — admin only |
-| `/logs` | `admin:read` | Tail recent engine errors |
+| `/logs` | `audit:read` | Tail recent engine errors |
 | `/debug` | — | Print last engine request/response for diagnostics |
 | `/paste` | — | Paste the system clipboard into the composer |
 | `/attach <path>` | — | Attach a local file to the next turn |
@@ -121,8 +121,8 @@ Draft authoring inspectors are also exposed as slash commands so the user can br
 | `/connector` | `conversation:read` | Connector draft pane — fields, validation, latest probe |
 | `/workflow` | `conversation:read` | Workflow draft pane — steps, edges, latest preview |
 | `/templates` | `conversation:read` | Connector templates pane (prefill accelerators) |
-| `/probe` | `conversation:write` | Trigger `probe_connector_draft` via message append; `/probe show` renders the last recorded probe |
-| `/preview` | `conversation:write` | Trigger `dry_run_step` / `dry_run_workflow`; `/preview show` renders the last preview |
+| `/probe` | `conversation:write` | Bare `/probe` runs now; `/probe run` is the explicit action form; `/probe show` renders the last recorded probe |
+| `/preview` | `conversation:write` | Bare `/preview` runs now; `/preview run [step_id]` is the explicit action form; `/preview show` renders the last preview |
 | `/versions` | `workflow:read` | List committed versions of the bound workflow |
 | `/restore <n>` | `workflow:write` | Restore a prior workflow version as a new current version |
 | `/context` | `conversation:read` | Loaded skills, knowledge, docs, attachments, memory |
