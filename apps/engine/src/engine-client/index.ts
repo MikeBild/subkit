@@ -12,6 +12,7 @@ import { getAuditRowById, queryAuditLog } from "../audit/query.ts";
 import { getConnector, listConnectors } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
 import { getDb } from "../db/client.ts";
+import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import {
   auditLog,
   connectorDocuments,
@@ -93,6 +94,15 @@ export class EngineClient {
         .where(eq(connectorsTable.tenant_id, this.tenant_id));
       return Number(row?.c ?? 0);
     },
+    // Describe the placeholder tokens a workflow author (the LLM, usually)
+    // should use to reference this connector's URL, credentials, and config
+    // without ever inlining a secret. See `llm/substitution/*`.
+    describePlaceholders: (slug: string, environment: "dev" | "prod" = "dev") =>
+      describeConnectorPlaceholders(slug, {
+        tenant_id: this.tenant_id,
+        environment,
+        db: this.db,
+      }),
   };
 
   executions = {

@@ -32,14 +32,28 @@ export const listConnectorsTool: ConversationTool = {
 
 export const getConnectorTool: ConversationTool = {
   name: "get_connector",
-  description: "Fetch a single connector by id.",
+  description: "Fetch a single connector by id, plus the placeholder tokens to use in workflow steps.",
   inputSchema: GetInput,
   category: "tenant_read",
   async execute(ctx, rawArgs) {
     const args = GetInput.parse(rawArgs);
     const c = await ctx.engineClient.connectors.get(args.id);
     if (!c) return { ok: false, data: { error: "connector_not_found" } };
-    return { ok: true, data: { connector: c } };
+    // Tell the LLM exactly which `${cred.<slug>.<field>}`, `${connector.<slug>.base_url}`,
+    // and `${connector.<slug>.config.<path>}` tokens are available. Without this, the LLM
+    // would have to guess credential field names from context, which is the #1 source of
+    // broken workflows and inlined secrets.
+    const placeholders = await ctx.engineClient.connectors.describePlaceholders(
+      c.slug,
+      c.environment as "dev" | "prod",
+    );
+    return {
+      ok: true,
+      data: {
+        connector: c,
+        placeholders,
+      },
+    };
   },
 };
 
