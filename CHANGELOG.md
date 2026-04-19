@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0](https://github.com/MikeBild/subkit/compare/subkit-v1.8.0...subkit-v1.9.0) (2026-04-19)
+
+
+### Features
+
+* **authoring:** close remaining FOLLOWUP gaps — preview parity, credentials, structured panes, richer snapshot ([d9b53e0](https://github.com/MikeBild/subkit/commit/d9b53e05fc8c38f796a570e9b9ba36b36a913cda))
+
+
+### Documentation
+
+* **followup:** record second-pass landings (preview parity, credentials, structured panes, richer snapshot, draft-dedup) ([e388453](https://github.com/MikeBild/subkit/commit/e388453c08acbb94dd5de341bae09b610776dba8))
+
 ## [1.8.0](https://github.com/MikeBild/subkit/compare/subkit-v1.7.0...subkit-v1.8.0) (2026-04-19)
 
 
