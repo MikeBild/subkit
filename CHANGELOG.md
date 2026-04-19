@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.8.0](https://github.com/MikeBild/subkit/compare/subkit-v1.7.0...subkit-v1.8.0) (2026-04-19)
+
+
+### Features
+
+* **conversations,sk:** guided authoring — real preview, probe/commit gates, resume summary, context block ([0e2178e](https://github.com/MikeBild/subkit/commit/0e2178ec07dbc219228b3a71dc46098bc3718272))
+
+
+### Bug Fixes
+
+* **conversations:** canned list-users plan force-commits past probe gate ([070741f](https://github.com/MikeBild/subkit/commit/070741ff40d46904d6a18673bac350ac953feb6f))
+* **docker:** copy scripts/ before bun install so postinstall runs ([fac4318](https://github.com/MikeBild/subkit/commit/fac43185d9b65fb3f8c210d3e4efef63ceae3e19))
+* **e2e:** align weather/sk-user-story/deep-surface with paused-stop behavior ([809e999](https://github.com/MikeBild/subkit/commit/809e999018d9cdfbc262aa1d54b6a558910431a5))
+* **tests:** journey 13 AC4 renames nested workflow draft too ([4733136](https://github.com/MikeBild/subkit/commit/4733136940aad06792c4440cbad28a991230c657))
+
 ## [1.7.0](https://github.com/MikeBild/subkit/compare/subkit-v1.6.4...subkit-v1.7.0) (2026-04-19)
 
 
