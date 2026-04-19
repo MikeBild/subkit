@@ -65,15 +65,13 @@ describe("sk CLI user story — real backend", () => {
       tool_calls: Array<{ tool: string; confirmation_state?: string | null }>;
     };
     const toolNames = detail.tool_calls.map((c) => c.tool);
-    // propose_connector is a draft_write — it does not stage
-    // confirmation_state in the tool row (it elicits via
-    // ask_user_confirm instead).
+    // propose_connector declares a `pause` payload so the loop halts on
+    // its ask_user_confirm elicitation. The later steps (propose_step /
+    // validate_draft / commit_draft) land on the subsequent turn after
+    // the user answers, so the headless single-turn run stops here.
     expect(toolNames).toContain("get_engine_status");
     expect(toolNames).toContain("list_connectors");
     expect(toolNames).toContain("propose_connector");
-    expect(toolNames).toContain("propose_step");
-    expect(toolNames).toContain("validate_draft");
-    expect(toolNames).toContain("ask_user_confirm");
   }, 120_000);
 
   test("turn 2 — resuming the same conversation sees the prior tool chain", async () => {

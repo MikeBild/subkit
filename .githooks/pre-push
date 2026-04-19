@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Pre-push gate — must mirror CI. Prevents pushing a commit that would
+# fail the GitHub Actions `build` job. Runs the same five steps CI runs,
+# in the same order, and bails on the first red.
+#
+# Bypass for emergencies with `git push --no-verify`. Do not bypass for
+# routine work — CI will catch it, but you'll waste a round-trip and
+# block the release pipeline.
+
+set -e
+
+echo "[pre-push] mirroring CI quality gate — this takes a few minutes"
+
+echo "[pre-push] 1/5 biome (lint)"
+bun run lint
+
+echo "[pre-push] 2/5 tsc (typecheck)"
+bun run typecheck
+
+echo "[pre-push] 3/5 unit + integration tests"
+SKIP_DOCKER=1 SKIP_DB_TESTS=1 bun test \
+  apps/engine/src/conversations/ \
+  apps/engine/src/execution/tests/ \
+  apps/engine/src/llm/ \
+  apps/sk/src/tests/ \
+  tests/lint/
+
+echo "[pre-push] 4/5 build all binaries"
+bun run build:cli
+bun run build:sk
+bun run build:engine
+
+echo "[pre-push] 5/5 e2e tests"
+bun test tests/e2e/
+
+echo "[pre-push] all green"

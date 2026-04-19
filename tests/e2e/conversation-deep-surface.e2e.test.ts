@@ -74,15 +74,11 @@ describe("deep-surface E2E", () => {
       tool_calls: Array<{ tool: string; confirmation_state?: string | null }>;
     };
 
-    // Full canned plan trigger — propose_connector must fire now.
+    // propose_connector declares a `pause` — the loop halts there on
+    // the first turn. propose_step / validate_draft / commit_draft land
+    // after the user resolves the ask_user_confirm elicitation.
     const names = detail.tool_calls.map((c) => c.tool);
-    for (const t of [
-      "get_engine_status",
-      "list_connectors",
-      "propose_connector",
-      "propose_step",
-      "validate_draft",
-    ]) {
+    for (const t of ["get_engine_status", "list_connectors", "propose_connector"]) {
       expect(names).toContain(t);
     }
   }, 120_000);
