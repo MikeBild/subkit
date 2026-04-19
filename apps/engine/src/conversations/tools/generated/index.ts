@@ -6,6 +6,12 @@
 
 export { auditReadTools } from "./audit.ts";
 export { connectorReadTools } from "./connectors.ts";
+export {
+  approveDiscoveryArtifactTool,
+  discoveryTools,
+  getDiscoveryArtifactTool,
+  listDiscoveryArtifactsTool,
+} from "./discovery.ts";
 export { executionReadTools } from "./executions.ts";
 export { hookReadTools } from "./hooks.ts";
 export { identityReadTools } from "./identity.ts";
@@ -27,6 +33,11 @@ import { executionReadTools } from "./executions.ts";
 import { hookReadTools } from "./hooks.ts";
 import { identityReadTools } from "./identity.ts";
 import { knowledgeSourceReadTools } from "./knowledge-sources.ts";
+import {
+  approveDiscoveryArtifactTool,
+  getDiscoveryArtifactTool,
+  listDiscoveryArtifactsTool,
+} from "./discovery.ts";
 import { metricsReadTools } from "./metrics.ts";
 import { patchCandidateReadTools } from "./patch-candidates.ts";
 import { rbacReadTools } from "./rbac.ts";
@@ -53,4 +64,9 @@ export const ALL_GENERATED_READ_TOOLS: ConversationTool[] = [
   ...subscriptionReadTools,
   ...tunnelReadTools,
   ...statusReadTools,
+  // Discovery read + write: list_ + get_ are tenant_read; approve_ is
+  // tenant_write but registered here so the palette sees it.
+  listDiscoveryArtifactsTool,
+  getDiscoveryArtifactTool,
+  approveDiscoveryArtifactTool,
 ];
