@@ -76,15 +76,11 @@ describe("weather workflow (open-meteo, no API key)", () => {
       tool_calls?: Array<{ tool: string }>;
     };
     const toolNames = (detail.tool_calls ?? []).map((x) => x.tool);
-    // The canned plan fires these tools before the loop pauses on
-    // ask_user_confirm:
-    for (const expected of [
-      "get_engine_status",
-      "list_connectors",
-      "propose_connector",
-      "propose_step",
-      "validate_draft",
-    ]) {
+    // propose_connector declares a `pause` payload (ask_user_confirm
+    // for an external-write), so the loop halts there on the first
+    // turn. propose_step / validate_draft / commit_draft land on the
+    // follow-up turn after the user resolves the elicitation.
+    for (const expected of ["get_engine_status", "list_connectors", "propose_connector"]) {
       expect(toolNames).toContain(expected);
     }
   }, 120_000);
