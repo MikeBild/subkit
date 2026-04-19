@@ -16,6 +16,7 @@ import {
   askUserMultiTool,
   askUserTextTool,
 } from "./ask-user/index.ts";
+import { buildWorkflowTool } from "./build-workflow.ts";
 import { commitDraftTool } from "./commit-draft.ts";
 import { connectStepsTool } from "./connect-steps.ts";
 import { dryRunStepTool } from "./dry-run-step.ts";
@@ -136,6 +137,7 @@ register(fetchConnectorDocsTool);
 register(searchKnowledgeTool);
 register(listSkillSuggestionsTool);
 register(probeConnectorTool);
+register(buildWorkflowTool);
 register(proposeStepTool);
 register(proposeConnectorTool);
 register(proposeSkillTool);

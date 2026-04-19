@@ -12,6 +12,7 @@ describe("conversation tools — registration", () => {
     "ask_user_form",
     "ask_user_multi",
     "ask_user_text",
+    "build_workflow",
     "commit_draft",
     "connect_steps",
     "dry_run_step",
