@@ -26,6 +26,11 @@ async function* framesOf(...events: TurnEvent[]): AsyncIterable<TurnEvent> {
   for (const ev of events) yield ev;
 }
 
+function stripAnsi(frame: string): string {
+  const ansiPattern = `${String.fromCharCode(27)}\\[[0-9;]*m`;
+  return frame.replace(new RegExp(ansiPattern, "g"), "");
+}
+
 const PERSONAS = {
   admin: { allows: () => true } as PersonaProbe,
   member: { allows: (p: string) => p !== "audit:read" } as PersonaProbe,
@@ -132,13 +137,13 @@ describe("ink-app: journey 01 — admin mounts the REPL", () => {
   test("AC1: banner + status line + composer render on first paint", async () => {
     const instance = renderApp();
     await tick();
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     // Compact boxed banner — asserts on stable substrings only so
     // cosmetic tweaks to the framing don't require test churn.
     // Matches any semver-looking string (e.g. `sk v1.6.0` or
     // `sk · v0.0.0-dev` — the `·` separator arrived with the Claude
     // Code UX adoption).
-    expect(frame).toMatch(/sk[\s·]+v\d+\.\d+\.\d+/);
+    expect(frame).toMatch(/sk[\s·]+v\d+\.\d+\.\d+(?:-[\w.-]+)?/);
     expect(frame).toContain("admin");
     expect(frame).toContain("tenant-alpha");
     expect(frame).toContain("http://localhost:8080");

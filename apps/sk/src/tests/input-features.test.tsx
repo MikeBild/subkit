@@ -75,6 +75,11 @@ async function pressEnter(instance: ReturnType<typeof render>): Promise<void> {
   await tick(40);
 }
 
+function stripAnsi(frame: string): string {
+  const ansiPattern = `${String.fromCharCode(27)}\\[[0-9;]*m`;
+  return frame.replace(new RegExp(ansiPattern, "g"), "");
+}
+
 function renderApp(overrides: Partial<InkAppProps> = {}) {
   return render(<InkApp {...defaultProps(overrides)} />);
 }
@@ -210,7 +215,7 @@ describe("features: cursor + readline shortcuts", () => {
     const frame = instance.lastFrame() ?? "";
     // Cursor marker (▊ / ·) is rendered between the before / after
     // slices — strip it and assert on the logical buffer contents.
-    const stripped = frame.replace(/[▊·]/g, "");
+    const stripped = stripAnsi(frame).replace(/[▊·]/g, "");
     expect(stripped).toContain("hellXo");
     instance.unmount();
   });
@@ -236,7 +241,7 @@ describe("features: cursor + readline shortcuts", () => {
     await type(instance, "kill this");
     instance.stdin.write("\x15"); // Ctrl-U
     await tick(10);
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     // Composer should show an empty `❯` prompt.
     expect(frame).not.toContain("kill this");
     expect(frame).toMatch(/❯\s+▊/);
