@@ -152,14 +152,25 @@ describe("journey: conversation resume", () => {
       const top = rows[0];
       if (top) {
         const snap = top.snapshot as Record<string, unknown>;
-        // Rename only the top-level fields. The unified draft
-        // normaliser (authoring-state.ts :: normalizeWorkflowDraft)
-        // merges a top-level rename into the nested `workflow` block
-        // on the next read, so bypass writers stay simple.
+        const workflow =
+          snap.workflow && typeof snap.workflow === "object"
+            ? { ...(snap.workflow as Record<string, unknown>) }
+            : null;
+        // The draft model is canonical on `draft.workflow`. Rename the
+        // nested workflow snapshot directly so the eventual commit uses
+        // a unique slug even after AC3 has already created
+        // `new-workflow` in the same tenant.
         const renamed = {
           ...snap,
           name: "resume-flow-workflow",
           slug: "resume-flow-workflow",
+          workflow: workflow
+            ? {
+                ...workflow,
+                name: "resume-flow-workflow",
+                slug: "resume-flow-workflow",
+              }
+            : workflow,
         };
         await ctx.db
           .update(conversationDrafts)
