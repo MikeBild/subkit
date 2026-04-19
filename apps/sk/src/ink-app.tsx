@@ -494,23 +494,6 @@ export const InkApp: React.FC<InkAppProps> = ({
   );
   const deferredMessages = useDeferredValue(session.messages);
   const deferredToolCalls = useDeferredValue(session.toolCalls);
-  // Count consecutive failed propose_step calls in the current turn.
-  // The reducer marks `failed` whenever a tool returns ok=false, so we
-  // walk the tail of the call list looking for a contiguous run of
-  // failed propose_step entries. A single non-propose_step call (or a
-  // successful one) breaks the streak. The banner uses this to nudge
-  // the user when the model is stuck self-correcting.
-  const proposeStepFailureStreak = useMemo(() => {
-    let n = 0;
-    for (let i = deferredToolCalls.length - 1; i >= 0; i--) {
-      const c = deferredToolCalls[i];
-      if (!c) break;
-      if (c.name !== "propose_step") break;
-      if (c.status !== "failed") break;
-      n++;
-    }
-    return n;
-  }, [deferredToolCalls]);
 
   const [input, setInput] = useState<InputBuffer>(EMPTY_BUFFER);
   const [busy, setBusy] = useState(false);
@@ -1356,6 +1339,37 @@ export const InkApp: React.FC<InkAppProps> = ({
           ))}
         </Pane>
       ) : null}
+      {pane?.kind === "structured" ? (
+        <Pane
+          title={pane.title}
+          {...(pane.subtitle !== undefined ? { subtitle: pane.subtitle } : {})}
+          onDismiss={() => setPane(null)}
+        >
+          {pane.sections.map((section, sIdx) => {
+            const headingColor =
+              section.tone === "ok"
+                ? "green"
+                : section.tone === "fail"
+                  ? "red"
+                  : section.tone === "warn"
+                    ? "yellow"
+                    : "cyan";
+            return (
+              <Box key={`sec-${sIdx}`} flexDirection="column" marginBottom={1}>
+                <Text color={headingColor} bold>
+                  {section.heading}
+                </Text>
+                {section.rows.map(([k, v], rIdx) => (
+                  <Box key={`sec-${sIdx}-row-${rIdx}`}>
+                    <Text dimColor> {k}: </Text>
+                    <Text>{v === null || v === undefined || v === "" ? "—" : String(v)}</Text>
+                  </Box>
+                ))}
+              </Box>
+            );
+          })}
+        </Pane>
+      ) : null}
       {historyOpen ? (
         <HistorySearch
           entries={historyRef.current}
@@ -1401,19 +1415,6 @@ export const InkApp: React.FC<InkAppProps> = ({
               </Box>
             );
           })}
-        </Box>
-      ) : null}
-
-      {/* Failure-streak banner — when the model can't shape the workflow */}
-      {proposeStepFailureStreak >= 3 ? (
-        <Box marginBottom={1} flexDirection="column">
-          <Text color="yellow" bold>
-            ⚠ the model is struggling to shape this workflow
-          </Text>
-          <Text color="yellow">
-            try /clear and rephrase, or describe the steps yourself (kinds: request, transform,
-            call, wait, branch, parallel, loop, tool)
-          </Text>
         </Box>
       ) : null}
 

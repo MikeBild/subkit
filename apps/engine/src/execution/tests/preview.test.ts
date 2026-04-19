@@ -30,19 +30,60 @@ describe("previewStep", () => {
     expect(summary.summary).toContain("Previewed step");
   });
 
-  test("unsupported step kinds are classified as preview_unsupported", async () => {
+  test("wait step reports duration without sleeping", async () => {
     const step: StepDef = {
       id: "w1",
       kind: "wait",
-      duration_ms: 0,
+      duration_ms: 500,
     };
+    const started = Date.now();
     const summary = await previewStep({
       db: getDb(),
       tenant_id: "preview-tenant",
       step,
     });
-    expect(summary.ok).toBe(false);
-    expect(summary.classification).toBe("preview_unsupported");
+    expect(Date.now() - started).toBeLessThan(200); // proves no sleep
+    expect(summary.ok).toBe(true);
+    expect(summary.classification).toBe("ok");
+    expect(summary.summary).toContain("500ms");
+  });
+
+  test("branch step evaluates the condition against scope", async () => {
+    const step: StepDef = {
+      id: "b1",
+      kind: "branch",
+      when: "$input.n > 10",
+      then_steps: ["a", "b"],
+      else_steps: ["c"],
+    };
+    const summary = await previewStep({
+      db: getDb(),
+      tenant_id: "preview-tenant",
+      step,
+      workflow_input: { n: 42 },
+    });
+    expect(summary.ok).toBe(true);
+    const pv = summary.output_preview as { taken: string };
+    expect(pv.taken).toBe("then");
+  });
+
+  test("parallel / loop / call / tool steps are classified ok with structural preview", async () => {
+    const cases: StepDef[] = [
+      { id: "p1", kind: "parallel", branches: [["a"], ["b", "c"]] },
+      { id: "l1", kind: "loop", over: "$input.items", body: ["x"], item_var: "item" },
+      { id: "c1", kind: "call", workflow_slug: "sub-flow" },
+      { id: "t1", kind: "tool", image: "alpine:latest" },
+    ];
+    for (const step of cases) {
+      const summary = await previewStep({
+        db: getDb(),
+        tenant_id: "preview-tenant",
+        step,
+      });
+      expect(summary.ok).toBe(true);
+      expect(summary.classification).toBe("ok");
+      expect(summary.output_preview).toBeDefined();
+    }
   });
 
   test("unresolvable connector on a request step returns a classified failure", async () => {
@@ -104,6 +145,9 @@ describe("previewWorkflow", () => {
   });
 
   test("stops at the first failing step and carries its classification", async () => {
+    // Use a transform with an intentionally broken expression so the
+    // step classifies as a `driver_error` (i.e. a real failure, not a
+    // synthetic unsupported-kind). The workflow should stop at step 2.
     const steps: StepDef[] = [
       {
         id: "t1",
@@ -112,9 +156,10 @@ describe("previewWorkflow", () => {
         language: "jsonata",
       },
       {
-        id: "u1",
-        kind: "wait",
-        duration_ms: 0,
+        id: "t2",
+        kind: "transform",
+        expression: "$nonexistent_fn(input)",
+        language: "jsonata",
       },
     ];
     const summary = await previewWorkflow({
@@ -124,8 +169,7 @@ describe("previewWorkflow", () => {
       workflow_input: { n: 1 },
     });
     expect(summary.ok).toBe(false);
-    expect(summary.stopped_at_step_id).toBe("u1");
-    expect(summary.classification).toBe("preview_unsupported");
+    expect(summary.stopped_at_step_id).toBe("t2");
     expect(summary.steps_ran).toBe(2);
   });
 

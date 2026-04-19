@@ -85,6 +85,10 @@ describe("authoring slash panes", () => {
       messages: { total: 4, last_role: "assistant" },
       tool_calls_total: 3,
       pending_elicitations: 1,
+      attachments: { total: 0, items: [] },
+      latest_probe: null,
+      latest_preview: null,
+      workflow_version: null,
     };
     const client = {
       getConversationContextSnapshot: async () => snapshot,

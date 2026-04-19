@@ -31,21 +31,50 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
   const fallback = createEmptyWorkflowDraft();
   if (!isRecord(raw)) return fallback;
-  const base = isRecord(raw.workflow) ? raw.workflow : raw;
+  // Merge top-level and nested workflow keys so a bypass writer that
+  // updated only one side (e.g. Journey 13's direct DB snapshot edit)
+  // produces a single coherent draft. Nested wins on conflict when
+  // both are present and different, except for name/slug where the
+  // most recently-set non-empty value wins via a last-write heuristic:
+  // if the top-level name/slug was updated to a fresh value and the
+  // nested is still the old default, we prefer top-level. Empty
+  // strings in either side lose to a non-empty peer.
+  const nested = isRecord(raw.workflow) ? raw.workflow : {};
+  const topLevel = raw;
+  const pickString = (key: string): string | undefined => {
+    const n = nested[key];
+    const t = topLevel[key];
+    const nestedOk = typeof n === "string" && n.length > 0;
+    const topOk = typeof t === "string" && t.length > 0;
+    if (nestedOk && topOk) {
+      // Conflict: prefer nested unless top-level differs AND nested
+      // matches the "new-workflow"/"new-workflow" default — callers
+      // that rename the top-level canonical name should not be
+      // silently reverted.
+      if ((n === fallback.name || n === "new-workflow") && t !== n) return t as string;
+      return n as string;
+    }
+    if (nestedOk) return n as string;
+    if (topOk) return t as string;
+    return undefined;
+  };
+  const name = pickString("name") ?? fallback.name;
+  const slug = pickString("slug");
+  const description = pickString("description");
+  const outputTransform = pickString("output_transform");
+  const base = nested && Object.keys(nested).length > 0 ? nested : topLevel;
   return {
-    name: typeof base.name === "string" && base.name.length > 0 ? base.name : fallback.name,
-    ...(typeof base.slug === "string" && base.slug.length > 0 ? { slug: base.slug } : {}),
-    ...(typeof base.description === "string" && base.description.length > 0
-      ? { description: base.description }
-      : {}),
+    name,
+    ...(slug ? { slug } : {}),
+    ...(description ? { description } : {}),
     steps: Array.isArray(base.steps)
       ? base.steps.filter((step): step is Record<string, unknown> => isRecord(step))
-      : [],
+      : Array.isArray(topLevel.steps)
+        ? topLevel.steps.filter((step): step is Record<string, unknown> => isRecord(step))
+        : [],
     ...(isRecord(base.input_schema) ? { input_schema: base.input_schema } : {}),
     ...(isRecord(base.output_schema) ? { output_schema: base.output_schema } : {}),
-    ...(typeof base.output_transform === "string"
-      ? { output_transform: base.output_transform }
-      : {}),
+    ...(outputTransform ? { output_transform: outputTransform } : {}),
     ...(Array.isArray(base.edges)
       ? {
           edges: base.edges

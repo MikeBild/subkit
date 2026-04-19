@@ -428,6 +428,30 @@ export interface ContextSnapshot {
   };
   tool_calls_total: number;
   pending_elicitations: number;
+  /**
+   * Compact "what's in scope for the LLM right now" payload used by sk's
+   * `/context` pane. Thin projections over state that already lives on
+   * the draft or elsewhere — no extra DB reads beyond what
+   * getConversation + retrieveApplicableSkills already pull.
+   */
+  attachments: {
+    total: number;
+    items: Array<{ slug: string; filename: string | null; bytes: number | null }>;
+  };
+  latest_probe: {
+    ok: boolean;
+    summary: string | null;
+    failure_code: string | null;
+  } | null;
+  latest_preview: {
+    ok: boolean;
+    summary: string | null;
+    step_id: string | null;
+  } | null;
+  workflow_version: {
+    workflow_id: string;
+    current_version: number | null;
+  } | null;
 }
 
 /**
@@ -477,6 +501,71 @@ export async function getContextSnapshot(
 
   const lastMessage = detail.messages[detail.messages.length - 1];
 
+  // Attachments live on a per-conversation table; surface a count +
+  // first few so the user sees what the LLM can reference inline.
+  const { conversationAttachments } = await import("../db/schema/index.ts");
+  const attachmentRows = await exec
+    .select({
+      slug: conversationAttachments.slug,
+      original_filename: conversationAttachments.original_filename,
+      size_bytes: conversationAttachments.size_bytes,
+    })
+    .from(conversationAttachments)
+    .where(
+      and(
+        eq(conversationAttachments.tenant_id, tenant_id),
+        eq(conversationAttachments.conversation_id, conversation_id),
+      ),
+    )
+    .orderBy(asc(conversationAttachments.created_at));
+  const attachmentItems = attachmentRows.slice(0, 10).map((a) => ({
+    slug: a.slug,
+    filename: a.original_filename ?? null,
+    bytes: typeof a.size_bytes === "number" ? a.size_bytes : null,
+  }));
+
+  // Latest probe + preview live on the draft; mirror into the snapshot
+  // so the `/context` pane doesn't have to re-normalise the draft.
+  const latestProbeRaw = detail.draft?.connector?.latest_probe ?? null;
+  const latestProbe = latestProbeRaw
+    ? {
+        ok: latestProbeRaw.ok === true,
+        summary: latestProbeRaw.summary ?? null,
+        failure_code: latestProbeRaw.failure_code ?? null,
+      }
+    : null;
+  const latestPreviewRaw = detail.draft?.latest_preview ?? null;
+  const latestPreview = latestPreviewRaw
+    ? {
+        ok: latestPreviewRaw.ok === true,
+        summary: latestPreviewRaw.summary ?? null,
+        step_id: latestPreviewRaw.step_id ?? null,
+      }
+    : null;
+
+  // Workflow version context for committed conversations — surfaces
+  // the current version number for the bound workflow, so `/context`
+  // can show operators where they are on the version timeline.
+  let workflowVersion: ContextSnapshot["workflow_version"] = null;
+  if (detail.conversation.target_workflow_id) {
+    try {
+      const { getWorkflow } = await import("../workflows/service.ts");
+      const wf = await getWorkflow(tenant_id, detail.conversation.target_workflow_id, exec);
+      workflowVersion = {
+        workflow_id: detail.conversation.target_workflow_id,
+        current_version:
+          wf && "current_version" in wf && typeof wf.current_version === "number"
+            ? wf.current_version
+            : null,
+      };
+    } catch {
+      workflowVersion = {
+        workflow_id: detail.conversation.target_workflow_id,
+        current_version: null,
+      };
+    }
+  }
+
   return {
     conversation_id,
     connector_id: detail.conversation.target_connector_id,
@@ -500,6 +589,10 @@ export async function getContextSnapshot(
     },
     tool_calls_total: detail.tool_calls.length,
     pending_elicitations: pending,
+    attachments: { total: attachmentRows.length, items: attachmentItems },
+    latest_probe: latestProbe,
+    latest_preview: latestPreview,
+    workflow_version: workflowVersion,
   };
 }
 

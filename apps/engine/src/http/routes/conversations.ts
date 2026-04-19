@@ -248,6 +248,36 @@ const ContextSnapshotSchema = z
     }),
     tool_calls_total: z.number(),
     pending_elicitations: z.number(),
+    attachments: z.object({
+      total: z.number(),
+      items: z.array(
+        z.object({
+          slug: z.string(),
+          filename: z.string().nullable(),
+          bytes: z.number().nullable(),
+        }),
+      ),
+    }),
+    latest_probe: z
+      .object({
+        ok: z.boolean(),
+        summary: z.string().nullable(),
+        failure_code: z.string().nullable(),
+      })
+      .nullable(),
+    latest_preview: z
+      .object({
+        ok: z.boolean(),
+        summary: z.string().nullable(),
+        step_id: z.string().nullable(),
+      })
+      .nullable(),
+    workflow_version: z
+      .object({
+        workflow_id: z.string(),
+        current_version: z.number().nullable(),
+      })
+      .nullable(),
   })
   .openapi("ContextSnapshot");
 

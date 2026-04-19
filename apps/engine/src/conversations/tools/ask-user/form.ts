@@ -7,10 +7,18 @@ import { pauseForUserInput } from "./common.ts";
 const fieldSchema = z.object({
   name: z.string().min(1),
   label: z.string().min(1),
-  type: z.enum(["text", "number", "boolean", "select"]),
+  /**
+   * `password` renders as a masked input and is NEVER surfaced on
+   * downstream tool-result payloads or in the transcript — it belongs
+   * to the credential-collection flow. `text` | `number` | `boolean` |
+   * `select` render as plain inputs.
+   */
+  type: z.enum(["text", "number", "boolean", "select", "password"]),
   options: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
   placeholder: z.string().optional(),
   required: z.boolean().optional(),
+  /** When true, the client must mask the field value on keystroke echo. */
+  sensitive: z.boolean().optional(),
 });
 
 const inputSchema = z
