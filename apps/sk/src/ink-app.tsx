@@ -73,7 +73,7 @@ import { PendingAttachments } from "./repl/pending-attachments.tsx";
 import { createQueue } from "./repl/queue.ts";
 import type { PaneSpec } from "./repl/slash-handler.ts";
 import { Spinner } from "./repl/spinner.tsx";
-import { DEFAULT_STARTER_ACTIONS, StarterActions } from "./repl/starter-actions.tsx";
+import { StarterActions, starterActionsForPersona } from "./repl/starter-actions.tsx";
 import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
 import { findSlashCommand, type PersonaProbe, renderHelp, searchSlashCommands } from "./slash.ts";
@@ -476,9 +476,16 @@ const CONNECTOR_STARTER_PROMPT = [
   "Ask me one high-signal question at a time and probe before saving.",
 ].join("\n");
 
-const IMPORT_STARTER_PROMPT = [
-  "I want to import docs or an API spec and turn it into a connector and workflow.",
-  "Guide me through the minimum information you need and probe before saving.",
+const MANAGE_STARTER_PROMPT = [
+  "I want to inspect or manage existing tenant resources.",
+  "Ground me in the workflows, connectors, runs, or credentials that actually exist first.",
+  "If a write tool exists, use it with confirmation instead of inventing off-surface fallbacks.",
+].join("\n");
+
+const SURFACE_HELP_STARTER_PROMPT = [
+  "I want help using Subkit surfaces such as sk, MCP, the HTTP API, schedules, or Google Chat.",
+  "Answer from actual Subkit behavior and exposed routes only.",
+  "If something is not exposed in this conversation surface, say that plainly.",
 ].join("\n");
 
 const StickyErrorPanel: React.FC<{ message: string }> = memo(({ message }) => (
@@ -857,6 +864,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   const [activeMode, setActiveMode] = useState<PermissionMode>(permissionMode);
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("chat");
   const tip = useRef<string>(pickTip());
+  const starterActions = useMemo(() => starterActionsForPersona(persona.label), [persona.label]);
 
   // -------- Persistent prompt history --------
   // Load ~/.sk/history.jsonl on mount so ↑/↓ works across sessions.
@@ -1386,24 +1394,24 @@ export const InkApp: React.FC<InkAppProps> = ({
       // slash command so the user can still /approve or /reject.
       if (elicitOpen && !slashMode && char !== "/") return;
       if (showWelcomeActions && char && !key.ctrl && !key.meta) {
-        if (char === DEFAULT_STARTER_ACTIONS[0]?.key) {
+        if (char === starterActions[0]?.key) {
           void handleSubmit("/resume");
           return;
         }
-        if (char === DEFAULT_STARTER_ACTIONS[1]?.key) {
+        if (char === starterActions[1]?.key) {
           setInput(buffer(CONNECTOR_STARTER_PROMPT));
           return;
         }
-        if (char === DEFAULT_STARTER_ACTIONS[2]?.key) {
+        if (char === starterActions[2]?.key) {
           setInput(buffer(WORKFLOW_STARTER_PROMPT));
           return;
         }
-        if (char === DEFAULT_STARTER_ACTIONS[3]?.key) {
-          setInput(buffer(IMPORT_STARTER_PROMPT));
+        if (char === starterActions[3]?.key) {
+          setInput(buffer(MANAGE_STARTER_PROMPT));
           return;
         }
-        if (char === DEFAULT_STARTER_ACTIONS[4]?.key) {
-          void handleSubmit("/help");
+        if (char === starterActions[4]?.key) {
+          setInput(buffer(SURFACE_HELP_STARTER_PROMPT));
           return;
         }
       }
@@ -1669,7 +1677,7 @@ export const InkApp: React.FC<InkAppProps> = ({
             profileName={persona.profileName}
             tip={tip.current}
           />
-          {showWelcomeActions ? <StarterActions /> : null}
+          {showWelcomeActions ? <StarterActions actions={starterActions} /> : null}
         </>
       ) : null}
 

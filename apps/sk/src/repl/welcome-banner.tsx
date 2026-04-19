@@ -32,7 +32,10 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({ persona, tenant, tip 
         <Text color={theme.severity.dim}> · v{VERSION}</Text>
         <Text color={theme.severity.dim}> · {personaSlot}</Text>
       </Box>
-      <Text>Connect systems, build workflows, import docs, or resume prior work.</Text>
+      <Text>
+        Resume work, connect a system, build a workflow, inspect tenant state, or ask about API /
+        MCP / chat.
+      </Text>
       {tip ? (
         <Box marginTop={1}>
           <Text color={theme.severity.warning}>◦ </Text>
@@ -61,11 +64,13 @@ export const BANNER_TIPS: readonly string[] = [
   "`@path/to/file` inlines a file; `@workflow:<slug>` fetches a committed workflow.",
   "Drop a `SUBKIT.md` next to your project and sk injects it as memory each turn.",
   'Run `sk -p "your prompt"` for headless output in scripts or CI.',
+  "Use /permissions when you need the fastest grounded view of your current access.",
+  "Use /status for tenant state before asking the assistant to summarize what exists.",
   "Use /view inspect when you need the raw tool trace behind the chat view.",
   "Shift-Tab cycles ask / auto / plan; the footer always shows the active mode.",
   "`/approve` or `/reject` resolves the current confirmation request inline.",
   "Use /compact when a long conversation needs a smaller working context.",
-  "Use /status or /setup for tenant state instead of reading the footer for everything.",
+  "Ask about MCP, the HTTP API, or chat adapters in plain language; the assistant should ground on real Subkit surfaces.",
   "If the engine errors repeatedly, turn on `SK_DEBUG=1` or use `/debug on`.",
 ] as const;
 

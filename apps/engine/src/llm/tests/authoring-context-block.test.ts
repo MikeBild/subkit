@@ -94,4 +94,17 @@ describe("renderAuthoringContextBlock", () => {
     expect(block!).toContain("Action:");
     expect(block!).toContain("Why:");
   });
+
+  test("includes turn routing guidance for non-authoring requests", () => {
+    const block = renderAuthoringContextBlock({
+      draft: draft(),
+      user_message: "archive new-workflow",
+    });
+    expect(block).not.toBeNull();
+    expect(block!).toContain("## Turn routing");
+    expect(block!).toContain("Intent: unsupported_or_unavailable");
+    expect(block!).toContain("delete_workflow");
+    expect(block!).toContain("Forbidden fallbacks");
+    expect(block!).not.toContain("## Guided next step");
+  });
 });
