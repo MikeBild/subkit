@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "sh scripts/setup-hooks.sh",
     "dev": "bun run --watch apps/engine/src/index.ts",
     "build:engine": "bun build apps/engine/src/index.ts --compile --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/engine && sh scripts/codesign-macos.sh dist/engine",
     "build:agent": "bun build apps/agent/src/index.ts --compile --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/tunnel-agent && sh scripts/codesign-macos.sh dist/tunnel-agent",
