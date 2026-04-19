@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.8](https://github.com/MikeBild/subkit/compare/subkit-v1.10.7...subkit-v1.10.8) (2026-04-19)
+
+
+### Bug Fixes
+
+* **sk:** simplify transcript and approval flow ([d07cad7](https://github.com/MikeBild/subkit/commit/d07cad706fbb9a1c05cc838bf5df277b19f9b98c))
+
 ## [1.10.2](https://github.com/MikeBild/subkit/compare/subkit-v1.10.1...subkit-v1.10.2) (2026-04-19)
 
 
