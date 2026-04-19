@@ -116,6 +116,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   update_param: { defaultMode: "no_confirm" },
   connect_steps: { defaultMode: "no_confirm" },
   dry_run_step: { defaultMode: "no_confirm" },
+  dry_run_transform: { defaultMode: "no_confirm" },
   validate_draft: { defaultMode: "no_confirm" },
   commit_draft: { defaultMode: "confirm_before_execution" },
   build_workflow: { defaultMode: "no_confirm" },

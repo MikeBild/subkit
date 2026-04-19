@@ -129,6 +129,10 @@ export const AuditAction = {
   // records `url_host` (not the full URL) so audit cardinality stays low
   // and no PII-bearing query strings leak into the log.
   CONVERSATION_PROBE_CONNECTOR: "conversation.probe_connector",
+  // One-shot expression evaluator used by `dry_run_transform`. Audit
+  // metadata never includes the raw expression (PII risk) — only a
+  // 16-char sha256 prefix.
+  CONVERSATION_DRY_RUN_TRANSFORM: "conversation.dry_run_transform",
 
   SK_CLI_LOGIN: "sk_cli.login",
   SK_CLI_LOGOUT: "sk_cli.logout",

@@ -16,6 +16,7 @@ describe("conversation tools — registration", () => {
     "commit_draft",
     "connect_steps",
     "dry_run_step",
+    "dry_run_transform",
     "fetch_connector_docs",
     "list_skill_suggestions",
     "list_skills",
