@@ -17,6 +17,7 @@ import { ChatAdapterRegistry } from "../chat/registry.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { registerMcpHttpRoutes } from "../mcp/transports/streamable-http.ts";
+import { errorRing } from "../observability/error-ring.ts";
 import { metricsMiddleware } from "../observability/middleware.ts";
 import { HttpError } from "./errors.ts";
 import { authMiddleware } from "./middleware/auth.ts";
@@ -113,37 +114,71 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   // blocks see them, so we install an onError that rethrows so
   // errorMiddleware can map cleanly. Note: onError MUST return a Response.
   app.onError((err, c) => {
+    const traceId = c.get("trace_id") ?? null;
+    const principal = c.get("principal") as { tenant_id?: string } | undefined;
+    const path = new URL(c.req.url).pathname;
     // Re-route through the same envelope shape used by errorMiddleware.
     if (err instanceof HttpError) {
+      // 5xx HttpErrors are still operator-relevant — mirror them into
+      // the error ring so /v1/diagnostics/errors can surface them.
+      if (err.status >= 500) {
+        errorRing.record({
+          trace_id: traceId,
+          ts: new Date().toISOString(),
+          tenant_id: principal?.tenant_id ?? null,
+          method: c.req.method,
+          path,
+          status: err.status,
+          code: err.code,
+          message: err.message,
+          stack: err.stack ?? null,
+          bucket: "http",
+        });
+      }
       return c.json(
         {
           code: err.code,
           message: err.message,
-          trace_id: c.get("trace_id"),
+          trace_id: traceId,
           ...(err.details ? { details: err.details } : {}),
         },
         err.status as 400 | 401 | 403 | 404 | 409 | 413 | 415 | 500,
       );
     }
-    // Unhandled / non-HttpError. Log the full diagnostic (message +
-    // stack) so operators can reconstruct a 500 from ndjson alone — the
-    // middleware's catch never sees this path because Hono's router
-    // resolves the onError handler first.
+    // Unhandled / non-HttpError. Log the full diagnostic AND write the
+    // error ring — the middleware's catch never sees this path because
+    // Hono's router resolves the onError handler first. Without the
+    // ring write, the 500 is invisible to /v1/diagnostics/errors which
+    // is exactly where operators look.
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? (err.stack ?? null) : null;
     logger.error({
       module: "http",
       action: "request.failed",
       msg: "unhandled error",
       method: c.req.method,
       path: c.req.path,
-      error: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : undefined,
-      trace_id: c.get("trace_id"),
+      error: message,
+      stack: stack ?? undefined,
+      trace_id: traceId,
+    });
+    errorRing.record({
+      trace_id: traceId,
+      ts: new Date().toISOString(),
+      tenant_id: principal?.tenant_id ?? null,
+      method: c.req.method,
+      path,
+      status: 500,
+      code: "internal_error",
+      message,
+      stack,
+      bucket: "unhandled",
     });
     return c.json(
       {
         code: "internal_error",
         message: "internal error",
-        trace_id: c.get("trace_id"),
+        trace_id: traceId,
       },
       500,
     );

@@ -28,7 +28,6 @@ import {
   initializeModel,
   type ModelInitOptions,
   ProviderMisconfiguredError,
-  ProviderNotInstalledError,
   type ResolvedModel,
 } from "./model-init.ts";
 import { normalizeSchema, unwrapResult } from "./schema-normalizer.ts";
@@ -409,4 +408,4 @@ function extractCacheCreation(meta: unknown): number {
   return Number(gwUsage?.cache_creation_input_tokens ?? 0);
 }
 
-export { NoSuchToolError, ProviderMisconfiguredError, ProviderNotInstalledError };
+export { NoSuchToolError, ProviderMisconfiguredError };

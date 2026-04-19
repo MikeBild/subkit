@@ -39,30 +39,21 @@ import { initializeModel } from "./model-init.ts";
 import { account } from "./token-accountant.ts";
 
 /**
- * Resolve a raw SDK LanguageModel for the given provider+model id. Used
- * by `conversations/loop.ts` which drives `streamText` directly.
- * Prefers the gateway when configured; otherwise loads the provider-specific
- * package via dynamic import.
+ * Resolve the Vercel AI SDK model handle for the given model id. Real-LLM
+ * paths route through the AI Gateway (AI_GATEWAY_API_KEY); mock paths
+ * return the sentinel string which the conversation loop short-circuits
+ * before dispatch.
+ *
+ * Model ids prefixed `anthropic:`, `openai:`, etc. are stripped — the `ai`
+ * SDK routes on the plain model string via the gateway, so `anthropic:` is
+ * just a namespacing nicety that lived in tenant routes.
  */
 export async function resolveLanguageModel(
-  provider: LlmProviderKind,
+  _provider: LlmProviderKind,
   modelId: string,
 ): Promise<LanguageModel | string> {
-  if (provider === "mock") {
-    // Callers short-circuit mock routes before reaching this function.
-    throw new Error(
-      "resolveLanguageModel does not handle mock; callers must check route.provider first",
-    );
-  }
-  const bare = modelId.startsWith("anthropic:") ? modelId.slice("anthropic:".length) : modelId;
-  // Pass `providerOverride` so `initializeModel` does not silently fall
-  // back to mock when `LLM_PROVIDER` is unset even though the route
-  // already decided on a real provider (e.g. inferred from the presence
-  // of ANTHROPIC_API_KEY). Without this, every production conversation
-  // with `LLM_PROVIDER` unset gets a `mock:never-dispatched` sentinel
-  // dispatched to streamText, which throws and surfaces as
-  // `internal_error` to the operator.
-  const resolved = await initializeModel({ providerOverride: provider, defaultModel: bare });
+  const bare = modelId.includes(":") ? modelId.slice(modelId.indexOf(":") + 1) : modelId;
+  const resolved = await initializeModel({ defaultModel: bare });
   return resolved.model;
 }
 
@@ -109,19 +100,10 @@ export function globalLlmStatus(): GlobalLlmStatus {
 
 function currentProvider(): LlmProviderKind {
   const raw = (process.env.LLM_PROVIDER ?? "").toLowerCase();
-  if (
-    raw === "anthropic" ||
-    raw === "openai" ||
-    raw === "bedrock" ||
-    raw === "vertex" ||
-    raw === "azure" ||
-    raw === "mock"
-  ) {
-    return raw as LlmProviderKind;
-  }
-  // Default: gateway when AI_GATEWAY_API_KEY is set, else mock (test-friendly).
-  if (env.ANTHROPIC_API_KEY) return "anthropic";
-  if (process.env.AI_GATEWAY_API_KEY) return "anthropic"; // gateway proxies
+  if (raw === "mock") return "mock";
+  // Real-LLM path: always the Vercel AI Gateway. Multi-provider switching
+  // happens inside the gateway URL/model string, not in this code.
+  if (process.env.AI_GATEWAY_API_KEY) return "gateway";
   return "mock";
 }
 

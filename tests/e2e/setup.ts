@@ -79,25 +79,16 @@ export interface BootOpts {
  */
 function detectRealProvider(): { provider: string; reason: string } {
   const explicit = process.env.LLM_PROVIDER?.toLowerCase();
-  if (explicit && explicit !== "") {
-    return { provider: explicit, reason: `LLM_PROVIDER=${explicit}` };
+  if (explicit === "mock") {
+    return { provider: "mock", reason: "LLM_PROVIDER=mock" };
   }
   if (process.env.AI_GATEWAY_API_KEY) {
     return { provider: "gateway", reason: "AI_GATEWAY_API_KEY set" };
   }
-  if (process.env.ANTHROPIC_API_KEY) {
-    return { provider: "anthropic", reason: "ANTHROPIC_API_KEY set" };
-  }
-  if (process.env.OPENAI_API_KEY) {
-    return { provider: "openai", reason: "OPENAI_API_KEY set" };
-  }
-  if (process.env.GEMINI_API_KEY) {
-    return { provider: "gemini", reason: "GEMINI_API_KEY set" };
-  }
   throw new Error(
-    "E2E boot() needs a real LLM provider configured. Set LLM_PROVIDER " +
-      "+ matching key (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY) " +
-      "or AI_GATEWAY_API_KEY in .env.",
+    "E2E boot() needs either LLM_PROVIDER=mock (for hermetic runs) " +
+      "or AI_GATEWAY_API_KEY (for real-LLM runs against the Vercel AI Gateway). " +
+      "Per-provider SDK packages are no longer supported.",
   );
 }
 
