@@ -15,6 +15,13 @@ const inputSchema = z.object({}).openapi("CommitDraftToolInput");
 export const commitDraftTool: ConversationTool = {
   name: "commit_draft",
   description: "Persist the draft as a real workflow. Requires a prior approval.",
+  use_case:
+    "Final step when the operator has confirmed via ask_user_confirm(kind='commit_draft') that the draft is ready to save. Creates a versioned workflow row and emits a `workflow.created` audit entry.",
+  important_notes: [
+    "Refuses with `no_prior_approval` if no matching ask_user_confirm has been answered in this conversation.",
+    "Bumps workflow version if a workflow with the same slug already exists.",
+    "Writes exactly one audit row and one `workflow.created` outbox event.",
+  ],
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, _args): Promise<ToolResult> {

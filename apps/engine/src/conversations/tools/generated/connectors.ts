@@ -11,6 +11,12 @@ const GetInput = z
 export const listConnectorsTool: ConversationTool = {
   name: "list_connectors",
   description: "List the tenant's connectors.",
+  use_case:
+    "Call early to find out which external systems the tenant has already configured; use the resulting slugs in placeholder tokens when authoring steps.",
+  important_notes: [
+    "Returns minimal metadata only (id, slug, driver, environment). Call get_connector for placeholder tokens and config.",
+    "No credentials are returned here — use ${cred.<slug>.<field>} tokens, never inline values.",
+  ],
   inputSchema: ListInput,
   category: "tenant_read",
   async execute(ctx) {
@@ -32,7 +38,16 @@ export const listConnectorsTool: ConversationTool = {
 
 export const getConnectorTool: ConversationTool = {
   name: "get_connector",
-  description: "Fetch a single connector by id, plus the placeholder tokens to use in workflow steps.",
+  description:
+    "Fetch a single connector by id, plus the placeholder tokens to use in workflow steps.",
+  use_case:
+    "Call before authoring a step that hits this connector — the returned `placeholders` field tells you exactly which ${cred.<slug>.<field>} and ${connector.<slug>.*} tokens are wired up in this environment.",
+  important_notes: [
+    "`placeholders.credentials` is empty when no credential is configured; create one before writing a step that expects it.",
+    "`placeholders` reflects the connector's active environment only — a dev connector does not expose prod tokens.",
+    "Issues a `connector:read` RBAC check; low-privilege principals get `permission_denied` instead of the config.",
+  ],
+  example_input: { id: "00000000-0000-0000-0000-000000000000" },
   inputSchema: GetInput,
   category: "tenant_read",
   async execute(ctx, rawArgs) {

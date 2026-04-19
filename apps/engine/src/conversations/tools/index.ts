@@ -107,6 +107,21 @@ export interface ConversationTool {
   readonly inputSchema: z.ZodTypeAny;
   readonly category: ToolCategory;
   execute(ctx: ToolContext, args: unknown): Promise<ToolResult>;
+  /** One-sentence hint: when should the LLM reach for this tool? Rendered
+   *  into the tool description as a `<use_case>` block so the model can
+   *  discriminate it from siblings without exhaustive trial-and-error. */
+  readonly use_case?: string;
+  /** Bullet list of caveats the LLM should read before invoking — limits,
+   *  side effects, failure modes. Rendered as `<important_notes>`. */
+  readonly important_notes?: readonly string[];
+  /** Slug of a skill that must be loaded before this tool becomes visible.
+   *  Advisory mirror of the authoritative `skills.gates_tools` map — used
+   *  by the description compiler to tell the model up front what skill to
+   *  load. Not enforced by this field alone. */
+  readonly requires_skill?: string;
+  /** A realistic example argument object. Rendered as `<example>` and
+   *  parsed by some clients (MCP) to prefill inputs. */
+  readonly example_input?: Readonly<Record<string, unknown>>;
 }
 
 const registry: Map<string, ConversationTool> = new Map();

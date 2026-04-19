@@ -17,6 +17,14 @@ export const loadSkillTool: ConversationTool = {
   name: "load_skill",
   description:
     "Load a named skill into the current conversation context, unlocking any tools that require it. Call once per skill; subsequent turns see the skill body in the volatile context block.",
+  use_case:
+    "Pull domain knowledge into the working context before authoring a connector, workflow, or approving a patch. Also unlocks skill-gated tools (see `requires_skill`).",
+  important_notes: [
+    "Skills are stored per tenant — the same slug may resolve to different bodies across tenants.",
+    "Loaded skills persist across turns of the same conversation; calling twice is a no-op.",
+    "Available slugs include: subkit-concepts, workflow-authoring, http-connectors, postgres-connectors, graphql-connectors, s3-connectors, data-handling, rbac-and-scopes, self-healing, error-recovery.",
+  ],
+  example_input: { slug: "workflow-authoring" },
   inputSchema: Input,
   category: "tenant_read",
   async execute(ctx, rawArgs) {

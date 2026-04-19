@@ -11,6 +11,10 @@ import { startListener, stopListener } from "./pubsub/listener.ts";
 import { startBoss, stopBoss } from "./queue/boss.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
 import { SchedulerReconciler } from "./scheduler/reconciler.ts";
+import {
+  applySkillSeedsForAllTenants,
+  loadSkillSeedsFromDisk,
+} from "./skills/seed.ts";
 import { startTunnelWsServer, type TunnelWsServerHandle } from "./tunnels/ws-server.ts";
 import { setUpdateState } from "./update-state.ts";
 
@@ -101,6 +105,60 @@ async function runServer(): Promise<void> {
   // Cron reconciler — sync workflows_schedules -> pg-boss schedules.
   const reconciler = new SchedulerReconciler({ boss, db });
   await reconciler.start();
+
+  // Skill-seed pipeline. Loads the markdown skill library bundled under
+  // conversations/seed/skills/ and upserts each seeded skill into every
+  // tenant. Idempotent + content-hash-gated so unchanged seeds are a no-op
+  // on subsequent boots. Runs in the background so a large skill catalog
+  // never delays serving the first HTTP request.
+  if (process.env.SK_SEED_SKILLS !== "0") {
+    void (async () => {
+      try {
+        const loaded = await loadSkillSeedsFromDisk();
+        if (loaded.errors.length > 0) {
+          logger.warn({
+            module: "skills.seed",
+            action: "seed.parse_errors",
+            msg: "some skill seeds failed to parse",
+            errors: loaded.errors.map((e) => ({ file: e.file, code: e.code })),
+          });
+        }
+        if (loaded.skills.length === 0) {
+          logger.info({
+            module: "skills.seed",
+            action: "seed.empty",
+            msg: "no skill seeds found on disk; skipping",
+          });
+          return;
+        }
+        const outcomes = await applySkillSeedsForAllTenants(loaded.skills, db);
+        const totals = outcomes.reduce(
+          (acc, o) => {
+            acc.inserted += o.inserted;
+            acc.updated += o.updated;
+            acc.unchanged += o.unchanged;
+            return acc;
+          },
+          { inserted: 0, updated: 0, unchanged: 0 },
+        );
+        logger.info({
+          module: "skills.seed",
+          action: "seed.applied",
+          msg: "skill seeds applied across tenants",
+          tenants: outcomes.length,
+          skills_per_tenant: loaded.skills.length,
+          ...totals,
+        });
+      } catch (err) {
+        logger.error({
+          module: "skills.seed",
+          action: "seed.failed",
+          msg: "skill seed apply failed (non-fatal)",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
+  }
 
   const app = createApp({ db, chatRegistry });
   const port = env.PORT;
