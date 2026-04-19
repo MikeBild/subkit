@@ -15,9 +15,9 @@
 #                      LLM_PROVIDER + matching provider credentials. Not touched here.
 #
 # Behavior:
-#   1. Log in to DOCR (600 s token).
+#   1. Log in to DOCR (600 s token), retrying transient registry errors.
 #   2. Capture the currently-running container's ENGINE_VERSION for rollback.
-#   3. Pull the engine + migrate images.
+#   3. Pull the engine + migrate images, retrying transient registry errors.
 #   4. Run migrations (aborts on failure before any engine restart).
 #   5. Re-seed + restart engine (`--no-deps` so the engine is the only thing
 #      recreated — postgres and peers stay live).
@@ -32,11 +32,35 @@ set -euo pipefail
 
 : "${ENGINE_VERSION:?ENGINE_VERSION must be set (e.g. export ENGINE_VERSION=1.6.7)}"
 
+retry() {
+  local attempts=$1
+  shift
+  local base_delay_secs=$1
+  shift
+  local attempt=1
+  while true; do
+    if "$@"; then
+      return 0
+    fi
+    local status=$?
+    if [ "$attempt" -ge "$attempts" ]; then
+      return "$status"
+    fi
+    echo "retry ${attempt}/${attempts} for: $*"
+    sleep $((base_delay_secs * attempt))
+    attempt=$((attempt + 1))
+  done
+}
+
 cd /opt/subkit
-doctl registry login --expiry-seconds 600
+retry 5 5 doctl registry login --expiry-seconds 600
 
 export ENGINE_VERSION
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+
+compose_pull() {
+  $COMPOSE pull engine migrate
+}
 
 # Capture current version for rollback (empty if no engine is running).
 PREV_VERSION=$(
@@ -45,7 +69,7 @@ PREV_VERSION=$(
     grep -oP 'ENGINE_VERSION=\K[^ ]+' || true
 )
 
-$COMPOSE pull engine migrate
+retry 5 5 compose_pull
 
 # Run migrations — abort before touching the engine if they fail.
 $COMPOSE up -d migrate
