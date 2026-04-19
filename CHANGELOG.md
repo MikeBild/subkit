@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.4](https://github.com/MikeBild/subkit/compare/subkit-v1.6.3...subkit-v1.6.4) (2026-04-19)
+
+
+### Bug Fixes
+
+* **ci/release:** grant actions:read so publish-release can gh run download ([870604a](https://github.com/MikeBild/subkit/commit/870604aa76efb7cebbbeafb993c3f7abda55762b))
+* **mcp:** await audit.policy_denied write before returning MCP deny ([f5dfeff](https://github.com/MikeBild/subkit/commit/f5dfeff67749fdcdead9d3f16a29c2de30f164a8))
+* **sk/ink-tests:** poll lastFrame() with deadline to absorb CI scheduler latency ([46bb4eb](https://github.com/MikeBild/subkit/commit/46bb4ebae1c47a5871d05715024a86b7942ff9d2))
+
 ## [1.6.1](https://github.com/MikeBild/subkit/compare/subkit-v1.6.0...subkit-v1.6.1) (2026-04-18)
 
 
