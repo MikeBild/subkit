@@ -146,7 +146,7 @@ async function probeSetupValidation(): Promise<number> {
     headers: { authorization: `Bearer ${SMOKE_KEY}`, accept: "application/json" },
   });
   if (r.status === 403) {
-    console.log("✘ /v1/diagnostics/setup — 403 (smoke key lacks audit:read)");
+    console.log("✘ /v1/diagnostics/setup — 403 (smoke key lacks audit:read or identity:read)");
     return 1;
   }
   if (!r.ok) {

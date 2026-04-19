@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { initialSessionState } from "@cli-core/index.ts";
-import type { ConversationContextSnapshot, EngineClient } from "../engine-client.ts";
+import type {
+  ConversationContextSnapshot,
+  EngineClient,
+  SetupValidationResponse,
+} from "../engine-client.ts";
 import type { PaneSpec } from "../repl/slash-handler.ts";
 import { handleSlash } from "../repl/slash-handler.ts";
 
@@ -173,5 +177,138 @@ describe("authoring slash panes", () => {
     const result = await handleSlash("preview", ["run", "fetch"], ctx);
     expect(result).toContain("preview requested");
     expect(appended[0]).toContain("Run dry_run_step against step `fetch`");
+  });
+
+  test("/setup opens the dedicated setup diagnostics pane", async () => {
+    const setup: SetupValidationResponse = {
+      overall_status: "warn",
+      summary_counts: {
+        blockers: 0,
+        warnings: 1,
+        sections_blocked: 0,
+        sections_warn: 1,
+      },
+      sections: {
+        auth: { title: "Auth", status: "ok", issues: [], recommendations: [], values: [] },
+        llm: { title: "LLM", status: "ok", issues: [], recommendations: [], values: [] },
+        datastore: {
+          title: "Datastore",
+          status: "ok",
+          issues: [],
+          recommendations: [],
+          values: [
+            { key: "DATABASE_URL", value: "postgres://user@db:5432/subkit", status_hint: null },
+          ],
+        },
+        storage: {
+          title: "Object storage",
+          status: "ok",
+          issues: [],
+          recommendations: [],
+          values: [],
+        },
+        crypto: { title: "Crypto", status: "ok", issues: [], recommendations: [], values: [] },
+        public_urls: {
+          title: "Public URLs",
+          status: "warn",
+          issues: [
+            {
+              id: "public-base-url",
+              severity: "warning",
+              title: "Public base URL",
+              detail: "PUBLIC_BASE_URL is not set.",
+            },
+          ],
+          recommendations: ["Set PUBLIC_BASE_URL to the externally reachable engine URL."],
+          values: [{ key: "PUBLIC_BASE_URL", value: null, status_hint: "Missing" }],
+        },
+      },
+      issues: [
+        {
+          id: "public-base-url",
+          severity: "warning",
+          title: "Public base URL",
+          detail: "PUBLIC_BASE_URL is not set.",
+        },
+      ],
+      recommendations: ["Set PUBLIC_BASE_URL to the externally reachable engine URL."],
+    };
+    const client = {
+      setupValidation: async () => setup,
+    } as unknown as EngineClient;
+    const { ctx, panes } = mkCtx(client);
+    const result = await handleSlash("setup", [], ctx);
+    expect(result).toBeNull();
+    const pane = panes[0];
+    expect(pane?.kind).toBe("setup-diagnostics");
+    expect((pane as { setup: SetupValidationResponse }).setup.overall_status).toBe("warn");
+    expect((pane as { setup: SetupValidationResponse }).setup.sections.public_urls.status).toBe(
+      "warn",
+    );
+  });
+
+  test("/status includes cached setup summary when available", async () => {
+    const client = {} as EngineClient;
+    const { ctx, panes } = mkCtx(client);
+    const result = await handleSlash("status", [], {
+      ...ctx,
+      statusSnapshot: {
+        user: { id: "u1", email: "mike@mikebild.com", kind: "user" },
+        tenant: { id: "tenant-1", slug: "tenant-alpha" },
+        connectors_count: 2,
+        skills_count: 3,
+        tokens_today: 99,
+        tokens_month: 120,
+        monthly_budget_tokens: 1000,
+        remaining_monthly_budget_tokens: 901,
+        version: "1.10.6",
+      },
+      setupSnapshot: {
+        overall_status: "blocked",
+        summary_counts: {
+          blockers: 2,
+          warnings: 1,
+          sections_blocked: 1,
+          sections_warn: 1,
+        },
+        sections: {
+          auth: { title: "Auth", status: "ok", issues: [], recommendations: [], values: [] },
+          llm: { title: "LLM", status: "blocked", issues: [], recommendations: [], values: [] },
+          datastore: {
+            title: "Datastore",
+            status: "ok",
+            issues: [],
+            recommendations: [],
+            values: [],
+          },
+          storage: {
+            title: "Object storage",
+            status: "warn",
+            issues: [],
+            recommendations: [],
+            values: [],
+          },
+          crypto: { title: "Crypto", status: "ok", issues: [], recommendations: [], values: [] },
+          public_urls: {
+            title: "Public URLs",
+            status: "ok",
+            issues: [],
+            recommendations: [],
+            values: [],
+          },
+        },
+        issues: [],
+        recommendations: [],
+      },
+    });
+    expect(result).toBeNull();
+    const pane = panes[0];
+    expect(pane?.kind).toBe("status");
+    const rows = (
+      pane as { rows: ReadonlyArray<readonly [string, string | number | null | undefined]> }
+    ).rows;
+    expect(
+      rows.some(([label, value]) => label === "setup" && String(value).includes("blocked")),
+    ).toBe(true);
   });
 });

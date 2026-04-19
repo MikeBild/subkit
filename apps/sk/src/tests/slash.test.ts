@@ -66,6 +66,7 @@ describe("sk slash registry", () => {
     expect(visible).not.toContain("mcp"); // mcp:read
     expect(visible).not.toContain("skills"); // skill:read
     expect(visible).not.toContain("tenant"); // identity:read
+    expect(visible).not.toContain("setup"); // identity:read
     expect(visible).not.toContain("approve"); // conversation:approve
     expect(visible).not.toContain("reject"); // conversation:approve
   });
@@ -109,5 +110,17 @@ describe("sk slash registry", () => {
       expect(cmd).toBeDefined();
       expect(cmd?.requires).toBe("conversation:read");
     }
+  });
+
+  test("/setup is registered, gated by identity:read, visible to members but hidden from endusers", () => {
+    const setup = findSlashCommand("setup");
+    expect(setup).toBeDefined();
+    expect(setup?.requires).toBe("identity:read");
+    const member = slashCommandsForPersona({
+      allows: (p) => p !== "audit:read",
+    }).map((cmd) => cmd.name);
+    expect(member).toContain("setup");
+    const enduser = slashCommandsForPersona(endUserPersona).map((cmd) => cmd.name);
+    expect(enduser).not.toContain("setup");
   });
 });

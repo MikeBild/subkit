@@ -15,7 +15,7 @@
 import type { SkSessionState, TurnEvent } from "@cli-core/index.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { loadConfig, type ResolvedProfile, resolveProfile, saveConfig } from "./config.ts";
-import { EngineClient, type StatusSummary } from "./engine-client.ts";
+import { EngineClient, type SetupValidationResponse, type StatusSummary } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { humanizeRequestError } from "./repl/error-humanize.ts";
@@ -156,6 +156,12 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // ticker always shows fresh numbers.
   let statusSnapshot: StatusSummary | null = await client.statusSummary().catch(() => null);
   const statusListeners = new Set<(snap: StatusSummary | null) => void>();
+  const canReadSetup = (persona: ResolvedPersona): boolean =>
+    persona.allowed.has("audit:read") || persona.allowed.has("identity:read");
+  let setupSnapshot: SetupValidationResponse | null = canReadSetup(currentPersona)
+    ? await client.setupValidation().catch(() => null)
+    : null;
+  const setupListeners = new Set<(snap: SetupValidationResponse | null) => void>();
   const refreshStatus = async (): Promise<void> => {
     try {
       statusSnapshot = await currentClient.statusSummary();
@@ -297,11 +303,15 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       };
     }
     statusSnapshot = await newClient.statusSummary().catch(() => null);
+    setupSnapshot = canReadSetup(currentPersona)
+      ? await newClient.setupValidation().catch(() => null)
+      : null;
     profileVersion += 1;
     for (const listener of personaListeners) {
       listener({ persona: currentPersona, profile: newProfile, version: profileVersion });
     }
     for (const listener of statusListeners) listener(statusSnapshot);
+    for (const listener of setupListeners) listener(setupSnapshot);
 
     return healthOk
       ? `switched to "${name}" (${newProfile.engine_url})`
@@ -326,6 +336,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         allowedPermissions: Array.from(currentPersona.allowed ?? []),
         switchProfile: switchProfileFn,
         statusSnapshot,
+        setupSnapshot,
         openPane,
       });
       return line;
@@ -341,6 +352,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // together with the engineUrl + tenant in the status bar.
   const RootApp: React.FC = () => {
     const [snap, setSnap] = React.useState<StatusSummary | null>(statusSnapshot);
+    const [setup, setSetup] = React.useState<SetupValidationResponse | null>(setupSnapshot);
     const [active, setActive] = React.useState<{
       persona: ResolvedPersona;
       profile: ResolvedProfile;
@@ -355,11 +367,15 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       }): void => {
         setActive(next);
         setSnap(statusSnapshot);
+        setSetup(setupSnapshot);
       };
+      const sul = (next: SetupValidationResponse | null): void => setSetup(next);
       statusListeners.add(sl);
+      setupListeners.add(sul);
       personaListeners.add(pl);
       return () => {
         statusListeners.delete(sl);
+        setupListeners.delete(sul);
         personaListeners.delete(pl);
       };
     }, []);
@@ -379,6 +395,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       model: settings.merged.model ?? null,
       cwd: process.cwd(),
       statusSnapshot: snap,
+      setupSnapshot: setup,
       onPrompt,
       onElicitResponse,
       onSlash,

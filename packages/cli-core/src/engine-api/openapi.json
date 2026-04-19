@@ -5142,12 +5142,13 @@
         "type": "object",
         "properties": {
           "overall_status": {
-            "type": "string",
-            "enum": [
-              "ok",
-              "warn",
-              "blocked"
-            ]
+            "$ref": "#/components/schemas/DiagnosticsSetupStatus"
+          },
+          "summary_counts": {
+            "$ref": "#/components/schemas/DiagnosticsSetupSummaryCounts"
+          },
+          "sections": {
+            "$ref": "#/components/schemas/DiagnosticsSetupSections"
           },
           "issues": {
             "type": "array",
@@ -5164,8 +5165,108 @@
         },
         "required": [
           "overall_status",
+          "summary_counts",
+          "sections",
           "issues",
           "recommendations"
+        ]
+      },
+      "DiagnosticsSetupStatus": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "warn",
+          "blocked"
+        ]
+      },
+      "DiagnosticsSetupSummaryCounts": {
+        "type": "object",
+        "properties": {
+          "blockers": {
+            "type": "integer"
+          },
+          "warnings": {
+            "type": "integer"
+          },
+          "sections_blocked": {
+            "type": "integer"
+          },
+          "sections_warn": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "blockers",
+          "warnings",
+          "sections_blocked",
+          "sections_warn"
+        ]
+      },
+      "DiagnosticsSetupSections": {
+        "type": "object",
+        "properties": {
+          "auth": {
+            "$ref": "#/components/schemas/DiagnosticsSetupSection"
+          },
+          "llm": {
+            "$ref": "#/components/schemas/DiagnosticsSetupSection"
+          },
+          "datastore": {
+            "$ref": "#/components/schemas/DiagnosticsSetupSection"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/DiagnosticsSetupSection"
+          },
+          "crypto": {
+            "$ref": "#/components/schemas/DiagnosticsSetupSection"
+          },
+          "public_urls": {
+            "$ref": "#/components/schemas/DiagnosticsSetupSection"
+          }
+        },
+        "required": [
+          "auth",
+          "llm",
+          "datastore",
+          "storage",
+          "crypto",
+          "public_urls"
+        ]
+      },
+      "DiagnosticsSetupSection": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DiagnosticsSetupStatus"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticsSetupIssue"
+            }
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticsSetupValue"
+            }
+          }
+        },
+        "required": [
+          "title",
+          "status",
+          "issues",
+          "recommendations",
+          "values"
         ]
       },
       "DiagnosticsSetupIssue": {
@@ -5193,6 +5294,27 @@
           "severity",
           "title",
           "detail"
+        ]
+      },
+      "DiagnosticsSetupValue": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "nullable": true
+          },
+          "status_hint": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "status_hint"
         ]
       }
     },

@@ -250,7 +250,7 @@ Trade-off: trusting a `User-Agent` plus a `x-subkit-source` header from the CLI 
 | `GET`  | `/v1/health` | Liveness and readiness. Returns `{ status, version, db_connected, uptime_seconds }`. | unauthenticated | none |
 | `GET`  | `/v1/diagnostics/errors` | Tail the in-memory 5xx ring for the caller tenant. | `audit:read` | any |
 | `GET`  | `/v1/diagnostics/llm` | Show resolved LLM routing, provider presence booleans, and summarize overrides. | `audit:read` | any |
-| `GET`  | `/v1/diagnostics/setup` | Validate live runtime setup and flag blocker/warning issues for operators. | `audit:read` | any |
+| `GET`  | `/v1/diagnostics/setup` | Validate live runtime setup and return sectioned readiness data (`auth`, `llm`, `datastore`, `storage`, `crypto`, `public_urls`). | `audit:read` or `identity:read` | any |
 | `GET`  | `/openapi.json` | The generated OpenAPI 3.1 contract. | unauthenticated | none |
 | `GET`  | `/docs` | Scalar-rendered OpenAPI UI. | unauthenticated | none |
 

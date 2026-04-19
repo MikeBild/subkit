@@ -7171,10 +7171,34 @@ export interface components {
             default_fallback: string;
         };
         DiagnosticsSetupResponse: {
-            /** @enum {string} */
-            overall_status: "ok" | "warn" | "blocked";
+            overall_status: components["schemas"]["DiagnosticsSetupStatus"];
+            summary_counts: components["schemas"]["DiagnosticsSetupSummaryCounts"];
+            sections: components["schemas"]["DiagnosticsSetupSections"];
             issues: components["schemas"]["DiagnosticsSetupIssue"][];
             recommendations: string[];
+        };
+        /** @enum {string} */
+        DiagnosticsSetupStatus: "ok" | "warn" | "blocked";
+        DiagnosticsSetupSummaryCounts: {
+            blockers: number;
+            warnings: number;
+            sections_blocked: number;
+            sections_warn: number;
+        };
+        DiagnosticsSetupSections: {
+            auth: components["schemas"]["DiagnosticsSetupSection"];
+            llm: components["schemas"]["DiagnosticsSetupSection"];
+            datastore: components["schemas"]["DiagnosticsSetupSection"];
+            storage: components["schemas"]["DiagnosticsSetupSection"];
+            crypto: components["schemas"]["DiagnosticsSetupSection"];
+            public_urls: components["schemas"]["DiagnosticsSetupSection"];
+        };
+        DiagnosticsSetupSection: {
+            title: string;
+            status: components["schemas"]["DiagnosticsSetupStatus"];
+            issues: components["schemas"]["DiagnosticsSetupIssue"][];
+            recommendations: string[];
+            values: components["schemas"]["DiagnosticsSetupValue"][];
         };
         DiagnosticsSetupIssue: {
             id: string;
@@ -7182,6 +7206,11 @@ export interface components {
             severity: "blocker" | "warning";
             title: string;
             detail: string;
+        };
+        DiagnosticsSetupValue: {
+            key: string;
+            value: string | null;
+            status_hint: string | null;
         };
     };
     responses: never;

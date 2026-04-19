@@ -184,6 +184,53 @@ describe("ink-app: journey 01 — admin mounts the REPL", () => {
     );
     instance.unmount();
   });
+
+  test("AC4: setup warning banner appears once for admin/member personas", async () => {
+    const instance = renderApp({
+      setupSnapshot: {
+        overall_status: "warn",
+        summary_counts: {
+          blockers: 0,
+          warnings: 2,
+          sections_blocked: 0,
+          sections_warn: 2,
+        },
+        sections: {
+          auth: { title: "Auth", status: "ok", issues: [], recommendations: [], values: [] },
+          llm: { title: "LLM", status: "ok", issues: [], recommendations: [], values: [] },
+          datastore: {
+            title: "Datastore",
+            status: "ok",
+            issues: [],
+            recommendations: [],
+            values: [],
+          },
+          storage: {
+            title: "Object storage",
+            status: "warn",
+            issues: [],
+            recommendations: [],
+            values: [],
+          },
+          crypto: { title: "Crypto", status: "ok", issues: [], recommendations: [], values: [] },
+          public_urls: {
+            title: "Public URLs",
+            status: "warn",
+            issues: [],
+            recommendations: [],
+            values: [],
+          },
+        },
+        issues: [],
+        recommendations: [],
+      },
+    });
+    await tick();
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("setup warn");
+    expect(frame).toContain("/setup");
+    instance.unmount();
+  });
 });
 
 // ---------- Journey 2 — Admin drives a prompt turn ----------
@@ -498,6 +545,7 @@ describe("ink-app: journey 06 — member persona", () => {
     expect(frame).toContain("sk — slash commands");
     expect(frame).toContain("/compact");
     expect(frame).toContain("/skills");
+    expect(frame).toContain("/setup");
     expect(frame).not.toContain("/audit");
     instance.unmount();
   });
@@ -567,6 +615,59 @@ describe("ink-app: journey 07 — enduser persona", () => {
     await pressEnter(instance);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("/mcp requires mcp:read");
+    instance.unmount();
+  });
+
+  test("AC3: enduser does not get a setup startup banner", async () => {
+    const instance = renderApp({
+      persona: {
+        label: "enduser",
+        tenant: "tenant-alpha",
+        engineUrl: "http://localhost:8080",
+        profileName: "journey",
+        probe: PERSONAS.enduser,
+      },
+      setupSnapshot: {
+        overall_status: "blocked",
+        summary_counts: {
+          blockers: 1,
+          warnings: 0,
+          sections_blocked: 1,
+          sections_warn: 0,
+        },
+        sections: {
+          auth: { title: "Auth", status: "ok", issues: [], recommendations: [], values: [] },
+          llm: { title: "LLM", status: "blocked", issues: [], recommendations: [], values: [] },
+          datastore: {
+            title: "Datastore",
+            status: "ok",
+            issues: [],
+            recommendations: [],
+            values: [],
+          },
+          storage: {
+            title: "Object storage",
+            status: "ok",
+            issues: [],
+            recommendations: [],
+            values: [],
+          },
+          crypto: { title: "Crypto", status: "ok", issues: [], recommendations: [], values: [] },
+          public_urls: {
+            title: "Public URLs",
+            status: "ok",
+            issues: [],
+            recommendations: [],
+            values: [],
+          },
+        },
+        issues: [],
+        recommendations: [],
+      },
+    });
+    await tick();
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).not.toContain("setup blocked");
     instance.unmount();
   });
 });
@@ -897,6 +998,91 @@ describe("ink-app: journey 12 — modal panes", () => {
     expect(frame).toContain("approval history");
     expect(frame).toContain("approved");
     expect(frame).toContain("Commit the workflow?");
+    instance.unmount();
+  });
+
+  test("AC1f: /setup renders the dedicated setup diagnostics pane", async () => {
+    const instance = renderApp({
+      onSlash: async (_name, _raw, openPane) => {
+        openPane({
+          kind: "setup-diagnostics",
+          title: "setup",
+          setup: {
+            overall_status: "warn",
+            summary_counts: {
+              blockers: 0,
+              warnings: 1,
+              sections_blocked: 0,
+              sections_warn: 1,
+            },
+            sections: {
+              auth: { title: "Auth", status: "ok", issues: [], recommendations: [], values: [] },
+              llm: { title: "LLM", status: "ok", issues: [], recommendations: [], values: [] },
+              datastore: {
+                title: "Datastore",
+                status: "ok",
+                issues: [],
+                recommendations: [],
+                values: [
+                  {
+                    key: "DATABASE_URL",
+                    value: "postgres://user@db:5432/subkit",
+                    status_hint: null,
+                  },
+                ],
+              },
+              storage: {
+                title: "Object storage",
+                status: "ok",
+                issues: [],
+                recommendations: [],
+                values: [],
+              },
+              crypto: {
+                title: "Crypto",
+                status: "ok",
+                issues: [],
+                recommendations: [],
+                values: [],
+              },
+              public_urls: {
+                title: "Public URLs",
+                status: "warn",
+                issues: [
+                  {
+                    id: "public-base-url",
+                    severity: "warning",
+                    title: "Public base URL",
+                    detail: "PUBLIC_BASE_URL is not set.",
+                  },
+                ],
+                recommendations: ["Set PUBLIC_BASE_URL to the externally reachable engine URL."],
+                values: [{ key: "PUBLIC_BASE_URL", value: null, status_hint: "Missing" }],
+              },
+            },
+            issues: [
+              {
+                id: "public-base-url",
+                severity: "warning",
+                title: "Public base URL",
+                detail: "PUBLIC_BASE_URL is not set.",
+              },
+            ],
+            recommendations: ["Set PUBLIC_BASE_URL to the externally reachable engine URL."],
+          },
+        });
+        return null;
+      },
+    });
+    await tick();
+    await type(instance, "/setup");
+    await pressEnter(instance);
+    await tick(60);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("setup");
+    expect(frame).toContain("Public URLs");
+    expect(frame).toContain("PUBLIC_BASE_URL");
+    expect(frame).toContain("Missing");
     instance.unmount();
   });
 

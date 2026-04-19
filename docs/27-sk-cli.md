@@ -11,7 +11,7 @@ Core design principle: **backend-only LLM**. The binary never holds provider API
 | Persona | Role | Slash commands | Cannot |
 |---|---|---|---|
 | **admin** | `admin` | every command | — |
-| **member** | `member` | every chat command, plus `/model`, `/compact`, `/skills`, `/mcp`, `/tenant` | `/audit` (audit:read not granted), workflow:delete |
+| **member** | `member` | every chat command, plus `/model`, `/compact`, `/skills`, `/mcp`, `/tenant`, `/setup` | `/audit` (audit:read not granted), workflow:delete |
 | **enduser** | `enduser` | chat + session management (`/clear`, `/compact`, `/resume`, `/model`, `/memory`, `/init`) | `/skills`, `/mcp`, `/audit`, `/tenant`, `conversation:commit` |
 | **portal-token** | `portal_token_user` | chat + cancel only | `/tenant` (blocked client-side), `/resume` (no `conversation:list`), `/skills`, `/mcp`, `/audit`, cross-workflow access |
 
@@ -90,7 +90,8 @@ Every command is a declarative entry in `apps/sk/src/slash.ts`. Adding one is a 
 | `/clear` / `/new` | `conversation:write` | Start a new session |
 | `/compact` | `conversation:write` | `POST /v1/conversations/:id/compact` |
 | `/resume` | `conversation:list` | `GET /v1/conversations?owner=me` picker |
-| `/status` | — | Profile + engine snapshot |
+| `/status` | — | Profile + engine snapshot, plus setup summary when available |
+| `/setup` | `identity:read` | Runtime setup readiness pane for admin/member personas |
 | `/cost` | — | Turn-token + remaining monthly budget |
 | `/model` | `conversation:write` | `PATCH /v1/conversations/:id {model}` |
 | `/login` `/logout` | — | Profile management |
