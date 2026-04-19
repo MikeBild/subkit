@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.2](https://github.com/MikeBild/subkit/compare/subkit-v1.10.1...subkit-v1.10.2) (2026-04-19)
+
+
+### Bug Fixes
+
+* **llm:** collapse to Vercel AI Gateway — root cause of v1.10.0 prod 500 cluster ([0a00705](https://github.com/MikeBild/subkit/commit/0a0070557f4129aa7330bebf10fab880a6521f51))
+
 ## [1.10.1](https://github.com/MikeBild/subkit/compare/subkit-v1.10.0...subkit-v1.10.1) (2026-04-19)
 
 
