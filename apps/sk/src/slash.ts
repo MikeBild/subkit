@@ -110,6 +110,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "workflow:write",
   },
   {
+    name: "setup",
+    help: "Inspect runtime setup readiness (admin/member only)",
+    category: "util",
+    requires: "identity:read",
+  },
+  {
     name: "approve",
     help: "Approve a pending request_human_approval",
     category: "session",

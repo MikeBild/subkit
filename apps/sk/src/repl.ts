@@ -127,6 +127,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
   });
 
   const persona = await resolvePersona(client, opts.profile);
+  const canReadSetup = persona.probe.allows("audit:read") || persona.probe.allows("identity:read");
 
   // Banner + status line.
   const line = (s: string): void => {
@@ -302,6 +303,19 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         rl.close();
         return;
       case "status":
+        if (canReadSetup) {
+          const setup = await client.setupValidation().catch(() => null);
+          line(
+            `profile ${opts.profile.name}\n` +
+              `persona ${persona.label}\n` +
+              `engine  ${opts.profile.engine_url}\n` +
+              `tenant  ${opts.profile.active_tenant_id ?? "(none)"}\n` +
+              `session ${session.conversationId ?? "(none)"}\n` +
+              `status  ${session.status}\n` +
+              `setup   ${setup ? `${setup.overall_status} (${setup.summary_counts.blockers} blockers, ${setup.summary_counts.warnings} warnings)` : "(unavailable)"}`,
+          );
+          return;
+        }
         line(
           `profile ${opts.profile.name}\n` +
             `persona ${persona.label}\n` +
@@ -311,6 +325,33 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
             `status  ${session.status}`,
         );
         return;
+      case "setup": {
+        if (!canReadSetup) {
+          line("sk: /setup requires identity:read or audit:read (not granted)");
+          return;
+        }
+        const setup = await client.setupValidation();
+        line(
+          `setup ${setup.overall_status}\n` +
+            `blockers ${setup.summary_counts.blockers}\n` +
+            `warnings ${setup.summary_counts.warnings}`,
+        );
+        for (const [sectionId, section] of Object.entries(setup.sections)) {
+          line(`\n${section.title} (${sectionId}) · ${section.status}`);
+          for (const issue of section.issues) {
+            line(`  ${issue.severity}: ${issue.title} — ${issue.detail}`);
+          }
+          for (const value of section.values) {
+            const rendered = value.value ?? "—";
+            const hint = value.status_hint ? ` (${value.status_hint})` : "";
+            line(`  ${value.key}: ${rendered}${hint}`);
+          }
+          for (const recommendation of section.recommendations) {
+            line(`  fix: ${recommendation}`);
+          }
+        }
+        return;
+      }
       case "cost":
         if (session.usage) {
           line(

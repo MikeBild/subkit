@@ -19,6 +19,7 @@ import type {
   ConversationContextSnapshot,
   ConversationDetail,
   EngineClient,
+  SetupValidationResponse,
   StatusSummary,
 } from "../engine-client.ts";
 
@@ -141,6 +142,11 @@ export type PaneSpec =
       }>;
     }
   | {
+      kind: "setup-diagnostics";
+      title: string;
+      setup: SetupValidationResponse;
+    }
+  | {
       kind: "text";
       title: string;
       subtitle?: string;
@@ -181,6 +187,8 @@ export interface SlashHandlerContext {
    * tokens + tenant slug for `/status` and the status-line ticker.
    */
   statusSnapshot?: StatusSummary | null;
+  /** Latest `/v1/diagnostics/setup` snapshot when the persona can read it. */
+  setupSnapshot?: SetupValidationResponse | null;
   /**
    * Open a modal pane in the Ink host. When omitted (e.g. the readline
    * fallback REPL), pane-returning commands fall back to a text banner.
@@ -394,6 +402,39 @@ function formatWorkflowLines(draft: Record<string, unknown> | null): string[] {
   return lines;
 }
 
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function formatSetupSummary(setup: SetupValidationResponse): string {
+  return `${setup.overall_status} · ${pluralize(setup.summary_counts.blockers, "blocker")} · ${pluralize(setup.summary_counts.warnings, "warning")}`;
+}
+
+function formatSetupLines(setup: SetupValidationResponse): string[] {
+  const lines: string[] = [
+    `overall: ${setup.overall_status}`,
+    `blockers: ${setup.summary_counts.blockers}`,
+    `warnings: ${setup.summary_counts.warnings}`,
+    "",
+  ];
+  for (const [sectionId, section] of Object.entries(setup.sections)) {
+    lines.push(`${section.title} (${sectionId}) · ${section.status}`);
+    for (const issue of section.issues) {
+      lines.push(`  ${issue.severity}: ${issue.title} — ${issue.detail}`);
+    }
+    for (const value of section.values) {
+      const rendered = value.value ?? "—";
+      const hint = value.status_hint ? ` (${value.status_hint})` : "";
+      lines.push(`  ${value.key}: ${rendered}${hint}`);
+    }
+    for (const recommendation of section.recommendations) {
+      lines.push(`  fix: ${recommendation}`);
+    }
+    lines.push("");
+  }
+  return lines;
+}
+
 /**
  * Execute a slash command by name. Returns a one-line string that
  * the caller should display as a transient banner (or null to clear
@@ -429,6 +470,10 @@ export async function handleSlash(
         ["budget · monthly", budget == null ? "∞" : `${budget.toLocaleString()} tok`],
         ["budget · remaining", remaining == null ? "∞" : `${remaining.toLocaleString()} tok`],
       ];
+      if (ctx.setupSnapshot) {
+        rows.push(["setup", formatSetupSummary(ctx.setupSnapshot)]);
+        rows.push(["setup · hint", "use /setup for details"]);
+      }
       if (ctx.openPane) {
         ctx.openPane({
           kind: "status",
@@ -445,6 +490,14 @@ export async function handleSlash(
             `${label.padEnd(20, " ")} ${value === undefined || value === null ? "—" : value}`,
         )
         .join("\n");
+    }
+    case "setup": {
+      const setup = await ctx.client.setupValidation();
+      if (ctx.openPane) {
+        ctx.openPane({ kind: "setup-diagnostics", title: "setup", setup });
+        return null;
+      }
+      return panify(ctx, "setup", formatSetupLines(setup), formatSetupSummary(setup));
     }
     case "cost": {
       const snap = ctx.statusSnapshot ?? null;

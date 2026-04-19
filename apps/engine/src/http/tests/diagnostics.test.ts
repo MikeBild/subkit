@@ -15,6 +15,7 @@ import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
 let memberKey = "";
+let enduserKey = "";
 
 function sha256Hex(v: string): string {
   return createHash("sha256").update(v).digest("hex");
@@ -76,6 +77,25 @@ beforeAll(async () => {
     scopes: ["*"],
   });
   memberKey = key.plaintext;
+
+  const [enduser] = await srv.db
+    .insert(users)
+    .values({
+      tenant_id: srv.tenantId,
+      email: "enduser-diag@test.local",
+      role: "enduser",
+    })
+    .returning();
+  if (!enduser) throw new Error("seed enduser failed");
+  const enduserApiKey = newKey();
+  await srv.db.insert(apiKeys).values({
+    tenant_id: srv.tenantId,
+    user_id: enduser.id,
+    prefix: enduserApiKey.prefix,
+    token_sha256: enduserApiKey.hash,
+    scopes: ["*"],
+  });
+  enduserKey = enduserApiKey.plaintext;
 });
 
 afterAll(async () => {
@@ -144,12 +164,33 @@ describe("/v1/diagnostics/setup", () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         overall_status: "ok" | "warn" | "blocked";
+        summary_counts: {
+          blockers: number;
+          warnings: number;
+          sections_blocked: number;
+          sections_warn: number;
+        };
+        sections: {
+          llm: {
+            status: "ok" | "warn" | "blocked";
+            values: Array<{ key: string; value: string | null; status_hint: string | null }>;
+          };
+          public_urls: {
+            status: "ok" | "warn" | "blocked";
+          };
+        };
         issues: Array<{ id: string; severity: string; detail: string }>;
         recommendations: string[];
       };
       expect(body.overall_status).toBe("blocked");
+      expect(body.summary_counts.blockers).toBeGreaterThan(0);
+      expect(body.sections.llm.status).toBe("blocked");
+      expect(body.sections.public_urls.status).toBe("warn");
       expect(body.issues.some((issue) => issue.id === "llm-summarize")).toBe(true);
       expect(body.issues.some((issue) => issue.id === "public-base-url")).toBe(true);
+      expect(body.sections.llm.values.some((value) => value.key === "AI_GATEWAY_API_KEY")).toBe(
+        true,
+      );
       expect(body.recommendations.length).toBeGreaterThan(0);
     } finally {
       if (saved.llm === undefined) delete process.env.LLM_PROVIDER;
@@ -163,9 +204,16 @@ describe("/v1/diagnostics/setup", () => {
     }
   });
 
-  test("audit:read is required — member gets 403", async () => {
+  test("member access works through identity:read", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
       headers: { authorization: `Bearer ${memberKey}` },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("identity:read or audit:read is required — enduser gets 403", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
+      headers: { authorization: `Bearer ${enduserKey}` },
     });
     expect(res.status).toBe(403);
   });

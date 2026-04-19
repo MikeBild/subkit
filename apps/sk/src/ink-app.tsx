@@ -33,7 +33,7 @@ import { applyTurnEvent, initialSessionState } from "@cli-core/index.ts";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import type { StatusSummary } from "./engine-client.ts";
+import type { SetupValidationResponse, StatusSummary } from "./engine-client.ts";
 import { AlternateScreen } from "./repl/alt-screen.tsx";
 import { ResumeSummaryCard, renderAuthoringCard } from "./repl/authoring-cards.tsx";
 import { BackgroundToolGroup, isBackgroundTool } from "./repl/background-tools.tsx";
@@ -108,6 +108,8 @@ export interface InkAppProps {
    * line fields: connectors_count, tokens_today, auth_status, etc.
    */
   statusSnapshot?: StatusSummary | null;
+  /** Latest setup diagnostics snapshot when the persona can read it. */
+  setupSnapshot?: SetupValidationResponse | null;
   /** Active permission mode for the status line badge. */
   permissionMode?: PermissionMode;
   /**
@@ -710,6 +712,71 @@ const ApprovalHistoryPane: React.FC<{
 ));
 ApprovalHistoryPane.displayName = "ApprovalHistoryPane";
 
+const setupSectionOrder: Array<keyof SetupValidationResponse["sections"]> = [
+  "auth",
+  "llm",
+  "datastore",
+  "storage",
+  "crypto",
+  "public_urls",
+];
+
+function setupStatusColor(status: "ok" | "warn" | "blocked"): string {
+  return status === "ok" ? "green" : status === "blocked" ? "red" : "yellow";
+}
+
+const SetupDiagnosticsPane: React.FC<{
+  pane: Extract<PaneSpec, { kind: "setup-diagnostics" }>;
+  onDismiss: () => void;
+}> = memo(({ pane, onDismiss }) => (
+  <Pane title={pane.title} subtitle={pane.setup.overall_status} onDismiss={onDismiss}>
+    <PaneLabelRow label="blockers" value={String(pane.setup.summary_counts.blockers)} />
+    <PaneLabelRow label="warnings" value={String(pane.setup.summary_counts.warnings)} />
+    <Box flexDirection="column" marginTop={1}>
+      {setupSectionOrder.map((sectionKey) => {
+        const section = pane.setup.sections[sectionKey];
+        return (
+          <Box key={`setup-${sectionKey}`} flexDirection="column" marginBottom={1}>
+            <Text color={setupStatusColor(section.status)} bold>
+              {section.title} · {section.status}
+            </Text>
+            {section.issues.map((issue) => (
+              <Text
+                key={`setup-${sectionKey}-${issue.id}`}
+                color={issue.severity === "blocker" ? "red" : "yellow"}
+              >
+                {issue.severity} · {issue.title} — {issue.detail}
+              </Text>
+            ))}
+            {section.values.map((value) => (
+              <PaneLabelRow
+                key={`setup-${sectionKey}-value-${value.key}`}
+                label={value.key}
+                value={
+                  value.value === null
+                    ? value.status_hint
+                      ? `— (${value.status_hint})`
+                      : "—"
+                    : value.status_hint
+                      ? `${value.value} (${value.status_hint})`
+                      : value.value
+                }
+                dim={value.value === null}
+              />
+            ))}
+            {section.recommendations.map((recommendation, index) => (
+              <Text key={`setup-${sectionKey}-fix-${index}`} color="cyan">
+                fix · {recommendation}
+              </Text>
+            ))}
+          </Box>
+        );
+      })}
+    </Box>
+  </Pane>
+));
+SetupDiagnosticsPane.displayName = "SetupDiagnosticsPane";
+
 // ---------- Top-level App ----------
 
 export const InkApp: React.FC<InkAppProps> = ({
@@ -719,6 +786,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   model,
   cwd,
   statusSnapshot,
+  setupSnapshot,
   permissionMode = "ask",
   historyPath,
   onPrompt,
@@ -755,6 +823,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   const [banner, setBanner] = useState<string | null>(null);
   const [stickyError, setStickyError] = useState<string | null>(null);
   const [pane, setPane] = useState<PaneSpec | null>(null);
+  const setupBannerShownRef = useRef(false);
   // Inline Ctrl-R history search (above-composer widget). The old
   // modal `<HistorySearch>` pane is still available via `historyOpen`
   // as a fallback for constrained terminals.
@@ -803,6 +872,20 @@ export const InkApp: React.FC<InkAppProps> = ({
     setStickyError(message);
     setBanner(null);
   }, []);
+
+  useEffect(() => {
+    if (setupBannerShownRef.current) return;
+    const canShowSetup =
+      persona.probe.allows("audit:read") || persona.probe.allows("identity:read");
+    if (!canShowSetup) return;
+    if (!setupSnapshot || setupSnapshot.overall_status === "ok") return;
+    const blockers = setupSnapshot.summary_counts.blockers;
+    const warnings = setupSnapshot.summary_counts.warnings;
+    const blockerLabel = `${blockers} blocker${blockers === 1 ? "" : "s"}`;
+    const warningLabel = `${warnings} warning${warnings === 1 ? "" : "s"}`;
+    setBanner(`setup ${setupSnapshot.overall_status} · ${blockerLabel}, ${warningLabel} · /setup`);
+    setupBannerShownRef.current = true;
+  }, [setupSnapshot]);
 
   // -------- Status line ticker --------
   useEffect(() => {
@@ -1596,6 +1679,9 @@ export const InkApp: React.FC<InkAppProps> = ({
       ) : null}
       {pane?.kind === "approval-history" ? (
         <ApprovalHistoryPane pane={pane} onDismiss={() => setPane(null)} />
+      ) : null}
+      {pane?.kind === "setup-diagnostics" ? (
+        <SetupDiagnosticsPane pane={pane} onDismiss={() => setPane(null)} />
       ) : null}
       {pane?.kind === "text" ? (
         <Pane

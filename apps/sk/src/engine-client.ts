@@ -336,6 +336,10 @@ export class EngineClient {
   ): Promise<{ items: EngineErrorEntry[]; total_buffered: number }> {
     return this.request("GET", "/v1/diagnostics/errors", undefined, query);
   }
+
+  setupValidation(): Promise<SetupValidationResponse> {
+    return this.request("GET", "/v1/diagnostics/setup");
+  }
 }
 
 export interface EngineErrorEntry {
@@ -349,6 +353,47 @@ export interface EngineErrorEntry {
   message: string;
   stack: string | null;
   bucket: "unhandled" | "llm_provider" | "llm_no_object" | "llm_timeout" | "llm_quota" | "http";
+}
+
+export interface SetupValidationIssue {
+  id: string;
+  severity: "blocker" | "warning";
+  title: string;
+  detail: string;
+}
+
+export interface SetupValidationValue {
+  key: string;
+  value: string | null;
+  status_hint: string | null;
+}
+
+export interface SetupValidationSection {
+  title: string;
+  status: "ok" | "warn" | "blocked";
+  issues: SetupValidationIssue[];
+  recommendations: string[];
+  values: SetupValidationValue[];
+}
+
+export interface SetupValidationResponse {
+  overall_status: "ok" | "warn" | "blocked";
+  summary_counts: {
+    blockers: number;
+    warnings: number;
+    sections_blocked: number;
+    sections_warn: number;
+  };
+  sections: {
+    auth: SetupValidationSection;
+    llm: SetupValidationSection;
+    datastore: SetupValidationSection;
+    storage: SetupValidationSection;
+    crypto: SetupValidationSection;
+    public_urls: SetupValidationSection;
+  };
+  issues: SetupValidationIssue[];
+  recommendations: string[];
 }
 
 function buildQuery(params: Record<string, unknown> | undefined): string {
