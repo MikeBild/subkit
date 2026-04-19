@@ -100,7 +100,12 @@ describe("Ink journey — text_delta streaming", () => {
     );
     await typeText(inst, "hi");
     await enter(inst);
-    const frame = inst.lastFrame() ?? "";
+    const deadline = Date.now() + 2000;
+    let frame = inst.lastFrame() ?? "";
+    while (!frame.includes("Hello, world!") && Date.now() < deadline) {
+      await tick(50);
+      frame = inst.lastFrame() ?? "";
+    }
     // Final assistant text is present exactly once (the message frame
     // cleared the live buffer so there's no duplicate rendering).
     const occurrences = (frame.match(/Hello, world!/g) ?? []).length;
@@ -143,10 +148,18 @@ describe("Ink journey — tool call lifecycle with tool_log + truncation", () =>
     );
     await typeText(inst, "list my workflows");
     await enter(inst);
-    const frame = inst.lastFrame() ?? "";
-    // ToolCard rendered the list_workflows call.
+    // CI runners are slower than macOS — poll the frame until the
+    // expected content appears or we hit a 2s cap. Locally this is a
+    // no-op (first tick already has the content); on ubuntu-latest it
+    // absorbs the extra React scheduling latency that made the frame
+    // capture race before the tool_result event drained.
+    const deadline = Date.now() + 2000;
+    let frame = inst.lastFrame() ?? "";
+    while (!frame.includes("list_workflows") && Date.now() < deadline) {
+      await tick(50);
+      frame = inst.lastFrame() ?? "";
+    }
     expect(frame).toContain("list_workflows");
-    // The tool_log line rendered under the card with its level prefix.
     expect(frame).toContain("querying tenant state");
     expect(frame).toContain("[info]");
   });
@@ -191,7 +204,12 @@ describe("Ink journey — elicit_request flow (confirm_before_execution)", () =>
     );
     await typeText(inst, "run workflow in prod");
     await enter(inst);
-    const frame = inst.lastFrame() ?? "";
+    const deadline = Date.now() + 2000;
+    let frame = inst.lastFrame() ?? "";
+    while (!frame.includes("Policy requires confirmation") && Date.now() < deadline) {
+      await tick(50);
+      frame = inst.lastFrame() ?? "";
+    }
     // The ElicitRouter rendered the question text from the
     // ask_user_confirm pause payload.
     expect(frame).toContain("Policy requires confirmation");
