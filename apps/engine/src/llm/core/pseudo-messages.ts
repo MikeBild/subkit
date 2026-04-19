@@ -15,6 +15,7 @@
 //   [LOADED SKILLS]   — skills already pulled via load_skill this conv
 
 import { and, desc, eq, gte, sql } from "drizzle-orm";
+import type { Db } from "../../db/client.ts";
 import {
   connectors,
   conversationAttachments,
@@ -25,16 +26,13 @@ import {
   skills as skillsTable,
   workflows,
 } from "../../db/schema/index.ts";
-import type { Db } from "../../db/client.ts";
 
 interface TenantStateOpts {
   tenant_id: string;
   db: Db;
 }
 
-export async function buildTenantStateMessage(
-  opts: TenantStateOpts,
-): Promise<string | null> {
+export async function buildTenantStateMessage(opts: TenantStateOpts): Promise<string | null> {
   const [wfCount] = await opts.db
     .select({ c: sql<number>`count(*)::int` })
     .from(workflows)
@@ -47,12 +45,7 @@ export async function buildTenantStateMessage(
   const [runCount] = await opts.db
     .select({ c: sql<number>`count(*)::int` })
     .from(executions)
-    .where(
-      and(
-        eq(executions.tenant_id, opts.tenant_id),
-        gte(executions.created_at, cutoff),
-      ),
-    );
+    .where(and(eq(executions.tenant_id, opts.tenant_id), gte(executions.created_at, cutoff)));
   const workflowsN = Number(wfCount?.c ?? 0);
   const connectorsN = Number(connCount?.c ?? 0);
   const recentRunsN = Number(runCount?.c ?? 0);
@@ -94,9 +87,7 @@ interface AttachmentsOpts {
   db: Db;
 }
 
-export async function buildAttachmentsMessage(
-  opts: AttachmentsOpts,
-): Promise<string | null> {
+export async function buildAttachmentsMessage(opts: AttachmentsOpts): Promise<string | null> {
   const rows = await opts.db
     .select({
       slug: conversationAttachments.slug,
@@ -117,10 +108,9 @@ export async function buildAttachmentsMessage(
   if (rows.length === 0) return null;
   const lines = [`[ATTACHMENTS] (n=${rows.length})`];
   for (const r of rows) {
-    const sizeKb = r.size_bytes > 1024 ? `${(r.size_bytes / 1024).toFixed(1)} KB` : `${r.size_bytes} B`;
-    lines.push(
-      `- ${r.slug}  (${r.original_filename}, ${r.content_type ?? "unknown"}, ${sizeKb})`,
-    );
+    const sizeKb =
+      r.size_bytes > 1024 ? `${(r.size_bytes / 1024).toFixed(1)} KB` : `${r.size_bytes} B`;
+    lines.push(`- ${r.slug}  (${r.original_filename}, ${r.content_type ?? "unknown"}, ${sizeKb})`);
     if (r.preview && r.preview.length > 0) {
       // Truncate preview to a single visible line in the prompt.
       const firstLine = r.preview.split("\n")[0]!.slice(0, 160);
@@ -138,9 +128,7 @@ interface DiscoveryOpts {
   db: Db;
 }
 
-export async function buildDiscoveryMessage(
-  opts: DiscoveryOpts,
-): Promise<string | null> {
+export async function buildDiscoveryMessage(opts: DiscoveryOpts): Promise<string | null> {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const runs = await opts.db
     .select({
@@ -150,12 +138,7 @@ export async function buildDiscoveryMessage(
       status: discoveryRuns.status,
     })
     .from(discoveryRuns)
-    .where(
-      and(
-        eq(discoveryRuns.tenant_id, opts.tenant_id),
-        gte(discoveryRuns.started_at, cutoff),
-      ),
-    )
+    .where(and(eq(discoveryRuns.tenant_id, opts.tenant_id), gte(discoveryRuns.started_at, cutoff)))
     .orderBy(desc(discoveryRuns.started_at))
     .limit(5);
   if (runs.length === 0) return null;
@@ -181,17 +164,12 @@ interface LoadedSkillsOpts {
   db: Db;
 }
 
-export async function buildLoadedSkillsMessage(
-  opts: LoadedSkillsOpts,
-): Promise<string | null> {
+export async function buildLoadedSkillsMessage(opts: LoadedSkillsOpts): Promise<string | null> {
   const [row] = await opts.db
     .select({ loaded_skills: conversations.loaded_skills })
     .from(conversations)
     .where(
-      and(
-        eq(conversations.tenant_id, opts.tenant_id),
-        eq(conversations.id, opts.conversation_id),
-      ),
+      and(eq(conversations.tenant_id, opts.tenant_id), eq(conversations.id, opts.conversation_id)),
     )
     .limit(1);
   const loaded = (row?.loaded_skills ?? []) as string[];
@@ -221,9 +199,7 @@ interface OnboardingOpts {
 /** Context-aware starter hint for a new tenant or a tenant that has
  *  never run a workflow. Returns null for an experienced tenant so the
  *  prompt stays lean. */
-export async function buildOnboardingHint(
-  opts: OnboardingOpts,
-): Promise<string | null> {
+export async function buildOnboardingHint(opts: OnboardingOpts): Promise<string | null> {
   const [connCount] = await opts.db
     .select({ c: sql<number>`count(*)::int` })
     .from(connectors)

@@ -20,7 +20,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { and, eq } from "drizzle-orm";
-import { getDb, type Db } from "../db/client.ts";
+import { type Db, getDb } from "../db/client.ts";
 import { skills, tenants } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 
@@ -57,9 +57,7 @@ export interface ApplyOutcome {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_SEED_DIR = path.resolve(HERE, "..", "conversations", "seed", "skills");
 
-export async function loadSkillSeedsFromDisk(
-  dir: string = DEFAULT_SEED_DIR,
-): Promise<LoadResult> {
+export async function loadSkillSeedsFromDisk(dir: string = DEFAULT_SEED_DIR): Promise<LoadResult> {
   const out: SeededSkill[] = [];
   const errors: ParseError[] = [];
   let entries: string[];
@@ -225,9 +223,7 @@ function parseFrontmatter(raw: string, file: string): ParseOk | ParseFail {
   const title = String(fm.title ?? "");
   const description = String(fm.description ?? "");
   const version = typeof fm.version === "number" ? fm.version : 1;
-  const gates_tools = Array.isArray(fm.gates_tools)
-    ? fm.gates_tools.map((v) => String(v))
-    : [];
+  const gates_tools = Array.isArray(fm.gates_tools) ? fm.gates_tools.map((v) => String(v)) : [];
 
   if (!slug || !title || !description || !scope) {
     return {

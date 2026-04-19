@@ -13,10 +13,7 @@ let tenant_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("dry_run_transform");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-drt", display_name: "T" })
-    .returning();
+  const [t] = await ctx.db.insert(tenants).values({ slug: "t-drt", display_name: "T" }).returning();
   tenant_id = t!.id;
 });
 

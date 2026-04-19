@@ -239,7 +239,8 @@ export const buildWorkflowTool: ConversationTool = {
           persistence: "none" as const,
           error: {
             code: firstCode,
-            message: "one or more placeholder references are unresolved against the current environment",
+            message:
+              "one or more placeholder references are unresolved against the current environment",
             details: { problems },
           },
         },
@@ -281,9 +282,7 @@ export const buildWorkflowTool: ConversationTool = {
     const warnings: string[] = [];
     if (!input_schema && args.input_schema_sample !== undefined) {
       input_schema = sampleToSchema(args.input_schema_sample);
-      warnings.push(
-        "input_schema_inferred_from_sample",
-      );
+      warnings.push("input_schema_inferred_from_sample");
     }
 
     // Draft shape accepted by the conversation draft store.
@@ -308,10 +307,7 @@ export const buildWorkflowTool: ConversationTool = {
           step_count: args.steps.length,
           input_schema_inferred: input_schema !== undefined && args.input_schema === undefined,
         },
-        warnings: [
-          ...warnings,
-          ...verdict.warnings.map((w) => `${w.code}:${w.path}`),
-        ],
+        warnings: [...warnings, ...verdict.warnings.map((w) => `${w.code}:${w.path}`)],
         infos: verdict.infos.map((i) => `${i.code}:${i.path}`),
       },
     };

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -10,7 +11,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
@@ -60,9 +60,7 @@ export const skills = pgTable(
   (t) => [
     index("skills_tenant_scope_connector_idx").on(t.tenant_id, t.scope, t.connector_id),
     index("skills_tenant_scope_workflow_idx").on(t.tenant_id, t.scope, t.workflow_id),
-    uniqueIndex("skills_tenant_slug_uq")
-      .on(t.tenant_id, t.slug)
-      .where(sql`${t.slug} IS NOT NULL`),
+    uniqueIndex("skills_tenant_slug_uq").on(t.tenant_id, t.slug).where(sql`${t.slug} IS NOT NULL`),
   ],
 );
 

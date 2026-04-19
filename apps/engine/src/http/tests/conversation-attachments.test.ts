@@ -24,11 +24,7 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-async function api(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<Response> {
+async function api(method: string, path: string, body?: unknown): Promise<Response> {
   const init: RequestInit = {
     method,
     headers: {
@@ -63,11 +59,10 @@ describe("POST /v1/conversations/:id/attachments", () => {
   });
 
   test("non-existent conversation returns 404", async () => {
-    const res = await api(
-      "POST",
-      `/v1/conversations/${crypto.randomUUID()}/attachments`,
-      { filename: "x.txt", content: "hello" },
-    );
+    const res = await api("POST", `/v1/conversations/${crypto.randomUUID()}/attachments`, {
+      filename: "x.txt",
+      content: "hello",
+    });
     expect(res.status).toBe(404);
   });
 
@@ -128,10 +123,7 @@ describe("GET /v1/conversations/:id/attachments", () => {
   });
 
   test("404 for unknown conversation", async () => {
-    const res = await api(
-      "GET",
-      `/v1/conversations/${crypto.randomUUID()}/attachments`,
-    );
+    const res = await api("GET", `/v1/conversations/${crypto.randomUUID()}/attachments`);
     expect(res.status).toBe(404);
   });
 });
@@ -144,10 +136,7 @@ describe("DELETE /v1/conversations/:id/attachments/:slug", () => {
       content: "bye",
     });
     const { slug } = (await up.json()) as { slug: string };
-    const del = await api(
-      "DELETE",
-      `/v1/conversations/${conversation_id}/attachments/${slug}`,
-    );
+    const del = await api("DELETE", `/v1/conversations/${conversation_id}/attachments/${slug}`);
     expect(del.status).toBe(204);
     const audits = await srv.db
       .select()
@@ -160,10 +149,7 @@ describe("DELETE /v1/conversations/:id/attachments/:slug", () => {
       );
     expect(audits.length).toBeGreaterThanOrEqual(1);
     // follow-up DELETE is 404 now
-    const again = await api(
-      "DELETE",
-      `/v1/conversations/${conversation_id}/attachments/${slug}`,
-    );
+    const again = await api("DELETE", `/v1/conversations/${conversation_id}/attachments/${slug}`);
     expect(again.status).toBe(404);
   });
 });

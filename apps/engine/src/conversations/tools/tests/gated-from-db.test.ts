@@ -63,10 +63,7 @@ describe("hardcoded baseline — preserved", () => {
     const hidden = filterBySkillGate(tools, []);
     expect(hidden.map((t) => t.name)).toEqual(["list_connectors"]);
     const visible = filterBySkillGate(tools, ["self-healing"]);
-    expect(visible.map((t) => t.name)).toEqual([
-      "list_connectors",
-      "approve_patch_candidate",
-    ]);
+    expect(visible.map((t) => t.name)).toEqual(["list_connectors", "approve_patch_candidate"]);
   });
 });
 
@@ -74,11 +71,7 @@ describe("DB-backed gates — tenant layer", () => {
   test("skill with gates_tools gates the listed tool", async () => {
     resetGateCache();
     await seedSkill("db-gate-a", ["custom_write_tool"]);
-    const gateSlug = await requiredSkillForTenant(
-      "custom_write_tool",
-      tenant_id,
-      ctx.db,
-    );
+    const gateSlug = await requiredSkillForTenant("custom_write_tool", tenant_id, ctx.db);
     expect(gateSlug).toBe("db-gate-a");
   });
 
@@ -87,25 +80,13 @@ describe("DB-backed gates — tenant layer", () => {
     const tools = [{ name: "custom_write_tool" }, { name: "list_connectors" }];
     const hidden = await filterBySkillGateForTenant(tools, [], tenant_id, ctx.db);
     expect(hidden.map((t) => t.name)).toEqual(["list_connectors"]);
-    const visible = await filterBySkillGateForTenant(
-      tools,
-      ["db-gate-a"],
-      tenant_id,
-      ctx.db,
-    );
-    expect(visible.map((t) => t.name)).toEqual([
-      "custom_write_tool",
-      "list_connectors",
-    ]);
+    const visible = await filterBySkillGateForTenant(tools, ["db-gate-a"], tenant_id, ctx.db);
+    expect(visible.map((t) => t.name)).toEqual(["custom_write_tool", "list_connectors"]);
   });
 
   test("DB gate merges with baseline — approve_patch_candidate still gated", async () => {
     resetGateCache();
-    const result = await requiredSkillForTenant(
-      "approve_patch_candidate",
-      tenant_id,
-      ctx.db,
-    );
+    const result = await requiredSkillForTenant("approve_patch_candidate", tenant_id, ctx.db);
     expect(result).toBe("self-healing");
   });
 
@@ -117,11 +98,7 @@ describe("DB-backed gates — tenant layer", () => {
     // Add a seed that gates `late_tool`
     await seedSkill("late-gate", ["late_tool"]);
     // Cached result is still the old one
-    const stillCached = await requiredSkillForTenant(
-      "late_tool",
-      tenant_id,
-      ctx.db,
-    );
+    const stillCached = await requiredSkillForTenant("late_tool", tenant_id, ctx.db);
     expect(stillCached).toBeUndefined();
     // After reset, new value picked up
     resetGateCache(tenant_id);
@@ -133,11 +110,7 @@ describe("DB-backed gates — tenant layer", () => {
     resetGateCache();
     await seedSkill("alpha-gate", ["shared_tool"]);
     await seedSkill("zeta-gate", ["shared_tool"]);
-    const gateSlug = await requiredSkillForTenant(
-      "shared_tool",
-      tenant_id,
-      ctx.db,
-    );
+    const gateSlug = await requiredSkillForTenant("shared_tool", tenant_id, ctx.db);
     // Sorted by slug, 'alpha-gate' wins over 'zeta-gate'.
     expect(gateSlug).toBe("alpha-gate");
   });

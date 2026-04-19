@@ -98,7 +98,9 @@ export const previewAttachmentTool: ConversationTool = {
         size_bytes: row.size_bytes,
         content,
         _truncated: truncated,
-        ...(truncated ? { _tip: `Reference @attachment:${row.slug} in downstream tools for full content.` } : {}),
+        ...(truncated
+          ? { _tip: `Reference @attachment:${row.slug} in downstream tools for full content.` }
+          : {}),
       },
     };
   },

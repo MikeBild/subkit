@@ -21,8 +21,8 @@
 // reported a failure. Audit metadata records an expression hash (never
 // the raw expression, since it might contain PII) plus the dialect.
 
-import { z } from "@hono/zod-openapi";
 import { createHash } from "node:crypto";
+import { z } from "@hono/zod-openapi";
 import jsonata from "jsonata";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -47,7 +47,12 @@ function hashExpr(expr: string): string {
 }
 
 interface EvalError {
-  code: "syntax_error" | "runtime_error" | "timeout" | "placeholder_unresolved" | "unsupported_dialect";
+  code:
+    | "syntax_error"
+    | "runtime_error"
+    | "timeout"
+    | "placeholder_unresolved"
+    | "unsupported_dialect";
   message: string;
   position?: number;
 }
@@ -162,9 +167,7 @@ export const dryRunTransformTool: ConversationTool = {
     }
     const args = parsed.data;
     const started = Date.now();
-    let outcome:
-      | { ok: true; value: unknown }
-      | { ok: false; error: EvalError };
+    let outcome: { ok: true; value: unknown } | { ok: false; error: EvalError };
 
     if (args.dialect === "jsonata") {
       outcome = await evalJsonata(args.expression, args.sample_data, args.timeout_ms);

@@ -140,10 +140,7 @@ async function seedProbeConnector(opts: {
   };
 }
 
-function makeToolContext(env: {
-  tenant_id: string;
-  conversation_id: string;
-}): ToolContext {
+function makeToolContext(env: { tenant_id: string; conversation_id: string }): ToolContext {
   const engineClient = new EngineClient({
     tenant_id: env.tenant_id,
     actor_id: null,
@@ -212,7 +209,10 @@ describe("probe_connector — dispatch + credential substitution", () => {
 
     expect(result.ok).toBe(false);
     const data = (result.data ?? {}) as Record<string, unknown>;
-    const err = (data.error ?? {}) as { code?: string; details?: { unresolved?: Array<{ token: string }> } };
+    const err = (data.error ?? {}) as {
+      code?: string;
+      details?: { unresolved?: Array<{ token: string }> };
+    };
     expect(err.code).toBe("placeholder_unresolved");
     expect(err.details?.unresolved?.[0]?.token).toBe("${input.trace}");
     expect(captured.length).toBe(0);

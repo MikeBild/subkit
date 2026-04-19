@@ -16,13 +16,13 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { compileDescription } from "../../conversations/tools/describe.ts";
 import type {
   ConversationTool,
   ToolCategory,
   ToolContext,
 } from "../../conversations/tools/index.ts";
 import { listTools } from "../../conversations/tools/index.ts";
-import { compileDescription } from "../../conversations/tools/describe.ts";
 import type { Db } from "../../db/client.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { logger } from "../../logging/logger.ts";

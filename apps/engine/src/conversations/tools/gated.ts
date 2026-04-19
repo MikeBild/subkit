@@ -82,10 +82,7 @@ export function resetGateCache(tenant_id?: string): void {
   else DB_CACHE.clear();
 }
 
-async function loadGatesForTenant(
-  tenant_id: string,
-  db: Db,
-): Promise<Record<string, string>> {
+async function loadGatesForTenant(tenant_id: string, db: Db): Promise<Record<string, string>> {
   const now = Date.now();
   const cached = DB_CACHE.get(tenant_id);
   if (cached && cached.expires_at > now) return cached.gates;

@@ -37,11 +37,7 @@
 import { logger } from "../logging/logger.ts";
 
 interface LangfuseTraceHandle {
-  span: (payload: {
-    name: string;
-    input?: unknown;
-    metadata?: Record<string, unknown>;
-  }) => {
+  span: (payload: { name: string; input?: unknown; metadata?: Record<string, unknown> }) => {
     end: (payload: {
       output?: unknown;
       level?: "DEFAULT" | "WARNING" | "ERROR";
@@ -72,8 +68,9 @@ async function getClient(): Promise<LangfuseClient | null> {
   }
   try {
     const mod = await import("langfuse");
-    const LangfuseClass = (mod as { Langfuse: new (opts: Record<string, unknown>) => LangfuseClient })
-      .Langfuse;
+    const LangfuseClass = (
+      mod as { Langfuse: new (opts: Record<string, unknown>) => LangfuseClient }
+    ).Langfuse;
     cachedClient = new LangfuseClass({
       secretKey: secret,
       publicKey,

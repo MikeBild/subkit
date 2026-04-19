@@ -31,7 +31,7 @@ import type { Db } from "../../db/client.ts";
 import { connectors, credentials } from "../../db/schema/connectors.ts";
 import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
-import { parsePlaceholders, type Placeholder } from "./parser.ts";
+import { type Placeholder, parsePlaceholders } from "./parser.ts";
 
 export type Environment = "dev" | "prod";
 
@@ -178,9 +178,7 @@ export async function describeConnectorPlaceholders(
 
 // ---------------------------------------------------------------------------
 
-type OneResult =
-  | { ok: true; value: string }
-  | { ok: false; code: UnresolvedCode; message: string };
+type OneResult = { ok: true; value: string } | { ok: false; code: UnresolvedCode; message: string };
 
 async function resolveOne(tok: Placeholder, ctx: ResolverContext): Promise<OneResult> {
   switch (tok.kind) {
@@ -196,11 +194,7 @@ async function resolveOne(tok: Placeholder, ctx: ResolverContext): Promise<OneRe
       if (!tok.stepId) {
         return { ok: false, code: "path_empty", message: "scope requires step_id" };
       }
-      return resolveJsonPath(
-        (ctx.scope ?? {})[tok.stepId],
-        tok.path,
-        `scope.${tok.stepId}`,
-      );
+      return resolveJsonPath((ctx.scope ?? {})[tok.stepId], tok.path, `scope.${tok.stepId}`);
   }
 }
 
@@ -259,10 +253,7 @@ async function resolveCred(tok: Placeholder, ctx: ResolverContext): Promise<OneR
   return { ok: true, value: v };
 }
 
-async function resolveConnectorUrl(
-  tok: Placeholder,
-  ctx: ResolverContext,
-): Promise<OneResult> {
+async function resolveConnectorUrl(tok: Placeholder, ctx: ResolverContext): Promise<OneResult> {
   if (!tok.slug) return { ok: false, code: "path_empty", message: "connector slug missing" };
   const row = await fetchConnector(ctx, tok.slug);
   if (!row) {
@@ -281,10 +272,7 @@ async function resolveConnectorUrl(
   return { ok: true, value: row.base_url };
 }
 
-async function resolveConnectorConfig(
-  tok: Placeholder,
-  ctx: ResolverContext,
-): Promise<OneResult> {
+async function resolveConnectorConfig(tok: Placeholder, ctx: ResolverContext): Promise<OneResult> {
   if (!tok.slug || tok.path.length === 0) {
     return { ok: false, code: "path_empty", message: "connector config token incomplete" };
   }
@@ -302,11 +290,7 @@ async function resolveConnectorConfig(
   return resolveJsonPath(row.config ?? {}, tok.path, `connector.${tok.slug}.config`);
 }
 
-function resolveJsonPath(
-  root: unknown,
-  path: string[],
-  diagnosticRoot: string,
-): OneResult {
+function resolveJsonPath(root: unknown, path: string[], diagnosticRoot: string): OneResult {
   if (root === undefined || root === null) {
     return {
       ok: false,
@@ -363,19 +347,13 @@ async function fetchCredential(ctx: ResolverContext, connectorId: string) {
     .select()
     .from(credentials)
     .where(
-      and(
-        eq(credentials.connector_id, connectorId),
-        eq(credentials.environment, ctx.environment),
-      ),
+      and(eq(credentials.connector_id, connectorId), eq(credentials.environment, ctx.environment)),
     )
     .limit(1);
   return rows[0] ?? null;
 }
 
-async function fetchCredentialFields(
-  ctx: ResolverContext,
-  connectorId: string,
-): Promise<string[]> {
+async function fetchCredentialFields(ctx: ResolverContext, connectorId: string): Promise<string[]> {
   const row = await fetchCredential(ctx, connectorId);
   if (!row) return [];
   try {

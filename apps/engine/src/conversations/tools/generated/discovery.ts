@@ -26,13 +26,9 @@ const ListInput = z
   })
   .openapi("ListDiscoveryArtifactsInput");
 
-const GetInput = z
-  .object({ id: z.string().uuid() })
-  .openapi("GetDiscoveryArtifactInput");
+const GetInput = z.object({ id: z.string().uuid() }).openapi("GetDiscoveryArtifactInput");
 
-const ApproveInput = z
-  .object({ id: z.string().uuid() })
-  .openapi("ApproveDiscoveryArtifactInput");
+const ApproveInput = z.object({ id: z.string().uuid() }).openapi("ApproveDiscoveryArtifactInput");
 
 export const listDiscoveryArtifactsTool: ConversationTool = {
   name: "list_discovery_artifacts",
@@ -87,8 +83,7 @@ export const listDiscoveryArtifactsTool: ConversationTool = {
 
 export const getDiscoveryArtifactTool: ConversationTool = {
   name: "get_discovery_artifact",
-  description:
-    "Fetch a single discovery artifact including its draft + evidence excerpts.",
+  description: "Fetch a single discovery artifact including its draft + evidence excerpts.",
   use_case:
     "Call before approving to inspect what the engine auto-proposed. The `draft` field is a complete CreateConnectorInput / CreateSkillInput / KnowledgeDraft ready to materialise.",
   important_notes: [

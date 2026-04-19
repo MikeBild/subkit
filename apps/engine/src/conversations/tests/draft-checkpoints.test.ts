@@ -4,9 +4,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
-  DRAFT_SNAPSHOT_LRU_CAP,
   countDraftSnapshots,
   createDraftSnapshot,
+  DRAFT_SNAPSHOT_LRU_CAP,
   getDraftSnapshot,
   listDraftSnapshots,
 } from "../draft-checkpoints.ts";
@@ -18,10 +18,7 @@ let conversation_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("draft_checkpoints");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-dcp", display_name: "T" })
-    .returning();
+  const [t] = await ctx.db.insert(tenants).values({ slug: "t-dcp", display_name: "T" }).returning();
   tenant_id = t!.id;
   const [c] = await ctx.db
     .insert(conversations)
@@ -80,15 +77,9 @@ describe("createDraftSnapshot", () => {
         ctx.db,
       );
     }
-    const countAfter = await countDraftSnapshots(
-      { tenant_id, conversation_id: convId },
-      ctx.db,
-    );
+    const countAfter = await countDraftSnapshots({ tenant_id, conversation_id: convId }, ctx.db);
     expect(countAfter).toBe(DRAFT_SNAPSHOT_LRU_CAP);
-    const rows = await listDraftSnapshots(
-      { tenant_id, conversation_id: convId },
-      ctx.db,
-    );
+    const rows = await listDraftSnapshots({ tenant_id, conversation_id: convId }, ctx.db);
     const turnIndices = rows.map((r) => r.turn_index).sort((a, b) => a - b);
     // The 3 smallest turn_indexes should be gone.
     expect(turnIndices[0]).toBe(4);
@@ -117,10 +108,7 @@ describe("listDraftSnapshots + getDraftSnapshot", () => {
       ids.push(s.id);
       await new Promise((r) => setTimeout(r, 5));
     }
-    const rows = await listDraftSnapshots(
-      { tenant_id, conversation_id: convId },
-      ctx.db,
-    );
+    const rows = await listDraftSnapshots({ tenant_id, conversation_id: convId }, ctx.db);
     // Newest first == reverse of insert order.
     expect(rows.map((r) => r.id)).toEqual([...ids].reverse());
   });
@@ -136,10 +124,7 @@ describe("listDraftSnapshots + getDraftSnapshot", () => {
       },
       ctx.db,
     );
-    const got = await getDraftSnapshot(
-      { tenant_id, snapshot_id: snap.id },
-      ctx.db,
-    );
+    const got = await getDraftSnapshot({ tenant_id, snapshot_id: snap.id }, ctx.db);
     expect(got).not.toBeNull();
     expect(got!.label).toBe("target");
     expect(got!.draft.name).toBe("draft-99");
@@ -159,10 +144,7 @@ describe("listDraftSnapshots + getDraftSnapshot", () => {
       },
       ctx.db,
     );
-    const leaked = await getDraftSnapshot(
-      { tenant_id: otherT!.id, snapshot_id: snap.id },
-      ctx.db,
-    );
+    const leaked = await getDraftSnapshot({ tenant_id: otherT!.id, snapshot_id: snap.id }, ctx.db);
     expect(leaked).toBeNull();
   });
 });

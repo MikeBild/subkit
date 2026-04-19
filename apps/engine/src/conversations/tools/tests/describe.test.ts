@@ -1,8 +1,8 @@
 // compileDescription tests.
 
 import { describe, expect, test } from "bun:test";
-import type { ConversationTool } from "../index.ts";
 import { compileDescription } from "../describe.ts";
+import type { ConversationTool } from "../index.ts";
 
 function mkTool(overrides: Partial<ConversationTool> = {}): ConversationTool {
   return {
@@ -44,9 +44,7 @@ describe("compileDescription — renders each section", () => {
   });
 
   test("important_notes become markdown bullets inside <important_notes>", () => {
-    const out = compileDescription(
-      mkTool({ important_notes: ["note one", "note two"] }),
-    );
+    const out = compileDescription(mkTool({ important_notes: ["note one", "note two"] }));
     expect(out).toContain("<important_notes>");
     expect(out).toContain("- note one");
     expect(out).toContain("- note two");
@@ -59,9 +57,7 @@ describe("compileDescription — renders each section", () => {
   });
 
   test("example_input renders as single-line JSON inside <example>", () => {
-    const out = compileDescription(
-      mkTool({ example_input: { id: "abc", limit: 10 } }),
-    );
+    const out = compileDescription(mkTool({ example_input: { id: "abc", limit: 10 } }));
     expect(out).toContain("<example>");
     expect(out).toContain('{"id":"abc","limit":10}');
     expect(out).toContain("</example>");

@@ -16,12 +16,12 @@ import { type Tool, tool } from "ai";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { recordConversationToolCall } from "../../observability/instrumentation.ts";
+import { resolveAttachments } from "../attachments.ts";
 import { recordTransition } from "../confirmation.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
-import { resolveAttachments } from "../attachments.ts";
-import { compileDescription } from "./describe.ts";
 import { resolveToolMode, type ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
+import { compileDescription } from "./describe.ts";
 import { filterBySkillGate } from "./gated.ts";
 import { type ConversationTool, listTools, type ToolContext, type ToolResult } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
@@ -272,8 +272,7 @@ function wrapOne(
             persistence: "none",
             error: {
               code: "attachment_not_found",
-              message:
-                "one or more @attachment:<slug> references could not be resolved",
+              message: "one or more @attachment:<slug> references could not be resolved",
               details: { unresolved: attachmentResolved.unresolved },
             },
           };

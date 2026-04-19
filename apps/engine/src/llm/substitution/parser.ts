@@ -21,12 +21,7 @@
 // The parser is pure: it does not read DB, does not resolve anything, and does
 // not log token values (there are none to log — it only sees names/paths).
 
-export type PlaceholderKind =
-  | "cred"
-  | "connector_url"
-  | "connector_config"
-  | "input"
-  | "scope";
+export type PlaceholderKind = "cred" | "connector_url" | "connector_config" | "input" | "scope";
 
 export interface Placeholder {
   kind: PlaceholderKind;
@@ -64,7 +59,7 @@ export interface ParseResult {
   errors: ParseError[];
 }
 
-const IDENT = /^[A-Za-z0-9_\-]+$/;
+const IDENT = /^[A-Za-z0-9_-]+$/;
 
 export function parsePlaceholders(text: string): ParseResult {
   const tokens: Placeholder[] = [];
@@ -196,15 +191,9 @@ function skipBalancedBraces(text: string, fromIndex: number): number {
   return text.length;
 }
 
-type BodyResult =
-  | { ok: true; token: Placeholder }
-  | { ok: false; error: ParseError };
+type BodyResult = { ok: true; token: Placeholder } | { ok: false; error: ParseError };
 
-function parseBody(
-  body: string,
-  span: { start: number; end: number },
-  raw: string,
-): BodyResult {
+function parseBody(body: string, span: { start: number; end: number }, raw: string): BodyResult {
   if (body.length === 0) {
     return {
       ok: false,
@@ -292,7 +281,11 @@ function parseBody(
           if (!IDENT.test(p)) {
             return {
               ok: false,
-              error: { code: "bad_identifier", message: `invalid config path segment '${p}'`, span },
+              error: {
+                code: "bad_identifier",
+                message: `invalid config path segment '${p}'`,
+                span,
+              },
             };
           }
         }
