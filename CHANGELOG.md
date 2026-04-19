@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/MikeBild/subkit/compare/subkit-v1.10.0...subkit-v1.10.1) (2026-04-19)
+
+
+### Documentation
+
+* **followup:** record 1.10.0 landings (masked secrets, 3 cards, route-doc parity gate) ([f6c806e](https://github.com/MikeBild/subkit/commit/f6c806e7942b1c712f4c4e2e8d2ff1dbae446a01))
+
 ## [1.10.0](https://github.com/MikeBild/subkit/compare/subkit-v1.9.0...subkit-v1.10.0) (2026-04-19)
 
 
