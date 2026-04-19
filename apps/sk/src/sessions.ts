@@ -30,6 +30,37 @@ export interface SessionMetadata {
   model: string | null;
   created_at: string;
   last_used_at: string;
+  /** Short human-readable alias set via `sk rename`. Unique per
+   *  profile when present; used by `sk -r <alias>` as an alternative
+   *  to the full conversation_id. Optional (older sessions predate
+   *  this field). */
+  alias?: string | null;
+}
+
+/** Resolve a session-id-or-alias lookup. Returns the matching metadata
+ *  or null when no match exists. Exact conversation_id wins over alias
+ *  match; prefix matching is explicitly NOT supported to keep the
+ *  resolution deterministic.
+ *
+ *  Filter applies the same profile scoping as `listSessionMetadata`
+ *  so `sk rm foo` in one profile can't accidentally nuke a same-named
+ *  session from another. */
+export function resolveSessionRef(
+  ref: string,
+  filter?: { engine_url?: string; tenant_id?: string | null },
+): SessionMetadata | null {
+  const direct = loadSessionMetadata(ref);
+  if (direct) {
+    if (filter?.engine_url && direct.engine_url !== filter.engine_url) return null;
+    if (filter?.tenant_id !== undefined && direct.tenant_id !== filter.tenant_id) {
+      return null;
+    }
+    return direct;
+  }
+  for (const meta of listSessionMetadata(filter)) {
+    if (meta.alias === ref) return meta;
+  }
+  return null;
 }
 
 /**

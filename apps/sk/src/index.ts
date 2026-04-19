@@ -16,6 +16,7 @@ import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { defineCommand, runCommand, showUsage } from "citty";
 import { profileCommand } from "./commands/profile.ts";
+import { sessionsCommand, skLs, skRename, skRm, skShow } from "./commands/sessions.ts";
 import { updateCommand } from "./commands/update.ts";
 import {
   configPath,
@@ -425,6 +426,14 @@ const mainCommand = defineCommand({
     tenants: tenantsCommand,
     mcp: mcpCommand,
     update: updateCommand,
+    sessions: sessionsCommand,
+    // Top-level aliases so users can type `sk ls` / `sk show <ref>` /
+    // `sk rename <ref> <alias>` / `sk rm <ref>` without the
+    // `sessions` prefix.
+    ls: skLs,
+    show: skShow,
+    rename: skRename,
+    rm: skRm,
   },
   async run({ args }) {
     const profile = resolveProfile({
