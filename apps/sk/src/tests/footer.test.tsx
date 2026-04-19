@@ -6,6 +6,11 @@ import { cleanup, render } from "ink-testing-library";
 import type React from "react";
 import { compressCwd, engineHost, Footer, MODE_LABELS } from "../repl/footer.tsx";
 
+function stripAnsi(frame: string): string {
+  const ansiPattern = `${String.fromCharCode(27)}\\[[0-9;]*m`;
+  return frame.replace(new RegExp(ansiPattern, "g"), "");
+}
+
 function renderFooter(props: Partial<React.ComponentProps<typeof Footer>> = {}) {
   // `??` would clobber explicit `null`, which we need to test — use
   // `in` so tests can pass `tenant: null` and keep it null.
@@ -62,7 +67,7 @@ describe("Footer — line 1 (subkit identity)", () => {
       tenant: "acme",
       engineUrl: "https://subkit-api.example.dev",
     });
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("alice@example.com");
     expect(frame).toContain("@ acme");
     expect(frame).toContain("subkit-api.example.dev");
@@ -80,7 +85,7 @@ describe("Footer — line 1 (subkit identity)", () => {
 
   test("shows short session id when one is set", () => {
     const instance = renderFooter({ sessionId: "abcd1234-0000-0000-0000-000000000000" });
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("session abcd1234");
     instance.unmount();
     cleanup();
@@ -88,7 +93,7 @@ describe("Footer — line 1 (subkit identity)", () => {
 
   test("shows `session new` when sessionId is null", () => {
     const instance = renderFooter({ sessionId: null });
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("session new");
     instance.unmount();
     cleanup();

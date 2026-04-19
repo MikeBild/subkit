@@ -20,6 +20,11 @@ async function* framesOf(...events: TurnEvent[]): AsyncIterable<TurnEvent> {
   for (const ev of events) yield ev;
 }
 
+function stripAnsi(frame: string): string {
+  const ansiPattern = `${String.fromCharCode(27)}\\[[0-9;]*m`;
+  return frame.replace(new RegExp(ansiPattern, "g"), "");
+}
+
 const ADMIN: PersonaProbe = { allows: () => true };
 
 function defaultProps(overrides: Partial<InkAppProps> = {}): InkAppProps {
@@ -88,8 +93,8 @@ describe("parity: logo", () => {
   test("meta panel shows `sk · v<semver>`", async () => {
     const instance = renderApp();
     await tick();
-    const frame = instance.lastFrame() ?? "";
-    expect(frame).toMatch(/sk[\s·]+v\d+\.\d+\.\d+/);
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toMatch(/sk[\s·]+v\d+\.\d+\.\d+(?:-[\w.-]+)?/);
     instance.unmount();
   });
 
@@ -207,7 +212,7 @@ describe("parity: bordered composer", () => {
     const instance = renderApp();
     await tick();
     await type(instance, "draft a workflow");
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("❯ draft a workflow");
     instance.unmount();
   });
@@ -219,7 +224,7 @@ describe("parity: footer line 1 (subkit identity)", () => {
   test("renders persona @ tenant on the left", async () => {
     const instance = renderApp();
     await tick();
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toMatch(/admin\s+@\s+acme/);
     instance.unmount();
   });
@@ -242,7 +247,7 @@ describe("parity: footer line 1 (subkit identity)", () => {
   test("shows `session new` before any turn", async () => {
     const instance = renderApp();
     await tick();
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("session new");
     instance.unmount();
   });
@@ -258,7 +263,7 @@ describe("parity: footer line 1 (subkit identity)", () => {
     await type(instance, "hi");
     await pressEnter(instance);
     await tick(60);
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("session abcd1234");
     instance.unmount();
   });
@@ -419,7 +424,7 @@ describe("parity: integration with existing journeys", () => {
     await tick();
     await type(instance, "/hel");
     await tick(30);
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("❯ /hel");
     expect(frame).toMatch(/─{8,}/);
     instance.unmount();
