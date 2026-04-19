@@ -28,7 +28,7 @@ import {
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { audit } from "../../audit/audit.ts";
+import { audit, auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -350,7 +350,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         const errMessage = allowlistViolation
           ? "workflow_not_in_allowlist"
           : (decision.reason ?? "permission_denied");
-        audit(
+        // Use auditAwait so the deny audit row is committed BEFORE the
+        // MCP response reaches the client. Without this, portal-token
+        // end-user tests that inspect the audit table immediately after
+        // receiving the deny race the fire-and-forget `audit()` write
+        // and occasionally see zero rows on CI's slower ubuntu runner.
+        await auditAwait(
           {
             tenant_id: principal.tenant_id,
             actor_type: principal.kind === "user" ? "user" : "system",
