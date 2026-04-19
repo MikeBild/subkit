@@ -1,4 +1,16 @@
-import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
@@ -33,12 +45,40 @@ export const skills = pgTable(
     lifecycle: skillLifecycleEnum("lifecycle").notNull(),
     source: skillSourceEnum("source").notNull().default("manual"),
     version: integer("version").notNull().default(1),
+    // Conversation-quality extensions (migration 0028):
+    //   seed_source — non-null when the row is managed by the disk seed loader
+    //     (see skills/seed.ts). A manually edited skill should null this out.
+    //   gates_tools — tool names that require this skill to be loaded; read by
+    //     conversations/tools/gated.ts to decide which tools the LLM can see.
+    //   slug — stable cross-tenant identifier used by the seed loader and by
+    //     `load_skill` callers. Unique per tenant when present.
+    seed_source: text("seed_source"),
+    gates_tools: jsonb("gates_tools").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    slug: text("slug"),
     ...timestamps,
   },
   (t) => [
     index("skills_tenant_scope_connector_idx").on(t.tenant_id, t.scope, t.connector_id),
     index("skills_tenant_scope_workflow_idx").on(t.tenant_id, t.scope, t.workflow_id),
+    uniqueIndex("skills_tenant_slug_uq")
+      .on(t.tenant_id, t.slug)
+      .where(sql`${t.slug} IS NOT NULL`),
   ],
+);
+
+// Per-tenant override for seed-managed skills (migration 0028). Operators can
+// hide a seed skill or replace its body without touching the seed row. The
+// skill-retrieval path joins against this table with a LEFT JOIN.
+export const tenantSkillOverrides = pgTable(
+  "tenant_skill_overrides",
+  {
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    skill_slug: text("skill_slug").notNull(),
+    hidden: boolean("hidden").notNull().default(false),
+    body_override: text("body_override"),
+    updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("tenant_skill_overrides_pk_idx").on(t.tenant_id, t.skill_slug)],
 );
 
 // ----- H3: Skill Candidates — deterministic self-improving skills ------------
