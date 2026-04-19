@@ -133,6 +133,8 @@ export const AuditAction = {
   // metadata never includes the raw expression (PII risk) — only a
   // 16-char sha256 prefix.
   CONVERSATION_DRY_RUN_TRANSFORM: "conversation.dry_run_transform",
+  CONVERSATION_ATTACHMENT_CREATED: "conversation.attachment_created",
+  CONVERSATION_ATTACHMENT_DELETED: "conversation.attachment_deleted",
 
   SK_CLI_LOGIN: "sk_cli.login",
   SK_CLI_LOGOUT: "sk_cli.logout",

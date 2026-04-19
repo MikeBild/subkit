@@ -68,7 +68,7 @@ describe("Tier 2 — slash → engine endpoints", () => {
     const create = await fetch(`${env.baseUrl}/v1/conversations`, {
       method: "POST",
       headers: adminAuth(),
-      body: JSON.stringify({ initial_message: "tier2-resume seed" }),
+      body: JSON.stringify({ initial_message: "tier2-resume seed", title: "tier2 resume" }),
     });
     expect(create.status).toBe(201);
 
@@ -76,12 +76,27 @@ describe("Tier 2 — slash → engine endpoints", () => {
       headers: adminAuth(),
     });
     expect(r.status).toBe(200);
-    const body = (await r.json()) as { items: Array<{ id: string; owner_id: string | null }> };
+    const body = (await r.json()) as {
+      items: Array<{
+        id: string;
+        owner_id: string | null;
+        status: string;
+        title: string | null;
+        last_message_excerpt?: string | null;
+      }>;
+    };
     expect(Array.isArray(body.items)).toBe(true);
     expect(body.items.length).toBeGreaterThanOrEqual(1);
     // owner=me must scope: every row belongs to the calling principal.
     for (const it of body.items) {
       expect(it.owner_id).toBe(env.personas.admin.userId);
+      expect(typeof it.status).toBe("string");
+    }
+    const seeded = body.items.find((it) => it.title === "tier2 resume");
+    expect(seeded).toBeTruthy();
+    if (seeded) {
+      expect(typeof seeded.last_message_excerpt).toBe("string");
+      expect(seeded.last_message_excerpt!.length).toBeGreaterThan(0);
     }
   }, 30_000);
 

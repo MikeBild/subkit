@@ -320,8 +320,8 @@ describe("features: paste heuristic", () => {
     await tick(30);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toMatch(/\[Pasted text #\d+\]/);
-    // The raw 40-char content should NOT be visible in the composer.
-    expect(frame).not.toContain("x".repeat(40));
+    expect(frame).toContain("attachments · 1 pending");
+    expect(frame).toContain("xxxxxxxx");
     instance.unmount();
   });
 
@@ -500,6 +500,7 @@ describe("features: /attach built-in slash", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toMatch(/\[Image #\d+\]/);
     expect(frame).toContain("image/png");
+    expect(frame).toContain("attachments · 1 pending");
     instance.unmount();
   });
 
@@ -515,6 +516,7 @@ describe("features: /attach built-in slash", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toMatch(/\[File invoice\.pdf #\d+\]/);
     expect(frame).toContain("application/pdf");
+    expect(frame).toContain("attachments · 1 pending");
     instance.unmount();
   });
 
@@ -537,6 +539,29 @@ describe("features: /attach built-in slash", () => {
     await tick(40);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("needs a path");
+    expect(frame).toContain("error");
+    instance.unmount();
+  });
+
+  test("/attach remove <id> removes a pending attachment from the shelf", async () => {
+    const dir = tmpDir();
+    const pdfPath = join(dir, "remove-me.pdf");
+    writeFileSync(pdfPath, Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]));
+    const instance = renderApp({ cwd: dir });
+    await tick();
+    await type(instance, `/attach ${pdfPath}`);
+    await pressEnter(instance);
+    await tick(60);
+    let frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("attachments · 1 pending");
+    instance.stdin.write("\x15");
+    await tick(40);
+    await type(instance, "/attach remove 1");
+    await pressEnter(instance);
+    await tick(60);
+    frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("/attach: removed #1");
+    expect(frame).not.toContain("attachments · 1 pending");
     instance.unmount();
   });
 });

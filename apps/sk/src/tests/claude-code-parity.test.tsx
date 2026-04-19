@@ -300,7 +300,8 @@ describe("parity: footer line 2 (permission mode)", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("⏵⏵");
     expect(frame).toContain("ask approval");
-    expect(frame).toContain("(shift+tab to cycle)");
+    expect(frame).toContain("shift+tab mode");
+    expect(frame).toContain("ctrl-o compact transcript");
     instance.unmount();
   });
 
@@ -346,7 +347,7 @@ describe("parity: footer line 2 (permission mode)", () => {
     await tick();
     for (let i = 0; i < 3; i++) {
       const frame = instance.lastFrame() ?? "";
-      expect(frame).toContain("(shift+tab to cycle)");
+      expect(frame).toContain("shift+tab mode");
       instance.stdin.write("\x1b[Z");
       await tick(20);
     }

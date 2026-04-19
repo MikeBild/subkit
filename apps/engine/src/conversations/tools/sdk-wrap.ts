@@ -18,6 +18,7 @@ import { log } from "../../logging/logger.ts";
 import { recordConversationToolCall } from "../../observability/instrumentation.ts";
 import { recordTransition } from "../confirmation.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
+import { resolveAttachments } from "../attachments.ts";
 import { compileDescription } from "./describe.ts";
 import { resolveToolMode, type ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
@@ -256,9 +257,41 @@ function wrapOne(
           };
         }
 
+        // Resolve @attachment:<slug> references inside rawArgs before
+        // handing them to the tool. Any unresolved slug short-circuits
+        // the execution with a typed error — the tool never sees the
+        // marker, the audit row reflects the failure mode clearly.
+        const attachmentResolved = await resolveAttachments(rawArgs, {
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          db,
+        });
+        if (attachmentResolved.unresolved.length > 0) {
+          const output: Record<string, unknown> = {
+            ok: false,
+            persistence: "none",
+            error: {
+              code: "attachment_not_found",
+              message:
+                "one or more @attachment:<slug> references could not be resolved",
+              details: { unresolved: attachmentResolved.unresolved },
+            },
+          };
+          await updateToolCallOutput(db, toolCallId, output);
+          events.push({
+            type: "tool_result",
+            call_id: toolCallId,
+            tool: inner.name,
+            output,
+          });
+          release();
+          return { ok: false, data: output };
+        }
+        const resolvedArgs = attachmentResolved.value as Record<string, unknown>;
+
         let result: ToolResult;
         try {
-          result = await inner.execute(perCallCtx, rawArgs);
+          result = await inner.execute(perCallCtx, resolvedArgs);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           const output = { error: msg };

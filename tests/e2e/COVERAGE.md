@@ -109,6 +109,7 @@ the canned tool sequence:
 - `sk-user-story.e2e.test.ts` — same
 - `conversation-deep-surface.e2e.test.ts` — same
 - `sk-cli.e2e.test.ts` — deterministic mock responses
+- `sk-interactive-smoke.e2e.test.ts` — PTY-backed interactive `sk` smoke
 - `cross-cli.e2e.test.ts`, `personas.e2e.test.ts`,
   `tool-surface-expansion.e2e.test.ts` — also pinned to mock for
   determinism

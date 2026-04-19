@@ -38,6 +38,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Composite status snapshot for the CLI header */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatusSummary"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/identity/tenants": {
         parameters: {
             query?: never;
@@ -3395,7 +3431,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    status?: "active" | "awaiting_approval" | "committed" | "abandoned";
+                    status?: "active" | "awaiting_input" | "committed" | "abandoned";
                     owner?: "me";
                     limit?: number;
                     offset?: number | null;
@@ -3591,106 +3627,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/conversations/{id}/approvals/{approval_id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Approve a pending approval and resume the loop */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                    approval_id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ConversationRunOutcome"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/conversations/{id}/approvals/{approval_id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reject a pending approval */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                    approval_id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["RejectApprovalBody"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ConversationRunOutcome"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/conversations/{id}/cancel": {
         parameters: {
             query?: never;
@@ -3719,6 +3655,105 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["Conversation"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/context-snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary of the context currently in scope for a conversation */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ContextSnapshot"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/elicitations/{elicitation_id}/respond": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve a pending ask_user_* elicitation with the user's answer */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    elicitation_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RespondElicitationBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConversationRunOutcome"];
                     };
                 };
                 /** @description Not found */
@@ -5496,6 +5531,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/diagnostics/errors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tail the engine error ring (last N captured 5xx) */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    since?: string;
+                    trace_id?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DiagnosticsErrorListResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/diagnostics/llm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolved LLM provider + model snapshot (smoke / triage) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DiagnosticsLlmStatus"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5508,6 +5655,27 @@ export interface components {
             uptime_seconds: number;
             update_available?: boolean;
             latest_version?: string;
+        };
+        StatusSummary: {
+            user: components["schemas"]["StatusUser"];
+            tenant: components["schemas"]["StatusTenant"];
+            connectors_count: number;
+            skills_count: number;
+            tokens_today: number;
+            tokens_month: number;
+            monthly_budget_tokens: number | null;
+            remaining_monthly_budget_tokens: number | null;
+            version: string;
+        };
+        StatusUser: {
+            id: string;
+            email: string | null;
+            /** @enum {string} */
+            kind: "user" | "system_account";
+        };
+        StatusTenant: {
+            id: string;
+            slug: string | null;
         };
         TenantListResponse: {
             items: components["schemas"]["Tenant"][];
@@ -6206,13 +6374,15 @@ export interface components {
             title: string | null;
             created_at: string;
             updated_at: string;
+            last_message_role?: string | null;
+            last_message_excerpt?: string | null;
         };
         ConversationRunOutcome: {
             conversation: components["schemas"]["Conversation"];
             events: unknown[];
             status: string;
             committed_workflow_id?: string;
-            pending_approval_id?: string;
+            pending_elicitation_id?: string;
         };
         CreateConversationBody: {
             /** Format: uuid */
@@ -6226,16 +6396,48 @@ export interface components {
         };
         ConversationDetail: {
             conversation: components["schemas"]["Conversation"];
-            messages: unknown[];
+            messages: components["schemas"]["UIMessage"][];
             tool_calls: unknown[];
             draft?: unknown;
-            approvals: unknown[];
+        };
+        UIMessage: {
+            id: string;
+            role: string;
+            parts: unknown[];
+            created_at: string;
         };
         AppendConversationMessageBody: {
             message: string;
             memory?: string;
         };
-        RejectApprovalBody: {
+        ContextSnapshot: {
+            conversation_id: string;
+            connector_id: string | null;
+            workflow_id: string | null;
+            skills: {
+                global: {
+                    id: string;
+                    title: string;
+                }[];
+                connector: {
+                    id: string;
+                    title: string;
+                }[];
+                workflow: {
+                    id: string;
+                    title: string;
+                }[];
+                total: number;
+            };
+            messages: {
+                total: number;
+                last_role: string | null;
+            };
+            tool_calls_total: number;
+            pending_elicitations: number;
+        };
+        RespondElicitationBody: {
+            output?: unknown;
             reason?: string;
         };
         CompactConversationResponse: {
@@ -6599,6 +6801,31 @@ export interface components {
             metadata: {
                 [key: string]: unknown;
             };
+        };
+        DiagnosticsErrorListResponse: {
+            items: components["schemas"]["ErrorRingEntry"][];
+            total_buffered: number;
+        };
+        ErrorRingEntry: {
+            trace_id: string | null;
+            ts: string;
+            tenant_id: string | null;
+            method: string;
+            path: string;
+            status: number;
+            code: string;
+            message: string;
+            stack: string | null;
+            /** @enum {string} */
+            bucket: "unhandled" | "llm_provider" | "llm_no_object" | "llm_timeout" | "llm_quota" | "http";
+        };
+        DiagnosticsLlmStatus: {
+            provider_env: string | null;
+            inferred_provider: string;
+            anthropic_key_set: boolean;
+            gateway_key_set: boolean;
+            default_primary: string;
+            default_fallback: string;
         };
     };
     responses: never;

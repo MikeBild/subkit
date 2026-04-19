@@ -38,6 +38,7 @@ export {
   type PendingElicitation,
   type SkSessionState,
   type ToolCallState,
+  type ToolLogEntry,
   type ToolStatus,
   type TurnEvent,
   type TurnUsage,

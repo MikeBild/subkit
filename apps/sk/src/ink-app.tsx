@@ -35,6 +35,7 @@ import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusSummary } from "./engine-client.ts";
 import { AlternateScreen } from "./repl/alt-screen.tsx";
+import { BackgroundToolGroup, isBackgroundTool } from "./repl/background-tools.tsx";
 import { classifyAttachment, readClipboard } from "./repl/clipboard-read.ts";
 import {
   humanizeRequestError,
@@ -65,10 +66,13 @@ import {
   expandRefs,
   looksLikePaste,
   type PasteStore,
+  type StoredPaste,
 } from "./repl/paste-store.ts";
+import { PendingAttachments } from "./repl/pending-attachments.tsx";
 import { createQueue } from "./repl/queue.ts";
 import type { PaneSpec } from "./repl/slash-handler.ts";
 import { Spinner } from "./repl/spinner.tsx";
+import { DEFAULT_STARTER_ACTIONS, StarterActions } from "./repl/starter-actions.tsx";
 import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
 import { findSlashCommand, type PersonaProbe, renderHelp, searchSlashCommands } from "./slash.ts";
@@ -164,9 +168,10 @@ function summarizeSuccessData(data: unknown): string | null {
 interface ToolCardProps {
   call: ToolCallState;
   columns: number;
+  detailed: boolean;
 }
 
-const ToolCard: React.FC<ToolCardProps> = memo(({ call, columns }) => {
+const ToolCard: React.FC<ToolCardProps> = memo(({ call, columns, detailed }) => {
   const theme = useTheme();
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -213,7 +218,7 @@ const ToolCard: React.FC<ToolCardProps> = memo(({ call, columns }) => {
     const summary = summarizeToolFailure(call.name, inner);
     bodyLines.push({ text: summary.label, tone: "fail" });
     if (summary.hint) bodyLines.push({ text: summary.hint, tone: "dim" });
-  } else if (call.status === "done" && call.result !== undefined) {
+  } else if (detailed && call.status === "done" && call.result !== undefined) {
     const summary = summarizeSuccessData(call.result);
     if (summary) {
       const lineBudget = Math.max(20, columns - 6);
@@ -413,6 +418,26 @@ const SuggestionList: React.FC<SuggestionListProps> = memo(({ query, probe, sele
 });
 SuggestionList.displayName = "SuggestionList";
 
+type TranscriptMode = "compact" | "detail";
+
+const WORKFLOW_STARTER_PROMPT = [
+  "Help me design a workflow with these steps:",
+  "1. ",
+  "2. ",
+  "3. ",
+].join("\n");
+
+const StickyErrorPanel: React.FC<{ message: string }> = memo(({ message }) => (
+  <Box flexDirection="column" marginBottom={1}>
+    <Text color="red" bold>
+      error
+    </Text>
+    <Text color="red">{message}</Text>
+    <Text dimColor>Esc to dismiss</Text>
+  </Box>
+));
+StickyErrorPanel.displayName = "StickyErrorPanel";
+
 // ---------- Top-level App ----------
 
 export const InkApp: React.FC<InkAppProps> = ({
@@ -472,6 +497,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   const [altScreen, setAltScreen] = useState(false);
   const [statusLine, setStatusLine] = useState<string>("");
   const [banner, setBanner] = useState<string | null>(null);
+  const [stickyError, setStickyError] = useState<string | null>(null);
   const [pane, setPane] = useState<PaneSpec | null>(null);
   // Inline Ctrl-R history search (above-composer widget). The old
   // modal `<HistorySearch>` pane is still available via `historyOpen`
@@ -482,6 +508,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   // that persist a preference can drive it, but own the state locally
   // once the user interacts.
   const [activeMode, setActiveMode] = useState<PermissionMode>(permissionMode);
+  const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("compact");
   const tip = useRef<string>(pickTip());
 
   // -------- Persistent prompt history --------
@@ -508,6 +535,18 @@ export const InkApp: React.FC<InkAppProps> = ({
   const pasteStoreRef = useRef<PasteStore>(createPasteStore());
   const queueRef = useRef(createQueue());
   const [queuedCount, setQueuedCount] = useState(0);
+  const [pendingAttachments, setPendingAttachments] = useState<StoredPaste[]>([]);
+  const syncPendingAttachments = useCallback(() => {
+    setPendingAttachments([...pasteStoreRef.current.all()]);
+  }, []);
+  const showInfo = useCallback((message: string) => {
+    setBanner(message);
+    setStickyError(null);
+  }, []);
+  const showError = useCallback((message: string) => {
+    setStickyError(message);
+    setBanner(null);
+  }, []);
 
   // -------- Status line ticker --------
   useEffect(() => {
@@ -579,16 +618,43 @@ export const InkApp: React.FC<InkAppProps> = ({
     async (trimmed: string): Promise<boolean> => {
       const [head, ...rest] = trimmed.split(/\s+/);
       const name = (head ?? "").replace(/^\//, "");
+      const mutatePending = (source: "paste" | "attach"): boolean => {
+        const sub = (rest[0] ?? "").toLowerCase();
+        if (sub !== "clear" && sub !== "remove" && sub !== "rm") return false;
+        if (sub === "clear") {
+          const count = pasteStoreRef.current.all().length;
+          pasteStoreRef.current.clear();
+          syncPendingAttachments();
+          showInfo(`/${source}: cleared ${count} pending item(s)`);
+          return true;
+        }
+        const rawId = rest[1];
+        const id = Number.parseInt(rawId ?? "", 10);
+        if (!Number.isFinite(id)) {
+          showError(`/${source}: usage \`/${source} remove <id>\``);
+          return true;
+        }
+        if (!pasteStoreRef.current.get(id)) {
+          showError(`/${source}: no pending item #${id}`);
+          return true;
+        }
+        pasteStoreRef.current.delete(id);
+        syncPendingAttachments();
+        showInfo(`/${source}: removed #${id}`);
+        return true;
+      };
       if (name === "paste") {
+        if (mutatePending("paste")) return true;
         const clip = readClipboard();
         if (clip.kind === "none") {
-          setBanner("/paste: clipboard is empty");
+          showInfo("/paste: clipboard is empty");
           return true;
         }
         if (clip.kind === "text") {
           const { ref, lines } = pasteStoreRef.current.addText(clip.text);
+          syncPendingAttachments();
           setInput((prev) => applyInput(prev, { type: "insert", text: ref }));
-          setBanner(`/paste: inserted ${ref} (${lines + 1} line${lines === 0 ? "" : "s"})`);
+          showInfo(`/paste: inserted ${ref} (${lines + 1} line${lines === 0 ? "" : "s"})`);
           return true;
         }
         const img = pasteStoreRef.current.addImage({
@@ -596,26 +662,28 @@ export const InkApp: React.FC<InkAppProps> = ({
           mediaType: clip.mediaType,
           bytes: clip.bytes,
         });
+        syncPendingAttachments();
         setInput((prev) => applyInput(prev, { type: "insert", text: img.ref }));
-        setBanner(`/paste: inserted ${img.ref} (${clip.bytes} bytes)`);
+        showInfo(`/paste: inserted ${img.ref} (${clip.bytes} bytes)`);
         return true;
       }
       if (name === "attach" || name === "file") {
+        if (mutatePending("attach")) return true;
         const raw = rest.join(" ").trim();
         if (raw.length === 0) {
-          setBanner("/attach: needs a path — e.g. `/attach ./invoice.pdf`");
+          showError("/attach: needs a path — e.g. `/attach ./invoice.pdf`");
           return true;
         }
         const { statSync, existsSync: exists } = await import("node:fs");
         const { resolve: res, basename: base } = await import("node:path");
         const abs = res(cwd ?? process.cwd(), raw);
         if (!exists(abs)) {
-          setBanner(`/attach: not found: ${raw}`);
+          showError(`/attach: not found: ${raw}`);
           return true;
         }
         const st = statSync(abs);
         if (!st.isFile()) {
-          setBanner(`/attach: not a file: ${raw}`);
+          showError(`/attach: not a file: ${raw}`);
           return true;
         }
         const cls = classifyAttachment(abs);
@@ -625,8 +693,9 @@ export const InkApp: React.FC<InkAppProps> = ({
             mediaType: cls.mediaType,
             bytes: st.size,
           });
+          syncPendingAttachments();
           setInput((prev) => applyInput(prev, { type: "insert", text: added.ref }));
-          setBanner(`/attach: inserted ${added.ref} (${cls.mediaType}, ${st.size} bytes)`);
+          showInfo(`/attach: inserted ${added.ref} (${cls.mediaType}, ${st.size} bytes)`);
           return true;
         }
         const added = pasteStoreRef.current.addFile({
@@ -634,34 +703,35 @@ export const InkApp: React.FC<InkAppProps> = ({
           filename: base(abs),
           bytes: st.size,
         });
+        syncPendingAttachments();
         setInput((prev) => applyInput(prev, { type: "insert", text: added.ref }));
-        setBanner(`/attach: inserted ${added.ref} (${cls.mediaType}, ${st.size} bytes)`);
+        showInfo(`/attach: inserted ${added.ref} (${cls.mediaType}, ${st.size} bytes)`);
         return true;
       }
       if (name === "queue") {
         const items = [...queueRef.current.items];
-        if (items.length === 0) setBanner("/queue: empty");
-        else setBanner(`/queue: ${items.length} pending — ${items.slice(0, 3).join(" ; ")}`);
+        if (items.length === 0) showInfo("/queue: empty");
+        else showInfo(`/queue: ${items.length} pending — ${items.slice(0, 3).join(" ; ")}`);
         return true;
       }
       if (name === "history") {
         const sub = rest[0];
         if (sub === "clear") {
           const { clearHistory } = await import("./repl/history-store.ts");
-          clearHistory(defaultHistoryPath());
+          clearHistory(effectiveHistoryPath);
           historyRef.current = [];
           historyCursorRef.current = 0;
-          setBanner("/history: cleared");
+          showInfo("/history: cleared");
           return true;
         }
-        setBanner(
-          `/history: ${historyRef.current.length} prompt(s) stored at ${defaultHistoryPath()}`,
+        showInfo(
+          `/history: ${historyRef.current.length} prompt(s) stored at ${effectiveHistoryPath}`,
         );
         return true;
       }
       return false;
     },
-    [cwd],
+    [cwd, effectiveHistoryPath, showError, showInfo, syncPendingAttachments],
   );
 
   // -------- Input handling (printable chars, enter, backspace, Ctrl-C, Ctrl-T) --------
@@ -683,11 +753,11 @@ export const InkApp: React.FC<InkAppProps> = ({
         if (await handleBuiltinSlash(trimmed)) return;
         const cmd = findSlashCommand(trimmed.split(/\s+/)[0] ?? "");
         if (!cmd) {
-          setBanner(`unknown slash: ${trimmed}`);
+          showError(`unknown slash: ${trimmed}`);
           return;
         }
         if (cmd.requires && !persona.probe.allows(cmd.requires)) {
-          setBanner(`sk: /${cmd.name} requires ${cmd.requires} (not granted)`);
+          showError(`sk: /${cmd.name} requires ${cmd.requires} (not granted)`);
           return;
         }
         if (cmd.name === "help") {
@@ -703,7 +773,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         }
         if (cmd.name === "approve" || cmd.name === "reject") {
           if (!session.pendingElicitation || !onElicitResponse) {
-            setBanner("no pending elicitation");
+            showError("no pending elicitation");
             return;
           }
           const parts = trimmed.split(/\s+/).slice(1);
@@ -725,7 +795,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         }
         if (onSlash) {
           const response = await onSlash(cmd.name, trimmed, setPane, session);
-          if (response) setBanner(response);
+          if (response) showInfo(response);
         }
         return;
       }
@@ -736,7 +806,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       if (busyRef.current) {
         queueRef.current.enqueue(trimmed);
         setQueuedCount(queueRef.current.length);
-        setBanner(`queued (${queueRef.current.length}) — runs after the current turn`);
+        showInfo(`queued (${queueRef.current.length}) — runs after the current turn`);
         return;
       }
       busyRef.current = true;
@@ -765,8 +835,10 @@ export const InkApp: React.FC<InkAppProps> = ({
       }
       // Free consumed paste items after a successful submit.
       for (const id of consumedIds) pasteStoreRef.current.delete(id);
+      syncPendingAttachments();
 
       try {
+        setStickyError(null);
         const { events, conversationId } = await onPrompt(finalPrompt);
         let next: SkSessionState = { ...session, conversationId };
         setSession(next);
@@ -775,7 +847,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           setSession({ ...next });
         }
       } catch (err) {
-        setBanner(humanizeRequestError(err));
+        showError(humanizeRequestError(err));
       } finally {
         busyRef.current = false;
         setBusy(false);
@@ -801,6 +873,9 @@ export const InkApp: React.FC<InkAppProps> = ({
       persona.tenant,
       session,
       handleBuiltinSlash,
+      showError,
+      showInfo,
+      syncPendingAttachments,
     ],
   );
 
@@ -842,11 +917,17 @@ export const InkApp: React.FC<InkAppProps> = ({
     () => (composerActive ? extractMention(input.value, input.cursor) : null),
     [composerActive, input.value, input.cursor],
   );
+  const showWelcomeActions =
+    session.messages.length === 0 && input.value.length === 0 && pane === null;
   useInput(
     (char, key) => {
       // --- Global shortcuts (active even under modal / busy) ----------
       if (key.ctrl && char === "t") {
         setAltScreen((prev) => !prev);
+        return;
+      }
+      if (key.ctrl && char === "o") {
+        setTranscriptMode((mode) => (mode === "compact" ? "detail" : "compact"));
         return;
       }
       if (key.shift && key.tab) {
@@ -865,6 +946,10 @@ export const InkApp: React.FC<InkAppProps> = ({
         process.stdout.write("\x1b[2J\x1b[H");
         return;
       }
+      if (key.escape && stickyError && pane === null && !inlineSearchOpen) {
+        setStickyError(null);
+        return;
+      }
       if (busyRef.current) {
         // While busy, still accept keystrokes into the buffer so the
         // user can type ahead. Enter enqueues instead of spawning a
@@ -873,6 +958,24 @@ export const InkApp: React.FC<InkAppProps> = ({
       // Elicitation is open: only accept input that is part of a
       // slash command so the user can still /approve or /reject.
       if (elicitOpen && !slashMode && char !== "/") return;
+      if (showWelcomeActions && char && !key.ctrl && !key.meta) {
+        if (char === DEFAULT_STARTER_ACTIONS[0]?.key) {
+          void handleSubmit("/resume");
+          return;
+        }
+        if (char === DEFAULT_STARTER_ACTIONS[1]?.key) {
+          setInput(buffer(WORKFLOW_STARTER_PROMPT));
+          return;
+        }
+        if (char === DEFAULT_STARTER_ACTIONS[2]?.key) {
+          void handleSubmit("/status");
+          return;
+        }
+        if (char === DEFAULT_STARTER_ACTIONS[3]?.key) {
+          void handleSubmit("/help");
+          return;
+        }
+      }
 
       // --- Slash-suggestion navigation (precedes history) ------------
       // Only intercept arrows while the user is still typing the
@@ -1039,8 +1142,9 @@ export const InkApp: React.FC<InkAppProps> = ({
           // Big chunk — stash in the paste store, insert the ref
           // inline. Keeps the buffer compact and cursor math sane.
           const { ref } = pasteStoreRef.current.addText(char);
+          syncPendingAttachments();
           setInput((prev) => applyInput(prev, { type: "insert", text: ref }));
-          setBanner(`pasted ${ref} — sent inline at submit`);
+          showInfo(`pasted ${ref} — sent inline at submit`);
           return;
         }
         setInput((prev) => applyInput(prev, { type: "insert", text: char }));
@@ -1072,33 +1176,65 @@ export const InkApp: React.FC<InkAppProps> = ({
       />,
     );
   }
-  for (const c of deferredToolCalls) {
-    transcriptRows.push(<ToolCard key={`tc-${c.id}`} call={c} columns={columns} />);
-    // Live tool-log lines for this call, if any.
-    const logs = session.toolLogs.filter((l) => l.call_id === c.id);
-    if (logs.length > 0) {
-      transcriptRows.push(
-        <Box key={`tl-${c.id}`} flexDirection="column" marginLeft={2}>
-          {logs.map((log, idx) => (
-            <Text key={`${c.id}-${idx}`} color="gray">
-              · [{log.level}] {log.message}
-            </Text>
-          ))}
-        </Box>,
-      );
+  const pushForegroundLogs = (callId: string): void => {
+    const logs = session.toolLogs.filter((log) => log.call_id === callId);
+    if (logs.length === 0) return;
+    transcriptRows.push(
+      <Box key={`tl-${callId}`} flexDirection="column" marginLeft={2}>
+        {logs.map((log, idx) => (
+          <Text key={`${callId}-${idx}`} color="gray">
+            · [{log.level}] {log.message}
+          </Text>
+        ))}
+      </Box>,
+    );
+  };
+  const flushBackgroundGroup = (calls: ToolCallState[]): void => {
+    if (calls.length === 0) return;
+    const ids = new Set(calls.map((call) => call.id));
+    const logs = session.toolLogs.filter((log) => ids.has(log.call_id));
+    transcriptRows.push(
+      <BackgroundToolGroup
+        key={`bg-${calls.map((call) => call.id).join("-")}`}
+        calls={calls}
+        logs={logs}
+        detailed={transcriptMode === "detail"}
+      />,
+    );
+  };
+  let pendingBackgroundCalls: ToolCallState[] = [];
+  for (const call of deferredToolCalls) {
+    if (isBackgroundTool(call)) {
+      pendingBackgroundCalls.push(call);
+      continue;
     }
+    flushBackgroundGroup(pendingBackgroundCalls);
+    pendingBackgroundCalls = [];
+    transcriptRows.push(
+      <ToolCard
+        key={`tc-${call.id}`}
+        call={call}
+        columns={columns}
+        detailed={transcriptMode === "detail"}
+      />,
+    );
+    pushForegroundLogs(call.id);
   }
+  flushBackgroundGroup(pendingBackgroundCalls);
 
   const content = (
     <Box flexDirection="column">
       {showBanner ? (
-        <WelcomeBanner
-          persona={persona.label}
-          tenant={persona.tenant}
-          engineUrl={persona.engineUrl}
-          profileName={persona.profileName}
-          tip={tip.current}
-        />
+        <>
+          <WelcomeBanner
+            persona={persona.label}
+            tenant={persona.tenant}
+            engineUrl={persona.engineUrl}
+            profileName={persona.profileName}
+            tip={tip.current}
+          />
+          {showWelcomeActions ? <StarterActions /> : null}
+        </>
       ) : null}
 
       {/* Transient banner (help / errors / command feedback) */}
@@ -1107,6 +1243,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           <Text color="cyan">{banner}</Text>
         </Box>
       ) : null}
+      {stickyError ? <StickyErrorPanel message={stickyError} /> : null}
 
       {/* Scrollable transcript. Shift+↑/↓ or PgUp/PgDn to move,
           Meta+↑/↓ jump to top/bottom. Auto-pins to bottom as turns
@@ -1235,6 +1372,8 @@ export const InkApp: React.FC<InkAppProps> = ({
           footer's identity chrome stays on the last two rows. */}
       <StatusBar statusLine={statusLine} columns={columns} />
 
+      <PendingAttachments items={pendingAttachments} />
+
       {/* Bordered composer — ────── / ❯ input / ────── */}
       <Composer input={input} busy={busy} />
 
@@ -1247,6 +1386,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         engineUrl={persona.engineUrl}
         sessionId={session.conversationId}
         mode={activeMode}
+        transcriptMode={transcriptMode}
       />
 
       {/* Inline @-mention picker — shown when the buffer has an

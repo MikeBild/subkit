@@ -21,10 +21,20 @@ export interface AlternateScreenProps {
   children: React.ReactNode;
 }
 
+function resolveAltScreenEnabled(): boolean {
+  const mode = (process.env.SK_ALT_SCREEN ?? "auto").toLowerCase();
+  if (mode === "never") return false;
+  if (mode === "always") return true;
+  // Zellij intentionally drops scrollback in alternate-screen mode.
+  if (process.env.ZELLIJ) return false;
+  return true;
+}
+
 export const AlternateScreen: React.FC<AlternateScreenProps> = ({ enabled, children }) => {
   useEffect(() => {
     if (!enabled) return;
     if (!process.stdout.isTTY) return;
+    if (!resolveAltScreenEnabled()) return;
     process.stdout.write(ENTER_ALT_SCREEN);
     process.stdout.write(HIDE_CURSOR);
     return () => {

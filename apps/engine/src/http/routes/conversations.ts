@@ -48,6 +48,8 @@ const ConversationSchema = z
     title: z.string().nullable(),
     created_at: z.string(),
     updated_at: z.string(),
+    last_message_role: z.string().nullable().optional(),
+    last_message_excerpt: z.string().nullable().optional(),
   })
   .openapi("Conversation");
 
