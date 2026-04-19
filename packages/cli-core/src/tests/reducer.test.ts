@@ -126,6 +126,19 @@ describe("applyTurnEvent — data parts + status", () => {
     expect(s1.status).toBe("awaiting_input");
   });
 
+  test("completed terminal status clears any stale pending elicitation", () => {
+    const s0 = applyTurnEvent(initialSessionState("conv-1"), {
+      type: "elicit_request",
+      elicitation_id: "elicit-1",
+      tool_name: "ask_user_confirm",
+      summary: "Confirm save",
+      input: { question: "Save?" },
+    });
+    const s1 = applyTurnEvent(s0, { type: "completed", status: "active" });
+    expect(s1.pendingElicitation).toBeNull();
+    expect(s1.status).toBe("completed");
+  });
+
   test("elicit_request transitions status and sets pendingElicitation", () => {
     const s0 = initialSessionState("conv-1");
     const s1 = applyTurnEvent(s0, {

@@ -201,6 +201,11 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Show or `clear` the persistent prompt history",
     category: "util",
   },
+  {
+    name: "view",
+    help: "Switch transcript view — `/view chat` or `/view inspect`",
+    category: "util",
+  },
 ] as const;
 
 export interface PersonaProbe {

@@ -9,11 +9,11 @@ export interface StarterAction {
 }
 
 export const DEFAULT_STARTER_ACTIONS: readonly StarterAction[] = [
-  { key: "1", label: "Resume recent conversation", detail: "opens /resume" },
-  { key: "2", label: "Connect a system", detail: "guided connector setup prompt" },
-  { key: "3", label: "Describe a workflow", detail: "guided workflow authoring prompt" },
-  { key: "4", label: "Import docs or a spec", detail: "guided docs-first prompt" },
-  { key: "5", label: "Open help", detail: "shows slash commands" },
+  { key: "1", label: "Resume recent", detail: "/resume" },
+  { key: "2", label: "Connect a system", detail: "guided setup" },
+  { key: "3", label: "Build a workflow", detail: "guided authoring" },
+  { key: "4", label: "Import docs/spec", detail: "docs-first flow" },
+  { key: "5", label: "Help", detail: "/help" },
 ] as const;
 
 interface StarterActionsProps {
@@ -25,7 +25,7 @@ const StarterActionsImpl: React.FC<StarterActionsProps> = ({
 }) => {
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text dimColor>quick start</Text>
+      <Text dimColor>start with</Text>
       {actions.map((action) => (
         <Box key={action.key}>
           <Text bold>{action.key}. </Text>

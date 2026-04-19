@@ -1,9 +1,8 @@
-// Two-line REPL footer — sits below the bordered composer. Mirrors the
-// visual cadence of Claude Code's footer but carries subkit-native
-// identity chrome, not IDE chrome:
+// Two-line REPL footer — sits below the bordered composer and keeps the
+// persistent chrome intentionally compact:
 //
 //   line 1: <user> @ <tenant>  ·  <engine-host>  ·  <session>
-//   line 2: ⏵⏵ <mode>                        (shift+tab to cycle)
+//   line 2: ⏵⏵ <mode>  ·  <view>            (shift+tab / ctrl-o hints)
 //
 // Rationale: sk is a workflow-authoring CLI against a multi-tenant
 // engine. Users care about "which tenant am I talking to, on which
@@ -18,7 +17,6 @@
 // The mode glyph color follows `theme.mode.*` so a palette swap
 // updates every surface at once.
 
-import { homedir } from "node:os";
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
@@ -36,23 +34,15 @@ export interface FooterProps {
   sessionId: string | null;
   /** Active permission mode — drives line 2 label + glyph color. */
   mode: PermissionMode;
-  /** Transcript density indicator shown next to the mode hint. */
-  transcriptMode: "compact" | "detail";
+  /** Transcript view indicator shown next to the mode hint. */
+  transcriptMode: "chat" | "inspect";
 }
 
 export const MODE_LABELS: Record<PermissionMode, string> = {
-  ask: "ask approval",
-  auto: "auto-approve on",
-  plan: "plan mode (read-only)",
+  ask: "ask",
+  auto: "auto",
+  plan: "plan",
 };
-
-/** Compress `/Users/me/foo` → `~/foo` when under $HOME. Exported for banner reuse. */
-export function compressCwd(cwd: string, home = homedir()): string {
-  if (!home) return cwd;
-  if (cwd === home) return "~";
-  if (cwd.startsWith(`${home}/`)) return `~${cwd.slice(home.length)}`;
-  return cwd;
-}
 
 /** Turn an engine URL into a `host:port` string; falls back to the raw value. */
 export function engineHost(url: string): string {
@@ -78,9 +68,9 @@ const FooterImpl: React.FC<FooterProps> = ({
   const sessionLabel = sessionId ? sessionId.slice(0, 8) : "new";
   const modeColor = theme.mode[mode];
   const modeLabel = MODE_LABELS[mode];
+  const nextView = transcriptMode === "chat" ? "inspect" : "chat";
   return (
     <Box flexDirection="column" marginTop={1}>
-      {/* line 1 — subkit identity: user @ tenant · engine · session */}
       <Box>
         <Text color={theme.severity.dim}> </Text>
         <Text color={theme.role.user} bold>
@@ -90,19 +80,18 @@ const FooterImpl: React.FC<FooterProps> = ({
         <Text bold>{tenantLabel}</Text>
         <Text color={theme.severity.dim}> · </Text>
         <Text color={theme.severity.dim}>{host}</Text>
-        <Text color={theme.severity.dim}> · session </Text>
+        <Text color={theme.severity.dim}> · </Text>
+        <Text color={theme.severity.dim}>session </Text>
         <Text color={theme.role.assistant}>{sessionLabel}</Text>
       </Box>
-      {/* line 2 — permission mode + cycle hint */}
       <Box>
         <Text color={theme.severity.dim}> </Text>
         <Text color={modeColor} bold>
           ⏵⏵{" "}
         </Text>
         <Text color={modeColor}>{modeLabel}</Text>
-        <Text
-          color={theme.severity.dim}
-        >{` (shift+tab mode · ctrl-o ${transcriptMode} transcript)`}</Text>
+        <Text color={theme.severity.dim}>{` · ${transcriptMode}`}</Text>
+        <Text color={theme.severity.dim}>{` · shift+tab mode · ctrl-o ${nextView}`}</Text>
       </Box>
     </Box>
   );

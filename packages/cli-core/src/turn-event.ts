@@ -268,7 +268,7 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
       };
     }
     case "committed": {
-      return { ...state, committedWorkflowId: ev.workflow_id };
+      return { ...state, committedWorkflowId: ev.workflow_id, pendingElicitation: null };
     }
     case "completed": {
       const nextStatus: SkSessionState["status"] =
@@ -277,6 +277,7 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
         ...state,
         status: nextStatus,
         usage: ev.usage ?? state.usage,
+        pendingElicitation: ev.status === "awaiting_input" ? state.pendingElicitation : null,
       };
     }
     default:

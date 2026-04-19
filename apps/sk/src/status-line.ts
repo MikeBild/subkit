@@ -1,5 +1,7 @@
-// Scriptable status line for the `sk` REPL — inspired by Claude
-// Code's `hooks.statusLine.*` feature. Two rendering modes:
+// Scriptable status line for the `sk` REPL. It is customizable, but
+// intentionally quiet by default so the conversation view stays clean.
+//
+// Two rendering modes:
 //
 //   1. Shell hook: `settings.statusLine.command` runs a shell
 //      command with a `StatusLineInput` JSON blob on stdin. The
@@ -10,10 +12,9 @@
 //   2. Local template: `settings.statusLine.format` is a simple
 //      `{placeholder}` template rendered client-side. No shell
 //      round-trip. The default template is tailored to subkit —
-//      it shows the signed-in user, tenant, engine URL, model,
-//      connector count, today's token usage, and the permission
-//      mode. Empty placeholders collapse (no `—` dashes) so the
-//      line stays compact on fresh sessions.
+//      it shows whatever compact context the operator wants. Empty
+//      placeholders collapse (no `—` dashes) so the line stays
+//      compact on fresh sessions.
 //
 // Both paths are rate-limited by `refreshMs` (default 500 ms) so a
 // slow hook can't block the REPL's render loop.
@@ -72,8 +73,7 @@ export interface StatusLineConfig {
   refreshMs?: number | undefined;
 }
 
-const DEFAULT_FORMAT =
-  "{user}{@tenant} · {engine_host} · {model} · conn:{connectors_count} · {turn_tokens}t (today {tokens_today}t){authoring_chip} · [{permission_mode}]{status_message}";
+const DEFAULT_FORMAT = "";
 const DEFAULT_REFRESH_MS = 500;
 
 /**
@@ -245,21 +245,22 @@ export async function buildStatusLine(
   input: StatusLineInput,
 ): Promise<{ line: string; source: "hook" | "template" | "fallback"; error?: string }> {
   const format = config?.format ?? DEFAULT_FORMAT;
+  const renderedTemplate = renderTemplate(format, input);
   if (config?.command) {
     try {
       const line = await runStatusLineHook(config.command, input);
       if (line.length > 0) return { line, source: "hook" };
-      return { line: renderTemplate(format, input), source: "template" };
+      return { line: renderedTemplate, source: "template" };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
-        line: `⚠ ${renderTemplate(format, input)}`,
+        line: `⚠ ${renderedTemplate || "status line unavailable"}`,
         source: "fallback",
         error: message,
       };
     }
   }
-  return { line: renderTemplate(format, input), source: "template" };
+  return { line: renderedTemplate, source: "template" };
 }
 
 export function resolveRefreshMs(config: StatusLineConfig | undefined): number {

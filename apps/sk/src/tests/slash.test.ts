@@ -104,6 +104,13 @@ describe("sk slash registry", () => {
     expect(enduser).toContain("debug");
   });
 
+  test("/view is registered for everyone as a local transcript control", () => {
+    const view = findSlashCommand("view");
+    expect(view).toBeDefined();
+    expect(view?.requires).toBeUndefined();
+    expect(view?.category).toBe("util");
+  });
+
   test("authoring inspection commands are registered and gated by conversation:read", () => {
     for (const name of ["draft", "connector", "workflow", "context", "approvals"] as const) {
       const cmd = findSlashCommand(name);

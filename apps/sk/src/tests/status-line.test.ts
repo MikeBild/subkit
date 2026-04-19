@@ -86,10 +86,7 @@ describe("sk status line", () => {
   test("buildStatusLine falls back to template when no command set", async () => {
     const r = await buildStatusLine(undefined, INPUT);
     expect(r.source).toBe("template");
-    expect(r.line).toContain("mike@mikebild.com");
-    expect(r.line).toContain("conn:7");
-    expect(r.line).toContain("today 128t");
-    expect(r.line).toContain("[ask]");
+    expect(r.line).toBe("");
   });
 
   test("buildStatusLine runs a shell hook and surfaces its stdout", async () => {
@@ -102,6 +99,7 @@ describe("sk status line", () => {
     const r = await buildStatusLine({ command: "exit 7" }, INPUT);
     expect(r.source).toBe("fallback");
     expect(r.line.startsWith("⚠ ")).toBe(true);
+    expect(r.line).toContain("status line unavailable");
     expect(r.error).toContain("exited 7");
   });
 
