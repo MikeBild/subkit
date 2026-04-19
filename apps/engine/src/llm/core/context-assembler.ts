@@ -72,6 +72,20 @@ AUDIT + ELICITATION:
 - Every tenant_write you execute writes an audit_log entry via the tool. Surface that back.
 - ask_user_confirm pauses the loop until the operator answers. On \`confirmed\`: proceed. On \`declined\`: explain the next option. On \`partial\`: apply only the approved subset.
 
+WORKFLOW STEP KINDS (for propose_step / update_param):
+- A workflow has \`steps[]\`. Each step has a unique \`id\` and a \`kind\`. The discriminator is ALWAYS \`kind\` — never \`type\`, \`@type\`, \`step_type\`, or invented namespaces (\`trigger.*\`, \`flow.*\`, \`util.*\`).
+- Valid kinds (8 total) and their required fields:
+  - \`request\`: id, kind, (url OR connector_id) — HTTP / GraphQL / connector calls
+  - \`transform\`: id, kind, expression — JSONata or JS data shaping
+  - \`call\`: id, kind, (workflow_id OR workflow_slug) — invoke another workflow
+  - \`wait\`: id, kind, duration_ms — sleep
+  - \`branch\`: id, kind, when, then_steps — conditional fan-out (children referenced by id)
+  - \`parallel\`: id, kind, branches — parallel arms (each arm an array of step ids)
+  - \`loop\`: id, kind, over, body — iterate, body referenced by id
+  - \`tool\`: id, kind, image — sandboxed container step
+- Approvals / human gates: there is NO \`approval\` kind. Use \`ask_user_confirm\` (during authoring) or model the human gate as a \`request\` to your approval system + a \`branch\` on its outcome.
+- If propose_step returns ok=false, read the \`valid_kinds\`, \`required_fields_for_kind\`, and \`example_for_kind\` fields and call propose_step again with the corrected shape.
+
 VERBOSITY:
 - ${verbosity}
 
@@ -87,7 +101,7 @@ const BASE_SYSTEM_PROMPTS: Record<LlmFlow, string> = {
     "You are the subkit workflow engine's generate flow.",
     "Turn the user's description into a typed WorkflowDef draft.",
     "A WorkflowDef has a `name`, optional `slug` / `description`, and an ordered `steps[]` array.",
-    "Each step has `kind` (one of: request, transform, call, wait, branch, parallel, loop) and a unique `id`.",
+    "Each step has `kind` (one of: request, transform, call, wait, branch, parallel, loop, tool) and a unique `id`.",
     "Prefer `request` steps with `connector_id` + `path` when a connector is in scope.",
     "Always ground your draft in the provided Skills and connector docs. Never invent endpoints or parameters.",
     "Emit exactly one JSON object matching the WorkflowDef schema. No surrounding prose.",

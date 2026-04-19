@@ -8,7 +8,7 @@ import { boot, cli, type E2EEnv, expectSuccess, run, shutdown } from "./setup.ts
 
 let env: E2EEnv;
 beforeAll(async () => {
-  env = await boot("sk-cli");
+  env = await boot("sk-cli", { llm: "mock" });
 }, 90_000);
 afterAll(async () => {
   await shutdown(env);

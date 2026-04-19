@@ -10,6 +10,12 @@ import { getUpdateState } from "../../update-state.ts";
 import type { AppEnv } from "../openapi.ts";
 import { OPENAPI_INFO } from "../openapi.ts";
 
+// /v1/health is unauthenticated and reachable from the public internet.
+// It MUST stay minimal — no fields that leak operational posture
+// (which secrets are present, which provider is wired, model names).
+// Detailed LLM-routing diagnostics live behind `audit:read` at
+// `/v1/diagnostics/llm` so probing requires a real API key.
+
 const HealthResponse = z
   .object({
     status: z.literal("ok"),

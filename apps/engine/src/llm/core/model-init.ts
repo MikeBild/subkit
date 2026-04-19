@@ -19,6 +19,14 @@ import type { LanguageModel } from "ai";
 export interface ModelInitOptions {
   /** Env var that selects the provider kind. Default `LLM_PROVIDER`. */
   providerEnvVar?: string;
+  /**
+   * Explicit provider — when set, the env-derived selection is bypassed
+   * entirely. Callers that already resolved the provider (e.g. via
+   * `resolveModelRoute` against tenant settings) MUST pass this so the
+   * dispatch path cannot silently disagree with the route decision and
+   * fall through to the mock sentinel.
+   */
+  providerOverride?: ProviderKind;
   /** Default model id used when the provider env var does not supply one. */
   defaultModel?: string;
   /** If set, overrides any env-driven model choice. */
@@ -88,7 +96,17 @@ export async function initializeModel(options?: ModelInitOptions): Promise<Resol
     };
   }
 
-  const providerType = (readEnv(providerEnvVar) ?? "").toLowerCase();
+  // Provider precedence:
+  //   1. Explicit `providerOverride` (set by callers that already
+  //      resolved a provider — e.g. `resolveLanguageModel` in
+  //      conversations/loop.ts). This MUST win, otherwise the dispatch
+  //      path silently falls back to mock when LLM_PROVIDER is unset
+  //      even though `ANTHROPIC_API_KEY` is present, and every
+  //      conversation 500s with a `mock:never-dispatched` sentinel
+  //      hitting the AI SDK.
+  //   2. The configured env var (default LLM_PROVIDER).
+  //   3. Mock fallback when neither resolves.
+  const providerType = (options?.providerOverride ?? readEnv(providerEnvVar) ?? "").toLowerCase();
 
   if (providerType === "mock" || providerType === "") {
     // Caller is responsible for short-circuiting the mock path before it

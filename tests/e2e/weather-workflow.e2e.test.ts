@@ -21,7 +21,13 @@ import { boot, cli, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
 beforeAll(async () => {
-  env = await boot("weather");
+  // Pinned mock LLM — this suite asserts on the EXACT canned tool
+  // sequence in `cannedOpenMeteoBerlinPlan`. A real LLM is
+  // non-deterministic and would make these assertions flaky; the
+  // real-LLM equivalent of this flow lives in
+  // tier1-conversation-lifecycle.real.e2e.test.ts.
+  // Mock LLM — asserts on the canned tool sequence.
+  env = await boot("weather", { llm: "mock" });
 }, 90_000);
 afterAll(async () => {
   await shutdown(env);

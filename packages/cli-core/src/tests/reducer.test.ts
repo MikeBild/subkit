@@ -83,6 +83,23 @@ describe("applyTurnEvent — tool-call lifecycle", () => {
     expect(s1.toolCalls).toHaveLength(1);
     expect(s1.toolCalls[0]?.status).toBe("done");
   });
+
+  test("tool_result with ok=false marks the call failed (not done)", () => {
+    const s0 = initialSessionState("conv-1");
+    const s1 = applyTurnEvent(s0, {
+      type: "tool_call_start",
+      call_id: "c-fail",
+      tool: "propose_step",
+    });
+    const s2 = applyTurnEvent(s1, {
+      type: "tool_result",
+      call_id: "c-fail",
+      tool: "propose_step",
+      output: { ok: false, data: { errors: [] } },
+    });
+    expect(s2.toolCalls[0]?.status).toBe("failed");
+    expect(s2.toolCalls[0]?.result).toMatchObject({ ok: false });
+  });
 });
 
 describe("applyTurnEvent — data parts + status", () => {

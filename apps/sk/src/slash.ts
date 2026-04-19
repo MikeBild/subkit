@@ -101,6 +101,17 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "config", help: "Open settings.json in $EDITOR", category: "util" },
   { name: "permissions", help: "Show your granted permissions", category: "util" },
   { name: "audit", help: "Tail your audit log", category: "admin", requires: "audit:read" },
+  {
+    name: "logs",
+    help: "Tail recent engine errors via /v1/diagnostics/errors — `/logs [limit] [trace_id]`",
+    category: "admin",
+    requires: "audit:read",
+  },
+  {
+    name: "debug",
+    help: "Toggle SK_DEBUG request logging — `/debug on|off|tail` or `/debug` for status",
+    category: "util",
+  },
   { name: "exit", aliases: ["quit"], help: "Exit the REPL", category: "util" },
   { name: "bug", help: "Open a GitHub issue report", category: "util" },
   {

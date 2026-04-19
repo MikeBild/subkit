@@ -103,6 +103,7 @@ export const BANNER_TIPS: readonly string[] = [
   "`/approve` or `/reject` resolves the current elicitation inline",
   "Shift-Tab cycles ask / auto-approve / plan — watch the footer for the active mode",
   "`/resume` browses past conversations; `/status` shows tenant connectors and token usage",
+  "stuck on `sk: HTTP 500 internal_error`? run with `SK_DEBUG=1` (or `/debug on`) to log requests to ~/.sk/debug.log",
 ] as const;
 
 export function pickTip(seed: number = Date.now()): string {

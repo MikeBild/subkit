@@ -36,6 +36,11 @@ import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useSta
 import type { StatusSummary } from "./engine-client.ts";
 import { AlternateScreen } from "./repl/alt-screen.tsx";
 import { classifyAttachment, readClipboard } from "./repl/clipboard-read.ts";
+import {
+  humanizeRequestError,
+  humanizeValidationError,
+  summarizeToolFailure,
+} from "./repl/error-humanize.ts";
 import { Footer } from "./repl/footer.tsx";
 import { appendHistory, defaultHistoryPath, loadPromptRing } from "./repl/history-store.ts";
 import { InlineHistorySearch } from "./repl/inline-history-search.tsx";
@@ -64,6 +69,7 @@ import {
 import { createQueue } from "./repl/queue.ts";
 import type { PaneSpec } from "./repl/slash-handler.ts";
 import { Spinner } from "./repl/spinner.tsx";
+import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
 import { findSlashCommand, type PersonaProbe, renderHelp, searchSlashCommands } from "./slash.ts";
 import {
@@ -134,7 +140,33 @@ export interface InkAppProps {
 
 const SPINNER_FRAMES = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"] as const;
 
-const ToolCard: React.FC<{ call: ToolCallState }> = memo(({ call }) => {
+function summarizeSuccessData(data: unknown): string | null {
+  if (data === null || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+  // Most of our tools return `{ok, data: {...}}`; unwrap once so the
+  // user sees the meaningful keys instead of just `ok: true`.
+  const inner =
+    "data" in obj && typeof obj.data === "object" && obj.data !== null
+      ? (obj.data as Record<string, unknown>)
+      : obj;
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(inner)) {
+    if (k === "ok" || k.startsWith("_")) continue;
+    if (v === null || v === undefined) continue;
+    if (typeof v === "string") parts.push(`${k}: ${v}`);
+    else if (typeof v === "number" || typeof v === "boolean") parts.push(`${k}: ${v}`);
+    else if (Array.isArray(v)) parts.push(`${k}: ${v.length}`);
+    if (parts.length >= 4) break;
+  }
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
+interface ToolCardProps {
+  call: ToolCallState;
+  columns: number;
+}
+
+const ToolCard: React.FC<ToolCardProps> = memo(({ call, columns }) => {
   const theme = useTheme();
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -144,10 +176,15 @@ const ToolCard: React.FC<{ call: ToolCallState }> = memo(({ call }) => {
       clearInterval(id);
     };
   }, [call.status]);
-  const summary =
-    typeof call.args === "object" && call.args !== null
-      ? JSON.stringify(call.args).slice(0, 72)
-      : "";
+
+  // Reserve ~2 (⎿ ), 2 (glyph + space), name length, 2 (parens) for the
+  // header line. The remainder is for the args summary.
+  const headerOverhead = 6 + call.name.length;
+  const argsBudget = Math.max(20, columns - headerOverhead);
+  const argsJson =
+    typeof call.args === "object" && call.args !== null ? JSON.stringify(call.args) : "";
+  const argsSummary = argsJson ? truncateMiddle(argsJson, argsBudget) : "";
+
   let glyph: string;
   let color: string;
   if (call.status === "running") {
@@ -163,17 +200,53 @@ const ToolCard: React.FC<{ call: ToolCallState }> = memo(({ call }) => {
     glyph = "·";
     color = theme.severity.dim;
   }
+
+  // Result/error body — Claude-Code-style transparency block. Always
+  // visible for failures (the operator needs the reason to course-
+  // correct); collapsed for successes unless explicitly expanded.
+  const bodyLines: Array<{ text: string; tone: "ok" | "fail" | "dim" }> = [];
+  if (call.status === "failed" && call.result !== undefined) {
+    const inner =
+      typeof call.result === "object" && call.result !== null && "data" in call.result
+        ? (call.result as { data: unknown }).data
+        : call.result;
+    const summary = summarizeToolFailure(call.name, inner);
+    bodyLines.push({ text: summary.label, tone: "fail" });
+    if (summary.hint) bodyLines.push({ text: summary.hint, tone: "dim" });
+  } else if (call.status === "done" && call.result !== undefined) {
+    const summary = summarizeSuccessData(call.result);
+    if (summary) {
+      const lineBudget = Math.max(20, columns - 6);
+      bodyLines.push({ text: truncateEnd(summary, lineBudget), tone: "dim" });
+    }
+  }
+
+  const toneColor = (tone: "ok" | "fail" | "dim"): string =>
+    tone === "fail"
+      ? theme.severity.error
+      : tone === "ok"
+        ? theme.emphasis.added
+        : theme.severity.dim;
+
   return (
-    <Box>
-      <Text color={theme.severity.dim}>⎿ </Text>
-      <Text color={color} bold>
-        {glyph}
-      </Text>
-      <Text> </Text>
-      <Text color={theme.role.tool} bold>
-        {call.name}
-      </Text>
-      {summary ? <Text color={theme.severity.dim}>({summary})</Text> : null}
+    <Box flexDirection="column">
+      <Box>
+        <Text color={theme.severity.dim}>⎿ </Text>
+        <Text color={color} bold>
+          {glyph}
+        </Text>
+        <Text> </Text>
+        <Text color={theme.role.tool} bold>
+          {call.name}
+        </Text>
+        {argsSummary ? <Text color={theme.severity.dim}>({argsSummary})</Text> : null}
+      </Box>
+      {bodyLines.map((ln, i) => (
+        <Box key={`tcbody-${call.id}-${i}`}>
+          <Text color={theme.severity.dim}> </Text>
+          <Text color={toneColor(ln.tone)}>{ln.text}</Text>
+        </Box>
+      ))}
     </Box>
   );
 });
@@ -192,15 +265,19 @@ const MessageRow: React.FC<{ role: string; content: string }> = memo(({ role, co
         : role === "tool"
           ? theme.role.tool
           : theme.role.system;
+  // Ink wraps inside a flex Box automatically. Using `wrap="wrap"` on a
+  // single Text node lets long assistant lines (German prose, JSON,
+  // bulleted lists) reflow on terminal resize instead of being clipped
+  // by the parent flexbox.
   return (
     <Box flexDirection="row" marginBottom={1}>
-      <Text color={color} bold>
-        {prefix}{" "}
-      </Text>
-      <Box flexDirection="column">
-        {content.split("\n").map((line, i) => (
-          <Text key={`ln-${i}`}>{line}</Text>
-        ))}
+      <Box flexShrink={0}>
+        <Text color={color} bold>
+          {prefix}{" "}
+        </Text>
+      </Box>
+      <Box flexDirection="column" flexGrow={1}>
+        <Text wrap="wrap">{content}</Text>
       </Box>
     </Box>
   );
@@ -209,16 +286,22 @@ MessageRow.displayName = "MessageRow";
 
 // ---------- Status bar ----------
 
-const StatusBar: React.FC<{ statusLine: string }> = memo(({ statusLine }) => {
-  const theme = useTheme();
-  if (!statusLine) return null;
-  return (
-    <Box marginBottom={1}>
-      <Text color={theme.severity.dim}>╌ </Text>
-      <Text color={theme.severity.dim}>{statusLine}</Text>
-    </Box>
-  );
-});
+const StatusBar: React.FC<{ statusLine: string; columns: number }> = memo(
+  ({ statusLine, columns }) => {
+    const theme = useTheme();
+    if (!statusLine) return null;
+    // Reserve 4 cols for the leading `╌ ` prefix + a small safety
+    // margin so resize does not push the line onto a second row mid-
+    // glyph.
+    const clamped = truncateEnd(statusLine, Math.max(20, columns - 4));
+    return (
+      <Box marginBottom={1}>
+        <Text color={theme.severity.dim}>╌ </Text>
+        <Text color={theme.severity.dim}>{clamped}</Text>
+      </Box>
+    );
+  },
+);
 StatusBar.displayName = "StatusBar";
 
 // ---------- Composer ----------
@@ -301,23 +384,33 @@ Composer.displayName = "Composer";
 
 // ---------- Slash-command suggestions footer ----------
 
-const SuggestionList: React.FC<{ query: string; probe: PersonaProbe }> = memo(
-  ({ query, probe }) => {
-    const matches = useMemo(() => searchSlashCommands(query, probe, 5), [query, probe]);
-    if (!query.startsWith("/") || matches.length === 0) return null;
-    return (
-      <Box flexDirection="column" marginTop={1}>
-        <Text dimColor>matches:</Text>
-        {matches.map((cmd) => (
-          <Text key={`sug-${cmd.name}`}>
-            <Text color="cyan">/{cmd.name}</Text>
+interface SuggestionListProps {
+  query: string;
+  probe: PersonaProbe;
+  selectedIndex: number;
+}
+
+const SuggestionList: React.FC<SuggestionListProps> = memo(({ query, probe, selectedIndex }) => {
+  const matches = useMemo(() => searchSlashCommands(query, probe, 5), [query, probe]);
+  if (!query.startsWith("/") || matches.length === 0) return null;
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text dimColor>matches (↑/↓ select · Tab complete · Enter run):</Text>
+      {matches.map((cmd, idx) => {
+        const isSelected = idx === selectedIndex;
+        return (
+          <Box key={`sug-${cmd.name}`}>
+            {isSelected ? <Text color="cyan">▸ </Text> : <Text> </Text>}
+            <Text color="cyan" bold={isSelected}>
+              /{cmd.name}
+            </Text>
             <Text dimColor> — {cmd.help}</Text>
-          </Text>
-        ))}
-      </Box>
-    );
-  },
-);
+          </Box>
+        );
+      })}
+    </Box>
+  );
+});
 SuggestionList.displayName = "SuggestionList";
 
 // ---------- Top-level App ----------
@@ -338,14 +431,39 @@ export const InkApp: React.FC<InkAppProps> = ({
   onExit,
 }) => {
   const { exit } = useApp();
+  const { stdout } = useStdout();
+  const columns = stdout?.columns ?? DEFAULT_RULE_WIDTH;
   const [session, setSession] = useState<SkSessionState>(() =>
     initialSessionState(initialConversationId ?? null),
   );
   const deferredMessages = useDeferredValue(session.messages);
   const deferredToolCalls = useDeferredValue(session.toolCalls);
+  // Count consecutive failed propose_step calls in the current turn.
+  // The reducer marks `failed` whenever a tool returns ok=false, so we
+  // walk the tail of the call list looking for a contiguous run of
+  // failed propose_step entries. A single non-propose_step call (or a
+  // successful one) breaks the streak. The banner uses this to nudge
+  // the user when the model is stuck self-correcting.
+  const proposeStepFailureStreak = useMemo(() => {
+    let n = 0;
+    for (let i = deferredToolCalls.length - 1; i >= 0; i--) {
+      const c = deferredToolCalls[i];
+      if (!c) break;
+      if (c.name !== "propose_step") break;
+      if (c.status !== "failed") break;
+      n++;
+    }
+    return n;
+  }, [deferredToolCalls]);
 
   const [input, setInput] = useState<InputBuffer>(EMPTY_BUFFER);
   const [busy, setBusy] = useState(false);
+  // Slash-suggestion selection. Only meaningful when the buffer starts
+  // with `/` and has no whitespace yet; ↑/↓ cycle the highlighted match,
+  // Tab completes it, Enter on an empty-arg slash submits the selected
+  // command. Reset on every buffer mutation so the index never points
+  // past the live match list.
+  const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   // Synchronous guard against Enter auto-repeat. `setBusy(true)` is
   // async, so without this ref two Enter presses ~1ms apart both see
   // `busy === false` and each spawn a turn, posting the same prompt
@@ -657,7 +775,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           setSession({ ...next });
         }
       } catch (err) {
-        setBanner(`sk: ${err instanceof Error ? err.message : String(err)}`);
+        setBanner(humanizeRequestError(err));
       } finally {
         busyRef.current = false;
         setBusy(false);
@@ -701,6 +819,24 @@ export const InkApp: React.FC<InkAppProps> = ({
   const elicitOpen = session.pendingElicitation !== null;
   const composerActive = pane === null && !historyOpen && !inlineSearchOpen;
   const slashMode = input.value.startsWith("/");
+  // Slash autocomplete is "navigable" only while the user is still
+  // typing the command name (no space yet). Once they add an arg
+  // (`/profile prod`), arrow keys go back to history and Tab is inert.
+  const slashNavigable = slashMode && !/\s/.test(input.value);
+  const slashMatches = useMemo(
+    () => (slashNavigable ? searchSlashCommands(input.value, persona.probe, 5) : []),
+    [slashNavigable, input.value, persona.probe],
+  );
+  // Clamp the highlighted index whenever the match list shrinks.
+  useEffect(() => {
+    if (slashMatches.length === 0) {
+      if (slashSelectedIndex !== 0) setSlashSelectedIndex(0);
+      return;
+    }
+    if (slashSelectedIndex >= slashMatches.length) {
+      setSlashSelectedIndex(slashMatches.length - 1);
+    }
+  }, [slashMatches.length, slashSelectedIndex]);
   // In-progress @mention — drives the inline mention picker.
   const mentionSpec = useMemo(
     () => (composerActive ? extractMention(input.value, input.cursor) : null),
@@ -737,6 +873,29 @@ export const InkApp: React.FC<InkAppProps> = ({
       // Elicitation is open: only accept input that is part of a
       // slash command so the user can still /approve or /reject.
       if (elicitOpen && !slashMode && char !== "/") return;
+
+      // --- Slash-suggestion navigation (precedes history) ------------
+      // Only intercept arrows while the user is still typing the
+      // command name (no whitespace) and the match list is non-empty.
+      // Otherwise ↑/↓ fall through to history navigation below.
+      if (slashNavigable && slashMatches.length > 0) {
+        if (key.upArrow) {
+          setSlashSelectedIndex((i) => (i <= 0 ? slashMatches.length - 1 : i - 1));
+          return;
+        }
+        if (key.downArrow) {
+          setSlashSelectedIndex((i) => (i + 1) % slashMatches.length);
+          return;
+        }
+        if (key.tab) {
+          const picked = slashMatches[slashSelectedIndex] ?? slashMatches[0];
+          if (picked) {
+            const next = `/${picked.name} `;
+            setInput(buffer(next));
+          }
+          return;
+        }
+      }
 
       // --- History navigation via arrow keys -------------------------
       if (key.upArrow) {
@@ -849,6 +1008,17 @@ export const InkApp: React.FC<InkAppProps> = ({
         return;
       }
       if (key.return) {
+        // Slash autocomplete: when the user is still typing the
+        // command name and a suggestion is highlighted, Enter submits
+        // the highlighted command instead of whatever exact prefix the
+        // buffer holds. Saves a Tab keystroke for the common case.
+        if (slashNavigable && slashMatches.length > 0) {
+          const picked = slashMatches[slashSelectedIndex] ?? slashMatches[0];
+          if (picked) {
+            void handleSubmit(`/${picked.name}`);
+            return;
+          }
+        }
         void handleSubmit(input.value);
         return;
       }
@@ -903,7 +1073,7 @@ export const InkApp: React.FC<InkAppProps> = ({
     );
   }
   for (const c of deferredToolCalls) {
-    transcriptRows.push(<ToolCard key={`tc-${c.id}`} call={c} />);
+    transcriptRows.push(<ToolCard key={`tc-${c.id}`} call={c} columns={columns} />);
     // Live tool-log lines for this call, if any.
     const logs = session.toolLogs.filter((l) => l.call_id === c.id);
     if (logs.length > 0) {
@@ -1022,17 +1192,38 @@ export const InkApp: React.FC<InkAppProps> = ({
         />
       ) : null}
 
-      {/* Validation errors */}
+      {/* Validation errors — humanized: Step N: invalid `kind` + valid-kinds hint */}
       {session.validationErrors.length > 0 ? (
         <Box flexDirection="column" marginBottom={1}>
           <Text color="red" bold>
             validation errors
           </Text>
-          {session.validationErrors.map((e, idx) => (
-            <Text key={`err-${idx}`} color="red">
-              × {e.path}: {typeof e.message === "string" ? e.message : JSON.stringify(e.message)}
-            </Text>
-          ))}
+          {session.validationErrors.map((e, idx) => {
+            const h = humanizeValidationError({
+              path: e.path,
+              message: typeof e.message === "string" ? e.message : JSON.stringify(e.message),
+            });
+            return (
+              <Box key={`err-${idx}`} flexDirection="column">
+                <Text color="red">× {h.label}</Text>
+                {h.hint ? <Text color="yellow"> ↳ {h.hint}</Text> : null}
+                {h.detail ? <Text dimColor> {h.detail}</Text> : null}
+              </Box>
+            );
+          })}
+        </Box>
+      ) : null}
+
+      {/* Failure-streak banner — when the model can't shape the workflow */}
+      {proposeStepFailureStreak >= 3 ? (
+        <Box marginBottom={1} flexDirection="column">
+          <Text color="yellow" bold>
+            ⚠ the model is struggling to shape this workflow
+          </Text>
+          <Text color="yellow">
+            try /clear and rephrase, or describe the steps yourself (kinds: request, transform,
+            call, wait, branch, parallel, loop, tool)
+          </Text>
         </Box>
       ) : null}
 
@@ -1042,7 +1233,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       {/* Subkit-specific telemetry line — tokens, connector count,
           optional shell-hook output. Sits above the footer so the
           footer's identity chrome stays on the last two rows. */}
-      <StatusBar statusLine={statusLine} />
+      <StatusBar statusLine={statusLine} columns={columns} />
 
       {/* Bordered composer — ────── / ❯ input / ────── */}
       <Composer input={input} busy={busy} />
@@ -1091,7 +1282,11 @@ export const InkApp: React.FC<InkAppProps> = ({
 
       {/* Fuzzy slash-command suggestions (hidden while a pane is open) */}
       {pane === null && !mentionSpec ? (
-        <SuggestionList query={input.value} probe={persona.probe} />
+        <SuggestionList
+          query={input.value}
+          probe={persona.probe}
+          selectedIndex={slashSelectedIndex}
+        />
       ) : null}
 
       {/* Double-Ctrl-C exit flow (always-on input — even when a pane captures keys) */}

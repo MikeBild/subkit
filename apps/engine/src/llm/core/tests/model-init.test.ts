@@ -83,4 +83,44 @@ describe("initializeModel", () => {
     expect(r.provider).toBe("mock");
     delete process.env.CUSTOM_PROVIDER;
   });
+
+  // Regression — the production 500 cluster on POST /v1/conversations
+  // was caused by `resolveLanguageModel` calling initializeModel without
+  // `providerOverride`. With LLM_PROVIDER unset but ANTHROPIC_API_KEY
+  // present, currentProvider() inferred "anthropic" but initializeModel
+  // re-read LLM_PROVIDER (empty), returned the "mock:never-dispatched"
+  // sentinel, and streamText then threw on dispatch. The override path
+  // MUST win over the env so the route's decision actually flows
+  // through to the SDK.
+  it("providerOverride beats LLM_PROVIDER (unset) — the dispatch must not silently fall back to mock", async () => {
+    delete process.env.LLM_PROVIDER;
+    process.env.ANTHROPIC_API_KEY = "sk-ant-fake";
+    const r = await initializeModel({
+      providerOverride: "anthropic",
+      defaultModel: "claude-sonnet-4-5",
+    });
+    expect(r.provider).toBe("anthropic");
+    expect(r.modelId).toBe("claude-sonnet-4-5");
+    // Anything but the mock sentinel proves the SDK provider was wired.
+    expect(r.model).not.toBe("mock:never-dispatched");
+  });
+
+  it("providerOverride still surfaces ProviderMisconfiguredError when the chosen provider lacks credentials", async () => {
+    delete process.env.LLM_PROVIDER;
+    delete process.env.ANTHROPIC_API_KEY;
+    await expect(initializeModel({ providerOverride: "anthropic" })).rejects.toBeInstanceOf(
+      ProviderMisconfiguredError,
+    );
+  });
+
+  it("providerOverride beats a conflicting LLM_PROVIDER env value", async () => {
+    process.env.LLM_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "sk-openai";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-fake";
+    const r = await initializeModel({
+      providerOverride: "anthropic",
+      defaultModel: "claude-sonnet-4-5",
+    });
+    expect(r.provider).toBe("anthropic");
+  });
 });

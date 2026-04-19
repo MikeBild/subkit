@@ -10,7 +10,7 @@ import { boot, cli, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
 beforeAll(async () => {
-  env = await boot("tool-surface-expansion");
+  env = await boot("tool-surface-expansion", { llm: "mock" });
 }, 90_000);
 afterAll(async () => {
   await shutdown(env);
