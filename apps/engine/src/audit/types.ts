@@ -123,6 +123,12 @@ export const AuditAction = {
   CONVERSATION_UPDATED: "conversation.updated",
   CONVERSATION_MEMORY_INJECTED: "conversation.memory_injected",
   CONVERSATION_RESUMED: "conversation.resumed",
+  // Direct `probe_connector` tool call — does not materialise a workflow
+  // execution, but we audit the outbound request so operators can trace
+  // which connectors the LLM poked during an authoring session. Metadata
+  // records `url_host` (not the full URL) so audit cardinality stays low
+  // and no PII-bearing query strings leak into the log.
+  CONVERSATION_PROBE_CONNECTOR: "conversation.probe_connector",
 
   SK_CLI_LOGIN: "sk_cli.login",
   SK_CLI_LOGOUT: "sk_cli.logout",
