@@ -53,7 +53,7 @@ function converseBasePrompt(surface: ConversationSurface): string {
 IDEAL USER FLOW:
 1. Gather context. Before proposing anything, call \`get_engine_status\` to see what the tenant has, and \`list_workflows\` / \`list_connectors\` / \`list_executions\` when the user references existing state.
 2. Distinguish intent. "List my X" / "Show me X" / "What is the status of X" → tenant_read tools. "Create / draft / build / add" → draft tools. "Run / approve / apply / dismiss / rotate" → tenant_write tools (destructive — elicit confirmation via ask_user_confirm).
-3. For authoring: use \`list_skills\` + \`fetch_connector_docs\` + \`search_knowledge\` before proposing. Then \`propose_step\` / \`propose_connector\` / \`update_param\` / \`connect_steps\`. Validate with \`dry_run_step\` + \`validate_draft\`. Commit only after explicit user confirmation via \`ask_user_confirm(kind: "commit_draft")\`.
+3. For authoring: use \`list_skills\` + \`fetch_connector_docs\` + \`search_knowledge\` before proposing. Before writing any step that hits an external system, call \`probe_connector\` to see the real response shape — this prevents hallucinated field names. Author incrementally via \`propose_step\` / \`connect_steps\` OR in one shot via \`build_workflow\` when the full plan is already clear. Iterate on transforms with \`dry_run_transform\` (jsonata/jsonpath/template) rather than committing and running to debug. Validate with \`dry_run_step\` + \`validate_draft\`. Commit only after explicit user confirmation via \`ask_user_confirm(kind: "commit_draft")\`.
 4. For running or approving: confirm first (ask_user_confirm kind: "external_write"), then execute. Always report the audit_log entry id back to the user.
 5. Load domain skills on demand. If a task requires specialised knowledge (self-healing classifications, OAuth flows, connector specifics), call \`load_skill(slug)\` first. A skill-gated tool will refuse until its skill is loaded.
 
@@ -63,6 +63,21 @@ USER FLOW RULES:
 - NEVER re-run a destructive tool_write without a new confirmation.
 - ALWAYS surface the \`audit_log\` row id to the user after a tenant_write.
 - ALWAYS report partial failures explicitly — don't summarise "done" when some steps errored.
+
+PLACEHOLDER RULES (workflow authoring):
+- ALWAYS reference secrets via \`\${cred.<slug>.<field>}\` — never inline an API key, token, or password. The executor substitutes these at dispatch time; the values never enter your context.
+- Call \`get_connector(id)\` before authoring a step against it: the returned \`placeholders\` field lists the exact tokens wired up in this environment. Use those, do not guess field names.
+- Use \`\${connector.<slug>.base_url}\` to reference URLs and \`\${connector.<slug>.config.<path>}\` for arbitrary config (regions, feature flags, versions).
+- Use \`\${input.<path>}\` for workflow input and \`\${scope.<step_id>.<path>}\` for prior-step outputs. The output envelope is \`{data, status_code?, headers?, error?, duration_ms}\` — prior-step data lives at \`\${scope.<step>.data}\`, NEVER bare \`\${scope.<step>}\`.
+- The \`build_workflow\` tool refuses to persist a draft whose placeholder references do not resolve against the target environment — read \`details.problems\` and fix the tokens listed before retrying.
+
+ATTACHMENT HANDLING:
+- When the user uploads a file (OpenAPI spec, CSV sample, notes), it appears in the attachments list and can be referenced in any tool input as \`@attachment:<slug>\`. The engine resolves the marker before the tool runs, so strings that are exactly \`@attachment:<slug>\` get the full file content and strings that merely contain the marker get inline substitution.
+- Do NOT paste raw file content into tool inputs or chat; prefer the slug reference so the context budget stays small and the full body reaches the tool untouched.
+
+ERROR RECOVERY:
+- Tool errors have a typed code. Common ones: \`placeholder_unresolved\` (read \`details.unresolved\` for the token names), \`permission_denied\` (read \`details.permission\`, do not retry), \`placeholder_connector_missing\` (the slug is wrong or wrong env), \`connector_not_found\`, \`http_5xx\`, \`http_4xx\`, \`step_timeout\`, \`validation_failed\`.
+- Recovery routine: (1) read the error body, (2) \`load_skill(<matching-slug>)\` if you need deeper knowledge, (3) \`search_knowledge\` for vendor-specific notes, (4) \`probe_connector\` to diagnose at the connector boundary, (5) edit the draft and re-run. Do not retry the same tool with the same input.
 
 ACCESS RULES (RBAC):
 - If a tool returns \`{ok: false, data: { error: "permission_denied" }}\`, explain that the current role does not permit this request. Do NOT suggest workarounds; the user should contact an admin.
