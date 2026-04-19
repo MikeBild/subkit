@@ -5,11 +5,7 @@
 // the resolver queries conversation_attachments by (conv_id, slug).
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import {
-  conversationAttachments,
-  conversations,
-  tenants,
-} from "../../db/schema/index.ts";
+import { conversationAttachments, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   clearMemoryAttachments,
@@ -25,10 +21,7 @@ let conversation_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("attachments_resolver");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-att", display_name: "T" })
-    .returning();
+  const [t] = await ctx.db.insert(tenants).values({ slug: "t-att", display_name: "T" }).returning();
   tenant_id = t!.id;
   const [c] = await ctx.db
     .insert(conversations)
@@ -141,9 +134,7 @@ describe("resolveAttachments — standalone vs embedded", () => {
       { instructions: "@attachment:note" },
       { tenant_id, conversation_id, db: ctx.db },
     );
-    expect((r.value as { instructions: string }).instructions).toBe(
-      "Use only v3 endpoints.",
-    );
+    expect((r.value as { instructions: string }).instructions).toBe("Use only v3 endpoints.");
   });
 
   test("embedded ref → inline raw text substitution", async () => {

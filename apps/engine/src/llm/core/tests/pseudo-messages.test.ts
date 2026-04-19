@@ -14,9 +14,9 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
+  connectors,
   conversationAttachments,
   conversations,
-  connectors,
   discoveryArtifacts,
   discoveryRuns,
   skills,
@@ -111,9 +111,7 @@ describe("buildRbacSnapshotMessage", () => {
   });
 
   test("empty roles + empty scopes → null", () => {
-    expect(
-      buildRbacSnapshotMessage({ principal: { roles: [], scopes: [] } }),
-    ).toBeNull();
+    expect(buildRbacSnapshotMessage({ principal: { roles: [], scopes: [] } })).toBeNull();
   });
 
   test("principal with roles renders role line", () => {

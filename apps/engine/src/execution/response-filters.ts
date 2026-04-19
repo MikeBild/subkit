@@ -97,10 +97,7 @@ export function resetDlpCache(tenant_id?: string): void {
 
 /** Resolve the effective rule set for a tenant: DB rules UNION defaults,
  *  with disabled rows stripped. Cached for 60 seconds. */
-export async function loadDlpRules(
-  tenant_id: string,
-  db: Db,
-): Promise<DlpRule[]> {
+export async function loadDlpRules(tenant_id: string, db: Db): Promise<DlpRule[]> {
   const now = Date.now();
   const cached = CACHE.get(tenant_id);
   if (cached && cached.expires_at > now) return cached.rules;
@@ -133,12 +130,7 @@ function pathMatcher(expr: string): (segments: string[]) => boolean {
   return (segments) => matchHere(parts, 0, segments, 0);
 }
 
-function matchHere(
-  pat: string[],
-  pi: number,
-  seg: string[],
-  si: number,
-): boolean {
+function matchHere(pat: string[], pi: number, seg: string[], si: number): boolean {
   while (pi < pat.length) {
     const p = pat[pi]!;
     if (p === "**") {
@@ -176,10 +168,7 @@ function applyAction(value: unknown, action: DlpAction): unknown {
 
 /** Apply DLP rules to a value. Returns the redacted copy + a list of
  *  (path, action, reason) entries for the audit trail. */
-export function applyDlpFilters<T>(
-  value: T,
-  rules: DlpRule[],
-): DlpResult<T> {
+export function applyDlpFilters<T>(value: T, rules: DlpRule[]): DlpResult<T> {
   const compiled = rules
     .filter((r) => r.enabled !== false)
     .map((r) => ({

@@ -126,19 +126,21 @@ describe("resolver — cred", () => {
       mode: "basic",
       tokenValue: "pw-secret",
     });
-    const r = await resolveStringPlaceholders(
-      "user=${cred.b1.username} pw=${cred.b1.password}",
-      { tenant_id, environment: "dev", db: ctx.db },
-    );
+    const r = await resolveStringPlaceholders("user=${cred.b1.username} pw=${cred.b1.password}", {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+    });
     expect(r.value).toBe("user=user1 pw=pw-secret");
   });
 
   test("slug not found produces slug_not_found and leaves text literal", async () => {
     const { tenant_id } = await seed({ slug: "exists" });
-    const r = await resolveStringPlaceholders(
-      "A=${cred.missing.token} B=${cred.exists.token}",
-      { tenant_id, environment: "dev", db: ctx.db },
-    );
+    const r = await resolveStringPlaceholders("A=${cred.missing.token} B=${cred.exists.token}", {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+    });
     expect(r.unresolved).toHaveLength(1);
     expect(r.unresolved[0]!.code).toBe("slug_not_found");
     // Remainder still resolved; unresolved token kept literally.
@@ -178,10 +180,11 @@ describe("resolver — connector url + config", () => {
       baseUrl: "https://api.urlx.test",
       mode: "none",
     });
-    const r = await resolveStringPlaceholders(
-      "${connector.urlx.base_url}/v1/users",
-      { tenant_id, environment: "dev", db: ctx.db },
-    );
+    const r = await resolveStringPlaceholders("${connector.urlx.base_url}/v1/users", {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+    });
     expect(r.value).toBe("https://api.urlx.test/v1/users");
   });
 
@@ -208,10 +211,11 @@ describe("resolver — connector url + config", () => {
       mode: "none",
       config: { region: "us-east-1" },
     });
-    const r = await resolveStringPlaceholders(
-      "${connector.cfg2.config.missing.deep}",
-      { tenant_id, environment: "dev", db: ctx.db },
-    );
+    const r = await resolveStringPlaceholders("${connector.cfg2.config.missing.deep}", {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+    });
     expect(r.unresolved[0]!.code).toBe("key_not_found");
   });
 });

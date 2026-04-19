@@ -23,10 +23,7 @@ import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import {
-  buildRequestPlan,
-  fetchViaTunnel,
-} from "../../connectors/drivers/http.ts";
+import { buildRequestPlan, fetchViaTunnel } from "../../connectors/drivers/http.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
 import type { Db } from "../../db/client.ts";
 import { connectors as connectorsTable } from "../../db/schema/index.ts";

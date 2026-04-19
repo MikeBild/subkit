@@ -12,10 +12,7 @@
 // This keeps context tight and avoids polluting early turns with
 // self-healing vocabulary that the operator may never need.
 
-export const BASELINE_SKILLS: readonly string[] = [
-  "subkit-concepts",
-  "error-recovery",
-];
+export const BASELINE_SKILLS: readonly string[] = ["subkit-concepts", "error-recovery"];
 
 interface AutoloadRule {
   /** Exact tool name or a prefix match (ends with `*`). */

@@ -4,11 +4,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import {
-  discoveryArtifacts,
-  discoveryRuns,
-  tenants,
-} from "../../../db/schema/index.ts";
+import { discoveryArtifacts, discoveryRuns, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import {
@@ -45,7 +41,10 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function seedArtifact(kind: "connector" | "skill" | "knowledge_source", status: "proposed" | "approved" = "proposed"): Promise<string> {
+async function seedArtifact(
+  kind: "connector" | "skill" | "knowledge_source",
+  status: "proposed" | "approved" = "proposed",
+): Promise<string> {
   const [a] = await ctx.db
     .insert(discoveryArtifacts)
     .values({
@@ -89,9 +88,9 @@ describe("list_discovery_artifacts", () => {
       offset: 0,
     });
     expect(r.ok).toBe(true);
-    const ids = (
-      r.data as { artifacts: Array<{ id: string; status: string }> }
-    ).artifacts.map((x) => x.id);
+    const ids = (r.data as { artifacts: Array<{ id: string; status: string }> }).artifacts.map(
+      (x) => x.id,
+    );
     expect(ids).toContain(a);
     expect(ids).toContain(b);
     expect(ids).not.toContain(c);
@@ -106,9 +105,7 @@ describe("list_discovery_artifacts", () => {
       offset: 0,
     });
     expect(r.ok).toBe(true);
-    const kinds = (
-      r.data as { artifacts: Array<{ kind: string }> }
-    ).artifacts.map((x) => x.kind);
+    const kinds = (r.data as { artifacts: Array<{ kind: string }> }).artifacts.map((x) => x.kind);
     for (const k of kinds) expect(k).toBe("connector");
   });
 });
@@ -128,9 +125,7 @@ describe("get_discovery_artifact", () => {
       id: "00000000-0000-0000-0000-000000000000",
     });
     expect(r.ok).toBe(false);
-    expect((r.data as { error: { code: string } }).error.code).toBe(
-      "artifact_not_found",
-    );
+    expect((r.data as { error: { code: string } }).error.code).toBe("artifact_not_found");
   });
 });
 
@@ -155,9 +150,7 @@ describe("approve_discovery_artifact", () => {
     const id = await seedArtifact("connector", "approved");
     const r = await approveDiscoveryArtifactTool.execute(makeCtx(), { id });
     expect(r.ok).toBe(false);
-    expect((r.data as { error: { code: string } }).error.code).toBe(
-      "already_materialized",
-    );
+    expect((r.data as { error: { code: string } }).error.code).toBe("already_materialized");
   });
 
   test("tenant isolation: approving another tenant's artifact fails", async () => {
@@ -185,18 +178,13 @@ describe("approve_discovery_artifact", () => {
       id: otherArt!.id,
     });
     expect(r.ok).toBe(false);
-    expect((r.data as { error: { code: string } }).error.code).toBe(
-      "already_materialized",
-    );
+    expect((r.data as { error: { code: string } }).error.code).toBe("already_materialized");
     // Other tenant's row is untouched.
     const [preserved] = await ctx.db
       .select()
       .from(discoveryArtifacts)
       .where(
-        and(
-          eq(discoveryArtifacts.tenant_id, otherT!.id),
-          eq(discoveryArtifacts.id, otherArt!.id),
-        ),
+        and(eq(discoveryArtifacts.tenant_id, otherT!.id), eq(discoveryArtifacts.id, otherArt!.id)),
       )
       .limit(1);
     expect(preserved!.status).toBe("proposed");

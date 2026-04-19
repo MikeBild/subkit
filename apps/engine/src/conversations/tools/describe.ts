@@ -36,16 +36,12 @@ export function compileDescription(tool: ConversationTool): string {
   }
 
   if (tool.important_notes && tool.important_notes.length > 0) {
-    const bullets = tool.important_notes
-      .map((n) => `- ${n.trim()}`)
-      .join("\n");
+    const bullets = tool.important_notes.map((n) => `- ${n.trim()}`).join("\n");
     parts.push(`\n<important_notes>\n${bullets}\n</important_notes>`);
   }
 
   if (tool.requires_skill && tool.requires_skill.trim().length > 0) {
-    parts.push(
-      `\n<requires_skill>${tool.requires_skill.trim()}</requires_skill>`,
-    );
+    parts.push(`\n<requires_skill>${tool.requires_skill.trim()}</requires_skill>`);
   }
 
   if (tool.example_input && Object.keys(tool.example_input).length > 0) {

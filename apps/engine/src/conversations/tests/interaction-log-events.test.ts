@@ -14,11 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import {
-  conversations,
-  conversationToolCalls,
-  tenants,
-} from "../../db/schema/index.ts";
+import { conversations, conversationToolCalls, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { recordTransition } from "../confirmation.ts";
 
@@ -28,10 +24,7 @@ let conversation_id: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("interaction_log_events");
-  const [t] = await ctx.db
-    .insert(tenants)
-    .values({ slug: "t-il", display_name: "T" })
-    .returning();
+  const [t] = await ctx.db.insert(tenants).values({ slug: "t-il", display_name: "T" }).returning();
   tenant_id = t!.id;
   const [c] = await ctx.db
     .insert(conversations)
@@ -196,21 +189,12 @@ describe("service-layer wiring — code review", () => {
     // pattern in service.ts so future refactors that drop the wiring
     // fail loudly rather than silently passing the unit tests above.
     const fs = await import("node:fs/promises");
-    const src = await fs.readFile(
-      new URL("../service.ts", import.meta.url),
-      "utf8",
-    );
+    const src = await fs.readFile(new URL("../service.ts", import.meta.url), "utf8");
     // Must import recordTransition:
     expect(src.includes('import("./confirmation.ts")')).toBe(true);
     expect(src.includes("recordTransition")).toBe(true);
     // Must handle the four primary outcomes:
-    for (const state of [
-      "confirmed",
-      "declined",
-      "partial",
-      "tested",
-      "auto_declined",
-    ]) {
+    for (const state of ["confirmed", "declined", "partial", "tested", "auto_declined"]) {
       expect(src.includes(state)).toBe(true);
     }
   });

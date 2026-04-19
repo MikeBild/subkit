@@ -110,7 +110,10 @@ describe("build_workflow — happy path", () => {
       environment: "dev",
     });
     expect(result.ok).toBe(true);
-    const data = result.data as { persistence: string; draft: { slug: string; step_count: number } };
+    const data = result.data as {
+      persistence: string;
+      draft: { slug: string; step_count: number };
+    };
     expect(data.persistence).toBe("draft_only");
     expect(data.draft.slug).toBe("stripe-daily");
     expect(data.draft.step_count).toBe(1);
@@ -180,9 +183,7 @@ describe("build_workflow — workflow schema errors", () => {
       environment: "dev",
     });
     expect(result.ok).toBe(false);
-    expect((result.data as { error: { code: string } }).error.code).toBe(
-      "workflow_schema_invalid",
-    );
+    expect((result.data as { error: { code: string } }).error.code).toBe("workflow_schema_invalid");
     expect(toolCtx.draft).toBeNull();
   });
 });
@@ -204,9 +205,11 @@ describe("build_workflow — placeholder integrity", () => {
       environment: "dev",
     });
     expect(result.ok).toBe(false);
-    const err = (result.data as {
-      error: { code: string; details: { problems: Array<{ token: string; code: string }> } };
-    }).error;
+    const err = (
+      result.data as {
+        error: { code: string; details: { problems: Array<{ token: string; code: string }> } };
+      }
+    ).error;
     expect(err.code).toBe("placeholder_connector_missing");
     expect(err.details.problems[0]!.token).toBe("${connector.noslug.base_url}");
   });
@@ -228,9 +231,11 @@ describe("build_workflow — placeholder integrity", () => {
       environment: "dev",
     });
     expect(result.ok).toBe(false);
-    const err = (result.data as {
-      error: { code: string; details: { problems: Array<{ token: string }> } };
-    }).error;
+    const err = (
+      result.data as {
+        error: { code: string; details: { problems: Array<{ token: string }> } };
+      }
+    ).error;
     expect(err.code).toBe("placeholder_cred_missing");
     expect(err.details.problems[0]!.token).toBe("${cred.stripe.nonexistent_field}");
   });
@@ -291,8 +296,6 @@ describe("build_workflow — input_schema inference", () => {
     expect(result.ok).toBe(true);
     const data = result.data as { draft: { input_schema_inferred: boolean } };
     expect(data.draft.input_schema_inferred).toBe(false);
-    expect((toolCtx.draft!.input_schema as { required: string[] }).required).toEqual([
-      "custom",
-    ]);
+    expect((toolCtx.draft!.input_schema as { required: string[] }).required).toEqual(["custom"]);
   });
 });

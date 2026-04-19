@@ -79,10 +79,7 @@ describe("loadSkillSeedsFromDisk — happy path", () => {
   test("loads all .md files, skips non-md, parses frontmatter", async () => {
     const dir = await fs.mkdtemp("/tmp/sk-seed-happy-");
     try {
-      await fs.writeFile(
-        path.join(dir, "a.md"),
-        validSeedMd({ slug: "a", title: "A title" }),
-      );
+      await fs.writeFile(path.join(dir, "a.md"), validSeedMd({ slug: "a", title: "A title" }));
       await fs.writeFile(
         path.join(dir, "b.md"),
         validSeedMd({ slug: "b", gates: ["tool_x"], body: "# B\n\n- item" }),
@@ -127,10 +124,7 @@ describe("loadSkillSeedsFromDisk — error paths", () => {
   test("missing required key reports missing_key", async () => {
     const dir = await fs.mkdtemp("/tmp/sk-seed-err-");
     try {
-      await fs.writeFile(
-        path.join(dir, "nope.md"),
-        "---\nslug: x\n---\nbody",
-      );
+      await fs.writeFile(path.join(dir, "nope.md"), "---\nslug: x\n---\nbody");
       const r = await loadSkillSeedsFromDisk(dir);
       expect(r.errors[0]!.code).toBe("missing_key");
     } finally {
@@ -204,10 +198,7 @@ describe("applySkillSeeds — DB upsert semantics", () => {
     expect(second.unchanged).toBe(2);
 
     // Every seed row has gates_tools + slug + seed_source stored.
-    const rows = await ctx.db
-      .select()
-      .from(skills)
-      .where(eq(skills.tenant_id, tenantA));
+    const rows = await ctx.db.select().from(skills).where(eq(skills.tenant_id, tenantA));
     expect(rows.length).toBe(2);
     for (const row of rows) {
       expect(row.slug).not.toBeNull();

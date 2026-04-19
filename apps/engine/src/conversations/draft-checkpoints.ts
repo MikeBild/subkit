@@ -66,9 +66,7 @@ export async function createDraftSnapshot(
   if (all.length > MAX_SNAPSHOTS_PER_CONVERSATION) {
     const doomed = all.slice(MAX_SNAPSHOTS_PER_CONVERSATION).map((r) => r.id);
     for (const id of doomed) {
-      await exec
-        .delete(conversationDraftSnapshots)
-        .where(eq(conversationDraftSnapshots.id, id));
+      await exec.delete(conversationDraftSnapshots).where(eq(conversationDraftSnapshots.id, id));
     }
   }
 

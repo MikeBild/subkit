@@ -4,23 +4,23 @@
 export {
   collectTokenNames,
   hasPlaceholders,
-  parsePlaceholders,
-  stripPlaceholders,
   type ParseError,
   type ParseResult,
   type Placeholder,
   type PlaceholderKind,
+  parsePlaceholders,
+  stripPlaceholders,
 } from "./parser.ts";
 
 // Resolver (DB + RBAC):
 export {
   describeConnectorPlaceholders,
+  type Environment,
   flattenCredential,
+  type ResolveResult,
+  type ResolverContext,
   resolvePlaceholders,
   resolveStringPlaceholders,
-  type Environment,
-  type ResolverContext,
-  type ResolveResult,
   type Unresolved,
   type UnresolvedCode,
 } from "./resolver.ts";

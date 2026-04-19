@@ -24,6 +24,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
+import { ErrorSchema } from "../../api/common-schemas.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import {
@@ -32,7 +33,6 @@ import {
 } from "../../conversations/attachments.ts";
 import { conversationAttachments, conversations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
-import { ErrorSchema } from "../../api/common-schemas.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -66,9 +66,9 @@ const AttachmentSchema = z
   })
   .openapi("ConversationAttachment");
 
-const ListResponse = z.object({ attachments: z.array(AttachmentSchema) }).openapi(
-  "ConversationAttachmentList",
-);
+const ListResponse = z
+  .object({ attachments: z.array(AttachmentSchema) })
+  .openapi("ConversationAttachmentList");
 
 function slugify(filename: string): string {
   const stem = filename.replace(/\.[^.]+$/, "").toLowerCase();
@@ -210,10 +210,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
         preview,
       })
       .onConflictDoUpdate({
-        target: [
-          conversationAttachments.conversation_id,
-          conversationAttachments.slug,
-        ],
+        target: [conversationAttachments.conversation_id, conversationAttachments.slug],
         set: {
           original_filename: body.filename,
           content_type: ct,

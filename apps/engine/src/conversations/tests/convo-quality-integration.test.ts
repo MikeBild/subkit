@@ -23,16 +23,16 @@
 //   - Full LLM conversation loop. We drive the tools directly so the
 //     assertions are deterministic and fast (<1s).
 
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/service.ts";
 import { auditLog, connectors, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
-import { DEFAULT_DLP_RULES, applyDlpFilters } from "../../execution/response-filters.ts";
-import type { ToolContext } from "../tools/index.ts";
+import { applyDlpFilters, DEFAULT_DLP_RULES } from "../../execution/response-filters.ts";
 import { buildWorkflowTool } from "../tools/build-workflow.ts";
+import type { ToolContext } from "../tools/index.ts";
 import { probeConnectorTool, resetProbeRateLimit } from "../tools/probe-connector.ts";
 
 const CANARY_EMAIL = "ada@example.test";
@@ -43,7 +43,7 @@ let tenant_id: string;
 let conversation_id: string;
 let server: Server;
 let baseUrl: string;
-let connectorSlug = "stripe_mock";
+const connectorSlug = "stripe_mock";
 const seenAuth: string[] = [];
 
 beforeAll(async () => {
@@ -187,9 +187,7 @@ describe("convo-quality integration chain", () => {
         { id: "cus_2", email: "grace@example.test", name: "Grace" },
       ],
     };
-    const { value, redacted } = applyDlpFilters(mockResponseFromStep, [
-      ...DEFAULT_DLP_RULES,
-    ]);
+    const { value, redacted } = applyDlpFilters(mockResponseFromStep, [...DEFAULT_DLP_RULES]);
     expect(redacted.length).toBeGreaterThanOrEqual(2);
     const paths = redacted.map((r) => r.path).sort();
     expect(paths.some((p) => p.endsWith(".email"))).toBe(true);
@@ -203,26 +201,20 @@ describe("convo-quality integration chain", () => {
       .select()
       .from(auditLog)
       .where(
-        and(
-          eq(auditLog.tenant_id, tenant_id),
-          eq(auditLog.action, "conversation.probe_connector"),
-        ),
+        and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.action, "conversation.probe_connector")),
       );
     expect(rows.length).toBeGreaterThanOrEqual(1);
     const serialised = JSON.stringify(rows);
     expect(serialised.includes(CANARY_TOKEN)).toBe(false);
     // url_host is present; the URL path is intentionally omitted.
-    expect(serialised).toContain("\"url_host\":\"127.0.0.1\"");
+    expect(serialised).toContain('"url_host":"127.0.0.1"');
     expect(serialised.includes("/v1/customers")).toBe(false);
   });
 });
 
 describe("convo-quality — canary never leaks", () => {
   test("no log line, no audit row, no tool return value contains the credential", async () => {
-    const rows = await ctx.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.tenant_id, tenant_id));
+    const rows = await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, tenant_id));
     const serialised = JSON.stringify(rows);
     expect(serialised.includes(CANARY_TOKEN)).toBe(false);
   });

@@ -43,12 +43,14 @@ const lsCommand = defineCommand({
           tenant_id: profile.active_tenant_id ?? null,
         };
     const rows = listSessionMetadata(filter);
-    const q = typeof args.search === "string" && args.search.length > 0 ? args.search.toLowerCase() : null;
+    const q =
+      typeof args.search === "string" && args.search.length > 0 ? args.search.toLowerCase() : null;
     const filtered = q
-      ? rows.filter((r) =>
-          (r.title ?? "").toLowerCase().includes(q) ||
-          (r.alias ?? "").toLowerCase().includes(q) ||
-          r.conversation_id.includes(q),
+      ? rows.filter(
+          (r) =>
+            (r.title ?? "").toLowerCase().includes(q) ||
+            (r.alias ?? "").toLowerCase().includes(q) ||
+            r.conversation_id.includes(q),
         )
       : rows;
     const limit = Math.max(1, Number.parseInt(args.limit, 10) || 20);
@@ -96,7 +98,9 @@ const showCommand = defineCommand({
     if (meta.tenant_id) process.stdout.write(`${pc.bold("tenant_id")}:       ${meta.tenant_id}\n`);
     if (meta.model) process.stdout.write(`${pc.bold("model")}:           ${meta.model}\n`);
     process.stdout.write(`${pc.bold("created_at")}:      ${meta.created_at}\n`);
-    process.stdout.write(`${pc.bold("last_used_at")}:    ${meta.last_used_at}  (${fmtRelative(meta.last_used_at)})\n`);
+    process.stdout.write(
+      `${pc.bold("last_used_at")}:    ${meta.last_used_at}  (${fmtRelative(meta.last_used_at)})\n`,
+    );
   },
 });
 
@@ -186,4 +190,4 @@ export const sessionsCommand = defineCommand({
 
 // Also export the subcommands directly so `sk ls` / `sk show` etc.
 // can be mounted as top-level aliases.
-export { lsCommand as skLs, rmCommand as skRm, renameCommand as skRename, showCommand as skShow };
+export { lsCommand as skLs, renameCommand as skRename, rmCommand as skRm, showCommand as skShow };

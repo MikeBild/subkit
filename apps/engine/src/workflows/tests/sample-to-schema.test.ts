@@ -53,10 +53,7 @@ describe("sampleToSchema — arrays", () => {
   });
 
   test("mixed-shape object array unions properties, drops mismatched required", () => {
-    const s = sampleToSchema([
-      { id: "a", extra: "only-in-first" },
-      { id: "b" },
-    ]);
+    const s = sampleToSchema([{ id: "a", extra: "only-in-first" }, { id: "b" }]);
     const items = (s as { items: JsonLike }).items;
     expect(items.type).toBe("object");
     const props = (items.properties ?? {}) as Record<string, JsonLike>;
@@ -113,9 +110,7 @@ describe("sampleToSchema — objects", () => {
 describe("sampleToSchema — determinism", () => {
   test("same input produces the same schema bytes twice", () => {
     const input = { a: [1, 2], b: { c: "x" } };
-    expect(JSON.stringify(sampleToSchema(input))).toBe(
-      JSON.stringify(sampleToSchema(input)),
-    );
+    expect(JSON.stringify(sampleToSchema(input))).toBe(JSON.stringify(sampleToSchema(input)));
   });
 
   test("equivalent-object arrays dedup to a single items schema", () => {

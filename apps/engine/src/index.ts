@@ -11,10 +11,7 @@ import { startListener, stopListener } from "./pubsub/listener.ts";
 import { startBoss, stopBoss } from "./queue/boss.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
 import { SchedulerReconciler } from "./scheduler/reconciler.ts";
-import {
-  applySkillSeedsForAllTenants,
-  loadSkillSeedsFromDisk,
-} from "./skills/seed.ts";
+import { applySkillSeedsForAllTenants, loadSkillSeedsFromDisk } from "./skills/seed.ts";
 import { startTunnelWsServer, type TunnelWsServerHandle } from "./tunnels/ws-server.ts";
 import { setUpdateState } from "./update-state.ts";
 

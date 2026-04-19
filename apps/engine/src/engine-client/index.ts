@@ -12,7 +12,6 @@ import { getAuditRowById, queryAuditLog } from "../audit/query.ts";
 import { getConnector, listConnectors } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
 import { getDb } from "../db/client.ts";
-import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import {
   auditLog,
   connectorDocuments,
@@ -25,6 +24,7 @@ import {
 import * as identitySvc from "../identity/service.ts";
 import * as knowledgeSvc from "../knowledge/service.ts";
 import { currentMonthBucket, monthlyUsage } from "../llm/budgets.ts";
+import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import * as rbacRoles from "../rbac/roles.ts";
 import * as skillCandidatesSvc from "../skill-candidates/service.ts";
 import * as skillsSvc from "../skills/service.ts";

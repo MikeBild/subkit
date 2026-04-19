@@ -31,9 +31,7 @@ describe("verifyWorkflow — JSONata parsing", () => {
 
   test("invalid data_selector → jsonata_syntax_error on data_selector path", () => {
     const r = verifyWorkflow({
-      steps: [
-        { id: "r", kind: "request", method: "GET", path: "/x", data_selector: "$xxx[" },
-      ],
+      steps: [{ id: "r", kind: "request", method: "GET", path: "/x", data_selector: "$xxx[" }],
     });
     expect(r.errors.some((e) => e.code === "jsonata_syntax_error")).toBe(true);
     expect(r.errors.find((e) => e.code === "jsonata_syntax_error")!.path).toBe(
@@ -66,9 +64,7 @@ describe("verifyWorkflow — scope reference integrity", () => {
 
   test("reference to unknown step id → scope_ref_unresolved", () => {
     const r = verifyWorkflow({
-      steps: [
-        { id: "only", kind: "transform", expression: "$scope.not_here.data" },
-      ],
+      steps: [{ id: "only", kind: "transform", expression: "$scope.not_here.data" }],
     });
     expect(r.errors.some((e) => e.code === "scope_ref_unresolved")).toBe(true);
   });

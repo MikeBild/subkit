@@ -185,14 +185,8 @@ describe("stripPlaceholders", () => {
 
 describe("collectTokenNames", () => {
   test("returns raw token substrings in order", () => {
-    const names = collectTokenNames(
-      "${cred.a.b}-${connector.c.base_url}-${scope.s.p}",
-    );
-    expect(names).toEqual([
-      "${cred.a.b}",
-      "${connector.c.base_url}",
-      "${scope.s.p}",
-    ]);
+    const names = collectTokenNames("${cred.a.b}-${connector.c.base_url}-${scope.s.p}");
+    expect(names).toEqual(["${cred.a.b}", "${connector.c.base_url}", "${scope.s.p}"]);
   });
 
   test("skips escaped tokens", () => {

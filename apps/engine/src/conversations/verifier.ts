@@ -55,20 +55,13 @@ const JSONATA_FIELDS: Array<{
   { kind: "branch", field: "when" },
 ];
 
-function addFinding(
-  report: VerifierReport,
-  finding: VerifierFinding,
-): void {
+function addFinding(report: VerifierReport, finding: VerifierFinding): void {
   if (finding.severity === "error") report.errors.push(finding);
   else if (finding.severity === "warning") report.warnings.push(finding);
   else report.infos.push(finding);
 }
 
-function tryJsonata(
-  expression: string,
-  path: string,
-  report: VerifierReport,
-): void {
+function tryJsonata(expression: string, path: string, report: VerifierReport): void {
   try {
     jsonata(expression);
   } catch (err) {
@@ -148,11 +141,7 @@ function checkMethodSafety(
       path,
     });
   }
-  if (
-    method === "GET" &&
-    onError?.mode === "retry" &&
-    typeof step.idempotency_key !== "string"
-  ) {
+  if (method === "GET" && onError?.mode === "retry" && typeof step.idempotency_key !== "string") {
     addFinding(report, {
       severity: "info",
       code: "retry_without_idempotency_key",
@@ -163,10 +152,7 @@ function checkMethodSafety(
   }
 }
 
-function checkOutputSchema(
-  schema: unknown,
-  report: VerifierReport,
-): void {
+function checkOutputSchema(schema: unknown, report: VerifierReport): void {
   if (schema === undefined || schema === null) return;
   if (typeof schema !== "object") {
     addFinding(report, {
@@ -183,12 +169,7 @@ function checkOutputSchema(
   // `anyOf`/`allOf` key at the root.
   const s = schema as Record<string, unknown>;
   const looksLikeSchema =
-    "type" in s ||
-    "$ref" in s ||
-    "oneOf" in s ||
-    "anyOf" in s ||
-    "allOf" in s ||
-    "properties" in s;
+    "type" in s || "$ref" in s || "oneOf" in s || "anyOf" in s || "allOf" in s || "properties" in s;
   if (!looksLikeSchema) {
     addFinding(report, {
       severity: "warning",
