@@ -35,11 +35,13 @@ describe("MCP tenant tool exposure", () => {
     const tools = listTenantTools({ allowWrites: false });
     expect(tools.map((t) => t.name)).not.toContain("tenant.run_workflow");
     expect(tools.map((t) => t.name)).not.toContain("tenant.approve_patch_candidate");
+    expect(tools.map((t) => t.name)).not.toContain("tenant.delete_workflow");
   });
 
   it("exposes tenant_write tools when allowWrites=true", () => {
     const tools = listTenantTools({ allowWrites: true });
     expect(tools.map((t) => t.name)).toContain("tenant.run_workflow");
     expect(tools.map((t) => t.name)).toContain("tenant.approve_patch_candidate");
+    expect(tools.map((t) => t.name)).toContain("tenant.delete_workflow");
   });
 });

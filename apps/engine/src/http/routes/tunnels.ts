@@ -228,21 +228,8 @@ export function registerTunnelRoutes(app: OpenAPIHono<AppEnv>): void {
     for (const t of row.targets) {
       tunnelRegistry.detach(principal.tenant_id, t.target_name);
     }
-    const ok = await deleteTunnel(principal.tenant_id, id, db);
+    const ok = await deleteTunnel(principal.tenant_id, id, principal.id, db);
     if (!ok) throw new NotFoundError("tunnel");
-    audit(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: principal.kind,
-        actor_id: principal.id,
-        action: AuditAction.TUNNEL_UNREGISTERED,
-        resource_type: "tunnel",
-        resource_id: id,
-        result: "success",
-        metadata: { name: row.name },
-      },
-      db,
-    );
     return c.body(null, 204);
   });
 }

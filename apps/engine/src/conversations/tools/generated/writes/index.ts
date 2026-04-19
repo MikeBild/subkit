@@ -5,13 +5,24 @@
 
 import type { ConversationTool } from "../../index.ts";
 import { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidates.ts";
+import { cleanupWriteTools } from "./cleanup.ts";
 import { runWorkflowTool } from "./run-workflow.ts";
 
 export { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidates.ts";
+export {
+  deleteConnectorTool,
+  deleteKnowledgeSourceTool,
+  deleteSubscriptionTool,
+  deleteTunnelTool,
+  deleteWorkflowTool,
+  revokeApiKeyTool,
+  revokePortalTokenTool,
+} from "./cleanup.ts";
 export { runWorkflowTool } from "./run-workflow.ts";
 
 export const ALL_GENERATED_WRITE_TOOLS: ConversationTool[] = [
   runWorkflowTool,
   approveSkillCandidateTool,
   approvePatchCandidateTool,
+  ...cleanupWriteTools,
 ];
