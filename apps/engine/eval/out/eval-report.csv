@@ -1,5 +1,10 @@
 name,flow,pass,duration_ms,reason
-provider-error-classifier,converse,pass,37,""
-schema-normalizer-basic,generate,pass,2,""
+provider-error-classifier,converse,pass,47,""
+convo-placeholder-parse,converse,pass,2,""
+convo-sample-to-schema,converse,pass,1,""
+schema-normalizer-basic,generate,pass,0,""
+convo-verifier-rejects-bad-jsonata,converse,pass,6,""
 ai-sdk-submit-loop,generate,pass,5,""
-cache-block-split,converse,pass,75,""
+cache-block-split,converse,pass,65,""
+convo-verifier-scope-ref-integrity,converse,pass,1,""
+convo-dlp-masks-default-pii,converse,pass,20,""
