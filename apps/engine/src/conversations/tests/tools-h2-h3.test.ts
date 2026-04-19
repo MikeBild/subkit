@@ -18,6 +18,7 @@ describe("conversation tools — registration", () => {
     "fetch_connector_docs",
     "list_skill_suggestions",
     "list_skills",
+    "probe_connector",
     "propose_connector",
     "propose_skill",
     "propose_step",
