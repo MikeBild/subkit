@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
 import { connectors } from "./connectors.ts";
@@ -74,6 +75,22 @@ export const executionSteps = pgTable(
     duration_ms: integer("duration_ms"),
     retry_count: integer("retry_count").default(0).notNull(),
     error: jsonb("error"),
+    // Conversation-quality extensions (migration 0028):
+    //   placeholders_used — token names (never values) for every ${cred.*},
+    //     ${connector.*}, ${input.*}, ${scope.*} placeholder the step
+    //     actually resolved at dispatch time. Used for audit forensics and
+    //     to prove the step did not hardcode a secret.
+    //   redacted_fields   — dotted paths of output fields masked/dropped/hashed
+    //     by the DLP layer before handing the step output to downstream steps
+    //     or the LLM context. Shape: [{ path, action, reason }].
+    placeholders_used: jsonb("placeholders_used")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    redacted_fields: jsonb("redacted_fields")
+      .$type<Array<{ path: string; action: string; reason?: string }>>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     started_at: timestamp("started_at", { withTimezone: true }),
     finished_at: timestamp("finished_at", { withTimezone: true }),
   },

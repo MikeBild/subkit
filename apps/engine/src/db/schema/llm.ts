@@ -8,14 +8,17 @@
 //   accounting, fallback telemetry, and operator debugging all land in a
 //   single append-only ledger.
 
+import { sql } from "drizzle-orm";
 import {
   bigint,
   bigserial,
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
+  timestamp,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -35,9 +38,48 @@ export const tenantLlmSettings = pgTable(
     llm_provider_credentials_auth_tag: bytea("llm_provider_credentials_auth_tag"),
     llm_monthly_token_budget: integer("llm_monthly_token_budget"),
     enable_prompt_cache: boolean("enable_prompt_cache").notNull().default(false),
+    // Conversation-quality extensions (migration 0028).
+    //   system_prompt_additions — appended to the stable prompt block (cache-friendly).
+    //   default_environment    — the environment (dev|prod) the LLM assumes when the
+    //                             user does not specify one; surfaced in [TENANT STATE].
+    //   auto_discovery         — enables the attachment-upload → discovery background job.
+    //   failure_notification_channels — list of notification channel IDs that receive
+    //                             conversation-failure alerts (see failure-hooks.ts).
+    //   confirmation_profile   — strict | relaxed | resume_aware. Governs the
+    //                             confirm_before_execution policy for long-idle sessions.
+    system_prompt_additions: text("system_prompt_additions"),
+    default_environment: text("default_environment").notNull().default("dev"),
+    auto_discovery: boolean("auto_discovery").notNull().default(true),
+    failure_notification_channels: jsonb("failure_notification_channels")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    confirmation_profile: text("confirmation_profile").notNull().default("strict"),
     ...timestamps,
   },
   (t) => [uniqueIndex("tenant_llm_settings_tenant_key").on(t.tenant_id)],
+);
+
+// Per-tenant DLP rules (migration 0028). Applied to every step output before
+// the LLM sees it. Enforced by execution/response-filters.ts.
+//   path_match      — JSON path expression (supports '*' and '**' wildcards).
+//   pattern_regex   — optional: only redact when the value matches this regex.
+//   action          — mask | drop | hash.
+//   reason          — operator-facing justification; written to audit metadata.
+export const tenantDlpRules = pgTable(
+  "tenant_dlp_rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    path_match: text("path_match").notNull(),
+    pattern_regex: text("pattern_regex"),
+    action: text("action").notNull(),
+    reason: text("reason"),
+    enabled: boolean("enabled").notNull().default(true),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("tenant_dlp_rules_tenant_enabled_idx").on(t.tenant_id, t.enabled)],
 );
 
 export const llmUsage = pgTable(
