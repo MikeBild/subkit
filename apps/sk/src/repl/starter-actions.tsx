@@ -10,9 +10,10 @@ export interface StarterAction {
 
 export const DEFAULT_STARTER_ACTIONS: readonly StarterAction[] = [
   { key: "1", label: "Resume recent conversation", detail: "opens /resume" },
-  { key: "2", label: "Describe a workflow", detail: "prefills a structured draft" },
-  { key: "3", label: "Inspect tenant status", detail: "opens /status" },
-  { key: "4", label: "Open help", detail: "shows slash commands" },
+  { key: "2", label: "Connect a system", detail: "guided connector setup prompt" },
+  { key: "3", label: "Describe a workflow", detail: "guided workflow authoring prompt" },
+  { key: "4", label: "Import docs or a spec", detail: "guided docs-first prompt" },
+  { key: "5", label: "Open help", detail: "shows slash commands" },
 ] as const;
 
 interface StarterActionsProps {

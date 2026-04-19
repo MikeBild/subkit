@@ -7,12 +7,13 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { conversationDrafts, conversations } from "../db/schema/index.ts";
+import { createEmptyDraftDocument, normalizeDraftDocument } from "./authoring-state.ts";
 import type { DraftDocument } from "./types.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function emptyDraft(): DraftDocument {
-  return { name: "new-workflow", steps: [] };
+  return createEmptyDraftDocument();
 }
 
 function padOrdinal(n: number): string {
@@ -50,11 +51,11 @@ export async function loadDraft(
       .limit(1);
     const draft = convRows[0]?.draft;
     if (draft && typeof draft === "object") {
-      return draft as DraftDocument;
+      return normalizeDraftDocument(draft);
     }
     return emptyDraft();
   }
-  return row.snapshot as DraftDocument;
+  return normalizeDraftDocument(row.snapshot);
 }
 
 /**
@@ -74,16 +75,17 @@ export async function appendSnapshot(
     .from(conversationDrafts)
     .where(eq(conversationDrafts.conversation_id, conversation_id))) as Array<{ n: number }>;
   const next = (row?.n ?? 0) + 1;
+  const normalized = normalizeDraftDocument(draft);
   await exec.insert(conversationDrafts).values({
     tenant_id,
     conversation_id,
     ordinal: padOrdinal(next),
-    snapshot: draft as unknown as Record<string, unknown>,
+    snapshot: normalized as unknown as Record<string, unknown>,
   });
   // Mirror to conversations.draft for easy reads.
   await exec
     .update(conversations)
-    .set({ draft: draft as unknown as Record<string, unknown>, updated_at: new Date() })
+    .set({ draft: normalized as unknown as Record<string, unknown>, updated_at: new Date() })
     .where(eq(conversations.id, conversation_id));
 }
 
@@ -111,7 +113,9 @@ export async function undoLastSnapshot(
   if (!head) return emptyDraft();
   await exec.delete(conversationDrafts).where(eq(conversationDrafts.id, head.id));
   const next = rows[1];
-  const draft = (next?.snapshot as DraftDocument | undefined) ?? emptyDraft();
+  const draft = normalizeDraftDocument(
+    (next?.snapshot as DraftDocument | undefined) ?? emptyDraft(),
+  );
   await exec
     .update(conversations)
     .set({ draft: draft as unknown as Record<string, unknown>, updated_at: new Date() })

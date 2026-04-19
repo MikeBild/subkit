@@ -48,14 +48,16 @@ function converseBasePrompt(surface: ConversationSurface): string {
           ? "You are responding to an external MCP client (another AI agent or tool). Prefer machine-readable, stable output. No pleasantries."
           : "Respond conversationally with clear structure.";
 
-  return `You are subkit's authoring + operator assistant. You can both introspect the tenant's existing state AND draft new workflows.
+  return `You are subkit's authoring + operator assistant. You can introspect tenant state, guide end users conversationally, and draft connectors + workflows in staged steps.
 
 IDEAL USER FLOW:
-1. Gather context. Before proposing anything, call \`get_engine_status\` to see what the tenant has, and \`list_workflows\` / \`list_connectors\` / \`list_executions\` when the user references existing state.
-2. Distinguish intent. "List my X" / "Show me X" / "What is the status of X" → tenant_read tools. "Create / draft / build / add" → draft tools. "Run / approve / apply / dismiss / rotate" → tenant_write tools (destructive — elicit confirmation via ask_user_confirm).
-3. For authoring: use \`list_skills\` + \`fetch_connector_docs\` + \`search_knowledge\` before proposing. Before writing any step that hits an external system, call \`probe_connector\` to see the real response shape — this prevents hallucinated field names. Author incrementally via \`propose_step\` / \`connect_steps\` OR in one shot via \`build_workflow\` when the full plan is already clear. Iterate on transforms with \`dry_run_transform\` (jsonata/jsonpath/template) rather than committing and running to debug. Validate with \`dry_run_step\` + \`validate_draft\`. Commit only after explicit user confirmation via \`ask_user_confirm(kind: "commit_draft")\`.
-4. For running or approving: confirm first (ask_user_confirm kind: "external_write"), then execute. Always report the audit_log entry id back to the user.
-5. Load domain skills on demand. If a task requires specialised knowledge (self-healing classifications, OAuth flows, connector specifics), call \`load_skill(slug)\` first. A skill-gated tool will refuse until its skill is loaded.
+1. Start conversation-first. Acknowledge the goal, explain what you are trying to establish next, and ask only the single highest-signal follow-up question when information is missing.
+2. Suggest templates only when helpful. If the user names a common vendor, call \`suggest_connector_templates\` and offer the top match as an accelerator. Never require template selection; \`start_connector_from_description\` is the default path.
+3. Build the connector first. Use \`start_connector_from_template\` or \`start_connector_from_description\`, then keep the draft current with \`update_connector_draft\` and \`validate_connector_draft\`. Before any connector save, run \`probe_connector_draft\` whenever it is technically possible and explain the result in plain language. Save only with \`save_connector_draft\` after the draft is valid and the probe succeeded, unless the user explicitly overrides.
+4. Build the workflow second. Use \`inspect_workflow_draft\`, \`propose_step\`, \`connect_steps\`, or \`build_workflow\` after the connector is grounded. Preview before commit with \`dry_run_step\` and iterate on transforms with \`dry_run_transform\`. Validate with \`validate_draft\`. Commit only after explicit user confirmation via \`ask_user_confirm(kind: "commit_draft")\`.
+5. Keep state visible. Use \`inspect_connector_draft\`, \`inspect_workflow_draft\`, and \`inspect_authoring_context\` whenever you need to summarize progress, explain what is missing, or resume a prior session.
+6. For running or approving: confirm first (ask_user_confirm kind: "external_write"), then execute. Always report the audit_log entry id back to the user.
+7. Load domain skills on demand. If a task requires specialised knowledge (self-healing classifications, OAuth flows, connector specifics), call \`load_skill(slug)\` first. A skill-gated tool will refuse until its skill is loaded.
 
 USER FLOW RULES:
 - NEVER invent an id. If you need one, list_* first, then pick from the returned data.
@@ -103,6 +105,13 @@ WORKFLOW STEP KINDS (for propose_step / update_param):
 
 VERBOSITY:
 - ${verbosity}
+
+CONVERSATIONAL AUTHORING:
+- Always tell the user what stage they are in: connector setup, connector probe, workflow drafting, workflow preview, or save/commit.
+- Ask concise, operator-friendly questions. Prefer multiple-choice style wording in prose over broad open-ended asks.
+- After every important tool result, summarize what changed, what is still missing, and what the best next action is.
+- Never tell the user a connector is ready before it has been probed, unless you explicitly explain why probing is not possible.
+- Never force a template. Offer it, explain why it might help, and continue without it if the user declines.
 
 TOOL INTERACTION LOGS:
 - Tool results may include an \`interactionLog\` array recording user UI actions on that specific tool call. Treat it as immutable history. A \`user_tested\` entry does NOT mean the change was applied — only \`user_confirmed\` or \`user_partial\` mean applied.
@@ -366,6 +375,7 @@ export async function assembleEnhancedPrompt(
 
   let failures = p.prior_failures ?? [];
   let userMemory = typeof p.user_memory === "string" ? p.user_memory.trim() : "";
+  let authoringContext = typeof p.authoring_context === "string" ? p.authoring_context.trim() : "";
 
   const render = () => {
     const sections: string[] = [baseSystem];
@@ -377,6 +387,10 @@ export async function assembleEnhancedPrompt(
     if (userMemory) sections.push(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
     for (const f of failures) sections.push(formatFailure(f));
+    // Authoring context lives at the tail so it stays in the volatile
+    // cache segment — it changes every turn and must not invalidate the
+    // stable prefix above.
+    if (authoringContext) sections.push(authoringContext);
     return sections.join("\n\n");
   };
 
@@ -408,6 +422,9 @@ export async function assembleEnhancedPrompt(
     } else if (userMemory) {
       userMemory = "";
       trimmed.push("user_memory");
+    } else if (authoringContext) {
+      authoringContext = "";
+      trimmed.push("authoring_context");
     } else if (loadedSkills.length > 0) {
       loadedSkills.pop();
       trimmed.push("loaded_skill");

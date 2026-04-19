@@ -14,6 +14,7 @@ import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
+import { getElicitation } from "../elicitations.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
@@ -78,6 +79,12 @@ describe("policy confirm_before_execution wiring", () => {
     // An elicit_request frame landed in the event stream.
     const elicit = events.find((e) => e.type === "elicit_request");
     expect(elicit).toBeDefined();
+    if (!elicit || elicit.type !== "elicit_request") {
+      throw new Error("expected elicit_request event");
+    }
+    const elicitation = await getElicitation(ctx.tenant_id, elicit.elicitation_id, ctx.testDb.db);
+    expect(elicitation?.tool_name).toBe("ask_user_confirm");
+    expect(elicitation?.status).toBe("pending");
 
     // conversation_tool_calls row carries confirmation_state=proposed
     // with resolved_mode in confirmation_data.

@@ -8,11 +8,18 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
-import { conversationMessages, conversations, conversationToolCalls } from "../db/schema/index.ts";
+import {
+  conversationElicitations,
+  conversationMessages,
+  conversations,
+  conversationToolCalls,
+} from "../db/schema/index.ts";
 import { getMockProvider } from "../llm/mock-provider.ts";
 import { log } from "../logging/logger.ts";
+import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { loadDraft, undoLastSnapshot } from "./draft.ts";
 import { type RunLoopResult, runLoop } from "./loop.ts";
+import { buildResumeSummary, shouldShowResumeSummary } from "./resume.ts";
 import type {
   ConversationDetail,
   ConversationMessageRecord,
@@ -70,7 +77,7 @@ export async function createConversation(
       target_connector_id: p.connector_id ?? null,
       target_workflow_id: p.workflow_id ?? null,
       status: "active",
-      draft: { name: "new-workflow", steps: [] },
+      draft: createEmptyDraftDocument(),
       owner_id: p.actor_id ?? null,
       ...(p.model ? { model: p.model } : {}),
       ...(p.title ? { title: p.title } : {}),
@@ -134,6 +141,12 @@ export async function createConversation(
     if (/open.?meteo|berlin.*weather|tomorrow.*forecast/i.test(msg)) {
       const { cannedOpenMeteoBerlinPlan } = await import("../llm/mock-provider.ts");
       getMockProvider().setConversePlan(row.id, cannedOpenMeteoBerlinPlan());
+    } else if (
+      /subkit engine onboarding|guided connector workflow|connect the subkit engine/i.test(msg)
+    ) {
+      const { cannedConnectorWorkflowPlan } = await import("../llm/mock-provider.ts");
+      const baseUrl = process.env.SUBKIT_PUBLIC_BASE_URL ?? "http://127.0.0.1:8080";
+      getMockProvider().setConversePlan(row.id, cannedConnectorWorkflowPlan(baseUrl));
     } else if (/list.*users/i.test(msg)) {
       const { cannedListUsersPlan } = await import("../llm/mock-provider.ts");
       getMockProvider().setConversePlan(row.id, cannedListUsersPlan(p.connector_id ?? undefined));
@@ -396,6 +409,13 @@ export interface ContextSnapshot {
   conversation_id: string;
   connector_id: string | null;
   workflow_id: string | null;
+  draft_mode: string;
+  draft_summary: {
+    readiness: string;
+    next_action: string | null;
+    missing_fields: string[];
+    progress_label: string | null;
+  } | null;
   skills: {
     global: Array<{ id: string; title: string }>;
     connector: Array<{ id: string; title: string }>;
@@ -461,6 +481,15 @@ export async function getContextSnapshot(
     conversation_id,
     connector_id: detail.conversation.target_connector_id,
     workflow_id: detail.conversation.target_workflow_id,
+    draft_mode: detail.draft?.mode ?? "onboarding",
+    draft_summary: detail.draft?.summary
+      ? {
+          readiness: detail.draft.summary.readiness,
+          next_action: detail.draft.summary.next_action,
+          missing_fields: detail.draft.summary.missing_fields,
+          progress_label: detail.draft.summary.progress_label,
+        }
+      : null,
     skills: {
       ...byScope,
       total: applicable.length,
@@ -524,8 +553,42 @@ export async function getConversation(
     .where(eq(conversationToolCalls.conversation_id, id))
     .orderBy(asc(conversationToolCalls.created_at));
   const draft = await loadDraft(tenant_id, id, exec);
+  const conversationRecord = rowToRecord(row);
+  const pendingElicitationRows = await exec
+    .select()
+    .from(conversationElicitations)
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, tenant_id),
+        eq(conversationElicitations.conversation_id, id),
+        eq(conversationElicitations.status, "pending"),
+      ),
+    )
+    .orderBy(desc(conversationElicitations.created_at))
+    .limit(1);
+  const pendingElicitation = pendingElicitationRows[0]
+    ? {
+        id: pendingElicitationRows[0].id,
+        tool_name: pendingElicitationRows[0].tool_name,
+        summary:
+          typeof (pendingElicitationRows[0].input as { summary?: unknown })?.summary === "string"
+            ? ((pendingElicitationRows[0].input as { summary?: string }).summary ?? null)
+            : null,
+      }
+    : null;
+  const resumeSummary = shouldShowResumeSummary({
+    conversation: conversationRecord,
+    draft,
+    pendingElicitation,
+  })
+    ? buildResumeSummary({
+        conversation: conversationRecord,
+        draft,
+        pendingElicitation,
+      })
+    : null;
   return {
-    conversation: rowToRecord(row),
+    conversation: conversationRecord,
     messages: msgs.map(
       (m): ConversationMessageRecord => ({
         id: m.id,
@@ -547,6 +610,7 @@ export async function getConversation(
       }),
     ),
     draft,
+    resume_summary: resumeSummary,
   };
 }
 

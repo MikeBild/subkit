@@ -14,6 +14,7 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
 import { checkAndDecrement, checkBudget, monthlyUsage, recordUsage } from "../llm/budgets.ts";
+import { renderAuthoringContextBlock } from "../llm/core/authoring-context-block.ts";
 import { assembleEnhancedPrompt } from "../llm/core/context-assembler.ts";
 import { resolveModelRoute, resolveLanguageModel as resolveSdkModel } from "../llm/core/invoke.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
@@ -105,6 +106,27 @@ const committedStopCondition = ({
       "committed_workflow_id" in (output as Record<string, unknown>) &&
       typeof (output as { committed_workflow_id?: unknown }).committed_workflow_id === "string"
     );
+  });
+};
+
+/**
+ * Stop after any tool returns a pause payload. This is required for
+ * policy-gated confirm-before-execution flows where the wrapper emits
+ * an `ask_user_confirm` elicitation without the model explicitly
+ * calling `ask_user_confirm` as a tool in the same step.
+ */
+const pausedStopCondition = ({
+  steps,
+}: {
+  steps: ReadonlyArray<{
+    toolResults: ReadonlyArray<{ output?: unknown }>;
+  }>;
+}): boolean => {
+  const last = steps[steps.length - 1];
+  if (!last) return false;
+  return last.toolResults.some((result) => {
+    const output = result.output;
+    return !!output && typeof output === "object" && "pause" in (output as Record<string, unknown>);
   });
 };
 
@@ -250,6 +272,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     .where(eq(conversations.id, p.conversation_id))
     .limit(1);
   const loadedSkillSlugs = (loadedSkillsRowForPrompt[0]?.loaded_skills ?? []) as string[];
+  const authoringContext = renderAuthoringContextBlock({ draft });
   const prompt = await assembleEnhancedPrompt(
     {
       tenant_id: p.tenant_id,
@@ -262,6 +285,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ...(p.user_memory ? { user_memory: p.user_memory } : {}),
       ...(loadedSkillSlugs.length > 0 ? { loaded_skill_slugs: loadedSkillSlugs } : {}),
       ...(p.surface ? { surface: p.surface } : {}),
+      ...(authoringContext ? { authoring_context: authoringContext } : {}),
     },
     p.db,
   );
@@ -359,6 +383,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         hasToolCall("ask_user_text"),
         hasToolCall("ask_user_form"),
         hasToolCall("ask_user_confirm"),
+        // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
+        pausedStopCondition as any,
         // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
         committedStopCondition as any,
       ],

@@ -132,11 +132,27 @@ async function runInteractiveScenario(steps: readonly ExpectStep[]): Promise<voi
 }
 
 describe("sk interactive smoke", () => {
-  test("renders quick-start onboarding and opens help from starter action 4", async () => {
+  test("starter action 2 seeds the guided connector onboarding prompt", async () => {
     if (!EXPECT_BIN) return;
     await runInteractiveScenario([
       { kind: "wait", pattern: "(?i)quick start", label: "quick-start" },
-      { kind: "send", text: "4" },
+      { kind: "send", text: "2" },
+      { kind: "wait", pattern: "I want to connect a system\\.", label: "connector-starter" },
+      {
+        kind: "wait",
+        pattern: "Suggest a template only if it clearly helps",
+        label: "connector-guidance",
+      },
+      { kind: "send", text: "/exit\r" },
+    ]);
+    expect(true).toBe(true);
+  }, 40_000);
+
+  test("renders quick-start onboarding and opens help from starter action 5", async () => {
+    if (!EXPECT_BIN) return;
+    await runInteractiveScenario([
+      { kind: "wait", pattern: "(?i)quick start", label: "quick-start" },
+      { kind: "send", text: "5" },
       { kind: "wait", pattern: "sk . slash commands", label: "help-pane" },
       { kind: "wait", pattern: "/help", label: "help-command" },
       { kind: "send", text: "/exit\r" },

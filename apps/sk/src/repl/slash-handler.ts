@@ -88,6 +88,138 @@ function panify(
   return [title, "", ...lines].join("\n");
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function recordString(value: unknown, fallback = "—"): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function scalarString(value: unknown, fallback = "—"): string {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+
+function draftRecord(value: unknown): Record<string, unknown> | null {
+  return asRecord(value);
+}
+
+function formatDraftSummaryLines(draft: Record<string, unknown> | null): string[] {
+  if (!draft) return ["no authoring state available"];
+  const summary = asRecord(draft.summary);
+  const workflow = asRecord(draft.workflow);
+  const connector = asRecord(draft.connector);
+  const lines: string[] = [
+    `mode: ${recordString(draft.mode, "onboarding")}`,
+    `readiness: ${recordString(summary?.readiness)}`,
+    `next action: ${recordString(summary?.next_action)}`,
+  ];
+  const progress = recordString(summary?.progress_label, "");
+  if (progress !== "") lines.push(`progress: ${progress}`);
+  const missingFields = Array.isArray(summary?.missing_fields)
+    ? summary.missing_fields.filter((field): field is string => typeof field === "string")
+    : [];
+  if (missingFields.length > 0) {
+    lines.push(`missing: ${missingFields.join(", ")}`);
+  }
+  lines.push("");
+  lines.push("connector:");
+  if (connector) {
+    lines.push(`  name: ${recordString(connector.name)}`);
+    lines.push(`  driver: ${recordString(connector.driver)}`);
+    lines.push(`  environment: ${recordString(connector.environment)}`);
+    lines.push(`  auth: ${recordString(connector.auth_type)}`);
+    const latestProbe = asRecord(connector.latest_probe);
+    if (latestProbe) lines.push(`  probe: ${scalarString(latestProbe.summary)}`);
+    const savedId = scalarString(connector.saved_connector_id, "");
+    if (savedId !== "") lines.push(`  saved id: ${savedId}`);
+  } else {
+    lines.push("  no connector draft");
+  }
+  lines.push("");
+  lines.push("workflow:");
+  if (workflow) {
+    const steps = Array.isArray(workflow.steps) ? workflow.steps.length : 0;
+    lines.push(`  name: ${recordString(workflow.name)}`);
+    lines.push(`  slug: ${recordString(workflow.slug)}`);
+    lines.push(`  steps: ${steps}`);
+    const preview = asRecord(draft.latest_preview);
+    if (preview) lines.push(`  latest preview: ${recordString(preview.summary)}`);
+  } else {
+    lines.push("  no workflow draft");
+  }
+  return lines;
+}
+
+function formatConnectorLines(draft: Record<string, unknown> | null): string[] {
+  if (!draft) return ["no authoring state available"];
+  const connector = asRecord(draft.connector);
+  if (!connector) return ["no connector draft in this conversation"];
+  const validation = asRecord(connector.validation);
+  const latestProbe = asRecord(connector.latest_probe);
+  const lines = [
+    `name: ${recordString(connector.name)}`,
+    `slug: ${recordString(connector.slug)}`,
+    `driver: ${recordString(connector.driver)}`,
+    `environment: ${recordString(connector.environment)}`,
+    `auth: ${recordString(connector.auth_type)}`,
+    `base_url: ${recordString(connector.base_url)}`,
+    `dsn: ${recordString(connector.dsn)}`,
+    `template: ${recordString(connector.template_name ?? connector.template_id, "scratch")}`,
+    `saved id: ${recordString(connector.saved_connector_id)}`,
+    "",
+    `validation: ${scalarString(validation?.ok === true ? "ok" : "needs work")}`,
+  ];
+  const missingFields = Array.isArray(validation?.missing_fields)
+    ? validation.missing_fields.filter((field): field is string => typeof field === "string")
+    : [];
+  if (missingFields.length > 0) lines.push(`missing: ${missingFields.join(", ")}`);
+  if (latestProbe) {
+    lines.push("");
+    lines.push(`probe: ${scalarString(latestProbe.summary)}`);
+    lines.push(`probe env: ${scalarString(latestProbe.environment)}`);
+    lines.push(
+      `probe method/path: ${scalarString(latestProbe.method)} ${scalarString(latestProbe.path)}`,
+    );
+    lines.push(`probe status: ${scalarString(latestProbe.status_code)}`);
+  }
+  return lines;
+}
+
+function formatWorkflowLines(draft: Record<string, unknown> | null): string[] {
+  if (!draft) return ["no authoring state available"];
+  const workflow = asRecord(draft.workflow);
+  if (!workflow) return ["no workflow draft in this conversation"];
+  const steps = Array.isArray(workflow.steps)
+    ? workflow.steps.filter((step): step is Record<string, unknown> => asRecord(step) !== null)
+    : [];
+  const lines = [
+    `name: ${recordString(workflow.name)}`,
+    `slug: ${recordString(workflow.slug)}`,
+    `description: ${recordString(workflow.description)}`,
+    `steps: ${steps.length}`,
+  ];
+  if (steps.length > 0) {
+    lines.push("");
+    lines.push("step list:");
+    for (const [index, step] of steps.entries()) {
+      lines.push(
+        `  ${index + 1}. ${recordString(step.id, `step-${index + 1}`)} · ${recordString(step.kind, "unknown")}`,
+      );
+    }
+  }
+  const preview = asRecord(draft.latest_preview);
+  if (preview) {
+    lines.push("");
+    lines.push(`latest preview: ${scalarString(preview.summary)}`);
+  }
+  return lines;
+}
+
 /**
  * Execute a slash command by name. Returns a one-line string that
  * the caller should display as a transient banner (or null to clear
@@ -162,6 +294,144 @@ export async function handleSlash(
         }
       }
       return panify(ctx, "cost", lines);
+    }
+    case "draft": {
+      if (!ctx.session.conversationId) return "no active conversation";
+      const detail = await ctx.client.getConversation(ctx.session.conversationId);
+      return panify(ctx, "draft overview", formatDraftSummaryLines(draftRecord(detail.draft)));
+    }
+    case "connector": {
+      if (!ctx.session.conversationId) return "no active conversation";
+      const detail = await ctx.client.getConversation(ctx.session.conversationId);
+      return panify(ctx, "connector draft", formatConnectorLines(draftRecord(detail.draft)));
+    }
+    case "workflow": {
+      if (!ctx.session.conversationId) return "no active conversation";
+      const detail = await ctx.client.getConversation(ctx.session.conversationId);
+      return panify(ctx, "workflow draft", formatWorkflowLines(draftRecord(detail.draft)));
+    }
+    case "templates": {
+      if (!ctx.session.conversationId) return "no active conversation";
+      const detail = await ctx.client.getConversation(ctx.session.conversationId);
+      const draft = draftRecord(detail.draft);
+      const connector = draft ? asRecord(draft.connector) : null;
+      const lines: string[] = [];
+      if (connector?.template_name) {
+        lines.push(`current template: ${scalarString(connector.template_name)}`);
+        if (connector.template_id) {
+          lines.push(`template id: ${scalarString(connector.template_id)}`);
+        }
+        lines.push("");
+      }
+      lines.push(
+        "Ask the assistant to `suggest_connector_templates` for a ranked list,",
+        "or use `start_connector_from_template` to seed a draft from one.",
+        "",
+        "Templates are optional — describe the system in your own words any time.",
+      );
+      return panify(ctx, "connector templates", lines);
+    }
+    case "probe": {
+      if (!ctx.session.conversationId) return "no active conversation";
+      const detail = await ctx.client.getConversation(ctx.session.conversationId);
+      const draft = draftRecord(detail.draft);
+      const connector = draft ? asRecord(draft.connector) : null;
+      if (!connector) {
+        return panify(ctx, "probe", [
+          "no connector draft — start one with `start_connector_from_description` or `start_connector_from_template`.",
+        ]);
+      }
+      const probe = asRecord(connector.latest_probe);
+      if (!probe) {
+        return panify(ctx, "probe", [
+          "no probe run yet on this draft.",
+          "Ask the assistant to run `probe_connector_draft` before saving.",
+        ]);
+      }
+      const lines: string[] = [
+        `status: ${probe.ok ? "ok" : "failed"}`,
+        `method: ${recordString(probe.method, "GET")}`,
+        `path: ${recordString(probe.path, "/")}`,
+        `environment: ${recordString(probe.environment, "dev")}`,
+      ];
+      if (probe.status_code !== undefined) lines.push(`http: ${probe.status_code}`);
+      if (probe.duration_ms !== undefined) lines.push(`duration: ${probe.duration_ms}ms`);
+      if (probe.summary) lines.push("", scalarString(probe.summary));
+      if (probe.failure_code) lines.push(`failure code: ${scalarString(probe.failure_code)}`);
+      return panify(ctx, "latest probe", lines);
+    }
+    case "preview": {
+      if (!ctx.session.conversationId) return "no active conversation";
+      const detail = await ctx.client.getConversation(ctx.session.conversationId);
+      const draft = draftRecord(detail.draft);
+      const preview = draft ? asRecord(draft.latest_preview) : null;
+      if (!preview) {
+        return panify(ctx, "preview", [
+          "no preview run yet on this draft.",
+          "Ask the assistant to run `dry_run_step` or `dry_run_workflow` before committing.",
+        ]);
+      }
+      const lines: string[] = [`status: ${preview.ok ? "ok" : "failed"}`];
+      if (preview.step_id) lines.push(`step: ${scalarString(preview.step_id)}`);
+      if (preview.summary) lines.push("", scalarString(preview.summary));
+      return panify(ctx, "latest preview", lines);
+    }
+    case "versions": {
+      if (!ctx.session.conversationId) return "no active conversation";
+      const detail = await ctx.client.getConversation(ctx.session.conversationId);
+      const conv = detail.conversation as { target_workflow_id?: string | null };
+      if (!conv.target_workflow_id) {
+        return panify(ctx, "versions", ["no committed workflow bound to this conversation yet."]);
+      }
+      const res = await ctx.client.listWorkflowVersions(conv.target_workflow_id);
+      if (res.items.length === 0) {
+        return panify(ctx, "versions", ["no versions recorded for this workflow"]);
+      }
+      const lines = [
+        `workflow: ${conv.target_workflow_id}`,
+        "",
+        ...res.items.map((v) => {
+          const when = new Date(v.created_at).toISOString().slice(0, 19).replace("T", " ");
+          return `  v${v.version}  ${when}  ${v.note ?? ""}`.trimEnd();
+        }),
+        "",
+        "Restore a version with `/restore <n>`.",
+      ];
+      return panify(ctx, "versions", lines);
+    }
+    case "restore": {
+      if (!ctx.session.conversationId) return "no active conversation";
+      const detail = await ctx.client.getConversation(ctx.session.conversationId);
+      const conv = detail.conversation as { target_workflow_id?: string | null };
+      if (!conv.target_workflow_id) {
+        return "no committed workflow bound to this conversation — nothing to restore";
+      }
+      const arg = rawArgs[0];
+      const version = arg ? Number.parseInt(arg, 10) : Number.NaN;
+      if (!Number.isFinite(version) || version <= 0) {
+        return "usage: /restore <version-number>";
+      }
+      const restored = await ctx.client.restoreWorkflowVersion(conv.target_workflow_id, version);
+      return `restored workflow ${restored.id} to version ${version} (new current version ${restored.version})`;
+    }
+    case "context": {
+      if (!ctx.session.conversationId) return "no active conversation";
+      const snapshot = await ctx.client.getConversationContextSnapshot(ctx.session.conversationId);
+      const lines = [
+        `draft mode: ${snapshot.draft_mode}`,
+        `readiness: ${snapshot.draft_summary?.readiness ?? "—"}`,
+        `next action: ${snapshot.draft_summary?.next_action ?? "—"}`,
+        `messages: ${snapshot.messages.total}`,
+        `last role: ${snapshot.messages.last_role ?? "—"}`,
+        `tool calls: ${snapshot.tool_calls_total}`,
+        `pending elicitations: ${snapshot.pending_elicitations}`,
+        "",
+        `skills in scope: ${snapshot.skills.total}`,
+        `global: ${snapshot.skills.global.map((skill) => skill.title).join(", ") || "—"}`,
+        `connector: ${snapshot.skills.connector.map((skill) => skill.title).join(", ") || "—"}`,
+        `workflow: ${snapshot.skills.workflow.map((skill) => skill.title).join(", ") || "—"}`,
+      ];
+      return panify(ctx, "conversation context", lines);
     }
     case "clear":
     case "new": {

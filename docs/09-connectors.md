@@ -118,7 +118,7 @@ Trade-off: storing canonical sketches rather than full responses keeps the table
 
 ## Health checks
 
-Every Connector exposes `GET /v1/connectors/:id/health`. The driver's `health` method runs a cheap, idempotent operation appropriate to its kind:
+Every Connector exposes `POST /v1/connectors/:id/test`. The driver's `health` method runs a cheap, idempotent operation appropriate to its kind:
 
 - **HTTP** — `OPTIONS` on `base_url`, falling back to `GET /` if `OPTIONS` is unsupported.
 - **Postgres** — `SELECT 1`.
@@ -127,6 +127,7 @@ Every Connector exposes `GET /v1/connectors/:id/health`. The driver's `health` m
 
 - Health reports are cached for 30 seconds per Connector to avoid hammering upstream systems.
 - A failed health report writes an `events` row of type `connector.health.degraded`, which Notification Rules can target.
+- Authoring-time probing runs via the `probe_connector_draft` conversation tool before a draft is ever saved, so the `/test` endpoint is the post-save parity check against persisted connectors.
 
 ## Tunnel binding
 

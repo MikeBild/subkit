@@ -964,18 +964,18 @@ describe("ink-app: journey 11 — approval hygiene", () => {
 // ---------- Journey 12 — onboarding, background tools, sticky errors ----------
 
 describe("ink-app: journey 12 — onboarding and transcript controls", () => {
-  test("AC1: quick-start actions render on first paint and `2` prefills a workflow prompt", async () => {
+  test("AC1: quick-start actions render on first paint and `2` prefills a connector prompt", async () => {
     const instance = renderApp();
     await tick();
     let frame = instance.lastFrame() ?? "";
     expect(frame).toContain("quick start");
     expect(frame).toContain("Resume recent conversation");
-    expect(frame).toContain("Describe a workflow");
+    expect(frame).toContain("Connect a system");
     instance.stdin.write("2");
     await tick(40);
     frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("Help me design a workflow with these steps:");
-    expect(frame).toContain("1.");
+    expect(frame).toContain("I want to connect a system.");
+    expect(frame).toContain("probe before saving");
     instance.unmount();
   });
 

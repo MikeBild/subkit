@@ -2,7 +2,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
-import type { DraftDocument } from "../types.ts";
+import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -20,18 +20,18 @@ export const updateParamTool: ConversationTool = {
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    const draft = structuredClone(ctx.getDraft()) as DraftDocument;
-    const idx = draft.steps.findIndex((s) => s.id === args.step_id);
+    const workflowDraft = structuredClone(getWorkflowDraft(ctx.getDraft()));
+    const idx = workflowDraft.steps.findIndex((s) => s.id === args.step_id);
     if (idx < 0) {
       return { ok: false, data: { error: `step not found: ${args.step_id}` } };
     }
-    const step = { ...draft.steps[idx], [args.param]: args.value };
-    draft.steps[idx] = step;
-    const validation = validateWorkflowDef(draft);
+    const step = { ...workflowDraft.steps[idx], [args.param]: args.value };
+    workflowDraft.steps[idx] = step;
+    const validation = validateWorkflowDef(workflowDraft);
     if (!validation.ok) {
       return { ok: false, data: { errors: validation.errors } };
     }
-    await ctx.setDraft(draft);
+    await ctx.setDraft(withWorkflowDraft(ctx.getDraft(), workflowDraft, "workflow_step_updated"));
     return { ok: true, data: { step_id: args.step_id, param: args.param } };
   },
 };

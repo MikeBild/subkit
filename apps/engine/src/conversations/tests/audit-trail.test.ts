@@ -54,6 +54,7 @@ describe("conversations/audit-trail", () => {
       "propose_step",
       "propose_step",
       "validate_draft",
+      "dry_run_step",
       "ask_user_confirm",
     ];
     expect(toolCallsAfterPause.map((r) => r.tool)).toEqual(expectedToolsPause);

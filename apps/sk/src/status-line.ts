@@ -48,6 +48,22 @@ export interface StatusLineInput {
   cwd: string;
   git_branch: string | null;
   timestamp: string;
+  /** Authoring mode of the active conversation (onboarding / connector_authoring / workflow_authoring / resume_review). */
+  authoring_mode?: string | null;
+  /** "connector" | "workflow" | "none" — what the user is currently shaping. */
+  target_kind?: "connector" | "workflow" | "none" | null;
+  /** Human-readable target name (connector display name or workflow name). */
+  target_name?: string | null;
+  /** "dev" | "prod" for the active draft. */
+  environment?: string | null;
+  /** Current draft readiness (drafting / needs_input / ready_to_probe / ready_to_save / saved). */
+  draft_state?: string | null;
+  /** Number of pending approvals on the active conversation. */
+  pending_approvals?: number | null;
+  /** "ok" / "failed" / null — latest probe outcome. */
+  latest_probe_state?: string | null;
+  /** "ok" / "failed" / null — latest preview outcome. */
+  latest_preview_state?: string | null;
 }
 
 export interface StatusLineConfig {
@@ -57,7 +73,7 @@ export interface StatusLineConfig {
 }
 
 const DEFAULT_FORMAT =
-  "{user}{@tenant} · {engine_host} · {model} · conn:{connectors_count} · {turn_tokens}t (today {tokens_today}t) · [{permission_mode}]{status_message}";
+  "{user}{@tenant} · {engine_host} · {model} · conn:{connectors_count} · {turn_tokens}t (today {tokens_today}t){authoring_chip} · [{permission_mode}]{status_message}";
 const DEFAULT_REFRESH_MS = 500;
 
 /**
@@ -117,7 +133,28 @@ function resolvePlaceholders(input: StatusLineInput): Record<string, string> {
     cwd: path.basename(input.cwd),
     git_branch: input.git_branch ?? "",
     timestamp: input.timestamp,
+    authoring_mode: input.authoring_mode ?? "",
+    target_kind: input.target_kind ?? "",
+    target_name: input.target_name ?? "",
+    environment: input.environment ?? "",
+    draft_state: input.draft_state ?? "",
+    pending_approvals:
+      input.pending_approvals && input.pending_approvals > 0 ? String(input.pending_approvals) : "",
+    latest_probe_state: input.latest_probe_state ?? "",
+    latest_preview_state: input.latest_preview_state ?? "",
+    authoring_chip: renderAuthoringChip(input),
   };
+}
+
+function renderAuthoringChip(input: StatusLineInput): string {
+  const target =
+    input.target_kind === "connector" ? "conn" : input.target_kind === "workflow" ? "wf" : null;
+  if (!target || !input.target_name) return "";
+  const env = input.environment ? `:${input.environment}` : "";
+  const state = input.draft_state ? `[${input.draft_state}]` : "";
+  const approvals =
+    input.pending_approvals && input.pending_approvals > 0 ? ` !${input.pending_approvals}` : "";
+  return ` · ${target}=${input.target_name}${env}${state}${approvals}`;
 }
 
 /**

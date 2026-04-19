@@ -244,6 +244,7 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr || typeof addr !== "object") throw new Error("failed to get server port");
   const baseUrl = `http://127.0.0.1:${addr.port}`;
+  process.env.SUBKIT_PUBLIC_BASE_URL = baseUrl;
 
   return {
     baseUrl,
