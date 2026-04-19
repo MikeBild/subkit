@@ -288,7 +288,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     .where(eq(conversations.id, p.conversation_id))
     .limit(1);
   const loadedSkillSlugs = (loadedSkillsRowForPrompt[0]?.loaded_skills ?? []) as string[];
-  const authoringContext = renderAuthoringContextBlock({ draft });
+  const authoringContext = renderAuthoringContextBlock({
+    draft,
+    user_message: currentUserText,
+  });
   const prompt = await assembleEnhancedPrompt(
     {
       tenant_id: p.tenant_id,

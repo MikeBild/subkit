@@ -70,7 +70,7 @@ describe("chat-first parity", () => {
     await tick();
     const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toMatch(/sk[\s·]+v\d+\.\d+\.\d+(?:-[\w.-]+)?/);
-    expect(frame).toContain("Connect systems, build workflows");
+    expect(frame).toContain("Resume work, connect a system");
     expect(frame).toContain("❯");
     expect(frame).toContain("session new");
     expect(frame).toContain("ask");
@@ -93,7 +93,7 @@ describe("chat-first parity", () => {
     await pressEnter(instance);
     await tick(60);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).not.toContain("Connect systems, build workflows");
+    expect(frame).not.toContain("Resume work, connect a system");
     expect(frame).toContain("ok");
     instance.unmount();
   });
