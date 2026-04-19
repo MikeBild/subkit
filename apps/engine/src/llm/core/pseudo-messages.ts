@@ -213,6 +213,60 @@ export async function buildLoadedSkillsMessage(
   return lines.join("\n");
 }
 
+interface OnboardingOpts {
+  tenant_id: string;
+  db: Db;
+}
+
+/** Context-aware starter hint for a new tenant or a tenant that has
+ *  never run a workflow. Returns null for an experienced tenant so the
+ *  prompt stays lean. */
+export async function buildOnboardingHint(
+  opts: OnboardingOpts,
+): Promise<string | null> {
+  const [connCount] = await opts.db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(connectors)
+    .where(eq(connectors.tenant_id, opts.tenant_id));
+  const [wfCount] = await opts.db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(workflows)
+    .where(eq(workflows.tenant_id, opts.tenant_id));
+  const [runCount] = await opts.db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(executions)
+    .where(eq(executions.tenant_id, opts.tenant_id));
+
+  const connectors_n = Number(connCount?.c ?? 0);
+  const workflows_n = Number(wfCount?.c ?? 0);
+  const runs_n = Number(runCount?.c ?? 0);
+
+  if (connectors_n === 0) {
+    return [
+      "[ONBOARDING] Fresh tenant — zero connectors yet.",
+      "Guide the operator to either:",
+      "- upload an OpenAPI / GraphQL spec via @file: (the engine auto-discovers connectors), or",
+      "- call `propose_connector` to register a connector by hand (slug, driver, base_url).",
+      "Then seed credentials via the UI's secure input before anything can run.",
+    ].join("\n");
+  }
+  if (workflows_n === 0) {
+    return [
+      "[ONBOARDING] Connectors present but no workflows yet.",
+      "Suggest `probe_connector` against each connector to see the real response shape,",
+      "then `build_workflow` (or `propose_step`+`commit_draft`) to persist the first one.",
+    ].join("\n");
+  }
+  if (runs_n === 0) {
+    return [
+      "[ONBOARDING] Workflows persisted but nothing has run yet.",
+      "Propose `run_workflow` against a dev environment with a small payload to validate the chain.",
+    ].join("\n");
+  }
+  // Experienced tenant — no hint needed.
+  return null;
+}
+
 /** Build every pseudo-message for a given conversation context. Returns
  *  the concatenated text block (or null when all builders returned null).
  *  Consumed by the conversation loop as the volatile system-prompt tail. */
@@ -228,6 +282,7 @@ export async function buildAllPseudoMessages(opts: {
     buildAttachmentsMessage(opts),
     buildDiscoveryMessage(opts),
     buildLoadedSkillsMessage(opts),
+    buildOnboardingHint(opts),
   ]);
   const nonNull = blocks.filter((b): b is string => typeof b === "string" && b.length > 0);
   if (nonNull.length === 0) return null;

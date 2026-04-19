@@ -274,7 +274,7 @@ describe("buildAllPseudoMessages", () => {
     expect(s).toContain("[LOADED SKILLS]");
   });
 
-  test("all-null → null", async () => {
+  test("empty tenant falls back to onboarding hint (not null)", async () => {
     const [freshT] = await ctx.db
       .insert(tenants)
       .values({ slug: "t-pm-null", display_name: "null" })
@@ -288,6 +288,9 @@ describe("buildAllPseudoMessages", () => {
       conversation_id: freshConv!.id,
       db: ctx.db,
     });
-    expect(msg).toBeNull();
+    // Onboarding hint ALWAYS fills in when the tenant has no connectors
+    // — a truly silent prompt would leave a new operator with no hook.
+    expect(msg).not.toBeNull();
+    expect(msg).toContain("[ONBOARDING]");
   });
 });

@@ -25,6 +25,7 @@ import { describeConnectorPlaceholders, parsePlaceholders } from "../../llm/subs
 import { sampleToSchema } from "../../workflows/sample-to-schema.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import type { DraftDocument } from "../types.ts";
+import { verifyWorkflow } from "../verifier.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const StepShape = z.record(z.string(), z.unknown());
@@ -245,6 +246,36 @@ export const buildWorkflowTool: ConversationTool = {
       };
     }
 
+    // Static verification: JSONata parse, scope-ref integrity, method
+    // safety hints, output_schema sanity. Errors block the draft;
+    // warnings + infos surface in the response so the author can decide
+    // to ignore or fix.
+    const verdict = verifyWorkflow({
+      name: args.name,
+      slug: args.slug,
+      ...(args.description ? { description: args.description } : {}),
+      steps: args.steps,
+      ...(args.output_schema ? { output_schema: args.output_schema } : {}),
+      ...(args.output_transform ? { output_transform: args.output_transform } : {}),
+    });
+    if (verdict.errors.length > 0) {
+      return {
+        ok: false,
+        data: {
+          persistence: "none" as const,
+          error: {
+            code: "verifier_rejected",
+            message: `static verifier found ${verdict.errors.length} error(s)`,
+            details: {
+              errors: verdict.errors,
+              warnings: verdict.warnings,
+              infos: verdict.infos,
+            },
+          },
+        },
+      };
+    }
+
     // Input schema inference.
     let input_schema = args.input_schema;
     const warnings: string[] = [];
@@ -277,7 +308,11 @@ export const buildWorkflowTool: ConversationTool = {
           step_count: args.steps.length,
           input_schema_inferred: input_schema !== undefined && args.input_schema === undefined,
         },
-        warnings,
+        warnings: [
+          ...warnings,
+          ...verdict.warnings.map((w) => `${w.code}:${w.path}`),
+        ],
+        infos: verdict.infos.map((i) => `${i.code}:${i.path}`),
       },
     };
   },
