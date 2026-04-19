@@ -95,4 +95,26 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
       }),
     ).toBe("confirm_before_execution");
   });
+
+  it("cleanup write tools require confirm by default", () => {
+    const cleanupTools = [
+      "delete_workflow",
+      "delete_connector",
+      "delete_knowledge_source",
+      "delete_subscription",
+      "delete_tunnel",
+      "revoke_api_key",
+      "revoke_portal_token",
+    ] as const;
+    for (const tool of cleanupTools) {
+      expect(
+        resolveToolMode({
+          tool,
+          category: "tenant_write",
+          input: { id: "00000000-0000-0000-0000-000000000000" },
+          overrides: {},
+        }),
+      ).toBe("confirm_before_execution");
+    }
+  });
 });

@@ -7,6 +7,8 @@
 
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
+import { auditAwait } from "../audit/audit.ts";
+import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { tunnels, tunnelTargets } from "../db/schema/index.ts";
 
@@ -168,11 +170,37 @@ export async function getTunnel(
 export async function deleteTunnel(
   tenant_id: string,
   id: string,
+  actor_id: string | null,
   executor: Executor,
 ): Promise<boolean> {
-  const res = await (executor as Db)
-    .delete(tunnels)
-    .where(and(eq(tunnels.tenant_id, tenant_id), eq(tunnels.id, id)))
-    .returning({ id: tunnels.id });
-  return res.length > 0;
+  return await (executor as Db).transaction(async (tx) => {
+    const existing = (await tx
+      .select()
+      .from(tunnels)
+      .where(and(eq(tunnels.tenant_id, tenant_id), eq(tunnels.id, id)))
+      .limit(1)) as TunnelRow[];
+    const row = existing[0];
+    if (!row) return false;
+
+    const res = await tx
+      .delete(tunnels)
+      .where(and(eq(tunnels.tenant_id, tenant_id), eq(tunnels.id, id)))
+      .returning({ id: tunnels.id });
+    if (res.length === 0) return false;
+
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: actor_id ? "user" : "system",
+        actor_id,
+        action: AuditAction.TUNNEL_UNREGISTERED,
+        resource_type: "tunnel",
+        resource_id: id,
+        result: "success",
+        metadata: { name: row.name },
+      },
+      tx,
+    );
+    return true;
+  });
 }

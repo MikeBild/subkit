@@ -9,7 +9,7 @@
 
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getAuditRowById, queryAuditLog } from "../audit/query.ts";
-import { getConnector, listConnectors } from "../connectors/service.ts";
+import { deleteConnector, getConnector, listConnectors } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
 import { getDb } from "../db/client.ts";
 import {
@@ -31,7 +31,12 @@ import * as skillsSvc from "../skills/service.ts";
 import * as tunnelsSvc from "../tunnels/service.ts";
 import * as inboundSvc from "../webhooks/inbound/service.ts";
 import * as subscriptionsSvc from "../webhooks/outbound/service.ts";
-import { getWorkflow, getWorkflowBySlug, listWorkflows } from "../workflows/service.ts";
+import {
+  deleteWorkflow,
+  getWorkflow,
+  getWorkflowBySlug,
+  listWorkflows,
+} from "../workflows/service.ts";
 
 export type EngineClientActorType = "user" | "system_account" | "system";
 
@@ -75,6 +80,7 @@ export class EngineClient {
       listWorkflows(this.tenant_id, opts ?? {}, this.db),
     get: (id: string) => getWorkflow(this.tenant_id, id, this.db),
     getBySlug: (slug: string) => getWorkflowBySlug(this.tenant_id, slug, this.db),
+    delete: (id: string) => deleteWorkflow(this.tenant_id, id, this.actor_id, this.db),
     count: async () => {
       const [row] = await this.db
         .select({ c: sql<number>`count(*)::int` })
@@ -87,6 +93,7 @@ export class EngineClient {
   connectors = {
     list: () => listConnectors(this.tenant_id, {}, this.db),
     get: (id: string) => getConnector(this.tenant_id, id, this.db),
+    delete: (id: string) => deleteConnector(this.tenant_id, id, this.actor_id, this.db),
     count: async () => {
       const [row] = await this.db
         .select({ c: sql<number>`count(*)::int` })
@@ -167,6 +174,8 @@ export class EngineClient {
   knowledgeSources = {
     list: () => knowledgeSvc.listKnowledgeSources({ tenant_id: this.tenant_id }, this.db),
     get: (id: string) => knowledgeSvc.getKnowledgeSource(this.tenant_id, id, this.db),
+    delete: (id: string) =>
+      knowledgeSvc.deleteKnowledgeSource(this.tenant_id, id, this.actor_id, this.db),
     search: (query: string, opts?: { workflow_id?: string; limit?: number }) =>
       knowledgeSvc.searchKnowledge(
         {
@@ -221,7 +230,14 @@ export class EngineClient {
     getUser: (id: string) => identitySvc.getUser(this.tenant_id, id, this.db),
     listApiKeys: () => identitySvc.listApiKeys(this.tenant_id, this.db),
     getApiKey: (id: string) => identitySvc.getApiKey(this.tenant_id, id, this.db),
+    revokeApiKey: (id: string) =>
+      identitySvc.revokeApiKey({ tenant_id: this.tenant_id, id, actor_id: this.actor_id }, this.db),
     listPortalTokens: () => identitySvc.listPortalTokens(this.tenant_id, this.db),
+    revokePortalToken: (id: string) =>
+      identitySvc.revokePortalToken(
+        { tenant_id: this.tenant_id, id, actor_id: this.actor_id },
+        this.db,
+      ),
     listSystemAccounts: (opts?: { limit?: number; offset?: number }) =>
       identitySvc.listSystemAccounts(this.tenant_id, opts ?? {}, this.db),
   };
@@ -240,11 +256,14 @@ export class EngineClient {
   subscriptions = {
     list: () => subscriptionsSvc.listSubscriptions(this.tenant_id, this.db),
     get: (id: string) => subscriptionsSvc.getSubscription(this.tenant_id, id, this.db),
+    delete: (id: string) =>
+      subscriptionsSvc.deleteSubscription(this.tenant_id, id, this.actor_id, this.db),
   };
 
   tunnels = {
     list: () => tunnelsSvc.listTunnels(this.tenant_id, this.db),
     get: (id: string) => tunnelsSvc.getTunnel(this.tenant_id, id, this.db),
+    delete: (id: string) => tunnelsSvc.deleteTunnel(this.tenant_id, id, this.actor_id, this.db),
   };
 
   status = {
@@ -282,9 +301,10 @@ export class EngineClient {
     result: "success" | "denied" | "error";
     reason?: string;
     metadata?: Record<string, unknown>;
-  }): Promise<void> {
+  }): Promise<string> {
+    const id = crypto.randomUUID();
     await this.db.insert(auditLog).values({
-      id: crypto.randomUUID(),
+      id,
       tenant_id: this.tenant_id,
       actor_type: this.actor_type,
       actor_id: this.actor_id,
@@ -295,5 +315,6 @@ export class EngineClient {
       reason: params.reason ?? null,
       metadata: params.metadata ?? {},
     });
+    return id;
   }
 }

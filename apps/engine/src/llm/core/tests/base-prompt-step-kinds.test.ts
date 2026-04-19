@@ -41,4 +41,12 @@ describe("base prompts — step-kind enumeration", () => {
     const p = basePromptFor("converse", "sk_interactive");
     expect(p).toContain("never `type`");
   });
+
+  it("converse prompt grounds cleanup actions to explicit tools only", () => {
+    const p = basePromptFor("converse", "sk_interactive");
+    expect(p).toContain("delete_workflow");
+    expect(p).toContain("revoke_api_key");
+    expect(p).toContain("Do NOT invent a UI");
+    expect(p).toContain("There is no generic Subkit web UI/dashboard");
+  });
 });

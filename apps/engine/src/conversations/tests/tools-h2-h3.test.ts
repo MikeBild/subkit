@@ -94,6 +94,13 @@ describe("conversation tools — registration", () => {
     "approve_discovery_artifact",
     // Hand-written write tools
     "run_workflow",
+    "delete_workflow",
+    "delete_connector",
+    "delete_knowledge_source",
+    "delete_subscription",
+    "delete_tunnel",
+    "revoke_api_key",
+    "revoke_portal_token",
     "approve_skill_candidate",
     "approve_patch_candidate",
   ] as const;

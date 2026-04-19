@@ -43,6 +43,16 @@ describe("tool-policy wiring", () => {
     expect(mode).toBe("confirm_before_execution");
   });
 
+  it("delete_workflow always confirms by default", () => {
+    const mode = resolveToolMode({
+      tool: "delete_workflow",
+      category: "tenant_write",
+      input: { slug: "cleanup-me" },
+      overrides: {},
+    });
+    expect(mode).toBe("confirm_before_execution");
+  });
+
   it("commit_draft (draft_write) still requires confirm", () => {
     const mode = resolveToolMode({
       tool: "commit_draft",
