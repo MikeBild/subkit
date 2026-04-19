@@ -1,18 +1,19 @@
-// Model initialisation — gateway-first, provider packages via dynamic import.
+// Model initialisation — single path via Vercel AI SDK + AI Gateway.
 //
-// Rationale (per architecture plan §5.1 + §I):
-//   - Production path: Vercel AI Gateway. Model is a plain string (e.g.
-//     `anthropic/claude-sonnet-4-5`) passed straight to `ai`'s
-//     `generateText({ model: <string>, ... })`. Zero provider packages
-//     required in the dependency graph.
-//   - Dev/test path: a provider package is loaded on demand via dynamic
-//     `import()`. If the package is not installed, callers get a clear
-//     `ProviderNotInstalledError` — not a cryptic module resolution error
-//     at engine boot.
+// Production + dev real-LLM path: Vercel AI Gateway. `AI_GATEWAY_API_KEY`
+// authorises the engine against `https://ai-gateway.vercel.ai`; `ai` reads
+// the env var internally and a plain model string like
+// `anthropic/claude-sonnet-4-5` is enough for `streamText({ model })`.
 //
-// Every other call-site in the engine imports only from `ai`. This file is
-// the single seam where a provider-specific factory (e.g. `createAnthropic`)
-// may be referenced — and only behind a dynamic import.
+// Tests: `LLM_PROVIDER=mock` returns a sentinel string that the conversation
+// loop short-circuits before it ever reaches `streamText`.
+//
+// There is no third path. Per-provider SDK packages (`@ai-sdk/anthropic`,
+// `@ai-sdk/openai`, `@ai-sdk/google`) used to be dynamically imported here,
+// but the compiled `--compile` binary silently loses those imports and the
+// engine 500s on every conversation in production. The Gateway covers every
+// provider we actually use; fail fast with a clear error if its key is
+// missing rather than chase runtime module-resolution issues.
 
 import type { LanguageModel } from "ai";
 
@@ -33,33 +34,13 @@ export interface ModelInitOptions {
   modelOverride?: string;
 }
 
-export type ProviderKind =
-  | "gateway"
-  | "anthropic"
-  | "openai"
-  | "gemini"
-  | "azure"
-  | "bedrock"
-  | "vertex"
-  | "mock";
+export type ProviderKind = "gateway" | "mock";
 
 export interface ResolvedModel {
   provider: ProviderKind;
   modelId: string;
   /** Value ready to hand to `generateText({ model })`. */
   model: LanguageModel | string;
-}
-
-export class ProviderNotInstalledError extends Error {
-  readonly providerPackage: string;
-  constructor(providerKind: ProviderKind, pkg: string) {
-    super(
-      `LLM provider '${providerKind}' requires the '${pkg}' package. ` +
-        `Install with: bun add ${pkg}`,
-    );
-    this.name = "ProviderNotInstalledError";
-    this.providerPackage = pkg;
-  }
 }
 
 export class ProviderMisconfiguredError extends Error {
@@ -77,41 +58,21 @@ function readEnv(name: string): string | undefined {
 /**
  * Resolve a model ready for `generateText`. Gateway mode is preferred when
  * `AI_GATEWAY_API_KEY` + `AI_GATEWAY_MODEL` (or explicit override) are set.
- * Otherwise we fall back to `LLM_PROVIDER` + provider-specific env vars.
+ * Otherwise a mock sentinel string is returned for test short-circuiting.
  */
 export async function initializeModel(options?: ModelInitOptions): Promise<ResolvedModel> {
   const providerEnvVar = options?.providerEnvVar ?? "LLM_PROVIDER";
   const defaultModel = options?.defaultModel ?? "claude-sonnet-4-5";
   const modelOverride = options?.modelOverride;
 
-  // Gateway mode: AI_GATEWAY_API_KEY is present → return the gateway model
-  // string. The `ai` package reads AI_GATEWAY_API_KEY at call time.
-  const gatewayKey = readEnv("AI_GATEWAY_API_KEY");
-  const gatewayModel = readEnv("AI_GATEWAY_MODEL") ?? (gatewayKey ? defaultModel : undefined);
-  if (gatewayKey && gatewayModel) {
-    return {
-      provider: "gateway",
-      modelId: modelOverride ?? gatewayModel,
-      model: modelOverride ?? gatewayModel,
-    };
-  }
-
-  // Provider precedence:
-  //   1. Explicit `providerOverride` (set by callers that already
-  //      resolved a provider — e.g. `resolveLanguageModel` in
-  //      conversations/loop.ts). This MUST win, otherwise the dispatch
-  //      path silently falls back to mock when LLM_PROVIDER is unset
-  //      even though `ANTHROPIC_API_KEY` is present, and every
-  //      conversation 500s with a `mock:never-dispatched` sentinel
-  //      hitting the AI SDK.
-  //   2. The configured env var (default LLM_PROVIDER).
-  //   3. Mock fallback when neither resolves.
-  const providerType = (options?.providerOverride ?? readEnv(providerEnvVar) ?? "").toLowerCase();
-
-  if (providerType === "mock" || providerType === "") {
-    // Caller is responsible for short-circuiting the mock path before it
-    // ever reaches `generateText`. We return a sentinel string that will
-    // hard-fail if dispatched to the SDK unchecked.
+  // Mock path: tests set LLM_PROVIDER=mock (or callers pass
+  // providerOverride="mock") to get a sentinel string. Short-circuited
+  // before `streamText` ever sees it.
+  const providerOverride = options?.providerOverride;
+  const envProvider = (readEnv(providerEnvVar) ?? "").toLowerCase();
+  const mockRequested =
+    providerOverride === "mock" || (providerOverride === undefined && envProvider === "mock");
+  if (mockRequested) {
     return {
       provider: "mock",
       modelId: modelOverride ?? defaultModel,
@@ -119,74 +80,20 @@ export async function initializeModel(options?: ModelInitOptions): Promise<Resol
     };
   }
 
-  switch (providerType) {
-    case "anthropic": {
-      const apiKey = readEnv("ANTHROPIC_API_KEY");
-      if (!apiKey) throw new ProviderMisconfiguredError("anthropic", "ANTHROPIC_API_KEY not set");
-      const mod = await tryImport("@ai-sdk/anthropic", "anthropic");
-      const { createAnthropic } = mod as {
-        createAnthropic: (opts: Record<string, unknown>) => (id: string) => LanguageModel;
-      };
-      const provider = createAnthropic({
-        apiKey,
-        ...(readEnv("ANTHROPIC_BASE_URL") ? { baseURL: readEnv("ANTHROPIC_BASE_URL") } : {}),
-      });
-      const modelId = modelOverride ?? readEnv("ANTHROPIC_MODEL") ?? defaultModel;
-      return { provider: "anthropic", modelId, model: provider(modelId) };
-    }
-    case "openai": {
-      const apiKey = readEnv("OPENAI_API_KEY");
-      if (!apiKey) throw new ProviderMisconfiguredError("openai", "OPENAI_API_KEY not set");
-      const mod = await tryImport("@ai-sdk/openai", "openai");
-      const { createOpenAI } = mod as {
-        createOpenAI: (opts: Record<string, unknown>) => (id: string) => LanguageModel;
-      };
-      const provider = createOpenAI({
-        apiKey,
-        ...(readEnv("OPENAI_BASE_URL") ? { baseURL: readEnv("OPENAI_BASE_URL") } : {}),
-      });
-      const modelId = modelOverride ?? readEnv("OPENAI_MODEL") ?? defaultModel;
-      return { provider: "openai", modelId, model: provider(modelId) };
-    }
-    case "gemini": {
-      const apiKey = readEnv("GEMINI_API_KEY");
-      if (!apiKey) throw new ProviderMisconfiguredError("gemini", "GEMINI_API_KEY not set");
-      const mod = await tryImport("@ai-sdk/google", "gemini");
-      const { createGoogleGenerativeAI } = mod as {
-        createGoogleGenerativeAI: (opts: Record<string, unknown>) => (id: string) => LanguageModel;
-      };
-      const provider = createGoogleGenerativeAI({ apiKey });
-      const modelId = modelOverride ?? readEnv("GEMINI_MODEL") ?? defaultModel;
-      return { provider: "gemini", modelId, model: provider(modelId) };
-    }
-    case "azure":
-    case "bedrock":
-    case "vertex": {
-      throw new ProviderMisconfiguredError(
-        providerType as ProviderKind,
-        `provider '${providerType}' recognised but not wired in this build. Use AI_GATEWAY_API_KEY.`,
-      );
-    }
-    default:
-      throw new ProviderMisconfiguredError(
-        (providerType || "unknown") as ProviderKind,
-        `unknown LLM_PROVIDER '${providerType}'. Use gateway (set AI_GATEWAY_API_KEY) or one of: anthropic, openai, gemini, mock.`,
-      );
+  // Real-LLM path: Vercel AI Gateway. `AI_GATEWAY_API_KEY` authorises
+  // the call; model is a plain string the `ai` SDK routes via the
+  // gateway. No per-provider SDK package involved.
+  const gatewayKey = readEnv("AI_GATEWAY_API_KEY");
+  if (!gatewayKey) {
+    throw new ProviderMisconfiguredError(
+      "gateway",
+      "AI_GATEWAY_API_KEY not set. Configure it in the engine environment or set LLM_PROVIDER=mock for tests.",
+    );
   }
-}
-
-async function tryImport(pkg: string, kind: ProviderKind): Promise<unknown> {
-  try {
-    return await import(pkg);
-  } catch (err) {
-    // ESM "cannot find module" path — we intentionally do not list these
-    // providers in package.json dependencies.
-    if ((err as NodeJS.ErrnoException)?.code === "ERR_MODULE_NOT_FOUND") {
-      throw new ProviderNotInstalledError(kind, pkg);
-    }
-    if (err instanceof Error && err.message.includes("Cannot find module")) {
-      throw new ProviderNotInstalledError(kind, pkg);
-    }
-    throw err;
-  }
+  const gatewayModel = readEnv("AI_GATEWAY_MODEL") ?? defaultModel;
+  return {
+    provider: "gateway",
+    modelId: modelOverride ?? gatewayModel,
+    model: modelOverride ?? gatewayModel,
+  };
 }

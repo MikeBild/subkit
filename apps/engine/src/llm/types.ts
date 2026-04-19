@@ -5,7 +5,7 @@ import type { Skill } from "../skills/types.ts";
 
 export type LlmFlow = "generate" | "extract" | "repair" | "converse" | "discover";
 
-export type LlmProviderKind = "anthropic" | "openai" | "bedrock" | "vertex" | "azure" | "mock";
+export type LlmProviderKind = "gateway" | "mock";
 
 /** Resolved per-call routing decision. */
 export interface ModelRoute {
