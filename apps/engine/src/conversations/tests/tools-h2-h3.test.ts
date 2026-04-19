@@ -36,6 +36,7 @@ describe("conversation tools — registration", () => {
     "start_connector_from_description",
     "start_connector_from_template",
     "start_workflow_from_goal",
+    "submit_connector_credential",
     "suggest_connector_templates",
     "update_connector_draft",
     "update_param",

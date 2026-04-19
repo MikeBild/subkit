@@ -38,6 +38,23 @@ export type PaneSpec =
       subtitle?: string;
       /** Lines rendered verbatim inside the pane, one `<Text>` per line. */
       lines: ReadonlyArray<string>;
+    }
+  | {
+      /**
+       * Structured authoring pane. Each section carries a tone so the
+       * Ink renderer can colour-code headings (green for ok / ready,
+       * yellow for needs_input, red for failed, dim for info). Rows
+       * inside a section are `[key, value]` pairs, optionally with a
+       * tone override for a single row.
+       */
+      kind: "structured";
+      title: string;
+      subtitle?: string;
+      sections: ReadonlyArray<{
+        heading: string;
+        tone?: "ok" | "warn" | "fail" | "info";
+        rows: ReadonlyArray<readonly [string, string | number | null | undefined]>;
+      }>;
     };
 
 export interface SlashHandlerContext {
@@ -303,12 +320,129 @@ export async function handleSlash(
     case "connector": {
       if (!ctx.session.conversationId) return "no active conversation";
       const detail = await ctx.client.getConversation(ctx.session.conversationId);
-      return panify(ctx, "connector draft", formatConnectorLines(draftRecord(detail.draft)));
+      const draft = draftRecord(detail.draft);
+      const connector = draft ? asRecord(draft.connector) : null;
+      if (!connector) {
+        return panify(ctx, "connector draft", ["no connector draft in this conversation"]);
+      }
+      const validation = asRecord(connector.validation);
+      const latestProbe = asRecord(connector.latest_probe);
+      const validationOk = validation?.ok === true;
+      const probeOk = latestProbe?.ok === true;
+      if (ctx.openPane) {
+        ctx.openPane({
+          kind: "structured",
+          title: "connector draft",
+          sections: [
+            {
+              heading: "identity",
+              tone: "info",
+              rows: [
+                ["name", recordString(connector.name)],
+                ["slug", recordString(connector.slug)],
+                ["driver", recordString(connector.driver)],
+                ["environment", recordString(connector.environment)],
+                ["auth", recordString(connector.auth_type)],
+                ["base_url", recordString(connector.base_url)],
+                ["dsn", recordString(connector.dsn)],
+                [
+                  "template",
+                  recordString(connector.template_name ?? connector.template_id, "scratch"),
+                ],
+                ["saved id", recordString(connector.saved_connector_id)],
+              ],
+            },
+            {
+              heading: `validation · ${validationOk ? "ok" : "needs work"}`,
+              tone: validationOk ? "ok" : "warn",
+              rows: Array.isArray(validation?.missing_fields)
+                ? validation.missing_fields
+                    .filter((f): f is string => typeof f === "string")
+                    .map((f): readonly [string, string] => ["missing", f])
+                : [],
+            },
+            {
+              heading: `latest probe · ${latestProbe ? (probeOk ? "ok" : "failed") : "none"}`,
+              tone: latestProbe ? (probeOk ? "ok" : "fail") : "info",
+              rows: latestProbe
+                ? [
+                    ["method", recordString(latestProbe.method)],
+                    ["path", recordString(latestProbe.path)],
+                    ["environment", recordString(latestProbe.environment)],
+                    [
+                      "status",
+                      typeof latestProbe.status_code === "number"
+                        ? String(latestProbe.status_code)
+                        : "—",
+                    ],
+                    [
+                      "duration",
+                      typeof latestProbe.duration_ms === "number"
+                        ? `${latestProbe.duration_ms}ms`
+                        : "—",
+                    ],
+                    ["summary", scalarString(latestProbe.summary)],
+                    ["failure code", scalarString(latestProbe.failure_code, "—")],
+                  ]
+                : [],
+            },
+          ],
+        });
+        return null;
+      }
+      return panify(ctx, "connector draft", formatConnectorLines(draft));
     }
     case "workflow": {
       if (!ctx.session.conversationId) return "no active conversation";
       const detail = await ctx.client.getConversation(ctx.session.conversationId);
-      return panify(ctx, "workflow draft", formatWorkflowLines(draftRecord(detail.draft)));
+      const draft = draftRecord(detail.draft);
+      const workflow = draft ? asRecord(draft.workflow) : null;
+      const preview = draft ? asRecord(draft.latest_preview) : null;
+      if (!workflow) {
+        return panify(ctx, "workflow draft", ["no workflow draft in this conversation"]);
+      }
+      const steps = Array.isArray(workflow.steps) ? workflow.steps : [];
+      const previewOk = preview?.ok === true;
+      if (ctx.openPane) {
+        ctx.openPane({
+          kind: "structured",
+          title: "workflow draft",
+          sections: [
+            {
+              heading: "identity",
+              tone: "info",
+              rows: [
+                ["name", recordString(workflow.name)],
+                ["slug", recordString(workflow.slug)],
+                ["description", recordString(workflow.description)],
+                ["steps", String(steps.length)],
+              ],
+            },
+            {
+              heading: `steps · ${steps.length}`,
+              tone: steps.length > 0 ? "ok" : "warn",
+              rows: steps.slice(0, 10).map((s, i): readonly [string, string] => {
+                const rec = asRecord(s);
+                const kind = rec ? scalarString(rec.kind, "(no kind)") : "(no kind)";
+                const id = rec ? scalarString(rec.id, `#${i + 1}`) : `#${i + 1}`;
+                return [id, kind];
+              }),
+            },
+            {
+              heading: `latest preview · ${preview ? (previewOk ? "ok" : "failed") : "none"}`,
+              tone: preview ? (previewOk ? "ok" : "fail") : "info",
+              rows: preview
+                ? [
+                    ["step", scalarString(preview.step_id, "—")],
+                    ["summary", scalarString(preview.summary)],
+                  ]
+                : [],
+            },
+          ],
+        });
+        return null;
+      }
+      return panify(ctx, "workflow draft", formatWorkflowLines(draft));
     }
     case "templates": {
       if (!ctx.session.conversationId) return "no active conversation";
@@ -341,40 +475,76 @@ export async function handleSlash(
           "no connector draft — start one with `start_connector_from_description` or `start_connector_from_template`.",
         ]);
       }
-      const probe = asRecord(connector.latest_probe);
-      if (!probe) {
-        return panify(ctx, "probe", [
-          "no probe run yet on this draft.",
-          "Ask the assistant to run `probe_connector_draft` before saving.",
+      // If the user passed a sub-command (e.g. `/probe show`) display
+      // the latest recorded probe instead of triggering a new one.
+      const sub = (rawArgs[0] ?? "").toLowerCase();
+      if (sub === "show" || sub === "last") {
+        const probe = asRecord(connector.latest_probe);
+        if (!probe) {
+          return panify(ctx, "probe", ["no probe run yet on this draft."]);
+        }
+        const ok = probe.ok === true;
+        if (ctx.openPane) {
+          ctx.openPane({
+            kind: "structured",
+            title: "latest probe",
+            sections: [
+              {
+                heading: `status · ${ok ? "ok" : "failed"}`,
+                tone: ok ? "ok" : "fail",
+                rows: [
+                  ["method", recordString(probe.method, "GET")],
+                  ["path", recordString(probe.path, "/")],
+                  ["environment", recordString(probe.environment, "dev")],
+                  ["http", typeof probe.status_code === "number" ? String(probe.status_code) : "—"],
+                  [
+                    "duration",
+                    typeof probe.duration_ms === "number" ? `${probe.duration_ms}ms` : "—",
+                  ],
+                  ["summary", scalarString(probe.summary)],
+                  ["failure code", scalarString(probe.failure_code, "—")],
+                ],
+              },
+            ],
+          });
+          return null;
+        }
+        return panify(ctx, "latest probe", [
+          `status: ${ok ? "ok" : "failed"}`,
+          `method: ${recordString(probe.method, "GET")}`,
+          `path: ${recordString(probe.path, "/")}`,
+          `environment: ${recordString(probe.environment, "dev")}`,
         ]);
       }
-      const lines: string[] = [
-        `status: ${probe.ok ? "ok" : "failed"}`,
-        `method: ${recordString(probe.method, "GET")}`,
-        `path: ${recordString(probe.path, "/")}`,
-        `environment: ${recordString(probe.environment, "dev")}`,
-      ];
-      if (probe.status_code !== undefined) lines.push(`http: ${probe.status_code}`);
-      if (probe.duration_ms !== undefined) lines.push(`duration: ${probe.duration_ms}ms`);
-      if (probe.summary) lines.push("", scalarString(probe.summary));
-      if (probe.failure_code) lines.push(`failure code: ${scalarString(probe.failure_code)}`);
-      return panify(ctx, "latest probe", lines);
+      // Default: trigger a new probe by appending a directive message.
+      // The model interprets it and invokes probe_connector_draft.
+      await ctx.client.appendConversationMessage(ctx.session.conversationId, {
+        message:
+          "Run probe_connector_draft against the current connector draft now. Use the default GET / path unless the draft implies otherwise. After probing, summarise the result in one sentence.",
+      });
+      return "probe requested — run /probe show after the turn finishes to see the result";
     }
     case "preview": {
       if (!ctx.session.conversationId) return "no active conversation";
-      const detail = await ctx.client.getConversation(ctx.session.conversationId);
-      const draft = draftRecord(detail.draft);
-      const preview = draft ? asRecord(draft.latest_preview) : null;
-      if (!preview) {
-        return panify(ctx, "preview", [
-          "no preview run yet on this draft.",
-          "Ask the assistant to run `dry_run_step` or `dry_run_workflow` before committing.",
-        ]);
+      const sub = (rawArgs[0] ?? "").toLowerCase();
+      if (sub === "show" || sub === "last") {
+        const detail = await ctx.client.getConversation(ctx.session.conversationId);
+        const draft = draftRecord(detail.draft);
+        const preview = draft ? asRecord(draft.latest_preview) : null;
+        if (!preview) {
+          return panify(ctx, "preview", ["no preview run yet on this draft."]);
+        }
+        const lines: string[] = [`status: ${preview.ok ? "ok" : "failed"}`];
+        if (preview.step_id) lines.push(`step: ${scalarString(preview.step_id)}`);
+        if (preview.summary) lines.push("", scalarString(preview.summary));
+        return panify(ctx, "latest preview", lines);
       }
-      const lines: string[] = [`status: ${preview.ok ? "ok" : "failed"}`];
-      if (preview.step_id) lines.push(`step: ${scalarString(preview.step_id)}`);
-      if (preview.summary) lines.push("", scalarString(preview.summary));
-      return panify(ctx, "latest preview", lines);
+      const stepArg = rawArgs[0];
+      const hint = stepArg
+        ? `Run dry_run_step against step \`${stepArg}\`. Report the classification and one-line summary.`
+        : "Run dry_run_workflow against the current draft. Report the classification of every step that executed.";
+      await ctx.client.appendConversationMessage(ctx.session.conversationId, { message: hint });
+      return "preview requested — run /preview show after the turn finishes to see the result";
     }
     case "versions": {
       if (!ctx.session.conversationId) return "no active conversation";
@@ -431,6 +601,35 @@ export async function handleSlash(
         `connector: ${snapshot.skills.connector.map((skill) => skill.title).join(", ") || "—"}`,
         `workflow: ${snapshot.skills.workflow.map((skill) => skill.title).join(", ") || "—"}`,
       ];
+      if (snapshot.attachments.total > 0) {
+        lines.push("");
+        lines.push(`attachments: ${snapshot.attachments.total}`);
+        for (const a of snapshot.attachments.items) {
+          const bytes = a.bytes !== null ? ` · ${a.bytes}b` : "";
+          lines.push(`  @attachment:${a.slug}${a.filename ? ` (${a.filename})` : ""}${bytes}`);
+        }
+      }
+      if (snapshot.latest_probe) {
+        lines.push("");
+        lines.push(
+          `latest probe: ${snapshot.latest_probe.ok ? "ok" : "failed"}${snapshot.latest_probe.failure_code ? ` (${snapshot.latest_probe.failure_code})` : ""}`,
+        );
+        if (snapshot.latest_probe.summary) lines.push(`  ${snapshot.latest_probe.summary}`);
+      }
+      if (snapshot.latest_preview) {
+        lines.push("");
+        lines.push(
+          `latest preview: ${snapshot.latest_preview.ok ? "ok" : "failed"}${snapshot.latest_preview.step_id ? ` (${snapshot.latest_preview.step_id})` : ""}`,
+        );
+        if (snapshot.latest_preview.summary) lines.push(`  ${snapshot.latest_preview.summary}`);
+      }
+      if (snapshot.workflow_version) {
+        lines.push("");
+        const v = snapshot.workflow_version.current_version;
+        lines.push(
+          `workflow version: ${snapshot.workflow_version.workflow_id}${v !== null ? ` · v${v}` : ""}`,
+        );
+      }
       return panify(ctx, "conversation context", lines);
     }
     case "clear":

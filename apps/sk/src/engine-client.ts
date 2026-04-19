@@ -440,6 +440,24 @@ export interface ConversationContextSnapshot {
   };
   tool_calls_total: number;
   pending_elicitations: number;
+  attachments: {
+    total: number;
+    items: Array<{ slug: string; filename: string | null; bytes: number | null }>;
+  };
+  latest_probe: {
+    ok: boolean;
+    summary: string | null;
+    failure_code: string | null;
+  } | null;
+  latest_preview: {
+    ok: boolean;
+    summary: string | null;
+    step_id: string | null;
+  } | null;
+  workflow_version: {
+    workflow_id: string;
+    current_version: number | null;
+  } | null;
 }
 
 export interface StatusSummary {

@@ -104,14 +104,117 @@ export async function previewStep(params: PreviewStepParams): Promise<PreviewSte
         scope: ctx.scope,
         input: params.workflow_input ?? null,
       });
-    } else {
+    } else if (step.kind === "wait") {
+      // A real wait would sleep; preview never sleeps — we report the
+      // declared duration so the user can verify the shape without
+      // burning the budget.
+      const ms =
+        typeof (step as { duration_ms?: number }).duration_ms === "number"
+          ? (step as { duration_ms: number }).duration_ms
+          : 0;
       return {
-        ok: false,
+        ok: true,
         step_id: step.id,
         kind: step.kind,
         duration_ms: Date.now() - started,
+        classification: "ok",
+        summary: `Wait step would pause for ${ms}ms at run time (preview skipped the sleep).`,
+        output_preview: { would_wait_ms: ms },
+      };
+    } else if (step.kind === "branch") {
+      // Preview a branch by evaluating its `when` condition against the
+      // current scope + input. The children referenced by then/else ids
+      // are shown but not executed — they'll run on their own row.
+      const when = (step as { when?: string }).when ?? "";
+      const then_steps = (step as { then_steps?: string[] }).then_steps ?? [];
+      const else_steps = (step as { else_steps?: string[] }).else_steps ?? [];
+      let taken: "then" | "else" | "unknown" = "unknown";
+      try {
+        if (when.length > 0) {
+          const jsonata = (await import("jsonata")).default;
+          const out = await jsonata(when).evaluate(ctx.scope, {
+            input: params.workflow_input ?? null,
+          });
+          taken = out ? "then" : "else";
+        }
+      } catch {
+        taken = "unknown";
+      }
+      return {
+        ok: true,
+        step_id: step.id,
+        kind: step.kind,
+        duration_ms: Date.now() - started,
+        classification: "ok",
+        summary:
+          taken === "unknown"
+            ? `Branch condition \`${when}\` was not evaluable in preview scope.`
+            : `Branch would take the ${taken} arm at run time.`,
+        output_preview: { taken, then_steps, else_steps },
+      };
+    } else if (step.kind === "parallel") {
+      const branches = (step as { branches?: string[][] }).branches ?? [];
+      return {
+        ok: true,
+        step_id: step.id,
+        kind: step.kind,
+        duration_ms: Date.now() - started,
+        classification: "ok",
+        summary: `Parallel step would fan out ${branches.length} branch${branches.length === 1 ? "" : "es"} at run time.`,
+        output_preview: { branches },
+      };
+    } else if (step.kind === "loop") {
+      const over = (step as { over?: string }).over ?? "";
+      const body = (step as { body?: string[] }).body ?? [];
+      const item_var = (step as { item_var?: string }).item_var ?? "item";
+      return {
+        ok: true,
+        step_id: step.id,
+        kind: step.kind,
+        duration_ms: Date.now() - started,
+        classification: "ok",
+        summary: `Loop step would iterate over \`${over}\` into \`$${item_var}\` across ${body.length} body step${body.length === 1 ? "" : "s"}.`,
+        output_preview: { over, item_var, body },
+      };
+    } else if (step.kind === "call") {
+      const workflow_id = (step as { workflow_id?: string }).workflow_id;
+      const workflow_slug = (step as { workflow_slug?: string }).workflow_slug;
+      const target = workflow_slug ?? workflow_id ?? "(unspecified)";
+      return {
+        ok: true,
+        step_id: step.id,
+        kind: step.kind,
+        duration_ms: Date.now() - started,
+        classification: "ok",
+        summary: `Call step would invoke workflow \`${target}\` at run time (sub-workflow not previewed).`,
+        output_preview: {
+          target,
+          workflow_id: workflow_id ?? null,
+          workflow_slug: workflow_slug ?? null,
+        },
+      };
+    } else if (step.kind === "tool") {
+      const image = (step as { image?: string }).image ?? "(no image)";
+      return {
+        ok: true,
+        step_id: step.id,
+        kind: step.kind,
+        duration_ms: Date.now() - started,
+        classification: "ok",
+        summary: `Tool step would launch container \`${image}\` at run time (sandbox not previewed).`,
+        output_preview: { image },
+      };
+    } else {
+      // All current step kinds are covered above; this branch exists for
+      // forward compatibility if a new kind lands without a preview impl.
+      const fallback = step as unknown as { id: string; kind: string };
+      return {
+        ok: false,
+        step_id: fallback.id,
+        kind: fallback.kind,
+        duration_ms: Date.now() - started,
         classification: "preview_unsupported",
-        summary: `Preview is not yet supported for \`${step.kind}\` steps.`,
+        summary: `Preview is not yet supported for \`${fallback.kind}\` steps.`,
       };
     }
     return summarizeStepResult(step, result, Date.now() - started);
