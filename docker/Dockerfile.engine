@@ -16,6 +16,7 @@ WORKDIR /app
 # Copy dependency manifests first so docker can cache the install layer
 # across rebuilds when source files change.
 COPY package.json bun.lock bunfig.toml tsconfig.json tsconfig.base.json biome.json ./
+COPY scripts ./scripts
 COPY apps ./apps
 COPY packages ./packages
 

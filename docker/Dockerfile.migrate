@@ -6,6 +6,7 @@ WORKDIR /app
 
 # Dependency manifests first for cache efficiency.
 COPY package.json bun.lock bunfig.toml tsconfig.json tsconfig.base.json ./
+COPY scripts ./scripts
 
 # Source needed to resolve imports from migrate.ts (env.ts, db client, schema,
 # logging helpers, seed helpers, etc.). Copying the full engine app is the
