@@ -197,6 +197,15 @@ Trade-off: trusting a `User-Agent` plus a `x-subkit-source` header from the CLI 
 |---|---|---|---|---|
 | `POST` | `/v1/extract` | Parse an uploaded file into structured JSON. Ephemeral. See `22-extract.md`. | `extract:run` | any |
 
+## AI convenience surfaces
+
+| Method | Path | Purpose | Required scope | Auth |
+|---|---|---|---|---|
+| `POST` | `/v1/ai/generate` | Generate a workflow draft from a natural-language description. | `workflow:write` | any |
+| `POST` | `/v1/ai/extract` | Extract structured fields from a raw text sample. | `workflow:read` | any |
+| `POST` | `/v1/ai/repair` | Propose a patch for a drifted failing step. | `workflow:write` | any |
+| `POST` | `/v1/ai/summarize` | Summarize arbitrary text into a compact plain-text response. | `workflow:read` | any |
+
 ## Knowledge Sources
 
 | Method | Path | Purpose | Required scope | Auth |
@@ -238,7 +247,10 @@ Trade-off: trusting a `User-Agent` plus a `x-subkit-source` header from the CLI 
 | Method | Path | Purpose | Required scope | Auth |
 |---|---|---|---|---|
 | `GET`  | `/metrics` | Prometheus-format metrics surface. | `metrics:read` (or scrape token) | bearer or scrape token |
-| `GET`  | `/v1/health` | Liveness and readiness. Returns `{ status, version, queues, listener }`. | unauthenticated | none |
+| `GET`  | `/v1/health` | Liveness and readiness. Returns `{ status, version, db_connected, uptime_seconds }`. | unauthenticated | none |
+| `GET`  | `/v1/diagnostics/errors` | Tail the in-memory 5xx ring for the caller tenant. | `audit:read` | any |
+| `GET`  | `/v1/diagnostics/llm` | Show resolved LLM routing, provider presence booleans, and summarize overrides. | `audit:read` | any |
+| `GET`  | `/v1/diagnostics/setup` | Validate live runtime setup and flag blocker/warning issues for operators. | `audit:read` | any |
 | `GET`  | `/openapi.json` | The generated OpenAPI 3.1 contract. | unauthenticated | none |
 | `GET`  | `/docs` | Scalar-rendered OpenAPI UI. | unauthenticated | none |
 

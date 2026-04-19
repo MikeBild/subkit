@@ -415,7 +415,7 @@ export async function approveDiscoveryArtifact(
     const row = rows[0];
 
     // Mark approved — actual materialization (creating the Connector / Skill /
-    // Knowledge Source) happens via the conversation tools (propose_connector,
+    // Knowledge Source) happens via the conversation tools (start_connector_from_*,
     // propose_skill) or via the caller after receiving the draft.
     await tx
       .update(discoveryArtifacts)

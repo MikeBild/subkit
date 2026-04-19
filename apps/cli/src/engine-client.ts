@@ -108,6 +108,9 @@ export class EngineClient {
   health(): Promise<HealthResponse> {
     return this.request<HealthResponse>("GET", "/v1/health");
   }
+  setupValidation(): Promise<SetupValidationResponse> {
+    return this.request<SetupValidationResponse>("GET", "/v1/diagnostics/setup");
+  }
 
   // --------------------------- Workflows ---------------------------
   listWorkflows(query: WorkflowListQuery = {}): Promise<{ items: WorkflowSummary[] }> {
@@ -322,6 +325,9 @@ export class EngineClient {
       fell_back: boolean;
     }>("POST", "/v1/ai/extract", body);
   }
+  summarize(body: { prompt: string }) {
+    return this.request<SummarizeResponse>("POST", "/v1/ai/summarize", body);
+  }
 
   // --------------------------- Knowledge Sources ---------------------------
   listKnowledgeSources(
@@ -467,6 +473,24 @@ export interface HealthResponse {
   version: string;
   db_connected: boolean;
   uptime_seconds: number;
+}
+
+export interface SetupValidationResponse {
+  overall_status: "ok" | "warn" | "blocked";
+  issues: Array<{
+    id: string;
+    severity: "blocker" | "warning";
+    title: string;
+    detail: string;
+  }>;
+  recommendations: string[];
+}
+
+export interface SummarizeResponse {
+  summary: string;
+  tokens: Record<string, number>;
+  model_used: string;
+  fell_back: boolean;
 }
 
 export interface WorkflowSummary {

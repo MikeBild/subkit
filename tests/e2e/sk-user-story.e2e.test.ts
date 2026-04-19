@@ -65,13 +65,12 @@ describe("sk CLI user story — real backend", () => {
       tool_calls: Array<{ tool: string; confirmation_state?: string | null }>;
     };
     const toolNames = detail.tool_calls.map((c) => c.tool);
-    // propose_connector declares a `pause` payload so the loop halts on
-    // its ask_user_confirm elicitation. The later steps (propose_step /
-    // validate_draft / commit_draft) land on the subsequent turn after
-    // the user answers, so the headless single-turn run stops here.
+    // start_connector_from_description seeds the connector draft on the
+    // first turn. The later workflow-authoring steps land after a follow-up
+    // turn, so the headless single-turn run stops at the authoring prefix.
     expect(toolNames).toContain("get_engine_status");
     expect(toolNames).toContain("list_connectors");
-    expect(toolNames).toContain("propose_connector");
+    expect(toolNames).toContain("start_connector_from_description");
   }, 120_000);
 
   test("turn 2 — resuming the same conversation sees the prior tool chain", async () => {

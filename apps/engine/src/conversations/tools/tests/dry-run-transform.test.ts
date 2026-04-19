@@ -30,7 +30,7 @@ function makeCtx(): ToolContext {
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({ tenant_id, actor_id: null, db: ctx.db }),
-    getDraft: () => ({ name: "", steps: [] }),
+    getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
   };
 }
@@ -128,9 +128,9 @@ describe("dry_run_transform — jsonpath dialect", () => {
 });
 
 describe("dry_run_transform — template dialect", () => {
-  test("${input.*} substitution", async () => {
+  test(`\${input.*} substitution`, async () => {
     const result = await dryRunTransformTool.execute(makeCtx(), {
-      expression: "Hello ${input.user.name}!",
+      expression: `Hello \${input.user.name}!`,
       sample_data: { input: { user: { name: "Ada" } } },
       dialect: "template",
     });
@@ -138,9 +138,9 @@ describe("dry_run_transform — template dialect", () => {
     expect((result.data as { value: unknown }).value).toBe("Hello Ada!");
   });
 
-  test("${scope.<step>.<path>} substitution", async () => {
+  test(`\${scope.<step>.<path>} substitution`, async () => {
     const result = await dryRunTransformTool.execute(makeCtx(), {
-      expression: "id=${scope.fetch.data.id}",
+      expression: `id=\${scope.fetch.data.id}`,
       sample_data: { scope: { fetch: { data: { id: "42" } } } },
       dialect: "template",
     });
@@ -148,16 +148,16 @@ describe("dry_run_transform — template dialect", () => {
     expect((result.data as { value: unknown }).value).toBe("id=42");
   });
 
-  test("${cred.*} in template yields placeholder_unresolved", async () => {
+  test(`\${cred.*} in template yields placeholder_unresolved`, async () => {
     const result = await dryRunTransformTool.execute(makeCtx(), {
-      expression: "Bearer ${cred.stripe.token}",
+      expression: `Bearer \${cred.stripe.token}`,
       sample_data: { input: {} },
       dialect: "template",
     });
     expect(result.ok).toBe(false);
     const err = (result.data as { error: { code: string; message: string } }).error;
     expect(err.code).toBe("placeholder_unresolved");
-    expect(err.message).toContain("${cred.stripe.token}");
+    expect(err.message).toContain(`\${cred.stripe.token}`);
   });
 });
 

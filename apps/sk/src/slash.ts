@@ -81,13 +81,13 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
   {
     name: "probe",
-    help: "Probe the current connector draft (driver-appropriate handshake)",
+    help: "Bare `/probe` runs now; `/probe show` inspects the last result; `/probe run` is the explicit action form",
     category: "session",
     requires: "conversation:write",
   },
   {
     name: "preview",
-    help: "Preview the current workflow draft end-to-end",
+    help: "Bare `/preview` runs now; `/preview show` inspects the last result; `/preview run` is the explicit action form",
     category: "session",
     requires: "conversation:write",
   },
@@ -96,6 +96,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "List the committed workflow versions for the current target",
     category: "session",
     requires: "workflow:read",
+  },
+  {
+    name: "approvals",
+    help: "Show approval history for the active conversation",
+    category: "session",
+    requires: "conversation:read",
   },
   {
     name: "restore",

@@ -2,6 +2,11 @@ import { z } from "@hono/zod-openapi";
 import { getBuiltinTemplate } from "../../connectors/templates.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
+import {
+  allowedTemplateAuthTypes,
+  defaultTemplateAuthType,
+  inferTemplateRequiredFields,
+} from "../connector-template-intelligence.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -30,7 +35,7 @@ export const startConnectorFromTemplateTool: ConversationTool = {
       driver: template.driver,
       environment: args.environment,
       base_url: template.base_url,
-      auth_type: template.auth_type,
+      auth_type: defaultTemplateAuthType(template),
       config: {},
       description: template.description,
       template_id: template.slug,
@@ -57,6 +62,8 @@ export const startConnectorFromTemplateTool: ConversationTool = {
           environment: connector.environment,
           auth_type: connector.auth_type,
           template_id: connector.template_id,
+          allowed_auth_types: allowedTemplateAuthTypes(template),
+          required_fields: inferTemplateRequiredFields(template),
         },
         validation,
       },

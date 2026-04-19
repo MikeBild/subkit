@@ -32,7 +32,6 @@ import { listSkillsTool } from "./list-skills.ts";
 import { previewAttachmentTool } from "./preview-attachment.ts";
 import { probeConnectorTool } from "./probe-connector.ts";
 import { probeConnectorDraftTool } from "./probe-connector-draft.ts";
-import { proposeConnectorTool } from "./propose-connector.ts";
 import { proposeSkillTool } from "./propose-skill.ts";
 import { proposeStepTool } from "./propose-step.ts";
 import { saveConnectorDraftTool } from "./save-connector-draft.ts";
@@ -62,6 +61,8 @@ export interface ToolContext {
   engineClient: EngineClient;
   getDraft: () => DraftDocument;
   setDraft: (next: DraftDocument) => Promise<void>;
+  /** Abort signal for the currently running conversation turn. */
+  abortSignal?: AbortSignal;
   /**
    * Optional live-log callback. Long-running tools (run_workflow,
    * dry_run_step, refresh_connector_docs) call this to emit progress
@@ -161,7 +162,6 @@ register(probeConnectorTool);
 register(probeConnectorDraftTool);
 register(buildWorkflowTool);
 register(proposeStepTool);
-register(proposeConnectorTool);
 register(proposeSkillTool);
 register(saveConnectorDraftTool);
 register(startConnectorFromDescriptionTool);

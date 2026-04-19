@@ -1,9 +1,9 @@
-// Tier 1 — Conversation lifecycle E2E. REAL Anthropic LLM.
+// Tier 1 — Conversation lifecycle E2E. REAL gateway-backed or direct-provider LLM.
 //
 // What's exercised end-to-end (no mocks):
 //   * POST/GET /v1/conversations + /messages + /elicitations (Hono + Postgres)
-//   * Engine LLM dispatch through @ai-sdk/anthropic with the key from .env
-//   * Real tool palette — propose_connector, propose_step, validate_draft,
+//   * Engine LLM dispatch through the configured real-provider path
+//   * Real tool palette — start_connector_from_description, propose_step, validate_draft,
 //     commit_draft — all running through the actual Zod validators,
 //     workflow validator, and connector persistence layer
 //   * RBAC (admin persona), audit log, conversation_drafts snapshots
@@ -28,19 +28,17 @@ import { boot, cli, type E2EEnv, shutdown } from "./setup.ts";
 // credentials available). The tier-1 assertions expect actual tool
 // calls coming out of a real LLM; the mock provider emits an empty
 // plan, so the tests would always fail with `Expected >=1, Received 0`.
-// CI sets LLM_PROVIDER=mock at job level to avoid burning tokens —
-// that's by design. Skip cleanly instead of hard-failing.
-const SHOULD_RUN =
-  process.env.LLM_PROVIDER !== "mock" &&
-  (process.env.AI_GATEWAY_API_KEY ||
-    process.env.ANTHROPIC_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.GEMINI_API_KEY);
+const REAL_PROVIDER_SET =
+  (Boolean(process.env.AI_GATEWAY_API_KEY) && Boolean(process.env.AI_GATEWAY_MODEL)) ||
+  ["anthropic", "openai", "gemini", "azure", "bedrock", "vertex"].includes(
+    (process.env.LLM_PROVIDER ?? "").toLowerCase(),
+  );
+const SHOULD_RUN = process.env.LLM_PROVIDER !== "mock" && REAL_PROVIDER_SET;
 
 let env: E2EEnv;
 beforeAll(async () => {
   if (!SHOULD_RUN) return;
-  // Default mode = real LLM from .env. Throws clearly if no key.
+  // Default mode = real LLM from .env. Throws clearly if misconfigured.
   env = await boot("tier1-real");
 }, 90_000);
 afterAll(async () => {
@@ -176,24 +174,24 @@ describe.skipIf(!SHOULD_RUN)("Tier 1.2 — multi-turn (real LLM)", () => {
 describe.skipIf(!SHOULD_RUN)(
   "Tier 1.3 — connector authoring engages the real tool palette (real LLM)",
   () => {
-    test("a chat that asks for a connector triggers propose_connector and reaches confirm/commit", async () => {
+    test("a chat that asks for a connector triggers start_connector_from_description and reaches confirm/commit", async () => {
       const before = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
         headers: adminAuth(),
       }).then((r) => r.json() as Promise<{ items: Array<{ slug: string }> }>);
       const beforeSlugs = new Set(before.items.map((c) => c.slug));
 
       const { conversation_id } = await runWithApprovals(
-        "Use the propose_connector tool to add a connector (name 'open-meteo', " +
-          "slug 'open-meteo', driver 'http', auth_type 'none', base_url " +
-          "'https://api.open-meteo.com'), then ask_user_confirm to commit, " +
-          "then commit_draft on approval.",
+        "Use the start_connector_from_description tool to seed a connector draft " +
+          "(name 'open-meteo', driver 'http', auth_type 'none', base_url " +
+          "'https://api.open-meteo.com'). Then continue through the normal " +
+          "probe/save path before building the workflow.",
       );
 
       const detail = await getConversation(conversation_id);
       const tools = detail.tool_calls.map((t) => t.tool);
-      // Floor: the LLM dispatch reached propose_connector — the engine's
+      // Floor: the LLM dispatch reached start_connector_from_description — the engine's
       // tool palette + Zod validators + draft snapshotting all ran.
-      expect(tools).toContain("propose_connector");
+      expect(tools).toContain("start_connector_from_description");
 
       // If the LLM completed the round-trip, a connector row exists.
       if (tools.includes("commit_draft")) {

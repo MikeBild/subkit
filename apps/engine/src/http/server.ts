@@ -30,6 +30,7 @@ import { type AppEnv, createOpenApiApp, OPENAPI_INFO, SECURITY_SCHEMES } from ".
 import { registerAiExtractRoute } from "./routes/ai/extract.ts";
 import { registerAiGenerateRoute } from "./routes/ai/generate.ts";
 import { registerAiRepairRoute } from "./routes/ai/repair.ts";
+import { registerAiSummarizeRoute } from "./routes/ai/summarize.ts";
 import { registerAuditLogRoutes } from "./routes/audit-log.ts";
 import { registerChatRoutes } from "./routes/chat.ts";
 import { registerConnectorDocsRoutes } from "./routes/connector-docs.ts";
@@ -230,6 +231,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerAiGenerateRoute(app);
   registerAiExtractRoute(app);
   registerAiRepairRoute(app);
+  registerAiSummarizeRoute(app);
   registerPatchCandidateRoutes(app);
   registerHooksInboundRoutes(app);
   registerRequestHookRoutes(app);

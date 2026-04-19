@@ -233,7 +233,18 @@ The engine reads its configuration from environment variables. Per-Tenant and pe
 | `PORT` | TCP port the HTTP server binds to (default `3000`). |
 | `TUNNEL_PORT` | TCP port for tunnel WebSocket connections (default `3001`). |
 | `PUBLIC_BASE_URL` | Externally reachable base URL. Used in webhook URLs, chat deeplinks, OIDC redirect URIs, MCP transport URLs. |
-| `ANTHROPIC_API_KEY` | Anthropic API key for LLM calls. |
+| `LLM_PROVIDER` | Direct provider selector: `anthropic`, `openai`, `gemini`, `azure`, `bedrock`, `vertex`, or `mock` in tests. |
+| `LLM_FALLBACK_PROVIDER` | Optional fallback provider selector. Requires a primary route via gateway mode or `LLM_PROVIDER`, plus the matching provider credentials. |
+| `SUMMARIZE_LLM_PROVIDER` | Optional summarize-route provider override. When unset, `/v1/ai/summarize` uses the primary route. |
+| `SUMMARIZE_MODEL` | Optional summarize-route model override. When unset, `/v1/ai/summarize` uses the tenant's primary model. |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway API key for gateway-mode real LLM calls. |
+| `AI_GATEWAY_MODEL` | Gateway model id, e.g. `anthropic/claude-sonnet-4-5`. Required when using gateway mode. |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` / `ANTHROPIC_BASE_URL` | Direct Anthropic mode. |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | Direct OpenAI mode. |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` / `GEMINI_BASE_URL` | Direct Gemini mode. |
+| `AZURE_API_KEY` / `AZURE_MODEL` / `AZURE_RESOURCE_NAME` / `AZURE_BASE_URL` / `AZURE_API_VERSION` | Direct Azure OpenAI mode. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` / `BEDROCK_MODEL` | Direct Bedrock mode. |
+| `VERTEX_API_KEY` / `VERTEX_MODEL` / `VERTEX_PROJECT` / `VERTEX_LOCATION` / `VERTEX_CLIENT_EMAIL` / `VERTEX_PRIVATE_KEY` / `GOOGLE_APPLICATION_CREDENTIALS` | Direct Vertex mode. |
 | `FIREBASE_PROJECT_ID` | Firebase project id for auth. |
 | `FIREBASE_LOGIN_URL` | Firebase hosted login page URL. |
 | `SLACK_SIGNING_SECRET` | Slack Events API signing secret. |
@@ -350,7 +361,7 @@ bun run release:minor    # 1.6.x → 1.7.0
 bun run release:major    # 1.x.x → 2.0.0
 bun run release:dry      # print each step, no side effects
 bun run release:build    # just build + push engine/migrate images
-bun run release:verify   # health poll + smoke + engine log scan
+bun run release:verify   # health poll + smoke + diagnostics + remote log scan
 ```
 
 The orchestrator (`scripts/deploy.sh`) runs seven stages, abort-on-fail:
@@ -360,7 +371,7 @@ The orchestrator (`scripts/deploy.sh`) runs seven stages, abort-on-fail:
 3. **bump** — `scripts/release/version.sh` writes both `.release-please-manifest.json` and `package.json` atomically; makes a local `chore(release)` commit and `subkit-v<X.Y.Z>` tag.
 4. **build + push** — `scripts/release/build-push.sh` runs `docker buildx build --platform linux/amd64 --push` for engine (with `ENGINE_VERSION` build-arg) and migrate. Serial pushes — Docker Desktop's internal proxy drops concurrent large blob uploads. Auto-relogins DOCR once on 401.
 5. **deploy** — `ssh $DROPLET_USER@$DROPLET_HOST 'ENGINE_VERSION=... bash -s' < scripts/release/deploy-body.sh`. The body: `doctl registry login → compose pull → up -d migrate → wait migrate → up -d --no-deps engine → 150s HEALTHCHECK poll → rollback on failure → caddy bounce → prune`.
-6. **verify** — `scripts/release/verify.sh` polls `/v1/health` until the live `version` matches the tag, runs `scripts/smoke.sh`, then tails the engine log for any new `error|fatal` frames in the last 2 min.
+6. **verify** — `scripts/release/verify.sh` polls `/v1/health` until the live `version` matches the tag, runs `scripts/smoke.sh`, runs the authenticated remote-health smoke (`/v1/diagnostics/llm`, `/v1/diagnostics/setup`, `POST /v1/conversations`), then tails the engine log for any new `error|fatal` frames in the last 2 min via `ssh` or `doctl`.
 7. **publish** — on success only, `git push origin main subkit-v<X.Y.Z>`. On any earlier failure the local bump commit is reset so `main` stays clean.
 
 ### CI path
@@ -370,7 +381,7 @@ Conventional commits on `main` → release-please PR → merge → tag push fire
 1. **test** — lint, typecheck, db migrate, `bun test apps/ packages/`.
 2. **build-and-push** — identical `docker buildx` commands; tags as `registry.digitalocean.com/subkit/{engine,migrate}:<ver>` and `:latest`.
 3. **deploy** — checks out the tag, then `ssh ... 'ENGINE_VERSION=$VERSION bash -s' < scripts/release/deploy-body.sh`. Same file the laptop executes.
-4. **smoke** — `scripts/smoke.sh`.
+4. **smoke** — `scripts/smoke.sh`, authenticated diagnostics/setup checks, and the remote-health conversation smoke.
 
 ### Version source of truth
 
@@ -388,6 +399,7 @@ Tag format is `subkit-v<semver>` (matches `release.yml:14` trigger and `googleap
   SSH_KEY_PATH=~/.ssh/id_rsa
   DEPLOY_URL=https://subkit-api.mikebild.dev
   DROPLET_NAME=subkit-engine
+  VERIFY_API_KEY=wf_live_xxx           # required for diagnostics + conversation smoke
   ```
 
 ### Recovery

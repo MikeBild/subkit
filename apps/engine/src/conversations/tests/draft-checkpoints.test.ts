@@ -33,9 +33,11 @@ afterAll(async () => {
 
 function sampleDraft(n: number): DraftDocument {
   return {
-    name: `draft-${n}`,
-    slug: `d${n}`,
-    steps: [{ id: "a", kind: "wait", duration_ms: n }] as Array<Record<string, unknown>>,
+    workflow: {
+      name: `draft-${n}`,
+      slug: `d${n}`,
+      steps: [{ id: "a", kind: "wait", duration_ms: n }] as Array<Record<string, unknown>>,
+    },
   };
 }
 
@@ -54,7 +56,7 @@ describe("createDraftSnapshot", () => {
     expect(snap.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(snap.label).toBe("first");
     expect(snap.turn_index).toBe(1);
-    expect(snap.draft.name).toBe("draft-1");
+    expect(snap.draft.workflow.name).toBe("draft-1");
   });
 
   test("prunes oldest rows beyond LRU cap", async () => {
@@ -127,7 +129,7 @@ describe("listDraftSnapshots + getDraftSnapshot", () => {
     const got = await getDraftSnapshot({ tenant_id, snapshot_id: snap.id }, ctx.db);
     expect(got).not.toBeNull();
     expect(got!.label).toBe("target");
-    expect(got!.draft.name).toBe("draft-99");
+    expect(got!.draft.workflow.name).toBe("draft-99");
   });
 
   test("get with wrong tenant returns null (isolation)", async () => {

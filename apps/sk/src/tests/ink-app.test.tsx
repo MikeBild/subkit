@@ -816,6 +816,85 @@ describe("ink-app: journey 12 — modal panes", () => {
     instance.unmount();
   });
 
+  test("AC1d: dedicated context pane renders skill and attachment state", async () => {
+    const instance = renderApp({
+      onSlash: async (_name, _raw, openPane) => {
+        openPane({
+          kind: "context",
+          title: "conversation context",
+          snapshot: {
+            conversation_id: "c1",
+            connector_id: null,
+            workflow_id: "wf-1",
+            draft_mode: "workflow_authoring",
+            draft_summary: {
+              readiness: "ready_to_probe",
+              next_action: "Preview before commit.",
+              missing_fields: [],
+              progress_label: "1 workflow step",
+            },
+            skills: {
+              global: [{ id: "sg", title: "global skill" }],
+              connector: [],
+              workflow: [{ id: "sw", title: "workflow skill" }],
+              total: 2,
+            },
+            messages: { total: 4, last_role: "assistant" },
+            tool_calls_total: 3,
+            pending_elicitations: 1,
+            attachments: {
+              total: 1,
+              items: [{ slug: "spec", filename: "openapi.yaml", bytes: 1234 }],
+            },
+            latest_probe: null,
+            latest_preview: null,
+            workflow_version: { workflow_id: "wf-1", current_version: 3 },
+          },
+        });
+        return null;
+      },
+    });
+    await tick();
+    await type(instance, "/context");
+    await pressEnter(instance);
+    await tick(60);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("conversation context");
+    expect(frame).toContain("workflow skill");
+    expect(frame).toContain("@attachment:spec");
+    expect(frame).toContain("Esc to close");
+    instance.unmount();
+  });
+
+  test("AC1e: dedicated approval-history pane renders approval rows", async () => {
+    const instance = renderApp({
+      onSlash: async (_name, _raw, openPane) => {
+        openPane({
+          kind: "approval-history",
+          title: "approval history",
+          items: [
+            {
+              tool: "ask_user_confirm",
+              created_at: "2026-04-19T10:00:00.000Z",
+              summary: "Commit the workflow?",
+              status: "approved",
+            },
+          ],
+        });
+        return null;
+      },
+    });
+    await tick();
+    await type(instance, "/approvals");
+    await pressEnter(instance);
+    await tick(60);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("approval history");
+    expect(frame).toContain("approved");
+    expect(frame).toContain("Commit the workflow?");
+    instance.unmount();
+  });
+
   test("AC2: /resume opens a ConversationBrowser and Enter calls onSelectConversation", async () => {
     const selected: { current: string | null } = { current: null };
     const instance = renderApp({

@@ -50,6 +50,7 @@ export const dryRunStepTool: ConversationTool = {
       tenant_id: ctx.tenant_id,
       step,
       workflow_input: args.input ?? null,
+      ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
       ...(args.environment ? { execution_mode: args.environment } : {}),
       ...(args.budget_ms !== undefined ? { budget_ms: args.budget_ms } : {}),
     });

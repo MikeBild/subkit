@@ -55,7 +55,8 @@ async function runSmoke(): Promise<void> {
 }
 
 async function runServer(): Promise<void> {
-  const { env } = await import("./env.ts");
+  const { env, validateLlmEnvironment } = await import("./env.ts");
+  validateLlmEnvironment(process.env, { requireConfigured: true });
   const db = getDb();
 
   // Non-blocking update check — fire and forget

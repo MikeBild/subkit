@@ -8,7 +8,6 @@
 //   - resolvePlaceholders walks nested objects / arrays.
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { upsertCredential } from "../../../credentials/service.ts";
 import { connectors, tenants } from "../../../db/schema/index.ts";
@@ -94,16 +93,16 @@ async function seed(opts: {
 }
 
 describe("resolver — cred", () => {
-  test("bearer credential resolves via ${cred.<slug>.token}", async () => {
+  test(`bearer credential resolves via \${cred.<slug>.token}`, async () => {
     const { tenant_id } = await seed({ slug: "bearer1", tokenValue: "sk-live-abc" });
-    const r = await resolveStringPlaceholders("Bearer ${cred.bearer1.token}", {
+    const r = await resolveStringPlaceholders(`Bearer \${cred.bearer1.token}`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
     });
     expect(r.unresolved).toEqual([]);
     expect(r.value).toBe("Bearer sk-live-abc");
-    expect(r.placeholders_used).toEqual(["${cred.bearer1.token}"]);
+    expect(r.placeholders_used).toEqual([`\${cred.bearer1.token}`]);
   });
 
   test("header credential exposes each header key as a field", async () => {
@@ -112,7 +111,7 @@ describe("resolver — cred", () => {
       mode: "header",
       tokenValue: "key-val-42",
     });
-    const r = await resolveStringPlaceholders("${cred.hdr1.x-api-key}", {
+    const r = await resolveStringPlaceholders(`\${cred.hdr1.x-api-key}`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
@@ -126,7 +125,7 @@ describe("resolver — cred", () => {
       mode: "basic",
       tokenValue: "pw-secret",
     });
-    const r = await resolveStringPlaceholders("user=${cred.b1.username} pw=${cred.b1.password}", {
+    const r = await resolveStringPlaceholders(`user=\${cred.b1.username} pw=\${cred.b1.password}`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
@@ -136,7 +135,7 @@ describe("resolver — cred", () => {
 
   test("slug not found produces slug_not_found and leaves text literal", async () => {
     const { tenant_id } = await seed({ slug: "exists" });
-    const r = await resolveStringPlaceholders("A=${cred.missing.token} B=${cred.exists.token}", {
+    const r = await resolveStringPlaceholders(`A=\${cred.missing.token} B=\${cred.exists.token}`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
@@ -144,12 +143,12 @@ describe("resolver — cred", () => {
     expect(r.unresolved).toHaveLength(1);
     expect(r.unresolved[0]!.code).toBe("slug_not_found");
     // Remainder still resolved; unresolved token kept literally.
-    expect(r.value.startsWith("A=${cred.missing.token}")).toBe(true);
+    expect(r.value.startsWith(`A=\${cred.missing.token}`)).toBe(true);
   });
 
   test("field not present produces key_not_found", async () => {
     const { tenant_id } = await seed({ slug: "bearer2", mode: "bearer" });
-    const r = await resolveStringPlaceholders("${cred.bearer2.nonexistent}", {
+    const r = await resolveStringPlaceholders(`\${cred.bearer2.nonexistent}`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
@@ -164,7 +163,7 @@ describe("resolver — cred", () => {
       environment: "dev",
       tokenValue: "dev-only",
     });
-    const r = await resolveStringPlaceholders("${cred.env1.token}", {
+    const r = await resolveStringPlaceholders(`\${cred.env1.token}`, {
       tenant_id,
       environment: "prod",
       db: ctx.db,
@@ -174,13 +173,13 @@ describe("resolver — cred", () => {
 });
 
 describe("resolver — connector url + config", () => {
-  test("${connector.<slug>.base_url} resolves to base_url", async () => {
+  test(`\${connector.<slug>.base_url} resolves to base_url`, async () => {
     const { tenant_id } = await seed({
       slug: "urlx",
       baseUrl: "https://api.urlx.test",
       mode: "none",
     });
-    const r = await resolveStringPlaceholders("${connector.urlx.base_url}/v1/users", {
+    const r = await resolveStringPlaceholders(`\${connector.urlx.base_url}/v1/users`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
@@ -188,7 +187,7 @@ describe("resolver — connector url + config", () => {
     expect(r.value).toBe("https://api.urlx.test/v1/users");
   });
 
-  test("${connector.<slug>.config.<path>} walks nested config", async () => {
+  test(`\${connector.<slug>.config.<path>} walks nested config`, async () => {
     const { tenant_id } = await seed({
       slug: "cfg1",
       mode: "none",
@@ -196,8 +195,8 @@ describe("resolver — connector url + config", () => {
     });
     const r = await resolvePlaceholders(
       {
-        region: "${connector.cfg1.config.region}",
-        bucket: "${connector.cfg1.config.bucket.name}",
+        region: `\${connector.cfg1.config.region}`,
+        bucket: `\${connector.cfg1.config.bucket.name}`,
       },
       { tenant_id, environment: "dev", db: ctx.db },
     );
@@ -211,7 +210,7 @@ describe("resolver — connector url + config", () => {
       mode: "none",
       config: { region: "us-east-1" },
     });
-    const r = await resolveStringPlaceholders("${connector.cfg2.config.missing.deep}", {
+    const r = await resolveStringPlaceholders(`\${connector.cfg2.config.missing.deep}`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
@@ -221,9 +220,9 @@ describe("resolver — connector url + config", () => {
 });
 
 describe("resolver — input + scope", () => {
-  test("${input.<path>} reads from ctx.input", async () => {
+  test(`\${input.<path>} reads from ctx.input`, async () => {
     const { tenant_id } = await seed({ slug: "none1", mode: "none" });
-    const r = await resolveStringPlaceholders("Hi ${input.user.name}", {
+    const r = await resolveStringPlaceholders(`Hi \${input.user.name}`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
@@ -232,9 +231,9 @@ describe("resolver — input + scope", () => {
     expect(r.value).toBe("Hi Ada");
   });
 
-  test("${scope.<step>.<path>} reads from ctx.scope", async () => {
+  test(`\${scope.<step>.<path>} reads from ctx.scope`, async () => {
     const { tenant_id } = await seed({ slug: "none2", mode: "none" });
-    const r = await resolveStringPlaceholders("${scope.fetch.data.id}", {
+    const r = await resolveStringPlaceholders(`\${scope.fetch.data.id}`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
@@ -245,7 +244,7 @@ describe("resolver — input + scope", () => {
 
   test("scope path_empty: step not in scope", async () => {
     const { tenant_id } = await seed({ slug: "none3", mode: "none" });
-    const r = await resolveStringPlaceholders("${scope.other.data.id}", {
+    const r = await resolveStringPlaceholders(`\${scope.other.data.id}`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
@@ -256,7 +255,7 @@ describe("resolver — input + scope", () => {
 
   test("object / array values serialize to JSON for inline embed", async () => {
     const { tenant_id } = await seed({ slug: "none4", mode: "none" });
-    const r = await resolveStringPlaceholders("${input.payload}", {
+    const r = await resolveStringPlaceholders(`\${input.payload}`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
@@ -267,15 +266,15 @@ describe("resolver — input + scope", () => {
 });
 
 describe("resolver — escape handling", () => {
-  test("$${cred.x.y} is NOT looked up and appears literally", async () => {
+  test(`$\${cred.x.y} is NOT looked up and appears literally`, async () => {
     const { tenant_id } = await seed({ slug: "esc1", tokenValue: "visible" });
     const r = await resolveStringPlaceholders(
-      "keep $${cred.esc1.token} but sub ${cred.esc1.token}",
+      `keep $\${cred.esc1.token} but sub \${cred.esc1.token}`,
       { tenant_id, environment: "dev", db: ctx.db },
     );
-    expect(r.value).toBe("keep ${cred.esc1.token} but sub visible");
+    expect(r.value).toBe(`keep \${cred.esc1.token} but sub visible`);
     // Only the non-escaped one is counted in placeholders_used.
-    expect(r.placeholders_used).toEqual(["${cred.esc1.token}"]);
+    expect(r.placeholders_used).toEqual([`\${cred.esc1.token}`]);
   });
 });
 
@@ -293,14 +292,14 @@ describe("resolver — RBAC enforcement", () => {
       roles: [],
       scopes: [],
     };
-    const r = await resolveStringPlaceholders("${cred.rbac1.token}", {
+    const r = await resolveStringPlaceholders(`\${cred.rbac1.token}`, {
       tenant_id,
       environment: "dev",
       db: ctx.db,
       principal: lowPrivPrincipal,
     });
     expect(r.unresolved[0]!.code).toBe("rbac_denied");
-    expect(r.value).toContain("${cred.rbac1.token}");
+    expect(r.value).toContain(`\${cred.rbac1.token}`);
     expect(r.value).not.toContain("private-abc");
     // Reach through connector_id just to make TS happy about unused symbol:
     expect(connector_id).toBeTruthy();
@@ -326,7 +325,7 @@ describe("resolver — canary redaction (values never appear in logs)", () => {
         slug: "canary1",
         tokenValue: CANARY,
       });
-      const r = await resolveStringPlaceholders("X-${cred.canary1.token}-Y", {
+      const r = await resolveStringPlaceholders(`X-\${cred.canary1.token}-Y`, {
         tenant_id,
         environment: "dev",
         db: ctx.db,
@@ -351,7 +350,7 @@ describe("resolver — canary redaction (values never appear in logs)", () => {
     mutableLogger.warn = logSpy as unknown as typeof logger.warn;
     try {
       const { tenant_id } = await seed({ slug: "only-this", tokenValue: CANARY });
-      const r = await resolveStringPlaceholders("${cred.not-seeded.token}", {
+      const r = await resolveStringPlaceholders(`\${cred.not-seeded.token}`, {
         tenant_id,
         environment: "dev",
         db: ctx.db,
@@ -362,7 +361,7 @@ describe("resolver — canary redaction (values never appear in logs)", () => {
       // surfaces the token name in its unresolved entry (that's the safe channel).
       const serialised = JSON.stringify(logSpy.mock.calls);
       expect(serialised.includes(CANARY)).toBe(false);
-      expect(r.unresolved[0]!.token).toBe("${cred.not-seeded.token}");
+      expect(r.unresolved[0]!.token).toBe(`\${cred.not-seeded.token}`);
     } finally {
       mutableLogger.warn = origWarn;
     }
@@ -383,9 +382,9 @@ describe("describeConnectorPlaceholders", () => {
       environment: "dev",
       db: ctx.db,
     });
-    expect(d.url).toBe("${connector.dsc1.base_url}");
-    expect(d.credentials).toEqual(["${cred.dsc1.token}"]);
-    expect(d.config).toEqual(["${connector.dsc1.config.region}"]);
+    expect(d.url).toBe(`\${connector.dsc1.base_url}`);
+    expect(d.credentials).toEqual([`\${cred.dsc1.token}`]);
+    expect(d.config).toEqual([`\${connector.dsc1.config.region}`]);
   });
 
   test("missing connector → empty placeholders with null url", async () => {
@@ -442,9 +441,9 @@ describe("resolvePlaceholders — walks nested structures", () => {
     const r = await resolvePlaceholders(
       {
         headers: {
-          Authorization: "Bearer ${cred.deep1.token}",
+          Authorization: `Bearer \${cred.deep1.token}`,
         },
-        nested: [{ value: "${cred.deep1.token}" }, "literal"],
+        nested: [{ value: `\${cred.deep1.token}` }, "literal"],
         raw: "plain",
       },
       { tenant_id, environment: "dev", db: ctx.db },
@@ -456,6 +455,6 @@ describe("resolvePlaceholders — walks nested structures", () => {
       raw: "plain",
     });
     // deduped — even though the token appears twice
-    expect(r.placeholders_used).toEqual(["${cred.deep1.token}"]);
+    expect(r.placeholders_used).toEqual([`\${cred.deep1.token}`]);
   });
 });

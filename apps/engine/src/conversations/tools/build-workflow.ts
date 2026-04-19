@@ -25,7 +25,7 @@ import { describeConnectorPlaceholders, parsePlaceholders } from "../../llm/subs
 import { sampleToSchema } from "../../workflows/sample-to-schema.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
-import type { DraftDocument } from "../types.ts";
+import type { WorkflowDraftDocument } from "../types.ts";
 import { verifyWorkflow } from "../verifier.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -287,7 +287,7 @@ export const buildWorkflowTool: ConversationTool = {
     }
 
     // Draft shape accepted by the conversation draft store.
-    const workflowDraft: DraftDocument = {
+    const workflowDraft: WorkflowDraftDocument = {
       name: args.name,
       slug: args.slug,
       steps: args.steps,

@@ -26,8 +26,10 @@ describe("buildResumeSummary", () => {
       shouldShowResumeSummary({
         conversation: conv({ status: "committed" }),
         draft: {
-          name: "w",
-          steps: [{ id: "s1", kind: "request" }],
+          workflow: {
+            name: "w",
+            steps: [{ id: "s1", kind: "request" }],
+          },
         } as DraftDocument,
       }),
     ).toBe(false);
@@ -37,7 +39,7 @@ describe("buildResumeSummary", () => {
     expect(
       shouldShowResumeSummary({
         conversation: conv(),
-        draft: { name: "new-workflow", steps: [] } as DraftDocument,
+        draft: { workflow: { name: "new-workflow", steps: [] } } as DraftDocument,
       }),
     ).toBe(false);
   });
@@ -47,8 +49,7 @@ describe("buildResumeSummary", () => {
       shouldShowResumeSummary({
         conversation: conv(),
         draft: {
-          name: "new-workflow",
-          steps: [],
+          workflow: { name: "new-workflow", steps: [] },
           connector: { name: "X", driver: "http" },
         } as DraftDocument,
       }),
@@ -59,8 +60,7 @@ describe("buildResumeSummary", () => {
     const s = buildResumeSummary({
       conversation: conv(),
       draft: {
-        name: "new-workflow",
-        steps: [],
+        workflow: { name: "new-workflow", steps: [] },
         connector: { name: "Acme", driver: "http", auth_type: "bearer", environment: "dev" },
       } as DraftDocument,
     });
@@ -75,8 +75,7 @@ describe("buildResumeSummary", () => {
     const s = buildResumeSummary({
       conversation: conv(),
       draft: {
-        name: "new-workflow",
-        steps: [],
+        workflow: { name: "new-workflow", steps: [] },
         connector: {
           name: "Acme",
           driver: "http",
@@ -93,8 +92,6 @@ describe("buildResumeSummary", () => {
     const s = buildResumeSummary({
       conversation: conv(),
       draft: {
-        name: "my-flow",
-        steps: [{ id: "s1", kind: "request" }],
         workflow: {
           name: "my-flow",
           steps: [{ id: "s1", kind: "request" }],
@@ -111,8 +108,6 @@ describe("buildResumeSummary", () => {
     const s = buildResumeSummary({
       conversation: conv(),
       draft: {
-        name: "my-flow",
-        steps: [{ id: "s1", kind: "request" }],
         workflow: {
           name: "my-flow",
           steps: [{ id: "s1", kind: "request" }],
@@ -128,8 +123,10 @@ describe("buildResumeSummary", () => {
     const s = buildResumeSummary({
       conversation: conv(),
       draft: {
-        name: "my-flow",
-        steps: [{ id: "s1", kind: "request" }],
+        workflow: {
+          name: "my-flow",
+          steps: [{ id: "s1", kind: "request" }],
+        },
       } as DraftDocument,
       pendingElicitation: {
         id: "e1",

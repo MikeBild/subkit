@@ -61,7 +61,7 @@ describe("conversations/hardening", () => {
         actor_id: null,
         db: ctx.testDb.db as unknown as Db,
       }),
-      getDraft: () => ({ name: "t", steps: [] }),
+      getDraft: () => ({ workflow: { name: "t", steps: [] } }),
       setDraft: async () => {},
     };
 

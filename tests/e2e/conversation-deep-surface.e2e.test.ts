@@ -74,11 +74,10 @@ describe("deep-surface E2E", () => {
       tool_calls: Array<{ tool: string; confirmation_state?: string | null }>;
     };
 
-    // propose_connector declares a `pause` — the loop halts there on
-    // the first turn. propose_step / validate_draft / commit_draft land
-    // after the user resolves the ask_user_confirm elicitation.
+    // start_connector_from_description seeds the connector draft on the
+    // first turn. The later steps land after the next authoring turn.
     const names = detail.tool_calls.map((c) => c.tool);
-    for (const t of ["get_engine_status", "list_connectors", "propose_connector"]) {
+    for (const t of ["get_engine_status", "list_connectors", "start_connector_from_description"]) {
       expect(names).toContain(t);
     }
   }, 120_000);

@@ -392,7 +392,7 @@ export interface ConversationDetail {
   messages: unknown[];
   tool_calls: unknown[];
   draft: unknown;
-  approvals: unknown[];
+  approvals?: unknown[];
   resume_summary?: ResumeSummary | null;
 }
 

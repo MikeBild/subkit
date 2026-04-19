@@ -59,16 +59,18 @@ describe("commit_draft preview-before-commit gate", () => {
       .values({
         tenant_id: ctx.tenant_id,
         status: "active",
-        draft: { name: "no-preview", steps: [] },
+        draft: { workflow: { name: "no-preview", steps: [] } },
       })
       .returning();
     if (!conv) throw new Error("conversation insert failed");
     await seedApprovedConfirm(conv.id);
 
     const draft: DraftDocument = {
-      name: "no-preview",
-      slug: "no-preview",
-      steps: [{ id: "s1", kind: "transform", expression: "$input.n", language: "jsonata" }],
+      workflow: {
+        name: "no-preview",
+        slug: "no-preview",
+        steps: [{ id: "s1", kind: "transform", expression: "$input.n", language: "jsonata" }],
+      },
       // No latest_preview — gate must refuse.
     };
     const result = await commitDraftTool.execute(
@@ -87,23 +89,25 @@ describe("commit_draft preview-before-commit gate", () => {
       .values({
         tenant_id: ctx.tenant_id,
         status: "active",
-        draft: { name: "forced", steps: [] },
+        draft: { workflow: { name: "forced", steps: [] } },
       })
       .returning();
     if (!conv) throw new Error("conversation insert failed");
     await seedApprovedConfirm(conv.id);
 
     const draft: DraftDocument = {
-      name: "forced-commit",
-      slug: `forced-${Date.now()}`,
-      steps: [
-        {
-          id: "fetch",
-          kind: "request",
-          method: "GET",
-          url: "https://example.invalid/health",
-        },
-      ],
+      workflow: {
+        name: "forced-commit",
+        slug: `forced-${Date.now()}`,
+        steps: [
+          {
+            id: "fetch",
+            kind: "request",
+            method: "GET",
+            url: "https://example.invalid/health",
+          },
+        ],
+      },
     };
     const result = await commitDraftTool.execute(
       toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
@@ -135,16 +139,18 @@ describe("commit_draft preview-before-commit gate", () => {
       .values({
         tenant_id: ctx.tenant_id,
         status: "active",
-        draft: { name: "previewed", steps: [] },
+        draft: { workflow: { name: "previewed", steps: [] } },
       })
       .returning();
     if (!conv) throw new Error("conversation insert failed");
     await seedApprovedConfirm(conv.id);
 
     const draft: DraftDocument = {
-      name: "previewed-commit",
-      slug: `previewed-${Date.now()}`,
-      steps: [{ id: "t1", kind: "transform", expression: "$input.n", language: "jsonata" }],
+      workflow: {
+        name: "previewed-commit",
+        slug: `previewed-${Date.now()}`,
+        steps: [{ id: "t1", kind: "transform", expression: "$input.n", language: "jsonata" }],
+      },
       latest_preview: {
         ok: true,
         step_id: "t1",

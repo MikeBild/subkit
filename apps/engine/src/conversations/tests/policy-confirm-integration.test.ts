@@ -49,7 +49,7 @@ describe("policy confirm_before_execution wiring", () => {
       connector_id: null,
       workflow_id: null,
       engineClient,
-      getDraft: () => ({ name: "", steps: [] }),
+      getDraft: () => ({ workflow: { name: "", steps: [] } }),
       setDraft: async () => {},
     };
 
@@ -116,7 +116,7 @@ describe("policy confirm_before_execution wiring", () => {
       connector_id: null,
       workflow_id: null,
       engineClient,
-      getDraft: () => ({ name: "", steps: [] }),
+      getDraft: () => ({ workflow: { name: "", steps: [] } }),
       setDraft: async () => {},
     };
 

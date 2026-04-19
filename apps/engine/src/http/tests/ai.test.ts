@@ -70,4 +70,41 @@ describe("http /v1/skills + /v1/ai/generate", () => {
     expect(rows[0]?.model).toBeTruthy();
     expect(rows[0]?.total_tokens ?? 0).toBeGreaterThan(0);
   });
+
+  test("summarize returns a compact summary and records usage", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/ai/summarize`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${srv.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt:
+          "Summarize this incident: the connector probe passed, preview matched the expected output, and the workflow was committed after approval.",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      summary: string;
+      tokens: Record<string, number>;
+      model_used: string;
+      fell_back: boolean;
+    };
+    expect(body.summary).toContain("Summary:");
+    expect(body.tokens.total).toBeGreaterThan(0);
+    expect(body.model_used).toBeTruthy();
+    expect(typeof body.fell_back).toBe("boolean");
+
+    const rows = await srv.db
+      .select()
+      .from(llmUsage)
+      .where(
+        and(
+          eq(llmUsage.tenant_id, srv.tenantId),
+          eq(llmUsage.result, "success"),
+          eq(llmUsage.flow, "summarize"),
+        ),
+      );
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+  });
 });

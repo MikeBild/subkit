@@ -46,6 +46,7 @@ export const dryRunWorkflowTool: ConversationTool = {
       tenant_id: ctx.tenant_id,
       steps,
       workflow_input: args.input ?? null,
+      ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
       ...(args.environment ? { execution_mode: args.environment } : {}),
       ...(args.budget_ms_per_step !== undefined
         ? { budget_ms_per_step: args.budget_ms_per_step }

@@ -4,6 +4,7 @@
 // sees a concrete "ask this now" hint instead of re-deriving one from the
 // free-form system prompt every turn.
 
+import { extractTemplatePlaceholders } from "./connector-template-intelligence.ts";
 import type { DraftDocument } from "./types.ts";
 
 export type ExpertiseHint = "novice" | "intermediate" | "expert";
@@ -70,12 +71,13 @@ export function nextRecommendedAction(input: PolicyInput): NextAction {
   const mode = d.mode ?? "onboarding";
   const connector = d.connector ?? null;
   const connectorSaved = typeof connector?.saved_connector_id === "string";
-  const workflowSteps = d.workflow?.steps?.length ?? (Array.isArray(d.steps) ? d.steps.length : 0);
+  const workflowSteps = d.workflow.steps.length;
   const probe = connector?.latest_probe ?? null;
   const preview = d.latest_preview ?? null;
+  const endpointPlaceholders = extractTemplatePlaceholders(connector?.base_url);
 
   if (mode === "connector_authoring" || (connector && !connectorSaved)) {
-    if (!connector || !connector.name || !connector.driver) {
+    if (!connector?.name || !connector.driver) {
       return {
         kind: "connector_template_or_describe",
         summary: "Decide whether to use a template or describe the connector from scratch.",
@@ -89,11 +91,17 @@ export function nextRecommendedAction(input: PolicyInput): NextAction {
         rationale: "The driver is known but the auth mode has not been selected yet.",
       };
     }
-    if (!connector.base_url && !connector.dsn) {
+    if ((!connector.base_url && !connector.dsn) || endpointPlaceholders.length > 0) {
       return {
         kind: "connector_base_url",
-        summary: "Collect the base URL or DSN.",
-        rationale: "The connector cannot reach the upstream without an endpoint.",
+        summary:
+          endpointPlaceholders.length > 0
+            ? `Collect the remaining endpoint values: ${endpointPlaceholders.join(", ")}.`
+            : "Collect the base URL or DSN.",
+        rationale:
+          endpointPlaceholders.length > 0
+            ? "The selected template still has unresolved endpoint placeholders."
+            : "The connector cannot reach the upstream without an endpoint.",
       };
     }
     if (!probe || probe.ok !== true) {

@@ -5,6 +5,7 @@ import { probeGraphQLConnector } from "../../connectors/drivers/graphql.ts";
 import { buildRequestPlan } from "../../connectors/drivers/http.ts";
 import { probePgConnector } from "../../connectors/drivers/postgres.ts";
 import { probeS3Connector } from "../../connectors/drivers/s3.ts";
+import { mergeAbortSignals } from "../abort.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -18,8 +19,19 @@ const inputSchema = z
     query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
     body: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).optional(),
+    timeout_ms: z.number().int().min(100).max(60_000).default(15_000),
   })
   .openapi("ProbeConnectorDraftToolInput");
+
+function isTimeoutError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === "TimeoutError" || error.name === "AbortError";
+  }
+  if (error instanceof Error) {
+    return /timed? out|timeout|aborted/i.test(error.message);
+  }
+  return /timed? out|timeout|aborted/i.test(String(error));
+}
 
 export const probeConnectorDraftTool: ConversationTool = {
   name: "probe_connector_draft",
@@ -199,7 +211,11 @@ export const probeConnectorDraftTool: ConversationTool = {
           }
         }
       }
-      const res = await fetch(plan.url, init);
+      const timeoutSignal = AbortSignal.timeout(args.timeout_ms);
+      const signal = ctx.abortSignal
+        ? mergeAbortSignals([ctx.abortSignal, timeoutSignal])
+        : timeoutSignal;
+      const res = await fetch(plan.url, { ...init, signal });
       status = res.status;
       const contentType = res.headers.get("content-type") ?? "";
       const text = await res.text();
@@ -225,8 +241,10 @@ export const probeConnectorDraftTool: ConversationTool = {
           path: args.path,
           environment: draftView.environment,
           duration_ms,
-          summary: `Probe failed: ${errorDetail}`,
-          failure_code: "probe_failed",
+          summary: isTimeoutError(errorDetail)
+            ? `Probe timed out after ${args.timeout_ms}ms.`
+            : `Probe failed: ${errorDetail}`,
+          failure_code: isTimeoutError(errorDetail) ? "probe_timeout" : "probe_failed",
         }
       : {
           ok: status >= 200 && status < 400,

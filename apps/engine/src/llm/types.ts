@@ -2,10 +2,11 @@
 // pipeline pull from the same shapes.
 
 import type { Skill } from "../skills/types.ts";
+import type { ProviderKind } from "./core/model-init.ts";
 
-export type LlmFlow = "generate" | "extract" | "repair" | "converse" | "discover";
+export type LlmFlow = "generate" | "extract" | "repair" | "converse" | "discover" | "summarize";
 
-export type LlmProviderKind = "gateway" | "mock";
+export type LlmProviderKind = ProviderKind;
 
 /** Resolved per-call routing decision. */
 export interface ModelRoute {
@@ -13,6 +14,7 @@ export interface ModelRoute {
   primary: string;
   fallback: string;
   provider: LlmProviderKind;
+  fallback_provider: LlmProviderKind;
   /** Effective context-length cap for the primary model (tokens). */
   context_cap: number;
   /** Monthly budget for the tenant; null = unlimited. */

@@ -100,7 +100,7 @@ describe("verifyWorkflow — scope reference integrity", () => {
     expect(r.errors.some((e) => e.code === "scope_ref_unresolved")).toBe(true);
   });
 
-  test("${scope.<step>.*} form is detected the same as $scope.<step>", () => {
+  test(`\${scope.<step>.*} form is detected the same as $scope.<step>`, () => {
     const r = verifyWorkflow({
       steps: [
         {
@@ -108,7 +108,7 @@ describe("verifyWorkflow — scope reference integrity", () => {
           kind: "request",
           method: "GET",
           path: "/x",
-          headers: { "x-trace": "${scope.absent.data.id}" },
+          headers: { "x-trace": `\${scope.absent.data.id}` },
         },
       ],
     });

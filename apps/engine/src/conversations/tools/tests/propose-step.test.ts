@@ -11,8 +11,10 @@ function mkCtx(initial?: Partial<DraftDocument>): {
   getDraft: () => DraftDocument;
 } {
   let draft: DraftDocument = {
-    name: "test-workflow",
-    steps: [],
+    workflow: {
+      name: "test-workflow",
+      steps: [],
+    },
     ...(initial ?? {}),
   };
   const ctx = {
@@ -46,16 +48,16 @@ describe("propose_step", () => {
       ctx,
     );
     expect(result.ok).toBe(true);
-    expect(getDraft().steps).toHaveLength(1);
-    expect(getDraft().steps[0]).toMatchObject({ id: "fetch", kind: "request" });
+    expect(getDraft().workflow.steps).toHaveLength(1);
+    expect(getDraft().workflow.steps[0]).toMatchObject({ id: "fetch", kind: "request" });
   });
 
   it("replaces by id when called twice with the same step id", async () => {
     const { ctx, getDraft } = mkCtx();
     await run({ step: { id: "s", kind: "wait", duration_ms: 1000 } }, ctx);
     await run({ step: { id: "s", kind: "wait", duration_ms: 5000 } }, ctx);
-    expect(getDraft().steps).toHaveLength(1);
-    expect((getDraft().steps[0] as { duration_ms: number }).duration_ms).toBe(5000);
+    expect(getDraft().workflow.steps).toHaveLength(1);
+    expect((getDraft().workflow.steps[0] as { duration_ms: number }).duration_ms).toBe(5000);
   });
 
   it("flags `type` instead of `kind` with used_wrong_key=true", async () => {
@@ -108,6 +110,6 @@ describe("propose_step", () => {
   it("does not snapshot the draft when validation fails", async () => {
     const { ctx, getDraft } = mkCtx();
     await run({ step: { id: "bad", type: "trigger.manual" } }, ctx);
-    expect(getDraft().steps).toHaveLength(0);
+    expect(getDraft().workflow.steps).toHaveLength(0);
   });
 });

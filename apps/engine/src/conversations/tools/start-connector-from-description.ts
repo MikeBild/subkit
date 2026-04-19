@@ -1,6 +1,14 @@
 import { z } from "@hono/zod-openapi";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
+import {
+  allowedTemplateAuthTypes,
+  defaultTemplateAuthType,
+  inferAuthTypeFromDescription,
+  inferTemplateRequiredFields,
+  pickBestConnectorTemplate,
+  shouldAutoSelectConnectorTemplate,
+} from "../connector-template-intelligence.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -28,9 +36,32 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
       args.driver ??
       (args.dsn
         ? "postgres"
-        : args.base_url?.includes("/graphql") || /graphql/i.test(args.description ?? "")
+        : /graphql/i.test(args.base_url ?? "") || /graphql/i.test(args.description ?? "")
           ? "graphql"
-          : "http");
+          : /\bs3\b|\bbucket\b|\bobject storage\b/i.test(args.description ?? "")
+            ? "s3"
+            : "http");
+    const descriptionForMatching = [args.name, args.description]
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+      .join(" ");
+    const bestTemplate = pickBestConnectorTemplate(descriptionForMatching, inferredDriver);
+    const template =
+      bestTemplate &&
+      shouldAutoSelectConnectorTemplate({
+        template: bestTemplate.template,
+        score: bestTemplate.score,
+        name: args.name,
+        ...(args.description ? { description: args.description } : {}),
+      }) &&
+      (!args.auth_type || allowedTemplateAuthTypes(bestTemplate.template).includes(args.auth_type))
+        ? bestTemplate.template
+        : null;
+    const auth_type =
+      args.auth_type ??
+      inferAuthTypeFromDescription(args.description) ??
+      (template ? defaultTemplateAuthType(template) : "none");
+    const resolvedDescription = args.description ?? template?.description;
+    const resolvedBaseUrl = args.base_url ?? template?.base_url;
     const connector: ConnectorDraftDocument = {
       name: args.name,
       slug: args.name
@@ -40,20 +71,22 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
         .slice(0, 64),
       driver: inferredDriver,
       environment: args.environment,
-      ...(args.description ? { description: args.description } : {}),
-      ...(args.base_url ? { base_url: args.base_url } : {}),
+      ...(resolvedDescription ? { description: resolvedDescription } : {}),
+      ...(resolvedBaseUrl ? { base_url: resolvedBaseUrl } : {}),
       ...(args.dsn ? { dsn: args.dsn } : {}),
-      auth_type: args.auth_type ?? "none",
+      auth_type,
       config: {},
-      docs: [],
+      docs: template?.ingestion_url ? [template.ingestion_url] : [],
       latest_probe: null,
       saved_connector_id: null,
+      template_id: template?.slug ?? null,
+      template_name: template?.name ?? null,
     };
     const validation = validateConnectorDraft(connector);
     await ctx.setDraft(
       withConnectorDraft(
         ctx.getDraft(),
-        { ...connector, validation, template_id: null, template_name: null },
+        { ...connector, validation },
         "connector_started_from_description",
       ),
     );
@@ -66,8 +99,19 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
           driver: connector.driver,
           environment: connector.environment,
           auth_type: connector.auth_type,
+          template_id: connector.template_id ?? null,
+          template_name: connector.template_name ?? null,
         },
         validation,
+        matched_template:
+          template && bestTemplate
+            ? {
+                slug: template.slug,
+                name: template.name,
+                score: bestTemplate.score,
+                required_fields: inferTemplateRequiredFields(template),
+              }
+            : null,
       },
     };
   },

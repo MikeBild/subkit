@@ -14,6 +14,7 @@ import { upsertCredential } from "../../../credentials/service.ts";
 import { connectors, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import type { DraftDocument } from "../../types.ts";
 import { buildWorkflowTool } from "../build-workflow.ts";
 import type { ToolContext } from "../index.ts";
@@ -74,7 +75,7 @@ function makeCtx(overrides: Partial<ToolContext> = {}): TestToolCtx {
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({ tenant_id, actor_id: null, db: ctx.db }),
-    getDraft: () => state.draft ?? { name: "", steps: [] },
+    getDraft: () => state.draft ?? createEmptyDraftDocument(),
     setDraft: async (next) => {
       state.draft = next;
     },
@@ -101,8 +102,8 @@ describe("build_workflow — happy path", () => {
           id: "fetch",
           kind: "request",
           method: "GET",
-          url: "${connector.stripe.base_url}/v1/customers",
-          headers: { Authorization: "Bearer ${cred.stripe.token}" },
+          url: `\${connector.stripe.base_url}/v1/customers`,
+          headers: { Authorization: `Bearer \${cred.stripe.token}` },
           query: { limit: "5" },
         },
       ],
@@ -118,8 +119,8 @@ describe("build_workflow — happy path", () => {
     expect(data.draft.slug).toBe("stripe-daily");
     expect(data.draft.step_count).toBe(1);
     expect(toolCtx.draft).not.toBeNull();
-    expect(toolCtx.draft!.slug).toBe("stripe-daily");
-    expect(toolCtx.draft!.steps).toHaveLength(1);
+    expect(toolCtx.draft!.workflow.slug).toBe("stripe-daily");
+    expect(toolCtx.draft!.workflow.steps).toHaveLength(1);
   });
 
   test("second call replaces the draft (idempotent)", async () => {
@@ -130,7 +131,7 @@ describe("build_workflow — happy path", () => {
       steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
       environment: "dev",
     });
-    expect(toolCtx.draft!.slug).toBe("v1");
+    expect(toolCtx.draft!.workflow.slug).toBe("v1");
     await buildWorkflowTool.execute(toolCtx, {
       name: "v2",
       slug: "v2",
@@ -140,8 +141,8 @@ describe("build_workflow — happy path", () => {
       ],
       environment: "dev",
     });
-    expect(toolCtx.draft!.slug).toBe("v2");
-    expect(toolCtx.draft!.steps).toHaveLength(2);
+    expect(toolCtx.draft!.workflow.slug).toBe("v2");
+    expect(toolCtx.draft!.workflow.steps).toHaveLength(2);
   });
 });
 
@@ -199,7 +200,7 @@ describe("build_workflow — placeholder integrity", () => {
           id: "s",
           kind: "request",
           method: "GET",
-          url: "${connector.noslug.base_url}/x",
+          url: `\${connector.noslug.base_url}/x`,
         },
       ],
       environment: "dev",
@@ -211,7 +212,7 @@ describe("build_workflow — placeholder integrity", () => {
       }
     ).error;
     expect(err.code).toBe("placeholder_connector_missing");
-    expect(err.details.problems[0]!.token).toBe("${connector.noslug.base_url}");
+    expect(err.details.problems[0]!.token).toBe(`\${connector.noslug.base_url}`);
   });
 
   test("missing credential field → placeholder_cred_missing", async () => {
@@ -224,8 +225,8 @@ describe("build_workflow — placeholder integrity", () => {
           id: "s",
           kind: "request",
           method: "GET",
-          url: "${connector.stripe.base_url}/x",
-          headers: { "x-hack": "${cred.stripe.nonexistent_field}" },
+          url: `\${connector.stripe.base_url}/x`,
+          headers: { "x-hack": `\${cred.stripe.nonexistent_field}` },
         },
       ],
       environment: "dev",
@@ -237,7 +238,7 @@ describe("build_workflow — placeholder integrity", () => {
       }
     ).error;
     expect(err.code).toBe("placeholder_cred_missing");
-    expect(err.details.problems[0]!.token).toBe("${cred.stripe.nonexistent_field}");
+    expect(err.details.problems[0]!.token).toBe(`\${cred.stripe.nonexistent_field}`);
   });
 
   test("env mismatch: dev token requested from prod env → placeholder_connector_missing", async () => {
@@ -250,7 +251,7 @@ describe("build_workflow — placeholder integrity", () => {
           id: "s",
           kind: "request",
           method: "GET",
-          url: "${connector.stripe.base_url}/x",
+          url: `\${connector.stripe.base_url}/x`,
         },
       ],
       environment: "prod",
@@ -279,7 +280,7 @@ describe("build_workflow — input_schema inference", () => {
     };
     expect(data.draft.input_schema_inferred).toBe(true);
     expect(data.warnings).toContain("input_schema_inferred_from_sample");
-    const inferred = (toolCtx.draft!.input_schema ?? {}) as Record<string, unknown>;
+    const inferred = (toolCtx.draft!.workflow.input_schema ?? {}) as Record<string, unknown>;
     expect(inferred.type).toBe("object");
   });
 
@@ -296,6 +297,8 @@ describe("build_workflow — input_schema inference", () => {
     expect(result.ok).toBe(true);
     const data = result.data as { draft: { input_schema_inferred: boolean } };
     expect(data.draft.input_schema_inferred).toBe(false);
-    expect((toolCtx.draft!.input_schema as { required: string[] }).required).toEqual(["custom"]);
+    expect((toolCtx.draft!.workflow.input_schema as { required: string[] }).required).toEqual([
+      "custom",
+    ]);
   });
 });

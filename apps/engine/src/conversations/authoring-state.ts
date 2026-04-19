@@ -1,3 +1,4 @@
+import { extractTemplatePlaceholders } from "./connector-template-intelligence.ts";
 import type {
   AuthoringMode,
   AuthoringSummary,
@@ -14,11 +15,9 @@ export function createEmptyWorkflowDraft(): WorkflowDraftDocument {
 }
 
 export function createEmptyDraftDocument(mode: AuthoringMode = "onboarding"): DraftDocument {
-  const workflow = createEmptyWorkflowDraft();
   return refreshDraftSummary({
-    ...workflow,
     mode,
-    workflow,
+    workflow: createEmptyWorkflowDraft(),
     connector: null,
     latest_preview: null,
   });
@@ -31,47 +30,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
   const fallback = createEmptyWorkflowDraft();
   if (!isRecord(raw)) return fallback;
-  // Merge top-level and nested workflow keys so a bypass writer that
-  // updated only one side (e.g. Journey 13's direct DB snapshot edit)
-  // produces a single coherent draft. Nested wins on conflict when
-  // both are present and different, except for name/slug where the
-  // most recently-set non-empty value wins via a last-write heuristic:
-  // if the top-level name/slug was updated to a fresh value and the
-  // nested is still the old default, we prefer top-level. Empty
-  // strings in either side lose to a non-empty peer.
-  const nested = isRecord(raw.workflow) ? raw.workflow : {};
-  const topLevel = raw;
+  const base = isRecord(raw.workflow) ? raw.workflow : raw;
   const pickString = (key: string): string | undefined => {
-    const n = nested[key];
-    const t = topLevel[key];
-    const nestedOk = typeof n === "string" && n.length > 0;
-    const topOk = typeof t === "string" && t.length > 0;
-    if (nestedOk && topOk) {
-      // Conflict: prefer nested unless top-level differs AND nested
-      // matches the "new-workflow"/"new-workflow" default — callers
-      // that rename the top-level canonical name should not be
-      // silently reverted.
-      if ((n === fallback.name || n === "new-workflow") && t !== n) return t as string;
-      return n as string;
-    }
-    if (nestedOk) return n as string;
-    if (topOk) return t as string;
-    return undefined;
+    const value = base[key];
+    return typeof value === "string" && value.length > 0 ? value : undefined;
   };
   const name = pickString("name") ?? fallback.name;
   const slug = pickString("slug");
   const description = pickString("description");
   const outputTransform = pickString("output_transform");
-  const base = nested && Object.keys(nested).length > 0 ? nested : topLevel;
   return {
     name,
     ...(slug ? { slug } : {}),
     ...(description ? { description } : {}),
     steps: Array.isArray(base.steps)
       ? base.steps.filter((step): step is Record<string, unknown> => isRecord(step))
-      : Array.isArray(topLevel.steps)
-        ? topLevel.steps.filter((step): step is Record<string, unknown> => isRecord(step))
-        : [],
+      : [],
     ...(isRecord(base.input_schema) ? { input_schema: base.input_schema } : {}),
     ...(isRecord(base.output_schema) ? { output_schema: base.output_schema } : {}),
     ...(outputTransform ? { output_transform: outputTransform } : {}),
@@ -198,7 +172,13 @@ function computeConnectorMissingFields(connector: ConnectorDraftDocument | null)
   if (!connector.driver) missing.push("driver");
   if (!connector.environment) missing.push("environment");
   if (connector.driver === "http" || connector.driver === "graphql" || connector.driver === "s3") {
-    if (!connector.base_url) missing.push("base_url");
+    if (!connector.base_url) {
+      missing.push("base_url");
+    } else {
+      for (const field of extractTemplatePlaceholders(connector.base_url)) {
+        missing.push(`base_url.${field}`);
+      }
+    }
   }
   if (connector.driver === "postgres" && !connector.dsn) missing.push("dsn");
   if (!connector.auth_type) missing.push("auth_type");
@@ -302,7 +282,6 @@ export function refreshDraftSummary(draft: DraftDocument): DraftDocument {
 
   return {
     ...draft,
-    ...workflow,
     mode,
     workflow,
     connector,
@@ -316,7 +295,6 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
   const connector = normalizeConnectorDraft(raw);
   const summary = normalizeSummary(raw);
   const next: DraftDocument = {
-    ...workflow,
     ...(typeof raw.mode === "string" ? { mode: raw.mode as AuthoringMode } : {}),
     workflow,
     connector,
@@ -342,7 +320,7 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
 }
 
 export function getWorkflowDraft(draft: DraftDocument): WorkflowDraftDocument {
-  return normalizeDraftDocument(draft).workflow ?? createEmptyWorkflowDraft();
+  return normalizeDraftDocument(draft).workflow;
 }
 
 export function withWorkflowDraft(
@@ -352,7 +330,6 @@ export function withWorkflowDraft(
 ): DraftDocument {
   const next: DraftDocument = {
     ...draft,
-    ...workflow,
     mode: "workflow_authoring",
     workflow,
     summary: {

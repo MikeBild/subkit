@@ -6,8 +6,7 @@ import type { DraftDocument } from "../types.ts";
 
 function draft(overrides: Partial<DraftDocument> = {}): DraftDocument {
   return {
-    name: "new-workflow",
-    steps: [],
+    workflow: { name: "new-workflow", steps: [] },
     ...overrides,
   } as DraftDocument;
 }
@@ -64,6 +63,22 @@ describe("onboarding policy", () => {
     expect(a.kind).toBe("connector_base_url");
   });
 
+  test("templated connector base_url with unresolved placeholders still asks for endpoint values", () => {
+    const a = nextRecommendedAction({
+      draft: draft({
+        mode: "connector_authoring",
+        connector: {
+          name: "Shopify",
+          driver: "http",
+          auth_type: "bearer",
+          base_url: "https://{shop}.myshopify.com/admin/api/2024-07",
+        },
+      }),
+    });
+    expect(a.kind).toBe("connector_base_url");
+    expect(a.summary).toContain("shop");
+  });
+
   test("connector ready but unprobed → recommend probe", () => {
     const a = nextRecommendedAction({
       draft: draft({
@@ -99,7 +114,6 @@ describe("onboarding policy", () => {
     const a = nextRecommendedAction({
       draft: draft({
         mode: "workflow_authoring",
-        steps: [],
         workflow: { name: "w", steps: [] },
       }),
     });
@@ -114,7 +128,6 @@ describe("onboarding policy", () => {
           name: "w",
           steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
         },
-        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
       }),
     });
     expect(a.kind).toBe("workflow_preview");
@@ -128,7 +141,6 @@ describe("onboarding policy", () => {
           name: "w",
           steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
         },
-        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
         latest_preview: { ok: true, step_id: "s1", summary: "ok" },
       }),
     });

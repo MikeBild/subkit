@@ -222,7 +222,7 @@ export async function buildOnboardingHint(opts: OnboardingOpts): Promise<string 
       "[ONBOARDING] Fresh tenant — zero connectors yet.",
       "Guide the operator to either:",
       "- upload an OpenAPI / GraphQL spec via @file: (the engine auto-discovers connectors), or",
-      "- call `propose_connector` to register a connector by hand (slug, driver, base_url).",
+      "- call `start_connector_from_description` to draft a connector by hand (name, driver, base_url).",
       "Then seed credentials via the UI's secure input before anything can run.",
     ].join("\n");
   }

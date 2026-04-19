@@ -78,17 +78,17 @@ describe("redactPayload — value-shape masking", () => {
 });
 
 describe("redactPayload — placeholder-token visibility", () => {
-  test("${cred.*} tokens are marked but not fully masked (they're names, not values)", () => {
+  test(`\${cred.*} tokens are marked but not fully masked (they're names, not values)`, () => {
     const out = redactPayload({
       Authorization: "ok", // bypasses key check because it's Authorization
-      note: "using ${cred.stripe.token} for auth",
+      note: `using \${cred.stripe.token} for auth`,
     }) as Record<string, string>;
     // The Authorization key is masked regardless of value (key-rule wins):
     expect(out.Authorization).toBe("[REDACTED]");
     // But a plain string mentioning a ${cred.*} token stays readable
     // with a visible REDACTED marker so operators know the placeholder
     // was detected but the token name itself is not a secret.
-    expect(out.note).toBe("using ${cred.REDACTED} for auth");
+    expect(out.note).toBe(`using \${cred.REDACTED} for auth`);
   });
 
   test("secret-shaped value under a sensitive key is fully masked", () => {

@@ -212,9 +212,10 @@ export async function executeS3Request(p: {
 }
 
 /**
- * Health probe: do a `HEAD /` against the bucket. We treat any
- * non-throwing listObjects start as success — this avoids depending on
- * a particular object key existing in the bucket.
+ * Health probe: run the same LIST flow that the request executor uses.
+ * This keeps probe behavior aligned with real authoring-time validation
+ * and works against S3-compatible endpoints that do not implement the
+ * lighter `bucketExists` shortcut.
  */
 export async function probeS3Connector(p: {
   db: Db;
@@ -223,18 +224,22 @@ export async function probeS3Connector(p: {
 }): Promise<{ ok: boolean; latency_ms: number; status?: number; detail?: string }> {
   const start = Date.now();
   try {
-    const credentials = await resolveS3Credentials(p.db, p.tenant_id, p.connector);
-    const client = buildS3Client({ connector: p.connector, credentials });
-    const exists = await client.bucketExists(parseConfig(p.connector).bucket);
-    if (!exists) {
+    const res = await executeS3Request({
+      db: p.db,
+      tenant_id: p.tenant_id,
+      connector: p.connector,
+      method: "LIST",
+      path: "/",
+    });
+    if (res.status < 200 || res.status >= 300) {
       return {
         ok: false,
         latency_ms: Date.now() - start,
-        status: 404,
-        detail: "bucket does not exist",
+        status: res.status,
+        detail: `LIST returned HTTP ${res.status}`,
       };
     }
-    return { ok: true, latency_ms: Date.now() - start, status: 200 };
+    return { ok: true, latency_ms: Date.now() - start, status: res.status };
   } catch (err) {
     return {
       ok: false,

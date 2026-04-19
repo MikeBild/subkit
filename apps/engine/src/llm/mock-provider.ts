@@ -185,6 +185,11 @@ class MockProvider {
         };
         return { text: JSON.stringify(obj), object: obj };
       }
+      case "summarize": {
+        const summary = lastUser.trim().replace(/\s+/g, " ").slice(0, 120);
+        const text = summary.length > 0 ? `Summary: ${summary}` : "Summary: (empty)";
+        return { text, object: { summary: text } };
+      }
       default:
         return { text: "(mock)", object: null };
     }
@@ -292,7 +297,7 @@ export function resetMockProvider(): void {
 
 /**
  * Canned "open-meteo weather" authoring plan. Drives the conversation
- * loop through: get_engine_status → list_connectors → propose_connector
+ * loop through: get_engine_status → list_connectors → start_connector_from_description
  * → propose_step (Berlin forecast) → validate_draft → ask_user_confirm
  * → commit_draft. Intentionally grounded in the open-meteo forecast
  * endpoint which needs no API key:
@@ -304,14 +309,13 @@ export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
     { tool: "get_engine_status", args: {} },
     { tool: "list_connectors", args: {} },
     {
-      tool: "propose_connector",
+      tool: "start_connector_from_description",
       args: {
         name: "Open-Meteo",
-        slug: "open-meteo",
         driver: "http",
         auth_type: "none",
         base_url: "https://api.open-meteo.com",
-        reason: "Public weather API — no auth required, used for tomorrow's forecast in Berlin.",
+        description: "Public weather API with no auth, used for tomorrow's forecast in Berlin.",
       },
     },
     {
