@@ -224,6 +224,45 @@ export async function appendUserMessage(
     effectiveMemory = row?.memory ?? null;
   }
   void memory;
+
+  // A brand-new user message implicitly supersedes any unresolved
+  // elicitation from the previous turn. We mark those pending rows as
+  // cancelled AND write a `user_auto_declined` entry on the matching
+  // tool call's interaction_log so the LLM sees the supersede on the
+  // next turn. Doing this BEFORE runLoop prevents the pre-LLM-call
+  // scanner from treating a stale confirmation as still live.
+  {
+    const { listElicitationsForConversation, resolveElicitation } = await import(
+      "./elicitations.ts"
+    );
+    const { recordTransition } = await import("./confirmation.ts");
+    const pending = (
+      await listElicitationsForConversation(p.tenant_id, p.conversation_id, exec)
+    ).filter((e) => e.status === "pending");
+    for (const e of pending) {
+      await resolveElicitation(
+        {
+          tenant_id: p.tenant_id,
+          id: e.id,
+          output: { auto_declined: true },
+          decided_by: null,
+          reason: "auto_declined_by_new_user_message",
+          status: "cancelled",
+        },
+        exec,
+      );
+      if (e.tool_call_id) {
+        await recordTransition(exec, {
+          tool_call_id: e.tool_call_id,
+          tenant_id: p.tenant_id,
+          to_state: "auto_declined",
+          tool: e.tool_name,
+          data: { elicitation_id: e.id },
+        });
+      }
+    }
+  }
+
   const result = await runLoop({
     db: exec,
     tenant_id: p.tenant_id,
@@ -275,6 +314,29 @@ export async function respondElicitation(
     exec,
   );
   if (!resolved) throw new Error("elicitation not found");
+
+  // Mirror the response to the interaction_log on the originating tool
+  // call. The confirmation state machine (see conversations/confirmation.ts)
+  // tracks user_confirmed / user_declined / user_partial / user_tested so
+  // the LLM can reason about what the operator actually said in the next
+  // turn instead of reading only the raw output payload.
+  if (resolved.tool_call_id) {
+    const { recordTransition } = await import("./confirmation.ts");
+    const out = (p.output ?? {}) as Record<string, unknown>;
+    let to_state: "confirmed" | "declined" | "partial" | "tested" = "confirmed";
+    if (out.tested === true) to_state = "tested";
+    else if (out.partial === true) to_state = "partial";
+    else if (out.confirmed === false || out.declined === true) to_state = "declined";
+    else if (out.confirmed === true) to_state = "confirmed";
+    await recordTransition(exec, {
+      tool_call_id: resolved.tool_call_id,
+      tenant_id: p.tenant_id,
+      to_state,
+      tool: resolved.tool_name,
+      ...(p.actor_id ? { actor_id: p.actor_id } : {}),
+      data: { elicitation_id: p.elicitation_id },
+    });
+  }
 
   log.conversation.approval.approved({
     conversation_id: p.conversation_id,
