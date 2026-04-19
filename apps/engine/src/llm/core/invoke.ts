@@ -55,7 +55,14 @@ export async function resolveLanguageModel(
     );
   }
   const bare = modelId.startsWith("anthropic:") ? modelId.slice("anthropic:".length) : modelId;
-  const resolved = await initializeModel({ defaultModel: bare });
+  // Pass `providerOverride` so `initializeModel` does not silently fall
+  // back to mock when `LLM_PROVIDER` is unset even though the route
+  // already decided on a real provider (e.g. inferred from the presence
+  // of ANTHROPIC_API_KEY). Without this, every production conversation
+  // with `LLM_PROVIDER` unset gets a `mock:never-dispatched` sentinel
+  // dispatched to streamText, which throws and surfaces as
+  // `internal_error` to the operator.
+  const resolved = await initializeModel({ providerOverride: provider, defaultModel: bare });
   return resolved.model;
 }
 
@@ -71,6 +78,34 @@ type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const DEFAULT_PRIMARY = "claude-sonnet-4-5";
 const DEFAULT_FALLBACK = "claude-haiku-4-5-20251001";
+
+/**
+ * Snapshot of the global LLM-routing configuration for /v1/health.
+ *
+ * Surfaces both the env (`LLM_PROVIDER`) and the inferred provider so
+ * operators can spot the regression that caused the production
+ * `internal_error` cluster: env unset, key present, inferred provider
+ * mismatching the dispatch-time fallback.
+ */
+export interface GlobalLlmStatus {
+  provider_env: string | null;
+  inferred_provider: LlmProviderKind;
+  anthropic_key_set: boolean;
+  gateway_key_set: boolean;
+  default_primary: string;
+  default_fallback: string;
+}
+
+export function globalLlmStatus(): GlobalLlmStatus {
+  return {
+    provider_env: process.env.LLM_PROVIDER ?? null,
+    inferred_provider: currentProvider(),
+    anthropic_key_set: Boolean(env.ANTHROPIC_API_KEY),
+    gateway_key_set: Boolean(process.env.AI_GATEWAY_API_KEY),
+    default_primary: env.LLM_PRIMARY ?? DEFAULT_PRIMARY,
+    default_fallback: env.LLM_FALLBACK ?? DEFAULT_FALLBACK,
+  };
+}
 
 function currentProvider(): LlmProviderKind {
   const raw = (process.env.LLM_PROVIDER ?? "").toLowerCase();

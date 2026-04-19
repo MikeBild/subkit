@@ -5,6 +5,8 @@
 // graph in. Deliberately separate from apps/cli/src/engine-client.ts
 // because the two CLIs wrap different engine surfaces.
 
+import { debugLog, isDebugMode } from "./debug.ts";
+
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export interface ClientOptions {
@@ -92,13 +94,33 @@ export class EngineClient {
     const url = `${this.base}${path}${qs}`;
     const init: RequestInit = { method, headers: this.headers() };
     if (body !== undefined) init.body = typeof body === "string" ? body : JSON.stringify(body);
+    const startedAt = Date.now();
+    const debugActive = isDebugMode();
+    if (debugActive) {
+      debugLog("http.request", {
+        method,
+        url,
+        tenant: this.tenant,
+        body_bytes: typeof init.body === "string" ? init.body.length : 0,
+      });
+    }
     let res: Response;
     try {
       res = await this.fetchImpl(url, init);
     } catch (cause) {
+      const duration_ms = Date.now() - startedAt;
+      if (debugActive) {
+        debugLog("http.transport_error", {
+          method,
+          url,
+          duration_ms,
+          error: cause instanceof Error ? cause.message : String(cause),
+        });
+      }
       throw new SkTransportError(cause);
     }
     const text = await res.text();
+    const duration_ms = Date.now() - startedAt;
     if (!res.ok) {
       let parsed: unknown = text;
       try {
@@ -106,7 +128,28 @@ export class EngineClient {
       } catch {
         /* keep as string */
       }
+      if (debugActive) {
+        debugLog("http.response", {
+          method,
+          url,
+          status: res.status,
+          duration_ms,
+          // Cap the body excerpt so a large 500 page does not blow the
+          // log file; the full text already lives in the engine logs.
+          body: typeof parsed === "string" ? parsed.slice(0, 2000) : parsed,
+          trace_id: res.headers.get("x-trace-id") ?? res.headers.get("x-request-id") ?? null,
+        });
+      }
       throw new SkEngineError(res.status, parsed);
+    }
+    if (debugActive) {
+      debugLog("http.response", {
+        method,
+        url,
+        status: res.status,
+        duration_ms,
+        body_bytes: text.length,
+      });
     }
     if (!text || res.status === 204) return undefined as T;
     try {
@@ -265,6 +308,26 @@ export class EngineClient {
   ): Promise<{ items: Array<Record<string, unknown>> }> {
     return this.request("GET", "/v1/audit-log", undefined, query);
   }
+
+  // --------------------- Diagnostics (engine error ring) --------------------
+  tailEngineErrors(
+    query: { limit?: number; since?: string; trace_id?: string } = {},
+  ): Promise<{ items: EngineErrorEntry[]; total_buffered: number }> {
+    return this.request("GET", "/v1/diagnostics/errors", undefined, query);
+  }
+}
+
+export interface EngineErrorEntry {
+  trace_id: string | null;
+  ts: string;
+  tenant_id: string | null;
+  method: string;
+  path: string;
+  status: number;
+  code: string;
+  message: string;
+  stack: string | null;
+  bucket: "unhandled" | "llm_provider" | "llm_no_object" | "llm_timeout" | "llm_quota" | "http";
 }
 
 function buildQuery(params: Record<string, unknown> | undefined): string {

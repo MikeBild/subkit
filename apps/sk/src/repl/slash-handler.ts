@@ -14,6 +14,7 @@ import { join } from "node:path";
 import type { ConversationItem } from "@chat-ui/index.ts";
 import type { SkSessionState } from "@cli-core/index.ts";
 import { loadConfig, type ResolvedProfile, saveConfig } from "../config.ts";
+import { debugLogPath, debugLogTail, isDebugMode, setDebugMode } from "../debug.ts";
 import type { EngineClient, StatusSummary } from "../engine-client.ts";
 
 /**
@@ -250,6 +251,93 @@ export async function handleSlash(
         return `${ts}  ${action.padEnd(28)} ${rid}`;
       });
       return panify(ctx, "audit log", lines, `latest ${rows.length}`);
+    }
+    case "logs": {
+      // /logs [limit] [trace_id?]
+      //
+      // Pure HTTP — calls `GET /v1/diagnostics/errors` on the engine
+      // with the operator's API key. NO ssh, NO doctl, NO process
+      // spawn, NO out-of-band infra access. The engine maintains an
+      // in-memory ring of the last N captured 5xx responses (set by
+      // errorMiddleware) and filters to the caller's tenant.
+      //
+      // Args:
+      //   /logs                   — last 20 errors for this tenant
+      //   /logs 50                — last 50
+      //   /logs 50 <trace_id>     — only entries matching the trace_id
+      //                              from a banner you saw earlier
+      const limitArg = rawArgs[0];
+      const traceArg = rawArgs[1];
+      const limit = limitArg ? Math.max(1, Math.min(200, Number.parseInt(limitArg, 10) || 20)) : 20;
+      const query: { limit: number; trace_id?: string } = { limit };
+      if (traceArg) query.trace_id = traceArg;
+      const res = await ctx.client.tailEngineErrors(query);
+      if (res.items.length === 0) {
+        return panify(ctx, "engine errors", [
+          traceArg
+            ? `no errors matching trace_id ${traceArg} in the buffer`
+            : "no captured errors yet — the ring is empty",
+          `(buffer holds ${res.total_buffered}/${200} most recent 5xx)`,
+        ]);
+      }
+      const lines: string[] = [];
+      for (const e of res.items) {
+        const time = e.ts.replace("T", " ").replace(/\.\d+Z$/, "Z");
+        lines.push(
+          `${time}  ${e.method} ${e.path}  →  ${e.status} ${e.code}  trace=${e.trace_id ?? "-"}`,
+        );
+        if (e.message) lines.push(`  ${e.message}`);
+        if (e.stack) {
+          // Show first 3 stack frames — full stack is in the engine's
+          // structured logger; this surface is a quick triage tool.
+          const frames = e.stack.split("\n").slice(1, 4);
+          for (const f of frames) lines.push(`  ${f.trim()}`);
+        }
+        lines.push("");
+      }
+      return panify(
+        ctx,
+        "engine errors",
+        lines,
+        `${res.items.length} of ${res.total_buffered} buffered`,
+      );
+    }
+    case "debug": {
+      // /debug         → status (on/off + path + line count)
+      // /debug on/off  → toggle the in-process flag (env stays the source of truth on next launch)
+      // /debug tail    → render the last 40 lines of the debug log
+      // /debug path    → just the file path (handy for `tail -f` outside the REPL)
+      const sub = (rawArgs[0] ?? "").toLowerCase();
+      if (sub === "on" || sub === "off") {
+        setDebugMode(sub === "on");
+        const path = debugLogPath();
+        return panify(ctx, `debug ${sub}`, [
+          sub === "on"
+            ? `request logging enabled — appending to ${path}`
+            : "request logging disabled (env SK_DEBUG / --debug still works on next launch)",
+        ]);
+      }
+      if (sub === "path") {
+        return debugLogPath();
+      }
+      if (sub === "tail") {
+        const lines = debugLogTail(40);
+        if (lines.length === 0) {
+          return panify(ctx, "debug log empty", [
+            `path: ${debugLogPath()}`,
+            "no records yet — set SK_DEBUG=1 (or run `/debug on`) and reproduce the request",
+          ]);
+        }
+        return panify(ctx, "debug log (tail)", lines, debugLogPath());
+      }
+      const active = isDebugMode();
+      return panify(ctx, `debug ${active ? "on" : "off"}`, [
+        `path: ${debugLogPath()}`,
+        active
+          ? "every HTTP request to the engine is logged as JSONL"
+          : "logging is OFF — turn on with `/debug on`, env `SK_DEBUG=1`, or `--debug` flag",
+        "subcommands: `/debug on` · `/debug off` · `/debug tail` · `/debug path`",
+      ]);
     }
     case "memory": {
       const path = join(homedir(), ".sk", "SUBKIT.md");

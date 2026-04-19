@@ -24,7 +24,7 @@ import {
 
 let env: E2EEnv;
 beforeAll(async () => {
-  env = await boot("personas");
+  env = await boot("personas", { llm: "mock" });
 }, 90_000);
 afterAll(async () => {
   await shutdown(env);

@@ -78,4 +78,24 @@ describe("sk slash registry", () => {
     expect(help).not.toContain("/audit");
     expect(help).not.toContain("/mcp");
   });
+
+  test("/logs is registered, gated by audit:read, hidden from endusers", () => {
+    const logs = findSlashCommand("logs");
+    expect(logs).toBeDefined();
+    expect(logs?.requires).toBe("audit:read");
+    expect(logs?.category).toBe("admin");
+    const enduser = slashCommandsForPersona(endUserPersona).map((c) => c.name);
+    expect(enduser).not.toContain("logs");
+    const admin = slashCommandsForPersona(adminPersona).map((c) => c.name);
+    expect(admin).toContain("logs");
+  });
+
+  test("/debug is registered for everyone (util) — no permission required", () => {
+    const dbg = findSlashCommand("debug");
+    expect(dbg).toBeDefined();
+    expect(dbg?.requires).toBeUndefined();
+    expect(dbg?.category).toBe("util");
+    const enduser = slashCommandsForPersona(endUserPersona).map((c) => c.name);
+    expect(enduser).toContain("debug");
+  });
 });

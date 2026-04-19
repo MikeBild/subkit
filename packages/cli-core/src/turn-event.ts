@@ -185,17 +185,25 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
       };
     }
     case "tool_result": {
+      // The wrapper envelope for our in-repo tools is `{ok, data, ...}`.
+      // Surface ok=false as `failed` so the UI can render the failure
+      // body instead of a misleading green ✓.
+      const isFailure =
+        typeof ev.output === "object" &&
+        ev.output !== null &&
+        (ev.output as { ok?: unknown }).ok === false;
+      const status: ToolStatus = isFailure ? "failed" : "done";
       const calls = [...state.toolCalls];
       const idx = calls.findIndex((c) => c.id === ev.call_id);
       if (idx >= 0) {
         const existing = calls[idx];
-        if (existing) calls[idx] = { ...existing, status: "done", result: ev.output };
+        if (existing) calls[idx] = { ...existing, status, result: ev.output };
       } else {
         calls.push({
           id: ev.call_id,
           name: ev.tool,
           args: undefined,
-          status: "done",
+          status,
           result: ev.output,
         });
       }

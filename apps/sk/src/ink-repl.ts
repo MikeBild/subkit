@@ -18,6 +18,7 @@ import { loadConfig, type ResolvedProfile, resolveProfile, saveConfig } from "./
 import { EngineClient, type StatusSummary } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
+import { humanizeRequestError } from "./repl/error-humanize.ts";
 import { handleSlash, type PaneSpec } from "./repl/slash-handler.ts";
 import { runRepl } from "./repl.ts";
 import { saveSessionMetadata } from "./sessions.ts";
@@ -130,7 +131,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     user_agent: `sk-cli/${VERSION} (ink)`,
   });
 
-  const persona = await resolvePersona(client, opts.profile);
+  let currentPersona = await resolvePersona(client, opts.profile);
 
   const React = (await import("react")) as typeof import("react");
   const ink = await import("ink");
@@ -140,6 +141,14 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   let currentConversationId: string | null = opts.resumeConversationId ?? null;
   let currentClient = client;
   let currentProfile = opts.profile;
+  // Bumped on every successful /profile switch so RootApp can remount
+  // <InkApp> with a fresh `key` — fresh session state, fresh
+  // conversationId, fresh status snapshot. Without this the engine URL
+  // and tenant in the status bar lag behind the active client.
+  let profileVersion = 0;
+  const personaListeners = new Set<
+    (snap: { persona: ResolvedPersona; profile: ResolvedProfile; version: number }) => void
+  >();
 
   // Composite status snapshot (connector count, tokens today, tenant
   // slug, monthly budget). Fetched once on mount, then refreshed after
@@ -263,13 +272,40 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     currentProfile = newProfile;
     currentConversationId = null;
 
-    // Verify connectivity
+    // Re-resolve persona against the new client so the status bar gets
+    // the new tenant slug + RBAC label, then refresh the status snapshot
+    // so token / connector counts come from the new engine. Both run
+    // best-effort — even if the engine is unreachable we still publish
+    // the new engineUrl + profileName so the UI reflects the switch.
+    let healthOk = true;
     try {
       await newClient.health();
-      return `switched to "${name}" (${newProfile.engine_url})`;
     } catch {
-      return `switched to "${name}" (${newProfile.engine_url}) — engine unreachable`;
+      healthOk = false;
     }
+    try {
+      currentPersona = await resolvePersona(newClient, newProfile);
+    } catch {
+      // Fall back to a minimal persona keyed off the profile so the
+      // footer at least shows the right engine + profile name.
+      currentPersona = {
+        label: newProfile.persona_hint ?? "user",
+        probe: { allows: () => false },
+        allowed: new Set(),
+        tenant: newProfile.active_tenant_id ?? null,
+        email: null,
+      };
+    }
+    statusSnapshot = await newClient.statusSummary().catch(() => null);
+    profileVersion += 1;
+    for (const listener of personaListeners) {
+      listener({ persona: currentPersona, profile: newProfile, version: profileVersion });
+    }
+    for (const listener of statusListeners) listener(statusSnapshot);
+
+    return healthOk
+      ? `switched to "${name}" (${newProfile.engine_url})`
+      : `switched to "${name}" (${newProfile.engine_url}) — engine unreachable`;
   };
 
   const onSlash = async (
@@ -287,39 +323,56 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         setConversationId: (next) => {
           currentConversationId = next;
         },
-        allowedPermissions: Array.from(persona.allowed ?? []),
+        allowedPermissions: Array.from(currentPersona.allowed ?? []),
         switchProfile: switchProfileFn,
         statusSnapshot,
         openPane,
       });
       return line;
     } catch (err) {
-      return `sk: ${err instanceof Error ? err.message : String(err)}`;
+      return humanizeRequestError(err);
     }
   };
 
-  // Small root wrapper that subscribes to `refreshStatus` updates and
-  // feeds the latest snapshot into `<InkApp>` as a prop. This lets the
-  // status line re-render whenever the engine returns new numbers
-  // without having to bubble a state setter out of InkApp itself.
+  // Small root wrapper that subscribes to status + persona updates and
+  // feeds the latest snapshots into <InkApp> as props. The `key` is
+  // bumped on every /profile switch so React fully remounts the app —
+  // session, conversationId, and InkApp's local state are all reset
+  // together with the engineUrl + tenant in the status bar.
   const RootApp: React.FC = () => {
     const [snap, setSnap] = React.useState<StatusSummary | null>(statusSnapshot);
+    const [active, setActive] = React.useState<{
+      persona: ResolvedPersona;
+      profile: ResolvedProfile;
+      version: number;
+    }>({ persona: currentPersona, profile: opts.profile, version: profileVersion });
     React.useEffect(() => {
-      const listener = (next: StatusSummary | null): void => setSnap(next);
-      statusListeners.add(listener);
+      const sl = (next: StatusSummary | null): void => setSnap(next);
+      const pl = (next: {
+        persona: ResolvedPersona;
+        profile: ResolvedProfile;
+        version: number;
+      }): void => {
+        setActive(next);
+        setSnap(statusSnapshot);
+      };
+      statusListeners.add(sl);
+      personaListeners.add(pl);
       return () => {
-        statusListeners.delete(listener);
+        statusListeners.delete(sl);
+        personaListeners.delete(pl);
       };
     }, []);
     return React.createElement(InkApp, {
+      key: `app-${active.version}`,
       persona: {
-        label: persona.label,
+        label: active.persona.label,
         // Prefer the whoami-resolved tenant (slug) over the profile's
         // stored uuid — it's what the user typed and recognizes.
-        tenant: persona.tenant ?? opts.profile.active_tenant_id,
-        engineUrl: opts.profile.engine_url,
-        profileName: opts.profile.name,
-        probe: persona.probe,
+        tenant: active.persona.tenant ?? active.profile.active_tenant_id,
+        engineUrl: active.profile.engine_url,
+        profileName: active.profile.name,
+        probe: active.persona.probe,
       },
       ...(settings.merged.statusLine ? { statusLineConfig: settings.merged.statusLine } : {}),
       initialConversationId: currentConversationId,

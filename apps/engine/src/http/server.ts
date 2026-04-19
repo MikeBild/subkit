@@ -36,6 +36,7 @@ import { registerConnectorTemplateRoutes } from "./routes/connector-templates.ts
 import { registerConnectorRoutes } from "./routes/connectors.ts";
 import { registerConversationRoutes } from "./routes/conversations.ts";
 import { registerCredentialRoutes } from "./routes/credentials.ts";
+import { registerDiagnosticsRoutes } from "./routes/diagnostics.ts";
 import { registerDiscoveryRoutes } from "./routes/discovery.ts";
 import { registerEventRoutes } from "./routes/events.ts";
 import { registerExecutionRoutes } from "./routes/executions.ts";
@@ -202,6 +203,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerTunnelRoutes(app);
   registerRbacRoutes(app);
   registerAuditLogRoutes(app);
+  registerDiagnosticsRoutes(app);
   registerMcpHttpRoutes(app);
 
   // OpenAPI document

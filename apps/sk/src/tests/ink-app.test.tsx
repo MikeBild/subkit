@@ -440,7 +440,10 @@ describe("ink-app: journey 05 — slash autocomplete and /help", () => {
     await type(instance, "/m");
     await tick(30);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("matches:");
+    // Header now describes the keybindings (Tab, ↑/↓, Enter) — assert
+    // the stable `matches` prefix instead of the legacy `matches:`.
+    expect(frame).toContain("matches");
+    expect(frame).toContain("Tab complete");
     expect(frame).toMatch(/\/(memory|mcp|model)/);
     instance.unmount();
   });

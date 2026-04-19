@@ -29,7 +29,6 @@ import type { Db } from "../../apps/engine/src/db/client.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
 import { buildDefaultRegistry, createApp } from "../../apps/engine/src/http/server.ts";
-import { resetMockProvider } from "../../apps/engine/src/llm/mock-provider.ts";
 import { createBoss, disposeBoss, startBoss, stopBoss } from "../../apps/engine/src/queue/boss.ts";
 import { registerAllHandlers } from "../../apps/engine/src/queue/handlers/index.ts";
 import {
@@ -64,6 +63,42 @@ export interface E2EEnv {
   boss: PgBoss;
   testDb: TestDb;
   cleanup: () => Promise<void>;
+}
+
+/** Two tracks: real (default, multi-provider, talks to actual LLM) or mock. */
+export interface BootOpts {
+  /** Pin the in-process mock LLM. Default: real provider from .env. */
+  llm?: "mock";
+}
+
+/**
+ * Multi-provider real-LLM detection. Mirrors the precedence in
+ * `apps/engine/src/llm/core/model-init.ts` so the harness picks the
+ * same provider the engine would pick at runtime. Throws if none
+ * configured.
+ */
+function detectRealProvider(): { provider: string; reason: string } {
+  const explicit = process.env.LLM_PROVIDER?.toLowerCase();
+  if (explicit && explicit !== "") {
+    return { provider: explicit, reason: `LLM_PROVIDER=${explicit}` };
+  }
+  if (process.env.AI_GATEWAY_API_KEY) {
+    return { provider: "gateway", reason: "AI_GATEWAY_API_KEY set" };
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    return { provider: "anthropic", reason: "ANTHROPIC_API_KEY set" };
+  }
+  if (process.env.OPENAI_API_KEY) {
+    return { provider: "openai", reason: "OPENAI_API_KEY set" };
+  }
+  if (process.env.GEMINI_API_KEY) {
+    return { provider: "gemini", reason: "GEMINI_API_KEY set" };
+  }
+  throw new Error(
+    "E2E boot() needs a real LLM provider configured. Set LLM_PROVIDER " +
+      "+ matching key (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY) " +
+      "or AI_GATEWAY_API_KEY in .env.",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -124,9 +159,15 @@ const PERSONA_DEFS: PersonaDef[] = [
 // Boot / Shutdown
 // ---------------------------------------------------------------------------
 
-export async function boot(label: string): Promise<E2EEnv> {
-  process.env.LLM_PROVIDER = "mock";
-  resetMockProvider();
+export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> {
+  if (opts.llm === "mock") {
+    process.env.LLM_PROVIDER = "mock";
+    const { resetMockProvider } = await import("../../apps/engine/src/llm/mock-provider.ts");
+    resetMockProvider();
+  } else {
+    const detected = detectRealProvider();
+    if (!process.env.LLM_PROVIDER) process.env.LLM_PROVIDER = detected.provider;
+  }
 
   const safeLabel = label.toLowerCase().replace(/[^a-z0-9]/g, "-");
   const testDb = await createTestDb(`e2e-${safeLabel}`);

@@ -456,7 +456,7 @@ describe("parity: integration with existing journeys", () => {
     await tick(30);
     const frame = instance.lastFrame() ?? "";
     const composerIdx = frame.indexOf("❯");
-    const matchesIdx = frame.indexOf("matches:");
+    const matchesIdx = frame.indexOf("matches");
     expect(matchesIdx).toBeGreaterThan(composerIdx);
     instance.unmount();
   });

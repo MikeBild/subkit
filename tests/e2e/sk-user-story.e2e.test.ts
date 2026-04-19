@@ -17,7 +17,7 @@ import { boot, cli, type E2EEnv, parseJson, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
 beforeAll(async () => {
-  env = await boot("sk-user-story");
+  env = await boot("sk-user-story", { llm: "mock" });
 }, 90_000);
 afterAll(async () => {
   await shutdown(env);
