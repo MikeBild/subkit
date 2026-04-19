@@ -29,14 +29,15 @@ async function api(
   path: string,
   body?: unknown,
 ): Promise<Response> {
-  return fetch(`${srv.baseUrl}${path}`, {
+  const init: RequestInit = {
     method,
     headers: {
       authorization: `Bearer ${srv.apiKey}`,
       "content-type": "application/json",
     },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  };
+  if (body !== undefined) init.body = JSON.stringify(body);
+  return fetch(`${srv.baseUrl}${path}`, init);
 }
 
 describe("POST /v1/conversations/:id/attachments", () => {

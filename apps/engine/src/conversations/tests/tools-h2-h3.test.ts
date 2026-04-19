@@ -76,6 +76,10 @@ describe("conversation tools — registration", () => {
     "list_tunnels",
     "get_tunnel",
     "get_engine_status",
+    // Discovery (2 read + 1 write)
+    "list_discovery_artifacts",
+    "get_discovery_artifact",
+    "approve_discovery_artifact",
     // Hand-written write tools
     "run_workflow",
     "approve_skill_candidate",

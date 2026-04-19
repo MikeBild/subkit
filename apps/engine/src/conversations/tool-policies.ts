@@ -106,6 +106,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   },
   approve_patch_candidate: { defaultMode: "confirm_before_execution" },
   approve_skill_candidate: { defaultMode: "confirm_before_execution" },
+  approve_discovery_artifact: { defaultMode: "confirm_before_execution" },
   // Reads: auto. test_rbac_expression is a read-only probe.
   test_rbac_expression: { defaultMode: "no_confirm" },
   // Draft mutations auto-execute — they stage changes that commit_draft
