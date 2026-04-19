@@ -173,81 +173,87 @@ describe.skipIf(!SHOULD_RUN)("Tier 1.2 — multi-turn (real LLM)", () => {
 // 3. Connector created via chat (real LLM, outcome-based)
 // ---------------------------------------------------------------------------
 
-describe.skipIf(!SHOULD_RUN)("Tier 1.3 — connector authoring engages the real tool palette (real LLM)", () => {
-  test("a chat that asks for a connector triggers propose_connector and reaches confirm/commit", async () => {
-    const before = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
-      headers: adminAuth(),
-    }).then((r) => r.json() as Promise<{ items: Array<{ slug: string }> }>);
-    const beforeSlugs = new Set(before.items.map((c) => c.slug));
-
-    const { conversation_id } = await runWithApprovals(
-      "Use the propose_connector tool to add a connector (name 'open-meteo', " +
-        "slug 'open-meteo', driver 'http', auth_type 'none', base_url " +
-        "'https://api.open-meteo.com'), then ask_user_confirm to commit, " +
-        "then commit_draft on approval.",
-    );
-
-    const detail = await getConversation(conversation_id);
-    const tools = detail.tool_calls.map((t) => t.tool);
-    // Floor: the LLM dispatch reached propose_connector — the engine's
-    // tool palette + Zod validators + draft snapshotting all ran.
-    expect(tools).toContain("propose_connector");
-
-    // If the LLM completed the round-trip, a connector row exists.
-    if (tools.includes("commit_draft")) {
-      const after = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
+describe.skipIf(!SHOULD_RUN)(
+  "Tier 1.3 — connector authoring engages the real tool palette (real LLM)",
+  () => {
+    test("a chat that asks for a connector triggers propose_connector and reaches confirm/commit", async () => {
+      const before = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
         headers: adminAuth(),
-      }).then((r) => r.json() as Promise<{ items: Array<{ slug: string; name: string }> }>);
-      const newOnes = after.items.filter((c) => !beforeSlugs.has(c.slug));
-      expect(newOnes.length).toBeGreaterThanOrEqual(1);
-    }
-  }, 180_000);
-});
+      }).then((r) => r.json() as Promise<{ items: Array<{ slug: string }> }>);
+      const beforeSlugs = new Set(before.items.map((c) => c.slug));
+
+      const { conversation_id } = await runWithApprovals(
+        "Use the propose_connector tool to add a connector (name 'open-meteo', " +
+          "slug 'open-meteo', driver 'http', auth_type 'none', base_url " +
+          "'https://api.open-meteo.com'), then ask_user_confirm to commit, " +
+          "then commit_draft on approval.",
+      );
+
+      const detail = await getConversation(conversation_id);
+      const tools = detail.tool_calls.map((t) => t.tool);
+      // Floor: the LLM dispatch reached propose_connector — the engine's
+      // tool palette + Zod validators + draft snapshotting all ran.
+      expect(tools).toContain("propose_connector");
+
+      // If the LLM completed the round-trip, a connector row exists.
+      if (tools.includes("commit_draft")) {
+        const after = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
+          headers: adminAuth(),
+        }).then((r) => r.json() as Promise<{ items: Array<{ slug: string; name: string }> }>);
+        const newOnes = after.items.filter((c) => !beforeSlugs.has(c.slug));
+        expect(newOnes.length).toBeGreaterThanOrEqual(1);
+      }
+    }, 180_000);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // 4. Workflow created via chat (real LLM, outcome-based)
 // ---------------------------------------------------------------------------
 
-describe.skipIf(!SHOULD_RUN)("Tier 1.4 — workflow authoring engages the real tool palette (real LLM)", () => {
-  test("the model uses propose_step + validate_draft and either commits or reaches confirm", async () => {
-    const { conversation_id } = await runWithApprovals(
-      "Use these tools in order to build and commit a workflow: " +
-        "1) call propose_step to add a single request step (id 'fetch', kind 'request', method GET, url https://example.com), " +
-        "2) call validate_draft, " +
-        "3) call ask_user_confirm with kind='commit_draft', " +
-        "4) on approval call commit_draft. " +
-        "Do not stop until commit_draft has been called.",
-    );
+describe.skipIf(!SHOULD_RUN)(
+  "Tier 1.4 — workflow authoring engages the real tool palette (real LLM)",
+  () => {
+    test("the model uses propose_step + validate_draft and either commits or reaches confirm", async () => {
+      const { conversation_id } = await runWithApprovals(
+        "Use these tools in order to build and commit a workflow: " +
+          "1) call propose_step to add a single request step (id 'fetch', kind 'request', method GET, url https://example.com), " +
+          "2) call validate_draft, " +
+          "3) call ask_user_confirm with kind='commit_draft', " +
+          "4) on approval call commit_draft. " +
+          "Do not stop until commit_draft has been called.",
+      );
 
-    const detail = await getConversation(conversation_id);
-    const tools = detail.tool_calls.map((t) => t.tool);
+      const detail = await getConversation(conversation_id);
+      const tools = detail.tool_calls.map((t) => t.tool);
 
-    // Engine assertion: the LLM dispatch path actually exercised the
-    // draft tool palette. propose_step is the floor — without it
-    // nothing useful happened. validate_draft proves the validator
-    // ran end-to-end through the engine.
-    expect(tools).toContain("propose_step");
+      // Engine assertion: the LLM dispatch path actually exercised the
+      // draft tool palette. propose_step is the floor — without it
+      // nothing useful happened. validate_draft proves the validator
+      // ran end-to-end through the engine.
+      expect(tools).toContain("propose_step");
 
-    // Functional assertion (best effort): if the LLM completed the
-    // approval round-trip and called commit_draft, a workflow row
-    // exists. We don't FAIL when the LLM stops short — that's an LLM
-    // capability question, not an engine bug. We DO fail if commit
-    // was attempted but no row landed.
-    if (tools.includes("commit_draft")) {
-      const wfRes = await fetch(`${env.baseUrl}/v1/workflows?limit=200`, {
-        headers: adminAuth(),
-      });
-      const wfBody = (await wfRes.json()) as { items: Array<{ id: string }> };
-      expect(wfBody.items.length).toBeGreaterThanOrEqual(1);
+      // Functional assertion (best effort): if the LLM completed the
+      // approval round-trip and called commit_draft, a workflow row
+      // exists. We don't FAIL when the LLM stops short — that's an LLM
+      // capability question, not an engine bug. We DO fail if commit
+      // was attempted but no row landed.
+      if (tools.includes("commit_draft")) {
+        const wfRes = await fetch(`${env.baseUrl}/v1/workflows?limit=200`, {
+          headers: adminAuth(),
+        });
+        const wfBody = (await wfRes.json()) as { items: Array<{ id: string }> };
+        expect(wfBody.items.length).toBeGreaterThanOrEqual(1);
 
-      const audit = await fetch(
-        `${env.baseUrl}/v1/audit-log?action=conversation.committed&limit=20`,
-        { headers: adminAuth() },
-      ).then((r) => r.json() as Promise<{ items: Array<{ resource_id: string }> }>);
-      expect(audit.items.some((a) => a.resource_id === conversation_id)).toBe(true);
-    }
-  }, 240_000);
-});
+        const audit = await fetch(
+          `${env.baseUrl}/v1/audit-log?action=conversation.committed&limit=20`,
+          { headers: adminAuth() },
+        ).then((r) => r.json() as Promise<{ items: Array<{ resource_id: string }> }>);
+        expect(audit.items.some((a) => a.resource_id === conversation_id)).toBe(true);
+      }
+    }, 240_000);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // 5. Resume — `sk -r <id>` continues an existing conversation
