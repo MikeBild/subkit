@@ -118,6 +118,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   dry_run_step: { defaultMode: "no_confirm" },
   validate_draft: { defaultMode: "no_confirm" },
   commit_draft: { defaultMode: "confirm_before_execution" },
+  build_workflow: { defaultMode: "no_confirm" },
   // web_search leaves the tenant perimeter — confirm by default.
   web_search: { defaultMode: "confirm_before_execution" },
   // probe_connector does an external HTTP call but produces no side

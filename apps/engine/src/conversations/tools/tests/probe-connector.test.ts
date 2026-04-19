@@ -157,7 +157,7 @@ function makeToolContext(env: {
     connector_id: null,
     workflow_id: null,
     engineClient,
-    getDraft: () => ({ name: null, slug: null, description: null, steps: [] }),
+    getDraft: () => ({ name: "", steps: [] }),
     setDraft: async () => {},
   };
 }
