@@ -267,8 +267,11 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
       },
     },
     { tool: "validate_draft", args: {} },
-    // Preview the request step before asking for commit approval — the
-    // commit_draft gate requires a successful dry run on record.
+    // Preview the request step before asking for commit approval. The
+    // underlying fetch hits jsonplaceholder in canned flows, which is
+    // unreachable in hermetic CI — the commit uses `force: true` so the
+    // journey test is not network-dependent. The override lands in the
+    // audit log (WORKFLOW_COMMITTED_OVERRIDE) where operators can review.
     { tool: "dry_run_step", args: { step_id: "get-users" } },
     {
       tool: "ask_user_confirm",
@@ -279,7 +282,7 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
       },
     },
     // Resume after the user answers:
-    { tool: "commit_draft", args: {} },
+    { tool: "commit_draft", args: { force: true } },
   ];
 }
 
@@ -352,6 +355,7 @@ export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
         summary: "commit weather workflow",
       },
     },
+    // Transform previews are pure, so normal commit (no force) works here.
     { tool: "commit_draft", args: {} },
   ];
 }
