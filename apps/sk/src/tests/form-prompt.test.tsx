@@ -301,4 +301,37 @@ describe("FormPrompt — inputDisabled", () => {
     // Focus marker did not move (still on field 0)
     expect(instance.lastFrame() ?? "").toMatch(/▶ Was soll genehmigt werden\?/);
   });
+
+  test("password field masks keystroke echo but submits the plaintext", async () => {
+    const onResponse = mock();
+    const instance = render(
+      <FormPrompt
+        question="Credentials"
+        fields={[{ name: "token", label: "API token", type: "password", required: true }]}
+        onResponse={onResponse}
+      />,
+    );
+    await type(instance, "secret123");
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).not.toContain("secret123");
+    expect(frame).toContain("•••••••••");
+    await writeKeys(instance, [KEY.enter]);
+    expect(onResponse).toHaveBeenCalledTimes(1);
+    expect(onResponse.mock.calls[0]?.[0]).toEqual({ values: { token: "secret123" } });
+  });
+
+  test("text field with sensitive=true also masks the rendered value", async () => {
+    const onResponse = mock();
+    const instance = render(
+      <FormPrompt
+        question="Login"
+        fields={[{ name: "pin", label: "PIN", type: "text", sensitive: true, required: true }]}
+        onResponse={onResponse}
+      />,
+    );
+    await type(instance, "0451");
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).not.toContain("0451");
+    expect(frame).toContain("••••");
+  });
 });

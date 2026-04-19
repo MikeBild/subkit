@@ -107,6 +107,9 @@ Every command is a declarative entry in `apps/sk/src/slash.ts`. Adding one is a 
 | `/debug` | — | Print last engine request/response for diagnostics |
 | `/paste` | — | Paste the system clipboard into the composer |
 | `/attach <path>` | — | Attach a local file to the next turn |
+| `/profile` | — | List or switch profiles (alias of `/env`) |
+| `/queue` | — | Show prompts queued while a turn is running |
+| `/history` | — | Show / clear the persistent prompt history file |
 | `/exit` / `/quit` | — | Unmount the REPL |
 | `/bug` | — | Opens GitHub issue template |
 
@@ -117,6 +120,11 @@ Draft authoring inspectors are also exposed as slash commands so the user can br
 | `/draft` | `conversation:read` | Current draft overview (mode / readiness / next action) |
 | `/connector` | `conversation:read` | Connector draft pane — fields, validation, latest probe |
 | `/workflow` | `conversation:read` | Workflow draft pane — steps, edges, latest preview |
+| `/templates` | `conversation:read` | Connector templates pane (prefill accelerators) |
+| `/probe` | `conversation:write` | Trigger `probe_connector_draft` via message append; `/probe show` renders the last recorded probe |
+| `/preview` | `conversation:write` | Trigger `dry_run_step` / `dry_run_workflow`; `/preview show` renders the last preview |
+| `/versions` | `workflow:read` | List committed versions of the bound workflow |
+| `/restore <n>` | `workflow:write` | Restore a prior workflow version as a new current version |
 | `/context` | `conversation:read` | Loaded skills, knowledge, docs, attachments, memory |
 | `/approve` `/reject` | `conversation:write` | Resolve the pending elicitation without typing free-form |
 

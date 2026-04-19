@@ -29,10 +29,16 @@ export interface FormFieldOption {
 export interface FormField {
   name: string;
   label: string;
-  type: "text" | "number" | "boolean" | "select";
+  type: "text" | "number" | "boolean" | "select" | "password";
   options?: FormFieldOption[] | undefined;
   placeholder?: string | undefined;
   required?: boolean | undefined;
+  /**
+   * When true, the rendered value is masked (bullet characters). `password`
+   * fields imply `sensitive: true`. Used by the credential-collection
+   * flow so typed secrets never appear on the terminal.
+   */
+  sensitive?: boolean | undefined;
 }
 
 export interface FormPromptProps {
@@ -173,6 +179,8 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
 
       if (isPrintable(input, key)) {
         if (f.type === "number" && !isNumericChar(input)) return;
+        // text / number / password all accept printable chars; password
+        // masks the render elsewhere.
         setError(null);
         setValues((v) => {
           const cur = typeof v[f.name] === "string" ? (v[f.name] as string) : "";
@@ -210,9 +218,15 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
               {f.label}
               {f.required ? <Text color={theme.severity.error}> *</Text> : null}
             </Text>
-            {f.type === "text" || f.type === "number" ? (
+            {f.type === "text" || f.type === "number" || f.type === "password" ? (
               <ControlledTextField
-                value={typeof value === "string" ? value : ""}
+                value={
+                  typeof value === "string"
+                    ? f.type === "password" || f.sensitive
+                      ? "•".repeat(value.length)
+                      : value
+                    : ""
+                }
                 placeholder={f.placeholder}
                 focused={focused && !inputDisabled}
               />

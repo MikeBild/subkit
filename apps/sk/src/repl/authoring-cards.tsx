@@ -29,10 +29,15 @@ function toneColor(tone: CardTone): string {
 function badge(tone: CardTone, label: string): React.ReactNode {
   const color = toneColor(tone);
   const glyph = tone === "ok" ? "✓" : tone === "fail" ? "×" : tone === "pending" ? "…" : "·";
+  // Keep sk's `⎿` tool-call tree glyph so the authoring cards still feel
+  // like they belong to the same transcript as the generic ToolCard.
   return (
-    <Text color={color} bold>
-      {glyph} {label}
-    </Text>
+    <>
+      <Text dimColor>⎿ </Text>
+      <Text color={color} bold>
+        {glyph} {label}
+      </Text>
+    </>
   );
 }
 
@@ -250,6 +255,139 @@ export const ResumeSummaryCard: React.FC<ResumeSummaryProps> = memo(
 );
 ResumeSummaryCard.displayName = "ResumeSummaryCard";
 
+// Connector-draft card — fires on start_connector_from_* /
+// update_connector_draft / validate_connector_draft. Shows the driver,
+// auth, env, and validation-missing list inline under the tool call.
+const ConnectorDraftCard: React.FC<CardProps> = memo(({ call }) => {
+  const tone = statusTone(call);
+  const d = unwrapData(call);
+  const connector = asRecord(d?.connector) ?? d ?? null;
+  if (!connector) {
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Box>{badge(tone, call.name)}</Box>
+      </Box>
+    );
+  }
+  const name = typeof connector.name === "string" ? connector.name : null;
+  const driver = typeof connector.driver === "string" ? connector.driver : null;
+  const env = typeof connector.environment === "string" ? connector.environment : null;
+  const auth = typeof connector.auth_type === "string" ? connector.auth_type : null;
+  const missing = asRecord(connector.validation)?.missing_fields;
+  const missingList = Array.isArray(missing) ? missing.filter((x) => typeof x === "string") : [];
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Box>
+        {badge(tone, `connector draft${name ? ` "${name}"` : ""}`)}
+        <Text dimColor>
+          {driver ? ` · ${driver}` : ""}
+          {env ? ` · ${env}` : ""}
+          {auth ? ` · auth=${auth}` : ""}
+        </Text>
+      </Box>
+      {missingList.length > 0 ? (
+        <Box marginLeft={2}>
+          <Text color="yellow">missing: {missingList.join(", ")}</Text>
+        </Box>
+      ) : null}
+    </Box>
+  );
+});
+ConnectorDraftCard.displayName = "ConnectorDraftCard";
+
+// Workflow-draft card — fires on propose_step / start_workflow_from_goal
+// / build_workflow / connect_steps / update_param. One-line "N step(s),
+// last step: <id> (<kind>)" plus validation errors when present.
+const WorkflowDraftCard: React.FC<CardProps> = memo(({ call }) => {
+  const tone = statusTone(call);
+  const d = unwrapData(call);
+  if (!d) {
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Box>{badge(tone, call.name)}</Box>
+      </Box>
+    );
+  }
+  const stepCount = typeof d.steps === "number" ? (d.steps as number) : null;
+  const lastStep = typeof d.last_step_id === "string" ? (d.last_step_id as string) : null;
+  const kind = typeof d.step_type === "string" ? (d.step_type as string) : null;
+  const errors = Array.isArray(d.errors) ? d.errors : [];
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Box>
+        {badge(tone, call.name)}
+        <Text dimColor>
+          {stepCount !== null ? ` · ${stepCount} step${stepCount === 1 ? "" : "s"}` : ""}
+          {lastStep ? ` · last=${lastStep}` : ""}
+          {kind ? ` (${kind})` : ""}
+        </Text>
+      </Box>
+      {errors.length > 0 ? (
+        <Box marginLeft={2} flexDirection="column">
+          {errors.slice(0, 3).map((e, i) => {
+            const rec = asRecord(e);
+            const path = rec && typeof rec.path === "string" ? rec.path : "";
+            const msg = rec && typeof rec.message === "string" ? rec.message : String(e);
+            return (
+              <Text key={`wfd-err-${i}`} color="red">
+                {path ? `${path}: ` : ""}
+                {msg}
+              </Text>
+            );
+          })}
+          {errors.length > 3 ? <Text dimColor>…and {errors.length - 3} more</Text> : null}
+        </Box>
+      ) : null}
+    </Box>
+  );
+});
+WorkflowDraftCard.displayName = "WorkflowDraftCard";
+
+// Approval card — renders ask_user_confirm / ask_user_choice elicitation
+// *requests* inline (while the user is answering) and their resolved
+// outcome afterwards. The kind tells the user what they're approving.
+const ApprovalCard: React.FC<CardProps> = memo(({ call }) => {
+  const args = asRecord(call.args) ?? {};
+  const d = unwrapData(call);
+  const kind = typeof args.kind === "string" ? (args.kind as string) : call.name;
+  const summary = typeof args.summary === "string" ? (args.summary as string) : null;
+  const question = typeof args.question === "string" ? (args.question as string) : null;
+  const confirmed =
+    d && typeof (d as Record<string, unknown>).confirmed === "boolean"
+      ? Boolean((d as Record<string, unknown>).confirmed)
+      : null;
+  const tone: CardTone =
+    call.status === "running" || call.status === "pending"
+      ? "pending"
+      : confirmed === true
+        ? "ok"
+        : confirmed === false
+          ? "fail"
+          : statusTone(call);
+  const verb =
+    confirmed === true
+      ? "approved"
+      : confirmed === false
+        ? "rejected"
+        : call.status === "running" || call.status === "pending"
+          ? "awaiting"
+          : call.name;
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Box>
+        {badge(tone, `${verb}: ${kind}`)}
+        {summary ? <Text dimColor>{` · ${summary}`}</Text> : null}
+      </Box>
+      {question && confirmed === null ? (
+        <Box marginLeft={2}>
+          <Text>{question}</Text>
+        </Box>
+      ) : null}
+    </Box>
+  );
+});
+ApprovalCard.displayName = "ApprovalCard";
+
 // Dispatcher — returns a custom card for known authoring tools, or null
 // so the caller falls back to the generic ToolCard.
 export function renderAuthoringCard(call: ToolCallState): React.ReactNode | null {
@@ -264,6 +402,24 @@ export function renderAuthoringCard(call: ToolCallState): React.ReactNode | null
       return <SaveResultCard key={`acc-${call.id}`} call={call} />;
     case "commit_draft":
       return <CommitResultCard key={`acc-${call.id}`} call={call} />;
+    case "start_connector_from_description":
+    case "start_connector_from_template":
+    case "update_connector_draft":
+    case "validate_connector_draft":
+    case "inspect_connector_draft":
+      return <ConnectorDraftCard key={`acc-${call.id}`} call={call} />;
+    case "start_workflow_from_goal":
+    case "build_workflow":
+    case "propose_step":
+    case "update_param":
+    case "connect_steps":
+    case "validate_draft":
+    case "inspect_workflow_draft":
+      return <WorkflowDraftCard key={`acc-${call.id}`} call={call} />;
+    case "ask_user_confirm":
+    case "ask_user_choice":
+    case "ask_user_multi":
+      return <ApprovalCard key={`acc-${call.id}`} call={call} />;
     default:
       return null;
   }
