@@ -179,6 +179,8 @@ export async function handleSlash(
             title: it.title ?? null,
             updated_at: it.updated_at,
             status: it.status ?? null,
+            last_message_role: it.last_message_role ?? null,
+            last_message_excerpt: it.last_message_excerpt ?? null,
           })),
         });
         return null;

@@ -18,6 +18,7 @@ function renderFooter(props: Partial<React.ComponentProps<typeof Footer>> = {}) 
       engineUrl={props.engineUrl ?? "https://subkit-api.example.dev"}
       sessionId={sessionId}
       mode={props.mode ?? "ask"}
+      transcriptMode={props.transcriptMode ?? "compact"}
     />,
   );
 }
@@ -108,7 +109,8 @@ describe("Footer — line 2 (mode + cycle hint)", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("⏵⏵");
     expect(frame).toContain(MODE_LABELS.ask);
-    expect(frame).toContain("shift+tab to cycle");
+    expect(frame).toContain("shift+tab mode");
+    expect(frame).toContain("ctrl-o compact transcript");
     instance.unmount();
     cleanup();
   });
@@ -135,7 +137,7 @@ describe("Footer — line 2 (mode + cycle hint)", () => {
     for (const m of ["ask", "auto", "plan"] as const) {
       const instance = renderFooter({ mode: m });
       const frame = instance.lastFrame() ?? "";
-      expect(frame).toContain("shift+tab to cycle");
+      expect(frame).toContain("shift+tab mode");
       instance.unmount();
       cleanup();
     }

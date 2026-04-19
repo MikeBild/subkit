@@ -36,6 +36,8 @@ export interface FooterProps {
   sessionId: string | null;
   /** Active permission mode — drives line 2 label + glyph color. */
   mode: PermissionMode;
+  /** Transcript density indicator shown next to the mode hint. */
+  transcriptMode: "compact" | "detail";
 }
 
 export const MODE_LABELS: Record<PermissionMode, string> = {
@@ -62,7 +64,14 @@ export function engineHost(url: string): string {
   }
 }
 
-const FooterImpl: React.FC<FooterProps> = ({ user, tenant, engineUrl, sessionId, mode }) => {
+const FooterImpl: React.FC<FooterProps> = ({
+  user,
+  tenant,
+  engineUrl,
+  sessionId,
+  mode,
+  transcriptMode,
+}) => {
   const theme = useTheme();
   const tenantLabel = tenant ?? "(no tenant)";
   const host = engineHost(engineUrl);
@@ -91,7 +100,9 @@ const FooterImpl: React.FC<FooterProps> = ({ user, tenant, engineUrl, sessionId,
           ⏵⏵{" "}
         </Text>
         <Text color={modeColor}>{modeLabel}</Text>
-        <Text color={theme.severity.dim}> (shift+tab to cycle)</Text>
+        <Text
+          color={theme.severity.dim}
+        >{` (shift+tab mode · ctrl-o ${transcriptMode} transcript)`}</Text>
       </Box>
     </Box>
   );

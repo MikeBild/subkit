@@ -960,3 +960,72 @@ describe("ink-app: journey 11 — approval hygiene", () => {
     instance.unmount();
   });
 });
+
+// ---------- Journey 12 — onboarding, background tools, sticky errors ----------
+
+describe("ink-app: journey 12 — onboarding and transcript controls", () => {
+  test("AC1: quick-start actions render on first paint and `2` prefills a workflow prompt", async () => {
+    const instance = renderApp();
+    await tick();
+    let frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("quick start");
+    expect(frame).toContain("Resume recent conversation");
+    expect(frame).toContain("Describe a workflow");
+    instance.stdin.write("2");
+    await tick(40);
+    frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("Help me design a workflow with these steps:");
+    expect(frame).toContain("1.");
+    instance.unmount();
+  });
+
+  test("AC2: background tools collapse into a grouped block in compact mode", async () => {
+    const instance = renderApp({
+      onPrompt: async () => ({
+        events: framesOf(
+          { type: "tool_call_start", call_id: "bg-1", tool: "list_workflows" },
+          { type: "tool_result", call_id: "bg-1", tool: "list_workflows", output: { ok: true } },
+          { type: "tool_call_start", call_id: "bg-2", tool: "search_knowledge" },
+          {
+            type: "tool_result",
+            call_id: "bg-2",
+            tool: "search_knowledge",
+            output: { ok: true },
+          },
+          { type: "completed", status: "active" },
+        ),
+        conversationId: "c-bg",
+      }),
+    });
+    await tick();
+    await type(instance, "look around");
+    await pressEnter(instance);
+    await tick(80);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("background actions");
+    expect(frame).toContain("list_workflows");
+    expect(frame).toContain("searched knowledge");
+    expect(frame).not.toContain("⎿ ✓ list_workflows");
+    instance.unmount();
+  });
+
+  test("AC3: Ctrl-O toggles the transcript mode and Esc dismisses sticky errors", async () => {
+    const instance = renderApp();
+    await tick();
+    await type(instance, "/does-not-exist");
+    await pressEnter(instance);
+    await tick(40);
+    let frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("error");
+    expect(frame).toContain("unknown slash");
+    instance.stdin.write("\x1b");
+    await tick(40);
+    frame = instance.lastFrame() ?? "";
+    expect(frame).not.toContain("unknown slash");
+    instance.stdin.write("\x0f");
+    await tick(40);
+    frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("ctrl-o detail transcript");
+    instance.unmount();
+  });
+});

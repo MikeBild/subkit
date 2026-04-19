@@ -16,6 +16,8 @@ export interface ConversationItem {
   title: string | null;
   updated_at: string;
   status?: string | null;
+  last_message_role?: string | null;
+  last_message_excerpt?: string | null;
 }
 
 export interface ConversationBrowserProps {
@@ -34,6 +36,30 @@ function containsControlChar(s: string): boolean {
   return false;
 }
 
+function truncate(text: string, max = 72): string {
+  const squashed = text.replace(/\s+/g, " ").trim();
+  if (squashed.length <= max) return squashed;
+  return `${squashed.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
+}
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return iso.replace("T", " ").slice(0, 16);
+  const deltaMs = then - Date.now();
+  const absSeconds = Math.round(Math.abs(deltaMs) / 1000);
+  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  if (absSeconds < 60) return rtf.format(Math.round(deltaMs / 1000), "second");
+  const absMinutes = Math.round(absSeconds / 60);
+  if (absMinutes < 60) return rtf.format(Math.round(deltaMs / 60_000), "minute");
+  const absHours = Math.round(absMinutes / 60);
+  if (absHours < 48) return rtf.format(Math.round(deltaMs / 3_600_000), "hour");
+  const absDays = Math.round(absHours / 24);
+  if (absDays < 30) return rtf.format(Math.round(deltaMs / 86_400_000), "day");
+  const absMonths = Math.round(absDays / 30);
+  if (absMonths < 18) return rtf.format(Math.round(deltaMs / (30 * 86_400_000)), "month");
+  return rtf.format(Math.round(deltaMs / (365 * 86_400_000)), "year");
+}
+
 export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
   items,
   onSelect,
@@ -49,7 +75,10 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
     const q = filter.toLowerCase();
     if (q.length === 0) return items;
     return items.filter(
-      (it) => (it.title ?? "").toLowerCase().includes(q) || it.id.toLowerCase().includes(q),
+      (it) =>
+        (it.title ?? "").toLowerCase().includes(q) ||
+        (it.last_message_excerpt ?? "").toLowerCase().includes(q) ||
+        it.id.toLowerCase().includes(q),
     );
   }, [items, filter]);
 
@@ -98,7 +127,7 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
       subtitle={`${visible.length} / ${items.length}`}
       {...(onDismiss ? { onDismiss } : {})}
       {...(inputDisabled !== undefined ? { inputDisabled } : {})}
-      footer="↑/↓ to move · Enter to open · type to filter · Esc to close"
+      footer="↑/↓ to move · Enter to open · filter by title/excerpt/id · Esc to close"
     >
       {filter.length > 0 ? (
         <Box>
@@ -111,18 +140,49 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
       ) : (
         visible.slice(0, 15).map((it, i) => {
           const marker = i === focused ? "▶ " : "  ";
-          const titleOrId = it.title ?? it.id.slice(0, 8);
-          const ts = it.updated_at.replace("T", " ").slice(0, 16);
+          const shortId = it.id.slice(0, 8);
+          const titleOrId = truncate(it.title ?? it.last_message_excerpt ?? shortId, 56);
+          const excerpt =
+            it.last_message_excerpt && it.last_message_excerpt !== it.title
+              ? truncate(it.last_message_excerpt, 68)
+              : null;
+          const role = it.last_message_role ? truncate(it.last_message_role, 16) : null;
+          const relative = formatRelativeTime(it.updated_at);
+          const status = it.status ?? "active";
+          const statusColor =
+            status === "awaiting_input"
+              ? theme.severity.warning
+              : status === "committed"
+                ? theme.emphasis.added
+                : status === "abandoned"
+                  ? theme.severity.error
+                  : theme.severity.dim;
           return (
-            <Box key={it.id}>
-              <Text {...(i === focused ? { color: theme.role.user, bold: true } : {})}>
-                {marker}
-                {titleOrId}
-              </Text>
-              <Text color={theme.severity.dim}>
-                {"  "}· {ts}
-                {it.status ? ` · ${it.status}` : ""}
-              </Text>
+            <Box key={it.id} flexDirection="column" marginBottom={1}>
+              <Box>
+                <Text {...(i === focused ? { color: theme.role.user, bold: true } : {})}>
+                  {marker}
+                  {titleOrId}
+                </Text>
+                <Text color={theme.severity.dim}> · </Text>
+                <Text color={statusColor}>{status}</Text>
+                <Text color={theme.severity.dim}> · {shortId}</Text>
+              </Box>
+              {excerpt ? (
+                <Box marginLeft={2}>
+                  <Text color={theme.severity.dim}>
+                    {role ? `${role} · ` : ""}
+                    {excerpt}
+                  </Text>
+                </Box>
+              ) : null}
+              <Box marginLeft={2}>
+                <Text color={theme.severity.dim}>{relative}</Text>
+                <Text color={theme.severity.dim}> · </Text>
+                <Text color={theme.severity.dim}>
+                  {it.updated_at.replace("T", " ").slice(0, 16)}
+                </Text>
+              </Box>
             </Box>
           );
         })

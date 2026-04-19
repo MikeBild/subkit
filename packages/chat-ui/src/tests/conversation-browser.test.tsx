@@ -9,9 +9,30 @@ import { ConversationBrowser, type ConversationItem } from "../ConversationBrows
 import { ThemeProvider } from "../theme/Provider.tsx";
 
 const ITEMS: ConversationItem[] = [
-  { id: "c-aaaaaaaa-0000", title: "invoice digest", updated_at: "2026-04-17T14:00:00Z" },
-  { id: "c-bbbbbbbb-1111", title: "hubspot export", updated_at: "2026-04-16T09:30:00Z" },
-  { id: "c-cccccccc-2222", title: null, updated_at: "2026-04-15T08:00:00Z" },
+  {
+    id: "c-aaaaaaaa-0000",
+    title: "invoice digest",
+    updated_at: "2026-04-17T14:00:00Z",
+    status: "awaiting_input",
+    last_message_role: "assistant",
+    last_message_excerpt: "Waiting for approval on the final invoice export step.",
+  },
+  {
+    id: "c-bbbbbbbb-1111",
+    title: "hubspot export",
+    updated_at: "2026-04-16T09:30:00Z",
+    status: "active",
+    last_message_role: "user",
+    last_message_excerpt: "Pull contacts modified this week and sync them to the CRM.",
+  },
+  {
+    id: "c-cccccccc-2222",
+    title: null,
+    updated_at: "2026-04-15T08:00:00Z",
+    status: "committed",
+    last_message_role: "assistant",
+    last_message_excerpt: "Committed workflow for daily billing digest.",
+  },
 ];
 
 async function tick(ms = 20): Promise<void> {
@@ -21,7 +42,7 @@ async function tick(ms = 20): Promise<void> {
 describe("ConversationBrowser", () => {
   afterEach(() => cleanup());
 
-  test("lists every item with title + updated_at", async () => {
+  test("lists every item with title, excerpt and metadata", async () => {
     const instance = render(
       <ThemeProvider>
         <ConversationBrowser
@@ -36,6 +57,9 @@ describe("ConversationBrowser", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("invoice digest");
     expect(frame).toContain("hubspot export");
+    expect(frame).toContain("Waiting for approval on the final invoice export step.");
+    expect(frame).toContain("awaiting_input");
+    expect(frame).toContain("c-aaaa");
     expect(frame).toContain("2026-04-17 14:00");
     expect(frame).toContain("3 / 3");
     instance.unmount();
@@ -90,6 +114,26 @@ describe("ConversationBrowser", () => {
     expect(frame).toContain("hubspot export");
     expect(frame).not.toContain("invoice digest");
     expect(frame).toContain("filter: hub");
+    instance.unmount();
+  });
+
+  test("typing filters the list by excerpt substring too", async () => {
+    const instance = render(
+      <ThemeProvider>
+        <ConversationBrowser
+          items={ITEMS}
+          onSelect={() => {
+            /* noop */
+          }}
+        />
+      </ThemeProvider>,
+    );
+    await tick();
+    instance.stdin.write("billing");
+    await tick(30);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("Committed workflow for daily billing digest.");
+    expect(frame).not.toContain("invoice digest");
     instance.unmount();
   });
 });

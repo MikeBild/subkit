@@ -354,6 +354,8 @@ export interface ConversationSummary {
   title: string | null;
   created_at: string;
   updated_at: string;
+  last_message_role?: string | null;
+  last_message_excerpt?: string | null;
 }
 
 export interface ConversationRunOutcome {

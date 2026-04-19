@@ -46,6 +46,96 @@
           "uptime_seconds"
         ]
       },
+      "StatusSummary": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/StatusUser"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/StatusTenant"
+          },
+          "connectors_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skills_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tokens_today": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tokens_month": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "monthly_budget_tokens": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0
+          },
+          "remaining_monthly_budget_tokens": {
+            "type": "integer",
+            "nullable": true
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user",
+          "tenant",
+          "connectors_count",
+          "skills_count",
+          "tokens_today",
+          "tokens_month",
+          "monthly_budget_tokens",
+          "remaining_monthly_budget_tokens",
+          "version"
+        ]
+      },
+      "StatusUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system_account"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "kind"
+        ]
+      },
+      "StatusTenant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "slug"
+        ]
+      },
       "TenantListResponse": {
         "type": "object",
         "properties": {
@@ -2830,6 +2920,14 @@
           },
           "updated_at": {
             "type": "string"
+          },
+          "last_message_role": {
+            "type": "string",
+            "nullable": true
+          },
+          "last_message_excerpt": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -2863,7 +2961,7 @@
           "committed_workflow_id": {
             "type": "string"
           },
-          "pending_approval_id": {
+          "pending_elicitation_id": {
             "type": "string"
           }
         },
@@ -2907,7 +3005,7 @@
           "messages": {
             "type": "array",
             "items": {
-              "nullable": true
+              "$ref": "#/components/schemas/UIMessage"
             }
           },
           "tool_calls": {
@@ -2918,19 +3016,38 @@
           },
           "draft": {
             "nullable": true
-          },
-          "approvals": {
-            "type": "array",
-            "items": {
-              "nullable": true
-            }
           }
         },
         "required": [
           "conversation",
           "messages",
-          "tool_calls",
-          "approvals"
+          "tool_calls"
+        ]
+      },
+      "UIMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "nullable": true
+            }
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "parts",
+          "created_at"
         ]
       },
       "AppendConversationMessageBody": {
@@ -2948,9 +3065,127 @@
           "message"
         ]
       },
-      "RejectApprovalBody": {
+      "ContextSnapshot": {
         "type": "object",
         "properties": {
+          "conversation_id": {
+            "type": "string"
+          },
+          "connector_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "workflow_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "skills": {
+            "type": "object",
+            "properties": {
+              "global": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title"
+                  ]
+                }
+              },
+              "connector": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title"
+                  ]
+                }
+              },
+              "workflow": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title"
+                  ]
+                }
+              },
+              "total": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "global",
+              "connector",
+              "workflow",
+              "total"
+            ]
+          },
+          "messages": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "number"
+              },
+              "last_role": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "total",
+              "last_role"
+            ]
+          },
+          "tool_calls_total": {
+            "type": "number"
+          },
+          "pending_elicitations": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "connector_id",
+          "workflow_id",
+          "skills",
+          "messages",
+          "tool_calls_total",
+          "pending_elicitations"
+        ]
+      },
+      "RespondElicitationBody": {
+        "type": "object",
+        "properties": {
+          "output": {
+            "nullable": true
+          },
           "reason": {
             "type": "string"
           }
@@ -4387,6 +4622,114 @@
           "reason",
           "metadata"
         ]
+      },
+      "DiagnosticsErrorListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErrorRingEntry"
+            }
+          },
+          "total_buffered": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total_buffered"
+        ]
+      },
+      "ErrorRingEntry": {
+        "type": "object",
+        "properties": {
+          "trace_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "ts": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "stack": {
+            "type": "string",
+            "nullable": true
+          },
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "unhandled",
+              "llm_provider",
+              "llm_no_object",
+              "llm_timeout",
+              "llm_quota",
+              "http"
+            ]
+          }
+        },
+        "required": [
+          "trace_id",
+          "ts",
+          "tenant_id",
+          "method",
+          "path",
+          "status",
+          "code",
+          "message",
+          "stack",
+          "bucket"
+        ]
+      },
+      "DiagnosticsLlmStatus": {
+        "type": "object",
+        "properties": {
+          "provider_env": {
+            "type": "string",
+            "nullable": true
+          },
+          "inferred_provider": {
+            "type": "string"
+          },
+          "anthropic_key_set": {
+            "type": "boolean"
+          },
+          "gateway_key_set": {
+            "type": "boolean"
+          },
+          "default_primary": {
+            "type": "string"
+          },
+          "default_fallback": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_env",
+          "inferred_provider",
+          "anthropic_key_set",
+          "gateway_key_set",
+          "default_primary",
+          "default_fallback"
+        ]
       }
     },
     "parameters": {}
@@ -4405,6 +4748,31 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/status": {
+      "get": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Composite status snapshot for the CLI header",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusSummary"
                 }
               }
             }
@@ -8300,7 +8668,7 @@
               "type": "string",
               "enum": [
                 "active",
-                "awaiting_approval",
+                "awaiting_input",
                 "committed",
                 "abandoned"
               ]
@@ -8552,125 +8920,6 @@
         }
       }
     },
-    "/v1/conversations/{id}/approvals/{approval_id}/approve": {
-      "post": {
-        "tags": [
-          "conversations"
-        ],
-        "summary": "Approve a pending approval and resume the loop",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "approval_id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConversationRunOutcome"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/conversations/{id}/approvals/{approval_id}/reject": {
-      "post": {
-        "tags": [
-          "conversations"
-        ],
-        "summary": "Reject a pending approval",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "approval_id",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RejectApprovalBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConversationRunOutcome"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/conversations/{id}/cancel": {
       "post": {
         "tags": [
@@ -8700,6 +8949,116 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/context-snapshot": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Summary of the context currently in scope for a conversation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextSnapshot"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/elicitations/{elicitation_id}/respond": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Resolve a pending ask_user_* elicitation with the user's answer",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "elicitation_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RespondElicitationBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationRunOutcome"
                 }
               }
             }
@@ -10758,6 +11117,126 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/diagnostics/errors": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Tail the engine error ring (last N captured 5xx)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "required": false,
+            "name": "since",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "trace_id",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsErrorListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/diagnostics/llm": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Resolved LLM provider + model snapshot (smoke / triage)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsLlmStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
