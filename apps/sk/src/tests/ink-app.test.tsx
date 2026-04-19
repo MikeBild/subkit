@@ -1253,11 +1253,23 @@ describe("ink-app: journey 12 — onboarding and transcript controls", () => {
     expect(frame).toContain("start with");
     expect(frame).toContain("Resume recent");
     expect(frame).toContain("Connect a system");
+    expect(frame).toContain("Inspect tenant state");
     instance.stdin.write("2");
     await tick(40);
     frame = instance.lastFrame() ?? "";
     expect(frame).toContain("I want to connect a system.");
     expect(frame).toContain("probe before saving");
+    instance.unmount();
+  });
+
+  test("AC1b: quick-start action `5` prefills surface-help guidance", async () => {
+    const instance = renderApp();
+    await tick();
+    instance.stdin.write("5");
+    await tick(40);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("I want help using Subkit surfaces");
+    expect(frame).toContain("If something is not exposed in this conversation surface");
     instance.unmount();
   });
 

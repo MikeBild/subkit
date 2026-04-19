@@ -9,10 +9,12 @@ import {
   nextQuestion as computeNextQuestion,
   nextRecommendedAction,
 } from "../../conversations/onboarding-policy.ts";
+import { planTurnRouting } from "../../conversations/turn-routing.ts";
 import type { ConversationResumeSummary, DraftDocument } from "../../conversations/types.ts";
 
 export interface AuthoringContextInput {
   draft: DraftDocument | null | undefined;
+  user_message?: string | null;
   resume_summary?: ConversationResumeSummary | null;
   pending_approval?: {
     tool_name: string;
@@ -22,17 +24,41 @@ export interface AuthoringContextInput {
 
 export function renderAuthoringContextBlock(input: AuthoringContextInput): string | null {
   const { draft } = input;
-  if (!draft && !input.resume_summary) return null;
+  if (!draft && !input.resume_summary && !input.user_message) return null;
 
   const lines: string[] = [];
-  lines.push("## Current authoring state");
+  const routing = input.user_message
+    ? planTurnRouting({
+        draft: input.draft ?? null,
+        user_message: input.user_message,
+      })
+    : null;
+
+  if (routing) {
+    lines.push("## Turn routing");
+    lines.push(`- Intent: ${routing.intent} (${routing.confidence} confidence)`);
+    lines.push(`- Action: ${routing.action}`);
+    if (routing.question) {
+      lines.push(`- Suggested question: ${routing.question}`);
+    }
+    if (routing.required_grounding.length > 0) {
+      lines.push(`- Ground on: ${routing.required_grounding.join(", ")}`);
+    }
+    for (const note of routing.notes) {
+      lines.push(`- Note: ${note}`);
+    }
+    lines.push(`- Forbidden fallbacks: ${routing.forbidden_fallbacks.join(", ")}`);
+  }
 
   if (draft) {
+    if (lines.length > 0) lines.push("");
+    lines.push("## Current authoring state");
     const mode = draft.mode ?? "onboarding";
     lines.push(...renderModeEnvelope(mode, draft));
   }
 
   if (input.pending_approval) {
+    if (lines.length > 0) lines.push("");
     lines.push(
       `- Pending approval: ${input.pending_approval.tool_name}${
         input.pending_approval.summary ? ` — ${input.pending_approval.summary}` : ""
@@ -42,7 +68,7 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
 
   if (input.resume_summary) {
     lines.push("");
-    lines.push(`## Resume`);
+    lines.push("## Resume");
     lines.push(`- ${input.resume_summary.one_sentence}`);
     if (input.resume_summary.last_successful_probe) {
       lines.push(`- Last successful probe: ${input.resume_summary.last_successful_probe}`);
@@ -53,23 +79,27 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
     lines.push(`- Next best step: ${input.resume_summary.next_action}`);
   }
 
-  const action = nextRecommendedAction({
-    draft: input.draft ?? null,
-    ...(input.pending_approval ? { pending_approval: input.pending_approval } : {}),
-  });
-  lines.push("");
-  lines.push(`## Guided next step`);
-  lines.push(`- Action: ${action.summary}`);
-  lines.push(`- Why: ${action.rationale}`);
-  const question = computeNextQuestion({
-    draft: input.draft ?? null,
-    ...(input.pending_approval ? { pending_approval: input.pending_approval } : {}),
-  });
-  if (question) {
-    lines.push(`- Suggested question (${question.kind}): ${question.prompt}`);
-    if (question.options && question.options.length > 0) {
-      for (const opt of question.options) {
-        lines.push(`  - ${opt.label}${opt.detail ? ` — ${opt.detail}` : ""}`);
+  const shouldRenderAuthoringNextStep =
+    !routing || routing.intent === "author_connector" || routing.intent === "author_workflow";
+  if (shouldRenderAuthoringNextStep) {
+    const action = nextRecommendedAction({
+      draft: input.draft ?? null,
+      ...(input.pending_approval ? { pending_approval: input.pending_approval } : {}),
+    });
+    lines.push("");
+    lines.push("## Guided next step");
+    lines.push(`- Action: ${action.summary}`);
+    lines.push(`- Why: ${action.rationale}`);
+    const question = computeNextQuestion({
+      draft: input.draft ?? null,
+      ...(input.pending_approval ? { pending_approval: input.pending_approval } : {}),
+    });
+    if (question) {
+      lines.push(`- Suggested question (${question.kind}): ${question.prompt}`);
+      if (question.options && question.options.length > 0) {
+        for (const opt of question.options) {
+          lines.push(`  - ${opt.label}${opt.detail ? ` — ${opt.detail}` : ""}`);
+        }
       }
     }
   }

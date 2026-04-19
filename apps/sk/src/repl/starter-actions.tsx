@@ -12,9 +12,23 @@ export const DEFAULT_STARTER_ACTIONS: readonly StarterAction[] = [
   { key: "1", label: "Resume recent", detail: "/resume" },
   { key: "2", label: "Connect a system", detail: "guided setup" },
   { key: "3", label: "Build a workflow", detail: "guided authoring" },
-  { key: "4", label: "Import docs/spec", detail: "docs-first flow" },
-  { key: "5", label: "Help", detail: "/help" },
+  { key: "4", label: "Inspect tenant state", detail: "workflows · connectors · runs" },
+  { key: "5", label: "API / MCP / chat help", detail: "surface guidance" },
 ] as const;
+
+export function starterActionsForPersona(persona: string): readonly StarterAction[] {
+  const label = persona.trim().toLowerCase();
+  if (label === "portal" || label === "enduser") {
+    return [
+      DEFAULT_STARTER_ACTIONS[0]!,
+      DEFAULT_STARTER_ACTIONS[1]!,
+      DEFAULT_STARTER_ACTIONS[2]!,
+      { key: "4", label: "Check accessible work", detail: "status · workflows · runs" },
+      { key: "5", label: "API / MCP / chat help", detail: "surface guidance" },
+    ] as const;
+  }
+  return DEFAULT_STARTER_ACTIONS;
+}
 
 interface StarterActionsProps {
   actions?: readonly StarterAction[];

@@ -49,4 +49,14 @@ describe("base prompts — step-kind enumeration", () => {
     expect(p).toContain("Do NOT invent a UI");
     expect(p).toContain("There is no generic Subkit web UI/dashboard");
   });
+
+  it("converse prompt includes sk-first product-help facts", () => {
+    const p = basePromptFor("converse", "sk_interactive");
+    expect(p).toContain("/openapi.json");
+    expect(p).toContain("/docs");
+    expect(p).toContain("subkit mcp");
+    expect(p).toContain("Google Chat is a first-class chat adapter");
+    expect(p).toContain("schedule-management conversation tools are not exposed");
+    expect(p).toContain("/permissions");
+  });
 });
