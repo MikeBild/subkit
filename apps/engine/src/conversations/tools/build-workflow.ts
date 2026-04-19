@@ -24,6 +24,7 @@ import { connectors as connectorsTable } from "../../db/schema/index.ts";
 import { describeConnectorPlaceholders, parsePlaceholders } from "../../llm/substitution/index.ts";
 import { sampleToSchema } from "../../workflows/sample-to-schema.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
+import { withWorkflowDraft } from "../authoring-state.ts";
 import type { DraftDocument } from "../types.ts";
 import { verifyWorkflow } from "../verifier.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -82,7 +83,7 @@ export const buildWorkflowTool: ConversationTool = {
     "Use when you already know the full workflow structure — typically after probing connectors or after approving discovery artifacts. Saves 5–7 round-trips versus the incremental propose_step → connect_steps flow.",
   important_notes: [
     "Does NOT persist the workflow; it writes to the conversation draft. Call `commit_draft` after `ask_user_confirm(kind='commit_draft')` to save.",
-    "Every `${cred.<slug>.<field>}` and `${connector.<slug>.*}` must reference an existing connector + field in the target environment; mismatches yield placeholder_connector_missing / placeholder_cred_missing with exact token names.",
+    String.raw`Every \${cred.<slug>.<field>} and \${connector.<slug>.*} must reference an existing connector + field in the target environment; mismatches yield placeholder_connector_missing / placeholder_cred_missing with exact token names.`,
     "If you pass `input_schema_sample` (a concrete payload) and omit `input_schema`, the tool infers a minimal JSON schema — accept the result or override explicitly.",
     "Replaces any in-progress draft on the conversation (idempotent): subsequent `build_workflow` calls overwrite the draft cleanly.",
   ],
@@ -97,7 +98,7 @@ export const buildWorkflowTool: ConversationTool = {
         connector_id: "00000000-0000-0000-0000-000000000000",
         method: "GET",
         path: "/v1/customers",
-        headers: { Authorization: "Bearer ${cred.stripe.token}" },
+        headers: { Authorization: String.raw`Bearer \${cred.stripe.token}` },
       },
     ],
     environment: "dev",
@@ -286,16 +287,17 @@ export const buildWorkflowTool: ConversationTool = {
     }
 
     // Draft shape accepted by the conversation draft store.
-    const draft: DraftDocument = {
+    const workflowDraft: DraftDocument = {
       name: args.name,
       slug: args.slug,
       steps: args.steps,
     };
-    if (args.description) draft.description = args.description;
-    if (input_schema) draft.input_schema = input_schema;
-    if (args.output_schema) draft.output_schema = args.output_schema;
+    if (args.description) workflowDraft.description = args.description;
+    if (input_schema) workflowDraft.input_schema = input_schema;
+    if (args.output_schema) workflowDraft.output_schema = args.output_schema;
+    if (args.output_transform) workflowDraft.output_transform = args.output_transform;
 
-    await ctx.setDraft(draft);
+    await ctx.setDraft(withWorkflowDraft(ctx.getDraft(), workflowDraft, "workflow_built"));
 
     return {
       ok: true,

@@ -1,0 +1,241 @@
+// Resume summary for conversations.
+//
+// Surfaces a single-sentence "where were we / what next" banner whenever
+// someone reattaches to an existing conversation (either via /resume or by
+// fetching the detail endpoint while the conversation is neither active
+// nor a single-turn session). Purely a projection over the persisted
+// conversation row + draft — no side effects, no model calls.
+
+import type { ConversationRecord, DraftDocument, WorkflowDraftPreviewSummary } from "./types.ts";
+
+type ConnectorProbe = NonNullable<NonNullable<DraftDocument["connector"]>["latest_probe"]>;
+
+export interface ResumeSummary {
+  active_target: {
+    kind: "connector" | "workflow" | "none";
+    name: string | null;
+    slug: string | null;
+    id: string | null;
+    environment: string | null;
+  };
+  stage: string;
+  last_successful_probe: string | null;
+  last_successful_preview: string | null;
+  unsaved: boolean;
+  pending_approval: {
+    id: string;
+    tool_name: string;
+    summary: string;
+  } | null;
+  next_action: string;
+  one_sentence: string;
+}
+
+export interface BuildResumeSummaryParams {
+  conversation: ConversationRecord;
+  draft: DraftDocument | null | undefined;
+  pendingElicitation?: {
+    id: string;
+    tool_name: string;
+    summary?: string | null;
+  } | null;
+}
+
+/**
+ * True when re-attaching this conversation is genuinely a "resume" — i.e.
+ * there is prior work to carry forward. A brand-new, one-turn, or already
+ * committed conversation does not need a resume banner.
+ */
+export function shouldShowResumeSummary(params: BuildResumeSummaryParams): boolean {
+  const { conversation, draft } = params;
+  if (conversation.status === "committed" || conversation.status === "abandoned") return false;
+  if (!draft) return false;
+  const hasConnectorDraft = draft.connector !== undefined && draft.connector !== null;
+  const hasWorkflowSteps = Array.isArray(draft.steps) && draft.steps.length > 0;
+  const hasPreview = draft.latest_preview !== null && draft.latest_preview !== undefined;
+  const hasProbe =
+    draft.connector?.latest_probe !== null && draft.connector?.latest_probe !== undefined;
+  return hasConnectorDraft || hasWorkflowSteps || hasPreview || hasProbe;
+}
+
+export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSummary {
+  const { conversation, draft } = params;
+  const d: Partial<DraftDocument> = draft ?? {};
+  const connector = d.connector ?? null;
+  const connectorSaved = typeof connector?.saved_connector_id === "string";
+  const workflowSteps = Array.isArray(d.steps) ? d.steps.length : 0;
+  const hasWorkflow = workflowSteps > 0 || Boolean(d.workflow?.steps?.length);
+
+  let activeKind: "connector" | "workflow" | "none" = "none";
+  let targetName: string | null = null;
+  let targetSlug: string | null = null;
+  let targetId: string | null = null;
+  let environment: string | null = null;
+
+  if (connector && !connectorSaved) {
+    activeKind = "connector";
+    targetName = connector.name ?? null;
+    targetSlug = connector.slug ?? null;
+    environment = connector.environment ?? null;
+  } else if (hasWorkflow) {
+    activeKind = "workflow";
+    targetName = d.workflow?.name ?? d.name ?? null;
+    targetSlug = d.workflow?.slug ?? d.slug ?? null;
+    targetId = conversation.target_workflow_id ?? null;
+  } else if (connectorSaved) {
+    activeKind = "connector";
+    targetName = connector?.name ?? null;
+    targetSlug = connector?.slug ?? null;
+    targetId = conversation.target_connector_id ?? null;
+    environment = connector?.environment ?? null;
+  }
+
+  const probe = connector?.latest_probe ?? null;
+  const lastProbe =
+    probe && probe.ok === true
+      ? `${probe.method ?? "GET"} ${probe.path ?? "/"} → ${probe.status_code ?? "ok"}`
+      : null;
+  const preview = d.latest_preview ?? null;
+  const lastPreview = preview && preview.ok === true ? preview.summary : null;
+
+  const pendingElicitation = params.pendingElicitation ?? null;
+  const pendingApproval = pendingElicitation
+    ? {
+        id: pendingElicitation.id,
+        tool_name: pendingElicitation.tool_name,
+        summary: pendingElicitation.summary ?? "",
+      }
+    : null;
+
+  const nextAction = computeNextAction({
+    activeKind,
+    connector,
+    connectorSaved,
+    hasWorkflow,
+    probe,
+    preview,
+    pendingApproval,
+  });
+
+  const stage = computeStage({
+    activeKind,
+    connectorSaved,
+    hasWorkflow,
+    probe,
+    preview,
+    pendingApproval,
+  });
+
+  const oneSentence = buildOneSentence({
+    activeKind,
+    targetName,
+    environment,
+    stage,
+    pendingApproval,
+    nextAction,
+  });
+
+  return {
+    active_target: {
+      kind: activeKind,
+      name: targetName,
+      slug: targetSlug,
+      id: targetId,
+      environment,
+    },
+    stage,
+    last_successful_probe: lastProbe,
+    last_successful_preview: lastPreview,
+    unsaved: activeKind === "connector" ? !connectorSaved : hasWorkflow,
+    pending_approval: pendingApproval,
+    next_action: nextAction,
+    one_sentence: oneSentence,
+  };
+}
+
+interface NextActionInputs {
+  activeKind: "connector" | "workflow" | "none";
+  connector: NonNullable<DraftDocument["connector"]> | null;
+  connectorSaved: boolean;
+  hasWorkflow: boolean;
+  probe: ConnectorProbe | null;
+  preview: WorkflowDraftPreviewSummary | null;
+  pendingApproval: ResumeSummary["pending_approval"];
+}
+
+function computeNextAction(p: NextActionInputs): string {
+  if (p.pendingApproval) {
+    return "Resolve the pending approval to continue (approve or reject).";
+  }
+  if (p.activeKind === "connector" && !p.connectorSaved) {
+    if (!p.probe || p.probe.ok !== true) {
+      return "Probe the connector draft before saving so auth and response shape are verified.";
+    }
+    return "Save the connector draft now that the probe succeeded.";
+  }
+  if (p.activeKind === "workflow" || (p.connectorSaved && p.hasWorkflow)) {
+    if (!p.preview || p.preview.ok !== true) {
+      return "Preview a step or the whole workflow before committing.";
+    }
+    return "Commit the workflow — the last preview succeeded.";
+  }
+  if (p.connectorSaved && !p.hasWorkflow) {
+    return "Describe the workflow you want to build with this saved connector.";
+  }
+  return "Continue the conversation.";
+}
+
+function computeStage(
+  p: Pick<
+    NextActionInputs,
+    "activeKind" | "connectorSaved" | "hasWorkflow" | "probe" | "preview" | "pendingApproval"
+  >,
+): string {
+  if (p.pendingApproval) return "awaiting_approval";
+  if (p.activeKind === "connector" && !p.connectorSaved) {
+    if (p.probe?.ok === true) return "connector_ready_to_save";
+    return "connector_drafting";
+  }
+  if (p.activeKind === "workflow" || (p.connectorSaved && p.hasWorkflow)) {
+    if (p.preview?.ok === true) return "workflow_ready_to_commit";
+    return "workflow_drafting";
+  }
+  if (p.connectorSaved) return "connector_saved";
+  return "onboarding";
+}
+
+interface OneSentenceInputs {
+  activeKind: "connector" | "workflow" | "none";
+  targetName: string | null;
+  environment: string | null;
+  stage: string;
+  pendingApproval: ResumeSummary["pending_approval"];
+  nextAction: string;
+}
+
+function buildOneSentence(p: OneSentenceInputs): string {
+  const target =
+    p.activeKind === "connector"
+      ? `connector${p.targetName ? ` "${p.targetName}"` : ""}`
+      : p.activeKind === "workflow"
+        ? `workflow${p.targetName ? ` "${p.targetName}"` : ""}`
+        : "this conversation";
+  const env = p.environment ? ` in ${p.environment}` : "";
+  if (p.pendingApproval) {
+    return `You were setting up ${target}${env} and left an approval pending. ${p.nextAction}`;
+  }
+  switch (p.stage) {
+    case "connector_ready_to_save":
+      return `You were setting up ${target}${env}; the probe succeeded. ${p.nextAction}`;
+    case "connector_drafting":
+      return `You were drafting ${target}${env} but have not probed it yet. ${p.nextAction}`;
+    case "workflow_ready_to_commit":
+      return `You were authoring ${target}; the last preview succeeded. ${p.nextAction}`;
+    case "workflow_drafting":
+      return `You were authoring ${target} but have not previewed it yet. ${p.nextAction}`;
+    case "connector_saved":
+      return `You saved a connector but have not started a workflow yet. ${p.nextAction}`;
+    default:
+      return `You have an in-progress conversation. ${p.nextAction}`;
+  }
+}

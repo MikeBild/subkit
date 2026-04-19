@@ -1,6 +1,7 @@
 // Conversation types shared across the service, loop, tool palette,
 // and HTTP / MCP layers.
 
+import type { AuthType, DriverName, Environment } from "../connectors/types.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 
 export type ConversationStatus = "active" | "awaiting_input" | "committed" | "abandoned";
@@ -48,18 +49,88 @@ export interface ConversationToolCallRecord {
   created_at: string;
 }
 
+export type AuthoringMode =
+  | "onboarding"
+  | "connector_authoring"
+  | "workflow_authoring"
+  | "resume_review";
+
 /**
  * The working workflow draft — kept as a plain object so we can evolve
  * the shape freely during a conversation before running the full
  * WorkflowDef validator at commit time.
  */
-export interface DraftDocument {
+export interface WorkflowDraftDocument {
   name: string;
   slug?: string;
   description?: string;
   steps: Array<Record<string, unknown>>;
   input_schema?: Record<string, unknown>;
   output_schema?: Record<string, unknown>;
+  output_transform?: string;
+  edges?: Array<{ from: string; to: string }>;
+}
+
+export interface ConnectorDraftProbeSummary {
+  ok: boolean;
+  method: string;
+  path: string;
+  environment: Environment;
+  status_code?: number;
+  duration_ms?: number;
+  summary: string;
+  response_preview?: unknown;
+  failure_code?: string;
+}
+
+export interface ConnectorDraftDocument {
+  name?: string;
+  slug?: string;
+  driver?: DriverName;
+  environment?: Environment;
+  base_url?: string;
+  dsn?: string;
+  auth_type?: AuthType;
+  config?: Record<string, unknown>;
+  description?: string;
+  template_id?: string | null;
+  template_name?: string | null;
+  docs?: string[];
+  validation?: {
+    ok: boolean;
+    missing_fields: string[];
+    errors: Array<{ path: string; message: string }>;
+  };
+  latest_probe?: ConnectorDraftProbeSummary | null;
+  saved_connector_id?: string | null;
+}
+
+export interface WorkflowDraftPreviewSummary {
+  ok: boolean;
+  step_id?: string | null;
+  summary: string;
+  preview?: unknown;
+}
+
+export interface AuthoringSummary {
+  readiness: "drafting" | "needs_input" | "ready_to_probe" | "ready_to_save" | "saved";
+  next_action: string | null;
+  missing_fields: string[];
+  last_action: string | null;
+  progress_label: string | null;
+}
+
+/**
+ * Unified authoring-state document. The top-level workflow fields are
+ * intentionally kept for compatibility with older workflow-only tools
+ * and tests; `workflow` is the canonical nested view.
+ */
+export interface DraftDocument extends WorkflowDraftDocument {
+  mode?: AuthoringMode;
+  workflow?: WorkflowDraftDocument;
+  connector?: ConnectorDraftDocument | null;
+  summary?: AuthoringSummary;
+  latest_preview?: WorkflowDraftPreviewSummary | null;
 }
 
 /**
@@ -130,11 +201,38 @@ export type TurnEvent =
   | { type: "committed"; workflow_id: string }
   | { type: "completed"; status: ConversationStatus; usage?: TurnUsage };
 
+export interface ConversationResumeSummary {
+  active_target: {
+    kind: "connector" | "workflow" | "none";
+    name: string | null;
+    slug: string | null;
+    id: string | null;
+    environment: string | null;
+  };
+  stage: string;
+  last_successful_probe: string | null;
+  last_successful_preview: string | null;
+  unsaved: boolean;
+  pending_approval: {
+    id: string;
+    tool_name: string;
+    summary: string;
+  } | null;
+  next_action: string;
+  one_sentence: string;
+}
+
 export interface ConversationDetail {
   conversation: ConversationRecord;
   messages: ConversationMessageRecord[];
   tool_calls: ConversationToolCallRecord[];
   draft: DraftDocument | null;
+  /**
+   * Surfaced when reattaching carries forward prior authoring work — a
+   * one-sentence "where were we / what next" banner plus structured
+   * state. Null when this is a fresh or already-committed conversation.
+   */
+  resume_summary?: ConversationResumeSummary | null;
 }
 
 /**

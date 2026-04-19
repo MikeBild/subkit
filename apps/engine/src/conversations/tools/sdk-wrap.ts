@@ -11,13 +11,14 @@
 // so the model can plan its next step. The loop halts via the
 // `stopWhen` conditions evaluated between steps.
 
-import type { z } from "@hono/zod-openapi";
+import { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { recordConversationToolCall } from "../../observability/instrumentation.ts";
 import { resolveAttachments } from "../attachments.ts";
 import { recordTransition } from "../confirmation.ts";
+import { createElicitation } from "../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
 import { resolveToolMode, type ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
@@ -108,7 +109,13 @@ function wrapOne(
   // two packages ship their own Zod re-exports and the variances do not
   // reconcile at the type level, but the runtime `parse` contract is
   // identical.
-  const inputSchema = inner.inputSchema as unknown as z.ZodType<Record<string, unknown>>;
+  const baseInputSchema = inner.inputSchema as unknown as z.ZodType<Record<string, unknown>> & {
+    extend?: (shape: Record<string, z.ZodTypeAny>) => z.ZodType<Record<string, unknown>>;
+  };
+  const inputSchema =
+    typeof baseInputSchema.extend === "function"
+      ? baseInputSchema.extend({ __policy_confirmed: z.boolean().optional() })
+      : baseInputSchema;
   return tool<Record<string, unknown>, WrappedToolOutput>({
     description: compileDescription(inner),
     inputSchema,
@@ -200,7 +207,22 @@ function wrapOne(
         // interaction_log entry; the model re-issues the same tool call
         // with `__policy_confirmed: true` on a subsequent turn.
         if (needsPreConfirmation) {
-          const elicitationId = `policy-${toolCallId}`;
+          const elicitation = await createElicitation(
+            {
+              tenant_id: ctx.tenant_id,
+              conversation_id: ctx.conversation_id,
+              tool_call_id: toolCallId,
+              tool_name: "ask_user_confirm",
+              summary: `Confirm ${inner.name} (policy: ${resolvedMode})`,
+              input: {
+                kind: "external_write",
+                question: `Policy requires confirmation before running ${inner.name}. Proceed?`,
+                target: { tool: inner.name, args: rawArgs },
+              },
+              actor_id: ctx.actor_id,
+            },
+            db,
+          );
           const output = {
             pending: true,
             policy_mode: resolvedMode,
@@ -215,25 +237,17 @@ function wrapOne(
           });
           events.push({
             type: "elicit_request",
-            elicitation_id: elicitationId,
+            elicitation_id: elicitation.id,
             tool_name: "ask_user_confirm",
-            summary: `Confirm ${inner.name} (policy: ${resolvedMode})`,
-            input: {
-              kind: "external_write",
-              question: `Policy requires confirmation before running ${inner.name}. Proceed?`,
-              target: { tool: inner.name, args: rawArgs },
-            },
+            summary: elicitation.summary,
+            input: elicitation.input,
           });
           signals.pendingElicitation = {
-            elicitation_id: elicitationId,
+            elicitation_id: elicitation.id,
             tool_name: "ask_user_confirm",
             kind: "external_write",
             summary: `Confirm ${inner.name}`,
-            input: {
-              kind: "external_write",
-              question: `Policy requires confirmation before running ${inner.name}. Proceed?`,
-              target: { tool: inner.name, args: rawArgs },
-            },
+            input: elicitation.input,
           };
           recordConversationToolCall({
             category: inner.category,
@@ -245,7 +259,7 @@ function wrapOne(
             ok: false,
             data: output,
             pause: {
-              elicitation_id: elicitationId,
+              elicitation_id: elicitation.id,
               tool_name: "ask_user_confirm",
               summary: `Confirm ${inner.name}`,
               kind: "external_write",

@@ -53,6 +53,10 @@ describe("sk slash registry", () => {
     // Chat session controls the enduser can use.
     expect(visible).toContain("clear");
     expect(visible).toContain("resume");
+    expect(visible).toContain("draft");
+    expect(visible).toContain("connector");
+    expect(visible).toContain("workflow");
+    expect(visible).toContain("context");
     expect(visible).toContain("help");
     expect(visible).toContain("model");
     expect(visible).toContain("compact");
@@ -97,5 +101,13 @@ describe("sk slash registry", () => {
     expect(dbg?.category).toBe("util");
     const enduser = slashCommandsForPersona(endUserPersona).map((c) => c.name);
     expect(enduser).toContain("debug");
+  });
+
+  test("authoring inspection commands are registered and gated by conversation:read", () => {
+    for (const name of ["draft", "connector", "workflow", "context"] as const) {
+      const cmd = findSlashCommand(name);
+      expect(cmd).toBeDefined();
+      expect(cmd?.requires).toBe("conversation:read");
+    }
   });
 });

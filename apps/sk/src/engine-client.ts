@@ -190,6 +190,24 @@ export class EngineClient {
     return this.request("GET", "/v1/status");
   }
 
+  // --------------------------- Workflow versions ---------------------------
+  /** List committed versions of a workflow (newest first). */
+  listWorkflowVersions(workflowId: string): Promise<{
+    items: Array<{ id: string; version: number; note: string | null; created_at: string }>;
+  }> {
+    return this.request("GET", `/v1/workflows/${encodeURIComponent(workflowId)}/history`);
+  }
+  /** Restore a prior workflow version as a new current version. */
+  restoreWorkflowVersion(
+    workflowId: string,
+    version: number,
+  ): Promise<{ id: string; current_version_id: string; version: number }> {
+    return this.request(
+      "POST",
+      `/v1/workflows/${encodeURIComponent(workflowId)}/restore/${version}`,
+    );
+  }
+
   // --------------------------- RBAC probe ---------------------------
   /**
    * Probe whether the caller (or a specified principal id) holds a
@@ -270,6 +288,9 @@ export class EngineClient {
   }
   cancelConversation(id: string): Promise<unknown> {
     return this.request("POST", `/v1/conversations/${id}/cancel`);
+  }
+  getConversationContextSnapshot(id: string): Promise<ConversationContextSnapshot> {
+    return this.request("GET", `/v1/conversations/${id}/context-snapshot`);
   }
   streamConversation(id: string): Promise<Response> {
     return this.stream(`/v1/conversations/${id}/stream`);
@@ -372,6 +393,53 @@ export interface ConversationDetail {
   tool_calls: unknown[];
   draft: unknown;
   approvals: unknown[];
+  resume_summary?: ResumeSummary | null;
+}
+
+export interface ResumeSummary {
+  active_target: {
+    kind: "connector" | "workflow" | "none";
+    name: string | null;
+    slug: string | null;
+    id: string | null;
+    environment: string | null;
+  };
+  stage: string;
+  last_successful_probe: string | null;
+  last_successful_preview: string | null;
+  unsaved: boolean;
+  pending_approval: {
+    id: string;
+    tool_name: string;
+    summary: string;
+  } | null;
+  next_action: string;
+  one_sentence: string;
+}
+
+export interface ConversationContextSnapshot {
+  conversation_id: string;
+  connector_id: string | null;
+  workflow_id: string | null;
+  draft_mode: string;
+  draft_summary: {
+    readiness: string;
+    next_action: string | null;
+    missing_fields: string[];
+    progress_label: string | null;
+  } | null;
+  skills: {
+    global: Array<{ id: string; title: string }>;
+    connector: Array<{ id: string; title: string }>;
+    workflow: Array<{ id: string; title: string }>;
+    total: number;
+  };
+  messages: {
+    total: number;
+    last_role: string | null;
+  };
+  tool_calls_total: number;
+  pending_elicitations: number;
 }
 
 export interface StatusSummary {

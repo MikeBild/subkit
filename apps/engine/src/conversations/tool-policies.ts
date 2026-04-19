@@ -114,19 +114,48 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   propose_step: { defaultMode: "no_confirm" },
   propose_connector: { defaultMode: "no_confirm" },
   propose_skill: { defaultMode: "no_confirm" },
+  suggest_connector_templates: { defaultMode: "no_confirm" },
+  start_connector_from_template: { defaultMode: "no_confirm" },
+  start_connector_from_description: { defaultMode: "no_confirm" },
+  inspect_connector_draft: { defaultMode: "no_confirm" },
+  update_connector_draft: { defaultMode: "no_confirm" },
+  validate_connector_draft: { defaultMode: "no_confirm" },
+  inspect_workflow_draft: { defaultMode: "no_confirm" },
+  inspect_authoring_context: { defaultMode: "no_confirm" },
   update_param: { defaultMode: "no_confirm" },
   connect_steps: { defaultMode: "no_confirm" },
   dry_run_step: { defaultMode: "no_confirm" },
   dry_run_transform: { defaultMode: "no_confirm" },
+  dry_run_workflow: {
+    defaultMode: "no_confirm",
+    computeModeFromInput: (input) => {
+      const env = asObj(input).environment;
+      if (env === "prod") return "confirm_before_execution";
+      return "no_confirm";
+    },
+  },
   validate_draft: { defaultMode: "no_confirm" },
   commit_draft: { defaultMode: "confirm_before_execution" },
   build_workflow: { defaultMode: "no_confirm" },
+  start_workflow_from_goal: { defaultMode: "no_confirm" },
+  save_connector_draft: { defaultMode: "confirm_before_execution" },
   // web_search leaves the tenant perimeter — confirm by default.
   web_search: { defaultMode: "confirm_before_execution" },
   // probe_connector does an external HTTP call but produces no side
   // effect beyond the vendor's read surface. Dev + GET/HEAD auto; any
   // other combination (write verbs or prod env) requires confirm.
   probe_connector: {
+    defaultMode: "no_confirm",
+    computeModeFromInput: (input) => {
+      const obj = asObj(input);
+      const method = typeof obj.method === "string" ? obj.method.toUpperCase() : "GET";
+      const env = obj.environment;
+      if (env === "prod") return "confirm_before_execution";
+      if (method !== "GET" && method !== "HEAD") return "confirm_before_execution";
+      return "no_confirm";
+    },
+  },
+  probe_connector_draft: {
     defaultMode: "no_confirm",
     computeModeFromInput: (input) => {
       const obj = asObj(input);

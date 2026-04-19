@@ -35,6 +35,7 @@ import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { StatusSummary } from "./engine-client.ts";
 import { AlternateScreen } from "./repl/alt-screen.tsx";
+import { ResumeSummaryCard, renderAuthoringCard } from "./repl/authoring-cards.tsx";
 import { BackgroundToolGroup, isBackgroundTool } from "./repl/background-tools.tsx";
 import { classifyAttachment, readClipboard } from "./repl/clipboard-read.ts";
 import {
@@ -133,6 +134,24 @@ export interface InkAppProps {
   onElicitResponse?: (elicitationId: string, output: unknown, reason?: string) => Promise<void>;
   /** Called when the user exits. */
   onExit?: () => void;
+  /**
+   * Optional resume summary rendered at the top of the transcript on a
+   * fresh attach. Populated by the host from `GET /v1/conversations/:id`'s
+   * `resume_summary` field when the user re-enters a paused authoring
+   * session.
+   */
+  resumeSummary?: {
+    active_target: {
+      kind: "connector" | "workflow" | "none";
+      name: string | null;
+      environment: string | null;
+    };
+    stage: string;
+    next_action: string;
+    one_sentence: string;
+    last_successful_probe: string | null;
+    last_successful_preview: string | null;
+  } | null;
 }
 
 // ---------- Tool-call card (Claude Code style) ----------
@@ -421,10 +440,21 @@ SuggestionList.displayName = "SuggestionList";
 type TranscriptMode = "compact" | "detail";
 
 const WORKFLOW_STARTER_PROMPT = [
-  "Help me design a workflow with these steps:",
-  "1. ",
-  "2. ",
-  "3. ",
+  "I want to build a workflow.",
+  "Guide me one question at a time.",
+  "Ask first what systems are involved, what should trigger it, and what success looks like.",
+  "Preview before commit.",
+].join("\n");
+
+const CONNECTOR_STARTER_PROMPT = [
+  "I want to connect a system.",
+  "Suggest a template only if it clearly helps, but do not require one.",
+  "Ask me one high-signal question at a time and probe before saving.",
+].join("\n");
+
+const IMPORT_STARTER_PROMPT = [
+  "I want to import docs or an API spec and turn it into a connector and workflow.",
+  "Guide me through the minimum information you need and probe before saving.",
 ].join("\n");
 
 const StickyErrorPanel: React.FC<{ message: string }> = memo(({ message }) => (
@@ -454,6 +484,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   onSelectConversation,
   onElicitResponse,
   onExit,
+  resumeSummary,
 }) => {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -964,14 +995,18 @@ export const InkApp: React.FC<InkAppProps> = ({
           return;
         }
         if (char === DEFAULT_STARTER_ACTIONS[1]?.key) {
-          setInput(buffer(WORKFLOW_STARTER_PROMPT));
+          setInput(buffer(CONNECTOR_STARTER_PROMPT));
           return;
         }
         if (char === DEFAULT_STARTER_ACTIONS[2]?.key) {
-          void handleSubmit("/status");
+          setInput(buffer(WORKFLOW_STARTER_PROMPT));
           return;
         }
         if (char === DEFAULT_STARTER_ACTIONS[3]?.key) {
+          setInput(buffer(IMPORT_STARTER_PROMPT));
+          return;
+        }
+        if (char === DEFAULT_STARTER_ACTIONS[4]?.key) {
           void handleSubmit("/help");
           return;
         }
@@ -1210,14 +1245,19 @@ export const InkApp: React.FC<InkAppProps> = ({
     }
     flushBackgroundGroup(pendingBackgroundCalls);
     pendingBackgroundCalls = [];
-    transcriptRows.push(
-      <ToolCard
-        key={`tc-${call.id}`}
-        call={call}
-        columns={columns}
-        detailed={transcriptMode === "detail"}
-      />,
-    );
+    const authoringCard = renderAuthoringCard(call);
+    if (authoringCard) {
+      transcriptRows.push(authoringCard);
+    } else {
+      transcriptRows.push(
+        <ToolCard
+          key={`tc-${call.id}`}
+          call={call}
+          columns={columns}
+          detailed={transcriptMode === "detail"}
+        />,
+      );
+    }
     pushForegroundLogs(call.id);
   }
   flushBackgroundGroup(pendingBackgroundCalls);
@@ -1235,6 +1275,19 @@ export const InkApp: React.FC<InkAppProps> = ({
           />
           {showWelcomeActions ? <StarterActions /> : null}
         </>
+      ) : null}
+
+      {/* Resume banner — single "where were we / what next" card on
+          fresh attach when the engine returned a resume_summary. */}
+      {resumeSummary && session.messages.length === 0 ? (
+        <ResumeSummaryCard
+          active_target={resumeSummary.active_target}
+          stage={resumeSummary.stage}
+          next_action={resumeSummary.next_action}
+          one_sentence={resumeSummary.one_sentence}
+          last_successful_probe={resumeSummary.last_successful_probe}
+          last_successful_preview={resumeSummary.last_successful_preview}
+        />
       ) : null}
 
       {/* Transient banner (help / errors / command feedback) */}

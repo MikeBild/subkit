@@ -46,11 +46,20 @@ export const AuditAction = {
   CONNECTOR_ENVIRONMENT_PROMOTED: "connector.environment_promoted",
   CONNECTOR_DOCS_INGESTED: "connector.docs_ingested",
   CONNECTOR_DOCS_CLEARED: "connector.docs_cleared",
+  // Saved via save_connector_draft with `force=true` — no successful probe
+  // was recorded. Metadata records the probe classification so operators can
+  // see why probing was skipped or failed.
+  CONNECTOR_SAVED_OVERRIDE: "connector.saved_override",
 
   WORKFLOW_CREATED: "workflow.created",
   WORKFLOW_UPDATED: "workflow.updated",
   WORKFLOW_DELETED: "workflow.deleted",
   WORKFLOW_VERSION_RESTORED: "workflow.version_restored",
+  // Committed via commit_draft with `force=true` — no successful preview
+  // was recorded. Metadata captures the classification of the most recent
+  // preview attempt (if any) so operators can audit why the override was
+  // taken.
+  WORKFLOW_COMMITTED_OVERRIDE: "workflow.committed_override",
 
   EXECUTION_STARTED: "execution.started",
   EXECUTION_COMPLETED: "execution.completed",

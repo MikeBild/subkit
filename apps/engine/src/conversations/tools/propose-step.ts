@@ -8,7 +8,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { type ValidationError, validateWorkflowDef } from "../../workflows/validator.ts";
-import type { DraftDocument } from "../types.ts";
+import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -159,34 +159,35 @@ export const proposeStepTool: ConversationTool = {
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    const draft = structuredClone(ctx.getDraft()) as DraftDocument;
+    const workflowDraft = structuredClone(getWorkflowDraft(ctx.getDraft()));
     const stepId = typeof args.step.id === "string" ? (args.step.id as string) : undefined;
     if (stepId) {
-      const existing = draft.steps.findIndex((s) => s.id === stepId);
+      const existing = workflowDraft.steps.findIndex((s) => s.id === stepId);
       if (existing >= 0) {
-        draft.steps[existing] = args.step;
+        workflowDraft.steps[existing] = args.step;
       } else {
-        draft.steps.push(args.step);
+        workflowDraft.steps.push(args.step);
       }
     } else {
-      draft.steps.push(args.step);
+      workflowDraft.steps.push(args.step);
     }
-    const validation = validateWorkflowDef(draft);
+    const validation = validateWorkflowDef(workflowDraft);
     if (!validation.ok) {
       return {
         ok: false,
         data: buildErrorPayload(args.step, validation.errors, stepId ?? null),
       };
     }
-    await ctx.setDraft(draft);
+    await ctx.setDraft(withWorkflowDraft(ctx.getDraft(), workflowDraft, "workflow_step_updated"));
     return {
       ok: true,
       data: {
-        steps: draft.steps.length,
+        steps: workflowDraft.steps.length,
         step_id: stepId ?? null,
         step_type: typeof args.step.kind === "string" ? args.step.kind : null,
-        replaced: stepId !== undefined && draft.steps.findIndex((s) => s.id === stepId) >= 0,
-        last_step_id: draft.steps[draft.steps.length - 1]?.id ?? null,
+        replaced:
+          stepId !== undefined && workflowDraft.steps.findIndex((s) => s.id === stepId) >= 0,
+        last_step_id: workflowDraft.steps[workflowDraft.steps.length - 1]?.id ?? null,
       },
     };
   },

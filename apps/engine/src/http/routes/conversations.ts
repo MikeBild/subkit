@@ -227,6 +227,15 @@ const ContextSnapshotSchema = z
     conversation_id: z.string(),
     connector_id: z.string().nullable(),
     workflow_id: z.string().nullable(),
+    draft_mode: z.string(),
+    draft_summary: z
+      .object({
+        readiness: z.string(),
+        next_action: z.string().nullable(),
+        missing_fields: z.array(z.string()),
+        progress_label: z.string().nullable(),
+      })
+      .nullable(),
     skills: z.object({
       global: z.array(z.object({ id: z.string(), title: z.string() })),
       connector: z.array(z.object({ id: z.string(), title: z.string() })),

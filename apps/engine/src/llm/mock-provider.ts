@@ -267,6 +267,9 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
       },
     },
     { tool: "validate_draft", args: {} },
+    // Preview the request step before asking for commit approval — the
+    // commit_draft gate requires a successful dry run on record.
+    { tool: "dry_run_step", args: { step_id: "get-users" } },
     {
       tool: "ask_user_confirm",
       args: {
@@ -338,12 +341,65 @@ export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
       },
     },
     { tool: "validate_draft", args: {} },
+    // Preview the transform output over the forecast scope so commit_draft
+    // clears the preview-before-commit gate.
+    { tool: "dry_run_step", args: { step_id: "tomorrow-only" } },
     {
       tool: "ask_user_confirm",
       args: {
         question: "Commit the Berlin tomorrow-weather workflow?",
         kind: "commit_draft",
         summary: "commit weather workflow",
+      },
+    },
+    { tool: "commit_draft", args: {} },
+  ];
+}
+
+export function cannedConnectorWorkflowPlan(baseUrl: string): ConverseMockStep[] {
+  return [
+    { tool: "suggest_connector_templates", args: { query: "subkit engine", limit: 3 } },
+    {
+      tool: "start_connector_from_description",
+      args: {
+        name: "Subkit Engine",
+        description: "Local subkit engine used for onboarding smoke coverage.",
+        driver: "http",
+        environment: "dev",
+        base_url: baseUrl,
+        auth_type: "none",
+      },
+    },
+    { tool: "validate_connector_draft", args: {} },
+    { tool: "probe_connector_draft", args: { method: "GET", path: "/v1/health" } },
+    { tool: "inspect_connector_draft", args: {} },
+    { tool: "save_connector_draft", args: {} },
+    { tool: "save_connector_draft", args: { __policy_confirmed: true } },
+    {
+      tool: "build_workflow",
+      args: {
+        name: "engine-health-check",
+        slug: "engine-health-check",
+        description: "Checks the local subkit engine health endpoint.",
+        steps: [
+          {
+            id: "health",
+            kind: "request",
+            method: "GET",
+            url: `${baseUrl}/v1/health`,
+          },
+        ],
+        environment: "dev",
+      },
+    },
+    { tool: "inspect_workflow_draft", args: {} },
+    { tool: "dry_run_step", args: { step_id: "health", input: { source: "smoke" } } },
+    {
+      tool: "ask_user_confirm",
+      args: {
+        question: "Commit this engine health workflow?",
+        kind: "commit_draft",
+        summary: "commit engine health workflow",
       },
     },
     { tool: "commit_draft", args: {} },

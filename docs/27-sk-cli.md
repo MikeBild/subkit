@@ -98,12 +98,27 @@ Every command is a declarative entry in `apps/sk/src/slash.ts`. Adding one is a 
 | `/memory` | — | Opens `SUBKIT.md` in `$EDITOR` |
 | `/init` | `conversation:write` | Generate a starter `SUBKIT.md` via a throwaway turn |
 | `/skills` | `skill:read` | List active skills in scope |
+| `/knowledge` | `knowledge:read` | Search active knowledge sources in scope |
 | `/mcp` | `mcp:read` | List MCP prompts / resources / tools |
 | `/config` | — | Open the merged settings JSON |
 | `/permissions` | — | Bulk `POST /v1/rbac/can` probe |
 | `/audit` | `audit:read` | Tail `/v1/audit-log?actor_id=me` — admin only |
+| `/logs` | `admin:read` | Tail recent engine errors |
+| `/debug` | — | Print last engine request/response for diagnostics |
+| `/paste` | — | Paste the system clipboard into the composer |
+| `/attach <path>` | — | Attach a local file to the next turn |
 | `/exit` / `/quit` | — | Unmount the REPL |
 | `/bug` | — | Opens GitHub issue template |
+
+Draft authoring inspectors are also exposed as slash commands so the user can browse engine-side state between turns:
+
+| Slash | Requires | Notes |
+|---|---|---|
+| `/draft` | `conversation:read` | Current draft overview (mode / readiness / next action) |
+| `/connector` | `conversation:read` | Connector draft pane — fields, validation, latest probe |
+| `/workflow` | `conversation:read` | Workflow draft pane — steps, edges, latest preview |
+| `/context` | `conversation:read` | Loaded skills, knowledge, docs, attachments, memory |
+| `/approve` `/reject` | `conversation:write` | Resolve the pending elicitation without typing free-form |
 
 ## MCP
 

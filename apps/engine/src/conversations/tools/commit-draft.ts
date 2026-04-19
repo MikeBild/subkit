@@ -6,11 +6,21 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq, sql } from "drizzle-orm";
+import { auditAwait } from "../../audit/audit.ts";
+import { AuditAction } from "../../audit/types.ts";
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { createWorkflow } from "../../workflows/service.ts";
+import { getWorkflowDraft } from "../authoring-state.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
-const inputSchema = z.object({}).openapi("CommitDraftToolInput");
+const inputSchema = z
+  .object({
+    force: z
+      .boolean()
+      .default(false)
+      .describe("Allow committing even when no successful dry-run/preview exists."),
+  })
+  .openapi("CommitDraftToolInput");
 
 export const commitDraftTool: ConversationTool = {
   name: "commit_draft",
@@ -19,12 +29,14 @@ export const commitDraftTool: ConversationTool = {
     "Final step when the operator has confirmed via ask_user_confirm(kind='commit_draft') that the draft is ready to save. Creates a versioned workflow row and emits a `workflow.created` audit entry.",
   important_notes: [
     "Refuses with `no_prior_approval` if no matching ask_user_confirm has been answered in this conversation.",
+    "Refuses with `preview_required` if no successful dry_run_step/dry_run_workflow has been recorded (pass force=true to override).",
     "Bumps workflow version if a workflow with the same slug already exists.",
     "Writes exactly one audit row and one `workflow.created` outbox event.",
   ],
   inputSchema,
   category: "draft_write" as const,
-  async execute(ctx, _args): Promise<ToolResult> {
+  async execute(ctx, rawArgs): Promise<ToolResult> {
+    const args = inputSchema.parse(rawArgs);
     // Must have at least one resolved `ask_user_confirm` elicitation
     // whose input.kind is "commit_draft" and output.confirmed is true.
     const rows = await ctx.db
@@ -58,7 +70,22 @@ export const commitDraftTool: ConversationTool = {
       };
     }
 
-    const draft = ctx.getDraft();
+    const fullDraft = ctx.getDraft();
+    const latestPreview = fullDraft.latest_preview;
+    if (!args.force && (!latestPreview || latestPreview.ok !== true)) {
+      return {
+        ok: false,
+        data: {
+          error: "preview_required",
+          reason: "no_successful_preview",
+          message:
+            "run dry_run_step or dry_run_workflow successfully before committing, or retry with force=true",
+          latest_preview: latestPreview ?? null,
+        },
+      };
+    }
+
+    const draft = getWorkflowDraft(fullDraft);
     // Drop any non-workflow helper fields (e.g. edges hint) before
     // the validator sees them.
     const def = {
@@ -128,6 +155,26 @@ export const commitDraftTool: ConversationTool = {
       };
     }
     const workflow = result.workflow;
+    if (args.force && (!latestPreview || latestPreview.ok !== true)) {
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: ctx.actor_id ? "user" : "system",
+          actor_id: ctx.actor_id,
+          action: AuditAction.WORKFLOW_COMMITTED_OVERRIDE,
+          resource_type: "workflow",
+          resource_id: workflow.id,
+          result: "success",
+          metadata: {
+            conversation_id: ctx.conversation_id,
+            slug: workflow.slug,
+            latest_preview_ok: latestPreview?.ok ?? null,
+            latest_preview_summary: latestPreview?.summary ?? null,
+          },
+        },
+        ctx.db,
+      );
+    }
     await ctx.db
       .update(conversations)
       .set({

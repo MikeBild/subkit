@@ -89,6 +89,15 @@ export interface AssembleContextParams {
    * domain knowledge actually reaches the model.
    */
   loaded_skill_slugs?: string[];
+  /**
+   * Pre-rendered authoring context block — a structured "current state"
+   * summary describing the active draft, readiness, missing fields,
+   * latest probe/preview, pending approval, and resume banner. Emitted
+   * into the volatile cache segment on every turn so the model can
+   * reason about progress without replaying prior tool results. Secrets
+   * must be masked before this string reaches the assembler.
+   */
+  authoring_context?: string;
 }
 
 /** Result of Context Enhancement — ready for an SDK call. */

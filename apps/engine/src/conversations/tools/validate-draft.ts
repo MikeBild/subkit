@@ -5,6 +5,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
+import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z.object({}).openapi("ValidateDraftToolInput");
@@ -16,10 +17,12 @@ export const validateDraftTool: ConversationTool = {
   category: "draft_write" as const,
   async execute(ctx, _args): Promise<ToolResult> {
     const draft = ctx.getDraft();
-    const validation = validateWorkflowDef(draft);
+    const workflowDraft = getWorkflowDraft(draft);
+    const validation = validateWorkflowDef(workflowDraft);
     if (!validation.ok) {
       return { ok: false, data: { errors: validation.errors } };
     }
-    return { ok: true, data: { errors: [], steps: draft.steps.length } };
+    await ctx.setDraft(withWorkflowDraft(draft, workflowDraft, "workflow_validated"));
+    return { ok: true, data: { errors: [], steps: workflowDraft.steps.length } };
   },
 };
