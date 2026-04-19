@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.7.0](https://github.com/MikeBild/subkit/compare/subkit-v1.6.4...subkit-v1.7.0) (2026-04-19)
+
+
+### Features
+
+* **conversations,http:** file-attachment system + [@attachment](https://github.com/attachment):&lt;slug&gt; resolver ([80f0fdd](https://github.com/MikeBild/subkit/commit/80f0fdd55139890db21e45b026cd44ca7f460284))
+* **conversations,sk:** draft checkpoints + skill autoload + sk session commands ([085578b](https://github.com/MikeBild/subkit/commit/085578b7df973b901c5dd1eb8a42fb68c72d3c15))
+* **conversations,workflows:** build_workflow one-shot + sampleToSchema ([6a0fdff](https://github.com/MikeBild/subkit/commit/6a0fdff207092e988fe2f75dcf4e7e2a1801993f))
+* **conversations:** discovery artifact tools — list / get / approve ([a932cfb](https://github.com/MikeBild/subkit/commit/a932cfb780a78a6aec4abe53c9078f9c5c1b41c4))
+* **conversations:** dry_run_transform — jsonata/jsonpath/template probe ([49689d9](https://github.com/MikeBild/subkit/commit/49689d94ca93446545184ce77b68a0aed0722565))
+* **conversations:** probe_connector tool — authenticated one-shot HTTP probe ([bef2f2a](https://github.com/MikeBild/subkit/commit/bef2f2a5beb07ca12a42f6ddc9463fbd0b25bef5))
+* **conversations:** static verifier + onboarding hint ([a4adc9c](https://github.com/MikeBild/subkit/commit/a4adc9c735e663b55f39bd1295ad9cedbd7e879d))
+* **conversations:** wire interaction_log events through elicitation flow ([8fbd6a3](https://github.com/MikeBild/subkit/commit/8fbd6a3474df2376b2364ee803e3ad4aeb1315a9))
+* **db:** migration 0028 convo-quality — skills seed, attachments, DLP, drafts ([7d3cf97](https://github.com/MikeBild/subkit/commit/7d3cf9703bdd0a7ad8f6a3ab2041a4c5edd7f342))
+* **e2e+engine:** real-LLM E2E suite + diagnostics endpoint + provider routing fix ([83f6b09](https://github.com/MikeBild/subkit/commit/83f6b09722f64a3bcb6a05a4a3bfa4c523d3987b))
+* **eval:** conversation-quality fixtures + validators ([0208e5a](https://github.com/MikeBild/subkit/commit/0208e5ad5f8705cfd2b0b9d3979c15ab088b9058))
+* **execution:** tenant DLP layer — response-filters with defaults ([4ce6c1f](https://github.com/MikeBild/subkit/commit/4ce6c1f3b24ea65e4499d3050282c95a046a01d8))
+* **llm:** extended converse prompt + five pseudo-message builders ([68ef177](https://github.com/MikeBild/subkit/commit/68ef17792c19fc3648eab47a00957bf00aacb8d4))
+* **llm:** placeholder substitution system — parser + resolver + get_connector ([b7edbb3](https://github.com/MikeBild/subkit/commit/b7edbb36e44ecd9baab49dfa4b79a4e97259539f))
+* **observability:** langfuse tool spans + defense-in-depth redaction ([f0cf866](https://github.com/MikeBild/subkit/commit/f0cf866f8ab51950d39fae98d0b217a92fbc028c))
+* **skills,tools:** 10 Markdown skills + seed loader + description compiler ([0bb0f27](https://github.com/MikeBild/subkit/commit/0bb0f2741ec2215ae79989aba30242c7672ec485))
+
+
+### Bug Fixes
+
+* **e2e:** tier-1 real-LLM suite skips cleanly when LLM_PROVIDER=mock ([9f8d0f1](https://github.com/MikeBild/subkit/commit/9f8d0f18fa00cf96237a2f8d7d622d40642b1d53))
+* **firebase:** extract inline CSS/JS to external files ([ba36089](https://github.com/MikeBild/subkit/commit/ba360898a7895df6b718670269df1cf18038e20d))
+* **llm:** model-init tests tolerate @ai-sdk/anthropic not hoisted on CI ([82885bc](https://github.com/MikeBild/subkit/commit/82885bcaaa03a6721f13853ab5f275901c204d17))
+
 ## [1.6.4](https://github.com/MikeBild/subkit/compare/subkit-v1.6.3...subkit-v1.6.4) (2026-04-19)
 
 
