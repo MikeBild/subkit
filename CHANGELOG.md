@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.10](https://github.com/MikeBild/subkit/compare/subkit-v1.10.9...subkit-v1.10.10) (2026-04-19)
+
+
+### Bug Fixes
+
+* **sk:** strengthen chat guidance and routing ([#18](https://github.com/MikeBild/subkit/issues/18)) ([5fd133b](https://github.com/MikeBild/subkit/commit/5fd133b036340a0784d4f11bbf401c95b71c7afb))
+
 ## [1.10.8](https://github.com/MikeBild/subkit/compare/subkit-v1.10.7...subkit-v1.10.8) (2026-04-19)
 
 
