@@ -152,10 +152,24 @@ describe("journey: conversation resume", () => {
       const top = rows[0];
       if (top) {
         const snap = top.snapshot as Record<string, unknown>;
+        // The unified draft model (authoring-state.ts) persists a nested
+        // `workflow` block alongside the top-level mirror. commit_draft
+        // reads the nested block via getWorkflowDraft, so both places
+        // must be renamed or the commit reuses the old slug and trips
+        // the (tenant_id, slug) unique constraint.
+        const nestedWorkflow =
+          typeof snap.workflow === "object" && snap.workflow !== null
+            ? (snap.workflow as Record<string, unknown>)
+            : {};
         const renamed = {
           ...snap,
           name: "resume-flow-workflow",
           slug: "resume-flow-workflow",
+          workflow: {
+            ...nestedWorkflow,
+            name: "resume-flow-workflow",
+            slug: "resume-flow-workflow",
+          },
         };
         await ctx.db
           .update(conversationDrafts)
