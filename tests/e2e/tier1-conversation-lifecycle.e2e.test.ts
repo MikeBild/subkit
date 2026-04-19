@@ -24,12 +24,27 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { boot, cli, type E2EEnv, shutdown } from "./setup.ts";
 
+// Skip the whole suite when CI forces LLM_PROVIDER=mock (no real API
+// credentials available). The tier-1 assertions expect actual tool
+// calls coming out of a real LLM; the mock provider emits an empty
+// plan, so the tests would always fail with `Expected >=1, Received 0`.
+// CI sets LLM_PROVIDER=mock at job level to avoid burning tokens —
+// that's by design. Skip cleanly instead of hard-failing.
+const SHOULD_RUN =
+  process.env.LLM_PROVIDER !== "mock" &&
+  (process.env.AI_GATEWAY_API_KEY ||
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.GEMINI_API_KEY);
+
 let env: E2EEnv;
 beforeAll(async () => {
+  if (!SHOULD_RUN) return;
   // Default mode = real LLM from .env. Throws clearly if no key.
   env = await boot("tier1-real");
 }, 90_000);
 afterAll(async () => {
+  if (!SHOULD_RUN) return;
   await shutdown(env);
 }, 30_000);
 
@@ -124,7 +139,7 @@ async function runWithApprovals(
 // 1. Simple prompt round-trip
 // ---------------------------------------------------------------------------
 
-describe("Tier 1.1 — simple conversation (real LLM)", () => {
+describe.skipIf(!SHOULD_RUN)("Tier 1.1 — simple conversation (real LLM)", () => {
   test("POST /v1/conversations with `hello` returns 201 + a completed turn", async () => {
     const out = await createConversation("hello, who are you?");
     expect(out.conversation.id).toBeTruthy();
@@ -140,7 +155,7 @@ describe("Tier 1.1 — simple conversation (real LLM)", () => {
 // 2. Multi-turn — append a follow-up, history accumulates
 // ---------------------------------------------------------------------------
 
-describe("Tier 1.2 — multi-turn (real LLM)", () => {
+describe.skipIf(!SHOULD_RUN)("Tier 1.2 — multi-turn (real LLM)", () => {
   test("appendMessage grows the message list and preserves conversation_id", async () => {
     const first = await createConversation("hi, my favourite number is 42");
     const id = first.conversation.id;
@@ -158,7 +173,7 @@ describe("Tier 1.2 — multi-turn (real LLM)", () => {
 // 3. Connector created via chat (real LLM, outcome-based)
 // ---------------------------------------------------------------------------
 
-describe("Tier 1.3 — connector authoring engages the real tool palette (real LLM)", () => {
+describe.skipIf(!SHOULD_RUN)("Tier 1.3 — connector authoring engages the real tool palette (real LLM)", () => {
   test("a chat that asks for a connector triggers propose_connector and reaches confirm/commit", async () => {
     const before = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
       headers: adminAuth(),
@@ -193,7 +208,7 @@ describe("Tier 1.3 — connector authoring engages the real tool palette (real L
 // 4. Workflow created via chat (real LLM, outcome-based)
 // ---------------------------------------------------------------------------
 
-describe("Tier 1.4 — workflow authoring engages the real tool palette (real LLM)", () => {
+describe.skipIf(!SHOULD_RUN)("Tier 1.4 — workflow authoring engages the real tool palette (real LLM)", () => {
   test("the model uses propose_step + validate_draft and either commits or reaches confirm", async () => {
     const { conversation_id } = await runWithApprovals(
       "Use these tools in order to build and commit a workflow: " +
@@ -238,7 +253,7 @@ describe("Tier 1.4 — workflow authoring engages the real tool palette (real LL
 // 5. Resume — `sk -r <id>` continues an existing conversation
 // ---------------------------------------------------------------------------
 
-describe("Tier 1.5 — resume (real LLM)", () => {
+describe.skipIf(!SHOULD_RUN)("Tier 1.5 — resume (real LLM)", () => {
   test("sk -r <id> appends a turn to a pre-existing conversation", async () => {
     const seed = await createConversation("first message: my code word is alpha-foxtrot");
     const id = seed.conversation.id;
@@ -269,7 +284,7 @@ describe("Tier 1.5 — resume (real LLM)", () => {
 // 6. Elicitation REJECT — declined response leaves draft uncommitted
 // ---------------------------------------------------------------------------
 
-describe("Tier 1.6 — elicitation reject (real LLM)", () => {
+describe.skipIf(!SHOULD_RUN)("Tier 1.6 — elicitation reject (real LLM)", () => {
   test("declining ask_user_confirm leaves the conversation un-committed", async () => {
     const out = await createConversation(
       "Use propose_step to add a request step (id 'fetch', kind 'request', method GET, url https://example.com), " +
