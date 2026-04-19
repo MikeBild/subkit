@@ -1,16 +1,11 @@
-// Welcome banner — the first thing a user sees in `sk`. Adopts the
-// Claude-Code layout: a block-glyph mascot on the left, a meta panel on
-// the right (sk · version / persona@tenant / engine / cwd), a rotating
-// tip row, and a single-line quick-hint footer. Everything is plain
-// Ink — no external dependencies — and all colors flow through the
-// theme tokens so the host can swap palettes without editing this file.
+// Welcome banner — first-paint orientation only. Keep it compact so the
+// transcript can take over as soon as the user starts working.
 
 import { useTheme } from "@chat-ui/index.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
-import { Logo } from "./logo.tsx";
 
 export interface WelcomeBannerProps {
   persona: string;
@@ -21,67 +16,39 @@ export interface WelcomeBannerProps {
   tip?: string;
 }
 
-const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
-  persona,
-  tenant,
-  engineUrl,
-  profileName,
-  tip,
-}) => {
+const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({ persona, tenant, tip }) => {
   const theme = useTheme();
   const personaSlot = tenant ? `${persona}@${tenant}` : persona;
   return (
-    <Box flexDirection="column" marginBottom={1}>
-      {/* Mascot + meta panel — two-column layout. Subkit-native fields
-          only: persona@tenant, engine, profile. No cwd / model — sk is
-          a workflow-authoring CLI, not an IDE agent. */}
-      <Box flexDirection="row">
-        <Logo />
-        <Box flexDirection="column" marginLeft={2}>
-          <Box>
-            <Text bold>sk </Text>
-            <Text color={theme.severity.dim}>· v{VERSION}</Text>
-            <Text color={theme.severity.dim}> · subkit conversation CLI</Text>
-          </Box>
-          <Box>
-            <Text color={theme.severity.dim}>persona </Text>
-            <Text color={theme.role.user} bold>
-              {personaSlot}
-            </Text>
-          </Box>
-          <Box>
-            <Text color={theme.severity.dim}>engine </Text>
-            <Text color={theme.severity.dim}>{engineUrl}</Text>
-          </Box>
-          {profileName ? (
-            <Box>
-              <Text color={theme.severity.dim}>profile </Text>
-              <Text color={theme.role.assistant}>{profileName}</Text>
-            </Box>
-          ) : null}
-        </Box>
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={theme.severity.dim}
+      paddingX={1}
+      marginBottom={1}
+    >
+      <Box>
+        <Text bold>sk</Text>
+        <Text color={theme.severity.dim}> · v{VERSION}</Text>
+        <Text color={theme.severity.dim}> · {personaSlot}</Text>
       </Box>
-
-      {/* Tip row (rotates). */}
+      <Text>Connect systems, build workflows, import docs, or resume prior work.</Text>
       {tip ? (
         <Box marginTop={1}>
           <Text color={theme.severity.warning}>◦ </Text>
           <Text color={theme.severity.dim}>{tip}</Text>
         </Box>
       ) : null}
-
-      {/* Quick-hint footer — colored keys, shown once on first paint. */}
       <Box marginTop={1}>
-        <Text color={theme.severity.dim}>type a prompt · </Text>
+        <Text color={theme.severity.dim}>type a request · </Text>
         <Text color={theme.role.assistant}>/help</Text>
         <Text color={theme.severity.dim}> · </Text>
-        <Text color={theme.role.assistant}>@</Text>
-        <Text color={theme.severity.dim}>file · </Text>
-        <Text color={theme.role.assistant}>↑/↓</Text>
-        <Text color={theme.severity.dim}> history · </Text>
-        <Text color={theme.role.assistant}>Ctrl-C</Text>
-        <Text color={theme.severity.dim}> cancel · </Text>
-        <Text color={theme.role.assistant}>/exit</Text>
+        <Text color={theme.role.assistant}>/resume</Text>
+        <Text color={theme.severity.dim}> · </Text>
+        <Text color={theme.role.assistant}>/view inspect</Text>
+        <Text color={theme.severity.dim}> · </Text>
+        <Text color={theme.role.assistant}>Ctrl-O</Text>
+        <Text color={theme.severity.dim}> inspect</Text>
       </Box>
     </Box>
   );
@@ -89,21 +56,17 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
 
 export const WelcomeBanner = memo(WelcomeBannerImpl);
 
-/**
- * Rotating tip strings — one is picked at random per session so the
- * banner stays fresh without nagging. Extend freely.
- */
 export const BANNER_TIPS: readonly string[] = [
-  "press Ctrl-T for full-screen transcript, Ctrl-T again to exit",
-  "`@path/to/file` inlines a file; `@workflow:<slug>` fetches a committed workflow from the engine",
-  "drop a `SUBKIT.md` next to your project and sk injects it as memory every turn",
-  'run `sk -p "your prompt"` for headless / script-friendly output',
-  "customize the status line via `statusLine.command` in ~/.sk/settings.json",
-  "`/compact` trims the running turn context so long conversations stay within token budget",
-  "`/approve` or `/reject` resolves the current elicitation inline",
-  "Shift-Tab cycles ask / auto-approve / plan — watch the footer for the active mode",
-  "`/resume` browses past conversations; `/status` shows tenant connectors and token usage",
-  "stuck on `sk: HTTP 500 internal_error`? run with `SK_DEBUG=1` (or `/debug on`) to log requests to ~/.sk/debug.log",
+  "Use /resume to reopen a prior session without replaying the full transcript.",
+  "`@path/to/file` inlines a file; `@workflow:<slug>` fetches a committed workflow.",
+  "Drop a `SUBKIT.md` next to your project and sk injects it as memory each turn.",
+  'Run `sk -p "your prompt"` for headless output in scripts or CI.',
+  "Use /view inspect when you need the raw tool trace behind the chat view.",
+  "Shift-Tab cycles ask / auto / plan; the footer always shows the active mode.",
+  "`/approve` or `/reject` resolves the current confirmation request inline.",
+  "Use /compact when a long conversation needs a smaller working context.",
+  "Use /status or /setup for tenant state instead of reading the footer for everything.",
+  "If the engine errors repeatedly, turn on `SK_DEBUG=1` or use `/debug on`.",
 ] as const;
 
 export function pickTip(seed: number = Date.now()): string {

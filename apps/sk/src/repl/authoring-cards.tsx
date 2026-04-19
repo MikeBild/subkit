@@ -1,10 +1,7 @@
-// Structured cards for authoring-tool transcript rows.
+// Structured cards for high-signal authoring milestones.
 //
-// Dispatched by tool_name in ink-app.tsx. Falls back to the generic
-// <ToolCard> for anything not listed here. Each card shows a one-line
-// summary plus a status badge; full details live in the pane bound to
-// the tool (probe-results / preview-results / commit-result) via
-// slash commands.
+// The chat view shows only these milestone cards; the inspect view can
+// still fall back to raw tool cards for full engine transparency.
 
 import type { ToolCallState } from "@cli-core/index.ts";
 import { Box, Text } from "ink";
@@ -29,14 +26,13 @@ function toneColor(tone: CardTone): string {
 function badge(tone: CardTone, label: string): React.ReactNode {
   const color = toneColor(tone);
   const glyph = tone === "ok" ? "✓" : tone === "fail" ? "×" : tone === "pending" ? "…" : "·";
-  // Keep sk's `⎿` tool-call tree glyph so the authoring cards still feel
-  // like they belong to the same transcript as the generic ToolCard.
   return (
     <>
-      <Text dimColor>⎿ </Text>
       <Text color={color} bold>
-        {glyph} {label}
+        {glyph}
       </Text>
+      <Text> </Text>
+      <Text bold>{label}</Text>
     </>
   );
 }
@@ -65,6 +61,8 @@ interface CardProps {
   call: ToolCallState;
 }
 
+export type AuthoringCardMode = "chat" | "inspect";
+
 const ConnectorProbeCard: React.FC<CardProps> = memo(({ call }) => {
   const tone = statusTone(call);
   const d = unwrapData(call);
@@ -78,10 +76,19 @@ const ConnectorProbeCard: React.FC<CardProps> = memo(({ call }) => {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
-        {badge(tone, `probe ${method} ${path}`)}
+        {badge(
+          tone,
+          tone === "fail"
+            ? "Endpoint check failed"
+            : tone === "pending"
+              ? "Checking endpoint"
+              : "Endpoint check complete",
+        )}
         <Text dimColor>
           {" "}
-          · {env}
+          · {method} {path}
+          {" · "}
+          {env}
           {status ? ` · ${status}` : ""}
           {duration ? ` · ${duration}` : ""}
         </Text>
@@ -109,12 +116,21 @@ const StepPreviewCard: React.FC<CardProps> = memo(({ call }) => {
     typeof d?.classification === "string" ? (d.classification as string) : null;
   const duration = typeof d?.duration_ms === "number" ? `${d.duration_ms}ms` : null;
   const summary = typeof d?.summary === "string" ? d.summary : "";
-  const kind = call.name === "dry_run_workflow" ? "workflow preview" : `preview ${stepId}`;
+  const kind = call.name === "dry_run_workflow" ? "workflow" : `step ${stepId}`;
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
-        {badge(tone, kind)}
+        {badge(
+          tone,
+          tone === "fail"
+            ? "Preview failed"
+            : tone === "pending"
+              ? "Preview running"
+              : "Preview complete",
+        )}
         <Text dimColor>
+          {" "}
+          · {kind}
           {classification ? ` · ${classification}` : ""}
           {duration ? ` · ${duration}` : ""}
         </Text>
@@ -141,8 +157,9 @@ const SaveResultCard: React.FC<CardProps> = memo(({ call }) => {
     return (
       <Box flexDirection="column" marginBottom={1}>
         <Box>
-          {badge(tone, `saved connector "${name}"`)}
+          {badge(tone, `Connector saved`)}
           <Text dimColor>
+            {` · ${name}`}
             {slug ? ` · ${slug}` : ""}
             {env ? ` · ${env}` : ""}
           </Text>
@@ -153,7 +170,7 @@ const SaveResultCard: React.FC<CardProps> = memo(({ call }) => {
   if (d && d.error === "probe_required") {
     return (
       <Box flexDirection="column" marginBottom={1}>
-        <Box>{badge("fail", "save blocked — probe required")}</Box>
+        <Box>{badge("fail", "Connector save blocked")}</Box>
         <Box marginLeft={2}>
           <Text color="yellow">
             Probe the connector successfully before saving, or retry with force=true.
@@ -164,7 +181,7 @@ const SaveResultCard: React.FC<CardProps> = memo(({ call }) => {
   }
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Box>{badge(tone, "save_connector_draft")}</Box>
+      <Box>{badge(tone, "Saving connector")}</Box>
     </Box>
   );
 });
@@ -178,8 +195,8 @@ const CommitResultCard: React.FC<CardProps> = memo(({ call }) => {
     return (
       <Box flexDirection="column" marginBottom={1}>
         <Box>
-          {badge(tone, `committed workflow${slug ? ` ${slug}` : ""}`)}
-          <Text dimColor>{` · ${d.workflow_id}`}</Text>
+          {badge(tone, "Workflow saved")}
+          <Text dimColor>{`${slug ? ` · ${slug}` : ""} · ${d.workflow_id}`}</Text>
         </Box>
       </Box>
     );
@@ -187,7 +204,7 @@ const CommitResultCard: React.FC<CardProps> = memo(({ call }) => {
   if (d && d.error === "preview_required") {
     return (
       <Box flexDirection="column" marginBottom={1}>
-        <Box>{badge("fail", "commit blocked — preview required")}</Box>
+        <Box>{badge("fail", "Workflow save blocked")}</Box>
         <Box marginLeft={2}>
           <Text color="yellow">
             Run dry_run_step or dry_run_workflow successfully, or retry with force=true.
@@ -198,7 +215,7 @@ const CommitResultCard: React.FC<CardProps> = memo(({ call }) => {
   }
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Box>{badge(tone, "commit_draft")}</Box>
+      <Box>{badge(tone, "Saving workflow")}</Box>
     </Box>
   );
 });
@@ -278,8 +295,9 @@ const ConnectorDraftCard: React.FC<CardProps> = memo(({ call }) => {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
-        {badge(tone, `connector draft${name ? ` "${name}"` : ""}`)}
+        {badge(tone, tone === "pending" ? "Preparing connector" : "Connector draft ready")}
         <Text dimColor>
+          {name ? ` · ${name}` : ""}
           {driver ? ` · ${driver}` : ""}
           {env ? ` · ${env}` : ""}
           {auth ? ` · auth=${auth}` : ""}
@@ -311,12 +329,14 @@ const WorkflowDraftCard: React.FC<CardProps> = memo(({ call }) => {
   const stepCount = typeof d.steps === "number" ? (d.steps as number) : null;
   const lastStep = typeof d.last_step_id === "string" ? (d.last_step_id as string) : null;
   const kind = typeof d.step_type === "string" ? (d.step_type as string) : null;
+  const name = typeof d.name === "string" ? (d.name as string) : null;
   const errors = Array.isArray(d.errors) ? d.errors : [];
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
-        {badge(tone, call.name)}
+        {badge(tone, tone === "pending" ? "Drafting workflow" : "Workflow draft updated")}
         <Text dimColor>
+          {name ? ` · ${name}` : ""}
           {stepCount !== null ? ` · ${stepCount} step${stepCount === 1 ? "" : "s"}` : ""}
           {lastStep ? ` · last=${lastStep}` : ""}
           {kind ? ` (${kind})` : ""}
@@ -388,9 +408,32 @@ const ApprovalCard: React.FC<CardProps> = memo(({ call }) => {
 });
 ApprovalCard.displayName = "ApprovalCard";
 
+const CHAT_MILESTONE_TOOLS = new Set([
+  "probe_connector_draft",
+  "probe_connector",
+  "dry_run_step",
+  "dry_run_workflow",
+  "save_connector_draft",
+  "commit_draft",
+  "start_connector_from_description",
+  "start_connector_from_template",
+  "build_workflow",
+  "start_workflow_from_goal",
+]);
+
+function shouldRenderInChat(call: ToolCallState): boolean {
+  if (call.status === "running" || call.status === "pending") return false;
+  if (call.status === "failed") return CHAT_MILESTONE_TOOLS.has(call.name);
+  return CHAT_MILESTONE_TOOLS.has(call.name);
+}
+
 // Dispatcher — returns a custom card for known authoring tools, or null
 // so the caller falls back to the generic ToolCard.
-export function renderAuthoringCard(call: ToolCallState): React.ReactNode | null {
+export function renderAuthoringCard(
+  call: ToolCallState,
+  mode: AuthoringCardMode = "inspect",
+): React.ReactNode | null {
+  if (mode === "chat" && !shouldRenderInChat(call)) return null;
   switch (call.name) {
     case "probe_connector_draft":
     case "probe_connector":
@@ -419,6 +462,7 @@ export function renderAuthoringCard(call: ToolCallState): React.ReactNode | null
     case "ask_user_confirm":
     case "ask_user_choice":
     case "ask_user_multi":
+      if (mode === "chat") return null;
       return <ApprovalCard key={`acc-${call.id}`} call={call} />;
     default:
       return null;

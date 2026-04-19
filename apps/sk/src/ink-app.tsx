@@ -133,7 +133,13 @@ export interface InkAppProps {
    */
   onSelectConversation?: (id: string) => Promise<void>;
   /** Called on any elicitation response so the app can POST to the engine. */
-  onElicitResponse?: (elicitationId: string, output: unknown, reason?: string) => Promise<void>;
+  onElicitResponse?: (
+    elicitationId: string,
+    output: unknown,
+    reason?: string,
+  ) =>
+    | Promise<{ events?: AsyncIterable<TurnEvent>; conversationId?: string | null } | undefined>
+    | Promise<void>;
   /** Called when the user exits. */
   onExit?: () => void;
   /**
@@ -303,12 +309,28 @@ const MessageRow: React.FC<{ role: string; content: string }> = memo(({ role, co
         </Text>
       </Box>
       <Box flexDirection="column" flexGrow={1}>
-        <Text wrap="wrap">{content}</Text>
+        <Text wrap="wrap">
+          {role === "assistant" ? normalizeAssistantMarkdown(content) : content}
+        </Text>
       </Box>
     </Box>
   );
 });
 MessageRow.displayName = "MessageRow";
+
+function normalizeAssistantMarkdown(content: string): string {
+  return content
+    .replace(/```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g, (_m, lang, code: string) => {
+      const body = code.trimEnd();
+      return lang ? `${lang}\n${body}` : body;
+    })
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "• ")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\n{3,}/g, "\n\n");
+}
 
 // ---------- Status bar ----------
 
@@ -439,7 +461,7 @@ const SuggestionList: React.FC<SuggestionListProps> = memo(({ query, probe, sele
 });
 SuggestionList.displayName = "SuggestionList";
 
-type TranscriptMode = "compact" | "detail";
+type TranscriptMode = "chat" | "inspect";
 
 const WORKFLOW_STARTER_PROMPT = [
   "I want to build a workflow.",
@@ -833,7 +855,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   // that persist a preference can drive it, but own the state locally
   // once the user interacts.
   const [activeMode, setActiveMode] = useState<PermissionMode>(permissionMode);
-  const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("compact");
+  const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("chat");
   const tip = useRef<string>(pickTip());
 
   // -------- Persistent prompt history --------
@@ -1068,10 +1090,80 @@ export const InkApp: React.FC<InkAppProps> = ({
         );
         return true;
       }
+      if (name === "view") {
+        const sub = (rest[0] ?? "").toLowerCase();
+        if (!sub) {
+          showInfo(`/view: ${transcriptMode}`);
+          return true;
+        }
+        if (sub !== "chat" && sub !== "inspect") {
+          showError("/view: use `/view chat` or `/view inspect`");
+          return true;
+        }
+        setTranscriptMode(sub);
+        showInfo(`/view: ${sub}`);
+        return true;
+      }
       return false;
     },
-    [cwd, effectiveHistoryPath, showError, showInfo, syncPendingAttachments],
+    [cwd, effectiveHistoryPath, showError, showInfo, syncPendingAttachments, transcriptMode],
   );
+
+  const applyEventStream = useCallback(
+    async (
+      base: SkSessionState,
+      events: AsyncIterable<TurnEvent> | undefined,
+      conversationId?: string | null,
+    ): Promise<void> => {
+      if (!events) return;
+      let next: SkSessionState = {
+        ...base,
+        ...(conversationId !== undefined ? { conversationId } : {}),
+      };
+      setSession(next);
+      for await (const ev of events) {
+        next = applyTurnEvent(next, ev);
+        setSession({ ...next });
+      }
+    },
+    [],
+  );
+
+  async function submitElicitationResponse(
+    elicitationId: string,
+    output: unknown,
+    reason?: string,
+  ): Promise<void> {
+    if (!onElicitResponse) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const baseState: SkSessionState = {
+        ...session,
+        pendingElicitation: null,
+        status: "running",
+      };
+      setSession(baseState);
+      const outcome = await onElicitResponse(elicitationId, output, reason);
+      await applyEventStream(
+        baseState,
+        outcome?.events,
+        outcome?.conversationId ?? session.conversationId,
+      );
+    } catch (err) {
+      showError(humanizeRequestError(err));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+      const nextQueued = queueRef.current.dequeue();
+      setQueuedCount(queueRef.current.length);
+      if (nextQueued) {
+        setTimeout(() => {
+          void handleSubmit(nextQueued);
+        }, 0);
+      }
+    }
+  }
 
   // -------- Input handling (printable chars, enter, backspace, Ctrl-C, Ctrl-T) --------
   const handleSubmit = useCallback(
@@ -1128,8 +1220,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           }
           const confirmed = cmd.name === "approve";
           const reason = !confirmed && reasonTokens.length > 0 ? reasonTokens.join(" ") : undefined;
-          await onElicitResponse(elicitationId, { confirmed }, reason);
-          setSession((s) => ({ ...s, pendingElicitation: null, status: "running" }));
+          await submitElicitationResponse(elicitationId, { confirmed }, reason);
           return;
         }
         if (onSlash) {
@@ -1179,12 +1270,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       try {
         setStickyError(null);
         const { events, conversationId } = await onPrompt(finalPrompt);
-        let next: SkSessionState = { ...session, conversationId };
-        setSession(next);
-        for await (const ev of events) {
-          next = applyTurnEvent(next, ev);
-          setSession({ ...next });
-        }
+        await applyEventStream({ ...session, conversationId }, events, conversationId);
       } catch (err) {
         showError(humanizeRequestError(err));
       } finally {
@@ -1211,9 +1297,11 @@ export const InkApp: React.FC<InkAppProps> = ({
       persona.probe,
       persona.tenant,
       session,
+      applyEventStream,
       handleBuiltinSlash,
       showError,
       showInfo,
+      submitElicitationResponse,
       syncPendingAttachments,
     ],
   );
@@ -1266,7 +1354,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         return;
       }
       if (key.ctrl && char === "o") {
-        setTranscriptMode((mode) => (mode === "compact" ? "detail" : "compact"));
+        setTranscriptMode((mode) => (mode === "chat" ? "inspect" : "chat"));
         return;
       }
       if (key.shift && key.tab) {
@@ -1519,6 +1607,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       />,
     );
   }
+  const inspectView = transcriptMode === "inspect";
   const pushForegroundLogs = (callId: string): void => {
     const logs = session.toolLogs.filter((log) => log.call_id === callId);
     if (logs.length === 0) return;
@@ -1541,34 +1630,33 @@ export const InkApp: React.FC<InkAppProps> = ({
         key={`bg-${calls.map((call) => call.id).join("-")}`}
         calls={calls}
         logs={logs}
-        detailed={transcriptMode === "detail"}
+        detailed={inspectView}
       />,
     );
   };
   let pendingBackgroundCalls: ToolCallState[] = [];
   for (const call of deferredToolCalls) {
     if (isBackgroundTool(call)) {
+      if (!inspectView) continue;
       pendingBackgroundCalls.push(call);
       continue;
     }
     flushBackgroundGroup(pendingBackgroundCalls);
     pendingBackgroundCalls = [];
-    const authoringCard = renderAuthoringCard(call);
+    const authoringCard = inspectView ? null : renderAuthoringCard(call, transcriptMode);
     if (authoringCard) {
       transcriptRows.push(authoringCard);
-    } else {
-      transcriptRows.push(
-        <ToolCard
-          key={`tc-${call.id}`}
-          call={call}
-          columns={columns}
-          detailed={transcriptMode === "detail"}
-        />,
-      );
+      if (inspectView || call.status === "failed") pushForegroundLogs(call.id);
+      continue;
     }
-    pushForegroundLogs(call.id);
+    if (inspectView || call.status === "failed") {
+      transcriptRows.push(
+        <ToolCard key={`tc-${call.id}`} call={call} columns={columns} detailed={inspectView} />,
+      );
+      pushForegroundLogs(call.id);
+    }
   }
-  flushBackgroundGroup(pendingBackgroundCalls);
+  if (inspectView) flushBackgroundGroup(pendingBackgroundCalls);
 
   const content = (
     <Box flexDirection="column">
@@ -1622,14 +1710,12 @@ export const InkApp: React.FC<InkAppProps> = ({
           elicitation={session.pendingElicitation}
           inputDisabled={pane !== null || slashMode}
           onResponse={(out) => {
-            if (!onElicitResponse) return;
             const resp = out as ElicitationResponse;
             const reason =
               "decision_reason" in resp && typeof resp.decision_reason === "string"
                 ? resp.decision_reason
                 : undefined;
-            void onElicitResponse(session.pendingElicitation!.id, resp, reason);
-            setSession((s) => ({ ...s, pendingElicitation: null, status: "running" }));
+            void submitElicitationResponse(session.pendingElicitation!.id, resp, reason);
           }}
         />
       ) : null}

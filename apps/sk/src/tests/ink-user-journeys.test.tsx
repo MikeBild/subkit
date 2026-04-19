@@ -114,7 +114,7 @@ describe("Ink journey — text_delta streaming", () => {
 });
 
 describe("Ink journey — tool call lifecycle with tool_log + truncation", () => {
-  test("list_workflows tool result shows card + truncation note + log lines", async () => {
+  test("inspect view shows background tool traces and logs", async () => {
     const events: TurnEvent[] = [
       { type: "tool_call_start", call_id: "tc1", tool: "list_workflows" },
       { type: "tool_call_end", call_id: "tc1", input: { limit: 5 } },
@@ -148,6 +148,8 @@ describe("Ink journey — tool call lifecycle with tool_log + truncation", () =>
     );
     await typeText(inst, "list my workflows");
     await enter(inst);
+    inst.stdin.write("\x0f");
+    await tick(40);
     // CI runners are slower than macOS — poll the frame until the
     // expected content appears or we hit a 2s cap. Locally this is a
     // no-op (first tick already has the content); on ubuntu-latest it

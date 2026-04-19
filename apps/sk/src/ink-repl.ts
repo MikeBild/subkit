@@ -247,10 +247,26 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     elicitationId: string,
     output: unknown,
     reason?: string,
-  ): Promise<void> => {
-    if (!currentConversationId) return;
-    await currentClient.respondElicitation(currentConversationId, elicitationId, output, reason);
-    void refreshStatus();
+  ): Promise<{ events?: AsyncIterable<TurnEvent>; conversationId?: string | null }> => {
+    if (!currentConversationId) return {};
+    const outcome = await currentClient.respondElicitation(
+      currentConversationId,
+      elicitationId,
+      output,
+      reason,
+    );
+
+    async function* iterTurnEvents(): AsyncGenerator<TurnEvent, void, void> {
+      for (const ev of outcome.events as TurnEvent[]) {
+        yield ev;
+        if (ev.type === "completed") void refreshStatus();
+      }
+    }
+
+    return {
+      events: iterTurnEvents(),
+      conversationId: outcome.conversation.id,
+    };
   };
 
   const onSelectConversation = async (id: string): Promise<void> => {
