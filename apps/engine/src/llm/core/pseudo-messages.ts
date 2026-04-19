@@ -1,0 +1,235 @@
+// Pseudo-message builders for the conversation system prompt.
+//
+// Each builder returns a short, deterministic text block (or null when
+// the tenant has nothing to report). The conversation loop concatenates
+// the non-null blocks into the volatile prompt section — volatile so
+// Anthropic's prompt cache keeps the stable base intact while the
+// tenant-specific state changes per turn.
+//
+// The five pseudo-messages:
+//
+//   [TENANT STATE]    — workflow / connector / execution / audit counts
+//   [RBAC SNAPSHOT]   — top N permissions the current principal holds
+//   [ATTACHMENTS]     — file refs uploaded to this conversation
+//   [DISCOVERY]       — recent discovery runs and how many artifacts
+//   [LOADED SKILLS]   — skills already pulled via load_skill this conv
+
+import { and, desc, eq, gte, sql } from "drizzle-orm";
+import {
+  connectors,
+  conversationAttachments,
+  conversations,
+  discoveryArtifacts,
+  discoveryRuns,
+  executions,
+  skills as skillsTable,
+  workflows,
+} from "../../db/schema/index.ts";
+import type { Db } from "../../db/client.ts";
+
+interface TenantStateOpts {
+  tenant_id: string;
+  db: Db;
+}
+
+export async function buildTenantStateMessage(
+  opts: TenantStateOpts,
+): Promise<string | null> {
+  const [wfCount] = await opts.db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(workflows)
+    .where(eq(workflows.tenant_id, opts.tenant_id));
+  const [connCount] = await opts.db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(connectors)
+    .where(eq(connectors.tenant_id, opts.tenant_id));
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const [runCount] = await opts.db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, opts.tenant_id),
+        gte(executions.created_at, cutoff),
+      ),
+    );
+  const workflowsN = Number(wfCount?.c ?? 0);
+  const connectorsN = Number(connCount?.c ?? 0);
+  const recentRunsN = Number(runCount?.c ?? 0);
+  if (workflowsN === 0 && connectorsN === 0 && recentRunsN === 0) {
+    return null; // empty tenant — onboarding pseudo-message will guide instead
+  }
+  return [
+    "[TENANT STATE]",
+    `- workflows: ${workflowsN}`,
+    `- connectors: ${connectorsN}`,
+    `- executions (last 7d): ${recentRunsN}`,
+  ].join("\n");
+}
+
+interface RbacOpts {
+  principal?: { roles: string[]; scopes?: string[] } | null | undefined;
+}
+
+export function buildRbacSnapshotMessage(opts: RbacOpts): string | null {
+  if (!opts.principal) return null;
+  const roles = opts.principal.roles ?? [];
+  const scopes = opts.principal.scopes ?? [];
+  if (roles.length === 0 && scopes.length === 0) return null;
+  const lines = ["[RBAC SNAPSHOT]"];
+  if (roles.length > 0) {
+    lines.push(`- roles: ${roles.join(", ")}`);
+  }
+  if (scopes.length > 0) {
+    const shown = scopes.slice(0, 10);
+    const tail = scopes.length > 10 ? ` (+${scopes.length - 10} more)` : "";
+    lines.push(`- scopes: ${shown.join(", ")}${tail}`);
+  }
+  return lines.join("\n");
+}
+
+interface AttachmentsOpts {
+  tenant_id: string;
+  conversation_id: string;
+  db: Db;
+}
+
+export async function buildAttachmentsMessage(
+  opts: AttachmentsOpts,
+): Promise<string | null> {
+  const rows = await opts.db
+    .select({
+      slug: conversationAttachments.slug,
+      original_filename: conversationAttachments.original_filename,
+      content_type: conversationAttachments.content_type,
+      size_bytes: conversationAttachments.size_bytes,
+      preview: conversationAttachments.preview,
+    })
+    .from(conversationAttachments)
+    .where(
+      and(
+        eq(conversationAttachments.tenant_id, opts.tenant_id),
+        eq(conversationAttachments.conversation_id, opts.conversation_id),
+      ),
+    )
+    .orderBy(desc(conversationAttachments.created_at))
+    .limit(25);
+  if (rows.length === 0) return null;
+  const lines = [`[ATTACHMENTS] (n=${rows.length})`];
+  for (const r of rows) {
+    const sizeKb = r.size_bytes > 1024 ? `${(r.size_bytes / 1024).toFixed(1)} KB` : `${r.size_bytes} B`;
+    lines.push(
+      `- ${r.slug}  (${r.original_filename}, ${r.content_type ?? "unknown"}, ${sizeKb})`,
+    );
+    if (r.preview && r.preview.length > 0) {
+      // Truncate preview to a single visible line in the prompt.
+      const firstLine = r.preview.split("\n")[0]!.slice(0, 160);
+      lines.push(`  preview: ${firstLine}${r.preview.length > 160 ? "…" : ""}`);
+    }
+  }
+  lines.push(
+    "Reference any slug in tool args via @attachment:<slug>. The engine resolves full content before the tool runs.",
+  );
+  return lines.join("\n");
+}
+
+interface DiscoveryOpts {
+  tenant_id: string;
+  db: Db;
+}
+
+export async function buildDiscoveryMessage(
+  opts: DiscoveryOpts,
+): Promise<string | null> {
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const runs = await opts.db
+    .select({
+      id: discoveryRuns.id,
+      started_at: discoveryRuns.started_at,
+      completed_at: discoveryRuns.completed_at,
+      status: discoveryRuns.status,
+    })
+    .from(discoveryRuns)
+    .where(
+      and(
+        eq(discoveryRuns.tenant_id, opts.tenant_id),
+        gte(discoveryRuns.started_at, cutoff),
+      ),
+    )
+    .orderBy(desc(discoveryRuns.started_at))
+    .limit(5);
+  if (runs.length === 0) return null;
+  const lines = ["[DISCOVERY]"];
+  for (const run of runs) {
+    const [countRow] = await opts.db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(discoveryArtifacts)
+      .where(eq(discoveryArtifacts.run_id, run.id));
+    const n = Number(countRow?.c ?? 0);
+    const done = run.completed_at ? "done" : run.status;
+    lines.push(`- run ${run.id.slice(0, 8)} (${done}): ${n} artifact(s)`);
+  }
+  lines.push(
+    "Use list_discovery_artifacts / get_discovery_artifact / approve_discovery_artifact to act on these.",
+  );
+  return lines.join("\n");
+}
+
+interface LoadedSkillsOpts {
+  tenant_id: string;
+  conversation_id: string;
+  db: Db;
+}
+
+export async function buildLoadedSkillsMessage(
+  opts: LoadedSkillsOpts,
+): Promise<string | null> {
+  const [row] = await opts.db
+    .select({ loaded_skills: conversations.loaded_skills })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.tenant_id, opts.tenant_id),
+        eq(conversations.id, opts.conversation_id),
+      ),
+    )
+    .limit(1);
+  const loaded = (row?.loaded_skills ?? []) as string[];
+  if (loaded.length === 0) return null;
+  // Look up titles for readability.
+  const titleRows = await opts.db
+    .select({ slug: skillsTable.slug, title: skillsTable.title })
+    .from(skillsTable)
+    .where(eq(skillsTable.tenant_id, opts.tenant_id));
+  const slugToTitle = new Map<string, string>();
+  for (const r of titleRows) {
+    if (r.slug) slugToTitle.set(r.slug, r.title);
+  }
+  const lines = [`[LOADED SKILLS] (n=${loaded.length})`];
+  for (const slug of loaded) {
+    const title = slugToTitle.get(slug) ?? slug;
+    lines.push(`- ${slug} — ${title}`);
+  }
+  return lines.join("\n");
+}
+
+/** Build every pseudo-message for a given conversation context. Returns
+ *  the concatenated text block (or null when all builders returned null).
+ *  Consumed by the conversation loop as the volatile system-prompt tail. */
+export async function buildAllPseudoMessages(opts: {
+  tenant_id: string;
+  conversation_id: string;
+  db: Db;
+  principal?: { roles: string[]; scopes?: string[] } | null | undefined;
+}): Promise<string | null> {
+  const blocks = await Promise.all([
+    buildTenantStateMessage(opts),
+    Promise.resolve(buildRbacSnapshotMessage({ principal: opts.principal ?? null })),
+    buildAttachmentsMessage(opts),
+    buildDiscoveryMessage(opts),
+    buildLoadedSkillsMessage(opts),
+  ]);
+  const nonNull = blocks.filter((b): b is string => typeof b === "string" && b.length > 0);
+  if (nonNull.length === 0) return null;
+  return nonNull.join("\n\n");
+}
