@@ -26,7 +26,6 @@ SKIP_DOCKER=1 SKIP_DB_TESTS=1 bun test \
   tests/lint/
 
 echo "[pre-push] 4/5 build all binaries"
-bun run build:cli
 bun run build:sk
 bun run build:engine
 
