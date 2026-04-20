@@ -123,7 +123,7 @@ const patchCommand = defineCommand({
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      const ks = await client.patchKnowledgeSource(args.id, { title: args.title });
+      const ks = await client.patchKnowledgeSource(args.id, { name: args.title });
       printJson(ks);
     } catch (err) {
       process.stderr.write(

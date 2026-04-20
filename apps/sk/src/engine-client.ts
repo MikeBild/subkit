@@ -694,7 +694,7 @@ export class EngineClient {
       new Blob([file.content as unknown as ArrayBuffer], { type: file.mime_type }),
       file.name,
     );
-    if (Object.keys(metadata).length > 0) form.append("metadata", JSON.stringify(metadata));
+    form.append("metadata", JSON.stringify({ name: file.name, ...metadata }));
     return this.requestForm("POST", "/v1/knowledge-sources", form);
   }
 
