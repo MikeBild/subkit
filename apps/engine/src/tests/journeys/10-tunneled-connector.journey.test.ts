@@ -9,7 +9,7 @@
 //          response.
 //   - AC3: Disconnecting the agent surfaces `TunnelDisconnected` on the
 //          next request.
-// Spec refs: docs/15-tunnels.md, docs/09-connectors.md
+// Spec refs: docs/05-connectors.md, docs/05-connectors.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";

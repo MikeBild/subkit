@@ -10,11 +10,13 @@
 //   - GET / HEAD / OPTIONS: retry on 5xx + 429 + connection errors
 //   - POST / PUT / PATCH / DELETE: retry only on 429 + connection errors
 
+import { eq } from "drizzle-orm";
 import { evaluateHook } from "../../auth/hooks.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
 import { buildRequestPlan, fetchViaTunnel } from "../../connectors/drivers/http.ts";
 import { executeS3Request, type S3Method } from "../../connectors/drivers/s3.ts";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
+import { connectors } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordRequestRetry } from "../../observability/instrumentation.ts";
 import type { RequestStep } from "../../workflows/types.ts";
@@ -77,6 +79,16 @@ function parseRetryAfter(header: string | null): number | null {
 
 function isIdempotent(method: string): boolean {
   return method === "GET" || method === "HEAD" || method === "OPTIONS";
+}
+
+function checkRequired(value: unknown, schema: Record<string, unknown>): string[] {
+  const required = schema.required as string[] | undefined;
+  if (!required || !Array.isArray(required)) return [];
+  if (typeof value !== "object" || value === null)
+    return required.map((f) => `required field '${f}' is missing`);
+  return required
+    .filter((f) => !(f in (value as Record<string, unknown>)))
+    .map((f) => `required field '${f}' is missing`);
 }
 
 interface FetchAttemptResult {
@@ -316,6 +328,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   const query: Record<string, string | number | boolean> = { ...(p.step.query ?? {}) };
   let baseUrl: URL;
   let tunnelRoute: TunnelRoute | undefined;
+  // Holds the resolved HTTP connector so circuit state can be updated on
+  // success / failure in the outer try/catch block.
+  let activeConnector: Awaited<ReturnType<typeof getConnectorForEnvironment>> = null;
   try {
     if (p.step.connector_id) {
       const connector = await getConnectorForEnvironment(
@@ -441,6 +456,32 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           },
         };
       }
+      // Circuit breaker enforcement (HTTP driver only)
+      if (connector.circuit_state === "open") {
+        const openedAt = connector.circuit_opened_at;
+        if (openedAt !== null) {
+          const elapsed = Date.now() - openedAt.getTime();
+          if (elapsed < connector.circuit_reset_ms) {
+            clearTimeout(timer);
+            return {
+              status: "failed",
+              retry_count: 0,
+              duration_ms: Date.now() - start,
+              error: {
+                code: "circuit_open",
+                message: "connector circuit breaker is open — requests blocked until reset",
+              },
+            };
+          }
+        }
+        // Reset period elapsed — transition to half-open
+        void p.ctx.db
+          .update(connectors)
+          .set({ circuit_state: "half-open" })
+          .where(eq(connectors.id, connector.id));
+      }
+      // Track the connector so circuit state can be updated after the request.
+      activeConnector = connector;
       const plan = await buildRequestPlan({
         db: p.ctx.db,
         tenant_id: p.ctx.tenant_id,
@@ -547,6 +588,19 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   let last_meta: Record<string, unknown> = {};
   try {
     if (!p.step.pagination) {
+      // Body schema validation (non-paginated path only)
+      if (p.step.body_schema && p.step.body !== undefined && p.step.body !== null) {
+        const bodyErrs = checkRequired(p.step.body, p.step.body_schema);
+        if (bodyErrs.length > 0) {
+          clearTimeout(timer);
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: { code: "request_body_schema_violation", message: bodyErrs.join("; ") },
+          };
+        }
+      }
       const res = await doOnePage({
         url: baseUrl.toString(),
         method: p.step.method,
@@ -568,6 +622,43 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           throw new RequestError(err.message, "filter_fail");
         }
         throw err;
+      }
+      // Check expected_statuses
+      if (p.step.expected_statuses && p.step.expected_statuses.length > 0) {
+        if (!p.step.expected_statuses.includes(res.status)) {
+          clearTimeout(timer);
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: {
+              code: "unexpected_status_code",
+              message: `status ${res.status} not in expected [${p.step.expected_statuses.join(",")}]`,
+            },
+          };
+        }
+      }
+      // Validate response schema (non-fatal)
+      if (p.step.response_schema) {
+        const respErrs = checkRequired(body, p.step.response_schema);
+        if (respErrs.length > 0) {
+          logger.warn({
+            module: "execution",
+            action: "response_schema_violation",
+            step_id: p.step.id,
+            errors: respErrs,
+          });
+        }
+      }
+      // Circuit breaker: reset on success
+      if (
+        activeConnector &&
+        (activeConnector.circuit_state === "half-open" || activeConnector.circuit_failure_count > 0)
+      ) {
+        void p.ctx.db
+          .update(connectors)
+          .set({ circuit_state: "closed", circuit_failure_count: 0 })
+          .where(eq(connectors.id, activeConnector.id));
       }
       last_meta = {
         url: baseUrl.toString(),
@@ -646,6 +737,25 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     };
   } catch (err) {
     const duration_ms = Date.now() - start;
+    // Circuit breaker: record failure and potentially open the circuit
+    if (activeConnector) {
+      const newCount = activeConnector.circuit_failure_count + 1;
+      if (newCount >= activeConnector.circuit_threshold) {
+        void p.ctx.db
+          .update(connectors)
+          .set({
+            circuit_state: "open",
+            circuit_opened_at: new Date(),
+            circuit_failure_count: newCount,
+          })
+          .where(eq(connectors.id, activeConnector.id));
+      } else {
+        void p.ctx.db
+          .update(connectors)
+          .set({ circuit_failure_count: newCount })
+          .where(eq(connectors.id, activeConnector.id));
+      }
+    }
     if (err instanceof RequestError && err.cause_kind === "abort") {
       // distinguish step timeout vs external cancel
       if (timeoutCtrl.signal.aborted && !p.ctx.signal.aborted) {

@@ -14,8 +14,8 @@ to the right helper quickly. It does not override `AGENTS.md`.
 3. The nearest directory-local `AGENTS.md` for the code you are about to touch:
    `apps/engine/AGENTS.md`, `apps/cli/AGENTS.md`, `apps/sk/AGENTS.md`,
    `apps/agent/AGENTS.md`, `packages/shared/AGENTS.md`.
-4. `../docs/00-agent-navigation.md` — maps common tasks → docs + subsystem.
-5. The numbered doc(s) that own the concern (see the subsystem table in `AGENTS.md`).
+4. `.claude/docs/agent-navigation.md` — maps common tasks → docs + subsystem.
+5. The concept doc(s) that own the concern (see the subsystem table in `AGENTS.md`).
 
 ## Agents
 

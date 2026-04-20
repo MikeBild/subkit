@@ -9,7 +9,7 @@
 //   - AC4: `subkit audit show <id>` fetches a single row.
 //   - AC5: `subkit audit export` streams ndjson with one row per line.
 //   - AC6: Without `--api-key`, the CLI rejects with an auth error.
-// Spec refs: docs/28-security.md, docs/26-cli.md (Pass-2 Stream D)
+// Spec refs: docs/07-security-governance.md, docs/03-input-surfaces.md (Pass-2 Stream D)
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { count } from "drizzle-orm";

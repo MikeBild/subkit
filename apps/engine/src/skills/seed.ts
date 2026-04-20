@@ -34,6 +34,8 @@ export interface SeededSkill {
   version: number;
   /** sha256 of body; used to detect drift without re-writing the row. */
   body_hash: string;
+  auto_load?: boolean;
+  trigger_keywords?: string[];
 }
 
 export interface ParseError {
@@ -121,6 +123,8 @@ export async function applySkillSeeds(
         version: s.version,
         seed_source: s.body_hash,
         gates_tools: s.gates_tools,
+        auto_load: s.auto_load ?? false,
+        trigger_keywords: s.trigger_keywords ?? [],
       });
       inserted++;
       continue;
@@ -144,6 +148,8 @@ export async function applySkillSeeds(
         gates_tools: s.gates_tools,
         seed_source: s.body_hash,
         version: Math.max(row.version + 1, s.version),
+        auto_load: s.auto_load ?? false,
+        trigger_keywords: s.trigger_keywords ?? [],
         updated_at: new Date(),
       })
       .where(eq(skills.id, row.id));
@@ -224,6 +230,10 @@ function parseFrontmatter(raw: string, file: string): ParseOk | ParseFail {
   const description = String(fm.description ?? "");
   const version = typeof fm.version === "number" ? fm.version : 1;
   const gates_tools = Array.isArray(fm.gates_tools) ? fm.gates_tools.map((v) => String(v)) : [];
+  const auto_load = fm.auto_load === true || fm.auto_load === "true";
+  const trigger_keywords = Array.isArray(fm.trigger_keywords)
+    ? fm.trigger_keywords.map((v) => String(v))
+    : [];
 
   if (!slug || !title || !description || !scope) {
     return {
@@ -248,6 +258,8 @@ function parseFrontmatter(raw: string, file: string): ParseOk | ParseFail {
       gates_tools,
       version,
       body_hash,
+      auto_load,
+      trigger_keywords,
     },
   };
 }

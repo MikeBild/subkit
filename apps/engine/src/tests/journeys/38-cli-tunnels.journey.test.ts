@@ -14,7 +14,7 @@
 // CLI command does not expose as arguments. We therefore pre-register the
 // tunnel directly via journeyFetch so the remaining CLI verbs can be
 // exercised against a real row.
-// Spec refs: docs/15-tunnels.md, docs/26-cli.md
+// Spec refs: docs/05-connectors.md, docs/03-input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tunnelsCommand } from "../../../../sk/src/commands/tunnels.ts";

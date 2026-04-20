@@ -84,6 +84,10 @@ export const RequestStepSchema = z
         variables: z.record(z.string(), z.unknown()).optional(),
       })
       .optional(),
+    body_schema: z.record(z.string(), z.unknown()).optional(),
+    response_schema: z.record(z.string(), z.unknown()).optional(),
+    expected_statuses: z.array(z.number().int()).optional(),
+    idempotency_key: z.string().optional(),
   })
   .refine((s) => s.url !== undefined || s.connector_id !== undefined, {
     message: "request step must specify either url or connector_id",
@@ -96,6 +100,8 @@ export const TransformStepSchema = z
     ...baseStep,
     expression: z.string(),
     language: z.enum(["jsonata", "javascript"]).optional(),
+    input_schema: z.record(z.string(), z.unknown()).optional(),
+    output_schema: z.record(z.string(), z.unknown()).optional(),
   })
   .openapi("TransformStep");
 

@@ -55,6 +55,8 @@ export const skills = pgTable(
     seed_source: text("seed_source"),
     gates_tools: jsonb("gates_tools").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     slug: text("slug"),
+    trigger_keywords: jsonb("trigger_keywords").$type<string[]>().default(sql`'[]'::jsonb`),
+    auto_load: boolean("auto_load").notNull().default(false),
     ...timestamps,
   },
   (t) => [

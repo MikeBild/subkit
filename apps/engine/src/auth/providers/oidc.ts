@@ -17,7 +17,7 @@
 // All HTTP cookies carry a JWS signed by the env-derived session
 // secret, never the plaintext session id. The session id is extracted
 // from the payload after verification. This matches the production
-// guidance from docs/11-identity.md.
+// guidance from docs/07-security-governance.md.
 //
 // The migration `0016_p2_oidc_state.sql` adds:
 //   - `oidc_login_states`

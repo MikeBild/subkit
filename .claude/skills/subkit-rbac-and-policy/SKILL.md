@@ -13,11 +13,9 @@ checks.
 
 ## Canonical references
 
-- `docs/11-identity-and-access.md` — Tenant / User / System Account / API Key / Portal
-  Token model. 40+ permissions. Roles. Resource grants with TTL.
-- `docs/28-security.md` — Policy enforcement points, audit expectations, crypto envelope.
-- `docs/02-domain-model.md` — Entity glossary (Tenant, User, Policy, Before-Request Hook).
-- `docs/08-sandboxing.md` — QuickJS-WASM sandbox for Before-Request Hooks.
+- `docs/07-security-governance.md` — Identity model, RBAC, Before-Request Hooks, credential vault, audit expectations.
+- `docs/06-execution.md` — QuickJS-WASM sandbox for Before-Request Hooks.
+- `docs/02-concepts.md` — Entity glossary (Tenant, User, API Key, Portal Token, Before-Request Hook).
 
 ## Layered model
 
@@ -49,7 +47,7 @@ checks.
 
 ## Adding a permission
 
-1. Read `docs/11-identity-and-access.md` — understand the 40+ existing permissions.
+1. Read `docs/07-security-governance.md` — understand the identity model and existing permissions.
    Is there already one that covers your case?
 2. If not, add the permission enum + role mapping in `apps/engine/src/rbac/`.
 3. Wire it into the route / MCP tool / CLI path using the existing guard helper.
@@ -59,7 +57,7 @@ checks.
 
 ## Adding or modifying a Before-Request Hook
 
-1. Read `docs/08-sandboxing.md` and `docs/11-identity-and-access.md`.
+1. Read `docs/06-execution.md` (sandboxing) and `docs/07-security-governance.md` (hooks model).
 2. Hooks are **per-role JavaScript**, versioned, and sandbox-executed. The user authors
    the JS through the API / CLI; your job is the runtime.
 3. Confirm interrupt budget and memory limit are enforced. No I/O from within the hook.

@@ -61,6 +61,7 @@ export const conversationAttachments = pgTable(
     storage_uri: text("storage_uri").notNull(),
     sha256: text("sha256").notNull(),
     preview: text("preview"),
+    files_api_id: text("files_api_id"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [

@@ -67,6 +67,11 @@ export const probeConnectorDraftTool: ConversationTool = {
       config: connector.config ?? {},
       created_at: new Date(),
       updated_at: new Date(),
+      circuit_state: "closed" as const,
+      circuit_opened_at: null,
+      circuit_failure_count: 0,
+      circuit_threshold: 5,
+      circuit_reset_ms: 300000,
     };
 
     // Non-HTTP drivers run their dedicated read-only probe (connect +

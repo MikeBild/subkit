@@ -12,7 +12,7 @@
 //   - AC6: `notifications rules list --json` returns an array.
 //   - AC7: A rule seeded directly via HTTP appears in the rules list.
 //   - AC8: `notifications rules delete <id>` outputs "deleted".
-// Spec refs: docs/13-webhooks.md, docs/27-sk-cli.md
+// Spec refs: docs/03-input-surfaces.md, docs/03-input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { notificationsCommand } from "../../../../sk/src/commands/notifications.ts";

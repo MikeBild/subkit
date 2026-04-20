@@ -1,6 +1,6 @@
 // Budget guards for documentation ingestion.
 //
-// Canonical caps (from docs/10-documentation-ingestion.md):
+// Canonical caps (from docs/04-authoring.md):
 //   - total 10 MB per connector per ingest run
 //   - per-page (single fetched document / chunk) 3 MB
 //   - 20 links followed from llms.txt / markdown

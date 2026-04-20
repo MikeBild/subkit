@@ -1,11 +1,3 @@
-// GraphQL introspection source normalizer.
-//
-// Fetches `__schema` via a single POST against a GraphQL endpoint and
-// normalises the schema into chunks:
-//   - 1 overview chunk listing the schema's root types
-//   - 1 chunk per top-level type (object, interface, enum, scalar, union)
-//   - 1 chunk per query / mutation / subscription operation
-//
 // The introspection query is a deliberately compact subset — we only
 // need names, kinds, fields, and arguments for retrieval, not directives
 // or full input value defaults.

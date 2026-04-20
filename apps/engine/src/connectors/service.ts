@@ -7,12 +7,13 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
-import type {
-  ConnectorView,
-  CreateConnectorInput,
-  DriverName,
-  Environment,
-  UpdateConnectorInput,
+import {
+  type ConnectorView,
+  type CreateConnectorInput,
+  type DriverName,
+  type Environment,
+  HttpConnectorConfig,
+  type UpdateConnectorInput,
 } from "./types.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -41,6 +42,11 @@ function toView(row: typeof connectors.$inferSelect): ConnectorView {
     config: (row.config as Record<string, unknown>) ?? {},
     created_at: row.created_at,
     updated_at: row.updated_at,
+    circuit_state: (row.circuit_state as ConnectorView["circuit_state"]) ?? "closed",
+    circuit_opened_at: row.circuit_opened_at ?? null,
+    circuit_failure_count: row.circuit_failure_count ?? 0,
+    circuit_threshold: row.circuit_threshold ?? 5,
+    circuit_reset_ms: row.circuit_reset_ms ?? 300000,
   };
 }
 
@@ -58,6 +64,15 @@ export async function createConnector(
   const slug = p.input.slug ?? slugify(p.input.name);
   const environment = p.input.environment ?? "dev";
   const auth_type = p.input.auth_type ?? "none";
+  if (p.input.driver === "http" && p.input.config) {
+    const parsed = HttpConnectorConfig.safeParse(p.input.config);
+    if (!parsed.success) {
+      throw Object.assign(new Error("invalid http connector config"), {
+        code: "connector_config_invalid",
+        details: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+      });
+    }
+  }
   return await db.transaction(async (tx) => {
     const inserted = await tx
       .insert(connectors)
@@ -191,6 +206,16 @@ export async function updateConnector(
       .limit(1);
     const prior = existing[0];
     if (!prior) return null;
+    const effectiveDriver = prior.driver;
+    if (patch.config && effectiveDriver === "http") {
+      const parsed = HttpConnectorConfig.safeParse(patch.config);
+      if (!parsed.success) {
+        throw Object.assign(new Error("invalid http connector config"), {
+          code: "connector_config_invalid",
+          details: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+        });
+      }
+    }
     const set: Partial<typeof connectors.$inferInsert> = { updated_at: new Date() };
     if (patch.name !== undefined) set.display_name = patch.name;
     if (patch.base_url !== undefined) set.base_url = patch.base_url;

@@ -2,10 +2,10 @@
 //
 // Cross-checks three artifacts that have to stay in lockstep:
 //   1. The OpenAPI spec the engine actually mounts (source of truth).
-//   2. The prose docs that list routes (docs/17-conversations.md,
-//      docs/09-connectors.md).
+//   2. The prose docs that list routes (docs/03-input-surfaces.md,
+//      docs/05-connectors.md).
 //   3. The slash-command registry in apps/sk/src/slash.ts (for the
-//      docs/27-sk-cli.md parity check).
+//      docs/03-input-surfaces.md parity check).
 //
 // Breakage signals real drift: a docs reference to a route that was
 // removed, or a new route that nobody documented. Known stable
@@ -66,7 +66,7 @@ const ENGINE_ROUTE_FILES = [
   "apps/engine/src/http/routes/workflows.ts",
 ];
 
-const DOC_FILES = ["docs/17-conversations.md", "docs/09-connectors.md"];
+const DOC_FILES = ["docs/03-input-surfaces.md", "docs/05-connectors.md"];
 
 // Routes that are intentionally mentioned in prose but implemented
 // elsewhere (or referenced by shape only). Keep this list tight.
@@ -100,9 +100,9 @@ describe("route-doc parity", () => {
     expect(missing).toHaveLength(0);
   });
 
-  test("every slash command registered in sk also appears in docs/27-sk-cli.md", () => {
+  test("every slash command registered in sk also appears in docs/03-input-surfaces.md", () => {
     const slashSrc = readFileSync(join(REPO, "apps/sk/src/slash.ts"), "utf8");
-    const cliDoc = readFileSync(join(REPO, "docs/27-sk-cli.md"), "utf8");
+    const cliDoc = readFileSync(join(REPO, "docs/03-input-surfaces.md"), "utf8");
     // Commands are declared inside the exported SLASH_COMMANDS array as
     // either inline objects `{ name: "x", ... }` or multi-line objects
     // whose first property is `name: "..."`. Match only entries whose
@@ -125,7 +125,7 @@ describe("route-doc parity", () => {
     }
     if (missing.length > 0) {
       throw new Error(
-        `sk slash commands not documented in docs/27-sk-cli.md:\n  /${missing.join("\n  /")}`,
+        `sk slash commands not documented in docs/03-input-surfaces.md:\n  /${missing.join("\n  /")}`,
       );
     }
     expect(missing).toHaveLength(0);

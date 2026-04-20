@@ -13,14 +13,9 @@ subkit separates curated context (Skills, Knowledge Sources) from detected patte
 
 ## Canonical references
 
-- `docs/16-ai-flows.md` — LLM-driven DAG authoring and tool-use loops.
-- `docs/17-conversations.md` — Persistent, resumable authoring sessions (SSE + MCP).
-- `docs/18-skills.md` — Curated Skills and Skill Candidates.
-- `docs/19-self-healing.md` — Drift detection and bounded repair.
-- `docs/35-knowledge-sources.md` — Uploaded-file KB with tsvector indexing.
-- `docs/36-discovery.md` — File analysis → proposed connectors / skills / knowledge.
-- `docs/02-domain-model.md` — Entity glossary for Skill, Skill Candidate, Knowledge
-  Source, Conversation, Context Enhancement.
+- `docs/04-authoring.md` — AI-assisted authoring: conversations, skills, knowledge sources, discovery, multi-provider.
+- `docs/06-execution.md` — Drift detection, self-healing, and bounded repair.
+- `docs/02-concepts.md` — Entity glossary for Skill, Skill Candidate, Knowledge Source, Conversation.
 
 ## Subsystem boundaries
 

@@ -1,8 +1,4 @@
-// GET /v1/status — composite status snapshot for the `sk` CLI header + /status pane.
-//
-// Returns everything the Ink status line needs in one round-trip so
-// the ticker doesn't fan out to /connectors + /skills + /usage every
-// 500 ms. Tenant-scoped; requires an authenticated principal.
+// One-round-trip aggregate so the sk status line doesn't fan out to /connectors + /skills + /usage.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, sql } from "drizzle-orm";

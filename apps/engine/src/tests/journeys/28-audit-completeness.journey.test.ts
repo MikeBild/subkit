@@ -24,7 +24,7 @@
 // write for any of these routes, the query returns empty and the test
 // fails with the exact action name on the expect line.
 //
-// Spec refs: docs/27-api-surface.md, docs/22-rbac.md, gap-pass-2 Stream D
+// Spec refs: docs/03-input-surfaces.md, docs/07-security-governance.md, gap-pass-2 Stream D
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";

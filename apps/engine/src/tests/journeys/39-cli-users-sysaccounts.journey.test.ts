@@ -14,7 +14,7 @@
 //          account's id.
 //   - AC6: A non-admin tenant (wrong API key) receives a 403 on the
 //          users list route.
-// Spec refs: docs/11-identity-and-access.md, docs/26-cli.md
+// Spec refs: docs/07-security-governance.md, docs/03-input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { systemAccountsCommand } from "../../../../sk/src/commands/system-accounts.ts";

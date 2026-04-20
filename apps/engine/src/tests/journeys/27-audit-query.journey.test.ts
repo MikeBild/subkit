@@ -12,7 +12,7 @@
 //   - AC6: `export.ndjson` streams the full set, one JSON per line.
 //   - AC7: A member-role API key is denied by `audit:read`.
 //
-// Spec refs: docs/23-operator-ux.md, docs/22-rbac.md, gap-pass-2 Stream D
+// Spec refs: docs/07-security-governance.md, docs/07-security-governance.md, gap-pass-2 Stream D
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";

@@ -1,65 +1,46 @@
-# subkit — Technical Documentation
+# sk Documentation
 
-These documents are the single source of truth for the engine's technical concept, architecture, and stack choices. For an introduction to subkit and the problem it solves, see the [project README](../README.md).
+These documents are the single source of truth for the sk enterprise AI platform — what it is, how it works, and how to use it. The core narrative that connects everything:
+
+> **Input Surfaces → AI-Assisted Authoring → Deterministic Execution**
 
 ---
 
-## Documentation Index
+## Concept Docs
 
-### Foundation
+Eight architecture-level documents, read in order or by concern.
 
-- `01-concept.md` — what the engine is, what shape it takes, what it refuses to be
-- `02-domain-model.md` — glossary of every noun the engine reasons about
-- `03-architecture.md` — layered architecture, core flows, boot sequence
-- `04-data-model.md` — Postgres schema sketches for every entity and the outbox pattern
+| Doc | What it covers |
+|---|---|
+| [01-platform.md](01-platform.md) | What sk is, what it is not, the three-layer story, and the six design principles that are enforced by architecture. |
+| [02-concepts.md](02-concepts.md) | The authoritative glossary: every domain term defined exactly once — Tenant, Workflow, Skill, Connector, Execution, Audit Log, and more. |
+| [03-input-surfaces.md](03-input-surfaces.md) | Every way users and systems reach sk: the CLI, REST API, MCP server, chat platforms, webhooks, and scheduled triggers. |
+| [04-authoring.md](04-authoring.md) | How Conversations produce governed workflows: the AI authoring loop, the human approval gate, Skills, Knowledge Sources, and Discovery. |
+| [05-connectors.md](05-connectors.md) | The integration fabric: Connectors, Drivers, Credentials, the vault, OAuth2 lifecycle, and Tunnels for private networks. |
+| [06-execution.md](06-execution.md) | The deterministic execution engine: Workflow DAGs, Step types, Execution records, Schedules, and how self-healing keeps workflows healthy. |
+| [07-security-governance.md](07-security-governance.md) | Multi-tenancy, authentication (OIDC, API keys, portal tokens), RBAC, Before-Request Hooks, the credential vault, and the immutable audit trail. |
+| [08-operations.md](08-operations.md) | Deployment topology, configuration, metrics, structured logging, execution inspection, resource limits, self-healing, and backup. |
 
-### Engine Core
+---
 
-- `05-execution-engine.md` — step state machine, retries, timeouts, cancel, selectors
-- `06-queue-scheduler-pubsub.md` — pg-boss topology, cron reconciliation, LISTEN/NOTIFY outbox
-- `07-streaming-and-reactivity.md` — native Web Streams and AsyncIterables
-- `08-sandboxing.md` — QuickJS-WASM and Docker isolation tiers with resource caps
+## Quickstarts
 
-### Integrations
+Three persona-specific paths to get running fast.
 
-- `09-connectors.md` — connector abstraction, drivers, OAuth2, dev/prod environments
-- `10-documentation-ingestion.md` — OpenAPI, GraphQL, HTML, Markdown, files, budgets, dedup
-- `13-webhooks.md` — Standard Webhooks inbound and outbound, retry cadence, replay
-- `14-chat-platforms.md` — Slack, Teams, Google Chat as first-class end-user interfaces
-- `15-tunnels.md` — WebSocket agent binary for reaching private-network systems
-- `23-templates.md` — curated connector template registry (89 templates)
+| Guide | For |
+|---|---|
+| [quickstart/operator.md](quickstart/operator.md) | You run sk for your team. Engine up, admin key minted, first connector registered. 10 minutes. |
+| [quickstart/end-user.md](quickstart/end-user.md) | You use sk through the CLI, chat, or an MCP client. Authenticated, first conversation open. 5 minutes. |
+| [quickstart/developer.md](quickstart/developer.md) | You contribute to sk. Repo cloned, tests green, engine in watch mode. 10 minutes. |
 
-### AI Surfaces
+---
 
-- `16-ai-flows.md` — generate, repair, extract, converse flows with model routing and budgets
-- `17-conversations.md` — structured-intent tool loop, approvals, SSE and MCP streaming
-- `18-skills.md` — curated skill records, scopes, retrieval order, Skill Candidates
-- `19-self-healing.md` — drift detection, bounded repair loop, execution fixtures, patch candidates
-- `12-mcp-server.md` — MCP surface, transports, progress notifications, result offload cap
+## Who Should Read What
 
-### Knowledge & Discovery
+**End users** — start at [03-input-surfaces.md](03-input-surfaces.md) to understand how to reach sk, then [04-authoring.md](04-authoring.md) to understand what Conversations can do. The [end-user quickstart](quickstart/end-user.md) gets you to a live session in 5 minutes.
 
-- `35-knowledge-sources.md` — persistent tenant-scoped knowledge from uploaded files, semantic search
-- `36-discovery.md` — one-shot LLM analysis of enterprise files → inferred Connectors, Skills, Knowledge Sources
+**Operators** — start with the [operator quickstart](quickstart/operator.md) to get the engine running, then [07-security-governance.md](07-security-governance.md) for identity and RBAC setup, and [08-operations.md](08-operations.md) for monitoring and operational hygiene.
 
-### Operational Surfaces
+**Developers** — start with [AGENTS.md](../AGENTS.md) for the subsystem map and contribution rules, then read all eight concept docs for full architectural context. The [developer quickstart](quickstart/developer.md) gets the local environment running in 10 minutes.
 
-- `11-identity-and-access.md` — Auth Provider chain, RBAC plus ABAC, before-request hooks
-- `20-versioning-and-history.md` — automatic workflow versioning, history, restore
-- `21-run-search.md` — execution query model with filters and free-text search
-- `22-extract.md` — `/v1/extract` endpoint for pulling structured data from uploaded files
-- `25-streaming-interfaces.md` — SSE as the canonical stream, MCP parallel surface
-- `26-cli.md` — the `subkit` operator CLI command surface and `subkit chat`
-- `27-sk-cli.md` — the `sk` end-user CLI: REPL, headless mode, sessions, slash commands
-- `27-api-surface.md` — REST endpoint table, auth header, request source semantics
-
-### Platform
-
-- `24-openapi-and-clients.md` — published OpenAPI contract, in-repo typed client, external SDKs
-- `28-security.md` — encryption, tenancy, policy order, supply chain, sandbox posture
-- `29-observability.md` — Prometheus metrics, structured logging, audit trail
-- `30-defaults-and-limits.md` — canonical operational defaults and limits table
-- `31-developer-tooling.md` — Biome, Bun test, testcontainers, CI, optional pre-commit
-- `32-deployment.md` — compile, compose, env, healthcheck, graceful shutdown, backup
-- `33-verification.md` — end-to-end smoke test matrix for a fresh install
-- `34-installation.md` — install, setup, auto-update, and uninstall for all platforms
+**Architects** — start with [01-platform.md](01-platform.md) for the design rationale, [02-concepts.md](02-concepts.md) for the domain model, and [07-security-governance.md](07-security-governance.md) for the security architecture. The three-layer narrative in `01-platform.md` is the right lens for every other document.

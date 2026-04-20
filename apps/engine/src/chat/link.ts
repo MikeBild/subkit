@@ -1,13 +1,4 @@
-// /subkit link deeplink flow — minimal stub for P12.
-//
-// Creates a short-lived JWT that a user can present (from a DM) to
-// bind their platform identity to their subkit user. The dispatcher
-// uses the full persistence table at `chat_link_tokens`; this helper
-// exists so the CLI can mint + consume tokens cleanly.
-//
-// Real, install-time OAuth identity linking lands in a later phase.
-// The dispatcher's auto_link_stub path is the actual stand-in used
-// in P12.
+// Mints a short-lived JWT for DM-based platform identity binding.
 
 import { eq } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";

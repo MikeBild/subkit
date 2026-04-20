@@ -16,14 +16,9 @@ that bypass it.
 
 ## Canonical references
 
-- `docs/19-self-healing.md` — The bounded repair loop, phases, termination, dry-run
-  requirements, Patch Candidate shape.
-- `docs/20-versioning-and-history.md` — Schema Versions, Connector endpoint
-  snapshots, Execution Fixtures.
-- `docs/16-ai-flows.md` — LLM tool-use loops (self-healing reuses the same
-  primitives).
-- `docs/08-sandboxing.md` — Repair-candidate JS runs in a QuickJS-WASM sandbox.
-- `docs/28-security.md` — Audit expectations for proposal + approval.
+- `docs/06-execution.md` — Self-healing, drift detection, bounded repair loop, Execution Fixtures, versioning.
+- `docs/07-security-governance.md` — Audit expectations for proposal and approval.
+- `docs/04-authoring.md` — LLM tool-use loops (self-healing reuses the same primitives).
 
 ## Loop contract
 
@@ -64,7 +59,7 @@ that bypass it.
 
 ## Adding or changing repair behavior
 
-1. Read `docs/19-self-healing.md` and `docs/20-versioning-and-history.md` first.
+1. Read `docs/06-execution.md` (self-healing and versioning sections) first.
 2. Find the phase you're changing (drift detect, context refresh, LLM loop,
    dry-run, candidate write, approval).
 3. Preserve the six-phase flow. If your change would collapse or skip a phase,

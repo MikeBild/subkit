@@ -14,11 +14,9 @@ connector-bound skills (`template-skills.json`).
 
 ## Canonical references
 
-- `docs/09-connectors.md` — Connector contract, typed drivers, Environment tag.
-- `docs/23-templates.md` — Template authoring guide, 89 existing examples.
-- `docs/10-documentation-ingestion.md` — Auto-indexing OpenAPI / GraphQL / HTML docs.
-- `docs/20-versioning-and-history.md` — Schema Version per Connector endpoint.
-- `docs/11-identity-and-access.md` / `docs/28-security.md` — Credentials, OAuth2, crypto.
+- `docs/05-connectors.md` — Connector model, drivers, templates, auth, tunnels, schema versions.
+- `docs/07-security-governance.md` — Credentials, OAuth2, crypto, credential vault.
+- `docs/04-authoring.md` — Documentation ingestion and the connector template catalog context.
 
 ## Add a connector template
 
@@ -46,7 +44,7 @@ Postgres, S3 and the system assumes these.
 4. Wire into `execution/` step dispatch (`request`, `call` kinds).
 5. Add to `sandboxes/` if it accepts user-supplied code.
 6. Full test coverage: unit for the driver, integration for the HTTP surface.
-7. Document it: add `docs/09-connectors.md` sections, example template.
+7. Document it: add `docs/05-connectors.md` sections, example template.
 
 ## OAuth2 flows
 

@@ -92,6 +92,18 @@ export const AuthConfigSchema = z
 
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 
+export const HttpConnectorConfig = z
+  .object({
+    static_headers: z.record(z.string(), z.string()).optional(),
+    static_query: z.record(z.string(), z.string()).optional(),
+    timeout_ms: z.number().positive().max(300_000).optional(),
+    max_retries: z.number().int().min(0).max(5).optional(),
+    follow_redirects: z.boolean().default(true).optional(),
+  })
+  .strict();
+
+export type HttpConnectorConfigType = z.infer<typeof HttpConnectorConfig>;
+
 export const CreateConnectorSchema = z
   .object({
     name: z.string().min(1),
@@ -132,4 +144,9 @@ export interface ConnectorView {
   config: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
+  circuit_state: "closed" | "open" | "half-open";
+  circuit_opened_at: Date | null;
+  circuit_failure_count: number;
+  circuit_threshold: number;
+  circuit_reset_ms: number;
 }
