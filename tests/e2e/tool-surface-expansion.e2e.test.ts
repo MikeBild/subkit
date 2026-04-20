@@ -19,7 +19,6 @@ afterAll(async () => {
 describe("tool surface expansion (post-P5 gap fixes)", () => {
   test("login", async () => {
     const r = await cli(
-      "sk",
       ["login", "--engine-url", env.baseUrl, "--api-key", env.personas.admin.apiKey],
       { env, persona: "admin" },
     );
@@ -28,7 +27,6 @@ describe("tool surface expansion (post-P5 gap fixes)", () => {
 
   test("sk --p list my workflows — engine status + tool_call row lands", async () => {
     const r = await cli(
-      "sk",
       ["--p", "list my workflows, connectors, and engine status", "--output", "json"],
       { env, persona: "admin", timeout: 60_000 },
     );

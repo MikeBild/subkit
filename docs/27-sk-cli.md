@@ -128,6 +128,35 @@ Draft authoring inspectors are also exposed as slash commands so the user can br
 | `/restore <n>` | `workflow:write` | Restore a prior workflow version as a new current version |
 | `/context` | `conversation:read` | Loaded skills, knowledge, docs, attachments, memory |
 | `/approve` `/reject` | `conversation:write` | Resolve the pending elicitation without typing free-form |
+| `/approvals` | `conversation:approve` | List pending elicitations across all conversations |
+| `/view` | `conversation:read` | Render the current conversation as a readable pane |
+
+Operator-tier slash commands (require `operator` persona or higher):
+
+| Slash | Requires | Notes |
+|---|---|---|
+| `/connectors` | `connector:read` | List connectors — id, name, slug |
+| `/workflows` | `workflow:read` | List workflows — id, name, slug |
+| `/executions` / `/runs` | `execution:read` | Last 10 executions |
+| `/patch-candidates` | `workflow:read` | Pending AI-generated patch candidates |
+| `/notifications` | `notification:read` | Notification channels and rules |
+| `/tunnels` | `tunnel:read` | Active tunnel connections |
+| `/discovery` | `discovery:read` | Discovery runs and artifacts |
+| `/install-slack` | `notification:write` | Open Slack installation wizard |
+| `/install-teams` | `notification:write` | Open Teams installation wizard |
+| `/install-github` | `connector:write` | Open GitHub connector wizard |
+| `/install-google-workspace` | `connector:write` | Open Google Workspace connector wizard |
+| `/install-salesforce` | `connector:write` | Open Salesforce connector wizard |
+| `/install-jira` | `connector:write` | Open Jira connector wizard |
+| `/install-hubspot` | `connector:write` | Open HubSpot connector wizard |
+
+Admin-tier slash commands (require `admin` persona):
+
+| Slash | Requires | Notes |
+|---|---|---|
+| `/apikeys` | `api_key:read` | List API keys (masked) |
+| `/users` | `identity:read` | List identity users |
+| `/system-accounts` | `identity:read` | List system accounts |
 
 ## MCP
 

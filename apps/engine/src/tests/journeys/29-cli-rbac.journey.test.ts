@@ -118,21 +118,40 @@ function extractLastJson(stdout: string): string {
 
 // ---------- run a subcommand ----------
 
+function withEnv(url: string, apiKey: string, fn: () => Promise<void>): Promise<void> {
+  const prevUrl = process.env.SUBKIT_ENGINE_URL;
+  const prevKey = process.env.SUBKIT_API_KEY;
+  process.env.SUBKIT_ENGINE_URL = url;
+  process.env.SUBKIT_API_KEY = apiKey;
+  return fn().finally(() => {
+    if (prevUrl === undefined) delete process.env.SUBKIT_ENGINE_URL;
+    else process.env.SUBKIT_ENGINE_URL = prevUrl;
+    if (prevKey === undefined) delete process.env.SUBKIT_API_KEY;
+    else process.env.SUBKIT_API_KEY = prevKey;
+  });
+}
+
+function withNoExit(fn: () => Promise<void>): Promise<void> {
+  const origExit = process.exit.bind(process);
+  (process as { exit: unknown }).exit = (code?: number) => {
+    throw new Error(`process.exit(${code ?? 0})`);
+  };
+  return fn().finally(() => {
+    process.exit = origExit;
+  });
+}
+
 async function run(path: string[], extraArgs: Record<string, string> = {}): Promise<Captured> {
   const cli = patchStd();
-  const argv = [...path];
-  argv.push(`--engine-url=${ctx.baseUrl}`);
-  argv.push(`--api-key=${ctx.apiKey}`);
-  argv.push("--json");
-  for (const [k, v] of Object.entries(extraArgs)) {
-    argv.push(`--${k}=${v}`);
-  }
+  const argv = [...path, "--json"];
+  for (const [k, v] of Object.entries(extraArgs)) argv.push(`--${k}=${v}`);
   try {
-    // citty's `runCommand` resolves to void; it dispatches through
-    // subCommands by inspecting argv[0]. Reuse it via a dynamic import
-    // to avoid dragging citty types into the test surface.
-    const citty = await import("citty");
-    await citty.runCommand(rbacCommand, { rawArgs: argv });
+    await withEnv(ctx.baseUrl, ctx.apiKey, () =>
+      withNoExit(async () => {
+        const citty = await import("citty");
+        await citty.runCommand(rbacCommand, { rawArgs: argv });
+      }),
+    );
   } finally {
     cli.restore();
   }
@@ -148,15 +167,15 @@ async function runExpectError(
 ): Promise<{ message: string; captured: Captured }> {
   const cli = patchStd();
   const argv = [...path];
-  argv.push(`--engine-url=${ctx.baseUrl}`);
-  argv.push(`--api-key=${ctx.apiKey}`);
-  for (const [k, v] of Object.entries(extraArgs)) {
-    argv.push(`--${k}=${v}`);
-  }
+  for (const [k, v] of Object.entries(extraArgs)) argv.push(`--${k}=${v}`);
   let message = "";
   try {
-    const citty = await import("citty");
-    await citty.runCommand(rbacCommand, { rawArgs: argv });
+    await withEnv(ctx.baseUrl, ctx.apiKey, () =>
+      withNoExit(async () => {
+        const citty = await import("citty");
+        await citty.runCommand(rbacCommand, { rawArgs: argv });
+      }),
+    );
   } catch (err) {
     message = err instanceof Error ? err.message : String(err);
   } finally {

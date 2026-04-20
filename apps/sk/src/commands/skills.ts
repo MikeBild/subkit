@@ -52,17 +52,16 @@ const getCommand = defineCommand({
 });
 
 const createCommand = defineCommand({
-  meta: { name: "create", description: "Create a skill" },
+  meta: { name: "create", description: "Create a skill from a JSON file" },
   args: {
-    title: { type: "string", required: true, description: "Skill title" },
-    description: { type: "string", description: "Skill description" },
+    file: { type: "string", required: true, description: "Path to SkillDef JSON" },
   },
   async run({ args }) {
+    const { readFileSync } = await import("node:fs");
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      const body: Record<string, unknown> = { title: args.title };
-      if (args.description) body.description = args.description;
+      const body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
       const skill = await client.createSkill(body);
       printJson(skill);
     } catch (err) {
@@ -78,13 +77,20 @@ const patchCommand = defineCommand({
   meta: { name: "patch", description: "Update a skill" },
   args: {
     id: { type: "positional", required: true, description: "Skill id" },
-    title: { type: "string", required: true, description: "New title" },
+    file: { type: "string", description: "Path to JSON patch file" },
+    title: { type: "string", description: "New title" },
   },
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      const skill = await client.patchSkill(args.id, { title: args.title });
+      let body: Record<string, unknown> = {};
+      if (args.file) {
+        const { readFileSync } = await import("node:fs");
+        body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
+      }
+      if (args.title) body.title = args.title;
+      const skill = await client.patchSkill(args.id, body);
       printJson(skill);
     } catch (err) {
       process.stderr.write(
@@ -164,6 +170,7 @@ export const skillsCommand = defineCommand({
     get: getCommand,
     create: createCommand,
     patch: patchCommand,
+    edit: patchCommand,
     activate: activateCommand,
     archive: archiveCommand,
     delete: deleteCommand,

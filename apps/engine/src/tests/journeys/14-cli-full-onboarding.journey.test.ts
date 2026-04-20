@@ -91,7 +91,11 @@ describe("journey: CLI full onboarding", () => {
       ],
     });
     expect(wf.id).toBeTruthy();
-    const run = await client.runWorkflow(wf.id as string, { input: {}, request_source: "cli" });
+    const run = await client.runWorkflow(
+      wf.id as string,
+      { input: {}, request_source: "cli" },
+      { sync: true },
+    );
     expect(run.status).toBe("succeeded");
   });
 });

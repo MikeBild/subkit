@@ -17,7 +17,7 @@ function bearer(): HeadersInit {
 
 describe("guided authoring smoke", () => {
   test("connector-first journey pauses for connector save approval, then workflow commit approval", async () => {
-    const turn1 = await cli("sk", ["--p", "subkit engine onboarding", "--output", "json"], {
+    const turn1 = await cli(["--p", "subkit engine onboarding", "--output", "json"], {
       env,
       persona: "admin",
       timeout: 120_000,

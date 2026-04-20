@@ -36,7 +36,6 @@ afterAll(async () => {
 describe("weather workflow (open-meteo, no API key)", () => {
   test("login", async () => {
     const r = await cli(
-      "sk",
       ["login", "--engine-url", env.baseUrl, "--api-key", env.personas.admin.apiKey],
       { env, persona: "admin" },
     );
@@ -48,7 +47,6 @@ describe("weather workflow (open-meteo, no API key)", () => {
     // `conversations/service.ts`: either "open meteo" or "berlin
     // weather" or "tomorrow forecast" selects `cannedOpenMeteoBerlinPlan`.
     const r = await cli(
-      "sk",
       [
         "--p",
         "create a connector and a workflow to use the open-meteo weather api (no api key) for tomorrow's forecast in Berlin Germany",

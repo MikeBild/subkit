@@ -78,7 +78,7 @@ const rolesGetCmd = defineCommand({
 const rolesCreateCmd = defineCommand({
   meta: { name: "create", description: "Create a custom role" },
   args: {
-    name: { type: "string", required: true, description: "Role name" },
+    name: { type: "positional", required: true, description: "Role name" },
     description: { type: "string", description: "Role description" },
   },
   async run({ args }) {
@@ -100,8 +100,10 @@ const rolesDeleteCmd = defineCommand({
   async run({ args }) {
     const client = makeClient();
     try {
-      const confirmed = await prompts.confirm({ message: `Delete role "${args.id}"?` });
-      if (!confirmed || prompts.isCancel(confirmed)) return;
+      if (process.stdin.isTTY) {
+        const confirmed = await prompts.confirm({ message: `Delete role "${args.id}"?` });
+        if (!confirmed || prompts.isCancel(confirmed)) return;
+      }
       await client.deleteRole(String(args.id));
       process.stdout.write("deleted\n");
     } catch (err) {
@@ -115,7 +117,7 @@ const rolesGrantCmd = defineCommand({
   meta: { name: "grant", description: "Grant a permission to a role" },
   args: {
     id: { type: "positional", required: true, description: "Role id" },
-    permission: { type: "string", required: true, description: "Permission name" },
+    permission: { type: "positional", required: true, description: "Permission name" },
   },
   async run({ args }) {
     const client = makeClient();
@@ -132,7 +134,7 @@ const rolesRevokeCmd = defineCommand({
   meta: { name: "revoke", description: "Revoke a permission from a role" },
   args: {
     id: { type: "positional", required: true, description: "Role id" },
-    permission: { type: "string", required: true, description: "Permission name" },
+    permission: { type: "positional", required: true, description: "Permission name" },
   },
   async run({ args }) {
     const client = makeClient();
@@ -164,7 +166,7 @@ const usersAssignCmd = defineCommand({
   meta: { name: "assign", description: "Assign a role to a user" },
   args: {
     id: { type: "positional", required: true, description: "User id" },
-    role: { type: "string", required: true, description: "Role id" },
+    role: { type: "positional", required: true, description: "Role id" },
   },
   async run({ args }) {
     const client = makeClient();
@@ -206,15 +208,24 @@ const grantsListCmd = defineCommand({
 const grantsCreateCmd = defineCommand({
   meta: { name: "create", description: "Create a resource grant" },
   args: {
-    "principal-id": { type: "string", required: true, description: "Principal id" },
+    subject: { type: "string", required: true, description: "Subject in <type>:<id> form" },
+    resource: { type: "string", required: true, description: "Resource in <type>:<id> form" },
     permission: { type: "string", required: true, description: "Permission name" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
+      const [subject_type, subject_id] = String(args.subject).split(":");
+      const [resource_type, resource_id] = String(args.resource).split(":");
+      if (!subject_type || !subject_id || !resource_type || !resource_id) {
+        throw new Error("--subject / --resource must be <type>:<id>");
+      }
       printJson(
         await client.createGrant({
-          principal_id: String(args["principal-id"]),
+          subject_type,
+          subject_id,
+          resource_type,
+          resource_id,
           permission: String(args.permission),
         }),
       );
@@ -270,11 +281,16 @@ const groupsListCmd = defineCommand({
 
 const groupsCreateCmd = defineCommand({
   meta: { name: "create", description: "Create a group" },
-  args: { name: { type: "string", required: true, description: "Group name" } },
+  args: {
+    name: { type: "positional", required: true, description: "Group name" },
+    description: { type: "string", description: "Group description" },
+  },
   async run({ args }) {
     const client = makeClient();
     try {
-      printJson(await client.createGroup({ name: String(args.name) }));
+      printJson(
+        await client.createGroup({ name: String(args.name), description: args.description }),
+      );
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));
@@ -303,7 +319,7 @@ const groupsAddMemberCmd = defineCommand({
   meta: { name: "add-member", description: "Add a user to a group" },
   args: {
     id: { type: "positional", required: true, description: "Group id" },
-    user: { type: "string", required: true, description: "User id" },
+    user: { type: "positional", required: true, description: "User id" },
   },
   async run({ args }) {
     const client = makeClient();
@@ -339,7 +355,7 @@ const groupsAssignRoleCmd = defineCommand({
   meta: { name: "assign-role", description: "Assign a role to a group" },
   args: {
     id: { type: "positional", required: true, description: "Group id" },
-    role: { type: "string", required: true, description: "Role id" },
+    role: { type: "positional", required: true, description: "Role id" },
   },
   async run({ args }) {
     const client = makeClient();
@@ -436,20 +452,32 @@ const requestHooksCmd = defineCommand({
 const canCmd = defineCommand({
   meta: { name: "can", description: "Check whether a principal holds a permission" },
   args: {
+    principal: { type: "positional", required: true, description: "Principal id" },
     permission: { type: "positional", required: true, description: "Permission name" },
-    principal: { type: "string", description: "Principal id (admin use only; defaults to self)" },
+    resource: {
+      type: "positional",
+      required: false,
+      description: "Optional resource in <type>:<id> form",
+    },
+    json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      // Security: default to self — only accept --principal for admin use
-      const selfId = (await client.whoami()).id;
-      const principalId = args.principal ? String(args.principal) : selfId;
-      const result = await client.rbacCan({
-        principal_id: principalId,
+      const canBody: Parameters<typeof client.rbacCan>[0] = {
+        principal_id: String(args.principal),
         permission: String(args.permission),
-      });
-      process.stdout.write(result.allow ? "allow\n" : "deny\n");
+      };
+      if (args.resource) {
+        const [rType, rId] = String(args.resource).split(":");
+        if (rType && rId) canBody.resource = { type: rType, id: rId };
+      }
+      const result = await client.rbacCan(canBody);
+      if (args.json) {
+        process.stdout.write(`${JSON.stringify({ allow: result.allow })}\n`);
+      } else {
+        process.stdout.write(`${result.allow}\n`);
+      }
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));

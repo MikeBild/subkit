@@ -400,8 +400,13 @@ export class EngineClient {
   deleteWorkflow(id: string): Promise<void> {
     return this.request("DELETE", `/v1/workflows/${encodeURIComponent(id)}`);
   }
-  runWorkflow(id: string, body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/workflows/${encodeURIComponent(id)}/run`, body);
+  runWorkflow(
+    id: string,
+    body: Record<string, unknown> = {},
+    opts: { sync?: boolean } = {},
+  ): Promise<Record<string, unknown>> {
+    const query = opts.sync ? { sync: "1" } : undefined;
+    return this.request("POST", `/v1/workflows/${encodeURIComponent(id)}/run`, body, query);
   }
 
   // -------------------- Connectors --------------------
