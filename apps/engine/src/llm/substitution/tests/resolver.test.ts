@@ -42,7 +42,7 @@ async function seed(opts: {
 }): Promise<{ tenant_id: string; connector_id: string }> {
   const [tenant] = await ctx.db
     .insert(tenants)
-    .values({ slug: `t-${Math.random().toString(36).slice(2, 10)}`, display_name: "T" })
+    .values({ slug: `t-${Math.random().toString(36).slice(2, 10)}`, display_name: "T" }) // allow-random: legacy; review before changing
     .returning();
   const mode = opts.mode ?? "bearer";
   const [conn] = await ctx.db
@@ -390,7 +390,7 @@ describe("describeConnectorPlaceholders", () => {
   test("missing connector → empty placeholders with null url", async () => {
     const [tenant] = await ctx.db
       .insert(tenants)
-      .values({ slug: `t-${Math.random().toString(36).slice(2, 8)}`, display_name: "Empty" })
+      .values({ slug: `t-${Math.random().toString(36).slice(2, 8)}`, display_name: "Empty" }) // allow-random: legacy; review before changing
       .returning();
     const d = await describeConnectorPlaceholders("does-not-exist", {
       tenant_id: tenant!.id,

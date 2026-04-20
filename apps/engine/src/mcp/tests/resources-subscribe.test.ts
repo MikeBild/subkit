@@ -42,7 +42,7 @@ describe("mcp resources/subscribe live updates", () => {
     // streamable HTTP SSE channel.
     const deadline = Date.now() + 5_000;
     while (received.length === 0 && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: legacy; review before changing
     }
     expect(received.length).toBeGreaterThanOrEqual(1);
     expect(received[0]?.uri).toBe(`connector://${id}`);
@@ -69,7 +69,7 @@ describe("mcp resources/subscribe live updates", () => {
     });
 
     // Give the (non-)delivery a moment.
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 200)); // allow-wall-clock: legacy; review before changing
     expect(received.find((r) => r.uri.includes(ignoredId))).toBeUndefined();
   });
 });

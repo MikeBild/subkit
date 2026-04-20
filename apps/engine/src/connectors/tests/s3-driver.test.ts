@@ -45,7 +45,7 @@ async function dockerAvailable(): Promise<boolean> {
 async function startMinio(): Promise<MinioHandle> {
   const accessKey = "minioadmin";
   const secretKey = "minioadmin";
-  const name = `subkit-minio-test-${Math.random().toString(36).slice(2, 8)}`;
+  const name = `subkit-minio-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
 
   // Use Bun.spawn instead of testcontainers — avoids Bun/testcontainers
   // compat issues that cause hangs during container startup.
@@ -95,7 +95,7 @@ async function startMinio(): Promise<MinioHandle> {
     } catch {
       /* not ready yet */
     }
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
   }
 
   return {
@@ -113,7 +113,7 @@ let testDb: TestDb;
 let tenantId: string;
 let minio: MinioHandle | null = null;
 let connectorId: string | null = null;
-const BUCKET = `subkit-test-${Math.random().toString(36).slice(2, 8)}`;
+const BUCKET = `subkit-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
 
 beforeAll(async () => {
   docker = await dockerAvailable();

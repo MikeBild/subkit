@@ -34,6 +34,17 @@ import {
   type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
 } from "../../rbac/seed.ts";
+import {
+  createDeterministicClock,
+  createDeterministicIdFactory,
+  createSeededRandom,
+  type DeterministicClock,
+  type EnvHandle,
+  type IdFactory,
+  type SeededRandom,
+  seedFromEnv,
+  withTestEnv,
+} from "../../test-helpers/determinism/index.ts";
 import { __resetAll as resetCircuitBreakers } from "../../webhooks/outbound/circuit-breaker.ts";
 
 export interface JourneyCtx {
@@ -47,7 +58,19 @@ export interface JourneyCtx {
   db: Db;
   boss: PgBoss;
   testDb: TestDb;
+  /** Deterministic clock for this journey. Advance with `advanceBy`. */
+  clock: DeterministicClock;
+  /** Scoped id factory for this journey. */
+  ids: IdFactory;
+  /** Seeded PRNG for this journey. */
+  random: SeededRandom;
   cleanup: () => Promise<void>;
+}
+
+export interface CreateJourneyOpts {
+  /** Extra process.env overrides applied for the duration of the
+   *  journey. Restored on cleanup. `LLM_PROVIDER=mock` is always set. */
+  envOverrides?: Record<string, string | undefined>;
 }
 
 function sha256Hex(value: string): string {
@@ -63,117 +86,172 @@ function generateApiKey(): { plaintext: string; prefix: string; hash: string } {
 /**
  * Create a fresh per-journey context. Call once in `beforeAll`. The
  * returned ctx owns everything needed to reach the engine via its
- * public contracts.
+ * public contracts. Cleanup is fail-safe: a partial setup failure still
+ * tears down what was created.
  */
-export async function createJourneyCtx(label: string): Promise<JourneyCtx> {
-  process.env.LLM_PROVIDER = "mock";
+export async function createJourneyCtx(
+  label: string,
+  opts: CreateJourneyOpts = {},
+): Promise<JourneyCtx> {
+  const envHandle: EnvHandle = withTestEnv({
+    LLM_PROVIDER: "mock",
+    ...opts.envOverrides,
+  });
   resetMockProvider();
   resetCircuitBreakers();
 
   const safeLabel = label.toLowerCase().replace(/[^a-z0-9]/g, "-");
-  const testDb = await createTestDb(`journey-${safeLabel}`);
+  const seed = seedFromEnv(hashStringToSeed(safeLabel));
+  const clock = createDeterministicClock();
+  const ids = createDeterministicIdFactory(`j-${safeLabel}`);
+  const random = createSeededRandom(seed);
 
-  // RBAC catalog + built-in roles come online before any tenant row
-  // so the journey user + system account can be assigned a real
-  // `role_id` the evaluator can resolve.
-  const rbacRoleIds = await seedBuiltinRolesAndPermissions(testDb.db);
+  // Track what's been created so a mid-setup failure can still tear
+  // down the partial state.
+  const failSafe: Array<() => Promise<void>> = [async () => envHandle.restore()];
+  const fail = async (err: unknown): Promise<never> => {
+    for (const fn of failSafe.reverse()) {
+      try {
+        await fn();
+      } catch {
+        /* swallow — teardown best-effort */
+      }
+    }
+    throw err;
+  };
 
-  // Seed identity rows.
-  const [tenant] = await testDb.db
-    .insert(tenants)
-    .values({ slug: `j-${safeLabel}`.slice(0, 32), display_name: `Journey ${label}` })
-    .returning();
-  if (!tenant) throw new Error("seed tenant failed");
-
-  const [user] = await testDb.db
-    .insert(users)
-    .values({
-      tenant_id: tenant.id,
-      email: `admin-${safeLabel}@test.local`,
-      role: "admin",
-      role_id: rbacRoleIds.admin,
-    })
-    .returning();
-  if (!user) throw new Error("seed user failed");
-
-  const [sysAcct] = await testDb.db
-    .insert(systemAccounts)
-    .values({
-      tenant_id: tenant.id,
-      name: `bot-${safeLabel}`,
-      description: "journey bot",
-      role_id: rbacRoleIds.admin,
-    })
-    .returning();
-  if (!sysAcct) throw new Error("seed system_account failed");
-
-  // Back-fill any rows that drop through the cracks (defense in depth).
-  await backfillRoleIds(testDb.db, rbacRoleIds);
-
-  const key = generateApiKey();
-  await testDb.db.insert(apiKeys).values({
-    tenant_id: tenant.id,
-    user_id: user.id,
-    prefix: key.prefix,
-    token_sha256: key.hash,
-    scopes: ["*"],
-  });
-
-  // pg-boss at module scope so routes that reach for `getBoss()` work.
-  let boss: PgBoss;
+  let testDb: TestDb;
   try {
-    boss = await startBoss({ connectionString: testDb.url });
-  } catch {
-    boss = await createBoss({ connectionString: testDb.url });
+    testDb = await createTestDb(`journey-${safeLabel}`);
+    failSafe.push(() => testDb.cleanup());
+  } catch (e) {
+    await fail(e);
+    throw e; // unreachable
   }
-  await registerAllHandlers({ boss, db: testDb.db });
 
-  // Build a Hono app bound to this database.
-  const registry = buildDefaultRegistry(testDb.db);
-  const app = createApp({ db: testDb.db, registry });
-  const server: ServerType = serve({ fetch: app.fetch, port: 0 });
-  const addr = (server as unknown as { address: () => { port: number } | null }).address();
-  if (!addr || typeof addr !== "object") {
-    throw new Error("failed to determine journey test server port");
-  }
-  const baseUrl = `http://127.0.0.1:${addr.port}`;
+  try {
+    // RBAC catalog + built-in roles come online before any tenant row
+    // so the journey user + system account can be assigned a real
+    // `role_id` the evaluator can resolve.
+    const rbacRoleIds = await seedBuiltinRolesAndPermissions(testDb.db);
 
-  return {
-    tenantId: tenant.id,
-    userId: user.id,
-    systemAccountId: sysAcct.id,
-    apiKey: key.plaintext,
-    baseUrl,
-    mcpUrl: `${baseUrl}/mcp`,
-    rbacRoleIds,
-    db: testDb.db,
-    boss,
-    testDb,
-    cleanup: async () => {
-      // 1. Drop any idle keep-alive sockets so close() can resolve.
+    // Seed identity rows.
+    const [tenant] = await testDb.db
+      .insert(tenants)
+      .values({ slug: `j-${safeLabel}`.slice(0, 32), display_name: `Journey ${label}` })
+      .returning();
+    if (!tenant) throw new Error("seed tenant failed");
+
+    const [user] = await testDb.db
+      .insert(users)
+      .values({
+        tenant_id: tenant.id,
+        email: `admin-${safeLabel}@test.local`,
+        role: "admin",
+        role_id: rbacRoleIds.admin,
+      })
+      .returning();
+    if (!user) throw new Error("seed user failed");
+
+    const [sysAcct] = await testDb.db
+      .insert(systemAccounts)
+      .values({
+        tenant_id: tenant.id,
+        name: `bot-${safeLabel}`,
+        description: "journey bot",
+        role_id: rbacRoleIds.admin,
+      })
+      .returning();
+    if (!sysAcct) throw new Error("seed system_account failed");
+
+    // Back-fill any rows that drop through the cracks (defense in depth).
+    await backfillRoleIds(testDb.db, rbacRoleIds);
+
+    const key = generateApiKey();
+    await testDb.db.insert(apiKeys).values({
+      tenant_id: tenant.id,
+      user_id: user.id,
+      prefix: key.prefix,
+      token_sha256: key.hash,
+      scopes: ["*"],
+    });
+
+    // pg-boss at module scope so routes that reach for `getBoss()` work.
+    let boss: PgBoss;
+    try {
+      boss = await startBoss({ connectionString: testDb.url });
+    } catch {
+      boss = await createBoss({ connectionString: testDb.url });
+    }
+    failSafe.push(async () => {
+      try {
+        await stopBoss(5_000);
+      } catch {}
+      try {
+        await disposeBoss(boss, 2_000);
+      } catch {}
+    });
+    await registerAllHandlers({ boss, db: testDb.db });
+
+    // Build a Hono app bound to this database.
+    const registry = buildDefaultRegistry(testDb.db);
+    const app = createApp({ db: testDb.db, registry });
+    const server: ServerType = serve({ fetch: app.fetch, port: 0 });
+    const addr = (server as unknown as { address: () => { port: number } | null }).address();
+    if (!addr || typeof addr !== "object") {
+      throw new Error("failed to determine journey test server port");
+    }
+    const baseUrl = `http://127.0.0.1:${addr.port}`;
+    failSafe.push(async () => {
       const s = server as unknown as {
         close: (cb: () => void) => void;
         closeAllConnections?: () => void;
       };
       s.closeAllConnections?.();
       await new Promise<void>((resolve) => s.close(() => resolve()));
+    });
 
-      // 2. Stop pg-boss.
-      try {
-        await stopBoss(5_000);
-      } catch {
-        /* ignore */
-      }
-      try {
-        await disposeBoss(boss, 2_000);
-      } catch {
-        /* ignore */
-      }
+    return {
+      tenantId: tenant.id,
+      userId: user.id,
+      systemAccountId: sysAcct.id,
+      apiKey: key.plaintext,
+      baseUrl,
+      mcpUrl: `${baseUrl}/mcp`,
+      rbacRoleIds,
+      db: testDb.db,
+      boss,
+      testDb,
+      clock,
+      ids,
+      random,
+      cleanup: async () => {
+        // Run the registered teardown stack in reverse order. Each
+        // step swallows errors so one failing step can't block the
+        // rest of cleanup.
+        for (const fn of failSafe.reverse()) {
+          try {
+            await fn();
+          } catch {
+            /* ignore */
+          }
+        }
+      },
+    };
+  } catch (e) {
+    await fail(e);
+    throw e; // unreachable
+  }
+}
 
-      // 3. Drop the database.
-      await testDb.cleanup();
-    },
-  };
+/** Hash a short ASCII label to a stable 32-bit seed. Used when the
+ *  caller doesn't override via SUBKIT_DETERMINISTIC_SEED. */
+function hashStringToSeed(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  }
+  return h >>> 0;
 }
 
 /** Convenience — adds bearer auth + JSON handling to `fetch`. */

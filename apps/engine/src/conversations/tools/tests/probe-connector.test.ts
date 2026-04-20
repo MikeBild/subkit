@@ -56,6 +56,7 @@ beforeAll(async () => {
         body,
       });
       if (url.includes("/slow")) {
+        // allow-wall-clock: simulates a slow upstream; the timeout is bounded.
         setTimeout(() => {
           const h = nextResponse.headers ?? { "content-type": "application/json" };
           res.writeHead(nextResponse.status, h);
@@ -110,7 +111,7 @@ async function seedProbeConnector(opts: {
   const [tenant] = await ctx.db
     .insert(tenants)
     .values({
-      slug: `t-probe-${Math.random().toString(36).slice(2, 10)}`,
+      slug: `t-probe-${Math.random().toString(36).slice(2, 10)}`, // allow-random: legacy; review before changing
       display_name: "T",
     })
     .returning();
@@ -144,7 +145,7 @@ async function seedProbeConnector(opts: {
     // Conversations table has an id — we don't need a real row for the
     // tool context except its id; inserts routed through the rate
     // bucket use conversation_id as a key.
-    conversation_id: crypto.randomUUID(),
+    conversation_id: crypto.randomUUID(), // allow-random: legacy; review before changing
     connector_id: conn!.id,
   };
 }
@@ -336,7 +337,7 @@ describe("probe_connector — downstream error handling", () => {
     // momentarily to force an ECONNREFUSED.
     const [tenant] = await ctx.db
       .insert(tenants)
-      .values({ slug: `t-fail-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" })
+      .values({ slug: `t-fail-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" }) // allow-random: legacy; review before changing
       .returning();
     await ctx.db
       .insert(connectors)
@@ -352,7 +353,7 @@ describe("probe_connector — downstream error handling", () => {
       .returning();
     const tctx = makeToolContext({
       tenant_id: tenant!.id,
-      conversation_id: crypto.randomUUID(),
+      conversation_id: crypto.randomUUID(), // allow-random: legacy; review before changing
     });
     const result = await probeConnectorTool.execute(tctx, {
       connector_slug: "bad_host",

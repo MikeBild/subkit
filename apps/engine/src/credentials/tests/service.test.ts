@@ -22,13 +22,13 @@ afterAll(async () => {
 async function seedTenantAndConnector(): Promise<{ tenant_id: string; connector_id: string }> {
   const [tenant] = await ctx.db
     .insert(tenants)
-    .values({ slug: `t-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" })
+    .values({ slug: `t-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" }) // allow-random: legacy; review before changing
     .returning();
   const [conn] = await ctx.db
     .insert(connectors)
     .values({
       tenant_id: tenant!.id,
-      slug: `c-${Math.random().toString(36).slice(2, 8)}`,
+      slug: `c-${Math.random().toString(36).slice(2, 8)}`, // allow-random: legacy; review before changing
       display_name: "C",
       driver: "http",
       environment: "dev",

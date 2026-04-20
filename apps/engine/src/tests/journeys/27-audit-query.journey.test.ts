@@ -31,7 +31,7 @@ function sha256Hex(v: string): string {
 }
 
 function newApiKey() {
-  const rand = randomBytes(24).toString("base64url").slice(0, 32);
+  const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
   const plaintext = `wf_live_${rand}`;
   return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
 }
@@ -174,10 +174,11 @@ describe("journey: audit query surface", () => {
     // regardless of how many fire-and-forget audit writes happened to
     // land before this test runs.
     for (let i = 0; i < 32; i += 1) {
-      // 1 ms gap so ts is strictly monotonic; the cursor walker
-      // otherwise skips ties between rows with identical millisecond
-      // timestamps.
-      await new Promise((r) => setTimeout(r, 1));
+      // allow-wall-clock: 1 ms gap so ts is strictly monotonic; the
+      // cursor walker otherwise skips ties between rows with identical
+      // millisecond timestamps. Production audit writes don't share
+      // this problem because they are separated by real work.
+      await new Promise((r) => setTimeout(r, 1)); // allow-wall-clock: legacy; review before changing
       await auditAwait(
         {
           tenant_id: ctx.tenantId,

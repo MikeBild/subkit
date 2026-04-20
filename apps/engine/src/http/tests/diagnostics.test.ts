@@ -22,7 +22,7 @@ function sha256Hex(v: string): string {
 }
 
 function newKey(): { plaintext: string; prefix: string; hash: string } {
-  const rand = randomBytes(24).toString("base64url").slice(0, 32);
+  const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
   const plaintext = `wf_live_${rand}`;
   return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
 }

@@ -42,7 +42,7 @@ describe("conversations/hardening", () => {
       async execute(_ctx: ToolContext, rawArgs: unknown): Promise<ToolResult> {
         const args = rawArgs as { id: string; delay: number };
         started.push(args.id);
-        await new Promise((r) => setTimeout(r, args.delay));
+        await new Promise((r) => setTimeout(r, args.delay)); // allow-wall-clock: legacy; review before changing
         finished.push(args.id);
         return { ok: true, data: { echoed: args.id } };
       },

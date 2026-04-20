@@ -70,8 +70,39 @@ you need a new one:
 
 ## Quality gate before "done"
 
-1. `bun run lint`
-2. `bun run typecheck`
-3. `bun run test:unit` (always)
-4. `bun run test:integration` (if you touched db / queue / http / webhooks)
-5. `bun run test:e2e` (if you touched CLI binaries or cross-binary behavior)
+Run `bun run verify` — full matrix (lint, typecheck, determinism lint, unit,
+integration, build:sk, e2e). See `.claude/commands/verify.md` for the
+per-step breakdown.
+
+If Postgres is not already listening on `localhost:5432`, start it first:
+`docker compose -f docker-compose.dev.yml up -d postgres`.
+
+## Determinism contract (test code)
+
+All test code follows a single determinism contract, enforced by
+`scripts/check-determinism.ts` at every `/verify` run:
+
+- **Time** — production code that reads "now" should go through an injected
+  clock or `getTestNow()` from `test-helpers/determinism/clock`; tests use
+  `FROZEN_NOW` or `createDeterministicClock()`. `Date.now()` / `new Date()` in
+  a test file is a warning; annotate intentional uses with `// allow-wall-clock`.
+- **Randomness** — tests must not call `Math.random()`, `crypto.randomUUID()`,
+  or `crypto.randomBytes()` directly. Use `createSeededRandom`,
+  `createDeterministicUuidFactory`, or `createDeterministicHexFactory` from
+  `test-helpers/determinism/{random,ids}`. Pin the seed via
+  `SUBKIT_DETERMINISTIC_SEED` for reproducible runs. Annotate legitimate
+  per-test unique-id generators with `// allow-random`.
+- **Waiting** — tests must never call `setTimeout` directly. Use `waitFor` /
+  `waitForJson` from `test-helpers/determinism/wait` (microtask poll by
+  default; opt into a real sleep with `sleepMs: N` only for I/O-bound
+  waits). Annotate legitimate real-time waits with `// allow-wall-clock`.
+- **Skips** — no `.only(...)` and no `.skip(...)` in committed code. Use
+  `test.skipIf(condition)` with a named env flag when a skip is
+  environmental (e.g. outbound network access).
+- **Env** — wrap per-test env overrides with `withTestEnv` /
+  `runWithTestEnv` from `test-helpers/determinism/env` so cleanup is
+  automatic.
+
+`bun run test:flake` runs the unit suite 5× with distinct seeds (1..5) and
+fails if any run diverges — use it before pushing changes that touch
+anything stochastic.

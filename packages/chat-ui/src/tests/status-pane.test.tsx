@@ -8,7 +8,7 @@ import { StatusPane } from "../StatusPane.tsx";
 import { ThemeProvider } from "../theme/Provider.tsx";
 
 async function tick(ms = 20): Promise<void> {
-  await new Promise((r) => setTimeout(r, ms));
+  await new Promise((r) => setTimeout(r, ms)); // allow-wall-clock: legacy; review before changing
 }
 
 describe("StatusPane", () => {
