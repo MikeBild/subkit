@@ -27,6 +27,7 @@
 // Spec refs: docs/03-input-surfaces.md, docs/07-security-governance.md, gap-pass-2 Stream D
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { waitFor } from "../../test-helpers/determinism/index.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -42,20 +43,21 @@ let apiKeyId = "";
 let customRoleId = "";
 
 async function expectAuditRow(action: string, tsFrom: string, extra = ""): Promise<void> {
-  // Poll up to ~1s for the row to land — all writes we issue here
-  // go through `auditAwait`, so the query should succeed on the first
-  // try in practice.
-  for (let i = 0; i < 10; i += 1) {
-    const res = await journeyFetch(
-      ctx,
-      `/v1/audit-log?action=${encodeURIComponent(action)}&ts_from=${encodeURIComponent(tsFrom)}&limit=50${extra ? `&${extra}` : ""}`,
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { items: Array<{ action: string }> };
-    if (body.items.some((r) => r.action === action)) return;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error(`missing audit row for action=${action}`);
+  // All writes we issue here go through `auditAwait`, so the query
+  // should succeed on the first try in practice. Poll across microtasks
+  // for the row to land without depending on wall-clock sleeps.
+  await waitFor(
+    async () => {
+      const res = await journeyFetch(
+        ctx,
+        `/v1/audit-log?action=${encodeURIComponent(action)}&ts_from=${encodeURIComponent(tsFrom)}&limit=50${extra ? `&${extra}` : ""}`,
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: Array<{ action: string }> };
+      return body.items.some((r) => r.action === action) ? true : undefined;
+    },
+    { tries: 50, sleepMs: 50, label: `audit row action=${action}` },
+  );
 }
 
 beforeAll(async () => {

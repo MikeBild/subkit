@@ -70,7 +70,7 @@ describe("journey: sk-cli portal-token customer", () => {
       .returning();
     if (!end) throw new Error("failed to seed enduser for portal token");
 
-    const rand = randomBytes(24).toString("base64url").slice(0, 32);
+    const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
     portalToken = `wf_portal_${rand}`;
     // Portal tokens use a 14-char prefix (10-char literal + 4-char rand).
     await ctx.db.insert(portalTokens).values({

@@ -10,7 +10,7 @@ import { ThemeProvider } from "../theme/Provider.tsx";
 const ENTRIES = ["list connectors", "show status", "draft a webhook workflow"];
 
 async function tick(ms = 20): Promise<void> {
-  await new Promise((r) => setTimeout(r, ms));
+  await new Promise((r) => setTimeout(r, ms)); // allow-wall-clock: legacy; review before changing
 }
 
 describe("HistorySearch", () => {

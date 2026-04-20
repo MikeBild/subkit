@@ -55,7 +55,7 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
       })
       .returning();
     if (!member) throw new Error("failed to seed member");
-    const memberRand = randomBytes(24).toString("base64url").slice(0, 32);
+    const memberRand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
     memberApiKey = `wf_live_${memberRand}`;
     await ctx.db.insert(apiKeys).values({
       tenant_id: ctx.tenantId,
@@ -76,7 +76,7 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
       })
       .returning();
     if (!enduser) throw new Error("failed to seed enduser");
-    const enduserRand = randomBytes(24).toString("base64url").slice(0, 32);
+    const enduserRand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
     enduserApiKey = `wf_live_${enduserRand}`;
     await ctx.db.insert(apiKeys).values({
       tenant_id: ctx.tenantId,
@@ -87,7 +87,7 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
     });
 
     // Seed a portal-token principal.
-    const portalRand = randomBytes(24).toString("base64url").slice(0, 32);
+    const portalRand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
     portalToken = `wf_portal_${portalRand}`;
     await ctx.db.insert(portalTokens).values({
       tenant_id: ctx.tenantId,

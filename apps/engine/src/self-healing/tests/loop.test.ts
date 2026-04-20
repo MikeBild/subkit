@@ -201,7 +201,7 @@ describe("self-healing/loop — workflow.repair queue", () => {
         await db.select().from(patchCandidates).where(eq(patchCandidates.tenant_id, ctx.tenant_id))
       ).length;
       if (after > countBefore) break;
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: legacy; review before changing
     }
     expect(after).toBeGreaterThan(countBefore);
   });

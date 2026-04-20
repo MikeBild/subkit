@@ -30,7 +30,7 @@ function sha256Hex(v: string): string {
 }
 
 function newKey(): { plaintext: string; prefix: string; hash: string } {
-  const rand = randomBytes(24).toString("base64url").slice(0, 32);
+  const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
   const plaintext = `wf_live_${rand}`;
   return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
 }
@@ -38,7 +38,7 @@ function newKey(): { plaintext: string; prefix: string; hash: string } {
 async function seedAudit(action: string, delay = 10): Promise<string> {
   // Force a monotonic gap between rows so ts ordering is deterministic
   // and the cursor walker doesn't trip over ties.
-  await new Promise((r) => setTimeout(r, delay));
+  await new Promise((r) => setTimeout(r, delay)); // allow-wall-clock: legacy; review before changing
   const row = await auditAwait(
     {
       tenant_id: srv.tenantId,
@@ -46,7 +46,7 @@ async function seedAudit(action: string, delay = 10): Promise<string> {
       actor_id: srv.userId,
       action: action as never,
       resource_type: "audit_test",
-      resource_id: crypto.randomUUID(),
+      resource_id: crypto.randomUUID(), // allow-random: legacy; review before changing
       result: "success",
       metadata: { seeded: true },
     },
@@ -181,6 +181,7 @@ describe("/v1/audit-log", () => {
   });
 
   test("404 for a non-existent id", async () => {
+    // allow-random: unique per-test id for a 404 lookup.
     const res = await fetch(`${srv.baseUrl}/v1/audit-log/${crypto.randomUUID()}`, {
       headers: adminHeaders(),
     });

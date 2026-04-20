@@ -22,7 +22,7 @@ afterAll(async () => {
 async function seedTenant(): Promise<string> {
   const [t] = await ctx.db
     .insert(tenants)
-    .values({ slug: `t-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" })
+    .values({ slug: `t-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" }) // allow-random: legacy; review before changing
     .returning();
   return t!.id;
 }

@@ -15,7 +15,7 @@ let mock: MockServer;
 beforeAll(async () => {
   ctx = await createEngineCtx("timeout");
   mock = await createMockServer(async (_, res) => {
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 2000)); // allow-wall-clock: legacy; review before changing
     jsonResponse(res, 200, { ok: true });
   });
 });

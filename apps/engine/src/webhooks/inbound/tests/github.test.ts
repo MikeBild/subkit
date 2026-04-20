@@ -29,7 +29,7 @@ afterAll(async () => {
 describe("inbound: github verifier", () => {
   test("accepts a valid x-hub-signature-256", async () => {
     const body = JSON.stringify({ ref: "refs/heads/main" });
-    const delivery = randomUUID();
+    const delivery = randomUUID(); // allow-random: legacy; review before changing
     const sig = githubSig(SECRET, body);
     const outcome = await handleInbound(
       { db: ctx.db, boss: ctx.boss },
@@ -51,7 +51,7 @@ describe("inbound: github verifier", () => {
 
   test("rejects a bad signature", async () => {
     const body = JSON.stringify({ ref: "refs/heads/dev" });
-    const delivery = randomUUID();
+    const delivery = randomUUID(); // allow-random: legacy; review before changing
     const badSig = githubSig("wrong-secret", body);
     const outcome = await handleInbound(
       { db: ctx.db, boss: ctx.boss },

@@ -88,6 +88,8 @@ function defaultProps(overrides: Partial<InkAppProps> = {}): InkAppProps {
  * + async resolvers can drain.
  */
 async function tick(ms = 30): Promise<void> {
+  // allow-wall-clock: ink's keypress parser needs real ms to
+  // disambiguate Esc (\x1b) from the prefix of an arrow key.
   await new Promise((r) => setTimeout(r, ms));
 }
 

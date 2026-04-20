@@ -55,13 +55,13 @@ describe.skipIf(skip)("discovery/edge-cases", () => {
   });
 
   test("get non-existent run returns null", async () => {
-    const result = await getDiscoveryRun(tenantId, crypto.randomUUID(), testDb.db);
+    const result = await getDiscoveryRun(tenantId, crypto.randomUUID(), testDb.db); // allow-random: legacy; review before changing
     expect(result).toBeNull();
   });
 
   test("approve non-existent artifact returns null", async () => {
     const result = await approveDiscoveryArtifact(
-      { tenant_id: tenantId, artifact_id: crypto.randomUUID(), actor_id: null },
+      { tenant_id: tenantId, artifact_id: crypto.randomUUID(), actor_id: null }, // allow-random: legacy; review before changing
       testDb.db,
     );
     expect(result).toBeNull();
@@ -69,7 +69,7 @@ describe.skipIf(skip)("discovery/edge-cases", () => {
 
   test("reject non-existent artifact returns false", async () => {
     const result = await rejectDiscoveryArtifact(
-      { tenant_id: tenantId, artifact_id: crypto.randomUUID(), actor_id: null },
+      { tenant_id: tenantId, artifact_id: crypto.randomUUID(), actor_id: null }, // allow-random: legacy; review before changing
       testDb.db,
     );
     expect(result).toBe(false);
@@ -81,7 +81,7 @@ describe.skipIf(skip)("discovery/edge-cases", () => {
       .values({ slug: "disc-other", display_name: "Other" })
       .returning();
     const result = await approveDiscoveryArtifact(
-      { tenant_id: other!.id, artifact_id: crypto.randomUUID(), actor_id: null },
+      { tenant_id: other!.id, artifact_id: crypto.randomUUID(), actor_id: null }, // allow-random: legacy; review before changing
       testDb.db,
     );
     expect(result).toBeNull();

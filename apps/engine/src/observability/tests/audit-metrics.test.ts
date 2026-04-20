@@ -51,7 +51,7 @@ describe("audit_rows_written_total counter", () => {
         tenant_id: tenantId,
         action: "workflow.created",
         resource_type: "workflow",
-        resource_id: crypto.randomUUID(),
+        resource_id: crypto.randomUUID(), // allow-random: legacy; review before changing
         result: "success",
       },
       testDb.db,
@@ -61,7 +61,7 @@ describe("audit_rows_written_total counter", () => {
         tenant_id: tenantId,
         action: "workflow.created",
         resource_type: "workflow",
-        resource_id: crypto.randomUUID(),
+        resource_id: crypto.randomUUID(), // allow-random: legacy; review before changing
         result: "success",
       },
       testDb.db,
@@ -76,7 +76,7 @@ describe("audit_rows_written_total counter", () => {
         tenant_id: tenantId,
         action: "policy.denied",
         resource_type: "workflow",
-        resource_id: crypto.randomUUID(),
+        resource_id: crypto.randomUUID(), // allow-random: legacy; review before changing
         result: "denied",
         reason: "permission_denied:test",
       },

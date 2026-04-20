@@ -24,7 +24,7 @@ function sha256Hex(value: string): string {
 }
 
 function newKeyPlaintext(): { plaintext: string; prefix: string; hash: string } {
-  const rand = randomBytes(24).toString("base64url").slice(0, 32);
+  const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
   const plaintext = `wf_live_${rand}`;
   return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
 }
@@ -100,7 +100,7 @@ describe("/metrics scope gate", () => {
         .from(auditLog)
         .where(and(eq(auditLog.tenant_id, srv.tenantId), eq(auditLog.action, "policy.denied")));
       if (rows.some((r) => r.reason === "scope_missing:metrics:read")) break;
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: legacy; review before changing
     }
     expect(rows.some((r) => r.reason === "scope_missing:metrics:read")).toBe(true);
   });

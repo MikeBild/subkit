@@ -76,7 +76,7 @@ describe("scheduler reconciler", () => {
           ["succeeded", "failed", "aborted", "timed_out"].includes(r.status),
         );
         if (terminal) break;
-        await new Promise((r) => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: legacy; review before changing
       }
       expect(rowCount).toBeGreaterThanOrEqual(1);
     } finally {

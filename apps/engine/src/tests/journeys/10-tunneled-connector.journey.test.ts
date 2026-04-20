@@ -114,7 +114,7 @@ beforeAll(async () => {
     .insert(systemAccounts)
     .values({ tenant_id: ctx.tenantId, name: "tunnel-bot", description: "journey-10" })
     .returning();
-  const rand = randomBytes(24).toString("base64url").slice(0, 32);
+  const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
   agentKey = `wf_live_${rand}`;
   await ctx.db.insert(apiKeys).values({
     tenant_id: ctx.tenantId,
@@ -149,7 +149,9 @@ describe("journey: tunneled connector", () => {
     const ws = await openAgent();
     expect(registry.get(ctx.tenantId, "local")).toBeDefined();
     ws.close();
-    // Give the server a moment to mark the socket disconnected.
+    // allow-wall-clock: WS close is a TCP/WS round-trip — microtask
+    // polling can't substitute for real I/O time. Short wait so the
+    // server evicts the registry entry before later tests observe it.
     await new Promise((r) => setTimeout(r, 50));
   });
 
@@ -172,6 +174,7 @@ describe("journey: tunneled connector", () => {
       expect(res.body).toContain("/ping");
     } finally {
       ws.close();
+      // allow-wall-clock: see AC1 rationale.
       await new Promise((r) => setTimeout(r, 50));
     }
   }, 15_000);

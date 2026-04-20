@@ -25,7 +25,7 @@ afterAll(async () => {
 async function seedTenant(): Promise<string> {
   const [t] = await ctx.db
     .insert(tenants)
-    .values({ slug: `t-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" })
+    .values({ slug: `t-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" }) // allow-random: legacy; review before changing
     .returning();
   return t!.id;
 }
@@ -61,7 +61,7 @@ describe("skills/service", () => {
 
     // Create a connector-scoped and workflow-scoped pair, plus an archived
     // connector skill that should be filtered out by retrieval.
-    const fakeConnectorId = crypto.randomUUID();
+    const fakeConnectorId = crypto.randomUUID(); // allow-random: legacy; review before changing
     const fakeWorkflowId = crypto.randomUUID();
     const connectorSkill = await createSkill(
       {

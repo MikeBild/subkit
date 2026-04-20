@@ -58,7 +58,7 @@ describe("journey: rbac resource grants", () => {
       })
       .returning();
     memberUserId = u!.id;
-    const rand = randomBytes(24).toString("base64url").slice(0, 32);
+    const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
     const plaintext = `wf_live_${rand}`;
     await ctx.db.insert(apiKeys).values({
       tenant_id: ctx.tenantId,

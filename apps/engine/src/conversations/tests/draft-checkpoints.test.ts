@@ -108,7 +108,7 @@ describe("listDraftSnapshots + getDraftSnapshot", () => {
         ctx.db,
       );
       ids.push(s.id);
-      await new Promise((r) => setTimeout(r, 5));
+      await new Promise((r) => setTimeout(r, 5)); // allow-wall-clock: legacy; review before changing
     }
     const rows = await listDraftSnapshots({ tenant_id, conversation_id: convId }, ctx.db);
     // Newest first == reverse of insert order.
