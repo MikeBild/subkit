@@ -22,11 +22,15 @@ import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
 import {
+  type BranchStep,
   type CallStep,
+  type LoopStep,
+  type ParallelStep,
   type StepDef,
   type WorkflowDef,
   WorkflowDefSchema,
 } from "../workflows/types.ts";
+
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
 import {
@@ -45,6 +49,24 @@ import {
   type StepResult,
   type StepRunContext,
 } from "./types.ts";
+
+function validateAgainstJsonSchema(
+  value: unknown,
+  schema: Record<string, unknown>,
+  location: string,
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (!schema || typeof schema !== "object") return { valid: true, errors: [] };
+  const required = schema.required as string[] | undefined;
+  if (required && Array.isArray(required) && typeof value === "object" && value !== null) {
+    for (const field of required) {
+      if (!(field in (value as Record<string, unknown>))) {
+        errors.push(`${location}: required field '${field}' is missing`);
+      }
+    }
+  }
+  return { valid: errors.length === 0, errors };
+}
 
 const WORKFLOW_TIMEOUT_DEFAULT_MS = 6 * 60 * 60_000;
 
@@ -135,10 +157,22 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   await markExecutionRunning(db, tenant_id, execution_id);
 
   const scope: Record<string, unknown> = { $input: p.input };
+
+  if (def.input_schema && p.input !== undefined && p.input !== null) {
+    const check = validateAgainstJsonSchema(p.input, def.input_schema, "$input");
+    if (!check.valid) {
+      throw Object.assign(new Error(check.errors.join("; ")), {
+        code: "input_schema_violation",
+        details: check.errors,
+      });
+    }
+  }
+
   let finalStatus: ExecutionStatus = "succeeded";
   const stepSummaries: RunResult["steps"] = [];
   let lastOutput: unknown = null;
   let lastError: { code: string; message: string } | null = null;
+  const skippedStepIds = new Set<string>();
 
   for (let i = 0; i < def.steps.length; i++) {
     const step = def.steps[i] as StepDef;
@@ -152,6 +186,18 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         duration_ms: 0,
         retry_count: 0,
         error: { code: "aborted", message: "execution aborted" },
+      });
+      continue;
+    }
+    if (skippedStepIds.has(step.id)) {
+      stepSummaries.push({
+        step_key: step.id,
+        step_index: i,
+        kind: step.kind,
+        status: "aborted",
+        duration_ms: 0,
+        retry_count: 0,
+        error: { code: "skipped", message: "skipped by branch control flow" },
       });
       continue;
     }
@@ -209,6 +255,144 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     }
     scope[step.id] = outcome.scope_value;
     lastOutput = outcome.scope_value;
+
+    // Branch control flow: mark skipped arm's steps so they are skipped in the
+    // linear walk.
+    if (step.kind === "branch" && outcome.result.status === "succeeded") {
+      const arm = (outcome.result.output as { arm?: string })?.arm;
+      const branchStep = step as BranchStep;
+      const skip = arm === "then" ? (branchStep.else_steps ?? []) : (branchStep.then_steps ?? []);
+      for (const skipId of skip) {
+        skippedStepIds.add(skipId);
+      }
+    }
+
+    // Loop iteration: after the loop driver resolves the collection, iterate
+    // each item through the body steps sequentially.
+    if (step.kind === "loop" && outcome.result.status === "succeeded") {
+      const loopStep = step as LoopStep;
+      const items = outcome.result.output;
+      if (Array.isArray(items)) {
+        const iterationResults: unknown[] = [];
+        for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
+          const item = items[itemIdx];
+          const childScope: Record<string, unknown> = {
+            ...scope,
+            [loopStep.item_var]: item,
+            $loop_index: itemIdx,
+          };
+          const bodyResults: Record<string, unknown> = {};
+          for (const bodyStepId of loopStep.body) {
+            const bodyStep = def.steps.find((s) => s.id === bodyStepId) as StepDef | undefined;
+            if (!bodyStep) continue;
+            const bodyStepRowId = await insertStepRow(db, {
+              tenant_id,
+              execution_id,
+              step_key: `${bodyStep.id}[${itemIdx}]`,
+              step_index: i,
+              kind: bodyStep.kind,
+            });
+            const bodyCtx: import("./types.ts").StepRunContext = {
+              db,
+              tenant_id,
+              execution_id,
+              workflow_id,
+              workflow_version_id: versionRow.id,
+              request_source,
+              parent_execution_id,
+              depth,
+              signal,
+              scope: childScope,
+              started_at: new Date(),
+              workflow_slug: wfRow.slug,
+              trace_id: opts.trace_id ?? null,
+              principal: opts.principal ?? null,
+              execution_mode,
+              step: bodyStep,
+              step_index: i,
+              step_row_id: bodyStepRowId,
+            };
+            const bodyOutcome = await runStep(
+              bodyCtx,
+              childScope,
+              p.input,
+              async ({ ctx: cctx, step: cstep }) => runCallStep(db, cctx, cstep as CallStep),
+            );
+            childScope[bodyStep.id] = bodyOutcome.scope_value;
+            bodyResults[bodyStep.id] = bodyOutcome.scope_value;
+          }
+          iterationResults.push(bodyResults);
+        }
+        scope[step.id] = iterationResults;
+        lastOutput = iterationResults;
+      }
+      // Mark body step ids as skipped in the linear walk (they run inside the loop)
+      for (const bodyStepId of loopStep.body) {
+        skippedStepIds.add(bodyStepId);
+      }
+    }
+
+    // Parallel fan-out: run each branch concurrently via Promise.all.
+    if (step.kind === "parallel" && outcome.result.status === "succeeded") {
+      const parallelStep = step as ParallelStep;
+      const branchResults = await Promise.all(
+        parallelStep.branches.map(async (branchStepIds) => {
+          const branchScope: Record<string, unknown> = { ...scope };
+          const branchOutput: Record<string, unknown> = {};
+          for (const branchStepId of branchStepIds) {
+            const branchStepDef = def.steps.find((s) => s.id === branchStepId) as
+              | StepDef
+              | undefined;
+            if (!branchStepDef) continue;
+            const branchStepRowId = await insertStepRow(db, {
+              tenant_id,
+              execution_id,
+              step_key: branchStepId,
+              step_index: i,
+              kind: branchStepDef.kind,
+            });
+            const branchCtx: import("./types.ts").StepRunContext = {
+              db,
+              tenant_id,
+              execution_id,
+              workflow_id,
+              workflow_version_id: versionRow.id,
+              request_source,
+              parent_execution_id,
+              depth,
+              signal,
+              scope: branchScope,
+              started_at: new Date(),
+              workflow_slug: wfRow.slug,
+              trace_id: opts.trace_id ?? null,
+              principal: opts.principal ?? null,
+              execution_mode,
+              step: branchStepDef,
+              step_index: i,
+              step_row_id: branchStepRowId,
+            };
+            const branchOutcome = await runStep(
+              branchCtx,
+              branchScope,
+              p.input,
+              async ({ ctx: cctx, step: cstep }) => runCallStep(db, cctx, cstep as CallStep),
+            );
+            branchScope[branchStepId] = branchOutcome.scope_value;
+            branchOutput[branchStepId] = branchOutcome.scope_value;
+          }
+          return branchOutput;
+        }),
+      );
+      scope[step.id] = branchResults;
+      lastOutput = branchResults;
+      // Mark parallel branch step ids as skipped in the linear walk
+      for (const branchStepIds of parallelStep.branches) {
+        for (const branchStepId of branchStepIds) {
+          skippedStepIds.add(branchStepId);
+        }
+      }
+    }
+
     stepSummaries.push({
       step_key: step.id,
       step_index: i,
@@ -241,6 +425,13 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         break;
       }
       // continue mode: keep scope value, mark continue
+    }
+  }
+
+  if (def.output_schema && lastOutput !== undefined) {
+    const check = validateAgainstJsonSchema(lastOutput, def.output_schema, "$output");
+    if (!check.valid) {
+      logger.warn({ msg: "output schema violation", errors: check.errors });
     }
   }
 

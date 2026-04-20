@@ -19,7 +19,12 @@ import { getDb } from "../../db/client.ts";
 import { searchDocs } from "../../docs-ingestion/service.ts";
 import { searchKnowledge } from "../../knowledge/service.ts";
 import { logger } from "../../logging/logger.ts";
-import { getSkill, listSkills, retrieveApplicableSkills } from "../../skills/service.ts";
+import {
+  getSkill,
+  listAutoLoadSkills,
+  listSkills,
+  retrieveApplicableSkills,
+} from "../../skills/service.ts";
 import type { Skill } from "../../skills/types.ts";
 import { LlmContextTooLarge } from "../errors.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../tokens.ts";
@@ -510,6 +515,49 @@ export async function assembleEnhancedPrompt(
     included_knowledge_chunks: knowledgeChunks,
     dropped_sections: trimmed,
   };
+}
+
+/**
+ * Detect which auto-load skills match the current conversation context.
+ * Matching is deterministic: checks attachment MIME types and message
+ * keywords against skill `trigger_keywords`. No LLM call.
+ *
+ * Returns skill slugs (ids or titles) to append to `loaded_skill_slugs`.
+ */
+export async function detectIntentSkills(
+  tenant_id: string,
+  opts: {
+    attachmentMimeTypes?: string[];
+    userMessage?: string;
+    hasFailedExecution?: boolean;
+    hasMultipleConnectors?: boolean;
+  },
+  exec?: Executor,
+): Promise<string[]> {
+  const keywords: string[] = [];
+
+  for (const mime of opts.attachmentMimeTypes ?? []) {
+    const lower = mime.toLowerCase();
+    if (lower.includes("openapi") || lower.includes("yaml") || lower.includes("json")) {
+      keywords.push("openapi", "swagger", "yaml", "json");
+    }
+    if (lower === "application/pdf" || lower.includes("pdf")) keywords.push("pdf");
+    if (lower.startsWith("image/")) keywords.push("image", "screenshot", "png", "jpg");
+    if (lower.includes("postman")) keywords.push("postman");
+    if (lower.includes("graphql") || lower.includes("gql")) keywords.push("graphql");
+    if (lower.includes("har")) keywords.push("har");
+  }
+
+  const msg = (opts.userMessage ?? "").toLowerCase();
+  if (msg.includes("openapi") || msg.includes("swagger")) keywords.push("openapi");
+  if (msg.includes("postman")) keywords.push("postman");
+  if (msg.includes("graphql")) keywords.push("graphql");
+  if (opts.hasFailedExecution) keywords.push("troubleshoot", "failure", "error");
+  if (opts.hasMultipleConnectors) keywords.push("multi-connector", "orchestration");
+  if (keywords.length === 0) keywords.push("onboarding");
+
+  const matched = await listAutoLoadSkills(tenant_id, [...new Set(keywords)], exec);
+  return matched.map((s) => s.id);
 }
 
 /**

@@ -1,0 +1,92 @@
+# The Platform
+
+Enterprise teams face a specific problem: the AI tools available today are good at generating plans, but the execution of those plans still requires human assembly, custom glue code, and fragile integrations. On the other side, traditional workflow automation platforms are deterministic and governable — but slow to build, hard to adapt, and opaque to the business stakeholders who care most about the outcome.
+
+sk bridges that gap. It is an enterprise AI platform that uses conversational AI to author, validate, and govern deterministic workflow automation. The AI reduces the friction of building. The platform ensures that what runs in production is exactly what a human approved.
+
+---
+
+## What sk Is
+
+sk is a governed automation platform. It combines a conversational authoring surface with a strict execution engine, connected by an explicit human approval step.
+
+When a user describes what they need in natural language, the AI proposes a workflow. That proposal is reviewed and approved by a human. Once approved, the workflow runs deterministically — no AI inference, no hallucination risk, no hidden behavior. The platform records every state change in an immutable audit log.
+
+sk is built for enterprise use: multi-tenant by design, RBAC-enforced at every boundary, and observable by default.
+
+---
+
+## What sk Is Not
+
+Understanding what sk is not helps clarify where it fits.
+
+- **Not a chatbot.** Conversations in sk produce versioned, executable workflows — not advice or summaries. The AI is an authoring assistant, not a product in itself.
+- **Not a no-code tool.** There is no visual canvas, no drag-and-drop builder, no GUI dashboard. Authoring happens through the CLI, the MCP server, chat platforms, or the REST API.
+- **Not an AI wrapper.** The execution engine is not an AI agent. Once a workflow is approved and committed, it runs as a typed, deterministic DAG. The AI is not involved at execution time.
+- **Not a general workflow SaaS.** sk does not aspire to be a horizontal automation platform. It is purpose-built for enterprises that need AI-assisted authoring, strong governance, and traceable execution.
+
+---
+
+## The Three-Layer Story
+
+Every interaction with sk flows through three layers.
+
+### Layer 1 — Input Surfaces
+
+Users reach sk through multiple entry points: the sk CLI (a conversational terminal interface), the REST API, the MCP server (for AI coding tools like Claude Code or GitHub Copilot), chat platforms (Slack, Teams, Google Chat), webhooks, and scheduled triggers. Each surface leads to the same governed pipeline. The platform does not privilege one entry point over another — all paths carry the same identity, RBAC, and audit semantics.
+
+### Layer 2 — AI-Assisted Authoring
+
+When a user starts a Conversation, the AI enters an authoring loop. It proposes workflow structure, suggests Connectors and Steps, validates the draft against available integrations and Knowledge Sources, and iterates based on user feedback. The AI uses structured tools internally — it does not generate free-form code. Every proposal is surfaced to the human for review. Nothing advances to production without an explicit approval gate.
+
+### Layer 3 — Deterministic Execution
+
+Once a workflow is approved and committed, the execution engine runs it as specified. Executions are immutable records: each run carries its own state, step-by-step results, logs, and final status. The engine does not re-interpret or adapt the workflow at runtime. Schedules, webhooks, and direct API calls all trigger the same deterministic path through the same governance layer.
+
+---
+
+## Core Design Principles
+
+These principles are not aspirational — they are enforced by the architecture.
+
+### 1. Conversation First
+
+All authoring starts with natural language. A user describes their goal; the AI proposes a structured workflow. The Conversation is the primary authoring session, and it is persistent and resumable. Users do not write workflow definitions by hand.
+
+### 2. Human in the Loop
+
+The AI proposes; humans approve. Before any workflow reaches production, an operator or authorized user explicitly commits it. Sensitive tool calls within a Conversation — such as committing a Draft or applying a Patch Candidate — pause the AI loop and wait for a human decision. Approval is not a UX feature; it is an architectural checkpoint.
+
+### 3. Deterministic Execution
+
+The execution engine is not an AI agent. Once a workflow is committed, it runs exactly as defined: a typed DAG of Steps, each with declared inputs, outputs, retry policy, and error handling. There is no inference, no re-planning, and no emergent behavior at runtime. What was approved is what runs.
+
+### 4. Tenant Isolation
+
+Every resource in sk — workflows, connectors, credentials, users, skills, conversations — belongs to exactly one Tenant. Multi-tenancy is not a configuration option; it is structural. No shared state crosses tenant boundaries. Every API route, every execution, and every audit entry is scoped to a tenant.
+
+### 5. Audit by Default
+
+Every state change produces an immutable entry in the Audit Log: what changed, who initiated it, from which surface, and when. Workflow commits, credential writes, skill promotions, approval decisions, and schedule fires all generate audit entries. The audit log cannot be modified or deleted.
+
+### 6. Provider Agnostic
+
+The AI layer is not tied to a single model provider. Claude, OpenAI, and Gemini are all supported and interchangeable. The platform abstracts the AI provider so that operator preferences, compliance requirements, or cost trade-offs can drive model selection without changing the authoring or execution architecture.
+
+---
+
+## Who sk Is For
+
+sk is designed around three distinct personas, each interacting with the platform differently.
+
+**End Users** are the people describing automation goals. They may be business analysts, operations staff, or developers who want to automate a process without building infrastructure from scratch. They interact through the conversational REPL, chat platforms, or web interfaces. They need the platform to understand their intent, propose something useful, and make approval and execution straightforward.
+
+**Operators** run the engine for teams and organizations. They configure connectors, manage credentials, set RBAC policies, curate skills, review Patch Candidates, and monitor execution health. They need visibility into what is running, confidence that the governance controls are working, and tools to intervene when something drifts.
+
+**Developers** build on the platform — extending it with custom connectors, integrating it into existing systems via the REST API or MCP server, or embedding sk's capabilities into their own products. They need well-typed, stable interfaces; a reliable audit trail; and a clear separation between the platform's concerns and their own.
+
+---
+
+## What to Read Next
+
+- [docs/02-concepts.md](02-concepts.md) — Authoritative glossary. Every term used across all sk documentation is defined exactly once here.

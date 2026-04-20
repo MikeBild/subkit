@@ -1,7 +1,6 @@
 # Quickstart — Operator
 
-You run subkit for your team. Goal: engine up, one admin key minted, one
-connector registered. 10 minutes.
+You run sk for your team. Goal: engine up, one admin key minted, one connector registered. 10 minutes.
 
 ## 1. Install the `subkit` CLI
 
@@ -9,14 +8,13 @@ connector registered. 10 minutes.
 curl -fsSL https://raw.githubusercontent.com/mikebild/subkit/main/scripts/install.sh | bash
 ```
 
-See [`34-installation.md`](../34-installation.md) for Windows and manual
-platform installs.
+See [docs/03-input-surfaces.md](../03-input-surfaces.md) for Windows and manual platform installs.
 
 ## 2. Bring the engine up
 
 ```bash
 git clone https://github.com/mikebild/subkit && cd subkit
-bun run compose:up          # Postgres + pg-boss + engine, all via Docker
+bun run compose:up          # Postgres + engine, all via Docker
 ```
 
 The engine listens on `http://localhost:3000` by default. Verify:
@@ -46,15 +44,17 @@ subkit connectors create \
   --environment prod
 ```
 
-Pick from 89 templates — see [`23-templates.md`](../23-templates.md).
+Pick from 89 connector templates — see [docs/05-connectors.md](../05-connectors.md) for how templates, drivers, and credentials work together.
 
 ## 5. You're operational
 
 - `subkit workflows list` — see what's defined.
 - `subkit runs list` — watch executions.
 - `subkit audit-log tail` — confirm every state change is recorded.
-- `curl -H "Authorization: Bearer <key>" http://localhost:3000/metrics` —
-  Prometheus scrape target.
+- `curl -H "Authorization: Bearer <key>" http://localhost:3000/metrics` — Prometheus scrape target.
 
-Next: [`26-cli.md`](../26-cli.md) for every `subkit` subcommand,
-[`11-identity-and-access.md`](../11-identity-and-access.md) for RBAC.
+## Next steps
+
+- [docs/05-connectors.md](../05-connectors.md) — connector management, credentials, OAuth2, and private-network tunnels.
+- [docs/07-security-governance.md](../07-security-governance.md) — RBAC, identity setup (OIDC/SSO), API key rotation, and Before-Request Hooks.
+- [docs/08-operations.md](../08-operations.md) — observability, resource limits, self-healing, and backup strategy.

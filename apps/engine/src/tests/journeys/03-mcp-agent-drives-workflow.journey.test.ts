@@ -8,7 +8,7 @@
 //          a parseable result.
 //   - AC3: `resources/read` on a `connector://<id>` URI returns the
 //          connector metadata.
-// Spec refs: docs/12-mcp.md
+// Spec refs: docs/03-input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";

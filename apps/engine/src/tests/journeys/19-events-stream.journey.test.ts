@@ -7,7 +7,7 @@
 //   - AC3: `execution.started` and `execution.succeeded` arrive in order.
 //   - AC4: Closing and reopening the stream with `Last-Event-ID` replays
 //          from the next frame after that id.
-// Spec refs: docs/25-streaming-interfaces.md, docs/05-events.md
+// Spec refs: docs/03-input-surfaces.md, docs/05-events.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";

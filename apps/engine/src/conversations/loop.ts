@@ -29,7 +29,7 @@ import {
 } from "./abort.ts";
 import { loadDraft } from "./draft.ts";
 import { EventSink } from "./event-sink.ts";
-import { appendMessage, buildModelMessages } from "./persist.ts";
+import { appendMessage, buildModelMessages, buildUserContentParts } from "./persist.ts";
 import type { ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import type { DraftDocument, TurnEvent } from "./types.ts";
@@ -298,7 +298,19 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       flow: "converse",
       ...(p.connector_id ? { connector_id: p.connector_id } : {}),
       ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
-      user_turns: [{ role: "user", content: currentUserText }],
+      user_turns: await (async () => {
+        const parts = await buildUserContentParts(
+          p.db,
+          p.conversation_id,
+          currentUserText,
+          route.provider,
+        );
+        return [
+          Array.isArray(parts)
+            ? { role: "user" as const, content: currentUserText, content_parts: parts }
+            : { role: "user" as const, content: currentUserText },
+        ];
+      })(),
       max_tokens: route.context_cap,
       model: effectiveModel,
       ...(p.user_memory ? { user_memory: p.user_memory } : {}),

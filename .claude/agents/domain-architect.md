@@ -88,8 +88,7 @@ bun run lint && bun run typecheck && bun run test:unit
 
 ## Best practices
 
-- Always cite the numbered doc you relied on (e.g. "per `docs/05-execution-engine.md`
-  §Step kinds").
+- Always cite the concept doc you relied on (e.g. "per `docs/06-execution.md` §Step kinds").
 - Prefer small, reversible steps. If a single change requires touching 6 subsystems,
   something is off — either split or confirm with the user.
 - If an existing subsystem already solves the problem, say so. Don't propose new

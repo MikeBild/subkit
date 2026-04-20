@@ -1,5 +1,6 @@
 import {
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -40,6 +41,11 @@ export const connectors = pgTable(
     tunnel_id: uuid("tunnel_id"),
     auto_refresh_cron: text("auto_refresh_cron"),
     last_ingested_at: timestamp("last_ingested_at", { withTimezone: true }),
+    circuit_state: text("circuit_state").notNull().default("closed"),
+    circuit_opened_at: timestamp("circuit_opened_at", { withTimezone: true }),
+    circuit_failure_count: integer("circuit_failure_count").notNull().default(0),
+    circuit_threshold: integer("circuit_threshold").notNull().default(5),
+    circuit_reset_ms: integer("circuit_reset_ms").notNull().default(300000),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

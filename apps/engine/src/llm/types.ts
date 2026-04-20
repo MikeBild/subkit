@@ -1,6 +1,7 @@
 // Shared LLM types. Kept in one file so every flow and the context
 // pipeline pull from the same shapes.
 
+import type { FilePart, ImagePart, TextPart } from "ai";
 import type { Skill } from "../skills/types.ts";
 import type { ProviderKind } from "./core/model-init.ts";
 
@@ -32,6 +33,8 @@ export interface ModelRoute {
 export interface UserTurn {
   role: "user" | "assistant" | "system";
   content: string;
+  /** Multimodal parts; when present, takes precedence over `content`. */
+  content_parts?: Array<TextPart | ImagePart | FilePart>;
 }
 
 /** One failing-step trace fed into `repair`. */

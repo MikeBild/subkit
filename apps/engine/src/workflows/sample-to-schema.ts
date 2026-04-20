@@ -1,8 +1,4 @@
-// Infer a minimal JSON Schema (draft-07 compatible) from a sample value.
-//
-// Used by `build_workflow` so the LLM can hand the operator "here is a
-// sample payload — derive the input_schema" instead of writing JSON
-// Schema by hand. The inference is deliberately simple:
+// Infers JSON Schema draft-07 from a sample value. Deliberately simple:
 //
 //   - null / undefined  →  {}  (permissive)
 //   - string / number / boolean / bigint → { type: "<prim>" }

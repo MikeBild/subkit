@@ -13,11 +13,9 @@ first-class signals layered on top of these.
 
 ## Canonical references
 
-- `docs/29-observability.md` — Metrics catalog, tracing model, log field conventions.
-- `docs/30-defaults-and-limits.md` — Resource limits, circuit breakers, rate limits,
-  token budgets.
-- `docs/19-self-healing.md` — Drift signals fed by observability.
-- `docs/28-security.md` — Redaction rules (never log secrets or raw credentials).
+- `docs/08-operations.md` — Metrics catalog, tracing model, log field conventions, resource limits.
+- `docs/06-execution.md` — Drift signals fed by observability.
+- `docs/07-security-governance.md` — Redaction rules (never log secrets or raw credentials).
 
 ## Subsystem boundaries
 
@@ -49,14 +47,12 @@ first-class signals layered on top of these.
 
 ## Adding a metric
 
-1. Name it following the existing catalog in `docs/29-observability.md`
-   (`subkit_<subsystem>_<metric>_<unit>`).
+1. Name it following the naming convention (`subkit_<subsystem>_<metric>_<unit>`). See `docs/08-operations.md`.
 2. Pick the right kind: counter (monotonic), gauge (current value), histogram (distribution).
 3. Labels: use low-cardinality labels (subsystem, tenant_id, outcome). Avoid user_id,
    workflow_id, request_id.
 4. Register in `apps/engine/src/observability/`.
-5. Document it in `docs/29-observability.md` under the metric table.
-6. Unit test the emission in the owning subsystem (assert counter incremented, etc.).
+5. Unit test the emission in the owning subsystem (assert counter incremented, etc.).
 
 ## Adding a structured log field
 

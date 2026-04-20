@@ -1,12 +1,11 @@
 # Quickstart — Developer
 
-You contribute to subkit. Goal: repo cloned, tests green, engine running in
-watch mode. 10 minutes.
+You contribute to sk. Goal: repo cloned, tests green, engine running in watch mode. 10 minutes.
 
 ## Prerequisites
 
 - [Bun](https://bun.sh) (`curl -fsSL https://bun.sh/install | bash`).
-- Docker Desktop (or compatible) — required for Postgres + pg-boss.
+- Docker Desktop (or compatible) — required for Postgres.
 
 ## 1. Clone and install
 
@@ -18,7 +17,7 @@ bun install
 ## 2. Bring infra up
 
 ```bash
-bun run compose:up          # Postgres + pg-boss + engine
+bun run compose:up          # Postgres + engine
 ```
 
 ## 3. Run the quality gate
@@ -26,14 +25,12 @@ bun run compose:up          # Postgres + pg-boss + engine
 ```bash
 bun run lint                # biome
 bun run typecheck           # tsc --noEmit
-bun run test:unit           # fast inner loop (still needs Postgres — see note below)
+bun run test:unit           # fast inner loop (needs Postgres — see note below)
 bun run test:integration    # db/queue/http/webhooks/credentials-oauth2
 bun run test:e2e            # compiles subkit + sk and runs journeys
 ```
 
-> **Note.** `test:unit` includes `execution/tests`, which uses a throwaway
-> Postgres database via `createTestDb`. It's fast (seconds) because each
-> file gets its own database, but you do need `compose:up` running.
+> **Note.** `test:unit` includes `execution/tests`, which uses a throwaway Postgres database. It's fast (seconds) because each file gets its own database, but you do need `compose:up` running.
 
 `bun run /verify` is the shortcut for lint + typecheck + unit.
 
@@ -51,18 +48,14 @@ curl -s http://localhost:3000/v1/health | jq
 
 ## 5. Where things live
 
-- `apps/engine/src/` — the server. Subsystem-per-directory (35 in total).
-  Start with [`../AGENTS.md`](../../AGENTS.md) for the map.
-- `apps/sk/` — `sk` unified CLI. REPL for end-users; full admin surface for operators/admins.
+- `apps/engine/src/` — the server. Subsystem-per-directory (35 in total). Start with [AGENTS.md](../../AGENTS.md) for the map.
+- `apps/sk/` — `sk` unified CLI. REPL for end-users; full admin surface for operators and admins.
 - `apps/agent/` — tunnel agent binary.
 - `packages/shared/` — cross-process types.
-- `docs/` — numbered concept docs. [`00-agent-navigation.md`](../00-agent-navigation.md)
-  maps "I want to X" to docs + subsystem.
+- `docs/` — eight concept docs. See [docs/README.md](../README.md) for the index.
 
 ## 6. Before you PR
 
-- [`31-developer-tooling.md`](../31-developer-tooling.md) — commit
-  conventions, release-please, local hooks.
-- [`33-verification.md`](../33-verification.md) — CI expectations.
-- [`AGENTS.md`](../../AGENTS.md) — non-negotiables (tenant isolation, audit,
-  Zod at boundaries, QuickJS sandbox, no auto-promote).
+- [AGENTS.md](../../AGENTS.md) — non-negotiables: tenant isolation, audit coverage, Zod at boundaries, QuickJS sandbox, no auto-promote. Read this first.
+- [docs/01-platform.md](../01-platform.md) — architectural context for the decisions you will encounter in the code.
+- [docs/02-concepts.md](../02-concepts.md) — the domain model. Every term used in the codebase is defined here.

@@ -431,6 +431,38 @@ export async function retrieveApplicableSkills(
   return [...globalRows, ...connectorRows, ...workflowRows].map(rowToSkill);
 }
 
+/**
+ * Returns active skills with `auto_load = true` whose `trigger_keywords`
+ * overlap with the supplied keyword list. When no keywords are given,
+ * returns all auto-load active skills for the tenant.
+ */
+export async function listAutoLoadSkills(
+  tenant_id: string,
+  keywords: string[],
+  exec?: Executor,
+): Promise<Skill[]> {
+  const db = exec ?? getDb();
+  const rows = await db
+    .select()
+    .from(skills)
+    .where(
+      and(
+        eq(skills.tenant_id, tenant_id),
+        eq(skills.lifecycle, "active"),
+        eq(skills.auto_load, true),
+      ),
+    )
+    .orderBy(desc(skills.version), desc(skills.created_at));
+  if (keywords.length === 0) return rows.map(rowToSkill);
+  const keySet = new Set(keywords.map((k) => k.toLowerCase()));
+  return rows
+    .filter((row) => {
+      const kws = Array.isArray(row.trigger_keywords) ? row.trigger_keywords : [];
+      return kws.length === 0 || kws.some((kw) => keySet.has(String(kw).toLowerCase()));
+    })
+    .map(rowToSkill);
+}
+
 // Touch isNull + sql so the biome unused-import pass does not reject them
 // if a future edit removes a call site.
 void isNull;

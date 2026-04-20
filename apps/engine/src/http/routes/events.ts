@@ -254,7 +254,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
 
       // 2. Announce the current tail so fresh clients know where they
       //    are. Mirrors the `hello` frame documented in
-      //    docs/25-streaming-interfaces.md.
+      //    docs/03-input-surfaces.md.
       await stream.writeSSE({
         event: "hello",
         data: JSON.stringify({ cursor }),

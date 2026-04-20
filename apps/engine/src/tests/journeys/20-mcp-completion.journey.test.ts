@@ -10,7 +10,7 @@
 //          property names (incl. `name` + `limit`).
 //   - AC4: `completion/complete` with `ref/prompt` returns the skill
 //          argument names (incl. `formal` + `casual`).
-// Spec refs: docs/12-mcp-server.md, docs/16-ai-flows.md
+// Spec refs: docs/03-input-surfaces.md, docs/04-authoring.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";

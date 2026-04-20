@@ -20,7 +20,7 @@ import { generateKey, hashKey } from "./api-key.ts";
 import { generatePortalToken } from "./portal-token.ts";
 
 // GC6 — session TTL defaults. Sliding 8h / absolute 30d per
-// docs/30-defaults-and-limits.md.
+// docs/08-operations.md.
 export const SESSION_SLIDING_TTL_MS = 8 * 60 * 60 * 1000; // 8 h
 export const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 d
 
@@ -520,7 +520,7 @@ export async function issuePortalToken(
   exec?: Executor,
 ): Promise<IssuePortalTokenResult> {
   const db = exec ?? getDb();
-  // Default portal-token TTL — 24 h per docs/11-identity-and-access.md.
+  // Default portal-token TTL — 24 h per docs/07-security-governance.md.
   const ttlMs = (input.ttl_minutes ?? 24 * 60) * 60_000;
   return db.transaction(async (tx) => {
     const key = generatePortalToken();

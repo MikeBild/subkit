@@ -13,11 +13,8 @@ edit the OpenAPI output by hand.
 
 ## Canonical references
 
-- `docs/27-api-surface.md` — REST surface overview.
-- `docs/24-openapi-and-clients.md` — OpenAPI generation and client distribution.
-- `docs/12-mcp-server.md` — MCP tool contract (also Zod-first).
-- `docs/25-streaming-interfaces.md` — SSE and streaming conventions.
-- `docs/11-identity-and-access.md` — RBAC on every route.
+- `docs/03-input-surfaces.md` — REST API surface, MCP server, SSE streaming, OpenAPI generation.
+- `docs/07-security-governance.md` — RBAC on every route, tenant scoping.
 
 ## Adding an HTTP route
 
@@ -45,7 +42,7 @@ edit the OpenAPI output by hand.
 2. Wire it into the server registry.
 3. Apply the same RBAC + audit + tenant-scope rules as REST routes.
 4. MCP progress notifications live on the same streaming primitives as SSE — see
-   `docs/25-streaming-interfaces.md`.
+   `docs/03-input-surfaces.md`.
 
 ## Things not to do
 

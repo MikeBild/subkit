@@ -146,7 +146,7 @@ export function planTurnRouting(args: {
       action:
         "Explain MCP using Subkit's actual transports: Streamable HTTP on `/mcp`, plus the stdio proxy via `subkit mcp`. Do not mention the deprecated SSE MCP transport.",
       question: null,
-      required_grounding: ["docs/12-mcp-server.md", "docs/26-cli.md"],
+      required_grounding: ["docs/03-input-surfaces.md", "docs/03-input-surfaces.md"],
       notes: [
         "Keep the answer operational and surface-aware.",
         "If exact client configuration is unknown, say what is confirmed and where the live contract lives.",
@@ -162,7 +162,7 @@ export function planTurnRouting(args: {
       action:
         "Explain chat-platform usage from the actual chat adapter design. For Google Chat as a conversation interface, ground the answer in chat workspace install plus `/subkit link` identity linking.",
       question: null,
-      required_grounding: ["docs/14-chat-platforms.md"],
+      required_grounding: ["docs/03-input-surfaces.md"],
       notes: [
         "Treat Google Chat as a first-class conversation surface, not just an outbound connector target.",
       ],
@@ -178,10 +178,7 @@ export function planTurnRouting(args: {
         action:
           "Explain that the engine has scheduled workflow execution, but schedule-management conversation tools are not exposed here today. Do not invent working schedule endpoints in chat.",
         question: null,
-        required_grounding: [
-          "docs/06-queue-scheduler-pubsub.md",
-          "apps/cli/src/commands/schedules.ts",
-        ],
+        required_grounding: ["docs/06-execution.md", "apps/cli/src/commands/schedules.ts"],
         notes: [
           "Use code truth over aspirational docs if route availability is unclear.",
           "Prefer stating the current surface limitation directly.",
@@ -235,7 +232,7 @@ export function planTurnRouting(args: {
       action:
         "Answer from the actual HTTP surface: the live OpenAPI contract is at `/openapi.json`, interactive docs at `/docs`, and exact REST paths must be grounded in the route definitions or live contract.",
       question: null,
-      required_grounding: ["docs/24-openapi-and-clients.md", "docs/27-api-surface.md"],
+      required_grounding: ["docs/03-input-surfaces.md", "docs/03-input-surfaces.md"],
       notes: [
         "Do not invent endpoints or request shapes when the route is not confirmed.",
         "If a capability exists in the engine but not in this chat surface, say so explicitly.",
@@ -354,9 +351,9 @@ export function planTurnRouting(args: {
       "Answer with confirmed Subkit product behavior, grounded in actual tools or docs. Prefer a short, operational answer plus the next concrete step in sk.",
     question: null,
     required_grounding: [
-      "docs/12-mcp-server.md",
-      "docs/14-chat-platforms.md",
-      "docs/24-openapi-and-clients.md",
+      "docs/03-input-surfaces.md",
+      "docs/03-input-surfaces.md",
+      "docs/03-input-surfaces.md",
     ],
     notes: ["Do not default to generic onboarding when the user is asking about product behavior."],
     forbidden_fallbacks: fallbackList(),

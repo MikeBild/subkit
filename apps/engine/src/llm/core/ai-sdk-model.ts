@@ -96,7 +96,9 @@ function contextLengthFor(modelId: string): number {
 }
 
 function prependDate(messages: SubkitLlmMessage[]): SubkitLlmMessage[] {
-  if (messages[0]?.content.startsWith("The current date and time is")) return messages;
+  const first = messages[0]?.content;
+  if (typeof first === "string" && first.startsWith("The current date and time is"))
+    return messages;
   return [
     {
       role: "system",

@@ -36,21 +36,14 @@ High-value references (by task type):
 
 - **Project shape & build** — `package.json`, `biome.json`, `tsconfig.json`, `docker-compose.yml`,
   `.github/workflows/ci.yml`, `release-please-config.json`, `.commitlintrc.json`
-- **Domain & architecture** — `docs/01-concept.md`, `docs/02-domain-model.md`,
-  `docs/03-architecture.md`, `docs/04-data-model.md`
-- **Execution & eventing** — `docs/05-execution-engine.md`, `docs/06-queue-scheduler-pubsub.md`,
-  `docs/07-streaming-and-reactivity.md`, `docs/08-sandboxing.md`
-- **Connectors & ingestion** — `docs/09-connectors.md`, `docs/10-documentation-ingestion.md`,
-  `docs/13-webhooks.md`, `docs/15-tunnels.md`, `docs/23-templates.md`
-- **Identity & access** — `docs/11-identity-and-access.md`, `docs/28-security.md`
-- **AI & context** — `docs/16-ai-flows.md`, `docs/17-conversations.md`, `docs/18-skills.md`,
-  `docs/19-self-healing.md`, `docs/35-knowledge-sources.md`, `docs/36-discovery.md`
-- **Surfaces** — `docs/12-mcp-server.md`, `docs/14-chat-platforms.md`, `docs/24-openapi-and-clients.md`,
-  `docs/25-streaming-interfaces.md`, `docs/26-cli.md`, `docs/27-api-surface.md`, `docs/27-sk-cli.md`
-- **Operations** — `docs/29-observability.md`, `docs/30-defaults-and-limits.md`,
-  `docs/31-developer-tooling.md`, `docs/32-deployment.md`, `docs/33-verification.md`,
-  `docs/34-installation.md`
-- **Agent-task navigation** — `docs/00-agent-navigation.md` (task-oriented index)
+- **Platform & concepts** — `docs/01-platform.md`, `docs/02-concepts.md`
+- **Input surfaces** — `docs/03-input-surfaces.md`
+- **AI authoring** — `docs/04-authoring.md`
+- **Connectors & integration** — `docs/05-connectors.md`
+- **Execution** — `docs/06-execution.md`
+- **Security & governance** — `docs/07-security-governance.md`
+- **Operations** — `docs/08-operations.md`
+- **Agent-task navigation** — `.claude/docs/agent-navigation.md` (task-oriented index)
 
 ## Working Rules
 
@@ -95,41 +88,41 @@ Subsystem map inside `apps/engine/src/` (35 directories, each owns one concern):
 
 | Concern | Directory | Key docs |
 |---|---|---|
-| OpenAPI types (source of truth) | `api/` | `docs/24-openapi-and-clients.md`, `docs/27-api-surface.md` |
-| Immutable audit log | `audit/` | `docs/28-security.md` |
-| Auth providers (OIDC, API key, portal token) | `auth/` | `docs/11-identity-and-access.md` |
-| Chat adapters (Slack, Teams, Google Chat) | `chat/` | `docs/14-chat-platforms.md` |
-| 4 drivers + 89 templates | `connectors/` | `docs/09-connectors.md`, `docs/23-templates.md` |
-| AI authoring loop + tool use | `conversations/` | `docs/17-conversations.md`, `docs/16-ai-flows.md` |
-| Encrypted secret storage | `credentials/` | `docs/28-security.md` |
-| AES-256-GCM + redaction | `crypto/` | `docs/28-security.md` |
-| Drizzle schema + migrations + seed | `db/` | `docs/04-data-model.md` |
-| File → connector/skill proposals | `discovery/` | `docs/36-discovery.md` |
-| OpenAPI / GraphQL / HTML → searchable context | `docs-ingestion/` | `docs/10-documentation-ingestion.md` |
-| Core domain types | `domain/` | `docs/02-domain-model.md` |
-| DAG engine + step dispatch | `execution/` | `docs/05-execution-engine.md` |
-| Hono routes + middleware + errors | `http/` | `docs/27-api-surface.md` |
-| SSO / OIDC / user provisioning | `identity/` | `docs/11-identity-and-access.md` |
-| Semantic search on tenant KB | `knowledge/` | `docs/35-knowledge-sources.md` |
-| Prompt assembly, token budgets, repairs | `llm/` | `docs/16-ai-flows.md` |
-| Structured logger + context | `logging/` | `docs/29-observability.md` |
-| MCP server (streamable HTTP + stdio) | `mcp/` | `docs/12-mcp-server.md` |
-| Rule-based fan-out (Slack, webhook) | `notifications/` | `docs/13-webhooks.md` |
-| OAuth2 refresh, credential rotation | `oauth2/` | `docs/11-identity-and-access.md` |
-| Prometheus metrics + tracing | `observability/` | `docs/29-observability.md` |
-| Transactional outbox | `outbox/` | `docs/06-queue-scheduler-pubsub.md` |
-| PG LISTEN/NOTIFY streaming | `pubsub/` | `docs/07-streaming-and-reactivity.md` |
-| pg-boss handler dispatch | `queue/` | `docs/06-queue-scheduler-pubsub.md` |
-| RBAC (40+ permissions) + ABAC + policies | `rbac/` | `docs/11-identity-and-access.md` |
-| 5-tier QuickJS-WASM isolation | `sandboxes/` | `docs/08-sandboxing.md` |
-| Cron reconciler + schedule fires | `scheduler/` | `docs/06-queue-scheduler-pubsub.md` |
-| Connector endpoint schema tracking | `schema-versions/` | `docs/20-versioning-and-history.md` |
-| Drift detection + bounded repair | `self-healing/` | `docs/19-self-healing.md` |
-| Pattern detection → proposed skills | `skill-candidates/` | `docs/18-skills.md` |
-| Curated LLM-context records | `skills/` | `docs/18-skills.md` |
-| Private-network tunnels | `tunnels/` | `docs/15-tunnels.md` |
-| Inbound + outbound webhooks | `webhooks/` | `docs/13-webhooks.md` |
-| DAG versioning + locking + execution | `workflows/` | `docs/05-execution-engine.md`, `docs/20-versioning-and-history.md` |
+| OpenAPI types (source of truth) | `api/` | `docs/03-input-surfaces.md` |
+| Immutable audit log | `audit/` | `docs/07-security-governance.md` |
+| Auth providers (OIDC, API key, portal token) | `auth/` | `docs/07-security-governance.md` |
+| Chat adapters (Slack, Teams, Google Chat) | `chat/` | `docs/03-input-surfaces.md` |
+| 4 drivers + 89 templates | `connectors/` | `docs/05-connectors.md` |
+| AI authoring loop + tool use | `conversations/` | `docs/04-authoring.md` |
+| Encrypted secret storage | `credentials/` | `docs/07-security-governance.md` |
+| AES-256-GCM + redaction | `crypto/` | `docs/07-security-governance.md` |
+| Drizzle schema + migrations + seed | `db/` | `docs/07-security-governance.md` |
+| File → connector/skill proposals | `discovery/` | `docs/04-authoring.md` |
+| OpenAPI / GraphQL / HTML → searchable context | `docs-ingestion/` | `docs/04-authoring.md` |
+| Core domain types | `domain/` | `docs/02-concepts.md` |
+| DAG engine + step dispatch | `execution/` | `docs/06-execution.md` |
+| Hono routes + middleware + errors | `http/` | `docs/03-input-surfaces.md` |
+| SSO / OIDC / user provisioning | `identity/` | `docs/07-security-governance.md` |
+| Semantic search on tenant KB | `knowledge/` | `docs/04-authoring.md` |
+| Prompt assembly, token budgets, repairs | `llm/` | `docs/04-authoring.md` |
+| Structured logger + context | `logging/` | `docs/08-operations.md` |
+| MCP server (streamable HTTP + stdio) | `mcp/` | `docs/03-input-surfaces.md` |
+| Rule-based fan-out (Slack, webhook) | `notifications/` | `docs/03-input-surfaces.md` |
+| OAuth2 refresh, credential rotation | `oauth2/` | `docs/07-security-governance.md` |
+| Prometheus metrics + tracing | `observability/` | `docs/08-operations.md` |
+| Transactional outbox | `outbox/` | `docs/06-execution.md` |
+| PG LISTEN/NOTIFY streaming | `pubsub/` | `docs/06-execution.md` |
+| pg-boss handler dispatch | `queue/` | `docs/06-execution.md` |
+| RBAC (40+ permissions) + ABAC + policies | `rbac/` | `docs/07-security-governance.md` |
+| 5-tier QuickJS-WASM isolation | `sandboxes/` | `docs/06-execution.md` |
+| Cron reconciler + schedule fires | `scheduler/` | `docs/06-execution.md` |
+| Connector endpoint schema tracking | `schema-versions/` | `docs/06-execution.md` |
+| Drift detection + bounded repair | `self-healing/` | `docs/06-execution.md` |
+| Pattern detection → proposed skills | `skill-candidates/` | `docs/04-authoring.md` |
+| Curated LLM-context records | `skills/` | `docs/04-authoring.md` |
+| Private-network tunnels | `tunnels/` | `docs/05-connectors.md` |
+| Inbound + outbound webhooks | `webhooks/` | `docs/03-input-surfaces.md` |
+| DAG versioning + locking + execution | `workflows/` | `docs/06-execution.md` |
 
 Directory-local overrides:
 
@@ -150,6 +143,9 @@ Directory-local overrides:
   `chore`, `refactor`, `perf`, `test`, `build`, `ci`, `style`, `revert`. Header ≤ 100 chars.
   Release-please (`release-please-config.json`) will read these to cut the next version.
 - **No `console.*` in app/engine code.** Use the structured logger.
+- **Inline comments explain WHY, not WHAT.** Remove any comment that restates what the
+  function or variable name already says. Keep only non-obvious constraints, workarounds
+  for specific bugs, and subtle invariants. One line max; no multi-line docblocks.
 
 ## Validation And Testing
 

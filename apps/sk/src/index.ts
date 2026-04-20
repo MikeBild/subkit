@@ -1,5 +1,5 @@
 // `sk` — end-user CLI for subkit-backend, modeled after Claude Code /
-// Codex CLI UX. See docs/27-sk-cli.md and the approved plan at
+// Codex CLI UX. See docs/03-input-surfaces.md and the approved plan at
 // /Users/mikebild/.claude/plans/swift-scribbling-petal.md for the
 // rationale; this file is the command entry point only.
 //

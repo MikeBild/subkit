@@ -208,6 +208,10 @@ export const AuditAction = {
   RBAC_GROUP_MEMBER_REMOVED: "rbac.group_member_removed",
   RBAC_GROUP_ROLE_ASSIGNED: "rbac.group_role_assigned",
   RBAC_GROUP_ROLE_REVOKED: "rbac.group_role_revoked",
+
+  DOCUMENT_ANALYZED: "document.analyzed",
+  CONTENT_PART_SENT: "content_part.sent",
+  CAPABILITY_FALLBACK: "capability.fallback",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

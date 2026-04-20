@@ -2,9 +2,9 @@
 // verification matrix against a single running engine and know whether
 // the release is green.
 // Acceptance criteria: each `test(...)` title is a verification step
-// from docs/33-verification.md, scoped down to what the automated
+// from docs/08-operations.md, scoped down to what the automated
 // harness can observe through engine-only contracts.
-// Spec refs: docs/33-verification.md
+// Spec refs: docs/08-operations.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";

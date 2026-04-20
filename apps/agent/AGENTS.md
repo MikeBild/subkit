@@ -9,7 +9,7 @@ a small outbound WebSocket client that lives inside a private network and
 proxies requests from the engine to locally reachable HTTP services. It is
 **not** a general-purpose agent; it has one job.
 
-Canonical docs: `docs/15-tunnels.md`, `docs/29-observability.md`.
+Canonical docs: `docs/05-connectors.md`, `docs/08-operations.md`.
 
 ## Layout
 

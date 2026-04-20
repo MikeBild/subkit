@@ -10,7 +10,7 @@
 //   - AC4: After revoke, `portal-tokens list` no longer includes the
 //          revoked token's id in the active (non-revoked) set.
 //   - AC5: Revoking a non-existent token id returns an error.
-// Spec refs: docs/11-identity-and-access.md, docs/26-cli.md
+// Spec refs: docs/07-security-governance.md, docs/03-input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { portalTokensCommand } from "../../../../sk/src/commands/portal-tokens.ts";

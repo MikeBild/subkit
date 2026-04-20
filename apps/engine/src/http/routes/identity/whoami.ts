@@ -1,8 +1,4 @@
-// GET /v1/identity/whoami — returns identity info about the caller.
-//
-// Used by the `sk` CLI to populate the status line on startup with
-// the effective tenant, role, and email. The response carries just
-// enough to render a persona banner without issuing a second probe.
+// Minimal identity shape — just enough for the persona banner, no second probe needed.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";

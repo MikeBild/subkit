@@ -7,12 +7,95 @@
 // need this shape; the mock model only reads the final user content to
 // parse the `[conv:<id>]` envelope that keys its plan cursor.
 
-import type { ModelMessage } from "ai";
+import type { FilePart, ImagePart, ModelMessage, TextPart } from "ai";
 import { asc, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { conversationMessages, conversationToolCalls } from "../db/schema/index.ts";
+import {
+  conversationAttachments,
+  conversationMessages,
+  conversationToolCalls,
+} from "../db/schema/index.ts";
+import type { ModelCapabilities } from "../llm/core/capabilities.ts";
+import { getStaticCapabilities } from "../llm/core/capabilities.ts";
+import type { ProviderKind } from "../llm/core/model-init.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/**
+ * Build multimodal UserContent for a conversation turn that may reference
+ * file attachments. For image/PDF attachments with a capable provider the
+ * content part carries actual binary data; otherwise the file is inlined
+ * as text (the existing behaviour).
+ *
+ * Returns `string` when no attachments are relevant (fast path, preserves
+ * existing behaviour for all-text turns).
+ */
+export async function buildUserContentParts(
+  db: Db,
+  conversation_id: string,
+  text: string,
+  provider: ProviderKind = "anthropic",
+): Promise<string | Array<TextPart | ImagePart | FilePart>> {
+  const caps: ModelCapabilities = getStaticCapabilities(provider);
+
+  // Quick exit: no attachment references → plain string (unchanged behaviour)
+  const ATTACHMENT_RE = /@attachment:([a-z0-9][a-z0-9_-]{0,62})\b/g;
+  const slugs: string[] = [];
+  let m = ATTACHMENT_RE.exec(text);
+  while (m) {
+    slugs.push(m[1]!);
+    m = ATTACHMENT_RE.exec(text);
+  }
+  ATTACHMENT_RE.lastIndex = 0;
+
+  if (slugs.length === 0) return text;
+
+  const rows = await db
+    .select()
+    .from(conversationAttachments)
+    .where(eq(conversationAttachments.conversation_id, conversation_id));
+
+  const rowMap = new Map(rows.map((r) => [r.slug, r]));
+  const parts: Array<TextPart | ImagePart | FilePart> = [];
+
+  // Build a text part for non-attachment text surrounding the refs
+  const textWithoutRefs = text.replace(/@attachment:[a-z0-9][a-z0-9_-]{0,62}\b/g, "").trim();
+  if (textWithoutRefs) parts.push({ type: "text", text: textWithoutRefs });
+
+  for (const slug of slugs) {
+    const row = rowMap.get(slug);
+    if (!row) continue;
+
+    const mime = row.content_type ?? "application/octet-stream";
+    const isImage = mime.startsWith("image/");
+    const isPdf = mime === "application/pdf" || row.original_filename.endsWith(".pdf");
+
+    if (isImage && caps.supportsImage && row.storage_uri.startsWith("file://")) {
+      try {
+        const imgData = await Bun.file(row.storage_uri.slice("file://".length)).bytes();
+        parts.push({ type: "image", image: imgData, mediaType: mime });
+        continue;
+      } catch {
+        // fallback to text preview
+      }
+    }
+
+    if (isPdf && caps.supportsFile && row.storage_uri.startsWith("file://")) {
+      try {
+        const pdfData = await Bun.file(row.storage_uri.slice("file://".length)).bytes();
+        parts.push({ type: "file", data: pdfData, mediaType: "application/pdf" });
+        continue;
+      } catch {
+        // fallback to text preview
+      }
+    }
+
+    // Fallback: include preview text
+    if (row.preview) parts.push({ type: "text", text: `[${slug}]:\n${row.preview}` });
+  }
+
+  return parts.length === 1 && parts[0]?.type === "text" ? (parts[0] as TextPart).text : parts;
+}
 
 export async function appendMessage(
   db: Executor,

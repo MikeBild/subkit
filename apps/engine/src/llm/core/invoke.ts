@@ -420,7 +420,7 @@ async function dispatchReal<T>(
   });
   const userMessages: SubkitLlmMessage[] = assembled.prompt.messages.map((m) => ({
     role: m.role as "user" | "assistant" | "system" | "tool",
-    content: m.content,
+    content: m.content_parts ?? m.content,
   }));
 
   const messages: SubkitLlmMessage[] = [

@@ -1,14 +1,9 @@
 // `discover` flow — file contents → structured artifact proposals.
 //
-// Takes a set of parsed file chunks (names + excerpts) and asks the LLM
-// to identify three kinds of artifacts:
+// Asks the LLM to identify three kinds of artifacts:
 //   - Connectors (OpenAPI specs, code with API calls, config files)
 //   - Skills (SOPs, compliance docs, best-practice runbooks)
 //   - Knowledge Sources (glossaries, reference material)
-//
-// Returns a typed list of proposals the `discovery/service.ts` pipeline
-// persists into `discovery_artifacts`. The caller decides which to
-// materialise as real skills / connectors / knowledge sources.
 
 import { z } from "zod";
 import type { Db } from "../../db/client.ts";

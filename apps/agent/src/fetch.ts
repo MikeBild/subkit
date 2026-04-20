@@ -1,9 +1,4 @@
-// Local fetch helper for the agent.
-//
-// Takes a tunnel `request` frame + the matching target's local_base_url
-// and executes a real HTTP call against the private-network target.
-// Returns a `response` frame body. Applies a timeout and filters out
-// hop-by-hop headers that would confuse a WebSocket-relayed round trip.
+// Applies a timeout and strips hop-by-hop headers that confuse a WebSocket-relayed round trip.
 
 const HOP_BY_HOP = new Set([
   "connection",

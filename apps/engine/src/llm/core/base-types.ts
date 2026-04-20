@@ -5,12 +5,12 @@
 // builds one of these request shapes and invokes the AiSdkModel. Only the
 // `ai` package (Vercel AI SDK v6) is imported here — no provider packages.
 
-import type { Tool } from "ai";
+import type { FilePart, ImagePart, TextPart, Tool } from "ai";
 import type { LlmFlow } from "../types.ts";
 
 export interface SubkitLlmMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string;
+  content: string | Array<TextPart | ImagePart | FilePart>;
 }
 
 export interface SubkitLlmResponse {
