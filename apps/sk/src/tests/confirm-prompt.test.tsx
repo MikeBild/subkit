@@ -20,6 +20,8 @@ import { ConfirmPrompt } from "@chat-ui/index.ts";
 import { cleanup, render } from "ink-testing-library";
 
 async function yieldTick(ms = 40): Promise<void> {
+  // allow-wall-clock: ink's keypress parser needs real ms to
+  // disambiguate Esc (\x1b) from the prefix of an arrow key.
   await new Promise((r) => setTimeout(r, ms));
 }
 

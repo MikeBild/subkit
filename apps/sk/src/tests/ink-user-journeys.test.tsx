@@ -63,6 +63,8 @@ function defaults(overrides: Partial<InkAppProps> = {}): InkAppProps {
 }
 
 async function tick(ms = 40): Promise<void> {
+  // allow-wall-clock: ink's keypress parser needs real ms to
+  // disambiguate Esc (\x1b) from the prefix of an arrow key.
   await new Promise((r) => setTimeout(r, ms));
 }
 async function typeText(inst: ReturnType<typeof render>, s: string): Promise<void> {
