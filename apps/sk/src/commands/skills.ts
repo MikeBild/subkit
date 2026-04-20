@@ -150,8 +150,10 @@ const deleteCommand = defineCommand({
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      const confirmed = await prompts.confirm({ message: `Delete skill "${args.id}"?` });
-      if (!confirmed || prompts.isCancel(confirmed)) return;
+      if (process.stdin.isTTY) {
+        const confirmed = await prompts.confirm({ message: `Delete skill "${args.id}"?` });
+        if (!confirmed || prompts.isCancel(confirmed)) return;
+      }
       await client.deleteSkill(args.id);
       process.stdout.write(`${pc.green("deleted")}\n`);
     } catch (err) {
