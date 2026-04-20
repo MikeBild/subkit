@@ -230,6 +230,27 @@ export class EngineClient {
     getUser: (id: string) => identitySvc.getUser(this.tenant_id, id, this.db),
     listApiKeys: () => identitySvc.listApiKeys(this.tenant_id, this.db),
     getApiKey: (id: string) => identitySvc.getApiKey(this.tenant_id, id, this.db),
+    issueApiKey: (input: {
+      owner_kind: "user" | "system_account";
+      owner_id: string;
+      scopes?: string[];
+      allowed_workflows?: string[];
+      allowed_connectors?: string[];
+      expires_at?: Date;
+    }) =>
+      identitySvc.issueApiKey(
+        {
+          tenant_id: this.tenant_id,
+          owner_kind: input.owner_kind,
+          owner_id: input.owner_id,
+          ...(input.scopes ? { scopes: input.scopes } : {}),
+          ...(input.allowed_workflows ? { allowed_workflows: input.allowed_workflows } : {}),
+          ...(input.allowed_connectors ? { allowed_connectors: input.allowed_connectors } : {}),
+          ...(input.expires_at ? { expires_at: input.expires_at } : {}),
+          actor_id: this.actor_id,
+        },
+        this.db,
+      ),
     revokeApiKey: (id: string) =>
       identitySvc.revokeApiKey({ tenant_id: this.tenant_id, id, actor_id: this.actor_id }, this.db),
     listPortalTokens: () => identitySvc.listPortalTokens(this.tenant_id, this.db),

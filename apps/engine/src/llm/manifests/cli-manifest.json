@@ -1,0 +1,78 @@
+{
+  "$comment": "Canonical sk/subkit CLI surface. Hand-curated and asserted against `sk <cmd> --help` by cli-manifest.contract.test.ts. Add new subcommands or flags here when the CLI changes.",
+  "binary": "sk",
+  "aliases": ["subkit"],
+  "global_flags": [
+    { "name": "engine-url", "type": "string" },
+    { "name": "api-key", "type": "string" },
+    { "name": "tenant", "type": "string" },
+    { "name": "profile", "type": "string" },
+    { "name": "p", "type": "string" },
+    { "name": "output", "type": "string" },
+    { "name": "c", "type": "boolean" },
+    { "name": "r", "type": "string" },
+    { "name": "session-id", "type": "string" },
+    { "name": "no-memory", "type": "boolean" },
+    { "name": "connector", "type": "string" },
+    { "name": "workflow", "type": "string" }
+  ],
+  "subcommands": {
+    "login": { "flags": ["api-key", "portal-token", "issuer-url", "client-id", "scope"], "positionals": [] },
+    "logout": { "flags": ["profile"], "positionals": [] },
+    "status": { "flags": [], "positionals": [] },
+    "tenants": { "flags": [], "positionals": ["action", "id"] },
+    "mcp": { "flags": [], "positionals": [] },
+    "profile": { "flags": ["export"], "positionals": [] },
+    "update": { "flags": ["force"], "positionals": [] },
+    "sessions": { "flags": ["limit", "json"], "positionals": [] },
+    "ls": { "flags": ["limit", "json"], "positionals": [] },
+    "show": { "flags": [], "positionals": ["id"] },
+    "rename": { "flags": [], "positionals": ["id", "name"] },
+    "rm": { "flags": [], "positionals": ["id"] },
+    "health": { "flags": ["json"], "positionals": [] },
+    "extract": { "flags": ["kind", "pattern", "output", "skip-cache"], "positionals": [] },
+    "workflows": { "flags": ["limit", "json", "input"], "positionals": ["sub"] },
+    "connectors": { "flags": ["limit", "json", "name", "version", "config"], "positionals": ["sub"] },
+    "connector-templates": { "flags": ["limit", "json"], "positionals": ["sub"] },
+    "credentials": { "flags": ["json", "connector-id"], "positionals": ["sub"] },
+    "skills": { "flags": ["json", "limit", "file", "title"], "positionals": ["sub"] },
+    "skill-candidates": { "flags": ["json", "limit"], "positionals": ["sub"] },
+    "knowledge-sources": { "flags": ["json", "file", "name", "description"], "positionals": ["sub"] },
+    "discovery": { "flags": ["kind", "json"], "positionals": [] },
+    "executions": { "flags": ["json", "limit", "workflow-id", "status"], "positionals": ["sub"] },
+    "patch-candidates": { "flags": ["json", "limit"], "positionals": ["sub"] },
+    "hooks": { "flags": ["json", "limit"], "positionals": ["sub"] },
+    "subscriptions": { "flags": ["json", "name", "event-type", "url"], "positionals": ["sub"] },
+    "events": { "flags": [], "positionals": [] },
+    "tunnels": { "flags": ["json"], "positionals": ["sub"] },
+    "notifications": { "flags": ["json"], "positionals": [] },
+    "diagnostics": { "flags": ["json"], "positionals": [] },
+    "install": { "flags": [], "positionals": [] },
+    "rbac": { "flags": ["json"], "positionals": ["sub"] },
+    "audit": { "flags": ["limit", "json", "filter"], "positionals": [] },
+    "apikeys": {
+      "flags": [],
+      "positionals": ["sub"],
+      "subcommands": {
+        "list": { "flags": ["json"], "positionals": [] },
+        "create": {
+          "flags": ["name", "expires", "scopes", "allowed-workflows", "allowed-connectors"],
+          "positionals": []
+        },
+        "rotate": { "flags": [], "positionals": ["id"] },
+        "revoke": { "flags": [], "positionals": ["id"] }
+      }
+    },
+    "portal-tokens": {
+      "flags": [],
+      "positionals": ["sub"],
+      "subcommands": {
+        "list": { "flags": ["json"], "positionals": [] },
+        "create": { "flags": ["name", "user-id", "expires"], "positionals": [] },
+        "delete": { "flags": [], "positionals": ["id"] }
+      }
+    },
+    "users": { "flags": ["json", "limit"], "positionals": ["sub"] },
+    "system-accounts": { "flags": ["json", "limit"], "positionals": ["sub"] }
+  }
+}

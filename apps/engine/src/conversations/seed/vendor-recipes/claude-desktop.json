@@ -1,0 +1,29 @@
+{
+  "client": "claude-desktop",
+  "verified_at": "2026-04-20",
+  "transports": ["streamable-http", "stdio"],
+  "config_path_hints": [
+    "macOS: ~/Library/Application Support/Claude/claude_desktop_config.json",
+    "Windows: %APPDATA%/Claude/claude_desktop_config.json"
+  ],
+  "config_template_streamable_http": {
+    "mcpServers": {
+      "subkit": {
+        "url": "${engine_url}/mcp",
+        "transport": "streamable-http",
+        "headers": {
+          "Authorization": "Bearer ${plaintext_key}"
+        }
+      }
+    }
+  },
+  "config_template_stdio": {
+    "mcpServers": {
+      "subkit": {
+        "command": "sk",
+        "args": ["mcp"]
+      }
+    }
+  },
+  "notes": "Restart Claude Desktop fully (Cmd-Q on macOS) after editing the config — the app reads it once at launch."
+}

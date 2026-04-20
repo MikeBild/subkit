@@ -6,6 +6,7 @@
 import type { ConversationTool } from "../../index.ts";
 import { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidates.ts";
 import { cleanupWriteTools } from "./cleanup.ts";
+import { createApiKeyTool } from "./create-api-key.ts";
 import { runWorkflowTool } from "./run-workflow.ts";
 
 export { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidates.ts";
@@ -18,11 +19,13 @@ export {
   revokeApiKeyTool,
   revokePortalTokenTool,
 } from "./cleanup.ts";
+export { createApiKeyTool } from "./create-api-key.ts";
 export { runWorkflowTool } from "./run-workflow.ts";
 
 export const ALL_GENERATED_WRITE_TOOLS: ConversationTool[] = [
   runWorkflowTool,
   approveSkillCandidateTool,
   approvePatchCandidateTool,
+  createApiKeyTool,
   ...cleanupWriteTools,
 ];

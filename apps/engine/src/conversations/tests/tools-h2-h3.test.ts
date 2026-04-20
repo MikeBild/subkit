@@ -13,6 +13,7 @@ describe("conversation tools — registration", () => {
     "ask_user_multi",
     "ask_user_text",
     "build_workflow",
+    "cannot_help",
     "commit_draft",
     "connect_steps",
     "dry_run_step",
@@ -103,6 +104,7 @@ describe("conversation tools — registration", () => {
     "revoke_portal_token",
     "approve_skill_candidate",
     "approve_patch_candidate",
+    "create_api_key",
   ] as const;
 
   test("the expected tool palette is registered", () => {
