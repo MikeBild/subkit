@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/MikeBild/subkit/compare/subkit-v1.12.0...subkit-v1.13.0) (2026-04-20)
+
+
+### Features
+
+* **engine:** implement Approach 2 pre-analyzed multi-step workflows ([f793e52](https://github.com/MikeBild/subkit/commit/f793e52724a75bc0f04c9d303871272cd1f97e31))
+
 ## [1.12.0](https://github.com/MikeBild/subkit/compare/subkit-v1.11.0...subkit-v1.12.0) (2026-04-20)
 
 
