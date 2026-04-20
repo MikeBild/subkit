@@ -25,7 +25,6 @@
       "Bash(bun run build:all)",
       "Bash(bun run build:engine)",
       "Bash(bun run build:agent)",
-      "Bash(bun run build:cli)",
       "Bash(bun run build:sk)",
       "Bash(bun run db:generate)",
       "Bash(bun run db:migrate)",
