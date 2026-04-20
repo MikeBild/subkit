@@ -8,6 +8,7 @@
 // rotation; we accept if any of them matches.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { logger } from "../../../logging/logger.ts";
 import type { VerifierResult, VerifyInput } from "./types.ts";
 
 const STRIPE_REPLAY_WINDOW_SECONDS = 5 * 60;
@@ -46,7 +47,16 @@ export function verifyStripe(input: VerifyInput): VerifierResult {
       break;
     }
   }
-  if (!matched) return { ok: false, reason: "bad_signature" };
+  if (!matched) {
+    logger.warn({
+      module: "webhooks.inbound",
+      action: "verify_failed",
+      verifier: "stripe",
+      timestamp,
+      reason: "bad_signature",
+    });
+    return { ok: false, reason: "bad_signature" };
+  }
   // Attempt to read the event id + type out of the body so dedup has
   // a stable key. Stripe ships `id` + `type` top-level on events.
   let id: string | null = null;
@@ -58,6 +68,13 @@ export function verifyStripe(input: VerifyInput): VerifierResult {
   } catch {
     /* fall through */
   }
+  logger.debug({
+    module: "webhooks.inbound",
+    action: "verified",
+    verifier: "stripe",
+    event_id: id,
+    type,
+  });
   return {
     ok: true,
     normalized: {

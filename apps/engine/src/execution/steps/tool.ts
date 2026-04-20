@@ -17,6 +17,7 @@
 // abort on the execution signal propagates by wrapping the runner in a
 // race so users can cancel long tool runs mid-flight.
 
+import { logger } from "../../logging/logger.ts";
 import { runContainer } from "../../sandboxes/docker/runner.ts";
 import type { ToolStep } from "../../workflows/types.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
@@ -41,6 +42,13 @@ export async function runToolStep(p: RunToolParams): Promise<StepResult> {
   p.ctx.signal.addEventListener("abort", onAbort, { once: true });
 
   try {
+    logger.debug({
+      module: "execution",
+      action: "step.tool.started",
+      step_id: p.step.id,
+      image: p.step.image,
+      timeout_ms,
+    });
     const res = await runContainer({
       image: p.step.image,
       cmd: p.step.cmd ?? [],
@@ -63,6 +71,14 @@ export async function runToolStep(p: RunToolParams): Promise<StepResult> {
       };
     }
     if (res.timed_out) {
+      logger.warn({
+        module: "execution",
+        action: "step.tool.timeout",
+        step_id: p.step.id,
+        image: p.step.image,
+        timeout_ms,
+        duration_ms,
+      });
       return {
         status: "timed_out",
         retry_count: 0,
@@ -77,6 +93,14 @@ export async function runToolStep(p: RunToolParams): Promise<StepResult> {
       };
     }
     if (res.exit_code !== 0) {
+      logger.warn({
+        module: "execution",
+        action: "step.tool.nonzero_exit",
+        step_id: p.step.id,
+        image: p.step.image,
+        exit_code: res.exit_code,
+        duration_ms,
+      });
       return {
         status: "failed",
         retry_count: 0,

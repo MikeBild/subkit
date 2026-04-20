@@ -16,6 +16,7 @@
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
+import { logger } from "../../logging/logger.ts";
 import type { ConnectorView } from "../types.ts";
 
 export interface S3ConnectorConfig {
@@ -145,6 +146,14 @@ export async function executeS3Request(p: {
   const client = buildS3Client({ connector: p.connector, credentials });
   const key = trimKey(p.path);
   const method = p.method.toUpperCase() as S3Method;
+  logger.debug({
+    module: "connector",
+    action: "s3.request",
+    connector_id: p.connector.id,
+    method,
+    key,
+    has_credential: credentials !== null,
+  });
   switch (method) {
     case "GET": {
       const res = await client.getObject(key);
@@ -231,20 +240,40 @@ export async function probeS3Connector(p: {
       method: "LIST",
       path: "/",
     });
+    const latency_ms = Date.now() - start;
     if (res.status < 200 || res.status >= 300) {
+      logger.warn({
+        module: "connector",
+        action: "s3.probe.failed",
+        connector_id: p.connector.id,
+        latency_ms,
+        status: res.status,
+      });
       return {
         ok: false,
-        latency_ms: Date.now() - start,
+        latency_ms,
         status: res.status,
         detail: `LIST returned HTTP ${res.status}`,
       };
     }
-    return { ok: true, latency_ms: Date.now() - start, status: res.status };
+    logger.debug({
+      module: "connector",
+      action: "s3.probe.completed",
+      connector_id: p.connector.id,
+      ok: true,
+      latency_ms,
+      status: res.status,
+    });
+    return { ok: true, latency_ms, status: res.status };
   } catch (err) {
-    return {
-      ok: false,
-      latency_ms: Date.now() - start,
-      detail: err instanceof Error ? err.message : String(err),
-    };
+    const latency_ms = Date.now() - start;
+    logger.warn({
+      module: "connector",
+      action: "s3.probe.failed",
+      connector_id: p.connector.id,
+      latency_ms,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, latency_ms, detail: err instanceof Error ? err.message : String(err) };
   }
 }

@@ -5,6 +5,7 @@
 //   * signature must be `v1,<base64(HMAC-SHA256(secret, base))>`
 //   * reject if `|now - timestamp| > 5 minutes`
 
+import { logger } from "../../../logging/logger.ts";
 import { verifySignatureHeader } from "../../outbound/signer.ts";
 import type { VerifierResult, VerifyInput } from "./types.ts";
 
@@ -27,8 +28,21 @@ export function verifyStandard(input: VerifyInput): VerifierResult {
   }
   const base = `${id}.${ts}.${input.rawBody}`;
   if (!verifySignatureHeader(sig, base, [input.secret])) {
+    logger.warn({
+      module: "webhooks.inbound",
+      action: "verify_failed",
+      verifier: "standard-webhooks",
+      reason: "bad_signature",
+    });
     return { ok: false, reason: "bad_signature" };
   }
+  logger.debug({
+    module: "webhooks.inbound",
+    action: "verified",
+    verifier: "standard-webhooks",
+    webhook_id: id,
+    type: input.headers["webhook-type"] ?? "unknown",
+  });
   return {
     ok: true,
     normalized: {

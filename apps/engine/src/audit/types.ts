@@ -177,6 +177,21 @@ export const AuditAction = {
 
   SYSTEM_STARTUP: "system.startup",
 
+  // Authentication failures — SOC 2 CC6.1, GDPR Art. 32
+  AUTH_LOGIN_FAILED: "auth.login_failed",
+  AUTH_BRUTE_FORCE_DETECTED: "auth.brute_force_detected",
+  AUTH_TOKEN_REJECTED: "auth.token_rejected",
+
+  // Credential access forensics — GDPR Art. 32, SOC 2 CC6.7
+  CREDENTIAL_ACCESSED: "credential.accessed",
+  CREDENTIAL_OAUTH2_REFRESHED: "credential.oauth2_refreshed",
+
+  // LLM usage per tenant — SOC 2 A1, ISO 27001 A.12.4
+  LLM_INVOCATION: "llm.invocation",
+
+  // Connector data flows — SOC 2 CC9
+  CONNECTOR_INVOKED: "connector.invoked",
+
   RBAC_ROLE_CREATED: "rbac.role_created",
   RBAC_ROLE_UPDATED: "rbac.role_updated",
   RBAC_ROLE_DELETED: "rbac.role_deleted",

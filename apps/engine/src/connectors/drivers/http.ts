@@ -11,6 +11,7 @@ import { refreshIfStale } from "../../credentials/oauth2/refresh-worker.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
+import { log } from "../../logging/logger.ts";
 import { tunnelRegistry } from "../../tunnels/registry.ts";
 import type { TunnelResponse } from "../../tunnels/types.ts";
 import type { ConnectorView } from "../types.ts";
@@ -155,6 +156,14 @@ export async function buildRequestPlan(
   if (typeof cfg.tunnel_target === "string" && cfg.tunnel_target.length > 0) {
     plan.tunnel_target = cfg.tunnel_target;
   }
+  log.connector.request.planned({
+    connector_id: p.connector.id,
+    auth_type: p.connector.auth_type,
+    url_host: url.host,
+    has_credential: credential !== null,
+    oauth2_refreshed: credential?.mode === "oauth2",
+    tunnel_target: plan.tunnel_target ?? null,
+  });
   return plan;
 }
 
@@ -225,16 +234,26 @@ export async function probeHttpConnector(p: {
     // Drain the body so we don't leak sockets.
     await res.text().catch(() => "");
     const latency_ms = Date.now() - start;
-    return {
-      ok: res.status < 500,
+    const result: HttpProbeResult = { ok: res.status < 500, latency_ms, status: res.status };
+    log.connector.probe.completed({
+      connector_id: p.connector.id,
+      ok: result.ok,
       latency_ms,
       status: res.status,
-    };
+    });
+    return result;
   } catch (err) {
-    return {
+    const result = {
       ok: false,
       latency_ms: Date.now() - start,
       detail: err instanceof Error ? err.message : String(err),
     };
+    log.connector.probe.completed({
+      connector_id: p.connector.id,
+      ok: result.ok,
+      latency_ms: result.latency_ms,
+      detail: result.detail,
+    });
+    return result;
   }
 }

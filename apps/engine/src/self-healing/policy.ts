@@ -21,6 +21,7 @@
 import { and, eq } from "drizzle-orm";
 import { type Db, getDb } from "../db/client.ts";
 import { workflowAutohealPolicies } from "../db/schema/workflows.ts";
+import { log } from "../logging/logger.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -67,13 +68,30 @@ export interface PolicyDecisionInput {
  *   - `dry-run-gate` auto-applies when dry-run passed (even unsafe).
  */
 export function shouldAutoApply(d: PolicyDecisionInput): boolean {
-  if (!d.has_fixture) return false;
-  if (d.policy === "never-auto") return false;
-  if (d.policy === "safe-patches") {
-    return d.classification === "safe" && d.fixture_passed;
+  let result = false;
+  let reason = "unknown";
+  if (!d.has_fixture) {
+    reason = "no_fixture";
+  } else if (d.policy === "never-auto") {
+    reason = "policy=never-auto";
+  } else if (d.policy === "safe-patches") {
+    result = d.classification === "safe" && d.fixture_passed;
+    reason = result
+      ? "safe_and_fixture_passed"
+      : d.classification !== "safe"
+        ? "unsafe_classification"
+        : "fixture_failed";
+  } else if (d.policy === "dry-run-gate") {
+    result = d.fixture_passed;
+    reason = result ? "fixture_passed" : "fixture_failed";
   }
-  if (d.policy === "dry-run-gate") {
-    return d.fixture_passed;
-  }
-  return false;
+  log.selfHealing.policy.evaluated({
+    policy: d.policy,
+    classification: d.classification,
+    fixture_passed: d.fixture_passed,
+    has_fixture: d.has_fixture,
+    auto_apply: result,
+    reason,
+  });
+  return result;
 }

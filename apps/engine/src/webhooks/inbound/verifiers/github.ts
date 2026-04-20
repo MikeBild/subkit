@@ -6,6 +6,7 @@
 // window — we lean on the `X-GitHub-Delivery` UUID for dedup.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { logger } from "../../../logging/logger.ts";
 import type { VerifierResult, VerifyInput } from "./types.ts";
 
 export function verifyGitHub(input: VerifyInput): VerifierResult {
@@ -23,8 +24,22 @@ export function verifyGitHub(input: VerifyInput): VerifierResult {
   const a = Buffer.from(hex, "hex");
   const b = Buffer.from(expected, "hex");
   if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    logger.warn({
+      module: "webhooks.inbound",
+      action: "verify_failed",
+      verifier: "github",
+      delivery,
+      reason: "bad_signature",
+    });
     return { ok: false, reason: "bad_signature" };
   }
+  logger.debug({
+    module: "webhooks.inbound",
+    action: "verified",
+    verifier: "github",
+    delivery,
+    type: eventType ?? "unknown",
+  });
   return {
     ok: true,
     normalized: {

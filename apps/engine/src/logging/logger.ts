@@ -157,12 +157,25 @@ export const log = {
   },
   execution: {
     started: (ctx: Ctx) => logger.info({ module: "execution", action: "started", ...ctx }),
-    step: (ctx: Ctx) => logger.debug({ module: "execution", action: "step", ...ctx }),
     completed: (ctx: Ctx) => logger.info({ module: "execution", action: "completed", ...ctx }),
+    step: {
+      trace: (ctx: Ctx) => logger.debug({ module: "execution", action: "step", ...ctx }),
+      completed: (ctx: Ctx) =>
+        logger.debug({ module: "execution", action: "step.completed", ...ctx }),
+      failed: (ctx: Ctx) => logger.warn({ module: "execution", action: "step.failed", ...ctx }),
+      timeout: (ctx: Ctx) => logger.warn({ module: "execution", action: "step.timeout", ...ctx }),
+    },
   },
   llm: {
     call: (ctx: Ctx) => logger.info({ module: "llm", action: "call", ...ctx }),
     error: (ctx: Ctx) => logger.error({ module: "llm", action: "error", ...ctx }),
+    route: {
+      resolved: (ctx: Ctx) => logger.debug({ module: "llm", action: "route.resolved", ...ctx }),
+    },
+    context: {
+      assembled: (ctx: Ctx) => logger.debug({ module: "llm", action: "context.assembled", ...ctx }),
+      trimmed: (ctx: Ctx) => logger.debug({ module: "llm", action: "context.trimmed", ...ctx }),
+    },
   },
   webhooks: {
     // Module name is plural to match the `webhooks/` directory and the
@@ -253,6 +266,12 @@ export const log = {
         logger.info({ module: "self-healing", action: "patch.applied", ...ctx }),
       rejected: (ctx: Ctx) =>
         logger.warn({ module: "self-healing", action: "patch.rejected", ...ctx }),
+      classified: (ctx: Ctx) =>
+        logger.debug({ module: "self-healing", action: "patch.classified", ...ctx }),
+    },
+    policy: {
+      evaluated: (ctx: Ctx) =>
+        logger.debug({ module: "self-healing", action: "policy.evaluated", ...ctx }),
     },
     fixture: {
       passed: (ctx: Ctx) =>
@@ -281,5 +300,29 @@ export const log = {
       revoked: (ctx: Ctx) =>
         logger.warn({ module: "identity", action: "portal_token.revoked", ...ctx }),
     },
+  },
+  rbac: {
+    checked: (ctx: Ctx) => logger.debug({ module: "rbac", action: "checked", ...ctx }),
+    denied: (ctx: Ctx) => logger.warn({ module: "rbac", action: "denied", ...ctx }),
+  },
+  connector: {
+    request: {
+      planned: (ctx: Ctx) =>
+        logger.debug({ module: "connector", action: "request.planned", ...ctx }),
+    },
+    probe: {
+      completed: (ctx: Ctx) =>
+        logger.debug({ module: "connector", action: "probe.completed", ...ctx }),
+    },
+  },
+  scheduler: {
+    fired: (ctx: Ctx) => logger.info({ module: "scheduler", action: "job.fired", ...ctx }),
+    reconciled: (ctx: Ctx) => logger.debug({ module: "scheduler", action: "reconciled", ...ctx }),
+    lifecycle: (ctx: Ctx) => logger.info({ module: "scheduler", action: "lifecycle", ...ctx }),
+  },
+  tunnel: {
+    auth: (ctx: Ctx) => logger.info({ module: "tunnel", action: "auth", ...ctx }),
+    register: (ctx: Ctx) => logger.info({ module: "tunnel", action: "register", ...ctx }),
+    forward: (ctx: Ctx) => logger.debug({ module: "tunnel", action: "forward", ...ctx }),
   },
 } as const;

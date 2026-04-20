@@ -21,6 +21,8 @@
 
 import { eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
+import { audit } from "../../audit/audit.ts";
+import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { connectors, credentials } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -98,6 +100,24 @@ export async function refreshIfStale(
       },
       db,
     );
+    logger.info({
+      module: "oauth2",
+      action: "oauth2.refresh_success",
+      credential_id: credRow.id,
+      connector_id: credRow.connector_id,
+    });
+    audit(
+      {
+        tenant_id,
+        actor_type: "system",
+        action: AuditAction.CREDENTIAL_OAUTH2_REFRESHED,
+        resource_type: "credential",
+        resource_id: credRow.id,
+        result: "success",
+        metadata: { connector_id: credRow.connector_id },
+      },
+      db,
+    );
     return {
       mode: "oauth2",
       access_token: bundle.access_token,
@@ -112,8 +132,22 @@ export async function refreshIfStale(
       action: "oauth2.refresh_error",
       msg: "failed to refresh oauth2 access token inline",
       credential_id: credRow.id,
+      connector_id: credRow.connector_id,
       error: err instanceof Error ? err.message : String(err),
     });
+    audit(
+      {
+        tenant_id,
+        actor_type: "system",
+        action: AuditAction.CREDENTIAL_OAUTH2_REFRESHED,
+        resource_type: "credential",
+        resource_id: credRow.id,
+        result: "error",
+        reason: err instanceof Error ? err.message : String(err),
+        metadata: { connector_id: credRow.connector_id },
+      },
+      db,
+    );
     return decrypted;
   }
 }

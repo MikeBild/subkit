@@ -10,6 +10,7 @@
 // against the QuickJS wall-clock budget plus the same abort signal.
 
 import jsonata from "jsonata";
+import { logger } from "../../logging/logger.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import {
   SandboxInterruptError,
@@ -86,6 +87,14 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
     const duration_ms = Date.now() - start;
     const message = err instanceof Error ? err.message : String(err);
     if (err instanceof SandboxTimeoutError || err instanceof SandboxInterruptError) {
+      logger.warn({
+        module: "execution",
+        action: "step.transform.timeout",
+        step_id: p.step.id,
+        language,
+        timeout_ms: timeoutMs,
+        duration_ms,
+      });
       return {
         status: "timed_out",
         retry_count: 0,
@@ -94,6 +103,14 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
       };
     }
     if (err instanceof SandboxMemoryError) {
+      logger.warn({
+        module: "execution",
+        action: "step.transform.memory_error",
+        step_id: p.step.id,
+        language,
+        duration_ms,
+        error: message,
+      });
       return {
         status: "failed",
         retry_count: 0,
@@ -102,6 +119,14 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
       };
     }
     if (timeoutCtrl.signal.aborted && !p.ctx.signal.aborted) {
+      logger.warn({
+        module: "execution",
+        action: "step.transform.timeout",
+        step_id: p.step.id,
+        language,
+        timeout_ms: timeoutMs,
+        duration_ms,
+      });
       return {
         status: "timed_out",
         retry_count: 0,
@@ -117,6 +142,14 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
         error: { code: "aborted", message: "execution aborted" },
       };
     }
+    logger.warn({
+      module: "execution",
+      action: "step.transform.error",
+      step_id: p.step.id,
+      language,
+      duration_ms,
+      error: message,
+    });
     return {
       status: "failed",
       retry_count: 0,
