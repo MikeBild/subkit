@@ -18,7 +18,7 @@ import {
 
 let env: E2EEnv;
 beforeAll(async () => {
-  env = await boot("sk-cli");
+  env = await boot("sk-cli", { llm: "mock" });
 }, 90_000);
 afterAll(async () => {
   await shutdown(env);
@@ -100,7 +100,7 @@ describe("sk CLI admin commands", () => {
 
     test("roles create + delete custom role", async () => {
       const roles = await runJson<Array<{ id: string; name: string }>>(
-        ["rbac", "roles", "create", "--name", "e2e-custom-role"],
+        ["rbac", "roles", "create", "e2e-custom-role"],
         { env },
       );
       // The create command may return the created role or a list — accept both.

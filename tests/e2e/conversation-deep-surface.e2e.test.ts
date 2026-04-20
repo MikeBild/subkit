@@ -31,7 +31,6 @@ function auth(env: E2EEnv): HeadersInit {
 describe("deep-surface E2E", () => {
   test("login", async () => {
     const r = await cli(
-      "sk",
       ["login", "--engine-url", env.baseUrl, "--api-key", env.personas.admin.apiKey],
       { env, persona: "admin" },
     );
@@ -42,7 +41,7 @@ describe("deep-surface E2E", () => {
     // stream-json writes one JSON-encoded TurnEvent per line. We must
     // see a conversation id, at least one tool_result, and a terminal
     // completed frame. The mock provider path is deterministic.
-    const r = await cli("sk", ["--p", "hello world", "--output", "stream-json"], {
+    const r = await cli(["--p", "hello world", "--output", "stream-json"], {
       env,
       persona: "admin",
       timeout: 60_000,
@@ -59,7 +58,6 @@ describe("deep-surface E2E", () => {
 
   test("weather canned plan produces full tool call chain with confirmation_state", async () => {
     const r = await cli(
-      "sk",
       ["--p", "open-meteo weather forecast for Berlin tomorrow", "--output", "json"],
       { env, persona: "admin", timeout: 120_000 },
     );

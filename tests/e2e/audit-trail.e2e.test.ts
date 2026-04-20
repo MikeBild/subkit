@@ -137,10 +137,11 @@ describe("audit trail over CLI", () => {
   test("unauthenticated audit-log returns the unified error envelope", async () => {
     // With a bogus API key the CLI exits non-zero; the formatted
     // error carries code + message from the shared ErrorEnvelope.
-    const result = await cli(
-      ["audit", "query", "--engine-url", env.baseUrl, "--api-key", "wf_live_clearly_invalid"],
-      { env, persona: "admin" },
-    );
+    const result = await cli(["audit", "query"], {
+      env,
+      persona: "admin",
+      extraEnv: { SUBKIT_API_KEY: "wf_live_clearly_invalid" },
+    });
     expect(result.exitCode).not.toBe(0);
     const combined = `${result.stdout}\n${result.stderr}`;
     // Either a `trace=…` breadcrumb or the `unauthorized` code must

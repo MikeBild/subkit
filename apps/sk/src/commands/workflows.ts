@@ -134,14 +134,16 @@ const restoreCommand = defineCommand({
 });
 
 const createCommand = defineCommand({
-  meta: { name: "create", description: "Create a workflow" },
+  meta: { name: "create", description: "Create a workflow from a JSON file" },
   args: {
-    name: { type: "string", required: true, description: "Workflow name" },
+    file: { type: "string", required: true, description: "Path to WorkflowDef JSON" },
   },
   async run({ args }) {
+    const { readFileSync } = await import("node:fs");
     const client = makeClient();
     try {
-      printJson(await client.createWorkflow({ name: args.name }));
+      const body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
+      printJson(await client.createWorkflow(body));
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));

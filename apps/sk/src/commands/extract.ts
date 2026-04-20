@@ -5,13 +5,13 @@ import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 
 export const extractCommand = defineCommand({
-  meta: { name: "extract", description: "Extract structured data from text using AI" },
+  meta: { name: "extract", description: "Extract structured JSON from a sample file" },
   args: {
-    sample: { type: "string", required: true, description: "Text to extract from" },
-    hint: { type: "string", description: "Extraction hint / schema description" },
-    json: { type: "boolean", description: "JSON output" },
+    file: { type: "positional", required: true, description: "Path to sample file" },
+    hint: { type: "string", description: "Hint to the extractor" },
   },
   async run({ args }) {
+    const { readFileSync } = await import("node:fs");
     const profile = resolveProfile();
     const client = new EngineClient({
       engine_url: profile.engine_url,
@@ -19,8 +19,9 @@ export const extractCommand = defineCommand({
       tenant: profile.active_tenant_id,
     });
     try {
-      const extractBody: { sample: string; hint?: string } = { sample: args.sample as string };
-      if (args.hint) extractBody.hint = args.hint as string;
+      const sample = readFileSync(String(args.file), "utf8");
+      const extractBody: { sample: string; hint?: string } = { sample };
+      if (args.hint) extractBody.hint = String(args.hint);
       const result = await client.extract(extractBody);
       printJson(result);
     } catch (err) {

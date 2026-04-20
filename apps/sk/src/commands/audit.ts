@@ -21,9 +21,13 @@ const queryCmd = defineCommand({
   meta: { name: "query", description: "Filter the audit log" },
   args: {
     limit: { type: "string", description: "Max rows" },
-    since: { type: "string", description: "Lower bound — ISO-8601 timestamp" },
+    since: {
+      type: "string",
+      description: "Lower bound — ISO-8601 timestamp or relative (e.g. 10m, 1h, 7d)",
+    },
     action: { type: "string", description: "Action name filter" },
     actor: { type: "string", description: "Actor id filter" },
+    "resource-id": { type: "string", description: "Filter by resource id" },
     json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
@@ -31,9 +35,20 @@ const queryCmd = defineCommand({
     try {
       const q: Record<string, string | number | undefined> = {};
       if (args.limit) q.limit = Number(args.limit);
-      if (args.since) q.ts_from = String(args.since);
+      if (args.since) {
+        const raw = String(args.since);
+        const relative = raw.match(/^(\d+)(m|h|d)$/);
+        if (relative) {
+          const [, num, unit] = relative;
+          const ms = Number(num) * (unit === "m" ? 60000 : unit === "h" ? 3600000 : 86400000);
+          q.ts_from = new Date(Date.now() - ms).toISOString();
+        } else {
+          q.ts_from = raw;
+        }
+      }
       if (args.action) q.action = String(args.action);
       if (args.actor) q.actor_id = String(args.actor);
+      if (args["resource-id"]) q.resource_id = String(args["resource-id"]);
       const { items } = await client.queryAuditLog(q);
       emitList(
         !!args.json,

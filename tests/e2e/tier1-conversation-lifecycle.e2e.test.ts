@@ -261,7 +261,7 @@ describe.skipIf(!SHOULD_RUN)("Tier 1.5 — resume (real LLM)", () => {
   test("sk -r <id> appends a turn to a pre-existing conversation", async () => {
     const seed = await createConversation("first message: my code word is alpha-foxtrot");
     const id = seed.conversation.id;
-    const r = await cli("sk", ["--p", "what was my code word?", "-r", id, "--output", "json"], {
+    const r = await cli(["--p", "what was my code word?", "-r", id, "--output", "json"], {
       env,
       persona: "admin",
       timeout: 120_000,

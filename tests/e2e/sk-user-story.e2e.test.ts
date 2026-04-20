@@ -30,7 +30,6 @@ function bearer(env: E2EEnv): HeadersInit {
 describe("sk CLI user story — real backend", () => {
   test("login persists a profile", async () => {
     const r = await cli(
-      "sk",
       ["login", "--engine-url", env.baseUrl, "--api-key", env.personas.admin.apiKey],
       { env, persona: "admin" },
     );
@@ -38,7 +37,7 @@ describe("sk CLI user story — real backend", () => {
   });
 
   test("status reports engine reachability with all probes green", async () => {
-    const r = await cli("sk", ["status"], { env, persona: "admin", timeout: 30_000 });
+    const r = await cli(["status"], { env, persona: "admin", timeout: 30_000 });
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toContain("engine_ok");
     expect(r.stdout).toContain("ok");
@@ -46,7 +45,6 @@ describe("sk CLI user story — real backend", () => {
 
   test("turn 1 — open-meteo canned plan creates a conversation with audit entries", async () => {
     const r = await cli(
-      "sk",
       ["--p", "open-meteo weather forecast for Berlin tomorrow", "--output", "json"],
       { env, persona: "admin", timeout: 120_000 },
     );
@@ -75,7 +73,7 @@ describe("sk CLI user story — real backend", () => {
 
   test("turn 2 — resuming the same conversation sees the prior tool chain", async () => {
     // First turn to establish the session.
-    const turn1 = await cli("sk", ["--p", "open-meteo again please", "--output", "json"], {
+    const turn1 = await cli(["--p", "open-meteo again please", "--output", "json"], {
       env,
       persona: "admin",
       timeout: 60_000,
@@ -83,11 +81,11 @@ describe("sk CLI user story — real backend", () => {
     const conversationId = parseJson<{ session_id: string }>(turn1).session_id;
 
     // Second turn, resuming the session via `-r <id>`.
-    const turn2 = await cli(
-      "sk",
-      ["--p", "status check", "-r", conversationId, "--output", "json"],
-      { env, persona: "admin", timeout: 60_000 },
-    );
+    const turn2 = await cli(["--p", "status check", "-r", conversationId, "--output", "json"], {
+      env,
+      persona: "admin",
+      timeout: 60_000,
+    });
     expect(turn2.exitCode).toBe(0);
     const body2 = parseJson<{ session_id: string }>(turn2);
     expect(body2.session_id).toBe(conversationId);
@@ -103,7 +101,7 @@ describe("sk CLI user story — real backend", () => {
   }, 150_000);
 
   test("stream-json output emits ordered TurnEvent frames", async () => {
-    const r = await cli("sk", ["--p", "hello engine", "--output", "stream-json"], {
+    const r = await cli(["--p", "hello engine", "--output", "stream-json"], {
       env,
       persona: "admin",
       timeout: 60_000,
@@ -119,7 +117,7 @@ describe("sk CLI user story — real backend", () => {
   }, 60_000);
 
   test("text output mode yields the assistant reply as plain text", async () => {
-    const r = await cli("sk", ["--p", "hello engine", "--output", "text"], {
+    const r = await cli(["--p", "hello engine", "--output", "text"], {
       env,
       persona: "admin",
       timeout: 60_000,
