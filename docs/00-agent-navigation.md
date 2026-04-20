@@ -62,8 +62,8 @@ subsystem directory that owns them. For a full subsystem table, see `AGENTS.md`.
 
 | Task | Read | Edit |
 |---|---|---|
-| `subkit` admin CLI command | `26-cli.md`, `27-api-surface.md` | `apps/cli/`, `packages/cli-core/` |
-| `sk` conversational CLI | `27-sk-cli.md`, `17-conversations.md` | `apps/sk/`, `packages/cli-core/` |
+| `sk` CLI — REPL / conversational | `27-sk-cli.md`, `17-conversations.md` | `apps/sk/`, `packages/cli-core/` |
+| `sk` CLI — operator/admin commands | `26-cli.md`, `27-api-surface.md` | `apps/sk/src/commands/`, `packages/cli-core/` |
 | Slack / Teams / Google Chat adapter | `14-chat-platforms.md` | `apps/engine/src/chat/` |
 | MCP server transport / tool discovery | `12-mcp-server.md` | `apps/engine/src/mcp/` |
 
@@ -73,7 +73,7 @@ subsystem directory that owns them. For a full subsystem table, see `AGENTS.md`.
 |---|---|---|
 | New Prometheus metric / trace / log field | `29-observability.md` | `apps/engine/src/observability/`, `logging/` |
 | Resource limit / circuit breaker / rate limit | `30-defaults-and-limits.md` | relevant subsystem + `observability/` |
-| Install / first-run experience | `34-installation.md`, `26-cli.md` | `apps/cli/`, `scripts/` |
+| Install / first-run experience | `34-installation.md`, `26-cli.md` | `apps/sk/src/install/`, `scripts/` |
 | Deployment topology | `32-deployment.md`, `33-verification.md` | `docker-compose.yml`, `.github/workflows/` |
 
 ### Data

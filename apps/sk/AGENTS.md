@@ -29,7 +29,7 @@ Canonical docs: `docs/27-sk-cli.md`, `docs/17-conversations.md`, `docs/16-ai-flo
 
 ## Non-negotiables
 
-- **No domain logic.** Same rule as `apps/cli/` — `sk` is a thin client. Drafts,
+- **No domain logic.** `sk` is a thin client. Drafts,
   validations, commits happen on the engine via the Conversations tool loop.
 - **Engine client only for network.** Use `src/engine-client.ts` — no bare
   `fetch`. SSE streaming uses the same client.

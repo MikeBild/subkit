@@ -82,10 +82,8 @@ layer, stop and move it.
 
 - **`apps/engine/`** — the server. All domain logic, HTTP routes, MCP server, queue workers,
   webhooks, scheduler, pub/sub, connector drivers, AI flows, self-healing, audit log.
-- **`apps/cli/`** — the `subkit` administrative CLI (citty-based). Thin wrapper over the
-  REST API. No domain logic.
-- **`apps/sk/`** — the `sk` conversational CLI (Ink-based TUI). Drives the Conversations
-  surface. No domain logic.
+- **`apps/sk/`** — the `sk` unified CLI (Ink-based TUI + citty subcommands). Persona-aware:
+  end-users get the REPL; operators and admins get the full admin surface too. No domain logic.
 - **`apps/agent/`** — the tunnel agent. Outbound WebSocket from a private network into
   the engine. No domain logic beyond connection management.
 - **`packages/cli-core/`** — shared CLI utilities (updater, version, prompts). Pure,
@@ -136,8 +134,7 @@ Subsystem map inside `apps/engine/src/` (35 directories, each owns one concern):
 Directory-local overrides:
 
 - `apps/engine/AGENTS.md` — strict rules for engine code.
-- `apps/cli/AGENTS.md` — `subkit` admin CLI (thin client, typed engine wrapper).
-- `apps/sk/AGENTS.md` — `sk` Ink-based conversational CLI (thin client).
+- `apps/sk/AGENTS.md` — `sk` unified CLI (Ink REPL + citty admin subcommands).
 - `apps/agent/AGENTS.md` — tunnel agent binary (outbound proxy, no policy).
 - `packages/shared/AGENTS.md` — pure/deterministic code only.
 
@@ -215,7 +212,6 @@ Companion files live under `.claude/`:
 Directory-local overrides:
 
 - `apps/engine/AGENTS.md`
-- `apps/cli/AGENTS.md`
 - `apps/sk/AGENTS.md`
 - `apps/agent/AGENTS.md`
 - `packages/shared/AGENTS.md`

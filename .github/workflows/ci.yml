@@ -73,11 +73,8 @@ jobs:
       - name: Verify version injection
         run: |
           set -eux
-          CLI_VERSION=$(./dist/subkit --version)
           SK_VERSION=$(./dist/sk --version)
-          echo "subkit version: $CLI_VERSION"
           echo "sk version: $SK_VERSION"
-          test -n "$CLI_VERSION"
           test -n "$SK_VERSION"
 
       - name: E2E tests

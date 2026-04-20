@@ -24,6 +24,22 @@ export {
   type paths as EngineApiPaths,
 } from "./engine-api/client.ts";
 export {
+  EngineError,
+  type EngineErrorBody,
+  exitCodeFor,
+  formatError,
+  TransportError,
+} from "./errors.ts";
+export {
+  emitList,
+  emitOne,
+  printJson,
+  printKeyValue,
+  printTable,
+  renderTable,
+  toJson,
+} from "./format.ts";
+export {
   type InterruptController,
   type InterruptPhase,
   makeInterruptController,

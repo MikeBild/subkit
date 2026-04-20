@@ -206,6 +206,112 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Switch transcript view — `/view chat` or `/view inspect`",
     category: "util",
   },
+  // operator list commands
+  {
+    name: "connectors",
+    help: "List connectors in this tenant",
+    category: "context",
+    requires: "connector:read",
+  },
+  {
+    name: "workflows",
+    help: "List workflows in this tenant",
+    category: "context",
+    requires: "workflow:read",
+  },
+  {
+    name: "executions",
+    aliases: ["runs"],
+    help: "List recent workflow executions",
+    category: "admin",
+    requires: "execution:read",
+  },
+  {
+    name: "patch-candidates",
+    help: "List pending self-healing patch candidates",
+    category: "admin",
+    requires: "workflow:read",
+  },
+  {
+    name: "notifications",
+    help: "List notification channels and rules",
+    category: "admin",
+    requires: "notification:read",
+  },
+  {
+    name: "tunnels",
+    help: "List registered tunnels",
+    category: "admin",
+    requires: "tunnel:read",
+  },
+  {
+    name: "discovery",
+    help: "List discovery runs and artifacts",
+    category: "admin",
+    requires: "discovery:read",
+  },
+  // install wizards (run via CLI: `sk install <service>`)
+  {
+    name: "install-slack",
+    help: "Guided setup for Slack notifications — runs 'sk install slack'",
+    category: "context",
+    requires: "notification:write",
+  },
+  {
+    name: "install-teams",
+    help: "Guided setup for Microsoft Teams notifications",
+    category: "context",
+    requires: "notification:write",
+  },
+  {
+    name: "install-github",
+    help: "Guided setup for GitHub connector",
+    category: "context",
+    requires: "connector:write",
+  },
+  {
+    name: "install-google-workspace",
+    help: "Guided setup for Google Workspace connector",
+    category: "context",
+    requires: "connector:write",
+  },
+  {
+    name: "install-salesforce",
+    help: "Guided setup for Salesforce connector",
+    category: "context",
+    requires: "connector:write",
+  },
+  {
+    name: "install-jira",
+    help: "Guided setup for Jira connector",
+    category: "context",
+    requires: "connector:write",
+  },
+  {
+    name: "install-hubspot",
+    help: "Guided setup for HubSpot connector",
+    category: "context",
+    requires: "connector:write",
+  },
+  // admin list commands
+  {
+    name: "apikeys",
+    help: "List API keys (masked)",
+    category: "admin",
+    requires: "api_key:read",
+  },
+  {
+    name: "users",
+    help: "List identity users",
+    category: "admin",
+    requires: "identity:read",
+  },
+  {
+    name: "system-accounts",
+    help: "List system accounts",
+    category: "admin",
+    requires: "identity:read",
+  },
 ] as const;
 
 export interface PersonaProbe {

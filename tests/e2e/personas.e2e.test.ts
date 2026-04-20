@@ -43,8 +43,8 @@ beforeAll(async () => {
     steps: [{ kind: "request", id: "step-1", method: "GET", url: "https://httpbin.org/get" }],
   });
   const filePath = writeTempFile(env.personas.admin, "persona-wf.json", wfDef);
-  await cli("subkit", ["workflows", "create", "--file", filePath], { env, persona: "admin" });
-  const wfs = await runJson<Array<{ id: string }>>("subkit", ["workflows", "list"], {
+  await cli(["workflows", "create", "--file", filePath], { env, persona: "admin" });
+  const wfs = await runJson<Array<{ id: string }>>(["workflows", "list"], {
     env,
     persona: "admin",
   });
@@ -56,13 +56,13 @@ beforeAll(async () => {
 // ---------------------------------------------------------------------------
 describe("admin persona", () => {
   test("can list workflows", async () => {
-    const result = await cli("subkit", ["workflows", "list"], { env, persona: "admin" });
+    const result = await cli(["workflows", "list"], { env, persona: "admin" });
     expectSuccess(result, "admin workflows list");
     expect(result.stdout).toContain("persona-test-wf");
   });
 
   test("can list API keys", async () => {
-    const keys = await runJson<Array<{ id: string }>>("subkit", ["apikeys", "list"], {
+    const keys = await runJson<Array<{ id: string }>>(["apikeys", "list"], {
       env,
       persona: "admin",
     });
@@ -70,21 +70,20 @@ describe("admin persona", () => {
   });
 
   test("can query audit log", async () => {
-    const result = await cli("subkit", ["audit", "query"], { env, persona: "admin" });
+    const result = await cli(["audit", "query"], { env, persona: "admin" });
     expectSuccess(result, "admin audit query");
   });
 
   test("can check RBAC permissions", async () => {
-    const out = await run(
-      "subkit",
-      ["rbac", "can", env.personas.admin.systemAccountId, "workflow:delete"],
-      { env, persona: "admin" },
-    );
+    const out = await run(["rbac", "can", env.personas.admin.systemAccountId, "workflow:delete"], {
+      env,
+      persona: "admin",
+    });
     expect(out).toContain("true");
   });
 
   test("can use sk headless mode", async () => {
-    const result = await cli("sk", ["--p", "hello from admin", "--output", "json"], {
+    const result = await cli(["--p", "hello from admin", "--output", "json"], {
       env,
       persona: "admin",
       timeout: 60_000,
@@ -100,18 +99,18 @@ describe("admin persona", () => {
 // ---------------------------------------------------------------------------
 describe("member persona", () => {
   test("can list workflows", async () => {
-    const result = await cli("subkit", ["workflows", "list"], { env, persona: "member" });
+    const result = await cli(["workflows", "list"], { env, persona: "member" });
     expectSuccess(result, "member workflows list");
   });
 
   test("can read health", async () => {
-    const result = await cli("subkit", ["health"], { env, persona: "member" });
+    const result = await cli(["health"], { env, persona: "member" });
     expectSuccess(result, "member health");
     expect(result.stdout).toContain("ok");
   });
 
   test("can use sk headless mode", async () => {
-    const result = await cli("sk", ["--p", "hello from member", "--output", "json"], {
+    const result = await cli(["--p", "hello from member", "--output", "json"], {
       env,
       persona: "member",
       timeout: 60_000,
@@ -122,7 +121,7 @@ describe("member persona", () => {
   });
 
   test("is denied RBAC management (no rbac:read)", async () => {
-    const result = await cli("subkit", ["rbac", "roles", "list", "--json"], {
+    const result = await cli(["rbac", "roles", "list", "--json"], {
       env,
       persona: "member",
     });
@@ -138,13 +137,13 @@ describe("member persona", () => {
 // ---------------------------------------------------------------------------
 describe("enduser persona", () => {
   test("can read health (unauthenticated endpoint)", async () => {
-    const result = await cli("subkit", ["health"], { env, persona: "enduser" });
+    const result = await cli(["health"], { env, persona: "enduser" });
     expectSuccess(result, "enduser health");
     expect(result.stdout).toContain("ok");
   });
 
   test("can use sk headless mode (scoped to own conversations)", async () => {
-    const result = await cli("sk", ["--p", "hello from enduser", "--output", "json"], {
+    const result = await cli(["--p", "hello from enduser", "--output", "json"], {
       env,
       persona: "enduser",
       timeout: 60_000,
@@ -161,9 +160,9 @@ describe("enduser persona", () => {
 describe("cross-persona isolation", () => {
   test("all personas see the same tenant health", async () => {
     const [a, m, e] = await Promise.all([
-      run("subkit", ["health"], { env, persona: "admin" }),
-      run("subkit", ["health"], { env, persona: "member" }),
-      run("subkit", ["health"], { env, persona: "enduser" }),
+      run(["health"], { env, persona: "admin" }),
+      run(["health"], { env, persona: "member" }),
+      run(["health"], { env, persona: "enduser" }),
     ]);
     expect(a).toContain("ok");
     expect(m).toContain("ok");

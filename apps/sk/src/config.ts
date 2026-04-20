@@ -19,8 +19,11 @@ export interface Profile {
   engine_url: string;
   api_key: string;
   active_tenant_id: string | null;
-  /** Cached persona hint so the status line renders before the first /rbac/can probe returns. */
-  persona_hint?: "admin" | "member" | "enduser" | "portal" | null;
+  /**
+   * Cached for status-line rendering only — not authoritative.
+   * Always overridden by RBAC probe results on startup.
+   */
+  persona_hint?: "admin" | "operator" | "member" | "enduser" | "portal" | null;
   /** Locked to true for profiles authenticated via a portal token. */
   portal_locked?: boolean;
 }
