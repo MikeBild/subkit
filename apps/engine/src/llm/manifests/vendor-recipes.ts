@@ -11,7 +11,9 @@
 // JSON (not Markdown like Skills) so the recipe-gate scanner can
 // structurally compare assistant output against the canonical shape.
 
-import claudeDesktop from "../../conversations/seed/vendor-recipes/claude-desktop.json" with { type: "json" };
+import claudeDesktop from "../../conversations/seed/vendor-recipes/claude-desktop.json" with {
+  type: "json",
+};
 import codex from "../../conversations/seed/vendor-recipes/codex.json" with { type: "json" };
 
 export interface VendorRecipe {
@@ -51,7 +53,10 @@ export function getVendorRecipe(client: string): VendorRecipe | undefined {
  * (`vendor-recipe.contract.test.ts`) to fail CI when verifications
  * lapse. `now` is injectable so tests are deterministic.
  */
-export function recipeFreshness(recipe: VendorRecipe, now: Date = new Date()): VendorRecipeFreshness {
+export function recipeFreshness(
+  recipe: VendorRecipe,
+  now: Date = new Date(),
+): VendorRecipeFreshness {
   const verifiedAt = new Date(recipe.verified_at);
   const ageMs = now.getTime() - verifiedAt.getTime();
   const age_days = Math.max(0, Math.floor(ageMs / (24 * 60 * 60 * 1000)));

@@ -51,9 +51,7 @@ const inputSchema = z
     allowed_connectors: z
       .array(z.string().min(1))
       .optional()
-      .describe(
-        "Whitelist of connector ids/slugs the key may use. Defaults to all when omitted.",
-      ),
+      .describe("Whitelist of connector ids/slugs the key may use. Defaults to all when omitted."),
     expires_at: z
       .string()
       .datetime()
@@ -99,7 +97,10 @@ export const createApiKeyTool: ConversationTool = {
 
     const expiresAt = args.expires_at ? new Date(args.expires_at) : undefined;
     if (expiresAt && Number.isNaN(expiresAt.getTime())) {
-      return { ok: false, data: { error: "bad_expires_at", reason: "expires_at is not a valid ISO-8601 timestamp" } };
+      return {
+        ok: false,
+        data: { error: "bad_expires_at", reason: "expires_at is not a valid ISO-8601 timestamp" },
+      };
     }
 
     let issued: { view: { id: string; prefix: string; scopes: string[] }; plaintext: string };

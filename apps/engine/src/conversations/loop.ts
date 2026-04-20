@@ -411,18 +411,14 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ...(p.runtime_context
         ? {
             runtime_context: {
-              ...(p.runtime_context.engine_url
-                ? { engine_url: p.runtime_context.engine_url }
-                : {}),
+              ...(p.runtime_context.engine_url ? { engine_url: p.runtime_context.engine_url } : {}),
               ...(p.runtime_context.tenant_slug
                 ? { tenant_slug: p.runtime_context.tenant_slug }
                 : {}),
               ...(p.runtime_context.actor_email
                 ? { actor_email: p.runtime_context.actor_email }
                 : {}),
-              ...(p.runtime_context.actor_role
-                ? { actor_role: p.runtime_context.actor_role }
-                : {}),
+              ...(p.runtime_context.actor_role ? { actor_role: p.runtime_context.actor_role } : {}),
               ...(p.surface ? { surface: p.surface } : {}),
             },
           }
@@ -585,9 +581,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           // list so replay tests + the capability-gap analytics can
           // read them back without re-scanning.
           const guarded = runOutputGuard(step.text, {
-            ...(p.runtime_context?.engine_url
-              ? { engine_url: p.runtime_context.engine_url }
-              : {}),
+            ...(p.runtime_context?.engine_url ? { engine_url: p.runtime_context.engine_url } : {}),
             ...(p.runtime_context?.tenant_slug
               ? { tenant_slug: p.runtime_context.tenant_slug }
               : {}),
@@ -595,7 +589,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           await appendMessage(p.db, p.tenant_id, p.conversation_id, "assistant", {
             text: guarded.text,
             ...(guarded.violations.length > 0
-              ? { _violations: guarded.violations.map((v) => ({ kind: v.kind, message: v.message })) }
+              ? {
+                  _violations: guarded.violations.map((v) => ({
+                    kind: v.kind,
+                    message: v.message,
+                  })),
+                }
               : {}),
           });
           events.push({ type: "message", role: "assistant", content: { text: guarded.text } });

@@ -57,11 +57,9 @@ describe("cannot_help", () => {
     // because .execute() bypasses the registry); the strict flavour is
     // what the LLM SDK enforces via the wrapped tool. This test
     // documents that distinction explicitly.
-    const sealedFromRegistry = (
-      await import("../index.ts")
-    ).getTool("cannot_help")!.inputSchema;
-    expect(
-      sealedFromRegistry.safeParse({ reason: "ok", not_a_real_field: "x" }).success,
-    ).toBe(false);
+    const sealedFromRegistry = (await import("../index.ts")).getTool("cannot_help")!.inputSchema;
+    expect(sealedFromRegistry.safeParse({ reason: "ok", not_a_real_field: "x" }).success).toBe(
+      false,
+    );
   });
 });

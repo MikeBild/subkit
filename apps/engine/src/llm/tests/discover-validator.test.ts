@@ -17,12 +17,16 @@ function mk(kind: DiscoverArtifact["kind"], draft: Record<string, unknown>): Dis
 describe("validateDiscoverDraft", () => {
   it("accepts a complete connector draft", () => {
     expect(
-      validateDiscoverDraft(mk("connector", { name: "Stripe", base_url: "https://api.stripe.com" })),
+      validateDiscoverDraft(
+        mk("connector", { name: "Stripe", base_url: "https://api.stripe.com" }),
+      ),
     ).toBeNull();
   });
 
   it("accepts a connector draft with template_id instead of base_url", () => {
-    expect(validateDiscoverDraft(mk("connector", { name: "X", template_id: "tpl-123" }))).toBeNull();
+    expect(
+      validateDiscoverDraft(mk("connector", { name: "X", template_id: "tpl-123" })),
+    ).toBeNull();
   });
 
   it("rejects a connector draft missing name", () => {

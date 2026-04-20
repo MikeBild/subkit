@@ -51,7 +51,11 @@ function checkServer(name: string, server: McpServerEntry, ctx: ScannerContext):
     } catch {
       return out;
     }
-    if (looksLikeSubkitOrigin(parsed, engineUrl) && engineUrl && parsed.origin !== engineUrl.origin) {
+    if (
+      looksLikeSubkitOrigin(parsed, engineUrl) &&
+      engineUrl &&
+      parsed.origin !== engineUrl.origin
+    ) {
       out.push({
         kind: "vendor_recipe.host_mismatch",
         message: `MCP recipe for server "${name}" points at ${parsed.origin}, not the runtime engine_url ${engineUrl.origin}.`,
@@ -62,7 +66,11 @@ function checkServer(name: string, server: McpServerEntry, ctx: ScannerContext):
         },
       });
     }
-    if (looksLikeSubkitOrigin(parsed) && parsed.pathname !== "/mcp" && parsed.pathname !== "/mcp/") {
+    if (
+      looksLikeSubkitOrigin(parsed) &&
+      parsed.pathname !== "/mcp" &&
+      parsed.pathname !== "/mcp/"
+    ) {
       out.push({
         kind: "vendor_recipe.bad_path",
         message: `MCP recipe URL for "${name}" should end in /mcp, got ${parsed.pathname}`,

@@ -8,7 +8,7 @@
 import type { Scanner, ScannerContext, Violation } from "../types.ts";
 
 const SUBKIT_HOST_RE = /\b(?:[a-z0-9-]+\.)*subkit(?:[a-z0-9-]+)?(?:-[a-z0-9-]+)?\.(?:[a-z]+)\b/i;
-const URL_RE = /\bhttps?:\/\/[^\s)\]\}>'"`,]+/gi;
+const URL_RE = /\bhttps?:\/\/[^\s)\]}>'"`,]+/gi;
 
 function looksLikeSubkitOrigin(url: URL, engineUrl?: URL): boolean {
   // Always treat the engine's own host as ground truth.

@@ -569,7 +569,12 @@ export async function detectIntentSkills(
   // Desktop / Cursor / Continue. Loads `mcp-codex-integration` (and any
   // sibling vendor-specific Skills authored later) so the assistant has a
   // grounded recipe before it speaks.
-  if (msg.includes("mcp") || msg.includes("codex") || msg.includes("claude code") || msg.includes("claude desktop")) {
+  if (
+    msg.includes("mcp") ||
+    msg.includes("codex") ||
+    msg.includes("claude code") ||
+    msg.includes("claude desktop")
+  ) {
     keywords.push("mcp", "codex", "claude code", "claude desktop", "model context protocol");
   }
   if (opts.hasFailedExecution) keywords.push("troubleshoot", "failure", "error");

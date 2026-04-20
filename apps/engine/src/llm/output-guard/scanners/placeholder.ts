@@ -46,7 +46,8 @@ const PATTERNS: Pattern[] = [
   {
     kind: "placeholder.angle_generic",
     re: /<placeholder>/gi,
-    message: "Emitted the literal `<placeholder>` token. Replace with a real value or call cannot_help.",
+    message:
+      "Emitted the literal `<placeholder>` token. Replace with a real value or call cannot_help.",
   },
 ];
 

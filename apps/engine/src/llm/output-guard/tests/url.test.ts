@@ -24,10 +24,9 @@ describe("urlScanner", () => {
   });
 
   it("ignores foreign hosts (github, anthropic, vendor docs)", () => {
-    const vs = urlScanner.scan(
-      "See https://github.com/anthropics or https://docs.anthropic.com.",
-      { engine_url: "https://subkit-api.mikebild.dev" },
-    );
+    const vs = urlScanner.scan("See https://github.com/anthropics or https://docs.anthropic.com.", {
+      engine_url: "https://subkit-api.mikebild.dev",
+    });
     expect(vs).toEqual([]);
   });
 
