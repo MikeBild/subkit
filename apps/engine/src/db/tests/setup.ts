@@ -26,7 +26,11 @@ const { Client, Pool } = pg;
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_FOLDER = path.join(HERE, "..", "migrations");
 
-const ADMIN_URL = process.env.DATABASE_URL ?? "postgres://subkit:subkit@localhost:5432/subkit";
+/** Read the admin connection string lazily so tests can override
+ *  DATABASE_URL between imports. */
+function getAdminUrl(): string {
+  return process.env.DATABASE_URL ?? "postgres://subkit:subkit@localhost:5432/subkit";
+}
 
 function rewriteDbName(url: string, newName: string): string {
   const parsed = new URL(url);
@@ -51,7 +55,8 @@ export async function createTestDb(label: string): Promise<TestDb> {
   const rand = randomBytes(6).toString("hex");
   const dbName = `test_${label}_${process.pid}_${rand}`.toLowerCase().replace(/[^a-z0-9_]/g, "_");
 
-  const admin = new Client({ connectionString: ADMIN_URL });
+  const adminUrl = getAdminUrl();
+  const admin = new Client({ connectionString: adminUrl });
   await admin.connect();
   try {
     await admin.query(`DROP DATABASE IF EXISTS "${dbName}"`);
@@ -60,7 +65,7 @@ export async function createTestDb(label: string): Promise<TestDb> {
     await admin.end();
   }
 
-  const url = rewriteDbName(ADMIN_URL, dbName);
+  const url = rewriteDbName(adminUrl, dbName);
   const pool = new Pool({ connectionString: url });
   // Swallow async errors so a connection hiccup doesn't crash the runner.
   pool.on("error", () => {});
@@ -76,7 +81,7 @@ export async function createTestDb(label: string): Promise<TestDb> {
 
   const cleanup = async () => {
     await pool.end().catch(() => {});
-    const admin2 = new Client({ connectionString: ADMIN_URL });
+    const admin2 = new Client({ connectionString: getAdminUrl() });
     await admin2.connect();
     try {
       // Terminate any lingering connections before DROP.
