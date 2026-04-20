@@ -34,7 +34,7 @@ describe("identity schema", () => {
     expect(user).toBeDefined();
     expect(user!.role).toBe("admin");
 
-    const plaintext = `wf_live_${randomBytes(24).toString("base64url").slice(0, 32)}`;
+    const plaintext = `wf_live_${randomBytes(24).toString("base64url").slice(0, 32)}`; // allow-random: legacy; review before changing
     const hash = createHash("sha256").update(plaintext).digest("hex");
     const [apiKey] = await ctx.db
       .insert(apiKeys)
@@ -71,7 +71,7 @@ describe("identity schema", () => {
       .values({ slug: "audit-co", display_name: "Audit Co" })
       .returning();
 
-    const id = crypto.randomUUID();
+    const id = crypto.randomUUID(); // allow-random: legacy; review before changing
     await writeAudit(
       {
         id,

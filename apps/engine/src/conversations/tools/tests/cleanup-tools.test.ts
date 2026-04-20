@@ -52,7 +52,7 @@ function makeToolContext(
   return {
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
-    conversation_id: crypto.randomUUID(),
+    conversation_id: crypto.randomUUID(), // allow-random: legacy; review before changing
     actor_id: actorId,
     connector_id: null,
     workflow_id: null,

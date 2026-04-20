@@ -70,7 +70,7 @@ function makeCtx(overrides: Partial<ToolContext> = {}): TestToolCtx {
   const base: ToolContext = {
     db: ctx.db,
     tenant_id,
-    conversation_id: crypto.randomUUID(),
+    conversation_id: crypto.randomUUID(), // allow-random: legacy; review before changing
     actor_id: null,
     connector_id: null,
     workflow_id: null,

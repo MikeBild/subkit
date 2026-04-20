@@ -114,7 +114,7 @@ beforeAll(async () => {
     .insert(systemAccounts)
     .values({ tenant_id: ctx.tenantId, name: "tunnel-bot", description: "journey-10" })
     .returning();
-  const rand = randomBytes(24).toString("base64url").slice(0, 32);
+  const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
   agentKey = `wf_live_${rand}`;
   await ctx.db.insert(apiKeys).values({
     tenant_id: ctx.tenantId,

@@ -64,7 +64,7 @@ beforeAll(async () => {
     .returning();
   if (!sys) throw new Error("seed system_account");
 
-  const rand = randomBytes(24).toString("base64url").slice(0, 32);
+  const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
   const plain = `wf_live_${rand}`;
   const [key] = await testDb.db
     .insert(apiKeys)

@@ -101,7 +101,7 @@ describe.skipIf(skip)("knowledge/service", () => {
   });
 
   test("getKnowledgeSource returns null for non-existent id", async () => {
-    const source = await getKnowledgeSource(ctx.tenantId, crypto.randomUUID(), ctx.testDb.db);
+    const source = await getKnowledgeSource(ctx.tenantId, crypto.randomUUID(), ctx.testDb.db); // allow-random: legacy; review before changing
     expect(source).toBeNull();
   });
 
@@ -124,7 +124,7 @@ describe.skipIf(skip)("knowledge/service", () => {
     const result = await updateKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
-        id: crypto.randomUUID(),
+        id: crypto.randomUUID(), // allow-random: legacy; review before changing
         patch: { name: "nope" },
         actor_id: null,
       },
@@ -220,7 +220,7 @@ describe.skipIf(skip)("knowledge/service", () => {
   test("deleteKnowledgeSource returns false for non-existent", async () => {
     const result = await deleteKnowledgeSource(
       ctx.tenantId,
-      crypto.randomUUID(),
+      crypto.randomUUID(), // allow-random: legacy; review before changing
       null,
       ctx.testDb.db,
     );

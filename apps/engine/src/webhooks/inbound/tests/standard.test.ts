@@ -33,7 +33,7 @@ afterAll(async () => {
 describe("inbound: standard webhooks", () => {
   test("valid signature accepted and execution enqueued", async () => {
     const body = JSON.stringify({ ping: "pong" });
-    const webhookId = randomUUID();
+    const webhookId = randomUUID(); // allow-random: legacy; review before changing
     const ts = Math.floor(Date.now() / 1000);
     const sig = sign(SECRET, webhookId, ts, body);
     const outcome = await handleInbound(
@@ -59,7 +59,7 @@ describe("inbound: standard webhooks", () => {
 
   test("bad signature rejected", async () => {
     const body = JSON.stringify({ ping: "pong" });
-    const webhookId = randomUUID();
+    const webhookId = randomUUID(); // allow-random: legacy; review before changing
     const ts = Math.floor(Date.now() / 1000);
     const badSig = sign("wrong-secret", webhookId, ts, body);
     const outcome = await handleInbound(
@@ -81,7 +81,7 @@ describe("inbound: standard webhooks", () => {
 
   test("stale timestamp rejected", async () => {
     const body = JSON.stringify({ ping: "pong" });
-    const webhookId = randomUUID();
+    const webhookId = randomUUID(); // allow-random: legacy; review before changing
     const staleTs = Math.floor(Date.now() / 1000) - 10 * 60; // 10 minutes ago
     const sig = sign(SECRET, webhookId, staleTs, body);
     const outcome = await handleInbound(
@@ -103,7 +103,7 @@ describe("inbound: standard webhooks", () => {
 
   test("duplicate webhook-id deduped", async () => {
     const body = JSON.stringify({ replay: true });
-    const webhookId = randomUUID();
+    const webhookId = randomUUID(); // allow-random: legacy; review before changing
     const ts = Math.floor(Date.now() / 1000);
     const sig = sign(SECRET, webhookId, ts, body);
     const first = await handleInbound(

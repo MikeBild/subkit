@@ -59,6 +59,7 @@ describe("POST /v1/conversations/:id/attachments", () => {
   });
 
   test("non-existent conversation returns 404", async () => {
+    // allow-random: unique per-test id for a 404 lookup.
     const res = await api("POST", `/v1/conversations/${crypto.randomUUID()}/attachments`, {
       filename: "x.txt",
       content: "hello",
@@ -123,7 +124,7 @@ describe("GET /v1/conversations/:id/attachments", () => {
   });
 
   test("404 for unknown conversation", async () => {
-    const res = await api("GET", `/v1/conversations/${crypto.randomUUID()}/attachments`);
+    const res = await api("GET", `/v1/conversations/${crypto.randomUUID()}/attachments`); // allow-random: legacy; review before changing
     expect(res.status).toBe(404);
   });
 });

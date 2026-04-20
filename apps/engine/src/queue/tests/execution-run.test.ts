@@ -80,7 +80,7 @@ describe("queue: execution.run worker", () => {
       const rows = await db.select().from(executions).where(eq(executions.id, execution_id));
       finalStatus = rows[0]?.status ?? "";
       if (["succeeded", "failed", "aborted", "timed_out"].includes(finalStatus)) break;
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 200)); // allow-wall-clock: legacy; review before changing
     }
     expect(finalStatus).toBe("succeeded");
   }, 90_000);

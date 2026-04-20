@@ -34,7 +34,7 @@ describe("browser-login", () => {
     });
 
     // Wait for the server to start
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 200)); // allow-wall-clock: legacy; review before changing
 
     // Find the port by trying to access the callback with wrong state
     // The login URL printed would contain the port, but since quiet=true
@@ -43,7 +43,7 @@ describe("browser-login", () => {
     try {
       await Promise.race([
         loginPromise,
-        new Promise((_, rej) => setTimeout(() => rej(new Error("test timeout")), 3_000)),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("test timeout")), 3_000)), // allow-wall-clock: legacy; review before changing
       ]);
     } catch (err) {
       // Expected — either login timeout or our test timeout
@@ -66,7 +66,7 @@ describe("browser-login", () => {
         capturedPort = Number.parseInt(match[1]!, 10);
         capturedState = match[2]!;
 
-        // Simulate the browser callback
+        // allow-wall-clock: simulates the browser's async callback after device auth.
         setTimeout(async () => {
           try {
             await fetch(
@@ -142,6 +142,7 @@ describe("browser-login", () => {
         capturedPort = Number.parseInt(match[1]!, 10);
         capturedState = match[2]!;
 
+        // allow-wall-clock: simulates the browser's async callback after device auth.
         setTimeout(async () => {
           try {
             await fetch(
