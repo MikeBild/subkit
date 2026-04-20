@@ -1,8 +1,8 @@
 // Unit tests for sealSchema — the registration-time pass that
 // tightens every conversation-tool input schema.
 
-import { z } from "@hono/zod-openapi";
 import { describe, expect, it } from "bun:test";
+import { z } from "@hono/zod-openapi";
 import { sealSchema } from "../seal-schema.ts";
 
 describe("sealSchema", () => {

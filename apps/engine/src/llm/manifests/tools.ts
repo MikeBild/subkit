@@ -28,7 +28,7 @@ function build(): ToolManifest {
   const tools = listTools();
   const entries = new Map<string, ToolManifestEntry>();
   for (const t of tools) {
-    const oneLiner = t.description.split(/(?<=\.|\!|\?)\s/)[0]?.trim() ?? t.description;
+    const oneLiner = t.description.split(/(?<=\.|!|\?)\s/)[0]?.trim() ?? t.description;
     entries.set(t.name, {
       name: t.name,
       category: t.category,

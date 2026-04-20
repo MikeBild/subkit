@@ -48,9 +48,7 @@ export function validateDiscoverDraft(artifact: DiscoverArtifact): string[] | nu
     case "knowledge_source":
       if (!has("name") && !has("slug")) issues.push("knowledge_source draft requires `name`");
       if (!has("content") && !has("body") && !has("source_uri"))
-        issues.push(
-          "knowledge_source draft requires one of `content`, `body`, `source_uri`",
-        );
+        issues.push("knowledge_source draft requires one of `content`, `body`, `source_uri`");
       break;
   }
   return issues.length > 0 ? issues : null;

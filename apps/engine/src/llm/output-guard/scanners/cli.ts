@@ -25,7 +25,10 @@ interface Invocation {
 
 function tokenise(line: string): string[] {
   // Normalise line continuations and strip comments.
-  const cleaned = line.replace(/\\\n/g, " ").replace(/#[^\n]*/g, "").trim();
+  const cleaned = line
+    .replace(/\\\n/g, " ")
+    .replace(/#[^\n]*/g, "")
+    .trim();
   if (cleaned.length === 0) return [];
   // Split on whitespace but break on shell separators.
   return cleaned.split(/\s+/);
@@ -42,7 +45,10 @@ function parseInvocations(block: string): Invocation[] {
     if (tokens.length === 0) continue;
     // Find the binary token. `npx`/`bun` prefixes are tolerated — strip them.
     let i = 0;
-    while (i < tokens.length && (tokens[i] === "npx" || tokens[i] === "bun" || tokens[i] === "bunx")) {
+    while (
+      i < tokens.length &&
+      (tokens[i] === "npx" || tokens[i] === "bun" || tokens[i] === "bunx")
+    ) {
       i += 1;
     }
     const head = tokens[i];

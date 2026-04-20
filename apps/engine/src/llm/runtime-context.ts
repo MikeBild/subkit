@@ -44,7 +44,7 @@ export function renderRuntimeContextBlock(ctx: RuntimeContext): string | null {
     "",
     "Rules:",
     "- When you need to reference this engine's URL in any artifact (HTTP request, MCP config, SDK snippet, runbook), use the literal `engine_url` value above. NEVER write `your-subkit-instance.com`, `example.com`, `<YOUR_HOST>`, or similar placeholders.",
-    "- If `engine_url` is missing from this block, you do NOT know the host — call `cannot_help(reason: \"engine_url is not exposed in this turn's runtime context\", missing_capability: \"manifest.runtime_context.engine_url\")` instead of inventing one.",
+    '- If `engine_url` is missing from this block, you do NOT know the host — call `cannot_help(reason: "engine_url is not exposed in this turn\'s runtime context", missing_capability: "manifest.runtime_context.engine_url")` instead of inventing one.',
     "- The `tenant_slug` and `actor_email` may be quoted in human-friendly text but never used as path segments unless the user explicitly asked.",
   ].join("\n");
 }

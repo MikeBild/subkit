@@ -62,7 +62,9 @@ export function validateExtractRoundtrip(
   switch (s.type) {
     case "object": {
       if (data === null || typeof data !== "object" || Array.isArray(data)) {
-        issues.push(`schema.type=object but data is ${data === null ? "null" : Array.isArray(data) ? "array" : typeof data}`);
+        issues.push(
+          `schema.type=object but data is ${data === null ? "null" : Array.isArray(data) ? "array" : typeof data}`,
+        );
         break;
       }
       const dataObj = data as Record<string, unknown>;

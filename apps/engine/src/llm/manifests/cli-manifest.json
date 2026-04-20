@@ -17,7 +17,10 @@
     { "name": "workflow", "type": "string" }
   ],
   "subcommands": {
-    "login": { "flags": ["api-key", "portal-token", "issuer-url", "client-id", "scope"], "positionals": [] },
+    "login": {
+      "flags": ["api-key", "portal-token", "issuer-url", "client-id", "scope"],
+      "positionals": []
+    },
     "logout": { "flags": ["profile"], "positionals": [] },
     "status": { "flags": [], "positionals": [] },
     "tenants": { "flags": [], "positionals": ["action", "id"] },
@@ -32,12 +35,18 @@
     "health": { "flags": ["json"], "positionals": [] },
     "extract": { "flags": ["kind", "pattern", "output", "skip-cache"], "positionals": [] },
     "workflows": { "flags": ["limit", "json", "input"], "positionals": ["sub"] },
-    "connectors": { "flags": ["limit", "json", "name", "version", "config"], "positionals": ["sub"] },
+    "connectors": {
+      "flags": ["limit", "json", "name", "version", "config"],
+      "positionals": ["sub"]
+    },
     "connector-templates": { "flags": ["limit", "json"], "positionals": ["sub"] },
     "credentials": { "flags": ["json", "connector-id"], "positionals": ["sub"] },
     "skills": { "flags": ["json", "limit", "file", "title"], "positionals": ["sub"] },
     "skill-candidates": { "flags": ["json", "limit"], "positionals": ["sub"] },
-    "knowledge-sources": { "flags": ["json", "file", "name", "description"], "positionals": ["sub"] },
+    "knowledge-sources": {
+      "flags": ["json", "file", "name", "description"],
+      "positionals": ["sub"]
+    },
     "discovery": { "flags": ["kind", "json"], "positionals": [] },
     "executions": { "flags": ["json", "limit", "workflow-id", "status"], "positionals": ["sub"] },
     "patch-candidates": { "flags": ["json", "limit"], "positionals": ["sub"] },

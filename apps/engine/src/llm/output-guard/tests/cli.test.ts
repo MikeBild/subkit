@@ -41,7 +41,7 @@ describe("cliScanner", () => {
   });
 
   it("ignores non-bash fenced blocks", () => {
-    const text = "```json\n{ \"sk\": \"--foo\" }\n```";
+    const text = '```json\n{ "sk": "--foo" }\n```';
     expect(cliScanner.scan(text, ctx)).toEqual([]);
   });
 
