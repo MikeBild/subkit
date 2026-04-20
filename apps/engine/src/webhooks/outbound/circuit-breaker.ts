@@ -10,6 +10,7 @@
 import { eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
 
 export const FAILURE_THRESHOLD = 10;
 export const OPEN_DURATION_MS = 5 * 60_000;
@@ -42,6 +43,14 @@ export function reset(subscriptionId: string): void {
  * state back to the database row.
  */
 export async function recordSuccess(db: Executor, subscriptionId: string): Promise<void> {
+  const prev = state.get(subscriptionId);
+  if (prev && prev.open_until > 0) {
+    logger.info({
+      module: "webhooks.outbound",
+      action: "breaker.closed",
+      subscription_id: subscriptionId,
+    });
+  }
   state.set(subscriptionId, { consecutive_failures: 0, open_until: 0 });
   await db
     .update(subscriptions)
@@ -68,6 +77,13 @@ export async function recordFailure(
   };
   if (next.consecutive_failures >= FAILURE_THRESHOLD) {
     next.open_until = now + OPEN_DURATION_MS;
+    logger.warn({
+      module: "webhooks.outbound",
+      action: "breaker.opened",
+      subscription_id: subscriptionId,
+      consecutive_failures: next.consecutive_failures,
+      open_until: new Date(next.open_until).toISOString(),
+    });
   }
   state.set(subscriptionId, next);
 

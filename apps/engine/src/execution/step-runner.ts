@@ -3,7 +3,7 @@
 // debug log. Drivers (request, transform, ...) own the actual work and
 // the retry loops; this file owns the surrounding ceremony.
 
-import { logger } from "../logging/logger.ts";
+import { log, logger } from "../logging/logger.ts";
 import type { StepDef } from "../workflows/types.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
 import { applySelector } from "./selectors.ts";
@@ -66,6 +66,32 @@ export async function runStep(
         error: { code: "unknown_step_kind", message: "unknown step kind" },
       };
     }
+  }
+
+  if (result.status === "succeeded") {
+    log.execution.step.completed({
+      step_id: step.id,
+      kind: step.kind,
+      duration_ms: result.duration_ms,
+      execution_id: ctx.execution_id,
+    });
+  } else if (result.status === "failed") {
+    log.execution.step.failed({
+      step_id: step.id,
+      kind: step.kind,
+      duration_ms: result.duration_ms,
+      error_code: result.error?.code,
+      error_msg: result.error?.message,
+      execution_id: ctx.execution_id,
+    });
+  } else if (result.status === "timed_out") {
+    log.execution.step.timeout({
+      step_id: step.id,
+      kind: step.kind,
+      duration_ms: result.duration_ms,
+      error_code: result.error?.code,
+      execution_id: ctx.execution_id,
+    });
   }
 
   let scope_value = result.output;

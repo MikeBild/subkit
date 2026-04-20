@@ -32,6 +32,7 @@ import {
   roles as rolesTable,
   users,
 } from "../db/schema/index.ts";
+import { log } from "../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 
 export type DecisionSource =
@@ -209,10 +210,19 @@ function hasBuiltinAdminRole(principal: ResolvedPrincipal): boolean {
   return principal.roles?.includes("admin") === true;
 }
 
+const rbacCtx = (check: PermissionCheck) => ({
+  permission: check.permission,
+  principal_kind: check.principal.kind,
+  principal_id: check.principal.id,
+  resource_type: check.resource?.type,
+  resource_id: check.resource?.id,
+});
+
 export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
   // 1. admin short-circuit.
   if (hasBuiltinAdminRole(check.principal)) {
     recordMetric("allow", check.permission, "builtin_admin");
+    log.rbac.checked({ allow: true, source: "builtin_admin", ...rbacCtx(check) });
     return { allow: true, source: "builtin_admin" };
   }
 
@@ -220,6 +230,7 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
   if (!permissionId) {
     // Unknown permission name — deny. Surfaces early during development.
     recordMetric("deny", check.permission, "unknown_permission");
+    log.rbac.denied({ reason: `permission_unknown:${check.permission}`, ...rbacCtx(check) });
     return {
       allow: false,
       reason: `permission_unknown:${check.permission}`,
@@ -231,6 +242,7 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
     const granted = await hasResourceGrant(db, check, permissionId);
     if (granted) {
       recordMetric("allow", check.permission, "resource_grant");
+      log.rbac.checked({ allow: true, source: "resource_grant", ...rbacCtx(check) });
       return { allow: true, source: "resource_grant" };
     }
   }
@@ -251,6 +263,7 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
     const granted = await groupGrantsPermission(db, check.principal.id, permissionId);
     if (granted) {
       recordMetric("allow", check.permission, "group");
+      log.rbac.checked({ allow: true, source: "group", ...rbacCtx(check) });
       return { allow: true, source: "group" };
     }
   }
@@ -262,6 +275,7 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
       const granted = await roleHasPermission(db, roleId, permissionId);
       if (granted) {
         recordMetric("allow", check.permission, "role");
+        log.rbac.checked({ allow: true, source: "role", ...rbacCtx(check) });
         return { allow: true, source: "role" };
       }
     }
@@ -270,10 +284,12 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
   // 5. portal token allowlist.
   if (matchesPortalTokenAllowlist(check)) {
     recordMetric("allow", check.permission, "portal_token_allowlist");
+    log.rbac.checked({ allow: true, source: "portal_token_allowlist", ...rbacCtx(check) });
     return { allow: true, source: "portal_token_allowlist" };
   }
 
   recordMetric("deny", check.permission, "none");
+  log.rbac.denied({ reason: `permission_denied:${check.permission}`, ...rbacCtx(check) });
   return {
     allow: false,
     reason: `permission_denied:${check.permission}`,

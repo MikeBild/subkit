@@ -3,6 +3,7 @@
 // engine.ts will call this driver and merge the results array.
 
 import jsonata from "jsonata";
+import { logger } from "../../logging/logger.ts";
 import type { LoopStep } from "../../workflows/types.ts";
 import { applySelector } from "../selectors.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
@@ -31,6 +32,13 @@ export async function runLoopStep(p: {
       };
     }
     if (collection.length > LOOP_ITERATION_CAP) {
+      logger.warn({
+        module: "execution",
+        action: "step.loop.cap_exceeded",
+        step_id: p.step.id,
+        collection_size: collection.length,
+        cap: LOOP_ITERATION_CAP,
+      });
       return {
         status: "failed",
         retry_count: 0,

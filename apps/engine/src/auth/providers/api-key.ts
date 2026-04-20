@@ -167,36 +167,72 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
 
       const now = new Date();
       if (row.revoked_at && row.revoked_at <= now) {
-        log.auth.denied({
-          provider: "api_key",
-          reason: "revoked",
-          api_key_id: row.id,
-        });
+        log.auth.denied({ provider: "api_key", reason: "revoked", api_key_id: row.id });
+        audit(
+          {
+            tenant_id: row.tenant_id,
+            actor_type: "system",
+            action: AuditAction.AUTH_LOGIN_FAILED,
+            resource_type: "api_key",
+            resource_id: row.id,
+            result: "denied",
+            reason: "revoked",
+            metadata: { provider: "api_key" },
+          },
+          db,
+        );
         return null;
       }
       if (row.not_before && row.not_before > now) {
-        log.auth.denied({
-          provider: "api_key",
-          reason: "not_yet_active",
-          api_key_id: row.id,
-        });
+        log.auth.denied({ provider: "api_key", reason: "not_yet_active", api_key_id: row.id });
+        audit(
+          {
+            tenant_id: row.tenant_id,
+            actor_type: "system",
+            action: AuditAction.AUTH_LOGIN_FAILED,
+            resource_type: "api_key",
+            resource_id: row.id,
+            result: "denied",
+            reason: "not_yet_active",
+            metadata: { provider: "api_key" },
+          },
+          db,
+        );
         return null;
       }
       if (row.expires_at && row.expires_at <= now) {
-        log.auth.denied({
-          provider: "api_key",
-          reason: "expired",
-          api_key_id: row.id,
-        });
+        log.auth.denied({ provider: "api_key", reason: "expired", api_key_id: row.id });
+        audit(
+          {
+            tenant_id: row.tenant_id,
+            actor_type: "system",
+            action: AuditAction.AUTH_LOGIN_FAILED,
+            resource_type: "api_key",
+            resource_id: row.id,
+            result: "denied",
+            reason: "expired",
+            metadata: { provider: "api_key" },
+          },
+          db,
+        );
         return null;
       }
       // Soft revoke after the rotation overlap window has elapsed.
       if (row.rotating_out_at && row.rotating_out_at <= now) {
-        log.auth.denied({
-          provider: "api_key",
-          reason: "rotated_out",
-          api_key_id: row.id,
-        });
+        log.auth.denied({ provider: "api_key", reason: "rotated_out", api_key_id: row.id });
+        audit(
+          {
+            tenant_id: row.tenant_id,
+            actor_type: "system",
+            action: AuditAction.AUTH_LOGIN_FAILED,
+            resource_type: "api_key",
+            resource_id: row.id,
+            result: "denied",
+            reason: "rotated_out",
+            metadata: { provider: "api_key" },
+          },
+          db,
+        );
         return null;
       }
 

@@ -12,7 +12,7 @@ import { AuditAction } from "../audit/types.ts";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
 import type { Db } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import { logger } from "../logging/logger.ts";
+import { log, logger } from "../logging/logger.ts";
 import {
   decodeFrame,
   encodeFrame,
@@ -121,8 +121,18 @@ export function startTunnelWsServer(opts: TunnelWsServerOptions): TunnelWsServer
           });
           const legacyScope = (principal.scopes ?? []).includes("tunnel_agent");
           if (!decision.allow && !legacyScope) {
+            log.tunnel.auth({
+              result: "denied",
+              tenant_id: principal.tenant_id,
+              reason: "tunnel:agent_permission_denied",
+            });
             return reject("forbidden", 403);
           }
+          log.tunnel.auth({
+            result: "allowed",
+            tenant_id: principal.tenant_id,
+            principal_id: principal.id,
+          });
           const state: SocketState = {
             tenant_id: principal.tenant_id,
             targets: new Set(),
@@ -330,6 +340,12 @@ async function handleRegister(
     ws.data.tunnel_id = tunnel.id;
     ws.data.tunnel_name = tunnel.name;
     ws.data.registered = true;
+    log.tunnel.register({
+      tunnel_id: tunnel.id,
+      tunnel_name: tunnel.name,
+      tenant_id: ws.data.tenant_id,
+      targets: frame.targets.map((t) => t.name),
+    });
 
     for (const t of frame.targets) {
       registry.attach({

@@ -21,10 +21,12 @@
 import type { LanguageModel } from "ai";
 import { and, eq } from "drizzle-orm";
 import { type ZodType, z } from "zod";
+import { audit } from "../../audit/audit.ts";
+import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { tenantLlmSettings, tenants } from "../../db/schema/index.ts";
 import { env, listLlmEnvironmentIssues } from "../../env.ts";
-import { logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/logger.ts";
 import { recordLlmQuotaExhausted, recordLlmTokens } from "../../observability/instrumentation.ts";
 import { checkAndDecrement, checkBudget, recordUsage } from "../budgets.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../errors.ts";
@@ -245,6 +247,13 @@ export async function invoke<T = unknown>(
 ): Promise<InvokeResult<T>> {
   const db = exec ?? getDb();
   const route = params.route ?? (await resolveModelRoute(params.tenant_id, db));
+  log.llm.route.resolved({
+    model_id: route.primary,
+    fallback: route.fallback,
+    provider: route.provider,
+    tenant_id: params.tenant_id,
+    flow: params.flow,
+  });
 
   // 1) Assemble context.
   const assembleParams: Parameters<typeof assembleContext>[0] = {
@@ -529,6 +538,23 @@ async function dispatchReal<T>(
     flow: params.flow,
     prompt_tokens: usage.input_tokens,
     completion_tokens: usage.output_tokens,
+  });
+  audit({
+    tenant_id: params.tenant_id,
+    actor_type: "system",
+    action: AuditAction.LLM_INVOCATION,
+    resource_type: "llm",
+    result: "success",
+    metadata: {
+      model: modelUsed,
+      provider: route.provider,
+      flow: params.flow,
+      prompt_tokens: usage.input_tokens,
+      completion_tokens: usage.output_tokens,
+      cache_read_tokens: usage.cache_read_tokens,
+      fell_back,
+      latency_ms: latency,
+    },
   });
 
   return {

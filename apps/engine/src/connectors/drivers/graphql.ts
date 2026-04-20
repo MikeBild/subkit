@@ -13,6 +13,7 @@
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
+import { logger } from "../../logging/logger.ts";
 import type { ConnectorView } from "../types.ts";
 import { applyAuthMaterial } from "./http.ts";
 
@@ -105,6 +106,14 @@ export async function executeGraphQLRequest(p: {
     url.searchParams.set(k, String(v));
   }
 
+  logger.debug({
+    module: "connector",
+    action: "graphql.request",
+    connector_id: p.connector.id,
+    operation: p.op.operation,
+    url_host: new URL(cfg.endpoint).host,
+    has_credential: credential !== null,
+  });
   const fetchImpl = p.fetchImpl ?? fetch;
   const res = await fetchImpl(url.toString(), {
     method: "POST",
@@ -122,6 +131,17 @@ export async function executeGraphQLRequest(p: {
   res.headers.forEach((v, k) => {
     headerObj[k] = v;
   });
+  const hasErrors = Array.isArray((parsed as { errors?: unknown }).errors);
+  if (hasErrors || res.status >= 400) {
+    logger.warn({
+      module: "connector",
+      action: "graphql.request.error",
+      connector_id: p.connector.id,
+      operation: p.op.operation,
+      status: res.status,
+      has_graphql_errors: hasErrors,
+    });
+  }
   return {
     status: res.status,
     headers: headerObj,
@@ -184,16 +204,26 @@ export async function probeGraphQLConnector(p: {
     }
     const data = (res.body as { data?: { __typename?: unknown } }).data;
     const typeName = data?.__typename;
-    return {
-      ok: typeof typeName === "string" && res.status >= 200 && res.status < 300,
-      latency_ms: Date.now() - start,
+    const ok = typeof typeName === "string" && res.status >= 200 && res.status < 300;
+    const latency_ms = Date.now() - start;
+    logger.debug({
+      module: "connector",
+      action: "graphql.probe.completed",
+      connector_id: p.connector.id,
+      ok,
+      latency_ms,
       status: res.status,
-    };
+    });
+    return { ok, latency_ms, status: res.status };
   } catch (err) {
-    return {
-      ok: false,
-      latency_ms: Date.now() - start,
-      detail: err instanceof Error ? err.message : String(err),
-    };
+    const latency_ms = Date.now() - start;
+    logger.warn({
+      module: "connector",
+      action: "graphql.probe.failed",
+      connector_id: p.connector.id,
+      latency_ms,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, latency_ms, detail: err instanceof Error ? err.message : String(err) };
   }
 }

@@ -11,6 +11,7 @@
 // decision.
 
 import type { PatchProposal } from "../llm/flows/repair.ts";
+import { log } from "../logging/logger.ts";
 import type { DriftSignal, PatchDecision } from "./types.ts";
 
 const SAFE_KINDS = new Set<PatchProposal["kind"]>([
@@ -34,24 +35,18 @@ const SAFE_KINDS = new Set<PatchProposal["kind"]>([
  * the proposal already ships with `classification: "unsafe"` we
  * propagate that — we never *soften* the model's call.
  */
-export function classifyPatch(proposal: PatchProposal, signal: DriftSignal | null): PatchDecision {
+function _classify(proposal: PatchProposal, signal: DriftSignal | null): PatchDecision {
   const reasons: string[] = [];
-  // Honour the model's own classification when it says unsafe.
   if (proposal.classification === "unsafe") {
     reasons.push("proposal.classification=unsafe");
     return { classification: "unsafe", reasons };
   }
-
-  // Only the narrow repair palette is eligible for auto-apply.
   if (!SAFE_KINDS.has(proposal.kind)) {
     reasons.push(`proposal.kind=${proposal.kind} is outside the safe palette`);
     return { classification: "unsafe", reasons };
   }
-
-  // Inspect the patch body for disqualifying edits.
   const patch = proposal.patch ?? {};
   const patchAny = patch as Record<string, unknown>;
-
   if (typeof patchAny.method === "string") {
     reasons.push("patch touches HTTP method");
     return { classification: "unsafe", reasons };
@@ -76,17 +71,20 @@ export function classifyPatch(proposal: PatchProposal, signal: DriftSignal | nul
     reasons.push("patch flips request/response encoding format");
     return { classification: "unsafe", reasons };
   }
-
-  // Drift signals that the rules treat as always-unsafe regardless of
-  // what the model proposed. A 4xx/5xx with a whole new response
-  // envelope is fine to auto-heal (renames); schema diffs with
-  // `removed` keys touching required fields fall into unsafe here
-  // because the detector can't prove the removed field was optional.
   if (signal && signal.kind === "schema_diff" && signal.removed.length > 0) {
     reasons.push(`drift removes keys: ${signal.removed.join(",")}`);
     return { classification: "unsafe", reasons };
   }
-
   reasons.push("rename/widening/optional-only patch");
   return { classification: "safe", reasons };
+}
+
+export function classifyPatch(proposal: PatchProposal, signal: DriftSignal | null): PatchDecision {
+  const decision = _classify(proposal, signal);
+  log.selfHealing.patch.classified({
+    patch_kind: proposal.kind,
+    classification: decision.classification,
+    reasons: decision.reasons,
+  });
+  return decision;
 }
