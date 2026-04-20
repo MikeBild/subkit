@@ -272,6 +272,7 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
         /* ignore */
       }
       // 3. Give pg-boss connections time to fully close before dropping DB.
+      // allow-wall-clock: socket teardown requires real I/O time.
       await new Promise((r) => setTimeout(r, 200));
       // 4. Drop the test database.
       await testDb.cleanup();
@@ -334,6 +335,11 @@ export async function cli(
       // and keeps the CLI process alive past the test's 5s budget in
       // sandboxed CI. Disable it for every e2e CLI invocation.
       NO_UPDATE_CHECK: "1",
+      // Propagate determinism knobs to the subprocess so parent and
+      // child share the same seeded RNG / clock source. Parent tests
+      // can pin these via extraEnv; otherwise we default to seed=1 for
+      // reproducible e2e runs.
+      SUBKIT_DETERMINISTIC_SEED: process.env.SUBKIT_DETERMINISTIC_SEED ?? "1",
       ...opts.extraEnv,
     },
     stdout: "pipe",
