@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.1](https://github.com/MikeBild/subkit/compare/subkit-v1.13.0...subkit-v1.13.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* **engine:** close Approach 2 wiring gaps + 3 journey-test regressions ([b7148e7](https://github.com/MikeBild/subkit/commit/b7148e7db931f471eecb4537f3ab7bc4d9c7d266))
+
 ## [1.13.0](https://github.com/MikeBild/subkit/compare/subkit-v1.12.0...subkit-v1.13.0) (2026-04-20)
 
 
