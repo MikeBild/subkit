@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/MikeBild/subkit/compare/subkit-v1.11.0...subkit-v1.12.0) (2026-04-20)
+
+
+### Features
+
+* **engine:** add structured runtime logs and enterprise compliance audit trails ([97f4ae7](https://github.com/MikeBild/subkit/commit/97f4ae7a493ef60ece18523a18af93671b96962e))
+
 ## [1.11.0](https://github.com/MikeBild/subkit/compare/subkit-v1.10.10...subkit-v1.11.0) (2026-04-20)
 
 
