@@ -17,6 +17,7 @@ import {
   askUserTextTool,
 } from "./ask-user/index.ts";
 import { buildWorkflowTool } from "./build-workflow.ts";
+import { cannotHelpTool } from "./cannot-help.ts";
 import { commitDraftTool } from "./commit-draft.ts";
 import { connectStepsTool } from "./connect-steps.ts";
 import { dryRunStepTool } from "./dry-run-step.ts";
@@ -145,8 +146,19 @@ export interface ConversationTool {
 
 const registry: Map<string, ConversationTool> = new Map();
 
+import { sealSchema } from "./seal-schema.ts";
+
 function register(tool: ConversationTool): void {
-  registry.set(tool.name, tool);
+  // sealSchema tightens every conversation-tool input schema to
+  // `.strict()` so the LLM cannot emit a tool call with fields the
+  // schema does not permit. ZodObject inputs become strict; non-object
+  // inputs pass through unchanged. Per-tool .execute(...) re-uses the
+  // schema attached here, so the strictness propagates downstream.
+  const sealed: ConversationTool = {
+    ...tool,
+    inputSchema: sealSchema(tool.inputSchema),
+  };
+  registry.set(sealed.name, sealed);
 }
 
 register(listSkillsTool);
@@ -183,6 +195,7 @@ register(askUserMultiTool);
 register(askUserTextTool);
 register(askUserFormTool);
 register(askUserConfirmTool);
+register(cannotHelpTool);
 
 // load_skill — on-demand skill injection, unlocking gated tools.
 import { loadSkillTool } from "./load-skill.ts";

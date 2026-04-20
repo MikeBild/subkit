@@ -18,11 +18,30 @@ import type { ConversationStatus } from "../../conversations/types.ts";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { monthlyUsage } from "../../llm/budgets.ts";
 import { resolveModelRoute } from "../../llm/core/invoke.ts";
+import { resolveEngineUrl } from "../../llm/runtime-context.ts";
 import { logger } from "../../logging/logger.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+
+/**
+ * Build the per-turn `runtime_context` block from the inbound HTTP
+ * request and the resolved principal. Threaded through to runLoop ↣
+ * assembleEnhancedPrompt ↣ the system prompt, so the model quotes the
+ * real engine_url + actor instead of inventing placeholders.
+ */
+function buildRuntimeContextFromRequest(
+  c: { req: { raw: Request } },
+  principal: { email?: string; roles: string[] },
+): { engine_url?: string; actor_email?: string; actor_role?: string } {
+  const engineUrl = resolveEngineUrl(c.req.raw);
+  return {
+    ...(engineUrl ? { engine_url: engineUrl } : {}),
+    ...(principal.email ? { actor_email: principal.email } : {}),
+    ...(principal.roles?.[0] ? { actor_role: principal.roles[0] } : {}),
+  };
+}
 
 const ElicitationParam = z.object({
   id: z.string().uuid(),
@@ -480,6 +499,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(body.memory !== undefined ? { memory: body.memory } : {}),
         ...(body.model ? { model: body.model } : {}),
         ...(body.title ? { title: body.title } : {}),
+        runtime_context: buildRuntimeContextFromRequest(c, principal),
       },
       db,
     );
@@ -517,6 +537,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
         actor_id: principal.id,
         message: body.message,
         ...(body.memory !== undefined ? { memory: body.memory } : {}),
+        runtime_context: buildRuntimeContextFromRequest(c, principal),
       },
       db,
     );
@@ -769,6 +790,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
         actor_id: principal.id,
         message: enrichedMessage,
         ...(typeof memory === "string" && memory.length > 0 ? { memory } : {}),
+        runtime_context: buildRuntimeContextFromRequest(c, principal),
       },
       db,
     );

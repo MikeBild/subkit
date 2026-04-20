@@ -177,6 +177,34 @@ export function recordConversationToolCall(args: {
   });
 }
 
+export function recordLlmOutputViolation(args: {
+  kind: string;
+  mode: "soft" | "hard" | "off";
+}): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.LLM_OUTPUT_VIOLATIONS_TOTAL, {
+      kind: args.kind,
+      mode: args.mode,
+    });
+  });
+}
+
+export function recordLlmOutputGuardDuration(duration_ms: number): void {
+  safe(() => {
+    if (Number.isFinite(duration_ms)) {
+      getMetrics().observe(METRIC_NAMES.LLM_OUTPUT_GUARD_DURATION_MS, duration_ms, {});
+    }
+  });
+}
+
+export function recordCannotHelp(args: { missing_capability?: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.CANNOT_HELP_INVOCATIONS_TOTAL, {
+      missing_capability: args.missing_capability ?? "unspecified",
+    });
+  });
+}
+
 export function recordConfirmationTransition(args: { to_state: string; tool: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.CONVERSATION_CONFIRMATIONS_TOTAL, {

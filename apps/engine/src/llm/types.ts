@@ -103,6 +103,18 @@ export interface AssembleContextParams {
    * must be masked before this string reaches the assembler.
    */
   authoring_context?: string;
+  /**
+   * Real runtime context the model must quote verbatim instead of
+   * inventing placeholders. Rendered into a stable block placed right
+   * after the base system prompt. See `llm/runtime-context.ts`.
+   */
+  runtime_context?: {
+    engine_url?: string;
+    tenant_slug?: string;
+    actor_email?: string;
+    actor_role?: string;
+    surface?: string;
+  };
 }
 
 /** Result of Context Enhancement — ready for an SDK call. */

@@ -3,6 +3,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";
 import { roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
+import { resolveEngineUrl } from "../../../llm/runtime-context.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
@@ -15,6 +16,18 @@ const WhoamiSchema = z
     email: z.string().nullable(),
     role_name: z.string().nullable(),
     provider: z.string(),
+    /**
+     * Public origin (`https://host[:port]`) the engine was reached at —
+     * lets clients (chat UI, sk CLI, Skills) emit paste-ready snippets
+     * without hard-coding placeholder hosts. Reflects the host header on
+     * the request, then `SUBKIT_PUBLIC_BASE_URL`, else null.
+     */
+    base_url: z.string().nullable(),
+    /**
+     * Effective scopes carried by the calling credential. `null` for
+     * sessions where scopes are not enumerable; `["*"]` for full access.
+     */
+    scopes: z.array(z.string()).nullable(),
   })
   .openapi("Whoami");
 
@@ -80,6 +93,8 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
         email,
         role_name: roleName,
         provider: principal.provider,
+        base_url: resolveEngineUrl(c.req.raw) ?? null,
+        scopes: Array.isArray(principal.scopes) ? principal.scopes : null,
       },
       200,
     );
