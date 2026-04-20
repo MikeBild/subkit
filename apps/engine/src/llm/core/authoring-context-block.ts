@@ -20,6 +20,17 @@ export interface AuthoringContextInput {
     tool_name: string;
     summary: string | null;
   } | null;
+  /**
+   * Summary of the latest document analysis pass for the connector
+   * being authored. Sourced from `connector_endpoint_schemas` rows.
+   * When null/empty, the section is omitted.
+   */
+  document_analysis?: {
+    source: string;
+    confidence: number;
+    endpoint_count: number;
+    sample_endpoints?: Array<{ method: string; path: string }>;
+  } | null;
 }
 
 export function renderAuthoringContextBlock(input: AuthoringContextInput): string | null {
@@ -55,6 +66,22 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
     lines.push("## Current authoring state");
     const mode = draft.mode ?? "onboarding";
     lines.push(...renderModeEnvelope(mode, draft));
+  }
+
+  if (input.document_analysis && input.document_analysis.endpoint_count > 0) {
+    if (lines.length > 0) lines.push("");
+    const da = input.document_analysis;
+    lines.push("## Document Analysis");
+    lines.push(
+      `- Completed: source=${da.source}, confidence=${da.confidence}%, endpoints=${da.endpoint_count}`,
+    );
+    if (da.sample_endpoints && da.sample_endpoints.length > 0) {
+      const preview = da.sample_endpoints.slice(0, 6).map((e) => `${e.method} ${e.path}`);
+      lines.push(`- Endpoints: ${preview.join(", ")}`);
+      if (da.sample_endpoints.length > 6) {
+        lines.push(`  - …and ${da.sample_endpoints.length - 6} more`);
+      }
+    }
   }
 
   if (input.pending_approval) {

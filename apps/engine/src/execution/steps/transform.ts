@@ -65,8 +65,18 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
       };
     }
     const expr = jsonata(p.step.expression);
+    // Convert `$`-prefixed scope keys (e.g. `$loop_index`, `$input`)
+    // into JSONata bindings so they're addressable as `$loop_index`,
+    // `$input` inside the expression. Plain (non-`$`) scope keys are
+    // already addressable as path expressions on the context object.
+    const bindings: Record<string, unknown> = { input: p.input };
+    for (const [k, v] of Object.entries(p.scope)) {
+      if (k.startsWith("$") && k.length > 1) {
+        bindings[k.slice(1)] = v;
+      }
+    }
     // race jsonata.evaluate against the abort signal
-    const evalPromise = expr.evaluate(p.scope, { input: p.input });
+    const evalPromise = expr.evaluate(p.scope, bindings);
     const result = await Promise.race([
       evalPromise,
       new Promise((_, reject) => {

@@ -4,6 +4,8 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { createConnector } from "../../connectors/service.ts";
 import { conversations } from "../../db/schema/index.ts";
+import { analyzeConversationAttachments } from "../../llm/flows/analyze-conversation-attachments.ts";
+import { logger } from "../../logging/logger.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -99,6 +101,36 @@ export const saveConnectorDraftTool: ConversationTool = {
         updated_at: new Date(),
       })
       .where(eq(conversations.id, ctx.conversation_id));
+
+    // Attachment-driven endpoint extraction. Best-effort: failures here
+    // never block the save — the connector is already persisted, and a
+    // missing endpoint registry is recoverable from a later analyse step.
+    let analysis: { source_format: string; confidence: number; endpoint_count: number } | null =
+      null;
+    try {
+      const result = await analyzeConversationAttachments({
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        db: ctx.db,
+        connector_id: saved.id,
+      });
+      if (result) {
+        analysis = {
+          source_format: result.source_format,
+          confidence: result.confidence,
+          endpoint_count: result.endpoints.length,
+        };
+      }
+    } catch (err) {
+      logger.warn({
+        module: "save-connector-draft",
+        action: "document_analysis_failed",
+        tenant_id: ctx.tenant_id,
+        connector_id: saved.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     await ctx.setDraft(
       withConnectorDraft(
         draft,
@@ -120,6 +152,7 @@ export const saveConnectorDraftTool: ConversationTool = {
           environment: saved.environment,
           driver: saved.driver,
         },
+        ...(analysis ? { document_analysis: analysis } : {}),
       },
     };
   },

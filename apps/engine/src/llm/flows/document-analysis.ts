@@ -4,6 +4,8 @@
 // Result: DocumentAnalysisResult with endpoints, auth, confidence.
 
 import { sql } from "drizzle-orm";
+import { auditAwait } from "../../audit/audit.ts";
+import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { connectorEndpointSchemas } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -205,6 +207,34 @@ export async function runDocumentAnalysisFlow(
     source_format,
     errors,
   };
+
+  // Audit emission — one row per analysis call, regardless of persistence.
+  const auditDb = p.db ?? getDb();
+  await auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: "system",
+      actor_id: null,
+      action: AuditAction.DOCUMENT_ANALYZED,
+      resource_type: "connector",
+      resource_id: p.connector_id ?? null,
+      result: errors.length > 0 && merged.length === 0 ? "error" : "success",
+      metadata: {
+        source_format,
+        confidence,
+        endpoint_count: merged.length,
+        attachment_count: p.attachments.length,
+        ...(errors.length > 0 ? { errors: errors.slice(0, 5) } : {}),
+      },
+    },
+    auditDb,
+  ).catch((err) => {
+    logger.warn({
+      module: "document-analysis",
+      action: "audit.emit_error",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
 
   // Persist endpoints to registry if connector_id is provided
   if (p.connector_id && merged.length > 0) {

@@ -12,10 +12,15 @@
 import { hasToolCall, stepCountIs, streamText } from "ai";
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { conversations } from "../db/schema/index.ts";
+import {
+  connectorEndpointSchemas,
+  conversationAttachments,
+  conversations,
+  executions,
+} from "../db/schema/index.ts";
 import { checkAndDecrement, checkBudget, monthlyUsage, recordUsage } from "../llm/budgets.ts";
 import { renderAuthoringContextBlock } from "../llm/core/authoring-context-block.ts";
-import { assembleEnhancedPrompt } from "../llm/core/context-assembler.ts";
+import { assembleEnhancedPrompt, detectIntentSkills } from "../llm/core/context-assembler.ts";
 import { resolveModelRoute, resolveLanguageModel as resolveSdkModel } from "../llm/core/invoke.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
 import { createMockLanguageModel } from "../llm/mock-stream.ts";
@@ -287,10 +292,83 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     .from(conversations)
     .where(eq(conversations.id, p.conversation_id))
     .limit(1);
-  const loadedSkillSlugs = (loadedSkillsRowForPrompt[0]?.loaded_skills ?? []) as string[];
+  const explicitSkillSlugs = (loadedSkillsRowForPrompt[0]?.loaded_skills ?? []) as string[];
+
+  // Auto-load skills based on conversation context — attachment MIME
+  // types, recent execution failures, and target workflow presence.
+  // Deterministic keyword match against `skills.trigger_keywords`.
+  const attachmentMimeRows = await p.db
+    .select({ content_type: conversationAttachments.content_type })
+    .from(conversationAttachments)
+    .where(eq(conversationAttachments.conversation_id, p.conversation_id));
+  const attachmentMimeTypes = attachmentMimeRows
+    .map((r) => r.content_type)
+    .filter((m): m is string => typeof m === "string" && m.length > 0);
+  let hasFailedExecution = false;
+  if (p.workflow_id) {
+    const failed = await p.db
+      .select({ id: executions.id })
+      .from(executions)
+      .where(eq(executions.workflow_id, p.workflow_id))
+      .limit(5);
+    hasFailedExecution = failed.length > 0; // any prior execution counts as feedback context
+  }
+  const intentSkillSlugs = await detectIntentSkills(
+    p.tenant_id,
+    {
+      attachmentMimeTypes,
+      userMessage: currentUserText,
+      hasFailedExecution,
+      hasMultipleConnectors: false,
+    },
+    p.db,
+  );
+  const loadedSkillSlugs = [...new Set([...explicitSkillSlugs, ...intentSkillSlugs])];
+
+  // Surface document-analysis registry summary for the active connector
+  // so the model sees what was extracted without needing to re-read it.
+  let documentAnalysisSummary: {
+    source: string;
+    confidence: number;
+    endpoint_count: number;
+    sample_endpoints: Array<{ method: string; path: string }>;
+  } | null = null;
+  const activeConnectorId =
+    p.connector_id ??
+    (
+      await p.db
+        .select({ target_connector_id: conversations.target_connector_id })
+        .from(conversations)
+        .where(eq(conversations.id, p.conversation_id))
+        .limit(1)
+    )[0]?.target_connector_id ??
+    null;
+  if (activeConnectorId) {
+    const epRows = await p.db
+      .select({
+        method: connectorEndpointSchemas.method,
+        path: connectorEndpointSchemas.path,
+        source: connectorEndpointSchemas.source,
+        confidence: connectorEndpointSchemas.confidence,
+      })
+      .from(connectorEndpointSchemas)
+      .where(eq(connectorEndpointSchemas.connector_id, activeConnectorId))
+      .limit(50);
+    if (epRows.length > 0) {
+      const source = epRows[0]!.source;
+      const confidence = epRows[0]!.confidence;
+      documentAnalysisSummary = {
+        source,
+        confidence,
+        endpoint_count: epRows.length,
+        sample_endpoints: epRows.map((r) => ({ method: r.method, path: r.path })),
+      };
+    }
+  }
   const authoringContext = renderAuthoringContextBlock({
     draft,
     user_message: currentUserText,
+    document_analysis: documentAnalysisSummary,
   });
   const prompt = await assembleEnhancedPrompt(
     {
