@@ -44,6 +44,16 @@ const PROBE_PERMISSIONS = [
   "skill:read",
   "audit:read",
   "identity:read",
+  // Operator / admin probes — used for top-level command visibility gating.
+  "workflow:read",
+  "workflow:write",
+  "connector:read",
+  "skill:write",
+  "execution:read",
+  "notification:read",
+  "rbac:read",
+  "api_key:read",
+  "portal_token:read",
 ] as const;
 
 interface ResolvedPersona {
@@ -84,6 +94,7 @@ async function resolvePersona(
       }
       // Refine label if we got enough signal back from the RBAC probes.
       if (allowed.has("audit:read")) label = "admin";
+      else if (allowed.has("workflow:write") && allowed.has("connector:read")) label = "operator";
       else if (allowed.has("mcp:read") && allowed.has("skill:read")) label = "member";
       else if (!allowed.has("conversation:list") && allowed.has("conversation:write"))
         label = "portal";

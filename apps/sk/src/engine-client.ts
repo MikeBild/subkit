@@ -297,8 +297,10 @@ export class EngineClient {
   }
 
   // --------------------------- Skills ---------------------------
-  listSkills(): Promise<{ items: Array<{ id: string; title: string; scope: string }> }> {
-    return this.request("GET", "/v1/skills");
+  listSkills(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Array<{ id: string; title: string; scope: string }> }> {
+    return this.request("GET", "/v1/skills", undefined, query);
   }
 
   // --------------------------- MCP catalog ---------------------------
@@ -339,6 +341,590 @@ export class EngineClient {
 
   setupValidation(): Promise<SetupValidationResponse> {
     return this.request("GET", "/v1/diagnostics/setup");
+  }
+
+  getDiagnosticsLlm(): Promise<Record<string, unknown>> {
+    return this.request("GET", "/v1/diagnostics/llm");
+  }
+
+  // -------------------- Multipart helper --------------------
+  private async requestForm<T = unknown>(method: string, path: string, form: FormData): Promise<T> {
+    const qs = "";
+    const url = `${this.base}${path}${qs}`;
+    // Omit content-type so the browser/bun sets it with boundary automatically.
+    const h: Record<string, string> = {
+      accept: "application/json",
+      "user-agent": this.userAgent,
+    };
+    if (this.apiKey) h.authorization = `Bearer ${this.apiKey}`;
+    if (this.tenant) h["x-subkit-tenant"] = this.tenant;
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, { method, headers: h, body: form });
+    } catch (cause) {
+      throw new SkTransportError(cause);
+    }
+    const text = await res.text();
+    if (!res.ok) {
+      let parsed: unknown = text;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        /* keep as string */
+      }
+      throw new SkEngineError(res.status, parsed);
+    }
+    if (!text || res.status === 204) return undefined as T;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return text as unknown as T;
+    }
+  }
+
+  // -------------------- Workflows --------------------
+  listWorkflows(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/workflows", undefined, query);
+  }
+  getWorkflow(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/workflows/${encodeURIComponent(id)}`);
+  }
+  createWorkflow(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/workflows", body);
+  }
+  patchWorkflow(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/workflows/${encodeURIComponent(id)}`, body);
+  }
+  deleteWorkflow(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/workflows/${encodeURIComponent(id)}`);
+  }
+  runWorkflow(id: string, body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/workflows/${encodeURIComponent(id)}/run`, body);
+  }
+
+  // -------------------- Connectors --------------------
+  listConnectors(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/connectors", undefined, query);
+  }
+  getConnector(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/connectors/${encodeURIComponent(id)}`);
+  }
+  createConnector(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/connectors", body);
+  }
+  patchConnector(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/connectors/${encodeURIComponent(id)}`, body);
+  }
+  deleteConnector(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/connectors/${encodeURIComponent(id)}`);
+  }
+  testConnector(id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/test`);
+  }
+  startConnectorOAuth(id: string): Promise<{ oauth_url: string }> {
+    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/oauth/start`);
+  }
+  ingestConnectorDocs(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/docs/ingest`, body);
+  }
+  listConnectorDocs(
+    id: string,
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", `/v1/connectors/${encodeURIComponent(id)}/docs`, undefined, query);
+  }
+  searchConnectorDocs(
+    id: string,
+    q: string,
+    limit?: number,
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", `/v1/connectors/${encodeURIComponent(id)}/docs/search`, undefined, {
+      q,
+      limit,
+    });
+  }
+  deleteConnectorDoc(connectorId: string, docId: string): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/v1/connectors/${encodeURIComponent(connectorId)}/docs/${encodeURIComponent(docId)}`,
+    );
+  }
+  createCredential(
+    connectorId: string,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      "POST",
+      `/v1/connectors/${encodeURIComponent(connectorId)}/credentials`,
+      body,
+    );
+  }
+  rotateCredential(
+    credentialId: string,
+    body: Record<string, unknown> = {},
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/credentials/${encodeURIComponent(credentialId)}/rotate`, body);
+  }
+  deleteCredential(credentialId: string): Promise<void> {
+    return this.request("DELETE", `/v1/credentials/${encodeURIComponent(credentialId)}`);
+  }
+
+  // -------------------- Connector Templates --------------------
+  listConnectorTemplates(
+    query: Record<string, string | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/connector-templates", undefined, query);
+  }
+  createConnectorTemplate(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/connector-templates", body);
+  }
+  deleteConnectorTemplate(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/connector-templates/${encodeURIComponent(id)}`);
+  }
+  createConnectorFromTemplate(
+    slug: string,
+    body: Record<string, unknown> = {},
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/connectors/from-template/${encodeURIComponent(slug)}`, body);
+  }
+
+  // -------------------- Skills --------------------
+  getSkill(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/skills/${encodeURIComponent(id)}`);
+  }
+  createSkill(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/skills", body);
+  }
+  patchSkill(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/skills/${encodeURIComponent(id)}`, body);
+  }
+  activateSkill(id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/skills/${encodeURIComponent(id)}/activate`);
+  }
+  archiveSkill(id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/skills/${encodeURIComponent(id)}/archive`);
+  }
+  deleteSkill(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/skills/${encodeURIComponent(id)}`);
+  }
+
+  // -------------------- Skill Candidates --------------------
+  listSkillCandidates(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/skill-candidates", undefined, query);
+  }
+  getSkillCandidate(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/skill-candidates/${encodeURIComponent(id)}`);
+  }
+  approveSkillCandidate(
+    id: string,
+    body: Record<string, unknown> = {},
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/skill-candidates/${encodeURIComponent(id)}/approve`, body);
+  }
+  rejectSkillCandidate(
+    id: string,
+    body: { reason?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/skill-candidates/${encodeURIComponent(id)}/reject`, body);
+  }
+
+  // -------------------- Executions --------------------
+  listExecutions(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/executions", undefined, query);
+  }
+  getExecution(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/executions/${encodeURIComponent(id)}`);
+  }
+  executionSteps(id: string): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", `/v1/executions/${encodeURIComponent(id)}/steps`);
+  }
+  abortExecution(id: string): Promise<void> {
+    return this.request("POST", `/v1/executions/${encodeURIComponent(id)}/abort`);
+  }
+  streamExecution(id: string): Promise<Response> {
+    return this.stream(`/v1/executions/${encodeURIComponent(id)}/stream`);
+  }
+
+  // -------------------- Patch Candidates --------------------
+  listPatchCandidates(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/patch-candidates", undefined, query);
+  }
+  getPatchCandidate(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/patch-candidates/${encodeURIComponent(id)}`);
+  }
+  approvePatchCandidate(id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/patch-candidates/${encodeURIComponent(id)}/approve`);
+  }
+  rejectPatchCandidate(
+    id: string,
+    body: { reason?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/patch-candidates/${encodeURIComponent(id)}/reject`, body);
+  }
+
+  // -------------------- Inbound Hooks --------------------
+  listHooksInbound(): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/webhooks/inbound");
+  }
+  getHookInbound(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/webhooks/inbound/${encodeURIComponent(id)}`);
+  }
+  createHookInbound(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/webhooks/inbound", body);
+  }
+  deleteHookInbound(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/webhooks/inbound/${encodeURIComponent(id)}`);
+  }
+
+  // -------------------- Subscriptions --------------------
+  listSubscriptions(): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/subscriptions");
+  }
+  getSubscription(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/subscriptions/${encodeURIComponent(id)}`);
+  }
+  createSubscription(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/subscriptions", body);
+  }
+  patchSubscription(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/subscriptions/${encodeURIComponent(id)}`, body);
+  }
+  deleteSubscription(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/subscriptions/${encodeURIComponent(id)}`);
+  }
+  replaySubscriptionDelivery(id: string, deliveryId: string): Promise<Record<string, unknown>> {
+    return this.request(
+      "POST",
+      `/v1/subscriptions/${encodeURIComponent(id)}/deliveries/${encodeURIComponent(deliveryId)}/replay`,
+    );
+  }
+
+  // -------------------- Events --------------------
+  listEvents(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/events", undefined, query);
+  }
+
+  // -------------------- Tunnels --------------------
+  listTunnels(): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/tunnels");
+  }
+  getTunnel(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/tunnels/${encodeURIComponent(id)}`);
+  }
+  createTunnel(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/tunnels", body);
+  }
+  deleteTunnel(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/tunnels/${encodeURIComponent(id)}`);
+  }
+
+  // -------------------- API Keys --------------------
+  listApiKeys(): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/identity/api-keys");
+  }
+  issueApiKey(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/identity/api-keys", body);
+  }
+  rotateApiKey(id: string, body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/identity/api-keys/${encodeURIComponent(id)}/rotate`, body);
+  }
+  revokeApiKey(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/identity/api-keys/${encodeURIComponent(id)}`);
+  }
+
+  // -------------------- Portal Tokens --------------------
+  listPortalTokens(): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/identity/portal-tokens");
+  }
+  issuePortalToken(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/identity/portal-tokens", body);
+  }
+  revokePortalToken(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/identity/portal-tokens/${encodeURIComponent(id)}`);
+  }
+
+  // -------------------- Knowledge Sources --------------------
+  listKnowledgeSources(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/knowledge-sources", undefined, query);
+  }
+  searchKnowledge(
+    q: string,
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/knowledge-sources/search", undefined, { q, ...query });
+  }
+  getKnowledgeSource(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/knowledge-sources/${encodeURIComponent(id)}`);
+  }
+  patchKnowledgeSource(
+    id: string,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/knowledge-sources/${encodeURIComponent(id)}`, body);
+  }
+  deleteKnowledgeSource(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/knowledge-sources/${encodeURIComponent(id)}`);
+  }
+  createKnowledgeSource(
+    file: { name: string; content: Buffer | Uint8Array; mime_type: string },
+    metadata: Record<string, unknown> = {},
+  ): Promise<Record<string, unknown>> {
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([file.content as unknown as ArrayBuffer], { type: file.mime_type }),
+      file.name,
+    );
+    if (Object.keys(metadata).length > 0) form.append("metadata", JSON.stringify(metadata));
+    return this.requestForm("POST", "/v1/knowledge-sources", form);
+  }
+
+  // -------------------- Discovery --------------------
+  listDiscoveryRuns(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/discovery", undefined, query);
+  }
+  getDiscoveryRun(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/discovery/${encodeURIComponent(id)}`);
+  }
+  listDiscoveryArtifacts(
+    runId: string,
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request(
+      "GET",
+      `/v1/discovery/${encodeURIComponent(runId)}/artifacts`,
+      undefined,
+      query,
+    );
+  }
+  approveDiscoveryArtifact(id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/discovery/${encodeURIComponent(id)}/approve`);
+  }
+  rejectDiscoveryArtifact(
+    id: string,
+    body: { reason?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/discovery/${encodeURIComponent(id)}/reject`, body);
+  }
+  createDiscoveryRun(
+    files: Array<{ name: string; content: Buffer | Uint8Array; mime_type: string }>,
+    label?: string,
+  ): Promise<Record<string, unknown>> {
+    const form = new FormData();
+    for (const f of files) {
+      form.append(
+        "files",
+        new Blob([f.content as unknown as ArrayBuffer], { type: f.mime_type }),
+        f.name,
+      );
+    }
+    if (label) form.append("label", label);
+    return this.requestForm("POST", "/v1/discovery", form);
+  }
+
+  // -------------------- RBAC Management --------------------
+  listPermissions(): Promise<{ items: string[] }> {
+    return this.request("GET", "/v1/rbac/permissions");
+  }
+  listRoles(
+    query: Record<string, string | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/rbac/roles", undefined, query);
+  }
+  getRole(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/rbac/roles/${encodeURIComponent(id)}`);
+  }
+  createRole(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/rbac/roles", body);
+  }
+  patchRole(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/rbac/roles/${encodeURIComponent(id)}`, body);
+  }
+  deleteRole(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/rbac/roles/${encodeURIComponent(id)}`);
+  }
+  grantRolePermission(roleId: string, permission: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/rbac/roles/${encodeURIComponent(roleId)}/permissions`, {
+      permission,
+    });
+  }
+  revokeRolePermission(roleId: string, permission: string): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/v1/rbac/roles/${encodeURIComponent(roleId)}/permissions/${encodeURIComponent(permission)}`,
+    );
+  }
+  assignUserRole(userId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/rbac/users/${encodeURIComponent(userId)}/role`, body);
+  }
+  listGrants(
+    query: Record<string, string | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/rbac/grants", undefined, query);
+  }
+  createGrant(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/rbac/grants", body);
+  }
+  deleteGrant(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/rbac/grants/${encodeURIComponent(id)}`);
+  }
+  listGroups(): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/rbac/groups");
+  }
+  createGroup(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/rbac/groups", body);
+  }
+  patchGroup(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/rbac/groups/${encodeURIComponent(id)}`, body);
+  }
+  deleteGroup(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/rbac/groups/${encodeURIComponent(id)}`);
+  }
+  addGroupMember(groupId: string, userId: string): Promise<void> {
+    return this.request(
+      "POST",
+      `/v1/rbac/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
+    );
+  }
+  removeGroupMember(groupId: string, userId: string): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/v1/rbac/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
+    );
+  }
+  assignGroupRole(groupId: string, roleId: string): Promise<void> {
+    return this.request(
+      "POST",
+      `/v1/rbac/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}`,
+    );
+  }
+  removeGroupRole(groupId: string, roleId: string): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/v1/rbac/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}`,
+    );
+  }
+
+  // -------------------- Request Hooks --------------------
+  listRequestHooks(): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/auth/request-hooks");
+  }
+  createRequestHook(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/auth/request-hooks", body);
+  }
+  patchRequestHook(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/auth/request-hooks/${encodeURIComponent(id)}`, body);
+  }
+  deleteRequestHook(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/auth/request-hooks/${encodeURIComponent(id)}`);
+  }
+
+  // -------------------- Audit Log (extended) --------------------
+  queryAuditLog(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[]; cursor?: string }> {
+    return this.request("GET", "/v1/audit-log", undefined, query);
+  }
+  getAuditEvent(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/audit-log/${encodeURIComponent(id)}`);
+  }
+  exportAuditLog(query: Record<string, string | number | undefined> = {}): Promise<Response> {
+    return this.stream("/v1/audit-log/export.ndjson", query);
+  }
+
+  // -------------------- AI --------------------
+  extract(body: { sample: string; hint?: string }): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/ai/extract", body);
+  }
+
+  // -------------------- Notifications --------------------
+  listNotificationChannels(): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/notifications/channels");
+  }
+  createNotificationChannel(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/notifications/channels", body);
+  }
+  patchNotificationChannel(
+    id: string,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/notifications/channels/${encodeURIComponent(id)}`, body);
+  }
+  deleteNotificationChannel(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/notifications/channels/${encodeURIComponent(id)}`);
+  }
+  listNotificationRules(): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/notifications/rules");
+  }
+  createNotificationRule(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/notifications/rules", body);
+  }
+  patchNotificationRule(
+    id: string,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/notifications/rules/${encodeURIComponent(id)}`, body);
+  }
+  deleteNotificationRule(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/notifications/rules/${encodeURIComponent(id)}`);
+  }
+  listNotificationDeliveries(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/notifications/deliveries", undefined, query);
+  }
+
+  // -------------------- Identity: Users --------------------
+  listIdentityUsers(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/identity/users", undefined, query);
+  }
+  getIdentityUser(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/identity/users/${encodeURIComponent(id)}`);
+  }
+  patchIdentityUser(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("PATCH", `/v1/identity/users/${encodeURIComponent(id)}`, body);
+  }
+  deleteIdentityUser(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/identity/users/${encodeURIComponent(id)}`);
+  }
+
+  // -------------------- Identity: System Accounts --------------------
+  listSystemAccounts(): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/identity/system-accounts");
+  }
+  createSystemAccount(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/identity/system-accounts", body);
+  }
+  deleteSystemAccount(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/identity/system-accounts/${encodeURIComponent(id)}`);
+  }
+
+  // -------------------- Identity: Tenants --------------------
+  listIdentityTenants(
+    query: Record<string, string | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/identity/tenants", undefined, query);
+  }
+  getIdentityTenant(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/identity/tenants/${encodeURIComponent(id)}`);
   }
 }
 

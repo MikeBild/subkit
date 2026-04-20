@@ -1,8 +1,8 @@
-// E2E test harness for the subkit + sk CLI binaries.
+// E2E test harness for the sk CLI binary.
 //
 // Boots a real engine (Hono + pg-boss) against a disposable Postgres
 // database, seeds three personas (admin, member, enduser), and provides
-// a `cli()` helper that invokes compiled CLI binaries as subprocesses
+// a `cli()` helper that invokes the compiled sk binary as a subprocess
 // with per-persona config directories.
 //
 // Usage:
@@ -105,7 +105,6 @@ function detectRealProvider(): { provider: string; reason: string } {
 // ---------------------------------------------------------------------------
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../..");
-const SUBKIT_BIN = path.join(REPO_ROOT, "dist/subkit");
 const SK_BIN = path.join(REPO_ROOT, "dist/sk");
 
 function sha256Hex(value: string): string {
@@ -183,7 +182,7 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
   // Seed each persona.
   const personas = {} as Record<PersonaName, Persona>;
   for (const def of PERSONA_DEFS) {
-    const homeDir = mkdtempSync(path.join(tmpdir(), `subkit-e2e-${def.name}-`));
+    const homeDir = mkdtempSync(path.join(tmpdir(), `sk-e2e-${def.name}-`));
 
     const [user] = await testDb.db
       .insert(users)
@@ -301,14 +300,12 @@ export interface CliResult {
 }
 
 /**
- * Invoke a CLI binary as a subprocess.
+ * Invoke the sk CLI binary as a subprocess.
  *
- * @param binary - "subkit" or "sk"
  * @param args   - CLI arguments (e.g. ["health", "--json"])
  * @param opts   - persona for auth + optional env overrides
  */
 export async function cli(
-  binary: "subkit" | "sk",
   args: string[],
   opts: {
     env: E2EEnv;
@@ -317,12 +314,9 @@ export async function cli(
     timeout?: number;
   },
 ): Promise<CliResult> {
-  const bin = binary === "subkit" ? SUBKIT_BIN : SK_BIN;
   const persona = opts.persona ? opts.env.personas[opts.persona] : opts.env.personas.admin;
-  const _configDir =
-    binary === "subkit" ? path.join(persona.homeDir, ".subkit") : path.join(persona.homeDir, ".sk");
 
-  const proc = Bun.spawn([bin, ...args], {
+  const proc = Bun.spawn([SK_BIN, ...args], {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
@@ -389,24 +383,19 @@ export function expectSuccess(result: CliResult, context?: string): void {
   }
 }
 
-/** Shorthand: run CLI, assert success, return stdout. */
-export async function run(
-  binary: "subkit" | "sk",
-  args: string[],
-  opts: Parameters<typeof cli>[2],
-): Promise<string> {
-  const result = await cli(binary, args, opts);
-  expectSuccess(result, `${binary} ${args.join(" ")}`);
+/** Shorthand: run sk CLI, assert success, return stdout. */
+export async function run(args: string[], opts: Parameters<typeof cli>[1]): Promise<string> {
+  const result = await cli(args, opts);
+  expectSuccess(result, `sk ${args.join(" ")}`);
   return result.stdout;
 }
 
-/** Shorthand: run CLI with --json, assert success, parse JSON. */
+/** Shorthand: run sk CLI with --json, assert success, parse JSON. */
 export async function runJson<T = unknown>(
-  binary: "subkit" | "sk",
   args: string[],
-  opts: Parameters<typeof cli>[2],
+  opts: Parameters<typeof cli>[1],
 ): Promise<T> {
-  const result = await cli(binary, [...args, "--json"], opts);
-  expectSuccess(result, `${binary} ${args.join(" ")} --json`);
+  const result = await cli([...args, "--json"], opts);
+  expectSuccess(result, `sk ${args.join(" ")} --json`);
   return parseJson<T>(result);
 }

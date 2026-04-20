@@ -1136,6 +1136,139 @@ export async function handleSlash(
       return "run 'sk logout' outside the REPL to drop the active profile";
     case "tenant":
       return "run 'sk tenants [use <id>]' outside the REPL to switch tenants";
+    case "knowledge": {
+      const r = await ctx.client.listKnowledgeSources({ limit: 20 });
+      if (r.items.length === 0) return "no knowledge sources";
+      const lines = r.items.map((ks) => {
+        const k = ks as Record<string, unknown>;
+        return `${String(k.id ?? "").slice(0, 8)}  ${String(k.title ?? k.name ?? "")}  ${String(k.kind ?? "")}`;
+      });
+      return panify(ctx, "knowledge sources", lines, `${r.items.length} found`);
+    }
+    case "connectors": {
+      const r = await ctx.client.listConnectors({ limit: 20 });
+      if (r.items.length === 0) return "no connectors";
+      const lines = r.items.map((c) => {
+        const ct = c as Record<string, unknown>;
+        return `${String(ct.id ?? "").slice(0, 8)}  ${String(ct.name ?? "").padEnd(20)}  ${String(ct.slug ?? "")}`;
+      });
+      return panify(ctx, "connectors", lines, `${r.items.length} found`);
+    }
+    case "workflows": {
+      const r = await ctx.client.listWorkflows({ limit: 20 });
+      if (r.items.length === 0) return "no workflows";
+      const lines = r.items.map((w) => {
+        const wf = w as Record<string, unknown>;
+        return `${String(wf.id ?? "").slice(0, 8)}  ${String(wf.name ?? "").padEnd(20)}  ${String(wf.status ?? "")}`;
+      });
+      return panify(ctx, "workflows", lines, `${r.items.length} found`);
+    }
+    case "executions":
+    case "runs": {
+      const r = await ctx.client.listExecutions({ limit: 10 });
+      if (r.items.length === 0) return "no executions";
+      const lines = r.items.map((e) => {
+        const ex = e as Record<string, unknown>;
+        return `${String(ex.id ?? "").slice(0, 8)}  wf:${String(ex.workflow_id ?? "").slice(0, 8)}  ${String(ex.status ?? "").padEnd(12)}  ${String(ex.started_at ?? "")}`;
+      });
+      return panify(ctx, "executions", lines, `latest ${r.items.length}`);
+    }
+    case "patch-candidates": {
+      const r = await ctx.client.listPatchCandidates({ limit: 10 });
+      if (r.items.length === 0) return "no pending patch candidates";
+      const lines = r.items.map((p) => {
+        const pc = p as Record<string, unknown>;
+        return `${String(pc.id ?? "").slice(0, 8)}  wf:${String(pc.workflow_id ?? "").slice(0, 8)}  ${String(pc.status ?? "")}`;
+      });
+      return panify(ctx, "patch candidates", lines, `${r.items.length} pending`);
+    }
+    case "notifications": {
+      const [channels, rules] = await Promise.all([
+        ctx.client
+          .listNotificationChannels()
+          .catch(() => ({ items: [] as Record<string, unknown>[] })),
+        ctx.client
+          .listNotificationRules()
+          .catch(() => ({ items: [] as Record<string, unknown>[] })),
+      ]);
+      const lines: string[] = [];
+      lines.push(`channels (${channels.items.length}):`);
+      for (const c of channels.items) {
+        const ch = c as Record<string, unknown>;
+        lines.push(
+          `  ${String(ch.id ?? "").slice(0, 8)}  ${String(ch.name ?? "").padEnd(20)}  ${String(ch.kind ?? "")}`,
+        );
+      }
+      lines.push("");
+      lines.push(`rules (${rules.items.length}):`);
+      for (const rule of rules.items) {
+        const r = rule as Record<string, unknown>;
+        lines.push(
+          `  ${String(r.id ?? "").slice(0, 8)}  ${String(r.event_type ?? "").padEnd(24)}  → ch:${String(r.channel_id ?? "").slice(0, 8)}`,
+        );
+      }
+      return panify(ctx, "notifications", lines);
+    }
+    case "tunnels": {
+      const r = await ctx.client.listTunnels();
+      if (r.items.length === 0) return "no tunnels";
+      const lines = r.items.map((t) => {
+        const tun = t as Record<string, unknown>;
+        return `${String(tun.id ?? "").slice(0, 8)}  ${String(tun.name ?? "").padEnd(20)}  ${String(tun.status ?? "")}`;
+      });
+      return panify(ctx, "tunnels", lines, `${r.items.length} found`);
+    }
+    case "discovery": {
+      const r = await ctx.client.listDiscoveryRuns({ limit: 10 });
+      if (r.items.length === 0) return "no discovery runs";
+      const lines = r.items.map((d) => {
+        const dr = d as Record<string, unknown>;
+        return `${String(dr.id ?? "").slice(0, 8)}  ${String(dr.label ?? "").padEnd(20)}  ${String(dr.status ?? "")}`;
+      });
+      return panify(ctx, "discovery runs", lines, `${r.items.length} found`);
+    }
+    case "apikeys": {
+      const r = await ctx.client.listApiKeys();
+      if (r.items.length === 0) return "no API keys";
+      const lines = r.items.map((k) => {
+        const ak = k as Record<string, unknown>;
+        return `${String(ak.id ?? "").slice(0, 8)}  ${String(ak.name ?? "").padEnd(20)}  ${String(ak.prefix ?? "***")}`;
+      });
+      return panify(ctx, "API keys", lines, `${r.items.length} keys`);
+    }
+    case "users": {
+      const r = await ctx.client.listIdentityUsers({ limit: 20 });
+      if (r.items.length === 0) return "no users";
+      const lines = r.items.map((u) => {
+        const user = u as Record<string, unknown>;
+        return `${String(user.id ?? "").slice(0, 8)}  ${String(user.email ?? "").padEnd(30)}  ${String(user.kind ?? "")}`;
+      });
+      return panify(ctx, "users", lines, `${r.items.length} found`);
+    }
+    case "system-accounts": {
+      const r = await ctx.client.listSystemAccounts();
+      if (r.items.length === 0) return "no system accounts";
+      const lines = r.items.map((sa) => {
+        const acc = sa as Record<string, unknown>;
+        return `${String(acc.id ?? "").slice(0, 8)}  ${String(acc.name ?? "")}`;
+      });
+      return panify(ctx, "system accounts", lines, `${r.items.length} found`);
+    }
+    // Install wizards — complex interactive prompts; redirect to CLI command.
+    case "install-slack":
+      return "run 'sk install slack' outside the REPL to set up Slack notifications";
+    case "install-teams":
+      return "run 'sk install teams' outside the REPL to set up Microsoft Teams notifications";
+    case "install-github":
+      return "run 'sk install github' outside the REPL to connect GitHub";
+    case "install-google-workspace":
+      return "run 'sk install google-workspace' outside the REPL to connect Google Workspace";
+    case "install-salesforce":
+      return "run 'sk install salesforce' outside the REPL to connect Salesforce";
+    case "install-jira":
+      return "run 'sk install jira' outside the REPL to connect Jira";
+    case "install-hubspot":
+      return "run 'sk install hubspot' outside the REPL to connect HubSpot";
     default:
       return `/${name} is not wired — try /help`;
   }

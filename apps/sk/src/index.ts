@@ -15,9 +15,34 @@ import { runBrowserLogin, runDeviceFlow } from "@cli-core/index.ts";
 import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { defineCommand, runCommand, showUsage } from "citty";
+import { apiKeysCommand } from "./commands/apikeys.ts";
+import { auditCommand } from "./commands/audit.ts";
+import { connectorTemplatesCommand } from "./commands/connector-templates.ts";
+import { connectorsCommand } from "./commands/connectors.ts";
+import { credentialsCommand } from "./commands/credentials.ts";
+import { diagnosticsCommand } from "./commands/diagnostics.ts";
+import { discoveryCommand } from "./commands/discovery.ts";
+import { eventsCommand } from "./commands/events.ts";
+import { executionsCommand } from "./commands/executions.ts";
+import { extractCommand } from "./commands/extract.ts";
+import { healthCommand } from "./commands/health.ts";
+import { hooksCommand } from "./commands/hooks.ts";
+import { installCommand } from "./commands/install.ts";
+import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
+import { notificationsCommand } from "./commands/notifications.ts";
+import { patchCandidatesCommand } from "./commands/patch-candidates.ts";
+import { portalTokensCommand } from "./commands/portal-tokens.ts";
 import { profileCommand } from "./commands/profile.ts";
+import { rbacCommand } from "./commands/rbac.ts";
 import { sessionsCommand, skLs, skRename, skRm, skShow } from "./commands/sessions.ts";
+import { skillCandidatesCommand } from "./commands/skill-candidates.ts";
+import { skillsCommand } from "./commands/skills.ts";
+import { subscriptionsCommand } from "./commands/subscriptions.ts";
+import { systemAccountsCommand } from "./commands/system-accounts.ts";
+import { tunnelsCommand } from "./commands/tunnels.ts";
 import { updateCommand } from "./commands/update.ts";
+import { usersCommand } from "./commands/users.ts";
+import { workflowsCommand } from "./commands/workflows.ts";
 import {
   configPath,
   DEFAULT_ENGINE_URL,
@@ -427,13 +452,37 @@ const mainCommand = defineCommand({
     mcp: mcpCommand,
     update: updateCommand,
     sessions: sessionsCommand,
-    // Top-level aliases so users can type `sk ls` / `sk show <ref>` /
-    // `sk rename <ref> <alias>` / `sk rm <ref>` without the
-    // `sessions` prefix.
     ls: skLs,
     show: skShow,
     rename: skRename,
     rm: skRm,
+    health: healthCommand,
+    extract: extractCommand,
+    // operator commands
+    workflows: workflowsCommand,
+    connectors: connectorsCommand,
+    "connector-templates": connectorTemplatesCommand,
+    credentials: credentialsCommand,
+    skills: skillsCommand,
+    "skill-candidates": skillCandidatesCommand,
+    "knowledge-sources": knowledgeSourcesCommand,
+    discovery: discoveryCommand,
+    executions: executionsCommand,
+    "patch-candidates": patchCandidatesCommand,
+    hooks: hooksCommand,
+    subscriptions: subscriptionsCommand,
+    events: eventsCommand,
+    tunnels: tunnelsCommand,
+    notifications: notificationsCommand,
+    diagnostics: diagnosticsCommand,
+    install: installCommand,
+    // admin commands
+    rbac: rbacCommand,
+    audit: auditCommand,
+    apikeys: apiKeysCommand,
+    "portal-tokens": portalTokensCommand,
+    users: usersCommand,
+    "system-accounts": systemAccountsCommand,
   },
   async run({ args }) {
     const profile = resolveProfile({
@@ -507,16 +556,91 @@ const mainCommand = defineCommand({
 
 const rawArgs = process.argv.slice(2);
 
-// Subcommands that should NOT fall through to the REPL.
-// biome-ignore lint/suspicious/noExplicitAny: citty command types are complex
-const SUB_COMMANDS: Record<string, any> = {
-  login: loginCommand,
-  logout: logoutCommand,
-  profile: profileCommand,
-  status: statusCommand,
-  tenants: tenantsCommand,
-  mcp: mcpCommand,
-  update: updateCommand,
+// Persona tier: 1=enduser/portal, 2=member, 3=operator, 4=admin.
+const PERSONA_LEVEL: Record<string, number> = {
+  admin: 4,
+  operator: 3,
+  member: 2,
+  portal: 1,
+  enduser: 1,
+  user: 1,
+};
+const PERM_TIER: Record<string, number> = {
+  "audit:read": 4,
+  "rbac:read": 4,
+  "api_key:read": 4,
+  "portal_token:read": 4,
+  "identity:read": 4,
+  "workflow:read": 3,
+  "connector:read": 3,
+  "connector:write": 3,
+  "credential:read": 3,
+  "execution:read": 3,
+  "notification:read": 3,
+  "notification:write": 3,
+  "tunnel:read": 3,
+  "discovery:read": 3,
+  "subscription:read": 3,
+  "inbound_hook:read": 3,
+  "mcp:read": 2,
+  "skill:read": 2,
+  "knowledge:read": 2,
+  "conversation:write": 1,
+};
+function personaCanSee(hint: string | null | undefined, requires: string | undefined): boolean {
+  if (!requires) return true;
+  const level = PERSONA_LEVEL[hint ?? "user"] ?? 1;
+  return level >= (PERM_TIER[requires] ?? 1);
+}
+
+interface SubEntry {
+  // biome-ignore lint/suspicious/noExplicitAny: citty command types are complex
+  command: any;
+  requires?: string;
+}
+
+// All subcommands with their permission tier for help filtering.
+// Engine enforces permissions on every API call — this is UX-only.
+const SUB_COMMANDS: Record<string, SubEntry> = {
+  login: { command: loginCommand },
+  logout: { command: logoutCommand },
+  profile: { command: profileCommand },
+  status: { command: statusCommand },
+  tenants: { command: tenantsCommand },
+  mcp: { command: mcpCommand },
+  update: { command: updateCommand },
+  sessions: { command: sessionsCommand },
+  ls: { command: skLs },
+  show: { command: skShow },
+  rename: { command: skRename },
+  rm: { command: skRm },
+  health: { command: healthCommand },
+  extract: { command: extractCommand, requires: "conversation:write" },
+  // operator
+  workflows: { command: workflowsCommand, requires: "workflow:read" },
+  connectors: { command: connectorsCommand, requires: "connector:read" },
+  "connector-templates": { command: connectorTemplatesCommand, requires: "connector:read" },
+  credentials: { command: credentialsCommand, requires: "credential:read" },
+  skills: { command: skillsCommand, requires: "skill:read" },
+  "skill-candidates": { command: skillCandidatesCommand, requires: "skill:read" },
+  "knowledge-sources": { command: knowledgeSourcesCommand, requires: "knowledge:read" },
+  discovery: { command: discoveryCommand, requires: "discovery:read" },
+  executions: { command: executionsCommand, requires: "execution:read" },
+  "patch-candidates": { command: patchCandidatesCommand, requires: "workflow:read" },
+  hooks: { command: hooksCommand, requires: "inbound_hook:read" },
+  subscriptions: { command: subscriptionsCommand, requires: "subscription:read" },
+  events: { command: eventsCommand, requires: "audit:read" },
+  tunnels: { command: tunnelsCommand, requires: "tunnel:read" },
+  notifications: { command: notificationsCommand, requires: "notification:read" },
+  diagnostics: { command: diagnosticsCommand, requires: "audit:read" },
+  install: { command: installCommand, requires: "connector:write" },
+  // admin
+  rbac: { command: rbacCommand, requires: "rbac:read" },
+  audit: { command: auditCommand, requires: "audit:read" },
+  apikeys: { command: apiKeysCommand, requires: "api_key:read" },
+  "portal-tokens": { command: portalTokensCommand, requires: "portal_token:read" },
+  users: { command: usersCommand, requires: "identity:read" },
+  "system-accounts": { command: systemAccountsCommand, requires: "identity:read" },
 };
 
 async function dispatch(): Promise<void> {
@@ -527,14 +651,26 @@ async function dispatch(): Promise<void> {
     return;
   }
   if (rawArgs.includes("--help") || rawArgs.includes("-h")) {
-    await showUsage(mainCommand);
+    // Filter subcommands by cached persona_hint so operators/admins see
+    // their extra commands without a network call. Engine enforces all perms.
+    const personaHint = loadConfig().profiles[loadConfig().active_profile]?.persona_hint ?? null;
+    const visible = Object.fromEntries(
+      Object.entries(SUB_COMMANDS)
+        .filter(([, e]) => personaCanSee(personaHint, e.requires))
+        .map(([k, e]) => [k, e.command]),
+    );
+    const filteredMain = defineCommand({
+      ...mainCommand,
+      subCommands: visible,
+    });
+    await showUsage(filteredMain);
     return;
   }
   // Dispatch known subcommands directly to prevent citty from also
   // running mainCommand.run() (which starts the REPL).
   const first = rawArgs[0];
   if (first && !first.startsWith("-") && SUB_COMMANDS[first]) {
-    await runCommand(SUB_COMMANDS[first]!, { rawArgs: rawArgs.slice(1) });
+    await runCommand(SUB_COMMANDS[first]!.command, { rawArgs: rawArgs.slice(1) });
     return;
   }
   await runCommand(mainCommand, { rawArgs });

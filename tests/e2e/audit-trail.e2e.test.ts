@@ -2,9 +2,9 @@
 //
 // Proves the full observability chain works from operator to
 // database:
-//   1. Operator runs `subkit skills create` via CLI
+//   1. Operator runs `sk skills create` via CLI
 //   2. Engine writes a SKILL_CREATED audit row + emits skill.created log
-//   3. Operator runs `subkit audit query --action skill.created` and
+//   3. Operator runs `sk audit query --action skill.created` and
 //      sees the row with a populated trace_id
 //   4. Operator runs a write → archive → delete lifecycle and observes
 //      4 distinct audit rows, each with a unique trace_id
@@ -46,10 +46,10 @@ interface AuditListResponse {
 }
 
 describe("audit trail over CLI", () => {
-  test("`subkit skills list --json` returns an array", async () => {
+  test("`sk skills list --json` returns an array", async () => {
     // The CLI unwraps the engine's `{items: [...]}` envelope and
     // emits the rows array directly.
-    const rows = await runJson<unknown[]>("subkit", ["skills", "list"], {
+    const rows = await runJson<unknown[]>(["skills", "list"], {
       env,
       persona: "admin",
     });
@@ -68,7 +68,6 @@ describe("audit trail over CLI", () => {
       }),
     );
     const created = await runJson<{ id: string; title: string }>(
-      "subkit",
       ["skills", "create", "--file", file],
       { env, persona: "admin" },
     );
@@ -77,20 +76,19 @@ describe("audit trail over CLI", () => {
     // 2. update
     const patchFile = path.join(tmpdir(), `rt-skill-patch-${Date.now()}.json`);
     writeFileSync(patchFile, JSON.stringify({ body: "updated by e2e" }));
-    await runJson("subkit", ["skills", "edit", created.id, "--file", patchFile], {
+    await runJson(["skills", "edit", created.id, "--file", patchFile], {
       env,
       persona: "admin",
     });
 
     // 3. archive
-    await run("subkit", ["skills", "archive", created.id], { env, persona: "admin" });
+    await run(["skills", "archive", created.id], { env, persona: "admin" });
 
     // 4. delete
-    await run("subkit", ["skills", "delete", created.id], { env, persona: "admin" });
+    await run(["skills", "delete", created.id], { env, persona: "admin" });
 
     // Query the audit log for this resource via the CLI.
     const audit = await runJson<AuditListResponse>(
-      "subkit",
       ["audit", "query", "--resource-id", created.id, "--since", "10m", "--limit", "10"],
       { env, persona: "admin" },
     );
@@ -126,7 +124,6 @@ describe("audit trail over CLI", () => {
 
   test("audit-log pagination uses the shared {items, next_cursor} envelope", async () => {
     const body = await runJson<AuditListResponse>(
-      "subkit",
       ["audit", "query", "--since", "10m", "--limit", "1"],
       { env, persona: "admin" },
     );
@@ -141,7 +138,6 @@ describe("audit trail over CLI", () => {
     // With a bogus API key the CLI exits non-zero; the formatted
     // error carries code + message from the shared ErrorEnvelope.
     const result = await cli(
-      "subkit",
       ["audit", "query", "--engine-url", env.baseUrl, "--api-key", "wf_live_clearly_invalid"],
       { env, persona: "admin" },
     );

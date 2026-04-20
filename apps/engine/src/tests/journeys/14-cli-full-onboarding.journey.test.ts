@@ -11,7 +11,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { EngineClient } from "../../../../cli/src/engine-client.ts";
+import { EngineClient } from "../../../../sk/src/engine-client.ts";
 import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -66,7 +66,7 @@ describe("journey: CLI full onboarding", () => {
     });
     expect(connector.id).toBeTruthy();
 
-    const ingest = await client.ingestConnectorDocs(connector.id, {
+    const ingest = await client.ingestConnectorDocs(connector.id as string, {
       source_type: "openapi",
       url: `${mockBase}/openapi.json`,
     });
@@ -91,7 +91,7 @@ describe("journey: CLI full onboarding", () => {
       ],
     });
     expect(wf.id).toBeTruthy();
-    const run = await client.runWorkflow(wf.id, { input: {}, request_source: "cli" }, true);
+    const run = await client.runWorkflow(wf.id as string, { input: {}, request_source: "cli" });
     expect(run.status).toBe("succeeded");
   });
 });
