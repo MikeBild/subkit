@@ -59,6 +59,13 @@ export interface CreateConversationParams {
   model?: string | null;
   /** Optional human title (sets conversations.title). */
   title?: string | null;
+  /** Real runtime context (engine_url, tenant_slug, actor email/role) — see runtime-context.ts. */
+  runtime_context?: {
+    engine_url?: string;
+    tenant_slug?: string;
+    actor_email?: string;
+    actor_role?: string;
+  };
 }
 
 export interface ConversationTurnOutcome {
@@ -165,6 +172,7 @@ export async function createConversation(
         user_message: p.initial_message,
         user_memory: memory,
         model_override: p.model ?? null,
+        ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
       })
     : { events: [], status: "active" as const };
 
@@ -185,6 +193,13 @@ export interface AppendMessageParams {
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web";
   /** Live-event emitter — enables SSE streaming. */
   onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
+  /** Real runtime context (engine_url, tenant_slug, actor email/role) — see runtime-context.ts. */
+  runtime_context?: {
+    engine_url?: string;
+    tenant_slug?: string;
+    actor_email?: string;
+    actor_role?: string;
+  };
 }
 
 export async function appendUserMessage(
@@ -289,6 +304,7 @@ export async function appendUserMessage(
     model_override: conv.conversation.model,
     ...(p.surface ? { surface: p.surface } : {}),
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
+    ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
   });
   const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!updated) throw new Error("conversation disappeared");

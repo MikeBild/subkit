@@ -24,6 +24,7 @@ import { assembleEnhancedPrompt, detectIntentSkills } from "../llm/core/context-
 import { resolveModelRoute, resolveLanguageModel as resolveSdkModel } from "../llm/core/invoke.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
 import { createMockLanguageModel } from "../llm/mock-stream.ts";
+import { runOutputGuard } from "../llm/output-guard/index.ts";
 import { log, logger } from "../logging/logger.ts";
 import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instrumentation.ts";
 import {
@@ -66,6 +67,18 @@ export interface RunLoopParams {
    * for replay / persistence.
    */
   onEvent?: (ev: TurnEvent) => void;
+  /**
+   * Real runtime context the model must quote verbatim instead of
+   * inventing placeholders. Threaded into `assembleEnhancedPrompt` and
+   * rendered as the RUNTIME CONTEXT system-prompt block. See
+   * `llm/runtime-context.ts`.
+   */
+  runtime_context?: {
+    engine_url?: string;
+    tenant_slug?: string;
+    actor_email?: string;
+    actor_role?: string;
+  };
 }
 
 export interface RunLoopResult {
@@ -395,6 +408,25 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ...(loadedSkillSlugs.length > 0 ? { loaded_skill_slugs: loadedSkillSlugs } : {}),
       ...(p.surface ? { surface: p.surface } : {}),
       ...(authoringContext ? { authoring_context: authoringContext } : {}),
+      ...(p.runtime_context
+        ? {
+            runtime_context: {
+              ...(p.runtime_context.engine_url
+                ? { engine_url: p.runtime_context.engine_url }
+                : {}),
+              ...(p.runtime_context.tenant_slug
+                ? { tenant_slug: p.runtime_context.tenant_slug }
+                : {}),
+              ...(p.runtime_context.actor_email
+                ? { actor_email: p.runtime_context.actor_email }
+                : {}),
+              ...(p.runtime_context.actor_role
+                ? { actor_role: p.runtime_context.actor_role }
+                : {}),
+              ...(p.surface ? { surface: p.surface } : {}),
+            },
+          }
+        : {}),
     },
     p.db,
   );
@@ -496,6 +528,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         hasToolCall("ask_user_text"),
         hasToolCall("ask_user_form"),
         hasToolCall("ask_user_confirm"),
+        hasToolCall("cannot_help"),
         // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
         pausedStopCondition as any,
         // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
@@ -543,10 +576,29 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           completion_tokens: u.outputTokens,
         });
         if (step.text && step.text.length > 0) {
-          await appendMessage(p.db, p.tenant_id, p.conversation_id, "assistant", {
-            text: step.text,
+          // Pass every assistant text block through the grounded-output
+          // guard. In `soft` (default) mode the guard logs violations
+          // and rewrites placeholder fragments in place; in `hard`
+          // mode (CI / scenario tests) it throws LlmOutputViolation
+          // which propagates out of streamText. The persisted message
+          // carries the (possibly rewritten) text plus the violation
+          // list so replay tests + the capability-gap analytics can
+          // read them back without re-scanning.
+          const guarded = runOutputGuard(step.text, {
+            ...(p.runtime_context?.engine_url
+              ? { engine_url: p.runtime_context.engine_url }
+              : {}),
+            ...(p.runtime_context?.tenant_slug
+              ? { tenant_slug: p.runtime_context.tenant_slug }
+              : {}),
           });
-          events.push({ type: "message", role: "assistant", content: { text: step.text } });
+          await appendMessage(p.db, p.tenant_id, p.conversation_id, "assistant", {
+            text: guarded.text,
+            ...(guarded.violations.length > 0
+              ? { _violations: guarded.violations.map((v) => ({ kind: v.kind, message: v.message })) }
+              : {}),
+          });
+          events.push({ type: "message", role: "assistant", content: { text: guarded.text } });
         }
       },
     });

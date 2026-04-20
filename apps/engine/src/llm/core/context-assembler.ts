@@ -27,6 +27,7 @@ import {
 } from "../../skills/service.ts";
 import type { Skill } from "../../skills/types.ts";
 import { LlmContextTooLarge } from "../errors.ts";
+import { renderRuntimeContextBlock } from "../runtime-context.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../tokens.ts";
 import type {
   AssembleContextParams,
@@ -67,6 +68,7 @@ IDEAL USER FLOW:
 USER FLOW RULES:
 - NEVER invent an id. If you need one, list_* first, then pick from the returned data.
 - NEVER fabricate an endpoint, parameter, header, or URL — always ground from a skill or connector doc.
+- WHEN YOU CANNOT GROUND a request — the tool you would need does not exist, the recipe is not verified, the tenant has no resource of the kind asked for — call \`cannot_help(reason, missing_capability?, suggest_alternative?)\` and stop. Do NOT emit prose that pretends the action happened ("I've prompted a form…", "I'll create…") and do NOT paste a placeholder template ("your-host.com", "[YOUR_KEY]"). cannot_help ends the turn cleanly and feeds the operator's capability-gap backlog.
 - NEVER re-run a destructive tool_write without a new confirmation.
 - For cleanup/revoke requests, use the explicit tools when available: \`delete_workflow\`, \`delete_connector\`, \`delete_knowledge_source\`, \`delete_subscription\`, \`delete_tunnel\`, \`revoke_api_key\`, \`revoke_portal_token\`.
 - If a cleanup action is not exposed as a conversation tool (for example archiving a workflow), say it is unavailable in this conversation surface. Do NOT invent a UI, support path, database action, or hidden admin console.
@@ -400,8 +402,19 @@ export async function assembleEnhancedPrompt(
   let userMemory = typeof p.user_memory === "string" ? p.user_memory.trim() : "";
   let authoringContext = typeof p.authoring_context === "string" ? p.authoring_context.trim() : "";
 
+  const runtimeBlock = p.runtime_context
+    ? renderRuntimeContextBlock({
+        ...(p.runtime_context.engine_url ? { engine_url: p.runtime_context.engine_url } : {}),
+        ...(p.runtime_context.tenant_slug ? { tenant_slug: p.runtime_context.tenant_slug } : {}),
+        ...(p.runtime_context.actor_email ? { actor_email: p.runtime_context.actor_email } : {}),
+        ...(p.runtime_context.actor_role ? { actor_role: p.runtime_context.actor_role } : {}),
+        ...(p.runtime_context.surface ? { surface: p.runtime_context.surface } : {}),
+      })
+    : null;
+
   const render = () => {
     const sections: string[] = [baseSystem];
+    if (runtimeBlock) sections.push(runtimeBlock);
     for (const s of globalSkills) sections.push(formatSkill(s));
     for (const s of connectorSkills) sections.push(formatSkill(s));
     for (const s of workflowSkills) sections.push(formatSkill(s));
@@ -552,6 +565,13 @@ export async function detectIntentSkills(
   if (msg.includes("openapi") || msg.includes("swagger")) keywords.push("openapi");
   if (msg.includes("postman")) keywords.push("postman");
   if (msg.includes("graphql")) keywords.push("graphql");
+  // External MCP-client integration intents — Codex / Claude Code / Claude
+  // Desktop / Cursor / Continue. Loads `mcp-codex-integration` (and any
+  // sibling vendor-specific Skills authored later) so the assistant has a
+  // grounded recipe before it speaks.
+  if (msg.includes("mcp") || msg.includes("codex") || msg.includes("claude code") || msg.includes("claude desktop")) {
+    keywords.push("mcp", "codex", "claude code", "claude desktop", "model context protocol");
+  }
   if (opts.hasFailedExecution) keywords.push("troubleshoot", "failure", "error");
   if (opts.hasMultipleConnectors) keywords.push("multi-connector", "orchestration");
   if (keywords.length === 0) keywords.push("onboarding");

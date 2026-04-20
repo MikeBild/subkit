@@ -177,7 +177,7 @@ class MockProvider {
               kind: "connector" as const,
               title: "mock-discovered-connector",
               description: `Inferred from: ${lastUser.slice(0, 80)}`,
-              draft: { base_url: "https://example.com" },
+              draft: { name: "mock-discovered-connector", base_url: "https://example.com" },
               evidence_excerpts: ["mocked excerpt"],
               confidence: 82,
             },

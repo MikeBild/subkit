@@ -77,6 +77,14 @@ const EnvSchema = z.object({
   OIDC_ISSUER_URL: z.string().optional(),
   FIREBASE_PROJECT_ID: z.string().optional(),
   FIREBASE_LOGIN_URL: z.string().optional(),
+
+  /**
+   * llmOutputGuard mode.
+   * - `soft` (default): scan, log, rewrite the offending fragment; turn continues.
+   * - `hard` (CI / scenarios): scan; on violation throw `LlmOutputViolation` so tests fail.
+   * - `off`: bypass entirely (emergency escape only — never use in production).
+   */
+  LLM_OUTPUT_GUARD: z.enum(["soft", "hard", "off"]).default("soft"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

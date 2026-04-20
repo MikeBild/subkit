@@ -315,6 +315,9 @@ export const METRIC_NAMES = {
   CONVERSATION_TOOL_CALLS_TOTAL: "conversation_tool_calls_total",
   CONVERSATION_TOOL_DURATION_MS: "conversation_tool_duration_ms",
   CONVERSATION_CONFIRMATIONS_TOTAL: "conversation_confirmations_total",
+  LLM_OUTPUT_VIOLATIONS_TOTAL: "llm_output_violations_total",
+  LLM_OUTPUT_GUARD_DURATION_MS: "llm_output_guard_duration_ms",
+  CANNOT_HELP_INVOCATIONS_TOTAL: "cannot_help_invocations_total",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -411,6 +414,22 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.CONVERSATION_TOOL_CALLS_TOTAL,
     help: "Conversation tool invocations, partitioned by category + outcome.",
     labels: ["category", "tool", "outcome"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.LLM_OUTPUT_VIOLATIONS_TOTAL,
+    help: "Assistant-text grounding violations caught by llmOutputGuard, partitioned by scanner kind + mode.",
+    labels: ["kind", "mode"],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.LLM_OUTPUT_GUARD_DURATION_MS,
+    help: "Wall-clock duration of llmOutputGuard scans in milliseconds.",
+    labels: [],
+    buckets: HTTP_DURATION_BUCKETS_MS,
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.CANNOT_HELP_INVOCATIONS_TOTAL,
+    help: "Assistant abstentions via cannot_help, partitioned by missing_capability slug.",
+    labels: ["missing_capability"],
   });
   reg.registerHistogram({
     name: METRIC_NAMES.CONVERSATION_TOOL_DURATION_MS,
