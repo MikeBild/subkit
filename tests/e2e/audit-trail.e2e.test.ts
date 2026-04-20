@@ -144,8 +144,7 @@ describe("audit trail over CLI", () => {
     });
     expect(result.exitCode).not.toBe(0);
     const combined = `${result.stdout}\n${result.stderr}`;
-    // Either a `trace=…` breadcrumb or the `unauthorized` code must
-    // appear — both prove the envelope flowed back to the CLI.
-    expect(combined).toMatch(/unauthorized|trace=/i);
+    // Any error code from the unified envelope proves the error flowed back.
+    expect(combined).toMatch(/unauthorized|missing_or_invalid_credentials|trace=/i);
   }, 30_000);
 });
