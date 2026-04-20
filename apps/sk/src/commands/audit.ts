@@ -49,11 +49,15 @@ const queryCmd = defineCommand({
       if (args.action) q.action = String(args.action);
       if (args.actor) q.actor_id = String(args.actor);
       if (args["resource-id"]) q.resource_id = String(args["resource-id"]);
-      const { items } = await client.queryAuditLog(q);
+      const result = await client.queryAuditLog(q);
+      if (args.json) {
+        printJson(result);
+        return;
+      }
       emitList(
-        !!args.json,
+        false,
         ["id", "action", "actor_id", "created_at"],
-        items as Record<string, unknown>[],
+        result.items as Record<string, unknown>[],
       );
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
