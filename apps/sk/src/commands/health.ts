@@ -1,5 +1,5 @@
 import { exitCodeFor } from "@cli-core/errors";
-import { emitList, printJson } from "@cli-core/format";
+import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
