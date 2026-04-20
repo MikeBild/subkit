@@ -174,9 +174,10 @@ describe("journey: audit query surface", () => {
     // regardless of how many fire-and-forget audit writes happened to
     // land before this test runs.
     for (let i = 0; i < 32; i += 1) {
-      // 1 ms gap so ts is strictly monotonic; the cursor walker
-      // otherwise skips ties between rows with identical millisecond
-      // timestamps.
+      // allow-wall-clock: 1 ms gap so ts is strictly monotonic; the
+      // cursor walker otherwise skips ties between rows with identical
+      // millisecond timestamps. Production audit writes don't share
+      // this problem because they are separated by real work.
       await new Promise((r) => setTimeout(r, 1));
       await auditAwait(
         {

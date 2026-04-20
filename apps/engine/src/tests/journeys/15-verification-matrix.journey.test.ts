@@ -12,6 +12,7 @@ import type { AddressInfo } from "node:net";
 import { eq } from "drizzle-orm";
 import { executions, workflowsSchedules } from "../../db/schema/index.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
+import { waitFor } from "../../test-helpers/determinism/index.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -215,13 +216,13 @@ describe("journey: verification matrix (docs/33)", () => {
       intervalMs: 5_000,
     });
     await scheduleReconciler.start();
-    const deadline = Date.now() + 8_000;
-    let rows: Array<typeof executions.$inferSelect> = [];
-    while (Date.now() < deadline) {
-      rows = await ctx.db.select().from(executions).where(eq(executions.workflow_id, wf.id));
-      if (rows.length >= 1) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    const rows = await waitFor(
+      async () => {
+        const r = await ctx.db.select().from(executions).where(eq(executions.workflow_id, wf.id));
+        return r.length >= 1 ? r : undefined;
+      },
+      { tries: 80, sleepMs: 100, label: "scheduler creates execution" },
+    );
     expect(rows.length).toBeGreaterThanOrEqual(1);
     expect(rows[0]?.request_source).toBe("scheduler");
   }, 15_000);

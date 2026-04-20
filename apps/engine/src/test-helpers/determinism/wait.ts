@@ -10,22 +10,37 @@ export function flush(): Promise<void> {
 }
 
 export interface WaitForOpts {
-  /** Maximum poll attempts. Each attempt = one `flush()` + predicate. */
+  /** Maximum poll attempts. Each attempt = one yield + predicate. */
   tries?: number;
   /** Human-readable label for the timeout error. */
   label?: string;
+  /**
+   * Sleep between polls in ms. Default is 0 (microtask-only).
+   *
+   * Use a non-zero value for I/O-bound waits where real wall-clock
+   * progress is required — queue workers, pg-boss dequeue, WebSocket
+   * close handshakes. For pure in-memory state transitions keep the
+   * default 0 so the test stays deterministic.
+   */
+  sleepMs?: number;
 }
 
-/** Poll `predicate` across microtasks until it returns truthy or
- *  `tries` is reached. Throws on timeout. */
+/** Poll `predicate` across microtasks (or short real sleeps) until it
+ *  returns truthy or `tries` is reached. Throws on timeout. */
 export async function waitFor<T>(
   predicate: () => T | Promise<T>,
-  { tries = 200, label = "waitFor" }: WaitForOpts = {},
+  { tries = 200, label = "waitFor", sleepMs = 0 }: WaitForOpts = {},
 ): Promise<NonNullable<T>> {
   for (let i = 0; i < tries; i++) {
     const v = await predicate();
     if (v) return v as NonNullable<T>;
-    await flush();
+    if (sleepMs > 0) {
+      // allow-wall-clock: I/O-bound polling — callers opt into real
+      // time when they need it (queue workers, network handshakes).
+      await new Promise<void>((resolve) => setTimeout(resolve, sleepMs));
+    } else {
+      await flush();
+    }
   }
   throw new Error(`${label} timed out after ${tries} polls`);
 }

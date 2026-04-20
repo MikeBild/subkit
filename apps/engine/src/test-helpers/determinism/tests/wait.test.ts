@@ -36,6 +36,20 @@ describe("wait", () => {
     ok = true;
   });
 
+  it("waitFor with sleepMs uses real-time intervals between polls", async () => {
+    const t0 = Date.now();
+    let n = 0;
+    await waitFor(
+      () => {
+        n += 1;
+        return n >= 3 ? n : undefined;
+      },
+      { tries: 10, sleepMs: 10, label: "paced" },
+    );
+    // 2 sleeps of 10ms between the 3 polls → at least 15ms elapsed.
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(15);
+  });
+
   it("waitForJson polls a fetchable until the predicate accepts", async () => {
     let calls = 0;
     const doFetch = (): Promise<Response> => {
