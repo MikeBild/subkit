@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/MikeBild/subkit/compare/subkit-v1.13.1...subkit-v1.14.0) (2026-04-20)
+
+
+### Features
+
+* **engine:** grounded-output guard, runtime context, abstention + transcript-closing slice ([079ee9f](https://github.com/MikeBild/subkit/commit/079ee9fd290e46abf94c51b64fcea2a8a175598a))
+
 ## [1.13.1](https://github.com/MikeBild/subkit/compare/subkit-v1.13.0...subkit-v1.13.1) (2026-04-20)
 
 
