@@ -49,4 +49,31 @@ describe("request + transform", () => {
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual(["a", "b"]);
   });
+
+  test("loop body transform sees `letter` and `$loop_index` bindings", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "loop-bindings",
+      steps: [
+        { kind: "transform", id: "letters", expression: "['a', 'b', 'c']" },
+        { kind: "loop", id: "iter", over: "letters", item_var: "letter", body: ["tag"] },
+        {
+          kind: "transform",
+          id: "tag",
+          expression: "{ 'index': $loop_index, 'letter': letter }",
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      workflow_id,
+      input: null,
+    });
+    expect(result.status).toBe("succeeded");
+    const out = result.output as Array<{ tag: { index: number; letter: string } }>;
+    expect(out).toHaveLength(3);
+    expect(out[0]?.tag).toEqual({ index: 0, letter: "a" });
+    expect(out[1]?.tag).toEqual({ index: 1, letter: "b" });
+    expect(out[2]?.tag).toEqual({ index: 2, letter: "c" });
+  });
 });

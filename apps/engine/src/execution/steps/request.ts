@@ -10,13 +10,13 @@
 //   - GET / HEAD / OPTIONS: retry on 5xx + 429 + connection errors
 //   - POST / PUT / PATCH / DELETE: retry only on 429 + connection errors
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { evaluateHook } from "../../auth/hooks.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
 import { buildRequestPlan, fetchViaTunnel } from "../../connectors/drivers/http.ts";
 import { executeS3Request, type S3Method } from "../../connectors/drivers/s3.ts";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
-import { connectors } from "../../db/schema/index.ts";
+import { connectorEndpointSchemas, connectors } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordRequestRetry } from "../../observability/instrumentation.ts";
 import type { RequestStep } from "../../workflows/types.ts";
@@ -583,14 +583,52 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     }
   }
 
+  // Resolve registry-backed fallbacks for body/response/expected_statuses
+  // when the step itself doesn't declare them. Lookup key is
+  // (connector_id, method, raw template path) to match what
+  // runDocumentAnalysisFlow persisted.
+  let registryRow: {
+    request_schema: unknown;
+    response_schema: unknown;
+    expected_statuses: number[] | null;
+  } | null = null;
+  if (activeConnector && p.step.path) {
+    const rows = await p.ctx.db
+      .select({
+        request_schema: connectorEndpointSchemas.request_schema,
+        response_schema: connectorEndpointSchemas.response_schema,
+        expected_statuses: connectorEndpointSchemas.expected_statuses,
+      })
+      .from(connectorEndpointSchemas)
+      .where(
+        and(
+          eq(connectorEndpointSchemas.connector_id, activeConnector.id),
+          eq(connectorEndpointSchemas.method, p.step.method),
+          eq(connectorEndpointSchemas.path, p.step.path),
+        ),
+      )
+      .limit(1);
+    registryRow = rows[0] ?? null;
+  }
+  const effectiveBodySchema = (p.step.body_schema ??
+    (registryRow?.request_schema as Record<string, unknown> | undefined) ??
+    null) as Record<string, unknown> | null;
+  const effectiveResponseSchema = (p.step.response_schema ??
+    (registryRow?.response_schema as Record<string, unknown> | undefined) ??
+    null) as Record<string, unknown> | null;
+  const effectiveExpectedStatuses =
+    p.step.expected_statuses && p.step.expected_statuses.length > 0
+      ? p.step.expected_statuses
+      : (registryRow?.expected_statuses ?? null);
+
   const retryTotal = { value: 0 };
   const retryCounter = { value: 0 };
   let last_meta: Record<string, unknown> = {};
   try {
     if (!p.step.pagination) {
       // Body schema validation (non-paginated path only)
-      if (p.step.body_schema && p.step.body !== undefined && p.step.body !== null) {
-        const bodyErrs = checkRequired(p.step.body, p.step.body_schema);
+      if (effectiveBodySchema && p.step.body !== undefined && p.step.body !== null) {
+        const bodyErrs = checkRequired(p.step.body, effectiveBodySchema);
         if (bodyErrs.length > 0) {
           clearTimeout(timer);
           return {
@@ -623,9 +661,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         }
         throw err;
       }
-      // Check expected_statuses
-      if (p.step.expected_statuses && p.step.expected_statuses.length > 0) {
-        if (!p.step.expected_statuses.includes(res.status)) {
+      // Check expected_statuses (step → registry fallback)
+      if (effectiveExpectedStatuses && effectiveExpectedStatuses.length > 0) {
+        if (!effectiveExpectedStatuses.includes(res.status)) {
           clearTimeout(timer);
           return {
             status: "failed",
@@ -633,20 +671,21 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             duration_ms: Date.now() - start,
             error: {
               code: "unexpected_status_code",
-              message: `status ${res.status} not in expected [${p.step.expected_statuses.join(",")}]`,
+              message: `status ${res.status} not in expected [${effectiveExpectedStatuses.join(",")}]`,
             },
           };
         }
       }
-      // Validate response schema (non-fatal)
-      if (p.step.response_schema) {
-        const respErrs = checkRequired(body, p.step.response_schema);
+      // Validate response schema (non-fatal; step → registry fallback)
+      if (effectiveResponseSchema) {
+        const respErrs = checkRequired(body, effectiveResponseSchema);
         if (respErrs.length > 0) {
           logger.warn({
             module: "execution",
             action: "response_schema_violation",
             step_id: p.step.id,
             errors: respErrs,
+            schema_source: p.step.response_schema ? "step" : "registry",
           });
         }
       }

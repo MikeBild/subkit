@@ -344,18 +344,34 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     // Sync path: run inline, return full result. Kept so tests and tight
     // loops don't need a live pg-boss.
     if (query.sync) {
-      const result = await runExecution({
-        db,
-        tenant_id: principal.tenant_id,
-        workflow_id: id,
-        input: body.input ?? null,
-        options: {
-          request_source: body.request_source ?? "api",
-          trace_id,
-          principal,
-          execution_mode,
-        },
-      });
+      let result: Awaited<ReturnType<typeof runExecution>>;
+      try {
+        result = await runExecution({
+          db,
+          tenant_id: principal.tenant_id,
+          workflow_id: id,
+          input: body.input ?? null,
+          options: {
+            request_source: body.request_source ?? "api",
+            trace_id,
+            principal,
+            execution_mode,
+          },
+        });
+      } catch (err) {
+        // Pre-execution validation errors throw before an execution row
+        // exists. Surface them as 400 with the full message so callers
+        // see the offending field name(s).
+        const code = (err as { code?: string }).code;
+        const details = (err as { details?: unknown }).details;
+        if (code === "input_schema_violation") {
+          throw new BadRequestError((err as Error).message, {
+            code,
+            ...(details ? { details } : {}),
+          });
+        }
+        throw err;
+      }
       return c.json(
         {
           id: result.execution_id,

@@ -68,8 +68,8 @@ describe("48: Input schema validation — required fields enforced at run start"
       method: "POST",
       body: JSON.stringify({ input: { amount: 500 } }),
     });
-    // The engine throws before creating an execution row — Hono maps it to 500.
-    expect(runRes.status).toBe(500);
+    // input_schema_violation is a client-supplied-data error → 400.
+    expect(runRes.status).toBe(400);
     const errBody = (await runRes.json()) as { message: string };
     expect(errBody.message).toContain("currency");
   });
@@ -79,7 +79,7 @@ describe("48: Input schema validation — required fields enforced at run start"
       method: "POST",
       body: JSON.stringify({ input: {} }),
     });
-    expect(runRes.status).toBe(500);
+    expect(runRes.status).toBe(400);
     const errBody = (await runRes.json()) as { message: string };
     // Both required fields should be mentioned somewhere in the error.
     expect(errBody.message).toMatch(/amount|currency/);
