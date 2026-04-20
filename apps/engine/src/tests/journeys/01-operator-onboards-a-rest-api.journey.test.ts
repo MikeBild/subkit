@@ -17,6 +17,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
 import { auditLog, executions } from "../../db/schema/index.ts";
+import { waitFor } from "../../test-helpers/determinism/index.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -168,14 +169,14 @@ describe("journey: operator onboards a REST API", () => {
     const execution_id = asyncBody.id;
 
     // Wait for the worker to finish.
-    const deadline = Date.now() + 15_000;
-    let finalStatus = "";
-    while (Date.now() < deadline) {
-      const rows = await ctx.db.select().from(executions).where(eq(executions.id, execution_id));
-      finalStatus = rows[0]?.status ?? "";
-      if (["succeeded", "failed", "aborted", "timed_out"].includes(finalStatus)) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    const finalStatus = await waitFor(
+      async () => {
+        const rows = await ctx.db.select().from(executions).where(eq(executions.id, execution_id));
+        const s = rows[0]?.status ?? "";
+        return ["succeeded", "failed", "aborted", "timed_out"].includes(s) ? s : undefined;
+      },
+      { tries: 150, sleepMs: 100, label: "run terminal" },
+    );
     expect(finalStatus).toBe("succeeded");
 
     // At least one audit row for workflow.created or workflow.run lives in the DB.

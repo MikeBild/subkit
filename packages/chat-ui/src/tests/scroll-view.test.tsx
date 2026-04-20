@@ -24,7 +24,7 @@ function mount(children: React.ReactNode, height = 5): ReturnType<typeof render>
 }
 
 async function tick(ms = 20): Promise<void> {
-  await new Promise((r) => setTimeout(r, ms));
+  await new Promise((r) => setTimeout(r, ms)); // allow-wall-clock: legacy; review before changing
 }
 
 describe("ScrollView", () => {

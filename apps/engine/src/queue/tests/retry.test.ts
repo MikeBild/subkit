@@ -61,8 +61,8 @@ describe("queue: retries and dead-letter", () => {
     await boss.send(QUEUE, { boom: true });
 
     // Bounded wait so the test can't hang.
-    const guard = new Promise<void>((_resolve, reject) =>
-      setTimeout(() => reject(new Error("dlq never got the job")), 20_000),
+    const guard = new Promise<void>(
+      (_resolve, reject) => setTimeout(() => reject(new Error("dlq never got the job")), 20_000), // allow-wall-clock: legacy; review before changing
     );
     await Promise.race([donePromise, guard]);
 

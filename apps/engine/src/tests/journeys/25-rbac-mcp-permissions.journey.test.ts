@@ -44,7 +44,7 @@ describe("journey: rbac mcp permissions", () => {
       .returning();
     portalUser = u!.id;
     // Seed a raw portal token row to test the principal_id lookup.
-    const rand = randomBytes(24).toString("base64url").slice(0, 32);
+    const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
     const plaintext = `wf_portal_${rand}`;
     await ctx.db.insert(portalTokens).values({
       tenant_id: ctx.tenantId,

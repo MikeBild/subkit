@@ -13,6 +13,7 @@ import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
 import { connectorDocumentChunks, connectors } from "../../db/schema/index.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
+import { waitFor } from "../../test-helpers/determinism/index.ts";
 import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
 
 interface OpenApiPaths {
@@ -68,12 +69,17 @@ async function waitUntil(
   timeoutMs: number,
   stepMs: number = 100,
 ): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await predicate()) return true;
-    await new Promise((r) => setTimeout(r, stepMs));
+  const tries = Math.max(1, Math.ceil(timeoutMs / stepMs));
+  try {
+    await waitFor(async () => ((await predicate()) ? true : undefined), {
+      tries,
+      sleepMs: stepMs,
+      label: "waitUntil",
+    });
+    return true;
+  } catch {
+    return false;
   }
-  return false;
 }
 
 beforeAll(async () => {

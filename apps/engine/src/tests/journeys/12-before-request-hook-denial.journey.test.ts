@@ -107,7 +107,7 @@ describe("journey: before-request hook denial", () => {
       .returning();
     if (!memberUser) throw new Error("seed member user failed");
 
-    const rand = randomBytes(24).toString("base64url").slice(0, 32);
+    const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
     const plaintext = `wf_live_${rand}`;
     const prefix = plaintext.slice(0, 12);
     const tokenHash = createHash("sha256").update(plaintext).digest("hex");

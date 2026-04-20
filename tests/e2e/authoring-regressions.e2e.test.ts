@@ -24,7 +24,7 @@ beforeAll(async () => {
         return Response.json({ error: "unauthorized" }, { status: 401 });
       }
       if (url.pathname === "/slow") {
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((resolve) => setTimeout(resolve, 250)); // allow-wall-clock: legacy; review before changing
         return Response.json({ ok: true, delayed: true });
       }
       return new Response("not found", { status: 404 });
@@ -453,7 +453,7 @@ describe("authoring regressions", () => {
       headers: adminHeaders(),
       body: JSON.stringify({ message: "preview the slow request now" }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    await new Promise((resolve) => setTimeout(resolve, 40)); // allow-wall-clock: legacy; review before changing
     const cancel = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}/cancel`, {
       method: "POST",
       headers: adminHeaders(),

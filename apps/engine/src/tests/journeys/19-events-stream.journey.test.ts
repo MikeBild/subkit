@@ -45,8 +45,12 @@ async function collectFrames(
       const chunkPromise = reader.read();
       // Race the read against the deadline so a silent stream doesn't
       // stall the test indefinitely.
-      const timer = new Promise<{ done: true; value: undefined }>((resolve) =>
-        setTimeout(() => resolve({ done: true, value: undefined }), deadline - Date.now() + 50),
+      // allow-wall-clock: hard SSE read timeout so a silent server
+      // doesn't stall the test forever. The deadline is bounded, the
+      // race resolves to a no-op, and control flow exits cleanly.
+      const timer = new Promise<{ done: true; value: undefined }>(
+        (resolve) =>
+          setTimeout(() => resolve({ done: true, value: undefined }), deadline - Date.now() + 50), // allow-wall-clock: legacy; review before changing
       );
       const chunk = (await Promise.race([chunkPromise, timer])) as {
         done?: boolean;

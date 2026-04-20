@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { executions, workflowsSchedules } from "../../db/schema/index.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
+import { waitFor } from "../../test-helpers/determinism/index.ts";
 import { createJourneyCtx, type JourneyCtx, seedWorkflow } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -48,31 +49,31 @@ afterAll(async () => {
 
 describe("journey: scheduler fires cron", () => {
   test("AC1+AC2: every:1 creates an execution within 5s tagged scheduler", async () => {
-    const deadline = Date.now() + 8_000;
-    let rows: Array<typeof executions.$inferSelect> = [];
-    while (Date.now() < deadline) {
-      rows = await ctx.db.select().from(executions).where(eq(executions.workflow_id, workflowId));
-      if (rows.length >= 1) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    const rows = await waitFor(
+      async () => {
+        const r = await ctx.db
+          .select()
+          .from(executions)
+          .where(eq(executions.workflow_id, workflowId));
+        return r.length >= 1 ? r : undefined;
+      },
+      { tries: 80, sleepMs: 100, label: "scheduler fired" },
+    );
     expect(rows.length).toBeGreaterThanOrEqual(1);
     expect(rows[0]?.request_source).toBe("scheduler");
   }, 12_000);
 
   test("AC3: at least one execution reaches a terminal status", async () => {
-    const deadline = Date.now() + 8_000;
-    let terminal: typeof executions.$inferSelect | undefined;
-    while (Date.now() < deadline) {
-      const rows = await ctx.db
-        .select()
-        .from(executions)
-        .where(eq(executions.workflow_id, workflowId));
-      terminal = rows.find((r) =>
-        ["succeeded", "failed", "aborted", "timed_out"].includes(r.status),
-      );
-      if (terminal) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    const terminal = await waitFor(
+      async () => {
+        const rows = await ctx.db
+          .select()
+          .from(executions)
+          .where(eq(executions.workflow_id, workflowId));
+        return rows.find((r) => ["succeeded", "failed", "aborted", "timed_out"].includes(r.status));
+      },
+      { tries: 80, sleepMs: 100, label: "execution terminal" },
+    );
     expect(terminal?.status).toBe("succeeded");
   }, 12_000);
 });

@@ -72,7 +72,7 @@ describe("journey: sk-cli member daily driver", () => {
     if (!u) throw new Error("failed to seed member user");
     memberId = u.id;
 
-    const rand = randomBytes(24).toString("base64url").slice(0, 32);
+    const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
     memberApiKey = `wf_live_${rand}`;
     await ctx.db.insert(apiKeys).values({
       tenant_id: ctx.tenantId,

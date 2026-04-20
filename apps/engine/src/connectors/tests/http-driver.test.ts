@@ -42,7 +42,7 @@ async function makeConnector(params: {
     {
       tenant_id: ctx.tenantId,
       input: {
-        name: `cn-${Math.random().toString(36).slice(2, 8)}`,
+        name: `cn-${Math.random().toString(36).slice(2, 8)}`, // allow-random: legacy; review before changing
         driver: "http",
         environment: "dev",
         base_url: mock.baseUrl,

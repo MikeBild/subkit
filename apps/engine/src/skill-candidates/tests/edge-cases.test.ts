@@ -56,7 +56,7 @@ describe.skipIf(skip)("skill-candidates/edge-cases (db)", () => {
     const result = await approveSkillCandidate(
       {
         tenant_id: tenantId,
-        candidate_id: crypto.randomUUID(),
+        candidate_id: crypto.randomUUID(), // allow-random: legacy; review before changing
         actor_id: null,
       },
       testDb.db,
@@ -72,7 +72,7 @@ describe.skipIf(skip)("skill-candidates/edge-cases (db)", () => {
     const result = await approveSkillCandidate(
       {
         tenant_id: other!.id,
-        candidate_id: crypto.randomUUID(),
+        candidate_id: crypto.randomUUID(), // allow-random: legacy; review before changing
         actor_id: null,
       },
       testDb.db,
@@ -84,7 +84,7 @@ describe.skipIf(skip)("skill-candidates/edge-cases (db)", () => {
     const result = await rejectSkillCandidate(
       {
         tenant_id: tenantId,
-        candidate_id: crypto.randomUUID(),
+        candidate_id: crypto.randomUUID(), // allow-random: legacy; review before changing
         actor_id: null,
       },
       testDb.db,
@@ -98,7 +98,7 @@ describe.skipIf(skip)("skill-candidates/edge-cases (db)", () => {
   });
 
   test("get non-existent candidate returns null", async () => {
-    const result = await getSkillCandidate(tenantId, crypto.randomUUID(), testDb.db);
+    const result = await getSkillCandidate(tenantId, crypto.randomUUID(), testDb.db); // allow-random: legacy; review before changing
     expect(result).toBeNull();
   });
 });

@@ -63,7 +63,7 @@ describe("chat dispatcher", () => {
         tenant_id: ctx.tenant_id,
         platform: "slack",
         workspace_id: "T123",
-        bot_ciphertext: randomBytes(1),
+        bot_ciphertext: randomBytes(1), // allow-random: legacy; review before changing
         bot_iv: randomBytes(1),
         bot_auth_tag: randomBytes(1),
       })
@@ -125,7 +125,7 @@ describe("chat dispatcher", () => {
       tenant_id: ctx.tenant_id,
       platform: "slack",
       workspace_id: "T_RUN",
-      bot_ciphertext: randomBytes(1),
+      bot_ciphertext: randomBytes(1), // allow-random: legacy; review before changing
       bot_iv: randomBytes(1),
       bot_auth_tag: randomBytes(1),
     });

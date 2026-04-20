@@ -15,6 +15,8 @@ import { cleanup, render } from "ink-testing-library";
 // ---------- Helpers ----------
 
 async function yieldTick(ms = 10): Promise<void> {
+  // allow-wall-clock: ink's keypress parser needs real ms to
+  // disambiguate Esc (\x1b) from the prefix of an arrow key.
   await new Promise((r) => setTimeout(r, ms));
 }
 
