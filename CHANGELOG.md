@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.11.0](https://github.com/MikeBild/subkit/compare/subkit-v1.10.10...subkit-v1.11.0) (2026-04-20)
+
+
+### Features
+
+* **sk:** consolidate subkit admin CLI into unified sk binary ([13f38cc](https://github.com/MikeBild/subkit/commit/13f38cc0f93f42a9d499f8420682b37396221dde))
+
+
+### Bug Fixes
+
+* **audit:** emit full {items,next_cursor} envelope in JSON mode; broaden auth error regex ([5e18177](https://github.com/MikeBild/subkit/commit/5e18177346b0b997319140093731c44dda2cd5f0))
+* **hooks:** remove stale build:cli from pre-push gate ([950e555](https://github.com/MikeBild/subkit/commit/950e555b705e39d517ff82158b62ba3c202083cc))
+* **sk:** align command interfaces with test expectations ([8fd350d](https://github.com/MikeBild/subkit/commit/8fd350dbc0827bdc65ce697842ad5e28fe8a443a))
+* **skills:** skip confirm prompt when stdin is not a TTY ([191350f](https://github.com/MikeBild/subkit/commit/191350ff022856dbbd217dab6c70c0feb7fb9ff6))
+* **sk:** remove unused emitList import in health command ([eb12a61](https://github.com/MikeBild/subkit/commit/eb12a616abc16bf5925d51f78576460bded662d6))
+
 ## [1.10.10](https://github.com/MikeBild/subkit/compare/subkit-v1.10.9...subkit-v1.10.10) (2026-04-19)
 
 
