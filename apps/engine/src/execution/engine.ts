@@ -173,6 +173,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   let lastOutput: unknown = null;
   let lastError: { code: string; message: string } | null = null;
   const skippedStepIds = new Set<string>();
+  const warningsAccum: NonNullable<RunResult["warnings"]> = [];
 
   for (let i = 0; i < def.steps.length; i++) {
     const step = def.steps[i] as StepDef;
@@ -255,6 +256,11 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     }
     scope[step.id] = outcome.scope_value;
     lastOutput = outcome.scope_value;
+    if (outcome.result.warnings?.length) {
+      for (const w of outcome.result.warnings) {
+        warningsAccum.push({ ...w, step_key: step.id });
+      }
+    }
 
     // Branch control flow: mark skipped arm's steps so they are skipped in the
     // linear walk.
@@ -486,13 +492,15 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
 
   unregisterAbort(execution_id);
 
-  return {
+  const runResult: RunResult = {
     execution_id,
     status: finalStatus,
     output: lastOutput,
     error: lastError,
     steps: stepSummaries,
   };
+  if (warningsAccum.length > 0) runResult.warnings = warningsAccum;
+  return runResult;
 }
 
 async function runCallStep(db: Db, ctx: StepRunContext, step: CallStep): Promise<StepResult> {

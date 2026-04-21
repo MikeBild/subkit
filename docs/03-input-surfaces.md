@@ -54,6 +54,16 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 
 **Governance.** All MCP tool calls are subject to the same RBAC checks and Audit Log entries as direct API calls. There is no privileged back channel through MCP; identity and permissions are enforced identically regardless of which surface initiated the request.
 
+**Destructive-action flow.** `tenant.*` writes (e.g. `tenant.delete_workflow`, `tenant.revoke_api_key`) follow the same `confirm_before_execution` policy as in-conversation tools. The first call returns a structured pending envelope — `{pending: true, confirm_required: true, target: {...}, resume: "..." , tool_call_id: "..."}` — and an `approval.requested` audit row. The client relays the target to the operator, obtains consent, and re-issues the same call with `_meta.sk_confirm: true` (or `__policy_confirmed: true` inside the arguments). The second call emits `approval.approved` and executes the tool. This is two MCP round-trips and one human confirmation — no authoring conversation required for routine CRUD.
+
+**Tool hints.** Every listed tool carries `_meta.subkit = {category, confirm_required, destructive}` so clients can render destructive warnings and skip self-authored pre-confirms. Clients that honour `confirm_required` from the listing avoid the two-elicitation trap.
+
+**Workflow inputs.** Each `wf.<slug>` tool advertises an `inputSchema`. When the workflow declares `input_schema` on its DAG, that is passed through verbatim. When it doesn't, sk synthesises one by scanning the DAG for `${input.X}` placeholders in request steps and `$input.X` references in jsonata transforms, yielding `{type:"object", properties:{X:{type:"string"}}, additionalProperties: true}`.
+
+**Non-fatal warnings.** When a workflow run hits a soft signal — for example a jsonata transform that referenced an identifier not in scope — the MCP response wraps the output as `{output, warnings: [{code:"unresolved_identifier", identifier, step_key, message}]}`. The run still reports `status: "succeeded"` but the client can surface the diagnostic so operators know why a payload looks partial.
+
+**Read-only deployments.** For MCP deployments that expose only read tools (no write surface at all), set `SK_MCP_READ_ONLY=1`. Writes are visible by default and rely on the policy gate for safety.
+
 ---
 
 ## Chat Systems (Slack, Teams, Google Chat)

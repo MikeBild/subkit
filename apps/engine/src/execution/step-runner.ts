@@ -119,8 +119,17 @@ export async function runStep(
     result: scope_value ?? result.output ?? null,
   });
 
+  // When the step produced non-fatal warnings, persist them alongside
+  // the preview so downstream readers (execution_fixtures exporter,
+  // self-healing, operator UI) see them without re-running the step.
+  const warnings = result.warnings && result.warnings.length > 0 ? result.warnings : null;
+  const output_preview = offload.storage_uri
+    ? null
+    : warnings
+      ? { value: scope_value ?? null, warnings }
+      : (scope_value ?? null);
   await finalizeStepRow(ctx.db, ctx.step_row_id, result.status, result, {
-    output_preview: offload.storage_uri ? null : (scope_value ?? null),
+    output_preview,
     result_preview: offload.preview ?? previewOf(scope_value ?? null),
     result_storage_uri: offload.storage_uri,
   });
