@@ -26,6 +26,7 @@ import { listTools } from "../../conversations/tools/index.ts";
 import type { Db } from "../../db/client.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { buildConversationToolMeta } from "./tool-meta.ts";
 
 export const TENANT_TOOL_PREFIX = "tenant.";
 
@@ -73,6 +74,7 @@ export function listTenantTools(opts: ListTenantToolsOptions): Tool[] {
       name: `${TENANT_TOOL_PREFIX}${t.name}`,
       description: compileDescription(t),
       inputSchema: zodToMcpSchema(t.inputSchema),
+      _meta: buildConversationToolMeta(t.category, t.name),
     });
   }
   return out;

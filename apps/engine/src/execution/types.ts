@@ -48,6 +48,15 @@ export interface StepRunContext extends ExecutionContext {
   step_row_id: string;
 }
 
+export type StepWarningCode = "unresolved_identifier";
+
+export interface StepWarning {
+  code: StepWarningCode;
+  /** Concrete identifier / placeholder path that could not be resolved. */
+  identifier?: string;
+  message: string;
+}
+
 export interface StepResult {
   status: "succeeded" | "failed" | "aborted" | "timed_out";
   output?: unknown;
@@ -55,6 +64,10 @@ export interface StepResult {
   retry_count: number;
   duration_ms: number;
   request_meta?: Record<string, unknown> | null;
+  /** Non-fatal diagnostics that flow to `execution_steps.output_preview`
+   *  and bubble onto the final `RunResult.warnings` for the executor
+   *  that kicked the run off (MCP, CLI, HTTP). */
+  warnings?: StepWarning[];
 }
 
 export interface RunOptions {
@@ -93,6 +106,10 @@ export interface RunResult {
     retry_count: number;
     error: unknown;
   }>;
+  /** Non-fatal diagnostics rolled up from every step. Present when
+   *  at least one step emitted a warning (typically jsonata
+   *  `unresolved_identifier`). Absent when the run had none. */
+  warnings?: Array<StepWarning & { step_key: string }>;
 }
 
 export interface RunInput {

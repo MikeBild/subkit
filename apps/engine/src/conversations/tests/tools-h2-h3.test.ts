@@ -53,6 +53,7 @@ describe("conversation tools — registration", () => {
     "get_raw_result",
     "web_search",
     "test_rbac_expression",
+    "get_vendor_recipe",
     // Generated read tools (15 domains)
     "list_workflows",
     "get_workflow",

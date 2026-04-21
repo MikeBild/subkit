@@ -88,7 +88,7 @@ describe("MCP tenant tool surface", () => {
     expect(schema.type).toBe("object");
   }, 60_000);
 
-  test("tenant.* write tools are hidden unless SK_MCP_ALLOW_WRITES=1", async () => {
+  test("tenant.* write tools are visible by default and carry _meta.subkit hints", async () => {
     const session = new McpSession(env);
     await session.call("initialize", {
       protocolVersion: "2024-11-05",
@@ -96,13 +96,103 @@ describe("MCP tenant tool surface", () => {
       clientInfo: { name: "e2e-test", version: "0.0.0" },
     });
     const list = await session.call("tools/list", {});
-    const result = list.result as { tools: Array<{ name: string }> };
-    const names = new Set(result.tools.map((t) => t.name));
-    // The default test env does NOT set SK_MCP_ALLOW_WRITES=1, so
-    // write tools are filtered out.
-    expect(names.has("tenant.run_workflow")).toBe(false);
-    expect(names.has("tenant.approve_patch_candidate")).toBe(false);
+    const result = list.result as {
+      tools: Array<{
+        name: string;
+        _meta?: { subkit?: { category: string; confirm_required: boolean; destructive: boolean } };
+      }>;
+    };
+    const byName = new Map(result.tools.map((t) => [t.name, t]));
+    // Post-flip (SK_MCP_READ_ONLY unset = writes visible), destructive
+    // tenant_write tools are listed and advertise confirm_required.
+    expect(byName.has("tenant.delete_workflow")).toBe(true);
+    expect(byName.get("tenant.delete_workflow")?._meta?.subkit).toEqual({
+      category: "tenant_write",
+      confirm_required: true,
+      destructive: true,
+    });
+    expect(byName.get("tenant.list_workflows")?._meta?.subkit).toEqual({
+      category: "tenant_read",
+      confirm_required: false,
+      destructive: false,
+    });
   }, 30_000);
+
+  test("destructive tenant.* call returns confirm_required, then completes with _meta.sk_confirm", async () => {
+    // Seed a workflow through the authoring surface so the delete has
+    // a real target. `start_workflow_from_goal` is the draft-first
+    // path; we use `build_workflow` + `commit_draft` via a direct DB
+    // insertion is out of scope for e2e, so we drive through a
+    // throwaway workflow created via the API instead.
+    const createRes = await fetch(`${env.baseUrl}/v1/workflows`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${env.personas.admin.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        slug: `doomed-${Date.now()}`,
+        name: "doomed",
+        dag: {
+          name: "doomed",
+          steps: [
+            {
+              kind: "transform",
+              id: "noop",
+              language: "jsonata",
+              expression: '{ "ok": true }',
+            },
+          ],
+        },
+      }),
+    });
+    expect(createRes.ok).toBe(true);
+    const created = (await createRes.json()) as { id?: string; workflow?: { id?: string } };
+    const workflowId = created.id ?? created.workflow?.id;
+    expect(typeof workflowId).toBe("string");
+
+    const session = new McpSession(env);
+    await session.call("initialize", {
+      protocolVersion: "2024-11-05",
+      capabilities: {},
+      clientInfo: { name: "e2e-test", version: "0.0.0" },
+    });
+
+    // First call — expect pending envelope.
+    const first = await session.call("tools/call", {
+      name: "tenant.delete_workflow",
+      arguments: { id: workflowId },
+    });
+    const firstResult = first.result as {
+      isError?: boolean;
+      content?: Array<{ type: string; text: string }>;
+    };
+    expect(firstResult.isError).toBeFalsy();
+    const firstEnvelope = JSON.parse(firstResult.content![0]!.text) as {
+      pending?: boolean;
+      confirm_required?: boolean;
+      target?: { tool?: string };
+      tool_call_id?: string;
+    };
+    expect(firstEnvelope.pending).toBe(true);
+    expect(firstEnvelope.confirm_required).toBe(true);
+    expect(firstEnvelope.target?.tool).toBe("tenant.delete_workflow");
+
+    // Second call — re-issue with _meta.sk_confirm = true.
+    const second = await session.call("tools/call", {
+      name: "tenant.delete_workflow",
+      arguments: { id: workflowId },
+      _meta: { sk_confirm: true },
+    });
+    const secondResult = second.result as {
+      isError?: boolean;
+      content?: Array<{ type: string; text: string }>;
+    };
+    expect(secondResult.isError).toBeFalsy();
+    // The tool should have reported a successful deletion.
+    const secondPayload = JSON.parse(secondResult.content![0]!.text);
+    expect(secondPayload).toBeTruthy();
+  }, 60_000);
 
   test("tenant.get_engine_status call returns a JSON summary", async () => {
     const session = new McpSession(env);

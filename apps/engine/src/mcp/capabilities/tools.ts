@@ -31,6 +31,7 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { listTools as listConversationToolsRegistry } from "../../conversations/tools/index.ts";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";
@@ -38,6 +39,7 @@ import { runExecution } from "../../execution/engine.ts";
 import { maybeOffload } from "../../execution/offload.ts";
 import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
+import { synthesizeInputSchema } from "../../workflows/input-schema-synth.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
@@ -46,7 +48,9 @@ import {
   handleConversationTool,
   listConversationTools,
 } from "./conversations.ts";
+import { gateTenantToolCall } from "./policy-gate.ts";
 import { handleTenantTool, listTenantTools, TENANT_TOOL_PREFIX } from "./tenant-tools.ts";
+import { buildWorkflowToolMeta } from "./tool-meta.ts";
 
 const TOOL_PREFIX = "wf.";
 const PROGRESS_POLL_MS = 250;
@@ -111,13 +115,19 @@ async function listWorkflowTools({ db, principal }: ListToolsParams): Promise<To
       const parsed = WorkflowDefSchema.safeParse(dag);
       if (parsed.success) {
         if (parsed.data.description) description = parsed.data.description;
-        inputSchema = toInputSchema(parsed.data.input_schema);
+        if (parsed.data.input_schema) {
+          inputSchema = toInputSchema(parsed.data.input_schema);
+        } else {
+          const synth = synthesizeInputSchema(parsed.data);
+          if (synth) inputSchema = synth as Tool["inputSchema"];
+        }
       }
     }
     out.push({
       name: `${TOOL_PREFIX}${row.slug}`,
       description,
       inputSchema,
+      _meta: buildWorkflowToolMeta(),
     });
   }
   return out;
@@ -206,10 +216,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
 
   server.registerCapabilities({ tools: { listChanged: false } });
 
-  // Writes via tenant.* are gated by an env flag — default off, matching
-  // the plan's safety story. Operators running a controlled MCP deployment
-  // for trusted clients set SK_MCP_ALLOW_WRITES=1 to flip it on.
-  const allowTenantWrites = process.env.SK_MCP_ALLOW_WRITES === "1";
+  // Writes via tenant.* are visible by default and guarded at call time
+  // by `gateTenantToolCall` (confirm-before-execution envelope for any
+  // tool whose policy demands it). Operators who want a strictly
+  // read-only MCP deployment set SK_MCP_READ_ONLY=1 to hide every
+  // tenant_write tool entirely.
+  const allowTenantWrites = process.env.SK_MCP_READ_ONLY !== "1";
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = await listWorkflowTools({ db, principal });
@@ -287,12 +299,46 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
               }
             }
           : undefined;
+        // Policy gate: confirm_before_execution tools return a pending
+        // envelope on the first call; the client re-issues with
+        // _meta.sk_confirm=true after operator approval.
+        const bareToolName = name.slice(TENANT_TOOL_PREFIX.length);
+        const toolDef = listConversationToolsRegistry().find((t) => t.name === bareToolName);
+        const rawTenantArgs = args as Record<string, unknown>;
+        if (toolDef) {
+          const gate = await gateTenantToolCall({
+            tool: bareToolName,
+            category: toolDef.category,
+            args: rawTenantArgs,
+            meta: request.params._meta as Record<string, unknown> | undefined,
+            principal,
+            db,
+          });
+          if (gate.kind === "pending") {
+            const envelopeText = JSON.stringify(gate.envelope);
+            logger.info({
+              module: "mcp",
+              action: "mcp.tool.pending",
+              msg: "mcp tenant tool call requires confirmation",
+              tool: name,
+              tool_call_id: gate.envelope.tool_call_id,
+              duration_ms: Date.now() - started,
+            });
+            return {
+              isError: false,
+              content: [{ type: "text" as const, text: envelopeText }],
+            };
+          }
+        }
+        // Strip the confirmation marker so the tool's strict zod
+        // schema doesn't reject it as an unknown property.
+        const { __policy_confirmed: _confirmFlag, ...tenantArgs } = rawTenantArgs;
         if (notifyProgress) await notifyProgress(0, `starting ${name}`);
         const result = await handleTenantTool({
           db,
           principal,
           name,
-          args: args as Record<string, unknown>,
+          args: tenantArgs,
           allowWrites: allowTenantWrites,
           ...(notifyProgress ? { onProgress: notifyProgress } : {}),
         });
@@ -495,8 +541,15 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         if (progressToken !== undefined && progressToken !== null) {
           await notifier.send(1, 1, "completed").catch(() => {});
         }
-        // Offload if oversize.
-        const serialized = JSON.stringify(result.output ?? null);
+        // When a run produced non-fatal warnings (e.g. jsonata
+        // `unresolved_identifier`), wrap the output so the MCP client
+        // sees them alongside the payload. No wrapping when clean.
+        const hasWarnings = (result.warnings?.length ?? 0) > 0;
+        const rawBody: unknown = hasWarnings
+          ? { output: result.output ?? null, warnings: result.warnings }
+          : (result.output ?? null);
+        // Offload if oversize. Warnings travel with the envelope.
+        const serialized = JSON.stringify(rawBody);
         if (serialized.length > MCP_OFFLOAD_CHAR_CAP) {
           const off = await maybeOffload(db, {
             tenant_id: principal.tenant_id,
@@ -504,13 +557,14 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             step_id: null,
             result: result.output,
           });
-          const envelope = {
+          const envelope: Record<string, unknown> = {
             kind: "offloaded" as const,
             uri: off.storage_uri,
             preview: off.preview,
             execution_id: result.execution_id,
             status: result.status,
           };
+          if (hasWarnings) envelope.warnings = result.warnings;
           const bytes = JSON.stringify(envelope).length;
           logger.info({
             module: "mcp",
@@ -520,6 +574,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             duration_ms: Date.now() - started,
             bytes,
             execution_id: result.execution_id,
+            warnings_count: result.warnings?.length ?? 0,
           });
           return {
             isError: result.status !== "succeeded",
@@ -540,6 +595,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           duration_ms: Date.now() - started,
           bytes: text.length,
           execution_id: result.execution_id,
+          warnings_count: result.warnings?.length ?? 0,
         });
         return {
           isError: result.status !== "succeeded",
