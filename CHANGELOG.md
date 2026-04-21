@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.15.0](https://github.com/MikeBild/subkit/compare/subkit-v1.14.0...subkit-v1.15.0) (2026-04-21)
+
+
+### Features
+
+* **engine:** answer-before-action, vendor-recipe lookup, visible approvals, output-guard repair ([0798405](https://github.com/MikeBild/subkit/commit/079840588e6b7f1ac82c6382dea71adbce4aa9e3))
+* **mcp:** destructive-action gate, synthesized input schemas, transform warnings ([7301007](https://github.com/MikeBild/subkit/commit/7301007e4700ac2066dbb0a36f893489faec9e17))
+
+
+### Bug Fixes
+
+* **ci:** pin Bun to 1.3.12 so release binaries sign cleanly on darwin-arm64 ([a620c50](https://github.com/MikeBild/subkit/commit/a620c50c06e2463c140ca269fe01355f61c8751c))
+
 ## [1.14.0](https://github.com/MikeBild/subkit/compare/subkit-v1.13.1...subkit-v1.14.0) (2026-04-20)
 
 
