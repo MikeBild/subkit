@@ -1,10 +1,12 @@
 ---
 slug: error-recovery
 scope: global
-title: Error Recovery
-description: Canonical tool-error shape, the common error codes, and the recovery routine to apply in a conversation.
+title: Authoring-Time Error Recovery
+description: Canonical tool-error shape and recovery routine for errors that surface WHILE the assistant is building a connector or workflow in a conversation. For failures of workflows that have already been committed and run, see `troubleshooting-workflow-failures`.
 gates_tools: []
-version: 1
+version: 2
+auto_load: true
+trigger_keywords: [error, failed, failure, broken, debug, fix, http_4xx, http_5xx, 4xx, 5xx, 400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, placeholder_unresolved, permission_denied, validation_failed, step_timeout, filter_fail, connector_not_found, ok false, tool error]
 ---
 
 # Error Recovery

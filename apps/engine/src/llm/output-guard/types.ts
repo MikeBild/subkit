@@ -22,6 +22,15 @@ export interface Violation {
   span?: { start: number; end: number };
   /** Free-form payload — names of placeholders matched, suggested replacements, etc. */
   details?: Record<string, unknown>;
+  /**
+   * Optional repaired text. When present AND the guard runs in `soft`
+   * mode, the orchestrator splices `repair` into the span instead of
+   * emitting a `[guard:<kind>]` marker. Lets scanners that know the
+   * grounded value (e.g. a placeholder host when `engine_url` is set)
+   * heal the output in-place so the user gets a usable artifact on the
+   * first turn. The violation is still recorded in observability.
+   */
+  repair?: string;
 }
 
 export interface ScannerContext {

@@ -46,6 +46,24 @@ export const urlScanner: Scanner = {
       if (!looksLikeSubkitOrigin(parsed, engineUrl)) continue;
       // Same origin as engine_url? clean.
       if (engineUrl && parsed.origin === engineUrl.origin) continue;
+      // Compute an in-place repair when we have an engine_url — rewrite
+      // the emitted URL's origin to the grounded origin while preserving
+      // path, query, and hash. This heals the common case where the
+      // model picks the wrong scheme (https://<real-host> vs http://…)
+      // or a stale host, so the user's config is usable on the first
+      // turn instead of being flagged and left unrepaired.
+      let repair: string | undefined;
+      if (engineUrl) {
+        try {
+          const rebuilt = new URL(m[0]);
+          rebuilt.protocol = engineUrl.protocol;
+          rebuilt.host = engineUrl.host;
+          rebuilt.port = engineUrl.port;
+          repair = rebuilt.toString();
+        } catch {
+          /* noop — fall back to the `[guard:…]` marker */
+        }
+      }
       out.push({
         kind: "url.unknown_origin",
         message: engineUrl
@@ -55,7 +73,9 @@ export const urlScanner: Scanner = {
         details: {
           emitted_origin: parsed.origin,
           ...(engineUrl ? { engine_url_origin: engineUrl.origin } : {}),
+          ...(repair ? { repaired_to: repair } : {}),
         },
+        ...(repair ? { repair } : {}),
       });
     }
     return out;

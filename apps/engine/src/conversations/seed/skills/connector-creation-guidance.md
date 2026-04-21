@@ -2,11 +2,11 @@
 slug: connector-creation-guidance
 scope: global
 title: Connector Creation Guidance
-description: Generic best-practice guidance for creating HTTP connectors via conversation.
+description: Best-practice checklist for creating a NEW HTTP connector in a conversation. Loaded on creation-intent keywords only — not on every mention of `api` or `http`, which would flood context in unrelated flows like MCP setup or workflow authoring against existing connectors. Driver-level detail lives in the per-protocol skills (`http-connectors`, `graphql-connectors`, `postgres-connectors`, `s3-connectors`) and is loaded on demand via `load_skill` during authoring step 4.
 gates_tools: []
-version: 1
+version: 2
 auto_load: true
-trigger_keywords: [connector, api, http, endpoint, base-url, auth, oauth2, bearer, api-key, authentication]
+trigger_keywords: [create connector, new connector, add connector, add integration, new integration, set up integration, configure connector, start connector, start_connector_from_description, start_connector_from_template, wire up, hook up]
 ---
 
 # Connector Creation Guidance

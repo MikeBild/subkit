@@ -40,6 +40,25 @@ function makeToolContext(actorId: string | null = ctx.user_id): ToolContext {
   };
 }
 
+describe("create_api_key — tool description contract", () => {
+  // The description is the prompt surface the model reads when deciding
+  // whether to call this tool. After the "jump to action on a 'how do
+  // I…' question" regression, the wording must gate the call behind
+  // explicit user confirmation. Loosening these strings re-opens the bug.
+  test("description requires explicit user confirmation before minting", () => {
+    expect(createApiKeyTool.description).toMatch(/explicit(ly)? confirm/i);
+  });
+
+  test("description forbids calling in response to informational questions", () => {
+    expect(createApiKeyTool.description).toMatch(/do not call in response to informational/i);
+    expect(createApiKeyTool.description).toMatch(/how do i/i);
+  });
+
+  test("use_case also gates on AFTER-confirmation wording", () => {
+    expect(createApiKeyTool.use_case).toMatch(/after the user explicitly confirms/i);
+  });
+});
+
 describe("create_api_key", () => {
   test("issues a key with default scopes and returns plaintext exactly once", async () => {
     const tc = makeToolContext();
