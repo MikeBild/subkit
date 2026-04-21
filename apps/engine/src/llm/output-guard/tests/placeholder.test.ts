@@ -68,4 +68,26 @@ describe("placeholderScanner", () => {
     const third = placeholderScanner.scan("your-subkit-instance.com three", ctx);
     expect(third).toHaveLength(1);
   });
+
+  it("carries a `repair` host when engine_url is available so the orchestrator can heal in-place", () => {
+    const vs = placeholderScanner.scan("Use https://your-subkit-instance.com/mcp", ctx);
+    expect(vs).toHaveLength(1);
+    expect(vs[0]?.kind).toBe("placeholder.host");
+    expect(vs[0]?.repair).toBe("subkit-api.mikebild.dev");
+    expect(vs[0]?.details?.repaired_to).toBe("subkit-api.mikebild.dev");
+  });
+
+  it("omits `repair` when no engine_url is exposed (falls back to the guard marker)", () => {
+    const vs = placeholderScanner.scan("Use your-subkit-instance.com", {});
+    expect(vs).toHaveLength(1);
+    expect(vs[0]?.kind).toBe("placeholder.host");
+    expect(vs[0]?.repair).toBeUndefined();
+  });
+
+  it("does not attach `repair` to angle placeholders — those have no grounded substitute", () => {
+    const vs = placeholderScanner.scan("Authorization: Bearer <YOUR_API_KEY>", ctx);
+    expect(vs).toHaveLength(1);
+    expect(vs[0]?.kind).toBe("placeholder.angle");
+    expect(vs[0]?.repair).toBeUndefined();
+  });
 });

@@ -217,6 +217,15 @@ import { testRbacExpressionTool } from "./test-rbac-expression.ts";
 
 register(testRbacExpressionTool);
 
+// get_vendor_recipe — canonical MCP-client config lookup (reads from
+// the hand-curated VendorRecipeManifest at seed/vendor-recipes/).
+// Delegating client specifics to this tool keeps the skill roster
+// generic and lets new clients ship as a single JSON file, not a new
+// prompt.
+import { getVendorRecipeTool } from "./get-vendor-recipe.ts";
+
+register(getVendorRecipeTool);
+
 // Auto-generated read tools covering every §5.10.1 domain:
 // workflows, connectors, executions, skills, skill-candidates,
 // patch-candidates, knowledge-sources, audit, metrics, identity

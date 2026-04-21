@@ -22,7 +22,7 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { conversationToolCalls } from "../db/schema/index.ts";
+import { conversationMessages, conversationToolCalls } from "../db/schema/index.ts";
 import { recordConfirmationTransition } from "../observability/instrumentation.ts";
 
 export type ConfirmationState =
@@ -58,9 +58,42 @@ export interface ConfirmationConfig {
 }
 
 /**
+ * Human-readable transcript marker for each terminal transition. The
+ * markers are short, deterministic strings that render cleanly in the
+ * chat scrollback so the user can see their own approve/decline action
+ * — the confirmation dialog itself is ephemeral, and prior to this
+ * marker the decision was only visible as `interaction_log` metadata
+ * buried on the tool-call row.
+ */
+function transcriptMarkerFor(state: ConfirmationState, tool: string | undefined): string | null {
+  const label = tool ?? "action";
+  switch (state) {
+    case "confirmed":
+      return `✓ Approved: ${label}`;
+    case "declined":
+      return `✗ Declined: ${label}`;
+    case "partial":
+      return `◐ Partially approved: ${label}`;
+    case "auto_declined":
+      return `✗ Auto-declined: ${label} (superseded by a later message)`;
+    case "oauth_success":
+      return `✓ OAuth completed: ${label}`;
+    case "oauth_failure":
+      return `✗ OAuth failed: ${label}`;
+    default:
+      // `proposed` and `tested` are intermediate states; don't clutter the
+      // transcript with a message for them.
+      return null;
+  }
+}
+
+/**
  * Persist a confirmation state transition on a tool-call row and append
- * an interaction_log entry. Idempotent-ish: callers should check that
- * the target state is not already the current state before invoking.
+ * an interaction_log entry. When a `conversation_id` is supplied, also
+ * append a short user-visible transcript message describing the choice
+ * so the user's approve/decline click isn't silently absorbed into
+ * metadata. Idempotent-ish: callers should check that the target state
+ * is not already the current state before invoking.
  */
 export async function recordTransition(
   db: Db,
@@ -72,6 +105,13 @@ export async function recordTransition(
     actor_id?: string | null;
     /** Tool name — populated by callers for observability labelling. */
     tool?: string;
+    /**
+     * Conversation the tool call belongs to. When supplied, a visible
+     * `role: "user"` message is inserted alongside the interaction_log
+     * append, so the user's decision shows up in the transcript. Omit
+     * in tests or in internal transitions that shouldn't render.
+     */
+    conversation_id?: string;
   },
 ): Promise<void> {
   const entry: InteractionLogEntry = {
@@ -101,6 +141,25 @@ export async function recordTransition(
         eq(conversationToolCalls.tenant_id, params.tenant_id),
       ),
     );
+
+  if (params.conversation_id) {
+    const marker = transcriptMarkerFor(params.to_state, params.tool);
+    if (marker) {
+      await db.insert(conversationMessages).values({
+        tenant_id: params.tenant_id,
+        conversation_id: params.conversation_id,
+        role: "user",
+        content: {
+          kind: "confirmation_decision",
+          text: marker,
+          tool: params.tool ?? null,
+          to_state: params.to_state,
+          tool_call_id: params.tool_call_id,
+        } as Record<string, unknown>,
+      });
+    }
+  }
+
   recordConfirmationTransition({ to_state: params.to_state, tool: params.tool ?? "unknown" });
 }
 

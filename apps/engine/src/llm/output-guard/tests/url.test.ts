@@ -65,4 +65,28 @@ describe("urlScanner", () => {
       urlScanner.scan("https://subkit-api.x.dev/foo", { engine_url: "not a url" }),
     ).not.toThrow();
   });
+
+  it("attaches a `repair` URL that coerces the emitted origin to the grounded one", () => {
+    const vs = urlScanner.scan("Hit https://subkit-api.other.dev/mcp now.", {
+      engine_url: "http://subkit-api.mikebild.dev",
+    });
+    expect(vs).toHaveLength(1);
+    // Scheme and host are coerced; path is preserved.
+    expect(vs[0]?.repair).toBe("http://subkit-api.mikebild.dev/mcp");
+    expect(vs[0]?.details?.repaired_to).toBe("http://subkit-api.mikebild.dev/mcp");
+  });
+
+  it("repairs a scheme-only mismatch (https vs http) to the grounded scheme", () => {
+    const vs = urlScanner.scan("https://subkit-api.mikebild.dev/mcp", {
+      engine_url: "http://subkit-api.mikebild.dev",
+    });
+    expect(vs).toHaveLength(1);
+    expect(vs[0]?.repair).toBe("http://subkit-api.mikebild.dev/mcp");
+  });
+
+  it("omits `repair` when no engine_url is in context", () => {
+    const vs = urlScanner.scan("hit https://subkit-api.example.dev/mcp", {});
+    expect(vs).toHaveLength(1);
+    expect(vs[0]?.repair).toBeUndefined();
+  });
 });

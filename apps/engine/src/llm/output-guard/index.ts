@@ -76,13 +76,17 @@ function selectRewriteSpans(vs: Violation[]): Violation[] {
 
 function rewriteSoft(text: string, violations: Violation[]): string {
   let out = text;
-  // The marker deliberately does NOT echo the matched fragment — that
-  // would re-leak the placeholder to the user and to the model on the
-  // next turn. The original fragment is still recorded in
-  // `violation.details.match` for operator dashboards.
+  // When a violation carries a `repair`, splice that in — the scanner
+  // knew the grounded value (e.g. engine_url's host) and produced a
+  // usable substitute. Otherwise the span is replaced with the
+  // `[guard:<kind>]` marker, which deliberately does NOT echo the
+  // matched fragment so the placeholder is not re-leaked to the user
+  // or to the model on the next turn. The original fragment is still
+  // recorded in `violation.details.match` for operator dashboards.
   for (const v of selectRewriteSpans(violations)) {
     const { start, end } = v.span!;
-    out = `${out.slice(0, start)}[guard:${v.kind}]${out.slice(end)}`;
+    const replacement = v.repair ?? `[guard:${v.kind}]`;
+    out = `${out.slice(0, start)}${replacement}${out.slice(end)}`;
   }
   return out;
 }

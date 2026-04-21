@@ -13,8 +13,13 @@
 //     (not deduped); the column is a log, not a set.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
-import { conversations, conversationToolCalls, tenants } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import {
+  conversationMessages,
+  conversations,
+  conversationToolCalls,
+  tenants,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { recordTransition } from "../confirmation.ts";
 
@@ -180,6 +185,102 @@ describe("interaction_log — append-only semantics", () => {
     const log = await readLog(id);
     expect(log).toHaveLength(2);
     expect(log.every((e) => e.type === "user_confirmed")).toBe(true);
+  });
+});
+
+describe("recordTransition — visible transcript message", () => {
+  // Without this, the user's dialog Approve/Reject click is only
+  // recorded in interaction_log metadata — invisible to the scrollback.
+  // Passing conversation_id opts in to a user-visible marker message.
+
+  async function readDecisionMessages(cid: string): Promise<Array<Record<string, unknown>>> {
+    const rows = await ctx.db
+      .select()
+      .from(conversationMessages)
+      .where(
+        and(eq(conversationMessages.conversation_id, cid), eq(conversationMessages.role, "user")),
+      );
+    return rows
+      .map((r) => r.content as Record<string, unknown>)
+      .filter((c) => c?.kind === "confirmation_decision");
+  }
+
+  test("inserts a user-role message when conversation_id is supplied and state is confirmed", async () => {
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "active" })
+      .returning();
+    const cid = conv!.id;
+    const id = await seedToolCall("create_api_key");
+    await recordTransition(ctx.db, {
+      tool_call_id: id,
+      tenant_id,
+      conversation_id: cid,
+      to_state: "confirmed",
+      tool: "create_api_key",
+    });
+
+    const msgs = await readDecisionMessages(cid);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]!.text).toBe("✓ Approved: create_api_key");
+    expect(msgs[0]!.to_state).toBe("confirmed");
+    expect(msgs[0]!.tool).toBe("create_api_key");
+  });
+
+  test("emits a declined marker on declined transitions", async () => {
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "active" })
+      .returning();
+    const cid = conv!.id;
+    const id = await seedToolCall("create_api_key");
+    await recordTransition(ctx.db, {
+      tool_call_id: id,
+      tenant_id,
+      conversation_id: cid,
+      to_state: "declined",
+      tool: "create_api_key",
+    });
+
+    const msgs = await readDecisionMessages(cid);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]!.text).toBe("✗ Declined: create_api_key");
+  });
+
+  test("does NOT insert a visible message when conversation_id is omitted (test path)", async () => {
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "active" })
+      .returning();
+    const cid = conv!.id;
+    const id = await seedToolCall("create_api_key");
+    // No conversation_id passed — mirrors the test setup path.
+    await recordTransition(ctx.db, {
+      tool_call_id: id,
+      tenant_id,
+      to_state: "confirmed",
+      tool: "create_api_key",
+    });
+    const msgs = await readDecisionMessages(cid);
+    expect(msgs).toEqual([]);
+  });
+
+  test("skips the transcript marker for intermediate states (tested, proposed)", async () => {
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "active" })
+      .returning();
+    const cid = conv!.id;
+    const id = await seedToolCall("create_api_key");
+    await recordTransition(ctx.db, {
+      tool_call_id: id,
+      tenant_id,
+      conversation_id: cid,
+      to_state: "tested",
+      tool: "create_api_key",
+    });
+    const msgs = await readDecisionMessages(cid);
+    expect(msgs).toEqual([]);
   });
 });
 

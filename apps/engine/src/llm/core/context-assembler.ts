@@ -56,6 +56,14 @@ function converseBasePrompt(surface: ConversationSurface): string {
 
   return `You are subkit's authoring + operator assistant. You can introspect tenant state, guide end users conversationally, and draft connectors + workflows in staged steps.
 
+TURN-ONE DISCIPLINE (hard constraint — overrides every skill):
+- ANSWER BEFORE ACTION. Before calling any \`tenant_write\` tool (anything that creates, updates, deletes, mints, revokes, invokes, or dispatches — including \`create_api_key\`, \`save_connector_draft\`, \`build_workflow\`, \`invoke_workflow\`, \`create_*\`, \`update_*\`, \`delete_*\`, \`mint_*\`, \`revoke_*\`), your first response to the user's surface question MUST be a substantive answer to that question. Not an acknowledgement, not a restatement, not a tool call that attempts to do the thing — an answer.
+- "HOW DO I …" IS INFORMATIONAL. If the user asks "how do I X?", "how can I connect Y?", "what's the config for Z?", or any similarly-shaped question, your job in that turn is to explain — grounded in runtime context, skills, and connector docs — and to offer the next action. You MAY NOT call a \`tenant_write\` tool in that same turn, even if a skill body appears to instruct it.
+- EXPLICIT CONFIRMATION GATES WRITES. Only after the user has confirmed in their own words ("yes", "go ahead", "do it", "mint it", "create it", "commit") may you call the \`tenant_write\` tool in a subsequent turn. \`ask_user_confirm(kind: "external_write")\` is the structured path; a free-text "yes" in direct reply to an explicit offer counts as confirmation for the offered action only.
+- ONE STATE-CHANGING TOOL PER TURN. Never chain two \`tenant_write\` calls in the same turn. If a follow-up write is needed, emit the first, summarize the result, and wait for the user before the next.
+- WHEN A SKILL BODY CONFLICTS WITH THIS BLOCK, THIS BLOCK WINS. If a loaded skill says "call tool X now", treat that as an internal recipe step, not a license to skip the answer-first rule.
+- NO FABRICATION. Never invent an API key, token, tenant id, workflow id, endpoint, placeholder hostname, or any account-specific value. Ground from RUNTIME CONTEXT, tool output, or connector docs — or call \`cannot_help\` and stop.
+
 IDEAL USER FLOW:
 1. Start conversation-first. Acknowledge the goal, explain what you are trying to establish next, and ask only the single highest-signal follow-up question when information is missing.
 2. Suggest templates only when helpful. If the user names a common vendor, call \`suggest_connector_templates\` and offer the top match as an accelerator. Never require template selection; \`start_connector_from_description\` is the default path.
@@ -189,12 +197,44 @@ export function basePromptFor(flow: LlmFlow, surface?: ConversationSurface): str
   return BASE_SYSTEM_PROMPTS[flow];
 }
 
-function formatSkill(s: Skill): string {
+/**
+ * Substitute whitelisted runtime-context tokens in a skill body at
+ * assembly time, so the model never sees a `${engine_url}`-style
+ * template it has to resolve itself. Only tokens whose keys match a
+ * known runtime-context field are replaced; unknown tokens (e.g.
+ * `${plaintext_key}`, `${cred.slack.token}`, `${input.path}`) are
+ * passed through unchanged — the skill author still controls what
+ * stays as a placeholder for the user to fill in later.
+ *
+ * Mirrors the pattern used by Anthropic's Claude Code CLI: concrete
+ * environment values are pre-rendered into the system prompt once,
+ * rather than leaving it to the model to splice runtime data.
+ */
+export function applyRuntimeTemplate(
+  body: string,
+  ctx?: AssembleContextParams["runtime_context"],
+): string {
+  if (!ctx || !body.includes("${")) return body;
+  const subs: Record<string, string | undefined> = {
+    engine_url: ctx.engine_url,
+    tenant_slug: ctx.tenant_slug,
+    actor_email: ctx.actor_email,
+    actor_role: ctx.actor_role,
+    surface: ctx.surface,
+  };
+  return body.replace(/\$\{([a-z_]+)\}/g, (whole, key: string) => {
+    const value = subs[key];
+    return typeof value === "string" && value.length > 0 ? value : whole;
+  });
+}
+
+function formatSkill(s: Skill, runtime_context?: AssembleContextParams["runtime_context"]): string {
+  const body = applyRuntimeTemplate(s.body, runtime_context);
   const bp = s.best_practices.length > 0 ? `\nBest practices: ${s.best_practices.join("; ")}` : "";
   const pit = s.pitfalls.length > 0 ? `\nPitfalls: ${s.pitfalls.join("; ")}` : "";
   const refs = s.doc_refs.length > 0 ? `\nDoc refs: ${s.doc_refs.join(", ")}` : "";
   const ex = s.examples.length > 0 ? `\nExamples:\n- ${s.examples.join("\n- ")}` : "";
-  return `# Skill: ${s.title} (${s.scope})\n${s.body}${bp}${pit}${refs}${ex}`;
+  return `# Skill: ${s.title} (${s.scope})\n${body}${bp}${pit}${refs}${ex}`;
 }
 
 function formatChunk(chunk: IncludedChunk): string {
@@ -415,10 +455,10 @@ export async function assembleEnhancedPrompt(
   const render = () => {
     const sections: string[] = [baseSystem];
     if (runtimeBlock) sections.push(runtimeBlock);
-    for (const s of globalSkills) sections.push(formatSkill(s));
-    for (const s of connectorSkills) sections.push(formatSkill(s));
-    for (const s of workflowSkills) sections.push(formatSkill(s));
-    for (const s of loadedSkills) sections.push(formatSkill(s));
+    for (const s of globalSkills) sections.push(formatSkill(s, p.runtime_context));
+    for (const s of connectorSkills) sections.push(formatSkill(s, p.runtime_context));
+    for (const s of workflowSkills) sections.push(formatSkill(s, p.runtime_context));
+    for (const s of loadedSkills) sections.push(formatSkill(s, p.runtime_context));
     for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
     if (userMemory) sections.push(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
@@ -565,19 +605,118 @@ export async function detectIntentSkills(
   if (msg.includes("openapi") || msg.includes("swagger")) keywords.push("openapi");
   if (msg.includes("postman")) keywords.push("postman");
   if (msg.includes("graphql")) keywords.push("graphql");
-  // External MCP-client integration intents — Codex / Claude Code / Claude
-  // Desktop / Cursor / Continue. Loads `mcp-codex-integration` (and any
-  // sibling vendor-specific Skills authored later) so the assistant has a
-  // grounded recipe before it speaks.
+  // External MCP-client integration intents — any MCP-aware client
+  // (Codex, Claude Code, Claude Desktop, Cursor, Continue, Zed, Goose,
+  // …). Loads the generic `mcp-server-setup` Skill; vendor-specific
+  // config shapes live in the VendorRecipeManifest and are fetched
+  // per-client via the `get_vendor_recipe` tool, not baked into prose.
   if (
     msg.includes("mcp") ||
     msg.includes("codex") ||
     msg.includes("claude code") ||
-    msg.includes("claude desktop")
+    msg.includes("claude desktop") ||
+    msg.includes("cursor") ||
+    msg.includes("continue") ||
+    msg.includes("zed") ||
+    msg.includes("goose")
   ) {
-    keywords.push("mcp", "codex", "claude code", "claude desktop", "model context protocol");
+    keywords.push(
+      "mcp",
+      "mcp server",
+      "mcp client",
+      "model context protocol",
+      "codex",
+      "claude code",
+      "claude desktop",
+      "cursor",
+      "continue",
+      "zed",
+      "goose",
+    );
   }
-  if (opts.hasFailedExecution) keywords.push("troubleshoot", "failure", "error");
+  // Connector-creation intent. The `connector-creation-guidance` skill
+  // was deliberately narrowed from a broad "api/http/endpoint" trigger
+  // to creation-intent phrases only, so we match those phrases here.
+  // Mentioning `create connector` / `new connector` pushes the checklist
+  // skill; a user talking about an *existing* connector (or authoring
+  // against one) does not pay the context cost.
+  if (
+    msg.includes("create connector") ||
+    msg.includes("new connector") ||
+    msg.includes("add connector") ||
+    msg.includes("create a connector") ||
+    msg.includes("add a connector") ||
+    msg.includes("create integration") ||
+    msg.includes("new integration") ||
+    msg.includes("add integration") ||
+    msg.includes("set up integration") ||
+    msg.includes("configure connector") ||
+    msg.includes("start connector")
+  ) {
+    keywords.push(
+      "create connector",
+      "new connector",
+      "add connector",
+      "add integration",
+      "new integration",
+      "set up integration",
+      "configure connector",
+      "start connector",
+      "start_connector_from_description",
+      "start_connector_from_template",
+    );
+  }
+  // Execution-time failure diagnosis keywords — matches
+  // `troubleshooting-workflow-failures.md`'s triggers. Pushed when the
+  // loop's hasFailedExecution flag is set OR the user's message refers
+  // to a past run.
+  if (
+    opts.hasFailedExecution ||
+    msg.includes("execution failed") ||
+    msg.includes("run failed") ||
+    msg.includes("workflow failed") ||
+    msg.includes("past run") ||
+    msg.includes("circuit open") ||
+    msg.includes("schema_violation") ||
+    msg.includes("schema-violation")
+  ) {
+    keywords.push(
+      "troubleshoot",
+      "execution failed",
+      "run failed",
+      "workflow failed",
+      "past run",
+      "schema-violation",
+      "circuit-breaker",
+    );
+  }
+  // Authoring-time tool-error keywords — matches `error-recovery.md`'s
+  // triggers. Pushed on explicit error shapes a user might paste OR the
+  // model referencing its own failed tool call.
+  if (
+    msg.includes("error") ||
+    msg.includes("failed") ||
+    msg.includes("4xx") ||
+    msg.includes("5xx") ||
+    msg.includes("placeholder_unresolved") ||
+    msg.includes("permission_denied") ||
+    msg.includes("validation_failed") ||
+    msg.includes("step_timeout") ||
+    msg.includes("connector_not_found")
+  ) {
+    keywords.push(
+      "error",
+      "failed",
+      "http_4xx",
+      "http_5xx",
+      "placeholder_unresolved",
+      "permission_denied",
+      "validation_failed",
+      "step_timeout",
+      "connector_not_found",
+      "tool error",
+    );
+  }
   if (opts.hasMultipleConnectors) keywords.push("multi-connector", "orchestration");
   if (keywords.length === 0) keywords.push("onboarding");
 

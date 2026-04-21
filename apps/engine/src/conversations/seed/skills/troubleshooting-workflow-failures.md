@@ -1,12 +1,12 @@
 ---
 slug: troubleshooting-workflow-failures
 scope: global
-title: Workflow Failure Troubleshooting
-description: Systematic guide for diagnosing and resolving workflow execution failures.
+title: Execution-Time Workflow Failure Diagnosis
+description: Systematic guide for diagnosing failures of workflows that have already been committed and executed — reading `list_executions` / `get_execution`, interpreting schema violations, and reading connector circuit-breaker state. For errors that surface while authoring in a conversation (tool call returned `{ok:false}`), see `error-recovery`.
 gates_tools: []
-version: 1
+version: 2
 auto_load: true
-trigger_keywords: [troubleshoot, failure, error, failed, broken, debug, fix, schema-violation, circuit-breaker]
+trigger_keywords: [troubleshoot, execution failed, run failed, workflow failed, past run, get_execution, list_executions, schema-violation, schema_violation, input_schema_violation, response_schema_violation, request_body_schema_violation, unexpected_status_code, transform_input_schema_violation, output_schema_violation, circuit-breaker, circuit_state, circuit open]
 ---
 
 # Workflow Failure Troubleshooting

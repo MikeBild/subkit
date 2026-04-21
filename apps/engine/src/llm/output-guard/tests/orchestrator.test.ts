@@ -19,23 +19,38 @@ describe("runOutputGuard — soft mode", () => {
     expect(r.mode).toBe("soft");
   });
 
-  it("rewrites a placeholder host span with a marker", () => {
+  it("repairs a placeholder host in-place with the grounded engine_url", () => {
     const r = runOutputGuard("Use https://your-subkit-instance.com/mcp", ctx, { mode: "soft" });
-    expect(r.text).toContain("[guard:placeholder.host]");
+    // Repair replaces the placeholder host with the grounded host from
+    // engine_url so the user gets a usable config on the first turn.
+    // The violation is still recorded for observability.
+    expect(r.text).toContain("subkit-api.mikebild.dev");
     expect(r.text).not.toContain("your-subkit-instance.com");
+    expect(r.text).not.toContain("[guard:placeholder.host]");
     expect(r.violations.map((v) => v.kind)).toContain("placeholder.host");
   });
 
-  it("rewrites multiple violations in one pass without index drift", () => {
+  it("falls back to the [guard:…] marker when no engine_url is available", () => {
+    const r = runOutputGuard("Use https://your-subkit-instance.com/mcp", {}, { mode: "soft" });
+    expect(r.text).toContain("[guard:placeholder.host]");
+    expect(r.text).not.toContain("your-subkit-instance.com");
+    expect(r.text).not.toContain("subkit-api");
+    expect(r.violations.map((v) => v.kind)).toContain("placeholder.host");
+  });
+
+  it("rewrites multiple violations in one pass — repairing hosts, redacting non-repairable placeholders", () => {
     const r = runOutputGuard(
       "Use your-subkit-instance.com with <YOUR_KEY>; backup is example.com",
       ctx,
       { mode: "soft" },
     );
     expect(r.violations.length).toBeGreaterThanOrEqual(3);
-    expect(r.text).toContain("[guard:placeholder.host]");
+    // Hosts are repaired in-place; angle placeholders have no grounded
+    // substitute and still fall back to the guard marker.
+    expect(r.text).toContain("subkit-api.mikebild.dev");
     expect(r.text).toContain("[guard:placeholder.angle]");
     expect(r.text).not.toContain("your-subkit-instance.com");
+    expect(r.text).not.toContain("example.com");
     expect(r.text).not.toContain("<YOUR_KEY>");
   });
 

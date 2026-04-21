@@ -284,6 +284,7 @@ export async function appendUserMessage(
         await recordTransition(exec, {
           tool_call_id: e.tool_call_id,
           tenant_id: p.tenant_id,
+          conversation_id: p.conversation_id,
           to_state: "auto_declined",
           tool: e.tool_name,
           data: { elicitation_id: e.id },
@@ -361,6 +362,7 @@ export async function respondElicitation(
     await recordTransition(exec, {
       tool_call_id: resolved.tool_call_id,
       tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
       to_state,
       tool: resolved.tool_name,
       ...(p.actor_id ? { actor_id: p.actor_id } : {}),
