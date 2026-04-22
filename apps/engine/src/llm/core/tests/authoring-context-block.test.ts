@@ -45,6 +45,29 @@ describe("renderAuthoringContextBlock — Document Analysis section", () => {
     expect(out ?? "").not.toContain("## Document Analysis");
   });
 
+  it("renders no tone hint when expertise is omitted", () => {
+    const out = renderAuthoringContextBlock({ draft: null, user_message: "hi" });
+    expect(out ?? "").not.toContain("Tone hint");
+  });
+
+  it("renders the expertise tone hint when expertise is set", () => {
+    const novice = renderAuthoringContextBlock({
+      draft: null,
+      user_message: "how do I start?",
+      expertise: "novice",
+    });
+    expect(novice!).toContain("## Tone hint (novice)");
+    expect(novice!).toContain("step-by-step");
+
+    const expert = renderAuthoringContextBlock({
+      draft: null,
+      user_message: "diff only please",
+      expertise: "expert",
+    });
+    expect(expert!).toContain("## Tone hint (expert)");
+    expect(expert!).toContain("dense diffs");
+  });
+
   it("renders only the first 6 endpoints with overflow note", () => {
     const sample = Array.from({ length: 10 }, (_, i) => ({
       method: "GET",

@@ -7,6 +7,7 @@
 
 import {
   nextQuestion as computeNextQuestion,
+  type ExpertiseHint,
   nextRecommendedAction,
 } from "../../conversations/onboarding-policy.ts";
 import { planTurnRouting } from "../../conversations/turn-routing.ts";
@@ -31,13 +32,34 @@ export interface AuthoringContextInput {
     endpoint_count: number;
     sample_endpoints?: Array<{ method: string; path: string }>;
   } | null;
+  /**
+   * Caller's read on the user's expertise. The renderer uses it to pick
+   * one of three concise "tone" hints — `novice` asks for more scaffolding,
+   * `expert` suppresses hand-holding so the assistant stays out of the way.
+   * Missing hint → no tone line is emitted (same behaviour as before).
+   */
+  expertise?: ExpertiseHint;
 }
+
+const EXPERTISE_TONE_HINT: Record<ExpertiseHint, string> = {
+  novice:
+    "User is new — prefer step-by-step explanations, spell out trade-offs, and offer a concrete next action after every tool call.",
+  intermediate:
+    "User is comfortable with the engine — keep answers tight, skip restatements, and only explain non-obvious trade-offs.",
+  expert:
+    "User is an expert — skip introductions, avoid restating the obvious, and default to dense diffs / commands over prose.",
+};
 
 export function renderAuthoringContextBlock(input: AuthoringContextInput): string | null {
   const { draft } = input;
   if (!draft && !input.resume_summary && !input.user_message) return null;
 
   const lines: string[] = [];
+  if (input.expertise) {
+    lines.push(`## Tone hint (${input.expertise})`);
+    lines.push(`- ${EXPERTISE_TONE_HINT[input.expertise]}`);
+    lines.push("");
+  }
   const routing = input.user_message
     ? planTurnRouting({
         draft: input.draft ?? null,

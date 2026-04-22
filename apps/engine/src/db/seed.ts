@@ -25,6 +25,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { newTraceId, withContext } from "../logging/context.ts";
 import { logger } from "../logging/logger.ts";
+import { seedOnboardingDemo } from "../onboarding/demo-seed.ts";
 import {
   backfillRoleIds,
   type SeededRoleIds,
@@ -553,6 +554,9 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       },
       tx,
     );
+
+    // --- onboarding demo workflows (3 public-API examples) ---
+    await seedOnboardingDemo({ tenant_id: tenant.id }, tx);
 
     logger.info({
       module: "db",
