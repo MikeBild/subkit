@@ -20,6 +20,10 @@ export const SkillSchema = z
     scope: SkillScopeSchema,
     connector_id: z.string().uuid().nullable(),
     workflow_id: z.string().uuid().nullable(),
+    /** Cross-tenant stable identifier used by `load_skill(slug)` and the
+     *  seed loader. Null for manually-authored skills that never passed
+     *  through the seed path. */
+    slug: z.string().nullable().default(null),
     title: z.string().min(1),
     body: z.string().min(1),
     examples: z.array(z.string()).default([]),

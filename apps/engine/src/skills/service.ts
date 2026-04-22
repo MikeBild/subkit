@@ -41,6 +41,7 @@ function rowToSkill(row: SkillRow): Skill {
     scope: row.scope as SkillScope,
     connector_id: row.connector_id ?? null,
     workflow_id: row.workflow_id ?? null,
+    slug: row.slug ?? null,
     title: row.title,
     body: row.body,
     examples: fields.examples,

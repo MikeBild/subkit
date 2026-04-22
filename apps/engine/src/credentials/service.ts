@@ -17,6 +17,9 @@ import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { credentials } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 import type {
   BasicCredentialValue,
   BearerCredentialValue,
@@ -311,6 +314,12 @@ export async function getCredentialForConnector(
   row: typeof credentials.$inferSelect;
   value: DecryptedCredential;
 } | null> {
+  // Draft-authoring flows probe a connector before it's been inserted —
+  // their synthetic id looks like `draft-<conversation_uuid>` which
+  // would make the UUID-typed credentials.connector_id column throw a
+  // hard SQL error. Short-circuit the lookup so the probe continues
+  // without pretending credentials were found.
+  if (!UUID_RE.test(connector_id)) return null;
   const db = exec ?? getDb();
   const rows = await db
     .select()

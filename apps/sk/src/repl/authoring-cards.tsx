@@ -8,12 +8,14 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
 
-type CardTone = "ok" | "fail" | "pending" | "info";
+type CardTone = "ok" | "warn" | "fail" | "pending" | "info";
 
 function toneColor(tone: CardTone): string {
   switch (tone) {
     case "ok":
       return "green";
+    case "warn":
+      return "yellow";
     case "fail":
       return "red";
     case "pending":
@@ -25,7 +27,16 @@ function toneColor(tone: CardTone): string {
 
 function badge(tone: CardTone, label: string): React.ReactNode {
   const color = toneColor(tone);
-  const glyph = tone === "ok" ? "✓" : tone === "fail" ? "×" : tone === "pending" ? "…" : "·";
+  const glyph =
+    tone === "ok"
+      ? "✓"
+      : tone === "fail"
+        ? "×"
+        : tone === "pending"
+          ? "…"
+          : tone === "warn"
+            ? "!"
+            : "·";
   return (
     <>
       <Text color={color} bold>
@@ -53,7 +64,14 @@ function statusTone(call: ToolCallState): CardTone {
   if (call.status === "failed") return "fail";
   if (call.status === "running" || call.status === "pending") return "pending";
   const d = unwrapData(call);
-  if (d && typeof d.ok === "boolean") return d.ok ? "ok" : "fail";
+  const okFlag = d && typeof d.ok === "boolean" ? d.ok : null;
+  if (okFlag === false) return "fail";
+  // Succeeded run with non-empty `warnings` should look different from
+  // a fully clean run — otherwise the operator sees green on a
+  // github-private-repos-stats-style `{total_count: 0}` outcome.
+  const warnings = Array.isArray(d?.warnings) ? (d?.warnings as unknown[]) : null;
+  if (warnings && warnings.length > 0) return "warn";
+  if (okFlag === true) return "ok";
   return call.status === "done" ? "ok" : "info";
 }
 
@@ -67,12 +85,18 @@ const ConnectorProbeCard: React.FC<CardProps> = memo(({ call }) => {
   const tone = statusTone(call);
   const d = unwrapData(call);
   const probe = asRecord(d?.latest_probe);
-  const method = typeof probe?.method === "string" ? probe.method : "(method)";
-  const path = typeof probe?.path === "string" ? probe.path : "(path)";
+  // Hide unresolved method/path placeholders instead of rendering
+  // "(method)" / "(path)" literally — those strings leaked into the
+  // sk-cli chat view when the tool result was missing the probe
+  // object. Better to show a compact card than an honest-looking line
+  // with fake values.
+  const method = typeof probe?.method === "string" ? probe.method : null;
+  const path = typeof probe?.path === "string" ? probe.path : null;
   const env = typeof probe?.environment === "string" ? probe.environment : "dev";
   const status = typeof probe?.status_code === "number" ? `HTTP ${probe.status_code}` : null;
   const duration = typeof probe?.duration_ms === "number" ? `${probe.duration_ms}ms` : null;
   const summary = typeof probe?.summary === "string" ? probe.summary : "";
+  const request = [method, path].filter((x): x is string => !!x).join(" ");
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
@@ -85,8 +109,7 @@ const ConnectorProbeCard: React.FC<CardProps> = memo(({ call }) => {
               : "Endpoint check complete",
         )}
         <Text dimColor>
-          {" "}
-          · {method} {path}
+          {request ? ` · ${request}` : ""}
           {" · "}
           {env}
           {status ? ` · ${status}` : ""}

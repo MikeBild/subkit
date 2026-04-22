@@ -78,15 +78,28 @@ function rewriteSoft(text: string, violations: Violation[]): string {
   let out = text;
   // When a violation carries a `repair`, splice that in — the scanner
   // knew the grounded value (e.g. engine_url's host) and produced a
-  // usable substitute. Otherwise the span is replaced with the
-  // `[guard:<kind>]` marker, which deliberately does NOT echo the
-  // matched fragment so the placeholder is not re-leaked to the user
-  // or to the model on the next turn. The original fragment is still
-  // recorded in `violation.details.match` for operator dashboards.
+  // usable substitute. Otherwise the offending span is removed
+  // entirely (collapsing any trailing whitespace so sentence flow
+  // survives). The original fragment is preserved in
+  // `violation.details.match` and the violation record itself is
+  // surfaced on `GuardResult.violations` so the caller can show it in
+  // a dedicated diagnostic surface and feed it back into the next
+  // turn's system context — that replaces the old `[guard:<kind>]`
+  // marker that used to leak into the user-visible chat transcript.
   for (const v of selectRewriteSpans(violations)) {
     const { start, end } = v.span!;
-    const replacement = v.repair ?? `[guard:${v.kind}]`;
-    out = `${out.slice(0, start)}${replacement}${out.slice(end)}`;
+    if (v.repair !== undefined) {
+      out = `${out.slice(0, start)}${v.repair}${out.slice(end)}`;
+      continue;
+    }
+    const before = out.slice(0, start);
+    let after = out.slice(end);
+    // Swallow any leading space/tab so "foo `phantom_reference` bar"
+    // becomes "foo bar" instead of "foo  bar".
+    if (before.endsWith(" ") && after.startsWith(" ")) {
+      after = after.replace(/^\s+/, "");
+    }
+    out = `${before}${after}`;
   }
   return out;
 }

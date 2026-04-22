@@ -50,6 +50,11 @@ export const runWorkflowTool: ConversationTool = {
           final_status: result.status,
         },
       });
+      // Surface non-fatal warnings (unresolved identifiers in transform
+      // expressions, schema drift signals) so the LLM / operator sees
+      // them next to the output. The execution still succeeded — the
+      // warning is an FYI that will become an auto-repair candidate.
+      const hasWarnings = (result.warnings?.length ?? 0) > 0;
       return {
         ok: result.status === "succeeded",
         data: {
@@ -57,6 +62,7 @@ export const runWorkflowTool: ConversationTool = {
           status: result.status,
           output: result.output,
           error: result.error,
+          ...(hasWarnings ? { warnings: result.warnings } : {}),
         },
       };
     } catch (err) {

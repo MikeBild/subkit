@@ -200,11 +200,26 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
       };
     }
     const expr = jsonata(p.step.expression);
-    // Convert `$`-prefixed scope keys (e.g. `$loop_index`, `$input`)
-    // into JSONata bindings so they're addressable as `$loop_index`,
-    // `$input` inside the expression. Plain (non-`$`) scope keys are
-    // already addressable as path expressions on the context object.
-    const bindings: Record<string, unknown> = { input: p.input };
+    // Bindings available inside the expression:
+    //   $input     — the execution input (same object the workflow was
+    //                invoked with).
+    //   $scope     — the full step-output scope. `$scope.fetch_repos` is
+    //                the same as the bare path `fetch_repos`.
+    //   $steps     — alias of $scope. Some authors prefer the name
+    //                "$steps.id.field" because it reads more clearly.
+    //   $step_meta — per-step metadata (status_code, duration_ms, url,
+    //                method, bytes_in for request steps; duration_ms +
+    //                retry_count for every step). Accessed as
+    //                `$step_meta.fetch_repos.status_code`.
+    //   $<key>     — every `$`-prefixed key on scope (e.g. `$loop_index`)
+    //                is unpacked. Plain (non-`$`) keys remain
+    //                addressable as bare path expressions against the
+    //                root context object.
+    const bindings: Record<string, unknown> = {
+      input: p.input,
+      scope: p.scope,
+      steps: p.scope,
+    };
     for (const [k, v] of Object.entries(p.scope)) {
       if (k.startsWith("$") && k.length > 1) {
         bindings[k.slice(1)] = v;

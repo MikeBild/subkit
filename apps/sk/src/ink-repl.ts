@@ -15,9 +15,11 @@
 import type { SkSessionState, TurnEvent } from "@cli-core/index.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { loadConfig, type ResolvedProfile, resolveProfile, saveConfig } from "./config.ts";
+import { ConnectionPinger, type ConnectionSnapshot } from "./connection-pinger.ts";
 import { EngineClient, type SetupValidationResponse, type StatusSummary } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
+import { enableBracketedPaste } from "./repl/bracketed-paste.ts";
 import { humanizeRequestError } from "./repl/error-humanize.ts";
 import { handleSlash, type PaneSpec } from "./repl/slash-handler.ts";
 import { runRepl } from "./repl.ts";
@@ -179,10 +181,28 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     } catch {
       // Leave the previous value in place on transient failures; the
       // status line stays usable (with the last-known numbers) instead
-      // of flickering to blanks.
+      // of flickering to blanks. The ConnectionPinger surfaces the
+      // outage state separately so the operator sees something.
     }
     for (const listener of statusListeners) listener(statusSnapshot);
   };
+
+  // Live health pinger — drives the online/offline chip in the status
+  // line so the operator notices a dropped engine within ~15s instead
+  // of waiting for a visible tool failure.
+  let connectionSnapshot: ConnectionSnapshot = {
+    state: "unknown",
+    reason: null,
+    last_ok_at: null,
+    last_error_at: null,
+  };
+  const connectionListeners = new Set<(snap: ConnectionSnapshot) => void>();
+  const pinger = new ConnectionPinger({ client: currentClient });
+  pinger.onChange((snap) => {
+    connectionSnapshot = snap;
+    for (const listener of connectionListeners) listener(snap);
+  });
+  pinger.start();
 
   const onPrompt = async (
     text: string,
@@ -380,6 +400,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   const RootApp: React.FC = () => {
     const [snap, setSnap] = React.useState<StatusSummary | null>(statusSnapshot);
     const [setup, setSetup] = React.useState<SetupValidationResponse | null>(setupSnapshot);
+    const [conn, setConn] = React.useState<ConnectionSnapshot>(connectionSnapshot);
     const [active, setActive] = React.useState<{
       persona: ResolvedPersona;
       profile: ResolvedProfile;
@@ -397,13 +418,16 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         setSetup(setupSnapshot);
       };
       const sul = (next: SetupValidationResponse | null): void => setSetup(next);
+      const cl = (next: ConnectionSnapshot): void => setConn(next);
       statusListeners.add(sl);
       setupListeners.add(sul);
       personaListeners.add(pl);
+      connectionListeners.add(cl);
       return () => {
         statusListeners.delete(sl);
         setupListeners.delete(sul);
         personaListeners.delete(pl);
+        connectionListeners.delete(cl);
       };
     }, []);
     return React.createElement(InkApp, {
@@ -423,6 +447,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       cwd: process.cwd(),
       statusSnapshot: snap,
       setupSnapshot: setup,
+      connectionSnapshot: conn,
       onPrompt,
       onElicitResponse,
       onSlash,
@@ -430,7 +455,16 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     });
   };
 
+  // Enable bracketed paste mode before mounting Ink so terminal wraps
+  // multi-line pastes with ESC[200~/ESC[201~ markers — the input
+  // handler strips them back out to re-assemble the original text.
+  const restorePaste = enableBracketedPaste();
   const instance = ink.render(React.createElement(RootApp));
-  await instance.waitUntilExit();
+  try {
+    await instance.waitUntilExit();
+  } finally {
+    pinger.stop();
+    restorePaste();
+  }
   return 0;
 }
