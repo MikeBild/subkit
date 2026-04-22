@@ -225,6 +225,13 @@
       "when": 1778900000000,
       "tag": "0031_delivery_classification",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1779000000000,
+      "tag": "0032_message_part_anchor",
+      "breakpoints": true
     }
   ]
 }

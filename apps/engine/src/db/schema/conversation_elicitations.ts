@@ -14,7 +14,7 @@
 
 import { index, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
-import { conversations, conversationToolCalls } from "./conversations.ts";
+import { conversationMessages, conversations, conversationToolCalls } from "./conversations.ts";
 import { tenants, users } from "./identity.ts";
 
 export const elicitationStatusEnum = pgEnum("elicitation_status", [
@@ -35,6 +35,11 @@ export const conversationElicitations = pgTable(
     tool_call_id: uuid("tool_call_id").references(() => conversationToolCalls.id, {
       onDelete: "set null",
     }),
+    // Causal anchor to the assistant message that requested user input.
+    // Nullable for legacy rows; populated by the loop for new writes.
+    parent_message_id: uuid("parent_message_id").references(() => conversationMessages.id, {
+      onDelete: "set null",
+    }),
     tool_name: text("tool_name").notNull(),
     summary: text("summary").notNull(),
     input: jsonb("input").notNull(),
@@ -46,5 +51,8 @@ export const conversationElicitations = pgTable(
     expires_at: timestamp("expires_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [index("conversation_elicitations_conv_status_idx").on(t.conversation_id, t.status)],
+  (t) => [
+    index("conversation_elicitations_conv_status_idx").on(t.conversation_id, t.status),
+    index("conversation_elicitations_parent_msg_idx").on(t.parent_message_id),
+  ],
 );

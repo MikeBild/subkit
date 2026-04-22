@@ -103,10 +103,13 @@ export async function appendMessage(
   conversation_id: string,
   role: "user" | "assistant" | "tool" | "system",
   content: unknown,
-): Promise<void> {
-  await db
+): Promise<string> {
+  const [row] = await db
     .insert(conversationMessages)
-    .values({ tenant_id, conversation_id, role, content: content as Record<string, unknown> });
+    .values({ tenant_id, conversation_id, role, content: content as Record<string, unknown> })
+    .returning({ id: conversationMessages.id });
+  if (!row) throw new Error("conversation_messages insert returned no row");
+  return row.id;
 }
 
 export async function insertToolCall(
@@ -131,6 +134,25 @@ export async function insertToolCall(
     .returning({ id: conversationToolCalls.id });
   if (!row) throw new Error("conversation_tool_calls insert returned no row");
   return row.id;
+}
+
+/**
+ * Back-fill `parent_message_id` on tool-call rows that were inserted
+ * during a step before the step's assistant message existed. Called
+ * from the loop's `onStepFinish` so child rows can anchor causally to
+ * the assistant turn that produced them.
+ */
+export async function setToolCallParentMessage(
+  db: Executor,
+  ids: string[],
+  parent_message_id: string,
+): Promise<void> {
+  if (ids.length === 0) return;
+  const { inArray } = await import("drizzle-orm");
+  await db
+    .update(conversationToolCalls)
+    .set({ parent_message_id })
+    .where(inArray(conversationToolCalls.id, ids));
 }
 
 export async function updateToolCallOutput(

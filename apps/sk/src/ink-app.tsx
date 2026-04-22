@@ -1598,24 +1598,33 @@ export const InkApp: React.FC<InkAppProps> = ({
   const showBanner = session.messages.length === 0;
 
   // Build one child per transcript row so ScrollView can window them.
+  // Tool calls, logs, and pending elicit forms are interleaved under
+  // their parent assistant message via `parent_message_id`. Children
+  // without an anchor (legacy data, or live events that arrived
+  // pre-anchor) render in a trailing block at the end so nothing gets
+  // dropped. This is the fix for the chronological-display bug — see
+  // the plan at .claude/plans/find-issues-in-display-tranquil-harp.md.
   const transcriptRows: React.ReactNode[] = [];
-  for (let i = 0; i < deferredMessages.length; i++) {
-    const m = deferredMessages[i];
-    if (m) transcriptRows.push(<MessageRow key={`msg-${i}`} role={m.role} content={m.content} />);
-  }
-  // Live streaming assistant buffer — rendered below finalised messages
-  // until the next `message` frame arrives and clears it. Keeps the REPL
-  // responsive as tokens arrive rather than waiting for the turn to end.
-  if (session.streamingAssistantText.length > 0) {
-    transcriptRows.push(
-      <MessageRow
-        key="live-delta"
-        role={"assistant" as const}
-        content={session.streamingAssistantText}
-      />,
-    );
-  }
   const inspectView = transcriptMode === "inspect";
+
+  // Bucket tool calls by parent_message_id. Order within each bucket
+  // is preserved from `deferredToolCalls` (which the reducer appends
+  // in arrival order = chronological).
+  const callsByParent = new Map<string, ToolCallState[]>();
+  const orphanCalls: ToolCallState[] = [];
+  const knownMessageIds = new Set<string>();
+  for (const m of deferredMessages) if (m?.id) knownMessageIds.add(m.id);
+  for (const call of deferredToolCalls) {
+    const anchor = call.parent_message_id;
+    if (anchor && knownMessageIds.has(anchor)) {
+      const list = callsByParent.get(anchor) ?? [];
+      list.push(call);
+      callsByParent.set(anchor, list);
+    } else {
+      orphanCalls.push(call);
+    }
+  }
+
   const pushForegroundLogs = (callId: string): void => {
     const logs = session.toolLogs.filter((log) => log.call_id === callId);
     if (logs.length === 0) return;
@@ -1629,42 +1638,112 @@ export const InkApp: React.FC<InkAppProps> = ({
       </Box>,
     );
   };
-  const flushBackgroundGroup = (calls: ToolCallState[]): void => {
+  const flushBackgroundGroup = (calls: ToolCallState[], keySuffix: string): void => {
     if (calls.length === 0) return;
     const ids = new Set(calls.map((call) => call.id));
     const logs = session.toolLogs.filter((log) => ids.has(log.call_id));
     transcriptRows.push(
       <BackgroundToolGroup
-        key={`bg-${calls.map((call) => call.id).join("-")}`}
+        key={`bg-${keySuffix}-${calls.map((call) => call.id).join("-")}`}
         calls={calls}
         logs={logs}
         detailed={inspectView}
       />,
     );
   };
-  let pendingBackgroundCalls: ToolCallState[] = [];
-  for (const call of deferredToolCalls) {
-    if (isBackgroundTool(call)) {
-      if (!inspectView) continue;
-      pendingBackgroundCalls.push(call);
-      continue;
+  /**
+   * Render a list of tool calls (already in chronological order)
+   * into transcriptRows. Groups consecutive background tools into a
+   * compact pill, drops the rest through the authoring-card / ToolCard
+   * branches. Mirrors the old single-block logic but is callable
+   * per-message-row so children land directly under their parent.
+   */
+  const renderToolCallList = (calls: ToolCallState[], keyPrefix: string): void => {
+    let pendingBackgroundCalls: ToolCallState[] = [];
+    let bgIdx = 0;
+    for (const call of calls) {
+      if (isBackgroundTool(call)) {
+        if (!inspectView) continue;
+        pendingBackgroundCalls.push(call);
+        continue;
+      }
+      if (pendingBackgroundCalls.length > 0) {
+        flushBackgroundGroup(pendingBackgroundCalls, `${keyPrefix}-${bgIdx++}`);
+        pendingBackgroundCalls = [];
+      }
+      const authoringCard = inspectView ? null : renderAuthoringCard(call, transcriptMode);
+      if (authoringCard) {
+        transcriptRows.push(authoringCard);
+        if (inspectView || call.status === "failed") pushForegroundLogs(call.id);
+        continue;
+      }
+      if (inspectView || call.status === "failed") {
+        transcriptRows.push(
+          <ToolCard key={`tc-${call.id}`} call={call} columns={columns} detailed={inspectView} />,
+        );
+        pushForegroundLogs(call.id);
+      }
     }
-    flushBackgroundGroup(pendingBackgroundCalls);
-    pendingBackgroundCalls = [];
-    const authoringCard = inspectView ? null : renderAuthoringCard(call, transcriptMode);
-    if (authoringCard) {
-      transcriptRows.push(authoringCard);
-      if (inspectView || call.status === "failed") pushForegroundLogs(call.id);
-      continue;
+    if (inspectView && pendingBackgroundCalls.length > 0) {
+      flushBackgroundGroup(pendingBackgroundCalls, `${keyPrefix}-${bgIdx++}`);
     }
-    if (inspectView || call.status === "failed") {
-      transcriptRows.push(
-        <ToolCard key={`tc-${call.id}`} call={call} columns={columns} detailed={inspectView} />,
-      );
-      pushForegroundLogs(call.id);
+  };
+
+  // Pending elicitation gets inlined under its parent message when
+  // anchored. Falls back to a bottom-of-screen render below the
+  // ScrollView when no anchor is available (legacy data, or events
+  // that arrived before the assistant message was persisted).
+  const pendingElicit = session.pendingElicitation;
+  const elicitAnchor =
+    pendingElicit?.parent_message_id && knownMessageIds.has(pendingElicit.parent_message_id)
+      ? pendingElicit.parent_message_id
+      : null;
+  const renderElicitInline = (): void => {
+    if (!pendingElicit) return;
+    transcriptRows.push(
+      <ElicitRouter
+        key={`elicit-${pendingElicit.id}`}
+        elicitation={pendingElicit}
+        inputDisabled={pane !== null || slashMode}
+        onResponse={(out) => {
+          const resp = out as ElicitationResponse;
+          const reason =
+            "decision_reason" in resp && typeof resp.decision_reason === "string"
+              ? resp.decision_reason
+              : undefined;
+          void submitElicitationResponse(pendingElicit.id, resp, reason);
+        }}
+      />,
+    );
+  };
+
+  for (let i = 0; i < deferredMessages.length; i++) {
+    const m = deferredMessages[i];
+    if (!m) continue;
+    transcriptRows.push(<MessageRow key={`msg-${i}`} role={m.role} content={m.content} />);
+    if (m.id) {
+      const childCalls = callsByParent.get(m.id);
+      if (childCalls && childCalls.length > 0) renderToolCallList(childCalls, `m${i}`);
+      if (elicitAnchor === m.id) renderElicitInline();
     }
   }
-  if (inspectView) flushBackgroundGroup(pendingBackgroundCalls);
+  // Live streaming assistant buffer — rendered below finalised messages
+  // until the next `message` frame arrives and clears it. Keeps the REPL
+  // responsive as tokens arrive rather than waiting for the turn to end.
+  if (session.streamingAssistantText.length > 0) {
+    transcriptRows.push(
+      <MessageRow
+        key="live-delta"
+        role={"assistant" as const}
+        content={session.streamingAssistantText}
+      />,
+    );
+  }
+  // Orphaned tool calls (no parent_message_id, or anchor not in
+  // current messages array). Rendered as a trailing block so nothing
+  // is silently dropped — happens for legacy conversations from before
+  // engine migration 0032.
+  if (orphanCalls.length > 0) renderToolCallList(orphanCalls, "orphan");
 
   const content = (
     <Box flexDirection="column">
@@ -1707,13 +1786,13 @@ export const InkApp: React.FC<InkAppProps> = ({
           stream in, until the user manually scrolls. */}
       <ScrollView active={composerActive && pane === null}>{transcriptRows}</ScrollView>
 
-      {/* Elicit router — inline ask_user_* prompt. Renders above the
-          modal slot so tool-driven elicits always feel "in the flow",
-          while explicit slash commands (`/status`, `/resume`) open in
-          the modal slot below. While the user is typing a `/` command
-          we disable the router's keybindings so `/reject` doesn't get
-          swallowed by the ConfirmPrompt's digit shortcuts. */}
-      {session.pendingElicitation ? (
+      {/* Elicit router — bottom-of-screen fallback for elicitations
+          that arrived without a `parent_message_id` (legacy data, or
+          live events that landed before the parent assistant message
+          was persisted). Anchored elicitations render inline inside
+          the transcript above, under their parent message — see
+          `renderElicitInline` in the transcript loop. */}
+      {session.pendingElicitation && elicitAnchor === null ? (
         <ElicitRouter
           elicitation={session.pendingElicitation}
           inputDisabled={pane !== null || slashMode}

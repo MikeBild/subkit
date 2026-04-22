@@ -34,7 +34,12 @@ beforeAll(async () => {
 describe("policy confirm_before_execution wiring", () => {
   it("run_workflow in prod mode stages an elicit_request and does not execute", async () => {
     const events: TurnEvent[] = [];
-    const signals: TurnSignals = { step: 0, toolChain: Promise.resolve() };
+    const signals: TurnSignals = {
+      step: 0,
+      toolChain: Promise.resolve(),
+      pendingChildToolCallIds: [],
+      pendingChildElicitationIds: [],
+    };
     const engineClient = new EngineClient({
       tenant_id: ctx.tenant_id,
       actor_id: null,
@@ -101,7 +106,12 @@ describe("policy confirm_before_execution wiring", () => {
   it("run_workflow in dev mode executes immediately (policy resolves to no_confirm)", async () => {
     // Clear the prior tool-call row so this test reads a fresh one.
     const events: TurnEvent[] = [];
-    const signals: TurnSignals = { step: 0, toolChain: Promise.resolve() };
+    const signals: TurnSignals = {
+      step: 0,
+      toolChain: Promise.resolve(),
+      pendingChildToolCallIds: [],
+      pendingChildElicitationIds: [],
+    };
     const engineClient = new EngineClient({
       tenant_id: ctx.tenant_id,
       actor_id: null,
