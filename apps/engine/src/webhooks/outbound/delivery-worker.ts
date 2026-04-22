@@ -26,6 +26,7 @@ import { deliveries, subscriptions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordWebhookDelivery } from "../../observability/instrumentation.ts";
 import * as breaker from "./circuit-breaker.ts";
+import { classifyFailure, isPermanentFailure } from "./failure-classifier.ts";
 import { getMaxAttempts, nextDelayMs } from "./retry.ts";
 import { loadSubscriptionSecrets } from "./service.ts";
 import { signatureHeader } from "./signer.ts";
@@ -138,6 +139,8 @@ export async function registerDeliveryWorker(
         status: "dead_letter",
         response_code: null,
         error: "circuit_open",
+        classification: null,
+        terminal_reason: "circuit_open",
         request_hash: hash,
         event_type: data.event_type,
         target_url: null,
@@ -156,6 +159,7 @@ export async function registerDeliveryWorker(
           event_id: data.event_id,
           event_type: data.event_type,
           attempt: data.attempt_number,
+          terminal_reason: "circuit_open",
         },
       });
       recordWebhookDelivery({
@@ -225,6 +229,8 @@ export async function registerDeliveryWorker(
         status: "success",
         response_code: outcome.status,
         error: null,
+        classification: null,
+        terminal_reason: null,
         request_hash: hash,
         event_type: data.event_type,
         target_url: loaded.row.target_url,
@@ -250,16 +256,22 @@ export async function registerDeliveryWorker(
       return;
     }
 
-    // 5) Failure path — compute next retry delay + reschedule.
-    // The active retry ladder length is read at this exact moment so
-    // tests that swap the ladder via `setRetryDelays(...)` see the
-    // override. `getMaxAttempts()` returns ladder.length + 1 (initial
-    // attempt + N retries).
+    // 5) Failure path — classify, then compute next retry delay.
+    // Permanent failures (4xx non-429 non-auth; also auth failures that
+    // won't resolve without credential rotation) skip the ladder entirely.
+    const classification = classifyFailure({ status: outcome.status, error: outcome.error });
+    const permanent = isPermanentFailure(classification);
+
     const maxAttempts = getMaxAttempts();
-    const delay =
-      data.attempt_number >= maxAttempts ? null : nextDelayMs(data.attempt_number, { jitter });
+    const exhausted = data.attempt_number >= maxAttempts;
+    const delay = permanent || exhausted ? null : nextDelayMs(data.attempt_number, { jitter });
     const nextRetryAt = delay !== null ? new Date(Date.now() + delay) : null;
     const terminal = delay === null;
+
+    let terminal_reason: string | null = null;
+    if (terminal) {
+      terminal_reason = permanent ? "permanent_failure" : "exhausted_retries";
+    }
 
     await db.insert(deliveries).values({
       tenant_id: data.tenant_id,
@@ -271,6 +283,8 @@ export async function registerDeliveryWorker(
       status: terminal ? "dead_letter" : "retrying",
       response_code: outcome.status || null,
       error: outcome.error,
+      classification,
+      terminal_reason,
       request_hash: hash,
       event_type: data.event_type,
       target_url: loaded.row.target_url,
@@ -293,7 +307,9 @@ export async function registerDeliveryWorker(
         event_type: data.event_type,
         attempt: data.attempt_number,
         status_code: outcome.status || null,
+        classification,
         terminal,
+        terminal_reason,
         breaker_open: bstate.open_until > Date.now(),
       },
     });

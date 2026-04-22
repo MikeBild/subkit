@@ -95,6 +95,15 @@ export const deliveries = pgTable(
     status: text("status").notNull(),
     response_code: integer("response_code"),
     error: text("error"),
+    // One of the FailureClass values
+    // (`transient_network` | `transient_5xx` | `rate_limited` |
+    //  `auth_failure` | `permanent_4xx` | `unknown`). Null on success.
+    classification: text("classification"),
+    // When status='dead_letter': why the delivery was abandoned.
+    //   `circuit_open`       — breaker short-circuit, never attempted.
+    //   `exhausted_retries`  — retry ladder ran to completion.
+    //   `permanent_failure`  — classifier flagged a terminal 4xx/auth.
+    terminal_reason: text("terminal_reason"),
     request_hash: text("request_hash"),
     event_type: text("event_type"),
     target_url: text("target_url"),
@@ -106,6 +115,8 @@ export const deliveries = pgTable(
   (t) => [
     index("deliveries_tenant_sub_created_idx").on(t.tenant_id, t.subscription_id, t.created_at),
     index("deliveries_status_retry_idx").on(t.status, t.next_retry_at),
+    // Lets a dashboard list per-tenant dead-letter rows without a full scan.
+    index("deliveries_tenant_status_created_idx").on(t.tenant_id, t.status, t.created_at),
   ],
 );
 
