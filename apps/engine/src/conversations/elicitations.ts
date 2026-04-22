@@ -7,7 +7,7 @@
 // `askUser.choice`, `askUser.multi`, `askUser.text`, `askUser.form`,
 // and `askUser.confirm` without branching per tool.
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
@@ -28,6 +28,12 @@ export interface ElicitationRecord {
   status: ElicitationStatus;
   decision_reason: string | null;
   created_at: string;
+  /**
+   * Causal anchor to the assistant message that requested this input.
+   * Nullable for legacy rows; the SSE replay path falls back to placing
+   * orphans after all anchored events.
+   */
+  parent_message_id?: string | null;
 }
 
 type Row = typeof conversationElicitations.$inferSelect;
@@ -44,6 +50,7 @@ function rowToRecord(row: Row): ElicitationRecord {
     status: row.status as ElicitationStatus,
     decision_reason: row.decision_reason,
     created_at: row.created_at.toISOString(),
+    parent_message_id: row.parent_message_id,
   };
 }
 
@@ -128,6 +135,23 @@ export async function listElicitationsForConversation(
     )
     .orderBy(desc(conversationElicitations.created_at));
   return rows.map(rowToRecord);
+}
+
+/**
+ * Back-fill `parent_message_id` on elicitation rows created during a
+ * step before the step's assistant message existed. Called by the loop
+ * after it inserts the assistant message in `onStepFinish`.
+ */
+export async function setElicitationParentMessage(
+  exec: Executor,
+  ids: string[],
+  parent_message_id: string,
+): Promise<void> {
+  if (ids.length === 0) return;
+  await exec
+    .update(conversationElicitations)
+    .set({ parent_message_id })
+    .where(inArray(conversationElicitations.id, ids));
 }
 
 export async function resolveElicitation(

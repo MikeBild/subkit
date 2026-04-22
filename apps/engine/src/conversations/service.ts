@@ -720,6 +720,7 @@ export async function getConversation(
         output: c.output,
         approval_required: c.approval_required,
         created_at: c.created_at.toISOString(),
+        parent_message_id: c.parent_message_id,
       }),
     ),
     draft,

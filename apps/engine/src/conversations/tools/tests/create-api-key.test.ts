@@ -7,11 +7,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import { createApiKeyTool } from "../generated/writes/create-api-key.ts";
 import type { ToolContext } from "../index.ts";
 
 let ctx: ConversationTestCtx;
+const nextConvoId = createDeterministicUuidFactory(0xc0a5_7e57);
 
 beforeAll(async () => {
   ctx = await createConversationTestCtx("create_api_key");
@@ -25,7 +27,7 @@ function makeToolContext(actorId: string | null = ctx.user_id): ToolContext {
   return {
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
-    conversation_id: crypto.randomUUID(),
+    conversation_id: nextConvoId(),
     actor_id: actorId,
     connector_id: null,
     workflow_id: null,

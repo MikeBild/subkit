@@ -47,6 +47,12 @@ export interface ConversationToolCallRecord {
   output: unknown;
   approval_required: boolean;
   created_at: string;
+  /**
+   * Causal anchor to the assistant message that produced this tool
+   * call. Nullable for legacy rows; the read path falls back to a
+   * time-window join when null.
+   */
+  parent_message_id?: string | null;
 }
 
 export type AuthoringMode =
@@ -145,8 +151,24 @@ export interface DraftDocument {
  *     renders a component based on `tool_name` and posts the answer
  *     to `POST /v1/conversations/:id/elicitations/:eid/respond`.
  */
+/**
+ * Optional anchor field carried on every child event (`tool_call_*`,
+ * `tool_result`, `tool_log`, `elicit_request`) — references the
+ * assistant message ID this child belongs to. Live emissions populate
+ * it after the assistant message is inserted; replay populates it from
+ * the persisted `parent_message_id` column. Clients use it to render
+ * children inline under the right message row in the timeline.
+ */
 export type TurnEvent =
-  | { type: "message"; role: ConversationRole; content: unknown }
+  | {
+      type: "message";
+      role: ConversationRole;
+      content: unknown;
+      /** Persisted message ID (assistant rows only — newly added). */
+      id?: string;
+      /** Self-anchor for symmetry with child events. */
+      parent_message_id?: string;
+    }
   /**
    * Incremental assistant-text delta. Emitted as `streamText` produces
    * tokens. Clients (sk Ink, HTTP SSE, MCP) should concatenate `text`
@@ -166,20 +188,33 @@ export type TurnEvent =
       level: "debug" | "info" | "warn" | "error";
       message: string;
       ts: string;
+      parent_message_id?: string;
     }
   | {
       type: "tool_call_start";
       call_id: string;
       tool: string;
       input_partial?: unknown;
+      parent_message_id?: string;
     }
-  | { type: "tool_call_delta"; call_id: string; input_patch: unknown }
-  | { type: "tool_call_end"; call_id: string; input: unknown }
+  | {
+      type: "tool_call_delta";
+      call_id: string;
+      input_patch: unknown;
+      parent_message_id?: string;
+    }
+  | {
+      type: "tool_call_end";
+      call_id: string;
+      input: unknown;
+      parent_message_id?: string;
+    }
   | {
       type: "tool_result";
       call_id: string;
       tool: string;
       output: unknown;
+      parent_message_id?: string;
     }
   | { type: "data_part"; data_type: string; payload: unknown }
   | { type: "validation_error"; errors: Array<{ path: string; message: string }> }
@@ -196,6 +231,7 @@ export type TurnEvent =
        * `tool_name` and read this record to render the right prompt.
        */
       input: unknown;
+      parent_message_id?: string;
     }
   | { type: "committed"; workflow_id: string }
   | { type: "completed"; status: ConversationStatus; usage?: TurnUsage };

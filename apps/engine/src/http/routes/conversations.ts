@@ -631,31 +631,54 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
       const { listElicitationsForConversation } = await import(
         "../../conversations/elicitations.ts"
       );
-      const pending = (await listElicitationsForConversation(principal.tenant_id, id, db)).filter(
-        (e) => e.status === "pending",
-      );
-      // Replay all persisted messages + tool calls + pending
-      // elicitations as discrete events so the caller can rebuild UI
-      // state from scratch.
-      for (const msg of detail.messages) {
-        const frame = serializeEvent({
-          type: "message",
-          role: msg.role,
-          content: msg.content,
-        });
-        await stream.writeSSE(frame);
-      }
+      const allElicitations = await listElicitationsForConversation(principal.tenant_id, id, db);
+      const pendingElicitations = allElicitations.filter((e) => e.status === "pending");
+      // Replay the conversation as a single chronologically-ordered
+      // stream: for each message, emit it then immediately emit every
+      // child row (tool_call lifecycle + tool_result + pending
+      // elicitation) anchored to it via parent_message_id. Children
+      // without an anchor (legacy rows) fall through to the time-window
+      // grouping in parts.ts so they still land under the right
+      // assistant message.
+      const childCalls = new Map<string, typeof detail.tool_calls>();
       for (const call of detail.tool_calls) {
+        const anchor = call.parent_message_id ?? null;
+        if (!anchor) continue;
+        const list = childCalls.get(anchor) ?? [];
+        list.push(call);
+        childCalls.set(anchor, list);
+      }
+      const childElicits = new Map<string, typeof pendingElicitations>();
+      for (const e of pendingElicitations) {
+        // We re-import the type lazily; treat anchor as optional via cast.
+        const anchor = (e as { parent_message_id?: string | null }).parent_message_id ?? null;
+        if (!anchor) continue;
+        const list = childElicits.get(anchor) ?? [];
+        list.push(e);
+        childElicits.set(anchor, list);
+      }
+      const orphanCalls = detail.tool_calls.filter((c) => !c.parent_message_id);
+      const orphanElicits = pendingElicitations.filter(
+        (e) => !(e as { parent_message_id?: string | null }).parent_message_id,
+      );
+
+      const emitCall = async (call: (typeof detail.tool_calls)[number]) => {
         await stream.writeSSE(
           serializeEvent({
             type: "tool_call_start",
             call_id: call.id,
             tool: call.tool,
             input_partial: call.input,
+            ...(call.parent_message_id ? { parent_message_id: call.parent_message_id } : {}),
           }),
         );
         await stream.writeSSE(
-          serializeEvent({ type: "tool_call_end", call_id: call.id, input: call.input }),
+          serializeEvent({
+            type: "tool_call_end",
+            call_id: call.id,
+            input: call.input,
+            ...(call.parent_message_id ? { parent_message_id: call.parent_message_id } : {}),
+          }),
         );
         if (call.output !== null && call.output !== undefined) {
           await stream.writeSSE(
@@ -664,11 +687,13 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
               call_id: call.id,
               tool: call.tool,
               output: call.output,
+              ...(call.parent_message_id ? { parent_message_id: call.parent_message_id } : {}),
             }),
           );
         }
-      }
-      for (const elicit of pending) {
+      };
+      const emitElicit = async (elicit: (typeof pendingElicitations)[number]) => {
+        const anchor = (elicit as { parent_message_id?: string | null }).parent_message_id;
         await stream.writeSSE(
           serializeEvent({
             type: "elicit_request",
@@ -676,9 +701,31 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
             tool_name: elicit.tool_name,
             summary: elicit.summary,
             input: elicit.input ?? {},
+            ...(anchor ? { parent_message_id: anchor } : {}),
           }),
         );
+      };
+
+      for (const msg of detail.messages) {
+        await stream.writeSSE(
+          serializeEvent({
+            type: "message",
+            role: msg.role,
+            content: msg.content,
+            id: msg.id,
+            parent_message_id: msg.id,
+          }),
+        );
+        const childCallsForMsg = childCalls.get(msg.id) ?? [];
+        for (const call of childCallsForMsg) await emitCall(call);
+        const childElicitsForMsg = childElicits.get(msg.id) ?? [];
+        for (const elicit of childElicitsForMsg) await emitElicit(elicit);
       }
+      // Legacy rows without parent_message_id — emit at the end so
+      // clients that consume parent_message_id place them under the
+      // last assistant message of their time window.
+      for (const call of orphanCalls) await emitCall(call);
+      for (const elicit of orphanElicits) await emitElicit(elicit);
       if (detail.conversation.status === "committed" && detail.conversation.target_workflow_id) {
         await stream.writeSSE(
           serializeEvent({

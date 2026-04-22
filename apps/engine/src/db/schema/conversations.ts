@@ -84,6 +84,13 @@ export const conversationToolCalls = pgTable(
     conversation_id: uuid("conversation_id")
       .notNull()
       .references(() => conversations.id, { onDelete: "cascade" }),
+    // Causal anchor to the assistant message that produced this tool call.
+    // Nullable for legacy rows; the parts.ts read path falls back to a
+    // time-window join when null. Populated by the loop's wrapper for
+    // every new write so the timeline can interleave deterministically.
+    parent_message_id: uuid("parent_message_id").references(() => conversationMessages.id, {
+      onDelete: "set null",
+    }),
     tool: text("tool").notNull(),
     input: jsonb("input").notNull(),
     output: jsonb("output"),
@@ -104,5 +111,8 @@ export const conversationToolCalls = pgTable(
       .notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("conversation_tool_calls_conv_created_idx").on(t.conversation_id, t.created_at)],
+  (t) => [
+    index("conversation_tool_calls_conv_created_idx").on(t.conversation_id, t.created_at),
+    index("conversation_tool_calls_parent_msg_idx").on(t.parent_message_id),
+  ],
 );

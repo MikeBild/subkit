@@ -34,8 +34,14 @@ import {
   unregisterConversationAbort,
 } from "./abort.ts";
 import { loadDraft } from "./draft.ts";
+import { setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
-import { appendMessage, buildModelMessages, buildUserContentParts } from "./persist.ts";
+import {
+  appendMessage,
+  buildModelMessages,
+  buildUserContentParts,
+  setToolCallParentMessage,
+} from "./persist.ts";
 import type { ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import type { DraftDocument, TurnEvent } from "./types.ts";
@@ -481,7 +487,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     "no_confirm" | "confirm_before_execution" | "confirm_after_execution"
   >;
 
-  const signals: TurnSignals = { step: 0, toolChain: Promise.resolve() };
+  const signals: TurnSignals = {
+    step: 0,
+    toolChain: Promise.resolve(),
+    pendingChildToolCallIds: [],
+    pendingChildElicitationIds: [],
+  };
   const tools = wrapTools(ctx, signals, events, p.db, loadedSkills, loopToolPolicies);
 
   /**
@@ -571,7 +582,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           prompt_tokens: u.inputTokens,
           completion_tokens: u.outputTokens,
         });
-        if (step.text && step.text.length > 0) {
+        // Always insert an assistant message when the step produced text
+        // OR when the wrapper recorded children (tool calls, elicitations)
+        // that need a causal anchor in the timeline. Empty assistant
+        // rows act as the parent for tool-only steps so the read path
+        // can render those tool calls in chronological position.
+        const hasText = !!step.text && step.text.length > 0;
+        const hasPendingChildren =
+          signals.pendingChildToolCallIds.length > 0 ||
+          signals.pendingChildElicitationIds.length > 0;
+        if (hasText || hasPendingChildren) {
           // Pass every assistant text block through the grounded-output
           // guard. In `soft` (default) mode the guard logs violations
           // and rewrites placeholder fragments in place; in `hard`
@@ -580,24 +600,53 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           // carries the (possibly rewritten) text plus the violation
           // list so replay tests + the capability-gap analytics can
           // read them back without re-scanning.
-          const guarded = runOutputGuard(step.text, {
-            ...(p.runtime_context?.engine_url ? { engine_url: p.runtime_context.engine_url } : {}),
-            ...(p.runtime_context?.tenant_slug
-              ? { tenant_slug: p.runtime_context.tenant_slug }
-              : {}),
-          });
-          await appendMessage(p.db, p.tenant_id, p.conversation_id, "assistant", {
-            text: guarded.text,
-            ...(guarded.violations.length > 0
-              ? {
-                  _violations: guarded.violations.map((v) => ({
-                    kind: v.kind,
-                    message: v.message,
-                  })),
-                }
-              : {}),
-          });
-          events.push({ type: "message", role: "assistant", content: { text: guarded.text } });
+          const guarded = hasText
+            ? runOutputGuard(step.text, {
+                ...(p.runtime_context?.engine_url
+                  ? { engine_url: p.runtime_context.engine_url }
+                  : {}),
+                ...(p.runtime_context?.tenant_slug
+                  ? { tenant_slug: p.runtime_context.tenant_slug }
+                  : {}),
+              })
+            : { text: "", violations: [] };
+          const assistantMessageId = await appendMessage(
+            p.db,
+            p.tenant_id,
+            p.conversation_id,
+            "assistant",
+            {
+              text: guarded.text,
+              ...(guarded.violations.length > 0
+                ? {
+                    _violations: guarded.violations.map((v) => ({
+                      kind: v.kind,
+                      message: v.message,
+                    })),
+                  }
+                : {}),
+            },
+          );
+          // Back-fill parent_message_id on every child row created during
+          // this step so the read path can interleave them under this
+          // assistant message in chronological order.
+          await setToolCallParentMessage(p.db, signals.pendingChildToolCallIds, assistantMessageId);
+          await setElicitationParentMessage(
+            p.db,
+            signals.pendingChildElicitationIds,
+            assistantMessageId,
+          );
+          signals.pendingChildToolCallIds = [];
+          signals.pendingChildElicitationIds = [];
+          if (hasText) {
+            events.push({
+              type: "message",
+              role: "assistant",
+              content: { text: guarded.text },
+              id: assistantMessageId,
+              parent_message_id: assistantMessageId,
+            });
+          }
         }
       },
     });

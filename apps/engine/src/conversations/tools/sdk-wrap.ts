@@ -52,6 +52,16 @@ export interface TurnSignals {
    * and almost always DB-bound).
    */
   toolChain: Promise<void>;
+  /**
+   * Per-step buffer of child rows created by tool wrappers since the
+   * last `onStepFinish`. The loop's onStepFinish back-fills
+   * `parent_message_id` on these rows after inserting the step's
+   * assistant message, so the read path can interleave them
+   * deterministically under that message in the timeline. Reset to
+   * empty arrays after every step.
+   */
+  pendingChildToolCallIds: string[];
+  pendingChildElicitationIds: string[];
 }
 
 /**
@@ -138,6 +148,7 @@ function wrapOne(
           input: rawArgs,
           approval_required: inner.name.startsWith("ask_user_"),
         });
+        signals.pendingChildToolCallIds.push(toolCallId);
         events.push({
           type: "tool_call_start",
           call_id: toolCallId,
@@ -223,6 +234,7 @@ function wrapOne(
             },
             db,
           );
+          signals.pendingChildElicitationIds.push(elicitation.id);
           const output = {
             pending: true,
             policy_mode: resolvedMode,
@@ -422,6 +434,7 @@ function wrapOne(
                   ...(result.pause.diff !== undefined ? { diff: result.pause.diff } : {}),
                   ...(result.pause.target !== undefined ? { target: result.pause.target } : {}),
                 };
+          signals.pendingChildElicitationIds.push(result.pause.elicitation_id);
           events.push({
             type: "elicit_request",
             elicitation_id: result.pause.elicitation_id,

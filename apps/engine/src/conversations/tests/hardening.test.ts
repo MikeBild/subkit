@@ -72,7 +72,12 @@ describe("conversations/hardening", () => {
     );
     toolCtx.conversation_id = convo.conversation.id;
 
-    const signals: TurnSignals = { step: 0, toolChain: Promise.resolve() };
+    const signals: TurnSignals = {
+      step: 0,
+      toolChain: Promise.resolve(),
+      pendingChildToolCallIds: [],
+      pendingChildElicitationIds: [],
+    };
     const events: TurnEvent[] = [];
     // Register a fake tool via wrapOne-like closure by reusing wrapTools
     // over an ad-hoc registry. We monkey-pick one tool from wrapTools

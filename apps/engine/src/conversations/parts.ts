@@ -71,25 +71,51 @@ export function buildMessagesV2(
 }
 
 /**
- * Walk the messages in order and, for every assistant message, collect
- * the tool-call rows whose `created_at` falls between that message and
- * the next user/system message. Simple and robust without schema
- * changes. If the input ordering already matches insertion order (which
- * it does when fetched `ORDER BY created_at`), this is O(n + m).
+ * Walk the messages and group tool calls under their parent assistant
+ * message. Prefers the explicit `parent_message_id` column (populated
+ * by the loop for every new write since migration 0032) and falls
+ * back to a time-window join for legacy rows where the column is null.
+ *
+ * Time-window fallback: for every assistant message, collect rows whose
+ * `created_at` falls between that message and the next user/system
+ * message. Robust as long as inserts happen in causal order, which the
+ * loop guarantees. Always-O(n+m) on sorted input.
  */
 function groupToolCallsByAssistantTurn(
   messages: ConversationMessageRecord[],
   toolCalls: ConversationToolCallRecord[],
 ): Map<string, ConversationToolCallRecord[]> {
   const out = new Map<string, ConversationToolCallRecord[]>();
-  const sortedCalls = [...toolCalls].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const messageIds = new Set(messages.map((m) => m.id));
+  const anchored: ConversationToolCallRecord[] = [];
+  const orphaned: ConversationToolCallRecord[] = [];
+  for (const tc of toolCalls) {
+    if (tc.parent_message_id && messageIds.has(tc.parent_message_id)) {
+      anchored.push(tc);
+    } else {
+      orphaned.push(tc);
+    }
+  }
+  for (const tc of anchored) {
+    const list = out.get(tc.parent_message_id as string) ?? [];
+    list.push(tc);
+    out.set(tc.parent_message_id as string, list);
+  }
+  // Stable order within each bucket so the renderer sees children in
+  // the same chronological order they were created.
+  for (const list of out.values()) {
+    list.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+  if (orphaned.length === 0) return out;
+
+  const sortedCalls = orphaned.sort((a, b) => a.created_at.localeCompare(b.created_at));
   let callCursor = 0;
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
     if (m === undefined || m.role !== "assistant") continue;
     const next = messages[i + 1];
     const windowEnd = next ? next.created_at : null;
-    const bucket: ConversationToolCallRecord[] = [];
+    const bucket: ConversationToolCallRecord[] = out.get(m.id) ?? [];
     while (callCursor < sortedCalls.length) {
       const tc = sortedCalls[callCursor];
       if (tc === undefined) break;
@@ -101,7 +127,10 @@ function groupToolCallsByAssistantTurn(
       bucket.push(tc);
       callCursor += 1;
     }
-    if (bucket.length > 0) out.set(m.id, bucket);
+    if (bucket.length > 0) {
+      bucket.sort((a, b) => a.created_at.localeCompare(b.created_at));
+      out.set(m.id, bucket);
+    }
   }
   return out;
 }

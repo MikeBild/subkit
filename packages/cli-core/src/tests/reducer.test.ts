@@ -177,6 +177,61 @@ describe("applyTurnEvent — streaming frames", () => {
     expect(s.messages[s.messages.length - 1]?.content).toBe("partial finalised");
   });
 
+  test("tool_call_start records explicit parent_message_id", () => {
+    const s = initialSessionState("conv-anchor");
+    const next = applyTurnEvent(s, {
+      type: "tool_call_start",
+      call_id: "call-1",
+      tool: "listSkills",
+      parent_message_id: "msg-7",
+    });
+    expect(next.toolCalls[0]?.parent_message_id).toBe("msg-7");
+  });
+
+  test("tool_call_start without parent_message_id falls back to last assistant message id", () => {
+    let s = initialSessionState("conv-fallback");
+    s = applyTurnEvent(s, {
+      type: "message",
+      role: "assistant",
+      content: { text: "i will look that up" },
+      id: "asst-99",
+    });
+    s = applyTurnEvent(s, {
+      type: "tool_call_start",
+      call_id: "call-x",
+      tool: "list_workflows",
+    });
+    expect(s.toolCalls[0]?.parent_message_id).toBe("asst-99");
+  });
+
+  test("elicit_request inherits parent_message_id from the last assistant message", () => {
+    let s = initialSessionState("conv-elicit");
+    s = applyTurnEvent(s, {
+      type: "message",
+      role: "assistant",
+      content: { text: "shall I save?" },
+      id: "asst-42",
+    });
+    s = applyTurnEvent(s, {
+      type: "elicit_request",
+      elicitation_id: "elicit-1",
+      tool_name: "ask_user_confirm",
+      summary: "Confirm save",
+      input: { question: "Save the workflow?" },
+    });
+    expect(s.pendingElicitation?.parent_message_id).toBe("asst-42");
+  });
+
+  test("message events with id are stored on the MessageState", () => {
+    const s = applyTurnEvent(initialSessionState("c"), {
+      type: "message",
+      role: "assistant",
+      content: { text: "hi" },
+      id: "asst-1",
+    });
+    expect(s.messages[0]?.id).toBe("asst-1");
+  });
+
   test("tool_log appends per-call entries to toolLogs", () => {
     let s = initialSessionState("conv-logs");
     s = applyTurnEvent(s, {

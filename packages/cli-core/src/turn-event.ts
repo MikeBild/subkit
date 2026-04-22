@@ -15,6 +15,7 @@ export type TurnEvent =
       role: "user" | "assistant" | "system" | "tool";
       content: unknown;
       id?: string;
+      parent_message_id?: string;
     }
   | { type: "text_delta"; text: string }
   | {
@@ -24,20 +25,33 @@ export type TurnEvent =
       level: "debug" | "info" | "warn" | "error";
       message: string;
       ts: string;
+      parent_message_id?: string;
     }
   | {
       type: "tool_call_start";
       call_id: string;
       tool: string;
       input_partial?: unknown;
+      parent_message_id?: string;
     }
-  | { type: "tool_call_delta"; call_id: string; input_patch: unknown }
-  | { type: "tool_call_end"; call_id: string; input: unknown }
+  | {
+      type: "tool_call_delta";
+      call_id: string;
+      input_patch: unknown;
+      parent_message_id?: string;
+    }
+  | {
+      type: "tool_call_end";
+      call_id: string;
+      input: unknown;
+      parent_message_id?: string;
+    }
   | {
       type: "tool_result";
       call_id: string;
       tool: string;
       output: unknown;
+      parent_message_id?: string;
     }
   | { type: "data_part"; data_type: string; payload: unknown }
   | {
@@ -53,6 +67,7 @@ export type TurnEvent =
       summary: string;
       /** Full tool input payload (question, options, fields, diff, target, etc). */
       input: unknown;
+      parent_message_id?: string;
     }
   | { type: "committed"; workflow_id: string }
   | { type: "completed"; status: string; usage?: TurnUsage };
@@ -70,6 +85,12 @@ export interface PendingElicitation {
   summary: string;
   /** Tool-specific input — options list, form fields, confirm diff, etc. */
   input: unknown;
+  /**
+   * Causal anchor — assistant message ID this elicitation belongs
+   * under. When set, the renderer can place the prompt inline below
+   * that message. When unset, falls back to the modal slot.
+   */
+  parent_message_id?: string | null;
 }
 
 /** Application-defined data part (AI SDK UI's `data-*` convention). */
@@ -87,11 +108,19 @@ export interface ToolCallState {
   status: ToolStatus;
   result?: unknown;
   error?: string;
+  /**
+   * Assistant message ID this tool call is a child of. Populated for
+   * new conversations (engine migration 0032 onward). Renderer reads
+   * this to interleave the call inline under the right message row.
+   */
+  parent_message_id?: string | null;
 }
 
 export interface MessageState {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
+  /** Persisted message ID — needed so child tool calls can match by parent_message_id. */
+  id?: string;
 }
 
 export interface ToolLogEntry {
@@ -149,6 +178,19 @@ function stringifyContent(content: unknown): string {
 }
 
 /**
+ * Find the most recent assistant message ID — used as a fallback
+ * causal anchor when a child event arrives without an explicit
+ * `parent_message_id` (rare but possible in older replays).
+ */
+function lastAssistantMessageId(state: SkSessionState): string | undefined {
+  for (let i = state.messages.length - 1; i >= 0; i--) {
+    const m = state.messages[i];
+    if (m && m.role === "assistant" && m.id) return m.id;
+  }
+  return undefined;
+}
+
+/**
  * Pure reducer that folds a TurnEvent into the existing SessionState.
  * Kept as a free function so tests can drive it synchronously.
  */
@@ -157,9 +199,14 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
     case "message": {
       // The persisted message text supersedes any partial streaming
       // buffer — clear it so Ink stops double-rendering.
+      const next: MessageState = {
+        role: ev.role,
+        content: stringifyContent(ev.content),
+        ...(ev.id ? { id: ev.id } : {}),
+      };
       return {
         ...state,
-        messages: [...state.messages, { role: ev.role, content: stringifyContent(ev.content) }],
+        messages: [...state.messages, next],
         streamingAssistantText: ev.role === "assistant" ? "" : state.streamingAssistantText,
       };
     }
@@ -195,9 +242,16 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
       const status: ToolStatus = isFailure ? "failed" : "done";
       const calls = [...state.toolCalls];
       const idx = calls.findIndex((c) => c.id === ev.call_id);
+      const anchor = ev.parent_message_id ?? lastAssistantMessageId(state);
       if (idx >= 0) {
         const existing = calls[idx];
-        if (existing) calls[idx] = { ...existing, status, result: ev.output };
+        if (existing)
+          calls[idx] = {
+            ...existing,
+            status,
+            result: ev.output,
+            ...(existing.parent_message_id ? {} : anchor ? { parent_message_id: anchor } : {}),
+          };
       } else {
         calls.push({
           id: ev.call_id,
@@ -205,6 +259,7 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
           args: undefined,
           status,
           result: ev.output,
+          ...(anchor ? { parent_message_id: anchor } : {}),
         });
       }
       return { ...state, toolCalls: calls };
@@ -213,6 +268,7 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
       return { ...state, status: "error", validationErrors: ev.errors };
     }
     case "elicit_request": {
+      const anchor = ev.parent_message_id ?? lastAssistantMessageId(state);
       return {
         ...state,
         status: "awaiting_input",
@@ -221,16 +277,24 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
           tool_name: ev.tool_name,
           summary: ev.summary,
           input: ev.input,
+          ...(anchor ? { parent_message_id: anchor } : {}),
         },
       };
     }
     case "tool_call_start": {
       const input = ev.input_partial === undefined ? undefined : ev.input_partial;
+      const anchor = ev.parent_message_id ?? lastAssistantMessageId(state);
       return {
         ...state,
         toolCalls: [
           ...state.toolCalls,
-          { id: ev.call_id, name: ev.tool, args: input, status: "running" },
+          {
+            id: ev.call_id,
+            name: ev.tool,
+            args: input,
+            status: "running",
+            ...(anchor ? { parent_message_id: anchor } : {}),
+          },
         ],
       };
     }
