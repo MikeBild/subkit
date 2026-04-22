@@ -133,17 +133,14 @@ describe("MCP tenant tool surface", () => {
       body: JSON.stringify({
         slug: `doomed-${Date.now()}`,
         name: "doomed",
-        dag: {
-          name: "doomed",
-          steps: [
-            {
-              kind: "transform",
-              id: "noop",
-              language: "jsonata",
-              expression: '{ "ok": true }',
-            },
-          ],
-        },
+        steps: [
+          {
+            kind: "transform",
+            id: "noop",
+            language: "jsonata",
+            expression: '{ "ok": true }',
+          },
+        ],
       }),
     });
     expect(createRes.ok).toBe(true);
