@@ -12,7 +12,8 @@ export type DocSourceType =
   | "html"
   | "graphql"
   | "postgres"
-  | "file_upload";
+  | "file_upload"
+  | "cascade";
 
 /** A pre-write chunk: the normalizer emits these, the service persists them. */
 export interface RawChunk {

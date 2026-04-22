@@ -27,6 +27,7 @@ import {
   PageTooLargeError,
   recordBudgetWarning,
 } from "./budgets.ts";
+import { cascadeIngest } from "./cascade.ts";
 import { byteLen, fingerprintChunks } from "./chunker.ts";
 import { dedupChunks } from "./dedup.ts";
 import { type FileUploadInput, ingestFileUpload } from "./sources/file-upload.ts";
@@ -35,7 +36,7 @@ import { ingestLlmsTxt } from "./sources/llms-txt.ts";
 import { ingestMarkdown } from "./sources/markdown.ts";
 import { ingestOpenAPIUrl } from "./sources/openapi.ts";
 import { ingestPostgresInformationSchema } from "./sources/postgres.ts";
-import type { IngestResult, IngestSourceInput, RawChunk } from "./types.ts";
+import type { DocSourceType, IngestResult, IngestSourceInput, RawChunk } from "./types.ts";
 import { NotImplementedError } from "./types.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -65,6 +66,13 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
   const state = createBudgetState();
   let uri = p.input.url ?? "inline";
   let rawChunks: RawChunk[] = [];
+  // Cascade may override the declared source_type with whichever strategy
+  // actually produced content, so downstream rows tag correctly. The DB
+  // enum does not carry "cascade" — by the time we write, one of the
+  // concrete source kinds is stored. "cascade" is a request-time intent.
+  type PersistedDocSourceType = Exclude<DocSourceType, "cascade">;
+  let persistedSourceType: PersistedDocSourceType =
+    p.input.source_type === "cascade" ? "openapi" : p.input.source_type;
   try {
     switch (p.input.source_type) {
       case "openapi": {
@@ -125,6 +133,31 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
         rawChunks = got.chunks;
         break;
       }
+      case "cascade": {
+        if (!p.input.url) throw new Error("cascade source requires url");
+        const got = await cascadeIngest({
+          base_url: p.input.url,
+          fetchImpl,
+          state,
+        });
+        if (!got.winning_source || got.winning_source === "cascade") {
+          throw new Error(
+            `cascade failed: tried ${got.attempts.length} probes across openapi/graphql/llms_txt/markdown, none returned content`,
+          );
+        }
+        uri = got.source_uri ?? p.input.url;
+        rawChunks = got.chunks;
+        persistedSourceType = got.winning_source as PersistedDocSourceType;
+        logger.info({
+          module: "docs",
+          action: "ingest.cascade",
+          msg: "cascade picked a winning source",
+          winning_source: got.winning_source,
+          probes_tried: got.attempts.length,
+          source_uri: uri,
+        });
+        break;
+      }
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -167,7 +200,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
   budgetExceeded = budgetExceeded || state.budget_exceeded;
 
   const version = createHash("sha256")
-    .update(`${p.input.source_type}|${uri}|${rawChunks.length}|${totalBytes}`)
+    .update(`${persistedSourceType}|${uri}|${rawChunks.length}|${totalBytes}`)
     .digest("hex")
     .slice(0, 32);
 
@@ -178,7 +211,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
       .values({
         tenant_id: p.tenant_id,
         connector_id: p.connector_id,
-        source_type: p.input.source_type,
+        source_type: persistedSourceType,
         source_uri: uri,
         version,
         bytes_total: totalBytes,
@@ -233,7 +266,8 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
         result: "success",
         metadata: {
           document_id: docRow.id,
-          source_type: p.input.source_type,
+          source_type: persistedSourceType,
+          requested_source_type: p.input.source_type,
           source_uri: uri,
           bytes: totalBytes,
           chunks: accepted.length,
@@ -251,7 +285,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
       skipped_count: dedupSkipped + (dedupedAll.length - accepted.length),
       total_bytes: totalBytes,
       budget_exceeded: budgetExceeded,
-      source_type: p.input.source_type,
+      source_type: persistedSourceType,
       source_uri: uri,
     };
   });
@@ -262,7 +296,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     msg: "doc ingest completed",
     tenant_id: p.tenant_id,
     connector_id: p.connector_id,
-    source_type: p.input.source_type,
+    source_type: persistedSourceType,
     bytes: result.total_bytes,
     chunks: result.ingested_count,
     skipped: result.skipped_count,
