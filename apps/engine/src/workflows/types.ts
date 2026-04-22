@@ -13,12 +13,24 @@ export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 );
 
 // Filter spec
+//
+// Scopes:
+//   FIELD (default) — action applies to the matched key/value only.
+//   ITEM            — action applies to the entire containing object
+//                     when a descendant matches. Useful when a single
+//                     marker field ("is_deleted", "redacted") means the
+//                     whole record is sensitive.
+//   ENTRY           — action applies to the entire top-level array
+//                     element when any descendant matches. Useful for
+//                     "drop rows where X is true" across a paginated
+//                     response body.
 export const ResponseFilterSchema = z
   .object({
     target: z.enum(["KEYS", "VALUES", "BOTH"]),
     action: z.enum(["REMOVE", "MASK", "FAIL"]),
     pattern: z.string(), // regex source
     mask: z.string().optional(),
+    scope: z.enum(["FIELD", "ITEM", "ENTRY"]).optional(),
   })
   .openapi("ResponseFilter");
 
@@ -75,6 +87,12 @@ export const RequestStepSchema = z
     response_filters: z.array(ResponseFilterSchema).optional(),
     pagination: PaginationSchema.optional(),
     max_retries: z.number().int().min(0).max(5).optional(),
+    // Override the base backoff delay (default 200ms). Clamped to [50, 10_000].
+    retry_backoff_ms: z.number().int().min(50).max(10_000).optional(),
+    // Additional status codes (on top of 5xx and 429) that should trigger a retry.
+    // Idempotency rule still applies: non-GET/HEAD/OPTIONS methods only retry on 429
+    // or codes explicitly listed here.
+    retry_on_status: z.array(z.number().int().min(100).max(599)).optional(),
     // Optional GraphQL operation. When present, the request step routes
     // through the GraphQL driver instead of the HTTP retry pipeline.
     graphql: z

@@ -58,8 +58,8 @@ function jitter(ms: number): number {
   return ms + (Math.random() * 2 - 1) * j;
 }
 
-function backoffMs(attempt: number): number {
-  const raw = Math.min(RETRY_CAP_MS, RETRY_BASE_MS * 2 ** attempt);
+function backoffMs(attempt: number, base_ms: number = RETRY_BASE_MS): number {
+  const raw = Math.min(RETRY_CAP_MS, base_ms * 2 ** attempt);
   return Math.max(0, jitter(raw));
 }
 
@@ -79,6 +79,22 @@ function parseRetryAfter(header: string | null): number | null {
 
 function isIdempotent(method: string): boolean {
   return method === "GET" || method === "HEAD" || method === "OPTIONS";
+}
+
+// Per-step retry overrides. `additional_retry_statuses` extends the built-in
+// retry policy (5xx + 429): any listed status retries regardless of method,
+// matching the "explicit opt-in" semantics for non-idempotent codes like 408
+// (Request Timeout) or 425 (Too Early).
+interface RetryPolicy {
+  backoff_base_ms: number;
+  additional_retry_statuses: Set<number>;
+}
+
+function resolveRetryPolicy(step: RequestStep): RetryPolicy {
+  return {
+    backoff_base_ms: step.retry_backoff_ms ?? RETRY_BASE_MS,
+    additional_retry_statuses: new Set(step.retry_on_status ?? []),
+  };
 }
 
 function checkRequired(value: unknown, schema: Record<string, unknown>): string[] {
@@ -214,6 +230,7 @@ interface DoOnePageParams {
   retry_counter: { value: number };
   tunnel?: TunnelRoute;
   connector_id?: string | null;
+  retry_policy: RetryPolicy;
 }
 
 async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
@@ -228,9 +245,13 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
     try {
       const res = await fetchOnce(p.url, p.method, p.headers, p.body, p.signal, p.tunnel);
       if (res.status >= 200 && res.status < 400) return res;
+      const is_additional_retry_status = p.retry_policy.additional_retry_statuses.has(res.status);
       if (res.status === 429) {
         const after = parseRetryAfter(res.headers["retry-after"] ?? null);
-        const wait = Math.min(after ?? backoffMs(attempt), 60 * 60_000);
+        const wait = Math.min(
+          after ?? backoffMs(attempt, p.retry_policy.backoff_base_ms),
+          60 * 60_000,
+        );
         logger.info({
           module: "execution",
           action: "request.retry",
@@ -248,13 +269,13 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         continue;
       }
       if (res.status >= 500) {
-        if (!isIdempotent(p.method)) {
+        if (!isIdempotent(p.method) && !is_additional_retry_status) {
           throw new RequestError(`http ${res.status}`, "http_5xx", res.status);
         }
         if (attempt >= p.max_attempts) {
           throw new RequestError(`http ${res.status}`, "http_5xx", res.status);
         }
-        const wait = backoffMs(attempt);
+        const wait = backoffMs(attempt, p.retry_policy.backoff_base_ms);
         logger.info({
           module: "execution",
           action: "request.retry",
@@ -267,7 +288,25 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         await sleep(wait, p.signal);
         continue;
       }
-      // 4xx (non-429): non-retryable
+      // 4xx (non-429): retryable only if explicitly opted in via retry_on_status.
+      if (is_additional_retry_status) {
+        if (attempt >= p.max_attempts) {
+          throw new RequestError(`http ${res.status}`, "http_4xx", res.status, { body: res.body });
+        }
+        const wait = backoffMs(attempt, p.retry_policy.backoff_base_ms);
+        logger.info({
+          module: "execution",
+          action: "request.retry",
+          msg: "request retrying due to opted-in status",
+          reason: "http_4xx_opt_in",
+          status: res.status,
+          attempt,
+          wait_ms: Math.round(wait),
+        });
+        recordRequestRetry({ connector_id: p.connector_id ?? null, reason: "http_4xx_opt_in" });
+        await sleep(wait, p.signal);
+        continue;
+      }
       throw new RequestError(`http ${res.status}`, "http_4xx", res.status, { body: res.body });
     } catch (err) {
       lastErr = err;
@@ -292,7 +331,7 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
       if (attempt >= p.max_attempts) {
         throw new RequestError(e.message ?? "connection error", "connection");
       }
-      const wait = backoffMs(attempt);
+      const wait = backoffMs(attempt, p.retry_policy.backoff_base_ms);
       logger.info({
         module: "execution",
         action: "request.retry",
@@ -623,6 +662,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
 
   const retryTotal = { value: 0 };
   const retryCounter = { value: 0 };
+  const retry_policy = resolveRetryPolicy(p.step);
   let last_meta: Record<string, unknown> = {};
   try {
     if (!p.step.pagination) {
@@ -649,6 +689,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         retry_total_ms: retryTotal,
         retry_counter: retryCounter,
         connector_id: p.step.connector_id ?? null,
+        retry_policy,
         ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
       });
       // Apply response filters
@@ -735,6 +776,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         retry_total_ms: retryTotal,
         retry_counter: retryCounter,
         connector_id: p.step.connector_id ?? null,
+        retry_policy,
         ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
       });
       let body = res.body;
