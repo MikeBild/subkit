@@ -70,6 +70,49 @@ function validateAgainstJsonSchema(
 
 const WORKFLOW_TIMEOUT_DEFAULT_MS = 6 * 60 * 60_000;
 
+/** Envelope shape exposed on `scope[step.id]`. Transform expressions
+ *  read `$scope.<id>.data` for the payload and `$scope.<id>.status_code`
+ *  / `$scope.<id>.headers` / `$scope.<id>.error` / `$scope.<id>.duration_ms`
+ *  for diagnostics. Matches the contract documented in the
+ *  data-handling skill. */
+export interface ScopeEnvelope {
+  data: unknown;
+  status_code?: number;
+  headers?: Record<string, string>;
+  duration_ms: number;
+  error: { code: string; message: string; details?: unknown } | null;
+}
+
+function wrapEnvelope(params: {
+  data: unknown;
+  duration_ms: number;
+  error: { code: string; message: string; details?: unknown } | null;
+  request_meta?: Record<string, unknown> | null;
+}): ScopeEnvelope {
+  const env: ScopeEnvelope = {
+    data: params.data ?? null,
+    duration_ms: params.duration_ms,
+    error: params.error ?? null,
+  };
+  const rm = params.request_meta;
+  if (rm && typeof rm === "object") {
+    if (typeof rm.status === "number") env.status_code = rm.status;
+    if (rm.headers && typeof rm.headers === "object") {
+      env.headers = rm.headers as Record<string, string>;
+    }
+  }
+  return env;
+}
+
+function envelopeFor(outcome: { result: StepResult; scope_value: unknown }): ScopeEnvelope {
+  return wrapEnvelope({
+    data: outcome.scope_value,
+    duration_ms: outcome.result.duration_ms ?? 0,
+    error: outcome.result.error ?? null,
+    request_meta: outcome.result.request_meta ?? null,
+  });
+}
+
 export interface RunExecutionParams {
   db: Db;
   tenant_id: string;
@@ -254,7 +297,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         scope_value: undefined,
       };
     }
-    scope[step.id] = outcome.scope_value;
+    // Wrap every step's output in the documented envelope
+    //   { data, status_code?, headers?, duration_ms, error? }
+    // so transforms can read `$scope.<id>.data` — the contract the
+    // data-handling skill has promised forever but the runtime used to
+    // ignore (stepId was the raw body). Loop/branch/parallel keep their
+    // special array/record shape under `.data` too so authors can write
+    // `$scope.each.data.length` etc. uniformly.
+    scope[step.id] = envelopeFor(outcome);
     lastOutput = outcome.scope_value;
     if (outcome.result.warnings?.length) {
       for (const w of outcome.result.warnings) {
@@ -324,12 +374,16 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               p.input,
               async ({ ctx: cctx, step: cstep }) => runCallStep(db, cctx, cstep as CallStep),
             );
-            childScope[bodyStep.id] = bodyOutcome.scope_value;
-            bodyResults[bodyStep.id] = bodyOutcome.scope_value;
+            childScope[bodyStep.id] = envelopeFor(bodyOutcome);
+            bodyResults[bodyStep.id] = envelopeFor(bodyOutcome);
           }
           iterationResults.push(bodyResults);
         }
-        scope[step.id] = iterationResults;
+        scope[step.id] = wrapEnvelope({
+          data: iterationResults,
+          duration_ms: outcome.result.duration_ms ?? 0,
+          error: null,
+        });
         lastOutput = iterationResults;
       }
       // Mark body step ids as skipped in the linear walk (they run inside the loop)
@@ -383,13 +437,17 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               p.input,
               async ({ ctx: cctx, step: cstep }) => runCallStep(db, cctx, cstep as CallStep),
             );
-            branchScope[branchStepId] = branchOutcome.scope_value;
-            branchOutput[branchStepId] = branchOutcome.scope_value;
+            branchScope[branchStepId] = envelopeFor(branchOutcome);
+            branchOutput[branchStepId] = envelopeFor(branchOutcome);
           }
           return branchOutput;
         }),
       );
-      scope[step.id] = branchResults;
+      scope[step.id] = wrapEnvelope({
+        data: branchResults,
+        duration_ms: outcome.result.duration_ms ?? 0,
+        error: null,
+      });
       lastOutput = branchResults;
       // Mark parallel branch step ids as skipped in the linear walk
       for (const branchStepIds of parallelStep.branches) {

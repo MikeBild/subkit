@@ -56,7 +56,11 @@ describe("base prompts — step-kind enumeration", () => {
     expect(p).toContain("/docs");
     expect(p).toContain("subkit mcp");
     expect(p).toContain("Google Chat is a first-class chat adapter");
-    expect(p).toContain("schedule-management conversation tools are not exposed");
+    // Scheduler tools ARE exposed now (A8); the prompt names them
+    // so the LLM recommends `tenant.create_schedule` rather than
+    // claiming scheduling is impossible.
+    expect(p).toContain("tenant.create_schedule");
+    expect(p).toContain("every:<seconds>");
     expect(p).toContain("/permissions");
   });
 });

@@ -36,7 +36,7 @@ describe("request + transform", () => {
         {
           kind: "transform",
           id: "names",
-          expression: "users.name",
+          expression: "users.data.name",
         },
       ],
     });
@@ -55,7 +55,7 @@ describe("request + transform", () => {
       name: "loop-bindings",
       steps: [
         { kind: "transform", id: "letters", expression: "['a', 'b', 'c']" },
-        { kind: "loop", id: "iter", over: "letters", item_var: "letter", body: ["tag"] },
+        { kind: "loop", id: "iter", over: "letters.data", item_var: "letter", body: ["tag"] },
         {
           kind: "transform",
           id: "tag",
@@ -70,10 +70,10 @@ describe("request + transform", () => {
       input: null,
     });
     expect(result.status).toBe("succeeded");
-    const out = result.output as Array<{ tag: { index: number; letter: string } }>;
+    const out = result.output as Array<{ tag: { data: { index: number; letter: string } } }>;
     expect(out).toHaveLength(3);
-    expect(out[0]?.tag).toEqual({ index: 0, letter: "a" });
-    expect(out[1]?.tag).toEqual({ index: 1, letter: "b" });
-    expect(out[2]?.tag).toEqual({ index: 2, letter: "c" });
+    expect(out[0]?.tag.data).toEqual({ index: 0, letter: "a" });
+    expect(out[1]?.tag.data).toEqual({ index: 1, letter: "b" });
+    expect(out[2]?.tag.data).toEqual({ index: 2, letter: "c" });
   });
 });

@@ -36,6 +36,12 @@ export interface FooterProps {
   mode: PermissionMode;
   /** Transcript view indicator shown next to the mode hint. */
   transcriptMode: "chat" | "inspect";
+  /** Live engine-connection state from the health pinger. When "offline"
+   *  or "reconnecting" the footer shows a red/yellow chip so the user
+   *  notices before they hit a mysterious tool failure. */
+  connectionState?: "online" | "reconnecting" | "offline" | "unknown";
+  /** Short reason attached to non-online states. */
+  connectionReason?: string | null;
 }
 
 export const MODE_LABELS: Record<PermissionMode, string> = {
@@ -61,6 +67,8 @@ const FooterImpl: React.FC<FooterProps> = ({
   sessionId,
   mode,
   transcriptMode,
+  connectionState = "unknown",
+  connectionReason,
 }) => {
   const theme = useTheme();
   const tenantLabel = tenant ?? "(no tenant)";
@@ -69,6 +77,7 @@ const FooterImpl: React.FC<FooterProps> = ({
   const modeColor = theme.mode[mode];
   const modeLabel = MODE_LABELS[mode];
   const nextView = transcriptMode === "chat" ? "inspect" : "chat";
+  const connChip = renderConnectionBadge(connectionState, connectionReason ?? null, theme);
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
@@ -83,6 +92,7 @@ const FooterImpl: React.FC<FooterProps> = ({
         <Text color={theme.severity.dim}> · </Text>
         <Text color={theme.severity.dim}>session </Text>
         <Text color={theme.role.assistant}>{sessionLabel}</Text>
+        {connChip}
       </Box>
       <Box>
         <Text color={theme.severity.dim}> </Text>
@@ -96,5 +106,31 @@ const FooterImpl: React.FC<FooterProps> = ({
     </Box>
   );
 };
+
+function renderConnectionBadge(
+  state: "online" | "reconnecting" | "offline" | "unknown",
+  reason: string | null,
+  theme: ReturnType<typeof useTheme>,
+): React.ReactNode {
+  if (state === "online" || state === "unknown") return null;
+  const dot = state === "offline" ? "●" : "⟳";
+  const label = state === "offline" ? "offline" : "reconnecting";
+  const color = state === "offline" ? theme.severity.error : theme.severity.warning;
+  const trimmed = reason && reason.length > 40 ? `${reason.slice(0, 37)}…` : reason;
+  return (
+    <>
+      <Text color={theme.severity.dim}> · </Text>
+      <Text color={color} bold>
+        {dot} {label}
+      </Text>
+      {trimmed ? (
+        <>
+          <Text color={theme.severity.dim}> · </Text>
+          <Text color={theme.severity.dim}>{trimmed}</Text>
+        </>
+      ) : null}
+    </>
+  );
+}
 
 export const Footer = memo(FooterImpl);

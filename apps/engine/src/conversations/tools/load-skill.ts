@@ -13,6 +13,26 @@ import type { ConversationTool } from "./index.ts";
 
 const Input = z.object({ slug: z.string().min(1) }).openapi("LoadSkillToolInput");
 
+/** Classic O(n·m) edit distance — small inputs (skill slug list),
+ *  avoids pulling in a lib. */
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let next = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const v = Math.min(next + 1, prev[j]! + 1, prev[j - 1]! + cost);
+      prev[j - 1] = next;
+      next = v;
+    }
+    prev[b.length] = next;
+  }
+  return prev[b.length]!;
+}
+
 export const loadSkillTool: ConversationTool = {
   name: "load_skill",
   description:
@@ -29,14 +49,37 @@ export const loadSkillTool: ConversationTool = {
   category: "tenant_read",
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
-    // Verify the skill exists in the tenant. `slug` is matched against
-    // either skill id or title (case-insensitive) since the Skill type
-    // does not carry a dedicated slug column.
+    const wanted = args.slug.toLowerCase();
+    // Match by slug (preferred, stable cross-tenant id) or fall through
+    // to id / title for legacy callers.
     const candidates = await ctx.engineClient.skills.list();
     const match = candidates.find(
-      (s) => s.id === args.slug || s.title.toLowerCase() === args.slug.toLowerCase(),
+      (s) =>
+        (s.slug ?? "").toLowerCase() === wanted ||
+        s.id === args.slug ||
+        s.title.toLowerCase() === wanted,
     );
-    if (!match) return { ok: false, data: { error: "skill_not_found", slug: args.slug } };
+    if (!match) {
+      // Suggest the closest slugs so the model doesn't retry blindly.
+      const pool = candidates
+        .map((s) => s.slug ?? s.title.toLowerCase().replace(/\s+/g, "-"))
+        .filter((x): x is string => !!x);
+      const suggestions = pool
+        .map((slug) => ({ slug, score: levenshtein(wanted, slug.toLowerCase()) }))
+        .sort((a, b) => a.score - b.score)
+        .slice(0, 3)
+        .filter((s) => s.score <= Math.max(3, Math.floor(wanted.length / 2)))
+        .map((s) => s.slug);
+      return {
+        ok: false,
+        data: {
+          error: "skill_not_found",
+          slug: args.slug,
+          suggested_slugs: suggestions,
+          available_slugs: pool.slice(0, 20),
+        },
+      };
+    }
 
     const rows = await ctx.db
       .select({ loaded_skills: conversations.loaded_skills })

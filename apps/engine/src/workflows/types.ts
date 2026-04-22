@@ -5,6 +5,28 @@
 
 import { z } from "@hono/zod-openapi";
 
+/** Parses a multi-line "Name: Value\nOther: Other" header string into a
+ *  record, trimming whitespace on both sides. Returns `null` when no
+ *  valid header line was found (so validation can fail with a useful
+ *  message instead of silently coercing garbage). Empty lines are
+ *  tolerated; lines without a `:` are rejected. */
+function parseHeaderLines(raw: string): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  let saw = 0;
+  for (const lineRaw of raw.split(/\r?\n/)) {
+    const line = lineRaw.trim();
+    if (!line) continue;
+    const idx = line.indexOf(":");
+    if (idx <= 0) return null;
+    const name = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1).trim();
+    if (!name) return null;
+    out[name] = value;
+    saw += 1;
+  }
+  return saw > 0 ? out : null;
+}
+
 // JSON value
 const JsonLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 type JsonValue = z.infer<typeof JsonLiteralSchema> | { [k: string]: JsonValue } | JsonValue[];
@@ -81,7 +103,27 @@ export const RequestStepSchema = z
     url: z.string().optional(),
     path: z.string().optional(),
     connector_id: z.string().uuid().optional(),
-    headers: z.record(z.string(), z.string()).optional(),
+    // headers accepts either a record or a multi-line
+    // "Name: Value" string (one per line). The string form is a
+    // convenience for LLM-authored steps that often emit headers as a
+    // flat block instead of an object — we coerce rather than reject
+    // because the fix is trivial and the LLM would otherwise loop.
+    headers: z
+      .union([
+        z.record(z.string(), z.string()),
+        z.string().transform((raw, zctx) => {
+          const parsed = parseHeaderLines(raw);
+          if (!parsed) {
+            zctx.addIssue({
+              code: "custom",
+              message: `headers string must be one or more "Name: Value" lines`,
+            });
+            return z.NEVER;
+          }
+          return parsed;
+        }),
+      ])
+      .optional(),
     query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
     body: JsonValueSchema.optional(),
     response_filters: z.array(ResponseFilterSchema).optional(),

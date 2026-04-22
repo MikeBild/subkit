@@ -110,6 +110,14 @@ export interface InkAppProps {
   statusSnapshot?: StatusSummary | null;
   /** Latest setup diagnostics snapshot when the persona can read it. */
   setupSnapshot?: SetupValidationResponse | null;
+  /** Live engine-connection state from the host pinger. `null` means
+   *  no pinger is active (tests, smoke paths). */
+  connectionSnapshot?: {
+    state: "online" | "reconnecting" | "offline" | "unknown";
+    reason: string | null;
+    last_ok_at: number | null;
+    last_error_at: number | null;
+  } | null;
   /** Active permission mode for the status line badge. */
   permissionMode?: PermissionMode;
   /**
@@ -816,6 +824,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   cwd,
   statusSnapshot,
   setupSnapshot,
+  connectionSnapshot,
   permissionMode = "ask",
   historyPath,
   onPrompt,
@@ -947,6 +956,8 @@ export const InkApp: React.FC<InkAppProps> = ({
         cwd: cwdValue,
         git_branch: null,
         timestamp: new Date().toISOString(),
+        connection_state: connectionSnapshot?.state ?? "unknown",
+        connection_reason: connectionSnapshot?.reason ?? null,
       };
       const result = await buildStatusLine(statusLineConfig, input);
       if (!cancelled) setStatusLine(result.line);
@@ -970,6 +981,7 @@ export const InkApp: React.FC<InkAppProps> = ({
     session.usage,
     cwd,
     statusSnapshot,
+    connectionSnapshot,
     activeMode,
   ]);
 
@@ -1577,6 +1589,29 @@ export const InkApp: React.FC<InkAppProps> = ({
 
       // --- Printable char(s) / paste heuristic ----------------------
       if (char && char.length > 0 && !key.ctrl && !key.meta) {
+        // Bracketed paste: the terminal frames pastes with
+        // ESC[200~…ESC[201~. Strip both markers and treat whatever was
+        // between them as a paste, regardless of length. Stops
+        // multi-line pastes from being fragmented into per-char key
+        // events.
+        const BP_START = "\x1b[200~";
+        const BP_END = "\x1b[201~";
+        const startIdx = char.indexOf(BP_START);
+        const endIdx = char.lastIndexOf(BP_END);
+        if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+          const pasted = char.slice(startIdx + BP_START.length, endIdx);
+          const prefix = char.slice(0, startIdx);
+          const suffix = char.slice(endIdx + BP_END.length);
+          if (prefix) setInput((prev) => applyInput(prev, { type: "insert", text: prefix }));
+          if (pasted) {
+            const { ref } = pasteStoreRef.current.addText(pasted);
+            syncPendingAttachments();
+            setInput((prev) => applyInput(prev, { type: "insert", text: ref }));
+            showInfo(`pasted ${ref} — sent inline at submit`);
+          }
+          if (suffix) setInput((prev) => applyInput(prev, { type: "insert", text: suffix }));
+          return;
+        }
         if (char.length > 1 && looksLikePaste(char)) {
           // Big chunk — stash in the paste store, insert the ref
           // inline. Keeps the buffer compact and cursor math sane.
@@ -1969,6 +2004,8 @@ export const InkApp: React.FC<InkAppProps> = ({
         sessionId={session.conversationId}
         mode={activeMode}
         transcriptMode={transcriptMode}
+        connectionState={connectionSnapshot?.state ?? "unknown"}
+        connectionReason={connectionSnapshot?.reason ?? null}
       />
 
       {/* Inline @-mention picker — shown when the buffer has an

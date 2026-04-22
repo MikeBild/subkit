@@ -8,6 +8,7 @@ import { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidat
 import { cleanupWriteTools } from "./cleanup.ts";
 import { createApiKeyTool } from "./create-api-key.ts";
 import { runWorkflowTool } from "./run-workflow.ts";
+import { scheduleTools } from "./schedules.ts";
 
 export { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidates.ts";
 export {
@@ -21,11 +22,18 @@ export {
 } from "./cleanup.ts";
 export { createApiKeyTool } from "./create-api-key.ts";
 export { runWorkflowTool } from "./run-workflow.ts";
+export {
+  createScheduleTool,
+  deleteScheduleTool,
+  listSchedulesTool,
+  updateScheduleTool,
+} from "./schedules.ts";
 
 export const ALL_GENERATED_WRITE_TOOLS: ConversationTool[] = [
   runWorkflowTool,
   approveSkillCandidateTool,
   approvePatchCandidateTool,
   createApiKeyTool,
+  ...scheduleTools,
   ...cleanupWriteTools,
 ];

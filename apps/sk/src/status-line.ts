@@ -24,6 +24,8 @@ import path from "node:path";
 
 export type AuthStatus = "signed_in" | "signed_out";
 export type PermissionMode = "ask" | "auto" | "plan";
+/** Live connection state to the subkit engine. */
+export type ConnectionState = "online" | "reconnecting" | "offline" | "unknown";
 
 export interface StatusLineInput {
   schema_version: 1;
@@ -65,6 +67,13 @@ export interface StatusLineInput {
   latest_probe_state?: string | null;
   /** "ok" / "failed" / null — latest preview outcome. */
   latest_preview_state?: string | null;
+  /** Live connection state to the engine: "online" | "reconnecting" |
+   *  "offline" | "unknown". Defaults to "unknown" so existing
+   *  templates keep rendering when the ConnectionPinger is absent. */
+  connection_state?: ConnectionState | null;
+  /** Human-readable reason for the current connection_state (e.g.
+   *  "ECONNREFUSED", "last heartbeat 12s ago"). Optional. */
+  connection_reason?: string | null;
 }
 
 export interface StatusLineConfig {
@@ -143,7 +152,23 @@ function resolvePlaceholders(input: StatusLineInput): Record<string, string> {
     latest_probe_state: input.latest_probe_state ?? "",
     latest_preview_state: input.latest_preview_state ?? "",
     authoring_chip: renderAuthoringChip(input),
+    connection_state: input.connection_state ?? "",
+    connection_chip: renderConnectionChip(input),
   };
+}
+
+function renderConnectionChip(input: StatusLineInput): string {
+  const state: ConnectionState = input.connection_state ?? "unknown";
+  switch (state) {
+    case "online":
+      return "";
+    case "reconnecting":
+      return " · ⟳ reconnecting";
+    case "offline":
+      return input.connection_reason ? ` · ● offline (${input.connection_reason})` : " · ● offline";
+    default:
+      return "";
+  }
 }
 
 function renderAuthoringChip(input: StatusLineInput): string {
