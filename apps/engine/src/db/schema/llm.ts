@@ -82,6 +82,26 @@ export const tenantDlpRules = pgTable(
   (t) => [index("tenant_dlp_rules_tenant_enabled_idx").on(t.tenant_id, t.enabled)],
 );
 
+// Per-tenant vendor recipe overrides. The central manifest
+// (`apps/engine/src/conversations/seed/vendor-recipes/*.json`) is the
+// canonical source; this table lets an operator override specific fields
+// for a single tenant (e.g., a bespoke stdio command path, an auth header
+// that differs from the public template) without forking the manifest.
+//
+// `override` is a shallow-merged JSON patch over the base VendorRecipe —
+// any key present wins, missing keys fall through to the manifest.
+export const vendorRecipeOverrides = pgTable(
+  "vendor_recipe_overrides",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    client: text("client").notNull(),
+    override: jsonb("override").$type<Record<string, unknown>>().notNull(),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("vendor_recipe_overrides_tenant_client_uq").on(t.tenant_id, t.client)],
+);
+
 export const llmUsage = pgTable(
   "llm_usage",
   {
