@@ -12,7 +12,7 @@ import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { deliveries } from "../../db/schema/index.ts";
+import { deliveries, events } from "../../db/schema/index.ts";
 import { getBoss } from "../../queue/boss.ts";
 import {
   WEBHOOK_DELIVER_QUEUE,
@@ -278,18 +278,56 @@ export function registerSubscriptionRoutes(app: OpenAPIHono<AppEnv>): void {
       | ReturnType<typeof getBoss>
       | undefined;
     const boss = bossOverride ?? getBoss();
+
+    // Reconstruct the original payload from the outbox row so the replay
+    // produces an identical body + signature — essential for subscribers
+    // that rely on event dedup by request_hash. Fall back to a minimal
+    // replay envelope when the outbox event has been pruned.
+    const timestamp = Math.floor(Date.now() / 1000);
+    let body: string;
+    if (existing.outbox_event_id != null) {
+      const outboxRows = await db
+        .select()
+        .from(events)
+        .where(eq(events.id, existing.outbox_event_id))
+        .limit(1);
+      const outbox = outboxRows[0];
+      if (outbox) {
+        body = JSON.stringify({
+          type: outbox.type,
+          timestamp,
+          data: outbox.payload,
+          replay: true,
+          original_delivery_id: delivery_id,
+        });
+      } else {
+        body = JSON.stringify({
+          type: existing.event_type ?? "replay",
+          timestamp,
+          data: null,
+          replay: true,
+          original_delivery_id: delivery_id,
+          note: "original outbox event unavailable",
+        });
+      }
+    } else {
+      body = JSON.stringify({
+        type: existing.event_type ?? "replay",
+        timestamp,
+        data: null,
+        replay: true,
+        original_delivery_id: delivery_id,
+      });
+    }
+
     const job: WebhookDeliverJob = {
       tenant_id: principal.tenant_id,
       subscription_id: id,
       event_id: existing.event_id,
       event_type: existing.event_type ?? "replay",
-      body: JSON.stringify({
-        replay: true,
-        original_delivery_id: delivery_id,
-        event_id: existing.event_id,
-      }),
+      body,
       webhook_id: crypto.randomUUID(),
-      timestamp: Math.floor(Date.now() / 1000),
+      timestamp,
       attempt_number: 1,
       outbox_event_id: existing.outbox_event_id ?? null,
     };
@@ -301,7 +339,12 @@ export function registerSubscriptionRoutes(app: OpenAPIHono<AppEnv>): void {
         resource_type: "subscription",
         resource_id: id,
         result: "success",
-        metadata: { delivery_id },
+        metadata: {
+          delivery_id,
+          outbox_event_id: existing.outbox_event_id ?? null,
+          original_terminal_reason: existing.terminal_reason ?? null,
+          original_classification: existing.classification ?? null,
+        },
       },
       db,
     );
