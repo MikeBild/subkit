@@ -197,6 +197,31 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
   };
 }
 
+// Per-flow env overrides. Lets operators route e.g. "summarize" to a cheaper
+// model and "generate" to a stronger one without any workflow-level config.
+// Variables follow the shape `{FLOW}_LLM_PROVIDER` and `{FLOW}_MODEL` — these
+// must be upper-cased flow names. Unknown / unset variables fall through to
+// the tenant-resolved route.
+function flowEnvKey(flow: LlmFlow): string {
+  return flow.toUpperCase();
+}
+
+export function applyFlowEnvOverrides(route: ModelRoute, flow: LlmFlow): ModelRoute {
+  const key = flowEnvKey(flow);
+  const providerEnvVar = `${key}_LLM_PROVIDER`;
+  const modelEnvVar = `${key}_MODEL`;
+  const providerDetected = detectConfiguredProvider({ providerEnvVar });
+  const modelOverride = process.env[modelEnvVar];
+  if (providerDetected === "unconfigured" && !modelOverride) return route;
+  const nextPrimary = modelOverride ?? route.primary;
+  return {
+    ...route,
+    primary: nextPrimary,
+    provider: providerDetected === "unconfigured" ? route.provider : providerDetected,
+    context_cap: contextCapFor(nextPrimary),
+  };
+}
+
 export interface InvokeParams<T = unknown> {
   flow: LlmFlow;
   tenant_id: string;
@@ -246,7 +271,8 @@ export async function invoke<T = unknown>(
   exec?: Executor,
 ): Promise<InvokeResult<T>> {
   const db = exec ?? getDb();
-  const route = params.route ?? (await resolveModelRoute(params.tenant_id, db));
+  const base_route = params.route ?? (await resolveModelRoute(params.tenant_id, db));
+  const route = applyFlowEnvOverrides(base_route, params.flow);
   log.llm.route.resolved({
     model_id: route.primary,
     fallback: route.fallback,
