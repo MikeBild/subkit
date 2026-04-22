@@ -6,6 +6,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
+import { extractCodebaseArchive } from "../../discovery/archive.ts";
 import * as svc from "../../discovery/service.ts";
 import { DiscoveryArtifactSchema, DiscoveryRunSchema } from "../../discovery/types.ts";
 import { NotFoundError } from "../errors.ts";
@@ -284,5 +285,69 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     );
 
     return c.json(run, 202);
+  });
+
+  // Codebase-archive upload. Accepts a zip and extracts its contents
+  // into a discovery run. Filters out binaries, generated dirs, and
+  // lockfiles so the LLM only sees semantically interesting files.
+  app.post("/v1/discovery/runs/from-archive", async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+
+    const formData = await c.req.formData();
+    const label = formData.get("label");
+    const archive = formData.get("archive");
+
+    if (!(archive instanceof File)) {
+      return c.json({ error: "multipart 'archive' file is required" }, 400);
+    }
+    const archiveBuffer = Buffer.from(await archive.arrayBuffer());
+    if (archiveBuffer.byteLength > 100 * 1024 * 1024) {
+      return c.json({ error: "archive exceeds 100MB limit" }, 413);
+    }
+
+    let extracted: Awaited<ReturnType<typeof extractCodebaseArchive>>;
+    try {
+      extracted = await extractCodebaseArchive(archiveBuffer);
+    } catch (err) {
+      return c.json(
+        { error: `archive extraction failed: ${err instanceof Error ? err.message : String(err)}` },
+        400,
+      );
+    }
+    if (extracted.files.length === 0) {
+      return c.json(
+        {
+          error:
+            "no analysable files found after filtering (all entries were binaries, lockfiles, or generated artifacts)",
+          skipped_reasons: extracted.skipped_reasons,
+        },
+        400,
+      );
+    }
+
+    const run = await svc.createDiscoveryRun(
+      {
+        tenant_id: principal.tenant_id,
+        files: extracted.files,
+        actor_id: principal.id,
+        ...(typeof label === "string" ? { label } : {}),
+      },
+      db,
+    );
+
+    return c.json(
+      {
+        ...run,
+        archive_stats: {
+          extracted_count: extracted.files.length,
+          skipped_count: extracted.skipped_count,
+          skipped_reasons: extracted.skipped_reasons,
+          total_bytes: extracted.total_bytes,
+          truncated: extracted.truncated,
+        },
+      },
+      202,
+    );
   });
 }
