@@ -45,12 +45,19 @@ export interface TunnelSocket {
   readyState: number;
 }
 
+export type TunnelProtocol = "http" | "tcp";
+
 export interface TunnelRequest {
   target: string;
   method: string;
   path: string;
   headers: Record<string, string>;
   body?: string | null;
+  /** Defaults to "http" on the wire when omitted. */
+  protocol?: TunnelProtocol;
+  /** Required when `protocol === "tcp"`. */
+  tcp_host?: string;
+  tcp_port?: number;
 }
 
 export interface TunnelResponse {
