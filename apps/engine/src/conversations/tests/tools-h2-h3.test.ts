@@ -106,6 +106,10 @@ describe("conversation tools — registration", () => {
     "approve_skill_candidate",
     "approve_patch_candidate",
     "create_api_key",
+    "create_schedule",
+    "list_schedules",
+    "update_schedule",
+    "delete_schedule",
   ] as const;
 
   test("the expected tool palette is registered", () => {
