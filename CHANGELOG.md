@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.16.0](https://github.com/MikeBild/subkit/compare/subkit-v1.15.0...subkit-v1.16.0) (2026-04-22)
+
+
+### Features
+
+* **connectors:** add redis, mssql, ftp, sftp, smb drivers ([50f416e](https://github.com/MikeBild/subkit/commit/50f416e34f260add631228ce612dff3c4d5a2f03))
+* **conversations:** anchor tool calls + elicitations to parent message ([baadbbb](https://github.com/MikeBild/subkit/commit/baadbbbd932ea70786e91ef650e485422a7135cb))
+* **discovery:** codebase archive upload + extractor ([b6c4a0a](https://github.com/MikeBild/subkit/commit/b6c4a0af7f2f90f414d23d32158dd325f1020c67))
+* **docs-ingestion:** knowledge-ingress cascade orchestrator ([e95c018](https://github.com/MikeBild/subkit/commit/e95c018763906d32c778ad9c0219a6cd79a74435))
+* **eval:** aggregate metrics + integration fixtures ([8ca6759](https://github.com/MikeBild/subkit/commit/8ca675957f8cd54ee640516e9d93e95a6b0018b7))
+* **execution:** per-step retry overrides + response-filter scopes ([be6181f](https://github.com/MikeBild/subkit/commit/be6181f0449364df8995daf6c8be758a23f6a879))
+* **execution:** S3-backed large-payload offload ([f1d6fae](https://github.com/MikeBild/subkit/commit/f1d6faed060adade199e78e0118d8876ecb16830))
+* **llm:** per-flow env provider/model overrides ([a8b143c](https://github.com/MikeBild/subkit/commit/a8b143c4d614b91e7f1e9e12602984d23884c861))
+* **llm:** per-tenant vendor-recipe overrides ([057ff88](https://github.com/MikeBild/subkit/commit/057ff881d875feab787445195dec38c3297ba6a6))
+* **onboarding:** demo-seed workflows + expertise tone hint ([db86d77](https://github.com/MikeBild/subkit/commit/db86d77228417e2da7eead43c73865a805004bfa))
+* **tunnels:** add TCP passthrough for multi-protocol routing ([3d0db26](https://github.com/MikeBild/subkit/commit/3d0db2651d71988897d34d8d1ffe71e0f3887d88))
+* **webhooks:** failure classification, dead-letter, payload-reconstructing replay ([aa31f7b](https://github.com/MikeBild/subkit/commit/aa31f7ba274aac9e2332e65b89c3333045eb8481))
+
+
+### Bug Fixes
+
+* **e2e:** drop dag wrapper from mcp-surface delete-workflow fixture ([c2735a1](https://github.com/MikeBild/subkit/commit/c2735a1ed78d3245d6c4770187a621433141dc97))
+
 ## [1.15.0](https://github.com/MikeBild/subkit/compare/subkit-v1.14.0...subkit-v1.15.0) (2026-04-21)
 
 
