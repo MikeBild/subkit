@@ -13,6 +13,7 @@
 import WebSocket from "ws";
 import { agentFetch } from "./fetch.ts";
 import { log } from "./logger.ts";
+import { tcpRelay } from "./tcp-relay.ts";
 
 export interface AgentTargetConfig {
   name: string;
@@ -45,6 +46,11 @@ type FrameIn =
       path: string;
       headers: Record<string, string>;
       body?: string | null;
+      /** Optional — defaults to "http" for backwards-compat. */
+      protocol?: "http" | "tcp";
+      /** Required when `protocol === "tcp"`. */
+      tcp_host?: string;
+      tcp_port?: number;
     }
   | { type: "pong"; ts: number }
   | { type: "ping"; ts: number }
@@ -233,6 +239,37 @@ export class TunnelAgentClient {
               headers: {},
               body: null,
               error: `unknown target '${frame.target}'`,
+            }),
+          );
+          return;
+        }
+        if (frame.protocol === "tcp") {
+          if (!frame.tcp_host || frame.tcp_port === undefined) {
+            ws.send(
+              JSON.stringify({
+                type: "response",
+                request_id: frame.request_id,
+                status: 0,
+                headers: {},
+                body: null,
+                error: "tcp protocol requires tcp_host + tcp_port",
+              }),
+            );
+            return;
+          }
+          const tcp = await tcpRelay({
+            host: frame.tcp_host,
+            port: frame.tcp_port,
+            body: frame.body ?? null,
+          });
+          ws.send(
+            JSON.stringify({
+              type: "response",
+              request_id: frame.request_id,
+              status: tcp.status,
+              headers: tcp.headers,
+              body: tcp.body,
+              error: tcp.error,
             }),
           );
           return;

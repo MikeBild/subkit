@@ -135,17 +135,25 @@ export class TunnelRegistry {
       }, timeoutMs);
       entry.in_flight.set(request_id, { resolve, reject, timer });
       try {
-        entry.socket.send(
-          encodeFrame({
-            type: "request",
-            request_id,
-            target,
-            method: req.method,
-            path: req.path,
-            headers: req.headers,
-            body: req.body ?? null,
-          }),
-        );
+        const frame: Parameters<typeof encodeFrame>[0] = {
+          type: "request",
+          request_id,
+          target,
+          method: req.method,
+          path: req.path,
+          headers: req.headers,
+          body: req.body ?? null,
+        };
+        if (req.protocol) {
+          (frame as { protocol?: "http" | "tcp" }).protocol = req.protocol;
+        }
+        if (req.tcp_host !== undefined) {
+          (frame as { tcp_host?: string }).tcp_host = req.tcp_host;
+        }
+        if (req.tcp_port !== undefined) {
+          (frame as { tcp_port?: number }).tcp_port = req.tcp_port;
+        }
+        entry.socket.send(encodeFrame(frame));
       } catch (err) {
         clearTimeout(timer);
         entry.in_flight.delete(request_id);
@@ -159,6 +167,7 @@ export class TunnelRegistry {
         tenant_id,
         target,
         request_id,
+        protocol: req.protocol ?? "http",
         method: req.method,
         path: req.path,
       });

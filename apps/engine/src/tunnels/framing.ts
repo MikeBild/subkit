@@ -23,14 +23,31 @@ export const TunnelRegisterAckFrameSchema = z.object({
   tunnel_id: z.string().min(1),
 });
 
+// Protocol the agent should use to service a tunnel request. Defaults
+// to "http" for backwards-compat with existing agents.
+//
+//   http       — join `path` onto the target's local_base_url and fetch.
+//                method/headers/body are interpreted as HTTP.
+//   tcp        — open a short-lived TCP socket to `host:port` on the
+//                agent-local network, write base64 `body` as raw bytes,
+//                read until EOF/timeout, return base64 response bytes.
+//                Enables postgres/redis/ftp/smtp/… routing without
+//                reimplementing each protocol engine-side.
+export const TunnelProtocolSchema = z.enum(["http", "tcp"]).optional();
+
 export const TunnelRequestFrameSchema = z.object({
   type: z.literal("request"),
   request_id: z.string().min(1),
   target: z.string().min(1),
+  protocol: TunnelProtocolSchema,
   method: z.string().min(1),
   path: z.string(),
   headers: z.record(z.string(), z.string()),
+  // For `protocol: "tcp"` the body is base64-encoded raw bytes.
   body: z.string().nullable().optional(),
+  // Required for `protocol: "tcp"`. Ignored for "http".
+  tcp_host: z.string().optional(),
+  tcp_port: z.number().int().min(1).max(65535).optional(),
 });
 
 export const TunnelResponseFrameSchema = z.object({
