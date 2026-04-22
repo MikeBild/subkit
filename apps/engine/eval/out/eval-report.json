@@ -1,15 +1,21 @@
 {
-  "started_at": "2026-04-19T04:59:51.307Z",
-  "finished_at": "2026-04-19T04:59:51.308Z",
-  "total": 9,
-  "passed": 9,
+  "started_at": "2026-04-21T16:33:43.296Z",
+  "finished_at": "2026-04-21T16:33:43.297Z",
+  "total": 11,
+  "passed": 11,
   "failed": 0,
   "items": [
+    {
+      "name": "flow-env-override-routes-model",
+      "flow": "infra",
+      "pass": true,
+      "duration_ms": 159
+    },
     {
       "name": "provider-error-classifier",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 47,
+      "duration_ms": 0,
       "metrics": {
         "cases": 7
       }
@@ -24,7 +30,7 @@
       "name": "convo-sample-to-schema",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 1
+      "duration_ms": 0
     },
     {
       "name": "schema-normalizer-basic",
@@ -42,17 +48,27 @@
       "name": "ai-sdk-submit-loop",
       "flow": "generate",
       "pass": true,
-      "duration_ms": 5,
+      "duration_ms": 1,
       "metrics": {
         "input_tokens": 10,
         "output_tokens": 2
       }
     },
     {
+      "name": "cascade-picks-openapi",
+      "flow": "infra",
+      "pass": true,
+      "duration_ms": 2,
+      "metrics": {
+        "chunks": 2,
+        "attempts": 1
+      }
+    },
+    {
       "name": "cache-block-split",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 65
+      "duration_ms": 53
     },
     {
       "name": "convo-verifier-scope-ref-integrity",
@@ -64,7 +80,38 @@
       "name": "convo-dlp-masks-default-pii",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 20
+      "duration_ms": 1
     }
-  ]
+  ],
+  "aggregates": {
+    "pass_rate": 1,
+    "latency_ms": {
+      "p50": 1,
+      "p95": 159,
+      "max": 159
+    },
+    "per_flow": {
+      "infra": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "p50_ms": 159,
+        "p95_ms": 159
+      },
+      "converse": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "p50_ms": 1,
+        "p95_ms": 53
+      },
+      "generate": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "p50_ms": 1,
+        "p95_ms": 1
+      }
+    }
+  }
 }

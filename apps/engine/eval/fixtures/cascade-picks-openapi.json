@@ -1,0 +1,22 @@
+{
+  "name": "cascade-picks-openapi",
+  "description": "KnowledgeIngressStack short-circuits on the first successful OpenAPI probe and does not fall through to GraphQL / llms.txt / markdown.",
+  "flow": "infra",
+  "input": {
+    "base_url": "https://api.example.com",
+    "served_paths": {
+      "/openapi.json": {
+        "status": 200,
+        "body": {
+          "openapi": "3.0.0",
+          "info": { "title": "Fixture API", "version": "1.0.0" },
+          "paths": { "/items": { "get": { "summary": "List items" } } }
+        }
+      }
+    },
+    "expect": {
+      "winning_source": "openapi",
+      "min_chunks": 1
+    }
+  }
+}

@@ -20,7 +20,12 @@ type ValidatorFn = (fixture: FixtureRecord) => Promise<ValidationResult> | Valid
 export interface FixtureRecord {
   name: string;
   description?: string;
-  flow: "generate" | "extract" | "repair" | "converse" | "discover";
+  /**
+   * Category label. Includes the LLM flow names (`generate`, `extract`,
+   * `repair`, `converse`, `discover`, `summarize`) and `infra` for
+   * non-LLM integration tests (execution-engine behavior, cascade, etc.).
+   */
+  flow: "generate" | "extract" | "repair" | "converse" | "discover" | "summarize" | "infra";
   /** Arbitrary input payload handed to the validator. */
   input: unknown;
   /** Optional expected output payload the validator may assert against. */
@@ -48,6 +53,60 @@ export interface RunReport {
     duration_ms: number;
     metrics?: Record<string, number>;
   }>;
+  /**
+   * Aggregate metrics across every fixture: per-flow pass rate + latency
+   * percentiles so a single report is enough to spot a regression without
+   * scrolling.
+   */
+  aggregates: {
+    pass_rate: number;
+    latency_ms: { p50: number; p95: number; max: number };
+    per_flow: Record<
+      string,
+      {
+        total: number;
+        passed: number;
+        failed: number;
+        p50_ms: number;
+        p95_ms: number;
+      }
+    >;
+  };
+}
+
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((p / 100) * sorted.length)));
+  return sorted[idx] ?? 0;
+}
+
+function computeAggregates(items: RunReport["items"]): RunReport["aggregates"] {
+  const latencies = items.map((i) => i.duration_ms).sort((a, b) => a - b);
+  const per_flow: RunReport["aggregates"]["per_flow"] = {};
+  for (const item of items) {
+    const bucket = per_flow[item.flow] ?? { total: 0, passed: 0, failed: 0, p50_ms: 0, p95_ms: 0 };
+    bucket.total += 1;
+    if (item.pass) bucket.passed += 1;
+    else bucket.failed += 1;
+    per_flow[item.flow] = bucket;
+  }
+  for (const flow of Object.keys(per_flow)) {
+    const flow_latencies = items
+      .filter((i) => i.flow === flow)
+      .map((i) => i.duration_ms)
+      .sort((a, b) => a - b);
+    per_flow[flow]!.p50_ms = percentile(flow_latencies, 50);
+    per_flow[flow]!.p95_ms = percentile(flow_latencies, 95);
+  }
+  return {
+    pass_rate: items.length === 0 ? 1 : items.filter((i) => i.pass).length / items.length,
+    latency_ms: {
+      p50: percentile(latencies, 50),
+      p95: percentile(latencies, 95),
+      max: latencies.at(-1) ?? 0,
+    },
+    per_flow,
+  };
 }
 
 const EVAL_DIR = join(process.cwd(), "apps/engine/eval");
@@ -159,10 +218,19 @@ async function main(): Promise<void> {
     passed,
     failed,
     items,
+    aggregates: computeAggregates(items),
   };
   writeCsv(report);
   writeJson(report);
   console.log(`\nTotal: ${fixtures.length}   Pass: ${passed}   Fail: ${failed}`);
+  console.log(
+    `Latency: p50=${report.aggregates.latency_ms.p50}ms  p95=${report.aggregates.latency_ms.p95}ms  max=${report.aggregates.latency_ms.max}ms`,
+  );
+  for (const [flow, agg] of Object.entries(report.aggregates.per_flow)) {
+    console.log(
+      `  ${flow}: ${agg.passed}/${agg.total} pass  p50=${agg.p50_ms}ms  p95=${agg.p95_ms}ms`,
+    );
+  }
   process.exit(failed === 0 ? 0 : 1);
 }
 

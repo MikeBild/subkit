@@ -1,0 +1,24 @@
+{
+  "name": "flow-env-override-routes-model",
+  "description": "applyFlowEnvOverrides picks up {FLOW}_MODEL for the target flow without touching other flows.",
+  "flow": "infra",
+  "input": {
+    "base_route": {
+      "tenant_id": "00000000-0000-0000-0000-000000000000",
+      "primary": "claude-sonnet-4-5",
+      "fallback": "claude-haiku-4-5-20251001",
+      "provider": "anthropic",
+      "fallback_provider": "anthropic",
+      "context_cap": 200000,
+      "monthly_budget": null,
+      "enable_prompt_cache": false
+    },
+    "env": { "EXTRACT_MODEL": "claude-haiku-4-5-20251001" },
+    "target_flow": "extract",
+    "untouched_flow": "converse",
+    "expect": {
+      "primary_for_target": "claude-haiku-4-5-20251001",
+      "primary_for_untouched": "claude-sonnet-4-5"
+    }
+  }
+}
