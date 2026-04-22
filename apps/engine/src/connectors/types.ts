@@ -27,6 +27,9 @@ export const DriverEnum = z.enum([
   "mqtt",
   "imap",
   "ftp",
+  "sftp",
+  "smb",
+  "redis",
 ]);
 export type DriverName = z.infer<typeof DriverEnum>;
 
