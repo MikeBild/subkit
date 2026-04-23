@@ -20,7 +20,7 @@ import { resolveAttachments } from "../attachments.ts";
 import { recordTransition } from "../confirmation.ts";
 import { createElicitation } from "../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
-import { resolveToolMode, type ToolPolicies } from "../tool-policies.ts";
+import { type PermissionMode, resolveToolMode, type ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
 import { compileDescription } from "./describe.ts";
 import { filterBySkillGate } from "./gated.ts";
@@ -62,6 +62,17 @@ export interface TurnSignals {
    */
   pendingChildToolCallIds: string[];
   pendingChildElicitationIds: string[];
+  /**
+   * Loop-breaker: per-turn counter of how many times each tool has
+   * been invoked, plus the hash of the last error payload per tool.
+   * When the same tool fails with the same error twice in a row, or
+   * any tool is invoked more than `MAX_TOOL_CALLS_PER_TURN` times,
+   * the wrapper short-circuits with a `tool.loop_detected` result so
+   * the model has to change approach. This broke the 6-iteration
+   * commit_draft / delete_workflow loop observed in session 46ee7ec8.
+   */
+  toolInvocationCount: Map<string, number>;
+  toolLastErrorHash: Map<string, string>;
 }
 
 /**
@@ -114,6 +125,7 @@ function wrapOne(
   events: TurnEvent[],
   db: Db,
   toolPolicies: ToolPolicies,
+  permissionMode: PermissionMode | null,
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
   // Cast the Zod-openapi schema to the SDK's `z.ZodType` shape — the
   // two packages ship their own Zod re-exports and the variances do not
@@ -139,6 +151,36 @@ function wrapOne(
       });
       await prevChain;
       const executeBody = async (): Promise<WrappedToolOutput> => {
+        // Loop-breaker: short-circuit before doing any side effects
+        // when the model has already called this tool too many times
+        // in the current turn.
+        const MAX_CALLS_PER_TURN = 5;
+        const priorCount = signals.toolInvocationCount.get(inner.name) ?? 0;
+        if (priorCount >= MAX_CALLS_PER_TURN) {
+          log.conversation.tool.called({
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            step: signals.step,
+          });
+          events.push({
+            type: "tool_log",
+            call_id: "loop-detected",
+            tool: inner.name,
+            level: "warn",
+            message: `tool.loop_detected: ${inner.name} called ${priorCount} times in one turn — aborting further calls`,
+            ts: new Date().toISOString(),
+          });
+          return {
+            ok: false,
+            data: {
+              error: `this tool has already been invoked ${priorCount} times in the current turn — change approach or ask the user for guidance instead of retrying with the same shape`,
+              reason: "tool_loop_detected",
+              tool: inner.name,
+            },
+          };
+        }
+        signals.toolInvocationCount.set(inner.name, priorCount + 1);
+
         const step = signals.step++;
         const startedAt = Date.now();
         const toolCallId = await insertToolCall(db, {
@@ -191,6 +233,7 @@ function wrapOne(
           category: inner.category,
           input: rawArgs,
           overrides: toolPolicies,
+          permission_mode: permissionMode,
         });
         const policyMarker = (rawArgs as { __policy_confirmed?: boolean }).__policy_confirmed;
         const needsPreConfirmation =
@@ -402,6 +445,25 @@ function wrapOne(
           duration_ms: Date.now() - startedAt,
         });
 
+        // Track the last error shape so repeated identical failures
+        // can break out of a loop. A "shape" is the (reason, error)
+        // pair — same reason + same first ~80 chars of error counts
+        // as a repeat.
+        if (result.ok) {
+          signals.toolLastErrorHash.delete(inner.name);
+        } else {
+          const errObj = (result.data ?? {}) as Record<string, unknown>;
+          const reason = typeof errObj.reason === "string" ? errObj.reason : "";
+          const err =
+            typeof errObj.error === "string"
+              ? errObj.error
+              : Array.isArray(errObj.errors)
+                ? JSON.stringify(errObj.errors).slice(0, 120)
+                : "";
+          const shape = `${reason}|${err.slice(0, 120)}`;
+          signals.toolLastErrorHash.set(inner.name, shape);
+        }
+
         // Mirror the old loop: a `tool` role message keeps the audit
         // trail of the turn self-contained in `conversation_messages`.
         // The persisted message carries the full output (not truncated)
@@ -497,12 +559,13 @@ export function wrapTools(
   db: Db,
   loadedSkills: ReadonlyArray<string> = [],
   toolPolicies: ToolPolicies = {},
+  permissionMode: PermissionMode | null = null,
 ): Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> {
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   // Apply skill-gate: tools whose `requires_skill` isn't in loadedSkills
   // are hidden from the model until the matching `load_skill` call.
   for (const t of filterBySkillGate(listTools(), loadedSkills)) {
-    out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies);
+    out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode);
   }
   return out;
 }

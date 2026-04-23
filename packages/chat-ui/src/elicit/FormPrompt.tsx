@@ -62,11 +62,37 @@ function initialValues(fields: FormField[]): FieldValues {
   return initial;
 }
 
+function isPrintableChar(code: number): boolean {
+  return code !== 0x7f && (code >= 0x20 || code >= 0x80);
+}
+
 function isPrintable(input: string, key: { ctrl: boolean; meta: boolean }): boolean {
   if (key.ctrl || key.meta) return false;
   if (input.length !== 1) return false;
   const code = input.charCodeAt(0);
-  return code >= 0x20 && code !== 0x7f;
+  return isPrintableChar(code);
+}
+
+/**
+ * Strip bracketed-paste wrappers + control chars from a paste chunk.
+ * Single-line form fields strip newlines too; multi-line-aware fields
+ * (if ever added) can bypass this.
+ */
+// Built via `new RegExp` with a unicode escape so the source file
+// doesn't embed a literal ESC (0x1b) byte that lint flags as a control
+// char in regex-literal syntax.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: literal ESC byte is exactly what we strip — RegExp(...) constructor triggers the opposite "prefer literal" rule.
+const BRACKETED_PASTE_RE = /\u001b\[20[01]~/g;
+
+function sanitizePasteChunk(raw: string, singleLine: boolean): string {
+  const unwrapped = raw.replace(BRACKETED_PASTE_RE, "");
+  const preNorm = singleLine ? unwrapped.replace(/[\r\n\t]+/g, "") : unwrapped;
+  let out = "";
+  for (const ch of preNorm) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (isPrintableChar(code) || (!singleLine && (code === 0x0a || code === 0x09))) out += ch;
+  }
+  return out;
 }
 
 function isNumericChar(ch: string): boolean {
@@ -174,6 +200,25 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
           const cur = typeof v[f.name] === "string" ? (v[f.name] as string) : "";
           return { ...v, [f.name]: cur.slice(0, -1) };
         });
+        return;
+      }
+
+      // Paste: whole clipboard comes in as one chunk. For number
+      // fields keep only digits; for text / password allow any
+      // printable char. Fixes GitHub-Token / API-key pastes that
+      // previously got dropped because isPrintable rejected
+      // multi-char inputs.
+      if (!key.ctrl && !key.meta && input.length > 1) {
+        const clean = sanitizePasteChunk(input, true);
+        const filtered =
+          f.type === "number" ? clean.split("").filter(isNumericChar).join("") : clean;
+        if (filtered.length > 0) {
+          setError(null);
+          setValues((v) => {
+            const cur = typeof v[f.name] === "string" ? (v[f.name] as string) : "";
+            return { ...v, [f.name]: cur + filtered };
+          });
+        }
         return;
       }
 

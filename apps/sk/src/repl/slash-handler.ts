@@ -885,6 +885,88 @@ export async function handleSlash(
       ctx.setConversationId(null);
       return "session cleared";
     }
+    case "export": {
+      // Render the current session transcript to a Markdown file in
+      // the current working directory. Covers user/assistant messages,
+      // tool calls (with truncated output), and the usage summary so
+      // operators can share a conversation without screenshots.
+      if (!ctx.session.conversationId) return "no active conversation to export";
+      const parts: string[] = [];
+      const convId = ctx.session.conversationId;
+      parts.push(`# sk conversation ${convId}`);
+      parts.push("");
+      parts.push(`- exported: ${new Date().toISOString()}`);
+      parts.push(`- profile: ${ctx.profile.name}`);
+      parts.push(`- engine: ${ctx.profile.engine_url}`);
+      parts.push("");
+      const byId = new Map<string, (typeof ctx.session.toolCalls)[number][]>();
+      const orphan: (typeof ctx.session.toolCalls)[number][] = [];
+      for (const tc of ctx.session.toolCalls) {
+        if (tc.parent_message_id) {
+          const list = byId.get(tc.parent_message_id) ?? [];
+          list.push(tc);
+          byId.set(tc.parent_message_id, list);
+        } else {
+          orphan.push(tc);
+        }
+      }
+      for (let i = 0; i < ctx.session.messages.length; i++) {
+        const m = ctx.session.messages[i];
+        if (!m) continue;
+        const header =
+          m.role === "user"
+            ? "### User"
+            : m.role === "assistant"
+              ? "### Assistant"
+              : m.role === "tool"
+                ? "### Tool result"
+                : "### System";
+        parts.push(header);
+        parts.push("");
+        parts.push(m.content || "_(empty)_");
+        parts.push("");
+        const tcs = m.id ? byId.get(m.id) : undefined;
+        if (tcs && tcs.length > 0) {
+          for (const tc of tcs) {
+            parts.push(`**tool:** \`${tc.name}\` · ${tc.status}`);
+            if (tc.args !== undefined) {
+              parts.push("```json");
+              parts.push(JSON.stringify(tc.args, null, 2).slice(0, 2000));
+              parts.push("```");
+            }
+            if (tc.result !== undefined) {
+              parts.push("```json");
+              parts.push(JSON.stringify(tc.result, null, 2).slice(0, 2000));
+              parts.push("```");
+            }
+            if (tc.error) parts.push(`> error: ${tc.error}`);
+            parts.push("");
+          }
+        }
+      }
+      if (orphan.length > 0) {
+        parts.push("### Orphan tool calls (no parent message)");
+        for (const tc of orphan) {
+          parts.push(`- \`${tc.name}\` · ${tc.status}`);
+        }
+        parts.push("");
+      }
+      if (ctx.session.usage) {
+        parts.push("### Usage");
+        parts.push("```json");
+        parts.push(JSON.stringify(ctx.session.usage, null, 2));
+        parts.push("```");
+      }
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `sk-transcript-${convId.slice(0, 8)}-${ts}.md`;
+      const absPath = join(process.cwd(), filename);
+      try {
+        fs.writeFileSync(absPath, parts.join("\n"), "utf8");
+      } catch (err) {
+        return `export failed: ${(err as Error).message}`;
+      }
+      return `exported to ${filename}`;
+    }
     case "resume": {
       const res = await ctx.client.listConversations({ owner: "me", limit: 25 });
       if (res.items.length === 0) return "no prior conversations to resume";

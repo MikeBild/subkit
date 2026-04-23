@@ -85,6 +85,14 @@ export interface RunLoopParams {
     actor_email?: string;
     actor_role?: string;
   };
+  /**
+   * Client-supplied permission mode for this turn. Overrides the
+   * per-tool policy matrix: "auto" skips confirmations on
+   * non-dangerous tools, "ask" confirms every tenant_write, "plan"
+   * is surfaced to the client identically to "ask". See
+   * `tool-policies.ts#resolveToolMode` for the full precedence order.
+   */
+  permission_mode?: "auto" | "ask" | "plan" | null;
 }
 
 export interface RunLoopResult {
@@ -492,8 +500,18 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     toolChain: Promise.resolve(),
     pendingChildToolCallIds: [],
     pendingChildElicitationIds: [],
+    toolInvocationCount: new Map(),
+    toolLastErrorHash: new Map(),
   };
-  const tools = wrapTools(ctx, signals, events, p.db, loadedSkills, loopToolPolicies);
+  const tools = wrapTools(
+    ctx,
+    signals,
+    events,
+    p.db,
+    loadedSkills,
+    loopToolPolicies,
+    p.permission_mode ?? null,
+  );
 
   /**
    * Run `streamText` once against `modelId`. Wired-in side-effects

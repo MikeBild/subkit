@@ -30,7 +30,7 @@ import {
 } from "@chat-ui/index.ts";
 import type { SkSessionState, ToolCallState, TurnEvent } from "@cli-core/index.ts";
 import { applyTurnEvent, initialSessionState } from "@cli-core/index.ts";
-import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { SetupValidationResponse, StatusSummary } from "./engine-client.ts";
@@ -126,7 +126,10 @@ export interface InkAppProps {
    */
   historyPath?: string;
   /** Called when the user submits a plain prompt (non-slash). */
-  onPrompt: (text: string) => Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }>;
+  onPrompt: (
+    text: string,
+    opts?: { permission_mode?: "auto" | "ask" | "plan" },
+  ) => Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }>;
   /** Called when the user submits a slash command other than `/exit`. */
   onSlash?: (
     name: string,
@@ -178,6 +181,38 @@ export interface InkAppProps {
 // expands (Ctrl+E in a future iteration — for now always compact).
 
 const SPINNER_FRAMES = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"] as const;
+
+// Render an elicitation's `output` payload as a short, human-readable
+// string for the transcript. Keeps the assistant turn auditable —
+// without this the scrollback silently mutates ("approve" disappears
+// from the record after the next LLM response).
+function renderElicitAnswer(output: unknown, reason?: string): string {
+  const suffix = reason ? ` — ${reason}` : "";
+  if (output === null || output === undefined) return `(no answer)${suffix}`;
+  if (typeof output === "string") return `${output}${suffix}`;
+  if (typeof output === "number" || typeof output === "boolean") {
+    return `${String(output)}${suffix}`;
+  }
+  if (typeof output === "object") {
+    const obj = output as Record<string, unknown>;
+    if (obj.confirmed === true) return `approve${suffix}`;
+    if (obj.confirmed === false || obj.declined === true) return `reject${suffix}`;
+    if (obj.tested === true) return `test${suffix}`;
+    if (obj.partial === true) return `partial${suffix}`;
+    if (typeof obj.value === "string") return `${obj.value}${suffix}`;
+    if (typeof obj.choice === "string") return `${obj.choice}${suffix}`;
+    if (Array.isArray(obj.choices)) return `${(obj.choices as unknown[]).join(", ")}${suffix}`;
+    // Generic form output — show the first few keys inline.
+    const parts: string[] = [];
+    for (const [k, v] of Object.entries(obj)) {
+      if (typeof v === "string") parts.push(`${k}=${v}`);
+      else if (typeof v === "number" || typeof v === "boolean") parts.push(`${k}=${v}`);
+      if (parts.length >= 3) break;
+    }
+    if (parts.length > 0) return `${parts.join(", ")}${suffix}`;
+  }
+  return `(answered)${suffix}`;
+}
 
 function summarizeSuccessData(data: unknown): string | null {
   if (data === null || typeof data !== "object") return null;
@@ -1158,15 +1193,22 @@ export const InkApp: React.FC<InkAppProps> = ({
     busyRef.current = true;
     setBusy(true);
     try {
-      const baseState: SkSessionState = {
+      // Synthesize a user-role message capturing what the operator
+      // just chose so the transcript doesn't look like the LLM
+      // produced the answer out of thin air. Without this, an
+      // approve-then-next-turn flow shows the LLM saying "Approve"
+      // with no visible source. See bug E in the fix plan.
+      const answerText = renderElicitAnswer(output, reason);
+      const withAnswer: SkSessionState = {
         ...session,
+        messages: [...session.messages, { role: "user", content: answerText }],
         pendingElicitation: null,
         status: "running",
       };
-      setSession(baseState);
+      setSession(withAnswer);
       const outcome = await onElicitResponse(elicitationId, output, reason);
       await applyEventStream(
-        baseState,
+        withAnswer,
         outcome?.events,
         outcome?.conversationId ?? session.conversationId,
       );
@@ -1289,7 +1331,9 @@ export const InkApp: React.FC<InkAppProps> = ({
 
       try {
         setStickyError(null);
-        const { events, conversationId } = await onPrompt(finalPrompt);
+        const { events, conversationId } = await onPrompt(finalPrompt, {
+          permission_mode: activeMode,
+        });
         await applyEventStream({ ...session, conversationId }, events, conversationId);
       } catch (err) {
         showError(humanizeRequestError(err));
@@ -1309,6 +1353,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       }
     },
     [
+      activeMode,
       exit,
       onElicitResponse,
       onExit,
@@ -1632,15 +1677,35 @@ export const InkApp: React.FC<InkAppProps> = ({
   // list gets the vertical space back.
   const showBanner = session.messages.length === 0;
 
-  // Build one child per transcript row so ScrollView can window them.
+  // Build transcript rows split across two buckets so Ink can render
+  // the committed scrollback through <Static> (written once to stdout,
+  // survives re-renders, keeps OS-level mouse selection working) and
+  // the currently-running turn through the normal dynamic tree.
+  //
+  // Static commit point: a message is "finalized" the moment it lands
+  // in session.messages — applyTurnEvent only pushes there at the end
+  // of a message. Tool calls with status "ok"/"failed"/"declined" are
+  // likewise finalized. Anything still running (streaming assistant
+  // text, in-flight tool cards, pending elicit) stays dynamic.
+  //
   // Tool calls, logs, and pending elicit forms are interleaved under
   // their parent assistant message via `parent_message_id`. Children
   // without an anchor (legacy data, or live events that arrived
   // pre-anchor) render in a trailing block at the end so nothing gets
   // dropped. This is the fix for the chronological-display bug — see
   // the plan at .claude/plans/find-issues-in-display-tranquil-harp.md.
-  const transcriptRows: React.ReactNode[] = [];
+  const staticRows: React.ReactNode[] = [];
+  const dynamicRows: React.ReactNode[] = [];
+  // Alias used by render helpers below — they push into whichever
+  // array is currently "active". Starts with static; we switch to
+  // dynamic once a not-yet-finalized node appears.
+  let transcriptRows = staticRows;
   const inspectView = transcriptMode === "inspect";
+  // A tool call has reached a terminal status and can live in Static.
+  // (Pending/running calls stay dynamic so their spinner keeps updating
+  // without tearing the scrollback above.)
+  const isToolCallFinalized = (call: ToolCallState): boolean =>
+    call.status === "done" || call.status === "failed";
 
   // Bucket tool calls by parent_message_id. Order within each bucket
   // is preserved from `deferredToolCalls` (which the reducer appends
@@ -1758,15 +1823,33 @@ export const InkApp: React.FC<InkAppProps> = ({
     transcriptRows.push(<MessageRow key={`msg-${i}`} role={m.role} content={m.content} />);
     if (m.id) {
       const childCalls = callsByParent.get(m.id);
-      if (childCalls && childCalls.length > 0) renderToolCallList(childCalls, `m${i}`);
-      if (elicitAnchor === m.id) renderElicitInline();
+      if (childCalls && childCalls.length > 0) {
+        // Split children: finalized → static (alongside this message),
+        // still-running → dynamic (appended below so the spinner
+        // keeps animating without re-rendering the scrollback).
+        const finalized = childCalls.filter(isToolCallFinalized);
+        const active = childCalls.filter((c) => !isToolCallFinalized(c));
+        if (finalized.length > 0) renderToolCallList(finalized, `m${i}`);
+        if (active.length > 0) {
+          transcriptRows = dynamicRows;
+          renderToolCallList(active, `m${i}-active`);
+          transcriptRows = staticRows;
+        }
+      }
+      if (elicitAnchor === m.id) {
+        // Pending elicit is by definition unresolved → dynamic.
+        transcriptRows = dynamicRows;
+        renderElicitInline();
+        transcriptRows = staticRows;
+      }
     }
   }
-  // Live streaming assistant buffer — rendered below finalised messages
-  // until the next `message` frame arrives and clears it. Keeps the REPL
-  // responsive as tokens arrive rather than waiting for the turn to end.
+  // Live streaming assistant buffer — rendered in the dynamic bucket
+  // until the next `message` frame arrives and clears it. Keeps the
+  // REPL responsive as tokens arrive rather than waiting for the turn
+  // to end, while the finished scrollback above stays in Static.
   if (session.streamingAssistantText.length > 0) {
-    transcriptRows.push(
+    dynamicRows.push(
       <MessageRow
         key="live-delta"
         role={"assistant" as const}
@@ -1777,8 +1860,18 @@ export const InkApp: React.FC<InkAppProps> = ({
   // Orphaned tool calls (no parent_message_id, or anchor not in
   // current messages array). Rendered as a trailing block so nothing
   // is silently dropped — happens for legacy conversations from before
-  // engine migration 0032.
-  if (orphanCalls.length > 0) renderToolCallList(orphanCalls, "orphan");
+  // engine migration 0032. Split static / dynamic by status like the
+  // anchored path above.
+  if (orphanCalls.length > 0) {
+    const finalized = orphanCalls.filter(isToolCallFinalized);
+    const active = orphanCalls.filter((c) => !isToolCallFinalized(c));
+    if (finalized.length > 0) renderToolCallList(finalized, "orphan");
+    if (active.length > 0) {
+      transcriptRows = dynamicRows;
+      renderToolCallList(active, "orphan-active");
+      transcriptRows = staticRows;
+    }
+  }
 
   const content = (
     <Box flexDirection="column">
@@ -1816,10 +1909,18 @@ export const InkApp: React.FC<InkAppProps> = ({
       ) : null}
       {stickyError ? <StickyErrorPanel message={stickyError} /> : null}
 
-      {/* Scrollable transcript. Shift+↑/↓ or PgUp/PgDn to move,
-          Meta+↑/↓ jump to top/bottom. Auto-pins to bottom as turns
-          stream in, until the user manually scrolls. */}
-      <ScrollView active={composerActive && pane === null}>{transcriptRows}</ScrollView>
+      {/* Committed scrollback — written once to stdout via Ink Static.
+          Survives re-renders, so terminal mouse-selection and copy
+          keep working while the live area below keeps ticking. The
+          Static bucket holds all finalized messages + tool calls; the
+          current-turn dynamic bucket renders separately underneath. */}
+      {staticRows.length > 0 ? <Static items={staticRows}>{(row) => row}</Static> : null}
+      {/* Live/dynamic transcript — streaming assistant text, running
+          tool cards, pending elicit boxes. Kept inside ScrollView so
+          long in-flight turns still get windowed. */}
+      {dynamicRows.length > 0 ? (
+        <ScrollView active={composerActive && pane === null}>{dynamicRows}</ScrollView>
+      ) : null}
 
       {/* Elicit router — bottom-of-screen fallback for elicitations
           that arrived without a `parent_message_id` (legacy data, or

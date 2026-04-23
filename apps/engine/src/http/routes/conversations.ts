@@ -124,6 +124,8 @@ const ConversationDetailSchema = z
   })
   .openapi("ConversationDetail");
 
+const PermissionModeSchema = z.enum(["auto", "ask", "plan"]);
+
 const CreateBody = z
   .object({
     connector_id: z.string().uuid().optional(),
@@ -132,6 +134,7 @@ const CreateBody = z
     memory: z.string().optional(),
     model: z.string().optional(),
     title: z.string().optional(),
+    permission_mode: PermissionModeSchema.optional(),
   })
   .openapi("CreateConversationBody");
 
@@ -139,6 +142,7 @@ const AppendMessageBody = z
   .object({
     message: z.string().min(1),
     memory: z.string().optional(),
+    permission_mode: PermissionModeSchema.optional(),
   })
   .openapi("AppendConversationMessageBody");
 
@@ -499,6 +503,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(body.memory !== undefined ? { memory: body.memory } : {}),
         ...(body.model ? { model: body.model } : {}),
         ...(body.title ? { title: body.title } : {}),
+        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
         runtime_context: buildRuntimeContextFromRequest(c, principal),
       },
       db,
@@ -537,6 +542,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
         actor_id: principal.id,
         message: body.message,
         ...(body.memory !== undefined ? { memory: body.memory } : {}),
+        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
         runtime_context: buildRuntimeContextFromRequest(c, principal),
       },
       db,

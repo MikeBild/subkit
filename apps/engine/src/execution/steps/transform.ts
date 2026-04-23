@@ -33,32 +33,136 @@ export interface RunTransformParams {
 // Walk a parsed jsonata AST collecting top-level identifiers — the
 // first step of any `path` node, plus standalone `variable` nodes
 // (`$foo`). Any identifier not in `known` surfaces as an
-// `unresolved_identifier` warning. Walker handles arbitrary nesting
-// (object constructors wrap pairs inside `lhs` arrays; function calls
-// hide children in `arguments`, etc.) by recursing over every own
-// property.
+// `unresolved_identifier` warning. The walker is scope-aware so it
+// does NOT flag identifiers that were introduced by the expression
+// itself:
+//
+//   - `function($r){...}` / lambda arguments: `$r` is in scope inside
+//     the body. Shows up in AST as `lambda` / `function_def` nodes
+//     with `arguments: [{ type: "variable", value: "r" }, ...]`.
+//   - `$foo := expr` bindings: the `bind`-type node has a `lhs`
+//     variable that becomes available to everything after it.
+//   - `let`/`let_expression` bindings (older jsonata AST shape).
+//
+// Without this, writing `$filter(data, function($r) { $r.private })`
+// produced three spurious "unresolved_identifier" warnings ($r, plus
+// any locals) and confused LLMs into rewriting the expression with
+// worse shapes. Recurses over own properties for arbitrary nesting.
 interface AstNode {
   type?: string;
   value?: unknown;
   steps?: unknown;
+  arguments?: unknown;
+  body?: unknown;
+  lhs?: unknown;
+  rhs?: unknown;
+  expressions?: unknown;
+}
+
+function collectLocalBindings(node: AstNode, add: (name: string) => void): void {
+  // Lambda / anonymous function args: { type: "lambda" | "function_def",
+  // arguments: [{ type: "variable", value: "r" }, ...] }.
+  if (
+    (node.type === "lambda" || node.type === "function" || node.type === "function_def") &&
+    Array.isArray(node.arguments)
+  ) {
+    for (const a of node.arguments) {
+      const arg = a as AstNode;
+      if (arg?.type === "variable" && typeof arg.value === "string") add(`$${arg.value}`);
+    }
+  }
 }
 
 function visitRootIdentifiers(node: unknown, emit: (id: string) => void): void {
+  visitWithScope(node, emit, new Set<string>());
+}
+
+function visitWithScope(
+  node: unknown,
+  emit: (id: string) => void,
+  scoped: ReadonlySet<string>,
+): void {
   if (!node || typeof node !== "object") return;
   if (Array.isArray(node)) {
-    for (const child of node) visitRootIdentifiers(child, emit);
+    for (const child of node) visitWithScope(child, emit, scoped);
     return;
   }
   const ast = node as AstNode;
+
+  // Lambda/function: its arguments are in scope inside the body only.
+  if (ast.type === "lambda" || ast.type === "function_def") {
+    const inner = new Set(scoped);
+    collectLocalBindings(ast, (n) => inner.add(n));
+    if (ast.body !== undefined) visitWithScope(ast.body, emit, inner);
+    // Default arg values / procedure identifier (if any) still live
+    // in the outer scope.
+    for (const [k, v] of Object.entries(ast)) {
+      if (k === "type" || k === "value" || k === "position" || k === "body" || k === "arguments") {
+        continue;
+      }
+      visitWithScope(v, emit, scoped);
+    }
+    return;
+  }
+
+  // `$name := expr` — the RHS runs in the outer scope, but the name
+  // becomes available for any subsequent nodes in the enclosing
+  // expression block.
+  if (ast.type === "bind") {
+    const lhs = ast.lhs as AstNode | undefined;
+    if (lhs?.type === "variable" && typeof lhs.value === "string") {
+      // Visit RHS first (outer scope) so a `self-referential` bind
+      // would still warn. Then the name joins the caller's scope via
+      // the `block`/expression list handler below.
+      if (ast.rhs !== undefined) visitWithScope(ast.rhs, emit, scoped);
+      // Note: we intentionally do not emit lhs as unresolved; it's
+      // being defined here. The block-level walker tracks the bind.
+      return;
+    }
+  }
+
+  // `(expr; expr; ...)` block / `expressions` list — bindings declared
+  // earlier are visible to later expressions. Drizzle shape: `{ type:
+  // "block", expressions: [...] }` or similar. We scan the list in
+  // order and grow the scope as we encounter `bind` nodes.
+  if (Array.isArray(ast.expressions)) {
+    const inner = new Set(scoped);
+    for (const exprNode of ast.expressions) {
+      const e = exprNode as AstNode;
+      if (e?.type === "bind") {
+        const lhs = e.lhs as AstNode | undefined;
+        if (lhs?.type === "variable" && typeof lhs.value === "string") {
+          if (e.rhs !== undefined) visitWithScope(e.rhs, emit, inner);
+          inner.add(`$${lhs.value}`);
+          continue;
+        }
+      }
+      visitWithScope(e, emit, inner);
+    }
+    // Walk any siblings beyond `expressions` (shouldn't exist, but
+    // safe).
+    for (const [k, v] of Object.entries(ast)) {
+      if (k === "type" || k === "value" || k === "position" || k === "expressions") continue;
+      visitWithScope(v, emit, inner);
+    }
+    return;
+  }
+
   if (ast.type === "path" && Array.isArray(ast.steps) && ast.steps.length >= 1) {
     const head = ast.steps[0] as AstNode | undefined;
     if (head?.type === "name" && typeof head.value === "string") emit(head.value);
-    if (head?.type === "variable" && typeof head.value === "string") emit(`$${head.value}`);
+    if (head?.type === "variable" && typeof head.value === "string") {
+      const id = `$${head.value}`;
+      if (!scoped.has(id)) emit(id);
+    }
   }
-  if (ast.type === "variable" && typeof ast.value === "string") emit(`$${ast.value}`);
+  if (ast.type === "variable" && typeof ast.value === "string") {
+    const id = `$${ast.value}`;
+    if (!scoped.has(id)) emit(id);
+  }
   for (const [k, v] of Object.entries(ast)) {
     if (k === "type" || k === "value" || k === "position") continue;
-    visitRootIdentifiers(v, emit);
+    visitWithScope(v, emit, scoped);
   }
 }
 

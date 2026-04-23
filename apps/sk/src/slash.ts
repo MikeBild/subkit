@@ -202,6 +202,11 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "util",
   },
   {
+    name: "export",
+    help: "Save the current transcript to a Markdown file (./sk-transcript-<id>-<ts>.md)",
+    category: "util",
+  },
+  {
     name: "view",
     help: "Switch transcript view — `/view chat` or `/view inspect`",
     category: "util",

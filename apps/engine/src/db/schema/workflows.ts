@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -33,7 +34,14 @@ export const workflows = pgTable(
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [uniqueIndex("workflows_tenant_slug_key").on(t.tenant_id, t.slug)],
+  (t) => [
+    // Partial unique: soft-deleted rows must not block their slug. Without
+    // this, `delete_workflow` + re-create with the same slug fails with
+    // 23505 even though the live tenant has no such workflow anymore.
+    uniqueIndex("workflows_tenant_slug_active_key")
+      .on(t.tenant_id, t.slug)
+      .where(sql`${t.deleted_at} IS NULL`),
+  ],
 );
 
 export const workflowVersions = pgTable(

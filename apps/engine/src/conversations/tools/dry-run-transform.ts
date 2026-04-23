@@ -139,6 +139,7 @@ export const dryRunTransformTool: ConversationTool = {
     `Template dialect resolves \${input.*} and \${scope.*} only; \${cred.*}/\${connector.*} are not looked up and produce placeholder_unresolved.`,
     "Expression is timed out at 1s by default (max 2s) to keep authoring UX responsive.",
     "Audit metadata records only an expression hash + dialect — the raw expression may contain PII and is never written.",
+    "IMPORTANT: `sample_data` must be the LITERAL data the expression runs against (a real JSON value — array, object, number, string). Passing a reference string like `$scope.fetch_repos.data` sends the string itself into the evaluator, not the data it points to. Use `inspect_authoring_context` or `dry_run_step` to capture real step output, then paste the actual JSON here.",
   ],
   requires_skill: "data-handling",
   example_input: {
@@ -166,6 +167,33 @@ export const dryRunTransformTool: ConversationTool = {
       };
     }
     const args = parsed.data;
+
+    // Guardrail: if `sample_data` is a string that looks like a scope /
+    // placeholder reference (e.g. `$scope.fetch_repos.data` or
+    // `${scope.x}`), the caller almost certainly meant to pass the
+    // pointed-to data — not the reference string itself. Refuse
+    // early with an actionable hint instead of evaluating against a
+    // literal string and returning a confusing zero.
+    if (
+      typeof args.sample_data === "string" &&
+      /^\s*(\$scope\.|\$input\.|\$\.|\$\{)/.test(args.sample_data)
+    ) {
+      return {
+        ok: false,
+        data: {
+          persistence: "none" as const,
+          error: {
+            code: "runtime_error" as const,
+            message: `sample_data is a reference string (${args.sample_data.slice(
+              0,
+              80,
+            )}) — pass the actual JSON payload instead. Use dry_run_step or inspect_authoring_context to capture real step output, then paste the value here.`,
+          },
+          metadata: { dialect: args.dialect, duration_ms: 0 },
+        },
+      };
+    }
+
     const started = Date.now();
     let outcome: { ok: true; value: unknown } | { ok: false; error: EvalError };
 

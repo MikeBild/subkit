@@ -247,6 +247,7 @@ export class EngineClient {
     memory?: string;
     model?: string;
     title?: string;
+    permission_mode?: "auto" | "ask" | "plan";
   }): Promise<ConversationRunOutcome> {
     return this.request("POST", "/v1/conversations", body);
   }
@@ -255,7 +256,7 @@ export class EngineClient {
   }
   appendConversationMessage(
     id: string,
-    body: { message: string; memory?: string },
+    body: { message: string; memory?: string; permission_mode?: "auto" | "ask" | "plan" },
   ): Promise<ConversationRunOutcome> {
     return this.request("POST", `/v1/conversations/${id}/messages`, body);
   }
