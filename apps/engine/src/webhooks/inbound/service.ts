@@ -351,6 +351,8 @@ export async function handleInbound(
     tenant_id: row.tenant_id,
     workflow_id: row.workflow_id,
     workflow_version_id: wf.current_version_id,
+    source_kind: "saved",
+    source_ref: null,
     request_source: "webhook",
     parent_execution_id: null,
   });

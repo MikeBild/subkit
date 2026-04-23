@@ -25,18 +25,26 @@ export const patchStatusEnum = pgEnum("patch_status", [
 ]);
 
 // ----- executions -----------------------------------------------------------
+//
+// definition-driven: an execution can originate from
+//   • a saved workflow (source_kind='saved', workflow_id + workflow_version_id set)
+//   • an inline draft definition (source_kind='draft', workflow_id=NULL)
+//   • a single step test-run    (source_kind='step',  workflow_id=NULL)
+//
+// The saved-has-workflow CHECK lives at the DB level (migration 0034) so
+// the constraint is enforced even when code paths bypass Drizzle.
 
 export const executions = pgTable(
   "executions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    workflow_id: uuid("workflow_id")
-      .notNull()
-      .references(() => workflows.id, { onDelete: "cascade" }),
-    workflow_version_id: uuid("workflow_version_id")
-      .notNull()
-      .references(() => workflowVersions.id, { onDelete: "cascade" }),
+    workflow_id: uuid("workflow_id").references(() => workflows.id, { onDelete: "cascade" }),
+    workflow_version_id: uuid("workflow_version_id").references(() => workflowVersions.id, {
+      onDelete: "cascade",
+    }),
+    source_kind: text("source_kind").notNull().default("saved"),
+    source_ref: jsonb("source_ref").$type<Record<string, unknown> | null>(),
     status: executionStatusEnum("status").notNull(),
     request_source: text("request_source").notNull(),
     execution_mode: executionModeEnum("execution_mode").notNull(),
@@ -50,6 +58,7 @@ export const executions = pgTable(
     index("executions_tenant_workflow_started_idx").on(t.tenant_id, t.workflow_id, t.started_at),
     index("executions_tenant_status_idx").on(t.tenant_id, t.status),
     index("executions_tenant_request_source_idx").on(t.tenant_id, t.request_source),
+    index("executions_tenant_source_kind_idx").on(t.tenant_id, t.source_kind),
   ],
 );
 

@@ -60,6 +60,10 @@ export async function detectFailurePatterns(tenant_id: string, exec: Db): Promis
   const groups = new Map<string, FailureGroup>();
 
   for (const row of rows) {
+    // Draft and step runs have no persisted workflow_id — they are
+    // throwaway runs that never recur, so failure-pattern detection skips
+    // them. Only saved workflows produce candidates.
+    if (!row.workflow_id) continue;
     const err = row.error as Record<string, unknown> | null;
     const errorKind = (err?.kind as string) ?? (err?.code as string) ?? "unknown";
 

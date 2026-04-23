@@ -54,7 +54,7 @@ describe("per-step retry overrides", () => {
     const result = await runExecution({
       db: ctx.testDb.db,
       tenant_id: ctx.tenantId,
-      workflow_id,
+      source: { kind: "saved", workflow_id },
       input: null,
     });
     const elapsed = Date.now() - start;
@@ -83,7 +83,7 @@ describe("per-step retry overrides", () => {
     const result = await runExecution({
       db: ctx.testDb.db,
       tenant_id: ctx.tenantId,
-      workflow_id,
+      source: { kind: "saved", workflow_id },
       input: null,
     });
     expect(result.status).toBe("succeeded");
@@ -108,7 +108,7 @@ describe("per-step retry overrides", () => {
     const result = await runExecution({
       db: ctx.testDb.db,
       tenant_id: ctx.tenantId,
-      workflow_id,
+      source: { kind: "saved", workflow_id },
       input: null,
     });
     expect(result.status).toBe("failed");

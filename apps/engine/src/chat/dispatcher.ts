@@ -456,6 +456,8 @@ export async function handleChatEvent(
       tenant_id,
       workflow_id: wf.id,
       workflow_version_id,
+      source_kind: "saved",
+      source_ref: null,
       request_source: "chat",
       parent_execution_id: null,
     });

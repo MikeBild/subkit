@@ -43,7 +43,7 @@ describe("request timeout", () => {
     const result = await runExecution({
       db: ctx.testDb.db,
       tenant_id: ctx.tenantId,
-      workflow_id,
+      source: { kind: "saved", workflow_id },
       input: null,
     });
     expect(["timed_out", "failed"]).toContain(result.status);

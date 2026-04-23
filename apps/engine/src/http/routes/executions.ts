@@ -1,4 +1,8 @@
-// Execution list / get / steps / cancel.
+// Execution list / get / steps / cancel / run.
+//
+// The POST /v1/executions endpoint is the single runtime entry point —
+// saved, draft, and step runs all flow through it via a discriminated
+// union. Per hart-cut: POST /v1/workflows/{id}/run no longer exists.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, desc, eq } from "drizzle-orm";
@@ -6,9 +10,13 @@ import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schema
 import { writeEvent } from "../../db/events.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
 import { cancel as abortCancel, getAbort } from "../../execution/abort.ts";
+import { runExecution } from "../../execution/engine.ts";
+import type { RunExecutionSource } from "../../execution/resolve-definition.ts";
+import type { ExecutionMode } from "../../execution/types.ts";
 import { logger } from "../../logging/logger.ts";
 import { EXECUTION_RUN_QUEUE } from "../../queue/queues.ts";
-import { NotFoundError } from "../errors.ts";
+import { StepSchema, WorkflowDefSchema } from "../../workflows/types.ts";
+import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -16,8 +24,11 @@ import type { AppEnv } from "../openapi.ts";
 const ExecSchema = z
   .object({
     id: z.string(),
-    workflow_id: z.string(),
-    workflow_version_id: z.string(),
+    /** NULL for draft and step runs (no persisted workflow row). */
+    workflow_id: z.string().nullable(),
+    workflow_version_id: z.string().nullable(),
+    source_kind: z.enum(["saved", "draft", "step"]),
+    source_ref: z.record(z.string(), z.unknown()).nullable(),
     status: z.string(),
     request_source: z.string(),
     parent_execution_id: z.string().nullable(),
@@ -110,11 +121,89 @@ const cancelRoute = createRoute({
   },
 });
 
+// POST /v1/executions — the single runtime entry point.
+//
+// Discriminated union over `source`:
+//   • saved  → references a persisted workflow by id
+//   • draft  → inline WorkflowDef, no commit required
+//   • step   → single StepDef, one-step synthetic workflow
+//
+// `sync=true` returns the full RunResult inline (no queue).
+// `sync=false` (default) queues the run and returns a 202 with an
+// execution id. Only saved runs support the async queued path — draft
+// and step runs always execute inline because there's no persisted
+// workflow to reference from a queue job.
+const RunBodySchema = z.discriminatedUnion("source", [
+  z
+    .object({
+      source: z.literal("saved"),
+      workflow_id: z.string().uuid(),
+      version_id: z.string().uuid().optional(),
+      input: z.unknown().optional(),
+      sync: z.boolean().optional(),
+    })
+    .openapi("RunSavedBody"),
+  z
+    .object({
+      source: z.literal("draft"),
+      definition: WorkflowDefSchema,
+      name: z.string().optional(),
+      input: z.unknown().optional(),
+    })
+    .openapi("RunDraftBody"),
+  z
+    .object({
+      source: z.literal("step"),
+      step: StepSchema,
+      workflow_slug: z.string().optional(),
+      input: z.unknown().optional(),
+      scope: z.record(z.string(), z.unknown()).optional(),
+      timeout_ms: z.number().int().positive().max(60_000).optional(),
+    })
+    .openapi("RunStepBody"),
+]);
+
+const RunResponseSchema = z
+  .object({
+    execution_id: z.string(),
+    status: z.string(),
+    output: z.unknown().optional(),
+    error: z.unknown().nullable().optional(),
+    steps: z.array(z.unknown()).optional(),
+    warnings: z.array(z.unknown()).optional(),
+  })
+  .openapi("ExecutionRunResponse");
+
+const runExecutionRoute = createRoute({
+  method: "post",
+  path: "/v1/executions",
+  tags: ["executions"],
+  summary: "Run a saved workflow, a draft definition, or a single step",
+  security: [{ bearerAuth: [] }],
+  request: {
+    headers: z.object({ "x-subkit-environment": z.enum(["dev", "prod"]).optional() }),
+    body: { content: { "application/json": { schema: RunBodySchema } } },
+  },
+  responses: {
+    200: {
+      description: "Run completed",
+      content: { "application/json": { schema: RunResponseSchema } },
+    },
+    400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
+    404: {
+      description: "Workflow not found",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
 function serializeExec(row: typeof executions.$inferSelect) {
   return {
     id: row.id,
-    workflow_id: row.workflow_id,
-    workflow_version_id: row.workflow_version_id,
+    workflow_id: row.workflow_id ?? null,
+    workflow_version_id: row.workflow_version_id ?? null,
+    source_kind: (row.source_kind as "saved" | "draft" | "step") ?? "saved",
+    source_ref: row.source_ref ?? null,
     status: row.status,
     request_source: row.request_source,
     parent_execution_id: row.parent_execution_id ?? null,
@@ -145,9 +234,13 @@ function serializeStep(row: typeof executionSteps.$inferSelect) {
 
 export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
   // RBAC: execution reads go through `execution:read`; cancel goes
-  // through `execution:abort`. The SSE stream is also read-only.
+  // through `execution:abort`. POST /v1/executions goes through
+  // `workflow:run` for saved runs and `workflow:draft_run` for draft/step
+  // runs (a strictly weaker grant that does not imply access to any
+  // persisted workflow). The SSE stream is read-only.
   app.use("/v1/executions", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("execution:read")(c, next);
+    if (c.req.method === "POST") return requirePermission("workflow:run")(c, next);
     return next();
   });
   app.use("/v1/executions/:id", async (c, next) => {
@@ -168,6 +261,81 @@ export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/executions/:id/stream", async (c, next) => {
     const id = c.req.param("id");
     return requirePermission("execution:read", () => ({ type: "execution", id }))(c, next);
+  });
+
+  app.openapi(runExecutionRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const body = c.req.valid("json");
+
+    // Resolve execution_mode from the `x-subkit-environment` header, same
+    // shape POST /v1/workflows/{id}/run used to accept.
+    const envHeader = c.req.header("x-subkit-environment");
+    let execution_mode: ExecutionMode = "dev";
+    if (envHeader === "dev" || envHeader === "prod") execution_mode = envHeader;
+
+    let source: RunExecutionSource;
+    if (body.source === "saved") {
+      source = {
+        kind: "saved",
+        workflow_id: body.workflow_id,
+        ...(body.version_id ? { version_id: body.version_id } : {}),
+      };
+    } else if (body.source === "draft") {
+      source = {
+        kind: "draft",
+        definition: body.definition,
+        ...(body.name ? { name: body.name } : {}),
+      };
+    } else {
+      source = {
+        kind: "step",
+        step: body.step,
+        ...(body.workflow_slug ? { workflow_slug: body.workflow_slug } : {}),
+      };
+    }
+
+    try {
+      const result = await runExecution({
+        db,
+        tenant_id: principal.tenant_id,
+        source,
+        input: "input" in body ? (body.input ?? null) : null,
+        options: {
+          request_source: "api",
+          principal,
+          execution_mode,
+        },
+      });
+      return c.json(
+        {
+          execution_id: result.execution_id,
+          status: result.status,
+          output: result.output,
+          error: result.error,
+          steps: result.steps,
+          ...(result.warnings?.length ? { warnings: result.warnings } : {}),
+        },
+        200,
+      );
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      const details = (err as { details?: unknown }).details;
+      if (
+        code === "input_schema_violation" ||
+        code === "draft_invalid" ||
+        code === "step_invalid"
+      ) {
+        throw new BadRequestError((err as Error).message, {
+          code,
+          ...(details ? { details } : {}),
+        });
+      }
+      if ((err as Error).message?.startsWith("workflow not found")) {
+        throw new NotFoundError("workflow");
+      }
+      throw err;
+    }
   });
 
   app.openapi(listExecutionsRoute, async (c) => {
