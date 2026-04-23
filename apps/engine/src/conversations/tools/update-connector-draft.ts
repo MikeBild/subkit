@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
+import { buildDraftMutationPayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -40,15 +41,21 @@ export const updateConnectorDraftTool: ConversationTool = {
       saved_connector_id: current.saved_connector_id ?? null,
     };
     const validation = validateConnectorDraft(next);
-    await ctx.setDraft(
-      withConnectorDraft(ctx.getDraft(), { ...next, validation }, "connector_updated"),
+    const nextDraft = withConnectorDraft(
+      ctx.getDraft(),
+      { ...next, validation },
+      "connector_updated",
     );
+    await ctx.setDraft(nextDraft);
     return {
       ok: true,
-      data: {
-        connector: next,
-        validation,
-      },
+      data: buildDraftMutationPayload(nextDraft, {
+        resource_kind: "connector",
+        extra: {
+          connector: { ...next, validation },
+          validation,
+        },
+      }),
     };
   },
 };

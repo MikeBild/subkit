@@ -1,26 +1,23 @@
 // commit_draft — persist the draft as a real workflow.
 //
 // Requires a prior `ask_user_confirm { kind: "commit_draft" }`
-// elicitation resolved with `{ confirmed: true }`. On success the
-// workflow id is recorded on the conversation and the loop ends.
+// elicitation resolved with `{ confirmed: true }` plus fresh inspect /
+// validate / preview checkpoints. On success the workflow id is
+// recorded on the conversation and the loop ends.
 
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
 import { conversationElicitations, conversations, workflows } from "../../db/schema/index.ts";
 import { createWorkflow, updateWorkflow } from "../../workflows/service.ts";
-import { getWorkflowDraft } from "../authoring-state.ts";
+import { getWorkflowDraft, withWorkflowPersisted } from "../authoring-state.ts";
+import {
+  buildGateError,
+  buildPersistencePayload,
+  missingFreshCheckpoints,
+} from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
-const inputSchema = z
-  .object({
-    force: z
-      .boolean()
-      .default(false)
-      .describe("Allow committing even when no successful dry-run/preview exists."),
-  })
-  .openapi("CommitDraftToolInput");
+const inputSchema = z.object({}).openapi("CommitDraftToolInput");
 
 export const commitDraftTool: ConversationTool = {
   name: "commit_draft",
@@ -30,7 +27,7 @@ export const commitDraftTool: ConversationTool = {
     "Final step when the operator has confirmed via ask_user_confirm(kind='commit_draft') that the draft is ready to save. If the conversation has a target_workflow_id, commits a new workflow_version on that row. If the draft's slug matches an existing live workflow of this tenant, adopts that workflow as the target and updates it in-place. Otherwise creates a new workflow row.",
   important_notes: [
     "Refuses with `no_prior_approval` if no matching ask_user_confirm has been answered in this conversation.",
-    "Refuses with `preview_required` if no successful dry_run_step/dry_run_workflow has been recorded (pass force=true to override).",
+    "Refuses with `workflow_not_ready` until inspect_workflow_draft, validate_draft, and dry_run_step/dry_run_workflow are all fresh and successful.",
     "Update-in-place semantics: if conversations.target_workflow_id is set, this tool appends a new workflow_version to that workflow. The slug of the existing workflow stays authoritative; changing draft.slug does not rename the workflow.",
     "Adopt-on-slug-match: if no target is set but draft.slug matches a live workflow, adopts it as the target and updates. Never creates a sibling workflow with a fresh slug — that was the old behavior that produced zombie workflows.",
     "On duplicate_slug errors, the error payload includes `conflict.workflow_id` so the caller can choose to update (call commit_draft again) or pick a different slug.",
@@ -39,7 +36,7 @@ export const commitDraftTool: ConversationTool = {
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = inputSchema.parse(rawArgs);
+    inputSchema.parse(rawArgs);
     // Must have at least one resolved `ask_user_confirm` elicitation
     // whose input.kind is "commit_draft" and output.confirmed is true.
     const rows = await ctx.db
@@ -64,27 +61,53 @@ export const commitDraftTool: ConversationTool = {
     if (!head || !confirmed) {
       return {
         ok: false,
-        data: {
-          error:
+        data: buildGateError(ctx.getDraft(), {
+          error_code: "no_prior_approval",
+          message:
             "commit_draft requires a resolved ask_user_confirm { kind: commit_draft, confirmed: true }",
-          reason: "no_approval",
-          latest_elicitation_status: head?.status ?? null,
-        },
+          recommended_mode: "workflow",
+          next_best_actions: ["ask_user_confirm"],
+          extra: {
+            latest_elicitation_status: head?.status ?? null,
+          },
+        }),
       };
     }
 
     const fullDraft = ctx.getDraft();
     const latestPreview = fullDraft.latest_preview;
-    if (!args.force && (!latestPreview || latestPreview.ok !== true)) {
+    const staleCheckpoints = missingFreshCheckpoints(fullDraft, [
+      "workflow_inspected",
+      "workflow_validated",
+      "workflow_previewed",
+    ]);
+    const blocking_reasons = [
+      ...(fullDraft.summary?.blocked_by ?? []).filter(
+        (reason) =>
+          reason === "inspect_workflow_draft" ||
+          reason === "validate_draft" ||
+          reason === "dry_run_workflow" ||
+          reason.startsWith("missing:"),
+      ),
+    ];
+    if (
+      staleCheckpoints.length > 0 ||
+      !latestPreview ||
+      latestPreview.ok !== true ||
+      blocking_reasons.length > 0
+    ) {
       return {
         ok: false,
-        data: {
-          error: "preview_required",
-          reason: "no_successful_preview",
-          message:
-            "run dry_run_step or dry_run_workflow successfully before committing, or retry with force=true",
-          latest_preview: latestPreview ?? null,
-        },
+        data: buildGateError(fullDraft, {
+          error_code: "workflow_not_ready",
+          message: "workflow commit is blocked until inspection, validation, and preview are fresh",
+          stale_checkpoints: staleCheckpoints,
+          blocking_reasons,
+          recommended_mode: "workflow",
+          extra: {
+            latest_preview: latestPreview ?? null,
+          },
+        }),
       };
     }
 
@@ -202,57 +225,50 @@ export const commitDraftTool: ConversationTool = {
         const existing = conflictRows[0];
         return {
           ok: false,
-          data: {
-            errors: [
-              {
-                path: "slug",
-                message: existing
-                  ? `a workflow with slug "${attempted}" already exists (id=${existing.id}) — to update it, call commit_draft again; the save tool will now update this workflow in place. To create a new workflow, pick a different slug.`
-                  : `a workflow with slug "${attempted}" already exists for this tenant — pick a different slug and call commit_draft again`,
-              },
-            ],
-            reason: "duplicate_slug",
-            attempted_slug: attempted,
-            ...(existing ? { conflict: { workflow_id: existing.id, slug: existing.slug } } : {}),
-          },
+          data: buildGateError(fullDraft, {
+            error_code: "duplicate_slug",
+            message: `workflow slug "${attempted}" already exists`,
+            recommended_mode: "workflow",
+            extra: {
+              errors: [
+                {
+                  path: "slug",
+                  message: existing
+                    ? `a workflow with slug "${attempted}" already exists (id=${existing.id}) — to update it, call commit_draft again; the save tool will now update this workflow in place. To create a new workflow, pick a different slug.`
+                    : `a workflow with slug "${attempted}" already exists for this tenant — pick a different slug and call commit_draft again`,
+                },
+              ],
+              attempted_slug: attempted,
+              ...(existing ? { conflict: { workflow_id: existing.id, slug: existing.slug } } : {}),
+            },
+          }),
         };
       }
       return {
         ok: false,
-        data: { error: msg, reason: "commit_failed" },
+        data: buildGateError(fullDraft, {
+          error_code: "commit_failed",
+          message: msg,
+          recommended_mode: "workflow",
+        }),
       };
     }
     if ("errors" in result) {
       return {
         ok: false,
-        data: {
-          errors: result.errors,
-          reason: "invalid_final_draft",
-          step_count: def.steps.length,
-        },
+        data: buildGateError(fullDraft, {
+          error_code: "invalid_final_draft",
+          message: "workflow draft is still invalid at commit time",
+          stale_checkpoints: ["workflow_validated"],
+          recommended_mode: "workflow",
+          extra: {
+            errors: result.errors,
+            step_count: def.steps.length,
+          },
+        }),
       };
     }
     const workflow = result.workflow;
-    if (args.force && (!latestPreview || latestPreview.ok !== true)) {
-      await auditAwait(
-        {
-          tenant_id: ctx.tenant_id,
-          actor_type: ctx.actor_id ? "user" : "system",
-          actor_id: ctx.actor_id,
-          action: AuditAction.WORKFLOW_COMMITTED_OVERRIDE,
-          resource_type: "workflow",
-          resource_id: workflow.id,
-          result: "success",
-          metadata: {
-            conversation_id: ctx.conversation_id,
-            slug: workflow.slug,
-            latest_preview_ok: latestPreview?.ok ?? null,
-            latest_preview_summary: latestPreview?.summary ?? null,
-          },
-        },
-        ctx.db,
-      );
-    }
     await ctx.db
       .update(conversations)
       .set({
@@ -261,9 +277,35 @@ export const commitDraftTool: ConversationTool = {
         updated_at: new Date(),
       })
       .where(eq(conversations.id, ctx.conversation_id));
+    const nextDraft = withWorkflowPersisted(
+      fullDraft,
+      {
+        kind: "workflow",
+        id: workflow.id,
+        slug: workflow.slug,
+        name: workflow.name,
+        version_id: workflow.current_version_id,
+        version: workflow.current_version,
+        environment: null,
+        saved_at: new Date().toISOString(),
+      },
+      "workflow_persisted",
+    );
+    await ctx.setDraft(nextDraft);
     return {
       ok: true,
-      data: { workflow_id: workflow.id, slug: workflow.slug },
+      data: {
+        ...buildPersistencePayload(nextDraft, {
+          resource_kind: "workflow",
+          resource_id: workflow.id,
+          version_id: workflow.current_version_id,
+        }),
+        workflow_id: workflow.id,
+        workflow_version_id: workflow.current_version_id,
+        version: workflow.current_version,
+        slug: workflow.slug,
+        name: workflow.name,
+      },
       committed_workflow_id: workflow.id,
     };
   },

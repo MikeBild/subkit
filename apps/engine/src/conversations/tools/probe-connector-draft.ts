@@ -6,8 +6,9 @@ import { buildRequestPlan } from "../../connectors/drivers/http.ts";
 import { probePgConnector } from "../../connectors/drivers/postgres.ts";
 import { probeS3Connector } from "../../connectors/drivers/s3.ts";
 import { mergeAbortSignals } from "../abort.ts";
-import { withConnectorDraft } from "../authoring-state.ts";
+import { withConnectorProbe, withConnectorValidation } from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
+import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
 
@@ -45,13 +46,36 @@ export const probeConnectorDraftTool: ConversationTool = {
     const connector = currentDraft.connector;
     const validation = validateConnectorDraft(connector ?? null);
     if (!connector) {
-      return { ok: false, data: { error: "start a connector draft first" } };
+      return {
+        ok: false,
+        data: buildGateError(currentDraft, {
+          error_code: "connector_missing",
+          message: "start a connector draft before probing it",
+          recommended_mode: "connector",
+        }),
+      };
     }
     if (!validation.ok) {
-      await ctx.setDraft(
-        withConnectorDraft(currentDraft, { ...connector, validation }, "connector_probe_blocked"),
+      const nextDraft = withConnectorValidation(
+        currentDraft,
+        { ...connector, validation },
+        false,
+        "Connector draft is incomplete and cannot be probed yet.",
+        "connector_probe_blocked",
       );
-      return { ok: false, data: { error: "connector draft is incomplete", validation } };
+      await ctx.setDraft(nextDraft);
+      return {
+        ok: false,
+        data: buildGateError(nextDraft, {
+          error_code: "validation_failed",
+          message: "connector draft is incomplete",
+          stale_checkpoints: ["connector_validated"],
+          recommended_mode: "connector",
+          extra: {
+            validation,
+          },
+        }),
+      };
     }
     const effectiveDriver = connector.driver ?? "http";
     const draftView = {
@@ -99,13 +123,14 @@ export const probeConnectorDraftTool: ConversationTool = {
           : `${connector.driver} probe failed: ${res.detail ?? "unknown error"}`,
         ...(res.ok ? {} : { failure_code: "probe_failed" }),
       };
-      await ctx.setDraft(
-        withConnectorDraft(
-          currentDraft,
-          { ...connector, validation, latest_probe },
-          res.ok ? "connector_probed" : "connector_probe_failed",
-        ),
+      const nextDraft = withConnectorProbe(
+        currentDraft,
+        { ...connector, validation, latest_probe },
+        res.ok,
+        latest_probe.summary,
+        res.ok ? "connector_probed" : "connector_probe_failed",
       );
+      await ctx.setDraft(nextDraft);
       await auditAwait(
         {
           tenant_id: ctx.tenant_id,
@@ -128,7 +153,14 @@ export const probeConnectorDraftTool: ConversationTool = {
       );
       return {
         ok: res.ok,
-        data: { latest_probe, detail: res.detail ?? null },
+        data: buildLifecyclePayload(nextDraft, {
+          connector: {
+            ...toCreateConnectorInput(connector),
+            environment: draftView.environment,
+          },
+          latest_probe,
+          detail: res.detail ?? null,
+        }),
       };
     }
 
@@ -155,13 +187,14 @@ export const probeConnectorDraftTool: ConversationTool = {
           : `GraphQL probe failed: ${res.detail ?? `HTTP ${res.status ?? 0}`}`,
         ...(res.ok ? {} : { failure_code: "probe_failed" }),
       };
-      await ctx.setDraft(
-        withConnectorDraft(
-          currentDraft,
-          { ...connector, validation, latest_probe },
-          res.ok ? "connector_probed" : "connector_probe_failed",
-        ),
+      const nextDraft = withConnectorProbe(
+        currentDraft,
+        { ...connector, validation, latest_probe },
+        res.ok,
+        latest_probe.summary,
+        res.ok ? "connector_probed" : "connector_probe_failed",
       );
+      await ctx.setDraft(nextDraft);
       await auditAwait(
         {
           tenant_id: ctx.tenant_id,
@@ -184,7 +217,14 @@ export const probeConnectorDraftTool: ConversationTool = {
       );
       return {
         ok: res.ok,
-        data: { latest_probe, detail: res.detail ?? null },
+        data: buildLifecyclePayload(nextDraft, {
+          connector: {
+            ...toCreateConnectorInput(connector),
+            environment: draftView.environment,
+          },
+          latest_probe,
+          detail: res.detail ?? null,
+        }),
       };
     }
 
@@ -264,13 +304,14 @@ export const probeConnectorDraftTool: ConversationTool = {
               : `Probe reached the system but returned HTTP ${status}.`,
           response_preview: truncated.data,
         };
-    await ctx.setDraft(
-      withConnectorDraft(
-        currentDraft,
-        { ...connector, validation, latest_probe },
-        errorDetail ? "connector_probe_failed" : "connector_probed",
-      ),
+    const nextDraft = withConnectorProbe(
+      currentDraft,
+      { ...connector, validation, latest_probe },
+      latest_probe.ok,
+      latest_probe.summary,
+      errorDetail ? "connector_probe_failed" : "connector_probed",
     );
+    await ctx.setDraft(nextDraft);
     await auditAwait(
       {
         tenant_id: ctx.tenant_id,
@@ -297,15 +338,16 @@ export const probeConnectorDraftTool: ConversationTool = {
     if (errorDetail) {
       return {
         ok: false,
-        data: {
+        data: buildLifecyclePayload(nextDraft, {
           error: errorDetail,
+          error_code: latest_probe.failure_code ?? "probe_failed",
           latest_probe,
-        },
+        }),
       };
     }
     return {
       ok: latest_probe.ok,
-      data: {
+      data: buildLifecyclePayload(nextDraft, {
         connector: {
           ...toCreateConnectorInput(connector),
           environment: draftView.environment,
@@ -314,7 +356,7 @@ export const probeConnectorDraftTool: ConversationTool = {
         response_preview: truncated.data,
         truncated: truncated.truncated,
         raw_ref: truncated.raw_ref,
-      },
+      }),
     };
   },
 };

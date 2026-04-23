@@ -1093,11 +1093,69 @@ export interface ConversationContextSnapshot {
   connector_id: string | null;
   workflow_id: string | null;
   draft_mode: string;
+  authoring_mode: string | null;
+  authoring_stage: string | null;
   draft_summary: {
     readiness: string;
     next_action: string | null;
+    next_required_action: string | null;
     missing_fields: string[];
     progress_label: string | null;
+    lifecycle_state: string;
+    blocked_by: string[];
+  } | null;
+  active_target: {
+    kind: "connector" | "workflow" | "none";
+    name: string | null;
+    slug: string | null;
+    id: string | null;
+    environment: string | null;
+    lifecycle_state: string;
+  } | null;
+  checkpoint_statuses: Array<{
+    key: string;
+    status: string;
+    verified_at: string | null;
+    verified_by_tool: string | null;
+    ok: boolean | null;
+    summary: string | null;
+  }>;
+  stale_checkpoints: string[];
+  next_required_action: string | null;
+  persisted_resources: Array<{
+    kind: string;
+    id: string;
+    slug: string | null;
+    name: string | null;
+    version_id: string | null;
+    version: number | null;
+    environment: string | null;
+    saved_at: string;
+  }>;
+  latest_execution: {
+    execution_id: string;
+    workflow_id: string | null;
+    workflow_version_id: string | null;
+    status: string;
+    environment: string;
+    warnings_count: number;
+    recorded_at: string;
+    diagnosis_available: boolean;
+  } | null;
+  latest_diagnosis: {
+    execution_id: string;
+    recorded_at: string;
+    reason: string;
+    warning_sources: Array<{ step_key: string; code: string; identifier: string | null }>;
+    steps: Array<{
+      step_key: string;
+      kind: string;
+      status: string;
+      duration_ms: number | null;
+      output_preview?: unknown;
+      error?: unknown;
+      request_meta?: unknown;
+    }>;
   } | null;
   skills: {
     global: Array<{ id: string; title: string }>;

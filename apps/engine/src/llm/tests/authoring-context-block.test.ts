@@ -2,6 +2,14 @@
 // volatile cache segment on every turn.
 
 import { describe, expect, test } from "bun:test";
+import {
+  createEmptyDraftDocument,
+  withConnectorDraft,
+  withWorkflowDiagnosis,
+  withWorkflowDraft,
+  withWorkflowExecution,
+  withWorkflowPersisted,
+} from "../../conversations/authoring-state.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
 import { renderAuthoringContextBlock } from "../core/authoring-context-block.ts";
 
@@ -18,23 +26,27 @@ describe("renderAuthoringContextBlock", () => {
   });
 
   test("renders mode and readiness when present", () => {
+    const currentDraft = withConnectorDraft(createEmptyDraftDocument(), {
+      name: "Acme",
+      slug: "acme",
+      driver: "http",
+      environment: "dev",
+      auth_type: "bearer",
+    });
     const block = renderAuthoringContextBlock({
-      draft: draft({
-        mode: "connector_authoring",
-        summary: {
-          readiness: "needs_input",
-          next_action: "Add the base URL.",
-          missing_fields: ["base_url"],
-          last_action: null,
-          progress_label: "Connector draft",
-        },
-      }),
+      draft: currentDraft,
     });
     expect(block).not.toBeNull();
     expect(block!).toContain("Mode: connector_authoring");
+    expect(block!).toContain("Surface mode: connector");
+    expect(block!).toContain("Stage: connector_draft_started");
+    expect(block!).toContain("Lifecycle: draft_only");
     expect(block!).toContain("Readiness: needs_input");
+    expect(block!).toContain('Active target: kind=connector name="Acme" slug=acme env=dev');
     expect(block!).toContain("Next recommended action");
     expect(block!).toContain("Missing: base_url");
+    expect(block!).toContain("Blocked by: missing:base_url");
+    expect(block!).toContain("Checkpoints: connector_inspected=missing");
   });
 
   test("renders connector fields without leaking secrets", () => {
@@ -80,6 +92,52 @@ describe("renderAuthoringContextBlock", () => {
     // First 6 steps listed, remainder elided.
     expect(block!).toContain("and 2 more");
     expect(block!).not.toContain("s7:");
+  });
+
+  test("renders execution and diagnosis summaries when present", () => {
+    let currentDraft = withWorkflowDraft(createEmptyDraftDocument(), {
+      name: "my-flow",
+      slug: "my-flow",
+      steps: [{ id: "s1", kind: "request" }],
+    });
+    currentDraft = withWorkflowPersisted(currentDraft, {
+      kind: "workflow",
+      id: "workflow_123",
+      slug: "my-flow",
+      name: "my-flow",
+      version_id: "version_1",
+      version: 1,
+      environment: "dev",
+      saved_at: "2026-04-23T10:00:00.000Z",
+    });
+    currentDraft = withWorkflowExecution(currentDraft, {
+      execution_id: "exec_123",
+      workflow_id: "workflow_123",
+      workflow_version_id: "version_1",
+      status: "succeeded",
+      environment: "dev",
+      warnings_count: 2,
+      recorded_at: "2026-04-23T10:05:00.000Z",
+      diagnosis_available: true,
+    });
+    currentDraft = withWorkflowDiagnosis(currentDraft, {
+      execution_id: "exec_123",
+      recorded_at: "2026-04-23T10:06:00.000Z",
+      reason: "Missing .data in transform scope path.",
+      warning_sources: [],
+      steps: [],
+    });
+    const block = renderAuthoringContextBlock({
+      draft: currentDraft,
+    });
+    expect(block).not.toBeNull();
+    expect(block!).toContain("Surface mode: diagnosis");
+    expect(block!).toContain("Stage: diagnosing");
+    expect(block!).toContain("Persisted resources: workflow:workflow_123@v1@dev");
+    expect(block!).toContain(
+      "Latest execution: status=succeeded env=dev warnings=2 diagnosis_available=true",
+    );
+    expect(block!).toContain("Latest diagnosis: Missing .data in transform scope path.");
   });
 
   test("includes a guided-next-step section", () => {

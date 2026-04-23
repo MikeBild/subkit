@@ -5,13 +5,19 @@
 // renderable fields — credential payloads, tokens, DSNs, and arbitrary
 // config blobs never reach the rendered text.
 
+import { normalizeDraftDocument } from "../../conversations/authoring-state.ts";
 import {
   nextQuestion as computeNextQuestion,
   type ExpertiseHint,
   nextRecommendedAction,
 } from "../../conversations/onboarding-policy.ts";
 import { planTurnRouting } from "../../conversations/turn-routing.ts";
-import type { ConversationResumeSummary, DraftDocument } from "../../conversations/types.ts";
+import type {
+  AuthoringCheckpointKey,
+  AuthoringSummary,
+  ConversationResumeSummary,
+  DraftDocument,
+} from "../../conversations/types.ts";
 
 export interface AuthoringContextInput {
   draft: DraftDocument | null | undefined;
@@ -51,8 +57,8 @@ const EXPERTISE_TONE_HINT: Record<ExpertiseHint, string> = {
 };
 
 export function renderAuthoringContextBlock(input: AuthoringContextInput): string | null {
-  const { draft } = input;
-  if (!draft && !input.resume_summary && !input.user_message) return null;
+  const normalizedDraft = input.draft ? normalizeDraftDocument(input.draft) : null;
+  if (!normalizedDraft && !input.resume_summary && !input.user_message) return null;
 
   const lines: string[] = [];
   if (input.expertise) {
@@ -62,7 +68,7 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
   }
   const routing = input.user_message
     ? planTurnRouting({
-        draft: input.draft ?? null,
+        draft: normalizedDraft ?? null,
         user_message: input.user_message,
       })
     : null;
@@ -83,11 +89,11 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
     lines.push(`- Forbidden fallbacks: ${routing.forbidden_fallbacks.join(", ")}`);
   }
 
-  if (draft) {
+  if (normalizedDraft) {
     if (lines.length > 0) lines.push("");
     lines.push("## Current authoring state");
-    const mode = draft.mode ?? "onboarding";
-    lines.push(...renderModeEnvelope(mode, draft));
+    const mode = normalizedDraft.mode ?? "onboarding";
+    lines.push(...renderModeEnvelope(mode, normalizedDraft));
   }
 
   if (input.document_analysis && input.document_analysis.endpoint_count > 0) {
@@ -132,7 +138,7 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
     !routing || routing.intent === "author_connector" || routing.intent === "author_workflow";
   if (shouldRenderAuthoringNextStep) {
     const action = nextRecommendedAction({
-      draft: input.draft ?? null,
+      draft: normalizedDraft ?? null,
       ...(input.pending_approval ? { pending_approval: input.pending_approval } : {}),
     });
     lines.push("");
@@ -140,7 +146,7 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
     lines.push(`- Action: ${action.summary}`);
     lines.push(`- Why: ${action.rationale}`);
     const question = computeNextQuestion({
-      draft: input.draft ?? null,
+      draft: normalizedDraft ?? null,
       ...(input.pending_approval ? { pending_approval: input.pending_approval } : {}),
     });
     if (question) {
@@ -162,13 +168,7 @@ function renderModeEnvelope(
 ): string[] {
   const lines: string[] = [`- Mode: ${mode}`];
   if (draft.summary) {
-    lines.push(`- Readiness: ${draft.summary.readiness}`);
-    if (draft.summary.next_action) {
-      lines.push(`- Next recommended action: ${draft.summary.next_action}`);
-    }
-    if (draft.summary.missing_fields.length > 0) {
-      lines.push(`- Missing: ${draft.summary.missing_fields.join(", ")}`);
-    }
+    lines.push(...renderSummaryEnvelope(draft.summary));
   }
 
   if (mode === "connector_authoring") {
@@ -186,6 +186,99 @@ function renderModeEnvelope(
   }
   lines.push(...renderConnectorLines(draft));
   lines.push(...renderWorkflowLines(draft));
+  return lines;
+}
+
+function renderSummaryEnvelope(summary: AuthoringSummary): string[] {
+  const lines = [
+    `- Surface mode: ${summary.mode}`,
+    `- Stage: ${summary.stage}`,
+    `- Lifecycle: ${summary.lifecycle_state}`,
+    `- Readiness: ${summary.readiness}`,
+  ];
+  const activeTarget = renderActiveTarget(summary);
+  if (activeTarget) lines.push(activeTarget);
+  if (summary.next_action) {
+    lines.push(`- Next recommended action: ${summary.next_action}`);
+  }
+  if (summary.next_required_action && summary.next_required_action !== summary.next_action) {
+    lines.push(`- Next required action: ${summary.next_required_action}`);
+  }
+  if (summary.missing_fields.length > 0) {
+    lines.push(`- Missing: ${summary.missing_fields.join(", ")}`);
+  }
+  if (summary.blocked_by.length > 0) {
+    lines.push(`- Blocked by: ${summary.blocked_by.join(", ")}`);
+  }
+  const checkpointLine = renderCheckpointLine(summary);
+  if (checkpointLine) lines.push(checkpointLine);
+  const persistedLine = renderPersistedResources(summary);
+  if (persistedLine) lines.push(persistedLine);
+  lines.push(...renderExecutionSummary(summary));
+  return lines;
+}
+
+function renderActiveTarget(summary: AuthoringSummary): string | null {
+  if (summary.active_target.kind === "none") return null;
+  const parts = [`kind=${summary.active_target.kind}`];
+  if (summary.active_target.name) parts.push(`name="${summary.active_target.name}"`);
+  if (summary.active_target.slug) parts.push(`slug=${summary.active_target.slug}`);
+  if (summary.active_target.id) parts.push(`id=${summary.active_target.id}`);
+  if (summary.active_target.environment) parts.push(`env=${summary.active_target.environment}`);
+  parts.push(`state=${summary.active_target.lifecycle_state}`);
+  return `- Active target: ${parts.join(" ")}`;
+}
+
+function checkpointKeysFor(summary: AuthoringSummary): AuthoringCheckpointKey[] {
+  if (summary.mode === "connector") {
+    return [
+      "connector_inspected",
+      "connector_validated",
+      "connector_probed",
+      "connector_persisted",
+    ];
+  }
+  return [
+    "connector_persisted",
+    "workflow_inspected",
+    "workflow_validated",
+    "workflow_previewed",
+    "workflow_persisted",
+    "workflow_executed",
+    "workflow_diagnosed",
+  ];
+}
+
+function renderCheckpointLine(summary: AuthoringSummary): string | null {
+  const parts = checkpointKeysFor(summary).map((key) => {
+    const checkpoint = summary.checkpoints.find((item) => item.key === key);
+    return `${key}=${checkpoint?.status ?? "missing"}`;
+  });
+  return parts.length > 0 ? `- Checkpoints: ${parts.join(", ")}` : null;
+}
+
+function renderPersistedResources(summary: AuthoringSummary): string | null {
+  if (summary.persisted_resources.length === 0) return null;
+  const parts = summary.persisted_resources.map((resource) => {
+    const tokens = [`${resource.kind}:${resource.id}`];
+    if (resource.version !== null) tokens.push(`v${resource.version}`);
+    if (resource.environment) tokens.push(resource.environment);
+    return tokens.join("@");
+  });
+  return `- Persisted resources: ${parts.join(", ")}`;
+}
+
+function renderExecutionSummary(summary: AuthoringSummary): string[] {
+  const lines: string[] = [];
+  if (summary.latest_execution) {
+    const execution = summary.latest_execution;
+    lines.push(
+      `- Latest execution: status=${execution.status} env=${execution.environment} warnings=${execution.warnings_count} diagnosis_available=${execution.diagnosis_available}`,
+    );
+  }
+  if (summary.latest_diagnosis) {
+    lines.push(`- Latest diagnosis: ${summary.latest_diagnosis.reason}`);
+  }
   return lines;
 }
 

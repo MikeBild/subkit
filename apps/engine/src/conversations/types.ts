@@ -61,6 +61,129 @@ export type AuthoringMode =
   | "workflow_authoring"
   | "resume_review";
 
+export type AuthoringSurfaceMode = "connector" | "workflow" | "execution" | "diagnosis";
+
+export type AuthoringStage =
+  | "idle"
+  | "connector_targeted"
+  | "connector_draft_started"
+  | "connector_inspected"
+  | "connector_validated"
+  | "connector_probed"
+  | "connector_persisted"
+  | "workflow_targeted"
+  | "workflow_draft_started"
+  | "workflow_inspected"
+  | "workflow_validated"
+  | "workflow_previewed"
+  | "workflow_persisted"
+  | "workflow_executed"
+  | "diagnosing"
+  | "repairing";
+
+export type AuthoringLifecycleState = "none" | "draft_only" | "persisted";
+
+export type AuthoringCheckpointKey =
+  | "connector_inspected"
+  | "connector_validated"
+  | "connector_probed"
+  | "connector_persisted"
+  | "workflow_inspected"
+  | "workflow_validated"
+  | "workflow_previewed"
+  | "workflow_persisted"
+  | "workflow_executed"
+  | "workflow_diagnosed";
+
+export type AuthoringCheckpointStatus = "missing" | "fresh" | "stale";
+
+export interface AuthoringActiveTarget {
+  kind: "connector" | "workflow" | "none";
+  name: string | null;
+  slug: string | null;
+  id: string | null;
+  environment: Environment | null;
+  lifecycle_state: AuthoringLifecycleState;
+}
+
+export interface AuthoringCheckpointRecord {
+  key: AuthoringCheckpointKey;
+  verified_at: string;
+  verified_by_tool: string;
+  mutation_seq: number;
+  ok?: boolean | null;
+  summary?: string | null;
+  resource_ref?: {
+    kind: "connector" | "workflow" | "execution" | "diagnosis";
+    id: string;
+    version_id?: string | null;
+  } | null;
+}
+
+export interface AuthoringCheckpointView {
+  key: AuthoringCheckpointKey;
+  status: AuthoringCheckpointStatus;
+  verified_at: string | null;
+  verified_by_tool: string | null;
+  ok: boolean | null;
+  summary: string | null;
+}
+
+export interface PersistedResourceRef {
+  kind: "connector" | "workflow";
+  id: string;
+  slug: string | null;
+  name: string | null;
+  version_id: string | null;
+  version: number | null;
+  environment: Environment | null;
+  saved_at: string;
+}
+
+export interface LatestExecutionSummary {
+  execution_id: string;
+  workflow_id: string | null;
+  workflow_version_id: string | null;
+  status: string;
+  environment: Environment;
+  warnings_count: number;
+  recorded_at: string;
+  diagnosis_available: boolean;
+}
+
+export interface DiagnosisStepSummary {
+  step_key: string;
+  kind: string;
+  status: string;
+  duration_ms: number | null;
+  output_preview?: unknown;
+  error?: unknown;
+  request_meta?: unknown;
+}
+
+export interface LatestDiagnosisSummary {
+  execution_id: string;
+  recorded_at: string;
+  reason: string;
+  warning_sources: Array<{
+    step_key: string;
+    code: string;
+    identifier: string | null;
+  }>;
+  steps: DiagnosisStepSummary[];
+}
+
+export interface AuthoringState {
+  mode: AuthoringSurfaceMode;
+  stage: AuthoringStage;
+  connector_mutation_seq: number;
+  workflow_mutation_seq: number;
+  checkpoints: Partial<Record<AuthoringCheckpointKey, AuthoringCheckpointRecord>>;
+  persisted_resources: PersistedResourceRef[];
+  latest_execution: LatestExecutionSummary | null;
+  latest_diagnosis: LatestDiagnosisSummary | null;
+}
+
 /**
  * The working workflow draft — kept as a plain object so we can evolve
  * the shape freely during a conversation before running the full
@@ -121,9 +244,19 @@ export interface WorkflowDraftPreviewSummary {
 export interface AuthoringSummary {
   readiness: "drafting" | "needs_input" | "ready_to_probe" | "ready_to_save" | "saved";
   next_action: string | null;
+  next_required_action: string | null;
   missing_fields: string[];
   last_action: string | null;
   progress_label: string | null;
+  mode: AuthoringSurfaceMode;
+  stage: AuthoringStage;
+  lifecycle_state: AuthoringLifecycleState;
+  active_target: AuthoringActiveTarget;
+  blocked_by: string[];
+  checkpoints: AuthoringCheckpointView[];
+  persisted_resources: PersistedResourceRef[];
+  latest_execution: LatestExecutionSummary | null;
+  latest_diagnosis: LatestDiagnosisSummary | null;
 }
 
 /**
@@ -136,6 +269,7 @@ export interface DraftDocument {
   connector?: ConnectorDraftDocument | null;
   summary?: AuthoringSummary;
   latest_preview?: WorkflowDraftPreviewSummary | null;
+  state?: AuthoringState;
 }
 
 /**

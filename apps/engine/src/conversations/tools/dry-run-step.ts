@@ -9,6 +9,7 @@ import { classifyRunResult } from "../../execution/classify.ts";
 import { runSingleStep } from "../../execution/step-run.ts";
 import type { StepDef } from "../../workflows/types.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
+import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -56,17 +57,21 @@ export const dryRunStepTool: ConversationTool = {
       request_source: "chat",
     });
     const summary = classifyRunResult(step, run);
-    await ctx.setDraft(
-      withLatestPreview(ctx.getDraft(), {
+    const nextDraft = withLatestPreview(
+      ctx.getDraft(),
+      {
         ok: summary.ok,
         step_id: summary.step_id,
         summary: summary.summary,
         preview: summary.output_preview ?? null,
-      }),
+      },
+      "dry_run_step",
+      "workflow_previewed",
     );
+    await ctx.setDraft(nextDraft);
     return {
       ok: summary.ok,
-      data: {
+      data: buildLifecyclePayload(nextDraft, {
         step_id: summary.step_id,
         kind: summary.kind,
         duration_ms: summary.duration_ms,
@@ -75,7 +80,7 @@ export const dryRunStepTool: ConversationTool = {
         execution_id: run.execution_id,
         ...(summary.output_preview !== undefined ? { output_preview: summary.output_preview } : {}),
         ...(summary.error ? { error: summary.error } : {}),
-      },
+      }),
     };
   },
 };

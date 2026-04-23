@@ -7,6 +7,7 @@ import {
   defaultTemplateAuthType,
   inferTemplateRequiredFields,
 } from "../connector-template-intelligence.ts";
+import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -27,7 +28,15 @@ export const startConnectorFromTemplateTool: ConversationTool = {
     const args = inputSchema.parse(rawArgs);
     const template = getBuiltinTemplate(args.template_slug);
     if (!template) {
-      return { ok: false, data: { error: `unknown template slug: ${args.template_slug}` } };
+      return {
+        ok: false,
+        data: buildGateError(ctx.getDraft(), {
+          error_code: "unknown_template",
+          message: `unknown template slug: ${args.template_slug}`,
+          recommended_mode: "connector",
+          next_best_actions: ["suggest_connector_templates", "start_connector_from_description"],
+        }),
+      };
     }
     const connector = {
       name: args.name ?? template.name,
@@ -45,28 +54,31 @@ export const startConnectorFromTemplateTool: ConversationTool = {
       saved_connector_id: null,
     } as const;
     const validation = validateConnectorDraft(connector);
-    await ctx.setDraft(
-      withConnectorDraft(
-        ctx.getDraft(),
-        { ...connector, validation },
-        "connector_started_from_template",
-      ),
+    const nextDraft = withConnectorDraft(
+      ctx.getDraft(),
+      { ...connector, validation },
+      "connector_started_from_template",
     );
+    await ctx.setDraft(nextDraft);
     return {
       ok: true,
-      data: {
-        connector: {
-          name: connector.name,
-          slug: connector.slug,
-          driver: connector.driver,
-          environment: connector.environment,
-          auth_type: connector.auth_type,
-          template_id: connector.template_id,
-          allowed_auth_types: allowedTemplateAuthTypes(template),
-          required_fields: inferTemplateRequiredFields(template),
+      data: buildDraftMutationPayload(nextDraft, {
+        resource_kind: "connector",
+        extra: {
+          connector: {
+            name: connector.name,
+            slug: connector.slug,
+            driver: connector.driver,
+            environment: connector.environment,
+            auth_type: connector.auth_type,
+            template_id: connector.template_id,
+            allowed_auth_types: allowedTemplateAuthTypes(template),
+            required_fields: inferTemplateRequiredFields(template),
+            validation,
+          },
+          validation,
         },
-        validation,
-      },
+      }),
     };
   },
 };

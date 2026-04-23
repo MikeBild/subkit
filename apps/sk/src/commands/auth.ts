@@ -1,6 +1,6 @@
 // `sk auth` — MCP-parity authenticate tool as a CLI command.
 //
-// Superglue exposes reauthentication as a first-class MCP tool so clients
+// The MCP surface exposes reauthentication as a first-class tool so clients
 // can request a portal link without knowing about /v1/connectors/:id/oauth.
 // Mirror that shape from the CLI: `sk auth --connector-id X` prints the
 // authorization URL the user opens in a browser to (re)approve access.
