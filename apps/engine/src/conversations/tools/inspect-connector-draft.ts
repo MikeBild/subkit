@@ -1,5 +1,7 @@
 import { z } from "@hono/zod-openapi";
+import { withConnectorInspection } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
+import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z.object({}).openapi("InspectConnectorDraftToolInput");
@@ -11,16 +13,15 @@ export const inspectConnectorDraftTool: ConversationTool = {
   inputSchema,
   category: "draft_write",
   async execute(ctx): Promise<ToolResult> {
-    const draft = ctx.getDraft();
-    const validation = validateConnectorDraft(draft.connector ?? null);
+    const nextDraft = withConnectorInspection(ctx.getDraft());
+    await ctx.setDraft(nextDraft);
+    const validation = validateConnectorDraft(nextDraft.connector ?? null);
     return {
       ok: true,
-      data: {
-        mode: draft.mode ?? "onboarding",
-        connector: draft.connector,
+      data: buildLifecyclePayload(nextDraft, {
+        connector: nextDraft.connector,
         validation,
-        summary: draft.summary ?? null,
-      },
+      }),
     };
   },
 };

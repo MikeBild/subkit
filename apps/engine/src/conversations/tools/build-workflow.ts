@@ -27,6 +27,7 @@ import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
 import { verifyWorkflow } from "../verifier.ts";
+import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const StepShape = z.record(z.string(), z.unknown());
@@ -106,24 +107,23 @@ export const buildWorkflowTool: ConversationTool = {
   inputSchema: BuildWorkflowInput,
   category: "draft_write",
   async execute(ctx, rawArgs): Promise<ToolResult> {
+    const currentDraft = ctx.getDraft();
     const parsed = BuildWorkflowInput.safeParse(rawArgs);
     if (!parsed.success) {
       return {
         ok: false,
-        data: {
-          persistence: "none" as const,
-          error: {
-            code: "invalid_input",
-            message: "input failed zod validation",
-            details: {
-              issues: parsed.error.issues.map((i) => ({
-                path: i.path.join("."),
-                message: i.message,
-                code: i.code,
-              })),
-            },
+        data: buildGateError(currentDraft, {
+          error_code: "invalid_input",
+          message: "workflow build input failed schema validation",
+          recommended_mode: "workflow",
+          extra: {
+            errors: parsed.error.issues.map((issue) => ({
+              path: issue.path.join("."),
+              message: issue.message,
+              code: issue.code,
+            })),
           },
-        },
+        }),
       };
     }
     const args = parsed.data;
@@ -140,20 +140,18 @@ export const buildWorkflowTool: ConversationTool = {
     if (!defValidation.success) {
       return {
         ok: false,
-        data: {
-          persistence: "none" as const,
-          error: {
-            code: "workflow_schema_invalid",
-            message: "workflow definition failed schema validation",
-            details: {
-              issues: defValidation.error.issues.map((i) => ({
-                path: i.path.join("."),
-                message: i.message,
-                code: i.code,
-              })),
-            },
+        data: buildGateError(currentDraft, {
+          error_code: "workflow_schema_invalid",
+          message: "workflow definition failed schema validation",
+          recommended_mode: "workflow",
+          extra: {
+            errors: defValidation.error.issues.map((issue) => ({
+              path: issue.path.join("."),
+              message: issue.message,
+              code: issue.code,
+            })),
           },
-        },
+        }),
       };
     }
 
@@ -233,18 +231,19 @@ export const buildWorkflowTool: ConversationTool = {
     }
 
     if (problems.length > 0) {
-      const firstCode = problems[0]!.code;
+      const firstCode = problems[0]?.code ?? "placeholder_connector_missing";
       return {
         ok: false,
-        data: {
-          persistence: "none" as const,
-          error: {
-            code: firstCode,
-            message:
-              "one or more placeholder references are unresolved against the current environment",
-            details: { problems },
+        data: buildGateError(currentDraft, {
+          error_code: firstCode,
+          message:
+            "one or more placeholder references are unresolved against the current environment",
+          recommended_mode: "workflow",
+          next_best_actions: ["list_connectors", "get_connector"],
+          extra: {
+            problems,
           },
-        },
+        }),
       };
     }
 
@@ -263,18 +262,16 @@ export const buildWorkflowTool: ConversationTool = {
     if (verdict.errors.length > 0) {
       return {
         ok: false,
-        data: {
-          persistence: "none" as const,
-          error: {
-            code: "verifier_rejected",
-            message: `static verifier found ${verdict.errors.length} error(s)`,
-            details: {
-              errors: verdict.errors,
-              warnings: verdict.warnings,
-              infos: verdict.infos,
-            },
+        data: buildGateError(currentDraft, {
+          error_code: "verifier_rejected",
+          message: `static verifier found ${verdict.errors.length} error(s)`,
+          recommended_mode: "workflow",
+          extra: {
+            errors: verdict.errors,
+            warnings: verdict.warnings,
+            infos: verdict.infos,
           },
-        },
+        }),
       };
     }
 
@@ -297,21 +294,37 @@ export const buildWorkflowTool: ConversationTool = {
     if (args.output_schema) workflowDraft.output_schema = args.output_schema;
     if (args.output_transform) workflowDraft.output_transform = args.output_transform;
 
-    await ctx.setDraft(withWorkflowDraft(ctx.getDraft(), workflowDraft, "workflow_built"));
+    const nextDraft = withWorkflowDraft(currentDraft, workflowDraft, "workflow_built");
+    await ctx.setDraft(nextDraft);
 
     return {
       ok: true,
-      data: {
-        persistence: "draft_only" as const,
-        draft: {
-          slug: args.slug,
+      data: buildDraftMutationPayload(nextDraft, {
+        resource_kind: "workflow",
+        extra: {
           name: args.name,
-          step_count: args.steps.length,
-          input_schema_inferred: input_schema !== undefined && args.input_schema === undefined,
+          workflow: {
+            slug: args.slug,
+            name: args.name,
+            step_count: args.steps.length,
+            input_schema_inferred: input_schema !== undefined && args.input_schema === undefined,
+          },
+          steps: args.steps.length,
+          last_step_id:
+            typeof args.steps[args.steps.length - 1]?.id === "string"
+              ? (args.steps[args.steps.length - 1]?.id as string)
+              : null,
+          step_type:
+            typeof args.steps[args.steps.length - 1]?.kind === "string"
+              ? (args.steps[args.steps.length - 1]?.kind as string)
+              : null,
+          warnings: [
+            ...warnings,
+            ...verdict.warnings.map((warning) => `${warning.code}:${warning.path}`),
+          ],
+          infos: verdict.infos.map((info) => `${info.code}:${info.path}`),
         },
-        warnings: [...warnings, ...verdict.warnings.map((w) => `${w.code}:${w.path}`)],
-        infos: verdict.infos.map((i) => `${i.code}:${i.path}`),
-      },
+      }),
     };
   },
 };

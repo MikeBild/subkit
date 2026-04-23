@@ -190,13 +190,20 @@ const SaveResultCard: React.FC<CardProps> = memo(({ call }) => {
       </Box>
     );
   }
-  if (d && d.error === "probe_required") {
+  const errorCode = typeof d?.error_code === "string" ? d.error_code : d?.error;
+  const nextRequired =
+    typeof d?.next_required_action === "string"
+      ? d.next_required_action
+      : typeof asRecord(d?.summary)?.next_required_action === "string"
+        ? (asRecord(d?.summary)?.next_required_action as string)
+        : null;
+  if (errorCode === "connector_not_ready" || errorCode === "validation_failed") {
     return (
       <Box flexDirection="column" marginBottom={1}>
         <Box>{badge("fail", "Connector save blocked")}</Box>
         <Box marginLeft={2}>
           <Text color="yellow">
-            Probe the connector successfully before saving, or retry with force=true.
+            {nextRequired ?? "Probe and validate the connector before saving."}
           </Text>
         </Box>
       </Box>
@@ -215,22 +222,30 @@ const CommitResultCard: React.FC<CardProps> = memo(({ call }) => {
   const d = unwrapData(call);
   if (d && typeof d.workflow_id === "string") {
     const slug = typeof d.slug === "string" ? d.slug : "";
+    const version = typeof d.version === "number" ? ` · v${d.version}` : "";
     return (
       <Box flexDirection="column" marginBottom={1}>
         <Box>
           {badge(tone, "Workflow saved")}
-          <Text dimColor>{`${slug ? ` · ${slug}` : ""} · ${d.workflow_id}`}</Text>
+          <Text dimColor>{`${slug ? ` · ${slug}` : ""}${version} · ${d.workflow_id}`}</Text>
         </Box>
       </Box>
     );
   }
-  if (d && d.error === "preview_required") {
+  const errorCode = typeof d?.error_code === "string" ? d.error_code : d?.error;
+  const nextRequired =
+    typeof d?.next_required_action === "string"
+      ? d.next_required_action
+      : typeof asRecord(d?.summary)?.next_required_action === "string"
+        ? (asRecord(d?.summary)?.next_required_action as string)
+        : null;
+  if (errorCode === "workflow_not_ready" || errorCode === "invalid_final_draft") {
     return (
       <Box flexDirection="column" marginBottom={1}>
         <Box>{badge("fail", "Workflow save blocked")}</Box>
         <Box marginLeft={2}>
           <Text color="yellow">
-            Run dry_run_step or dry_run_workflow successfully, or retry with force=true.
+            {nextRequired ?? "Refresh inspect, validation, and preview before committing."}
           </Text>
         </Box>
       </Box>
@@ -243,6 +258,62 @@ const CommitResultCard: React.FC<CardProps> = memo(({ call }) => {
   );
 });
 CommitResultCard.displayName = "CommitResultCard";
+
+const ExecutionDiagnosisCard: React.FC<CardProps> = memo(({ call }) => {
+  const tone = statusTone(call);
+  const d = unwrapData(call);
+  if (call.name === "diagnose_latest_execution") {
+    const diagnosis = asRecord(d?.diagnosis);
+    const reason = typeof diagnosis?.reason === "string" ? diagnosis.reason : null;
+    const warningSources = Array.isArray(diagnosis?.warning_sources)
+      ? diagnosis.warning_sources.length
+      : 0;
+    const steps = Array.isArray(diagnosis?.steps) ? diagnosis.steps.length : 0;
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Box>
+          {badge("info", "Execution diagnosis ready")}
+          <Text dimColor>
+            {steps > 0 ? ` · ${steps} step${steps === 1 ? "" : "s"}` : ""}
+            {warningSources > 0
+              ? ` · ${warningSources} warning source${warningSources === 1 ? "" : "s"}`
+              : ""}
+          </Text>
+        </Box>
+        {reason ? (
+          <Box marginLeft={2}>
+            <Text dimColor>{reason}</Text>
+          </Box>
+        ) : null}
+      </Box>
+    );
+  }
+  const status = typeof d?.status === "string" ? d.status : "unknown";
+  const warnings = Array.isArray(d?.warnings) ? d.warnings.length : 0;
+  const needsDiagnosis = d?.diagnosis_available === true;
+  const version = typeof d?.workflow_version === "number" ? ` · v${d.workflow_version}` : "";
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Box>
+        {badge(
+          needsDiagnosis ? "warn" : tone,
+          needsDiagnosis ? "Execution needs diagnosis" : "Execution complete",
+        )}
+        <Text dimColor>
+          {` · ${status}`}
+          {version}
+          {warnings > 0 ? ` · ${warnings} warning${warnings === 1 ? "" : "s"}` : ""}
+        </Text>
+      </Box>
+      {needsDiagnosis ? (
+        <Box marginLeft={2}>
+          <Text color="yellow">Open diagnosis before editing the workflow.</Text>
+        </Box>
+      ) : null}
+    </Box>
+  );
+});
+ExecutionDiagnosisCard.displayName = "ExecutionDiagnosisCard";
 
 export interface ResumeSummaryProps {
   active_target: {
@@ -349,10 +420,19 @@ const WorkflowDraftCard: React.FC<CardProps> = memo(({ call }) => {
       </Box>
     );
   }
+  const nestedWorkflow = asRecord(d.workflow);
   const stepCount = typeof d.steps === "number" ? (d.steps as number) : null;
+  const derivedStepCount =
+    stepCount ??
+    (typeof nestedWorkflow?.step_count === "number" ? nestedWorkflow.step_count : null);
   const lastStep = typeof d.last_step_id === "string" ? (d.last_step_id as string) : null;
   const kind = typeof d.step_type === "string" ? (d.step_type as string) : null;
-  const name = typeof d.name === "string" ? (d.name as string) : null;
+  const name =
+    typeof d.name === "string"
+      ? (d.name as string)
+      : typeof nestedWorkflow?.name === "string"
+        ? (nestedWorkflow.name as string)
+        : null;
   const errors = Array.isArray(d.errors) ? d.errors : [];
   return (
     <Box flexDirection="column" marginBottom={1}>
@@ -360,7 +440,9 @@ const WorkflowDraftCard: React.FC<CardProps> = memo(({ call }) => {
         {badge(tone, tone === "pending" ? "Drafting workflow" : "Workflow draft updated")}
         <Text dimColor>
           {name ? ` · ${name}` : ""}
-          {stepCount !== null ? ` · ${stepCount} step${stepCount === 1 ? "" : "s"}` : ""}
+          {derivedStepCount !== null
+            ? ` · ${derivedStepCount} step${derivedStepCount === 1 ? "" : "s"}`
+            : ""}
           {lastStep ? ` · last=${lastStep}` : ""}
           {kind ? ` (${kind})` : ""}
         </Text>
@@ -442,6 +524,8 @@ const CHAT_MILESTONE_TOOLS = new Set([
   "start_connector_from_template",
   "build_workflow",
   "start_workflow_from_goal",
+  "run_workflow",
+  "diagnose_latest_execution",
 ]);
 
 function shouldRenderInChat(call: ToolCallState): boolean {
@@ -468,6 +552,9 @@ export function renderAuthoringCard(
       return <SaveResultCard key={`acc-${call.id}`} call={call} />;
     case "commit_draft":
       return <CommitResultCard key={`acc-${call.id}`} call={call} />;
+    case "run_workflow":
+    case "diagnose_latest_execution":
+      return <ExecutionDiagnosisCard key={`acc-${call.id}`} call={call} />;
     case "start_connector_from_description":
     case "start_connector_from_template":
     case "update_connector_draft":

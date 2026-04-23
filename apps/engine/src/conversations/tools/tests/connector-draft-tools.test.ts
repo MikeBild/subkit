@@ -9,7 +9,6 @@ import { saveConnectorDraftTool } from "../save-connector-draft.ts";
 import { startConnectorFromDescriptionTool } from "../start-connector-from-description.ts";
 import { startConnectorFromTemplateTool } from "../start-connector-from-template.ts";
 import { suggestConnectorTemplatesTool } from "../suggest-connector-templates.ts";
-import { updateConnectorDraftTool } from "../update-connector-draft.ts";
 import { validateConnectorDraftTool } from "../validate-connector-draft.ts";
 
 let ctx: ConversationTestCtx;
@@ -182,7 +181,7 @@ describe("connector draft tools", () => {
     expect(latestProbe.summary).toContain("timed out");
   });
 
-  test("save_connector_draft blocks without a successful probe unless forced, then persists", async () => {
+  test("save_connector_draft blocks without a successful probe, then persists after probe", async () => {
     const toolCtx = await createToolCtx();
     await startConnectorFromDescriptionTool.execute(toolCtx.base, {
       name: "Force Save API",
@@ -191,13 +190,14 @@ describe("connector draft tools", () => {
       base_url: baseUrl,
       auth_type: "none",
     });
-    const blocked = await saveConnectorDraftTool.execute(toolCtx.base, { force: false });
+    await inspectConnectorDraftTool.execute(toolCtx.base, {});
+    await validateConnectorDraftTool.execute(toolCtx.base, {});
+    const blocked = await saveConnectorDraftTool.execute(toolCtx.base, {});
     expect(blocked.ok).toBe(false);
-    expect((blocked.data as { error: string }).error).toBe("probe_required");
+    expect((blocked.data as { error_code: string }).error_code).toBe("connector_not_ready");
 
-    await updateConnectorDraftTool.execute(toolCtx.base, { base_url: baseUrl });
     await probeConnectorDraftTool.execute(toolCtx.base, { method: "GET", path: "/health" });
-    const saved = await saveConnectorDraftTool.execute(toolCtx.base, { force: false });
+    const saved = await saveConnectorDraftTool.execute(toolCtx.base, {});
     expect(saved.ok).toBe(true);
     const connector = (saved.data as { connector: { id: string; display_name: string } }).connector;
     expect(connector.display_name).toBe("Force Save API");

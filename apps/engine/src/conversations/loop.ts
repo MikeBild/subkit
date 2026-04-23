@@ -399,6 +399,30 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     user_message: currentUserText,
     document_analysis: documentAnalysisSummary,
   });
+  const authoringHint = draft.summary
+    ? {
+        mode: draft.summary.mode,
+        stage: draft.summary.stage,
+        lifecycle_state: draft.summary.lifecycle_state,
+        active_target: {
+          kind: draft.summary.active_target.kind,
+          lifecycle_state: draft.summary.active_target.lifecycle_state,
+        },
+        blocked_by: [...draft.summary.blocked_by],
+        next_required_action: draft.summary.next_required_action,
+        checkpoints: [...draft.summary.checkpoints],
+        latest_execution: draft.summary.latest_execution
+          ? {
+              diagnosis_available: draft.summary.latest_execution.diagnosis_available,
+            }
+          : null,
+        latest_diagnosis: draft.summary.latest_diagnosis
+          ? {
+              reason: draft.summary.latest_diagnosis.reason,
+            }
+          : null,
+      }
+    : undefined;
   const prompt = await assembleEnhancedPrompt(
     {
       tenant_id: p.tenant_id,
@@ -424,6 +448,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ...(loadedSkillSlugs.length > 0 ? { loaded_skill_slugs: loadedSkillSlugs } : {}),
       ...(p.surface ? { surface: p.surface } : {}),
       ...(authoringContext ? { authoring_context: authoringContext } : {}),
+      ...(authoringHint ? { authoring_hint: authoringHint } : {}),
       ...(p.runtime_context
         ? {
             runtime_context: {

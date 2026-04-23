@@ -15,6 +15,12 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { clearMemoryAttachments, putMemoryAttachment } from "../attachments.ts";
+import {
+  withConnectorInspection,
+  withConnectorProbe,
+  withConnectorValidation,
+} from "../authoring-state.ts";
+import { validateConnectorDraft } from "../connector-draft.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { saveConnectorDraftTool } from "../tools/save-connector-draft.ts";
 import type { DraftDocument } from "../types.ts";
@@ -103,16 +109,32 @@ function buildToolCtx(getDraftRef: { current: DraftDocument }): ToolContext {
 
 describe("saveConnectorDraftTool — auto document analysis on attachment", () => {
   test("creates connector, persists endpoint registry rows, and emits DOCUMENT_ANALYZED", async () => {
+    const baseDraft: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "Widgets",
+        slug: "widgets",
+        driver: "http",
+        environment: "dev",
+        auth_type: "none",
+        base_url: "https://api.example.com",
+      },
+      workflow: { name: "", steps: [] },
+    };
+    const validated = withConnectorValidation(
+      withConnectorInspection(baseDraft),
+      {
+        ...baseDraft.connector,
+        validation: validateConnectorDraft(baseDraft.connector ?? null),
+      },
+      true,
+      "Connector draft validated.",
+    );
     const draftRef = {
-      current: {
-        mode: "connector_authoring",
-        connector: {
-          name: "Widgets",
-          slug: "widgets",
-          driver: "http",
-          environment: "dev",
-          auth_type: "none",
-          base_url: "https://api.example.com",
+      current: withConnectorProbe(
+        validated,
+        {
+          ...validated.connector,
           latest_probe: {
             ok: true,
             method: "GET",
@@ -122,11 +144,12 @@ describe("saveConnectorDraftTool — auto document analysis on attachment", () =
             summary: "ok",
           },
         },
-        workflow: { name: "", steps: [] },
-      } as DraftDocument,
+        true,
+        "ok",
+      ),
     };
 
-    const result = await saveConnectorDraftTool.execute(buildToolCtx(draftRef), { force: false });
+    const result = await saveConnectorDraftTool.execute(buildToolCtx(draftRef), {});
     expect(result.ok).toBe(true);
     const data = result.data as {
       connector: { id: string; slug: string };

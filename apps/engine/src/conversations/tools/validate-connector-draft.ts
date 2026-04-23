@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
-import { withConnectorDraft } from "../authoring-state.ts";
+import { withConnectorValidation } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
+import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z.object({}).openapi("ValidateConnectorDraftToolInput");
@@ -15,19 +16,21 @@ export const validateConnectorDraftTool: ConversationTool = {
     const draft = ctx.getDraft();
     const connector = draft.connector ?? null;
     const validation = validateConnectorDraft(connector);
-    await ctx.setDraft(
-      withConnectorDraft(
-        draft,
-        connector ? { ...connector, validation } : connector,
-        "connector_validated",
-      ),
+    const nextDraft = withConnectorValidation(
+      draft,
+      connector ? { ...connector, validation } : connector,
+      validation.ok,
+      validation.ok
+        ? "Connector draft validated with no blocking issues."
+        : "Connector draft validation reported blocking issues.",
     );
+    await ctx.setDraft(nextDraft);
     return {
       ok: validation.ok,
-      data: {
-        connector,
+      data: buildLifecyclePayload(nextDraft, {
+        connector: nextDraft.connector,
         validation,
-      },
+      }),
     };
   },
 };

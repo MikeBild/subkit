@@ -31,6 +31,7 @@ import { renderRuntimeContextBlock } from "../runtime-context.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../tokens.ts";
 import type {
   AssembleContextParams,
+  AuthoringPromptHint,
   EnhancedPrompt,
   IncludedChunk,
   IncludedKnowledgeChunk,
@@ -44,7 +45,7 @@ type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web";
 
-function converseBasePrompt(surface: ConversationSurface): string {
+function conversationVerbosity(surface: ConversationSurface): string {
   const verbosity =
     surface === "sk_headless"
       ? "Respond tersely — the user is using the CLI and parsing output. One paragraph per turn max unless listing structured data."
@@ -53,6 +54,127 @@ function converseBasePrompt(surface: ConversationSurface): string {
         : surface === "mcp"
           ? "You are responding to an external MCP client (another AI agent or tool). Prefer machine-readable, stable output. No pleasantries."
           : "Respond conversationally with clear structure.";
+  return verbosity;
+}
+
+function connectorFocusPrompt(hint: AuthoringPromptHint): string {
+  const stageLine = `Current connector stage: ${hint.stage}.`;
+  const checkpointLine = summarizeCheckpoints(hint, [
+    "connector_inspected",
+    "connector_validated",
+    "connector_probed",
+    "connector_persisted",
+  ]);
+  const blockedLine = summarizeBlockedBy(hint);
+  const nextLine = summarizeNextRequiredAction(hint);
+  return [
+    "AUTHORING FOCUS: CONNECTOR",
+    "- Stay in connector authoring until the connector is persisted.",
+    "- Do not start workflow drafting while the active target is a draft-only connector.",
+    "- Treat inspect -> validate -> probe -> save as the only valid connector progression.",
+    "- Hide premature save behaviour from yourself: if inspection, validation, or probing is stale or missing, repair that checkpoint instead of narrating around it.",
+    stageLine,
+    checkpointLine,
+    blockedLine,
+    nextLine,
+  ].join("\n");
+}
+
+function workflowFocusPrompt(hint: AuthoringPromptHint): string {
+  const stageLine = `Current workflow stage: ${hint.stage}.`;
+  const checkpointLine = summarizeCheckpoints(hint, [
+    "workflow_inspected",
+    "workflow_validated",
+    "workflow_previewed",
+    "workflow_persisted",
+  ]);
+  const blockedLine = summarizeBlockedBy(hint);
+  const nextLine = summarizeNextRequiredAction(hint);
+  return [
+    "AUTHORING FOCUS: WORKFLOW",
+    "- Stay in workflow authoring until the workflow is persisted.",
+    "- Treat inspect -> validate -> preview -> commit as the only valid workflow progression.",
+    "- Do not run a draft-only workflow. Commit first, then run the persisted version.",
+    "- Use dry_run_transform only against real captured JSON from dry_run_step, dry_run_workflow, or inspect_authoring_context.",
+    stageLine,
+    checkpointLine,
+    blockedLine,
+    nextLine,
+  ].join("\n");
+}
+
+function executionFocusPrompt(hint: AuthoringPromptHint): string {
+  const stageLine = `Current execution stage: ${hint.stage}.`;
+  const nextLine = summarizeNextRequiredAction(hint);
+  const diagnosisLine =
+    hint.latest_execution?.diagnosis_available === true
+      ? "- Diagnosis is available for the latest execution. Prefer diagnose_latest_execution before making blind workflow edits."
+      : "- No diagnosis gate is currently pending. Ground any next edit in the latest execution result.";
+  return [
+    "AUTHORING FOCUS: EXECUTION",
+    "- The workflow is already persisted. Treat runs as verification of the saved version, not as draft previews.",
+    "- Prefer inspecting the latest execution outcome before deciding whether to re-run or edit the workflow.",
+    diagnosisLine,
+    stageLine,
+    summarizeBlockedBy(hint),
+    nextLine,
+  ].join("\n");
+}
+
+function diagnosisFocusPrompt(hint: AuthoringPromptHint): string {
+  const stageLine = `Current diagnosis stage: ${hint.stage}.`;
+  const reasonLine = hint.latest_diagnosis
+    ? `- Latest diagnosis reason: ${hint.latest_diagnosis.reason}`
+    : "- Diagnosis mode is active because the latest execution requires repair.";
+  return [
+    "AUTHORING FOCUS: DIAGNOSIS",
+    "- Diagnose first, then edit the workflow, preview it again, commit the repaired version, and only then run it.",
+    "- Keep the latest diagnosis as the source of truth for what to repair. Do not discard it in favour of generic guesses.",
+    "- Do not re-run the same persisted workflow while diagnosis is still the active mode.",
+    reasonLine,
+    stageLine,
+    summarizeBlockedBy(hint),
+    summarizeNextRequiredAction(hint),
+  ].join("\n");
+}
+
+function summarizeCheckpoints(hint: AuthoringPromptHint, keys: string[]): string {
+  const parts = keys.map((key) => {
+    const checkpoint = hint.checkpoints.find((item) => item.key === key);
+    return `${key}=${checkpoint?.status ?? "missing"}`;
+  });
+  return `- Relevant checkpoints: ${parts.join(", ")}`;
+}
+
+function summarizeBlockedBy(hint: AuthoringPromptHint): string {
+  if (hint.blocked_by.length === 0) return "- Current blockers: none.";
+  return `- Current blockers: ${hint.blocked_by.join(", ")}`;
+}
+
+function summarizeNextRequiredAction(hint: AuthoringPromptHint): string {
+  if (!hint.next_required_action) return "- Next required action: continue the conversation.";
+  return `- Next required action: ${hint.next_required_action}`;
+}
+
+function authoringFocusPrompt(hint?: AuthoringPromptHint): string {
+  if (!hint) return "";
+  switch (hint.mode) {
+    case "connector":
+      return connectorFocusPrompt(hint);
+    case "workflow":
+      return workflowFocusPrompt(hint);
+    case "execution":
+      return executionFocusPrompt(hint);
+    case "diagnosis":
+      return diagnosisFocusPrompt(hint);
+    default:
+      return "";
+  }
+}
+
+function converseBasePrompt(surface: ConversationSurface, hint?: AuthoringPromptHint): string {
+  const verbosity = conversationVerbosity(surface);
+  const focusBlock = authoringFocusPrompt(hint);
 
   return `You are subkit's authoring + operator assistant. You can introspect tenant state, guide end users conversationally, and draft connectors + workflows in staged steps.
 
@@ -155,7 +277,9 @@ TOOL INTERACTION LOGS:
 - Tool results may include an \`interactionLog\` array recording user UI actions on that specific tool call. Treat it as immutable history. A \`user_tested\` entry does NOT mean the change was applied — only \`user_confirmed\` or \`user_partial\` mean applied.
 
 SYSTEM KNOWLEDGE:
-- Use skills and connector docs silently. Never say "as the skills say…"; just ground your output in them.`;
+- Use skills and connector docs silently. Never say "as the skills say…"; just ground your output in them.
+
+${focusBlock}`.trim();
 }
 
 const BASE_SYSTEM_PROMPTS: Record<LlmFlow, string> = {
@@ -203,8 +327,12 @@ const BASE_SYSTEM_PROMPTS: Record<LlmFlow, string> = {
 };
 
 /** Return the system prompt for a flow, honouring the conversation surface. */
-export function basePromptFor(flow: LlmFlow, surface?: ConversationSurface): string {
-  if (flow === "converse" && surface) return converseBasePrompt(surface);
+export function basePromptFor(
+  flow: LlmFlow,
+  surface?: ConversationSurface,
+  authoringHint?: AuthoringPromptHint,
+): string {
+  if (flow === "converse" && surface) return converseBasePrompt(surface, authoringHint);
   return BASE_SYSTEM_PROMPTS[flow];
 }
 
@@ -383,7 +511,7 @@ export async function assembleEnhancedPrompt(
   const db = exec ?? getDb();
   const cap = Math.min(p.max_tokens, contextCapFor(p.model ?? "default"));
 
-  const baseSystem = basePromptFor(p.flow, p.surface);
+  const baseSystem = basePromptFor(p.flow, p.surface, p.authoring_hint);
   const skillsApplicable = await retrieveApplicableSkills(
     {
       tenant_id: p.tenant_id,

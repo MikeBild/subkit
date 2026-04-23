@@ -276,12 +276,88 @@ const ContextSnapshotSchema = z
     connector_id: z.string().nullable(),
     workflow_id: z.string().nullable(),
     draft_mode: z.string(),
+    authoring_mode: z.string().nullable(),
+    authoring_stage: z.string().nullable(),
     draft_summary: z
       .object({
         readiness: z.string(),
         next_action: z.string().nullable(),
+        next_required_action: z.string().nullable(),
         missing_fields: z.array(z.string()),
         progress_label: z.string().nullable(),
+        lifecycle_state: z.string(),
+        blocked_by: z.array(z.string()),
+      })
+      .nullable(),
+    active_target: z
+      .object({
+        kind: z.enum(["connector", "workflow", "none"]),
+        name: z.string().nullable(),
+        slug: z.string().nullable(),
+        id: z.string().nullable(),
+        environment: z.string().nullable(),
+        lifecycle_state: z.string(),
+      })
+      .nullable(),
+    checkpoint_statuses: z.array(
+      z.object({
+        key: z.string(),
+        status: z.string(),
+        verified_at: z.string().nullable(),
+        verified_by_tool: z.string().nullable(),
+        ok: z.boolean().nullable(),
+        summary: z.string().nullable(),
+      }),
+    ),
+    stale_checkpoints: z.array(z.string()),
+    next_required_action: z.string().nullable(),
+    persisted_resources: z.array(
+      z.object({
+        kind: z.string(),
+        id: z.string(),
+        slug: z.string().nullable(),
+        name: z.string().nullable(),
+        version_id: z.string().nullable(),
+        version: z.number().nullable(),
+        environment: z.string().nullable(),
+        saved_at: z.string(),
+      }),
+    ),
+    latest_execution: z
+      .object({
+        execution_id: z.string(),
+        workflow_id: z.string().nullable(),
+        workflow_version_id: z.string().nullable(),
+        status: z.string(),
+        environment: z.string(),
+        warnings_count: z.number(),
+        recorded_at: z.string(),
+        diagnosis_available: z.boolean(),
+      })
+      .nullable(),
+    latest_diagnosis: z
+      .object({
+        execution_id: z.string(),
+        recorded_at: z.string(),
+        reason: z.string(),
+        warning_sources: z.array(
+          z.object({
+            step_key: z.string(),
+            code: z.string(),
+            identifier: z.string().nullable(),
+          }),
+        ),
+        steps: z.array(
+          z.object({
+            step_key: z.string(),
+            kind: z.string(),
+            status: z.string(),
+            duration_ms: z.number().nullable(),
+            output_preview: z.unknown().optional(),
+            error: z.unknown().optional(),
+            request_meta: z.unknown().optional(),
+          }),
+        ),
       })
       .nullable(),
     skills: z.object({

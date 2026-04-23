@@ -18,6 +18,38 @@ Internally, the AI operates over a palette of structured-intent tools. It does n
 
 ---
 
+## The Authoring State Machine
+
+Conversations are no longer just a loose draft plus a few helper tools. The engine maintains an explicit Authoring State Machine for every conversation and uses it to decide which tools are visible, which actions are blocked, and what the next valid move is.
+
+The canonical progression is:
+
+1. Connector drafting
+2. Connector inspection
+3. Connector validation
+4. Connector probe
+5. Connector persisted
+6. Workflow drafting
+7. Workflow inspection
+8. Workflow validation
+9. Workflow preview
+10. Workflow persisted
+11. Workflow executed
+12. Diagnosis and repair when needed
+
+This state is persisted in the conversation draft summary and exposed as:
+
+- `mode` — `connector`, `workflow`, `execution`, or `diagnosis`
+- `stage` — the concrete state-machine stage such as `connector_probed` or `workflow_previewed`
+- `lifecycle_state` — whether the active target is still `draft_only` or already `persisted`
+- `blocked_by` — the exact missing checkpoints or fields that currently prevent the next durable action
+- `next_required_action` — the next state-advancing action the assistant should take or ask the user to approve
+- `checkpoints[]` — freshness state for `inspect`, `validate`, `probe`, `preview`, `persist`, `execute`, and `diagnose`
+
+The authoring loop is designed so that the model does not have to infer progress from transcript history. The current stage, active target, and checkpoint freshness are part of the runtime contract, not just prompt advice.
+
+---
+
 ## The Human-in-the-Loop Approval Gate
 
 The most important architectural decision in sk is the approval gate.
@@ -27,6 +59,70 @@ Nothing reaches the execution engine without an explicit human approval. When th
 This is not a UX convenience — it is the governance model. The approval gate is what makes AI-authored workflows auditable and enterprise-safe. It is the structural answer to the question every compliance team asks: "How do we know the AI did the right thing?" The answer is: because a human checked and signed off before anything ran.
 
 After approval, the Draft is committed as a new versioned Workflow. The Conversation transitions to an active state, and the workflow is ready to run.
+
+The approval gate sits on top of additional hard quality gates:
+
+- A connector cannot be saved from the guided conversation flow until inspection, validation, and probe checkpoints are fresh.
+- A workflow cannot be committed from the guided conversation flow until inspection, validation, and preview checkpoints are fresh.
+- A workflow run always targets a persisted workflow version, never an ambiguous draft.
+- The normal conversation surface no longer exposes force-style bypasses for save or commit. Operators can still use explicit admin or development paths where appropriate, but the guided flow itself is strict.
+
+This matters because the approval is not meant to compensate for missing technical checks. It is the final human sign-off after the state machine has already established that the draft is internally coherent.
+
+---
+
+## Probe Before Save, Preview Before Commit
+
+The clean authoring experience depends on treating intermediate verification as first-class product steps rather than optional debugging.
+
+For connectors, the canonical path is:
+
+1. Start or update the connector draft
+2. Inspect the current draft
+3. Validate required fields and config shape
+4. Probe the real upstream boundary
+5. Save the connector
+
+For workflows, the canonical path is:
+
+1. Start or update the workflow draft
+2. Inspect the current draft
+3. Validate the graph and step schemas
+4. Preview with `dry_run_step`, `dry_run_transform`, or `dry_run_workflow`
+5. Commit the workflow
+6. Run the persisted workflow
+
+The engine tracks these as fresh or stale checkpoints. Any draft mutation invalidates later checkpoints automatically. For example, editing a workflow after a successful preview makes the preview checkpoint stale, so the workflow must be previewed again before it can be committed.
+
+The result is a much more deterministic authoring loop: the assistant does not "think" a connector is ready or a workflow is runnable; it reads that from checkpoint state.
+
+---
+
+## Diagnosis Is Part of Authoring
+
+Execution is not the end of the authoring loop. When a persisted workflow runs and produces warnings or a suspicious result, the conversation enters diagnosis mode instead of falling back to generic retry behaviour.
+
+Diagnosis mode keeps the latest execution and its causal context attached to the draft summary:
+
+- `latest_execution` records the exact persisted workflow id and version that ran
+- `diagnosis_available` signals that the latest run should be inspected before editing
+- `latest_diagnosis` captures the structured reason, warning sources, and step-level summaries from the diagnosis pass
+
+This is especially important for expression-heavy workflows. A run may technically succeed while still carrying warnings such as unresolved identifiers in scope paths. In that case the right recovery is not "run it again" but "diagnose, repair the draft, preview again, commit again, then run again."
+
+Diagnosis is therefore a first-class authoring phase, not an operator-only debugging escape hatch.
+
+---
+
+## Stage-Aware Prompting And Tool Narrowing
+
+The authoring loop now constrains both prompt guidance and visible tool surface by mode and stage.
+
+When the conversation is in connector mode, the model is guided to stay inside connector work until the connector is persisted. During workflow drafting, the prompt shifts to inspection, validation, preview, and commit guidance. During execution and diagnosis, the prompt focuses on the latest persisted run and its repair path.
+
+The same state machine also narrows the visible tool palette. The model does not just see every authoring tool all the time and rely on runtime rejection. Premature actions such as connector save, workflow commit, or diagnosis only become visible when the relevant stage and checkpoint state permit them.
+
+This is one of the key reasons the authoring flow stays consistent across turns: prompt, tool visibility, and runtime gates all read from the same state model.
 
 ---
 

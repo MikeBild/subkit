@@ -16,7 +16,11 @@ The sk CLI is the primary human-facing authoring tool. It is a terminal interfac
 
 **Authentication.** The sk CLI supports four modes: API Key (for developers and CI), OIDC (for SSO-enabled organizations), Portal Token (for scoped external-user flows), and headless mode where input is piped from stdin for scripted or automated usage. All modes resolve to the same identity and RBAC model.
 
-**In-conversation actions.** Users interact with the ongoing Conversation through slash commands: `/approve` to commit a Draft, `/reject` to discard a proposal, `/list` to enumerate available Connectors or Skills, `/run` to trigger an execution, and others. These commands give users explicit control over the AI authoring loop without leaving the terminal.
+**In-conversation actions.** Users interact with the ongoing Conversation through slash commands: `/approve` to commit a Draft, `/reject` to discard a proposal, `/list` to enumerate available Connectors or Skills, `/run` to trigger an execution, `/draft` to inspect the current draft snapshot, `/context` to inspect the current authoring state, and others. These commands give users explicit control over the AI authoring loop without leaving the terminal.
+
+**State visibility.** The CLI does not infer progress from transcript text alone. It renders the engine's authoring summary directly: current mode, stage, active target, checkpoint freshness, blockers, next required action, latest execution, and latest diagnosis. This is what makes resume, repair, and handoff predictable across long-running sessions.
+
+**Guided progression.** The guided CLI flow follows the same state machine as the engine. Connector save is gated by fresh inspect/validate/probe checkpoints. Workflow commit is gated by fresh inspect/validate/preview checkpoints. Execution runs always target the persisted workflow version currently tracked in the conversation state. The normal guided flow does not expose conversational force bypasses for these transitions.
 
 **Resource references.** Within a Conversation, users can mention platform resources directly using `@connector` and `@skill` syntax. This lets the AI ground its proposals in the specific Connectors and Skills the tenant has configured, rather than making generic assumptions.
 
@@ -31,6 +35,8 @@ The REST API is the full programmatic interface to sk. Every capability availabl
 **Coverage.** The API exposes CRUD endpoints for all platform resources: Workflows, Connectors, Executions, Credentials, Skills, Skill Candidates, Knowledge Sources, Conversations, Schedules, Webhooks, Audit Log entries, and more. Every operation that changes state goes through the API layer, which means RBAC and the Audit Log apply uniformly.
 
 **Schema-first design.** All request and response shapes are defined as Zod schemas. The OpenAPI 3.1 specification is generated from those schemas — it is never hand-written. This means the spec is always accurate, and client code generated from it is always consistent with the actual implementation.
+
+**Conversation state surfaces.** Conversation responses expose the authoring state machine directly, including `authoring_mode`, `authoring_stage`, active target metadata, checkpoint statuses, stale checkpoints, `next_required_action`, persisted resources, and latest execution or diagnosis references. API clients do not have to reconstruct progress from free-form assistant messages.
 
 **Consistency.** Pagination, filtering, and sorting follow the same conventions across all list endpoints. Operators and developers can learn the pattern once and apply it everywhere.
 

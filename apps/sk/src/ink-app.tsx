@@ -666,12 +666,52 @@ const ContextPane: React.FC<{
 }> = memo(({ pane, onDismiss }) => (
   <Pane title={pane.title} onDismiss={onDismiss}>
     <PaneLabelRow label="draft mode" value={pane.snapshot.draft_mode} />
+    <PaneLabelRow label="authoring mode" value={pane.snapshot.authoring_mode ?? "—"} />
+    <PaneLabelRow label="stage" value={pane.snapshot.authoring_stage ?? "—"} />
     <PaneLabelRow label="readiness" value={pane.snapshot.draft_summary?.readiness ?? "—"} />
-    <PaneLabelRow label="next action" value={pane.snapshot.draft_summary?.next_action ?? "—"} />
+    <PaneLabelRow
+      label="next action"
+      value={pane.snapshot.next_required_action ?? pane.snapshot.draft_summary?.next_action ?? "—"}
+    />
+    <PaneLabelRow
+      label="blocked by"
+      value={pane.snapshot.draft_summary?.blocked_by.join(", ") || "—"}
+    />
     <PaneLabelRow label="messages" value={String(pane.snapshot.messages.total)} />
     <PaneLabelRow label="last role" value={pane.snapshot.messages.last_role ?? "—"} />
     <PaneLabelRow label="tool calls" value={String(pane.snapshot.tool_calls_total)} />
     <PaneLabelRow label="pending elicitations" value={String(pane.snapshot.pending_elicitations)} />
+    {pane.snapshot.active_target ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color="cyan" bold>
+          active target
+        </Text>
+        <Text>
+          {pane.snapshot.active_target.kind}
+          {pane.snapshot.active_target.name ? ` · ${pane.snapshot.active_target.name}` : ""}
+          {pane.snapshot.active_target.slug ? ` · ${pane.snapshot.active_target.slug}` : ""}
+          {pane.snapshot.active_target.environment
+            ? ` · ${pane.snapshot.active_target.environment}`
+            : ""}
+          {pane.snapshot.active_target.lifecycle_state
+            ? ` · ${pane.snapshot.active_target.lifecycle_state}`
+            : ""}
+        </Text>
+      </Box>
+    ) : null}
+    {pane.snapshot.checkpoint_statuses.length > 0 ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color="cyan" bold>
+          checkpoints
+        </Text>
+        {pane.snapshot.checkpoint_statuses.map((checkpoint) => (
+          <Text key={`ctx-checkpoint-${checkpoint.key}`}>
+            {checkpoint.key} · {checkpoint.status}
+            {checkpoint.verified_by_tool ? ` · ${checkpoint.verified_by_tool}` : ""}
+          </Text>
+        ))}
+      </Box>
+    ) : null}
     <Box flexDirection="column" marginTop={1}>
       <Text color="cyan" bold>
         skills
@@ -697,6 +737,31 @@ const ContextPane: React.FC<{
             {item.filename ? ` (${item.filename})` : ""}
           </Text>
         ))}
+      </Box>
+    ) : null}
+    {pane.snapshot.latest_execution ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color="cyan" bold>
+          latest execution
+        </Text>
+        <Text>
+          {pane.snapshot.latest_execution.status}
+          {pane.snapshot.latest_execution.workflow_version_id
+            ? ` · ${pane.snapshot.latest_execution.workflow_version_id}`
+            : ""}
+          {pane.snapshot.latest_execution.warnings_count > 0
+            ? ` · ${pane.snapshot.latest_execution.warnings_count} warnings`
+            : ""}
+          {pane.snapshot.latest_execution.diagnosis_available ? " · diagnosis available" : ""}
+        </Text>
+      </Box>
+    ) : null}
+    {pane.snapshot.latest_diagnosis ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color="cyan" bold>
+          latest diagnosis
+        </Text>
+        <Text>{pane.snapshot.latest_diagnosis.reason}</Text>
       </Box>
     ) : null}
   </Pane>

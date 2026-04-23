@@ -133,7 +133,7 @@ const cancelRoute = createRoute({
 // execution id. Only saved runs support the async queued path — draft
 // and step runs always execute inline because there's no persisted
 // workflow to reference from a queue job.
-const RunBodySchema = z.discriminatedUnion("source", [
+const RuntimeRunBodySchema = z.discriminatedUnion("source", [
   z
     .object({
       source: z.literal("saved"),
@@ -161,6 +161,55 @@ const RunBodySchema = z.discriminatedUnion("source", [
       timeout_ms: z.number().int().positive().max(60_000).optional(),
     })
     .openapi("RunStepBody"),
+]);
+
+const OpenApiDraftDefinitionSchema = z
+  .object({
+    name: z.string().min(1),
+    slug: z.string().min(1).optional(),
+    description: z.string().optional(),
+    input_schema: z.record(z.string(), z.unknown()).optional(),
+    output_schema: z.record(z.string(), z.unknown()).optional(),
+    steps: z.array(z.record(z.string(), z.unknown())).min(1).max(200),
+    timeout_ms: z.number().int().positive().optional(),
+  })
+  .openapi("ExecutionRunDraftDefinition");
+
+const OpenApiStepSchema = z
+  .object({
+    kind: z.string().min(1),
+  })
+  .catchall(z.unknown())
+  .openapi("ExecutionRunStep");
+
+const RunBodySchema = z.discriminatedUnion("source", [
+  z
+    .object({
+      source: z.literal("saved"),
+      workflow_id: z.string().uuid(),
+      version_id: z.string().uuid().optional(),
+      input: z.unknown().optional(),
+      sync: z.boolean().optional(),
+    })
+    .openapi("ExecutionRunSavedBody"),
+  z
+    .object({
+      source: z.literal("draft"),
+      definition: OpenApiDraftDefinitionSchema,
+      name: z.string().optional(),
+      input: z.unknown().optional(),
+    })
+    .openapi("ExecutionRunDraftBody"),
+  z
+    .object({
+      source: z.literal("step"),
+      step: OpenApiStepSchema,
+      workflow_slug: z.string().optional(),
+      input: z.unknown().optional(),
+      scope: z.record(z.string(), z.unknown()).optional(),
+      timeout_ms: z.number().int().positive().max(60_000).optional(),
+    })
+    .openapi("ExecutionRunStepBody"),
 ]);
 
 const RunResponseSchema = z
@@ -266,7 +315,14 @@ export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(runExecutionRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
-    const body = c.req.valid("json");
+    const runtimeBody = RuntimeRunBodySchema.safeParse(c.req.valid("json"));
+    if (!runtimeBody.success) {
+      throw new BadRequestError("request validation failed", {
+        code: "bad_request",
+        details: runtimeBody.error.flatten(),
+      });
+    }
+    const body = runtimeBody.data;
 
     // Resolve execution_mode from the `x-subkit-environment` header, same
     // shape POST /v1/workflows/{id}/run used to accept.

@@ -435,11 +435,69 @@ export interface ContextSnapshot {
   connector_id: string | null;
   workflow_id: string | null;
   draft_mode: string;
+  authoring_mode: string | null;
+  authoring_stage: string | null;
   draft_summary: {
     readiness: string;
     next_action: string | null;
+    next_required_action: string | null;
     missing_fields: string[];
     progress_label: string | null;
+    lifecycle_state: string;
+    blocked_by: string[];
+  } | null;
+  active_target: {
+    kind: "connector" | "workflow" | "none";
+    name: string | null;
+    slug: string | null;
+    id: string | null;
+    environment: string | null;
+    lifecycle_state: string;
+  } | null;
+  checkpoint_statuses: Array<{
+    key: string;
+    status: string;
+    verified_at: string | null;
+    verified_by_tool: string | null;
+    ok: boolean | null;
+    summary: string | null;
+  }>;
+  stale_checkpoints: string[];
+  next_required_action: string | null;
+  persisted_resources: Array<{
+    kind: string;
+    id: string;
+    slug: string | null;
+    name: string | null;
+    version_id: string | null;
+    version: number | null;
+    environment: string | null;
+    saved_at: string;
+  }>;
+  latest_execution: {
+    execution_id: string;
+    workflow_id: string | null;
+    workflow_version_id: string | null;
+    status: string;
+    environment: string;
+    warnings_count: number;
+    recorded_at: string;
+    diagnosis_available: boolean;
+  } | null;
+  latest_diagnosis: {
+    execution_id: string;
+    recorded_at: string;
+    reason: string;
+    warning_sources: Array<{ step_key: string; code: string; identifier: string | null }>;
+    steps: Array<{
+      step_key: string;
+      kind: string;
+      status: string;
+      duration_ms: number | null;
+      output_preview?: unknown;
+      error?: unknown;
+      request_meta?: unknown;
+    }>;
   } | null;
   skills: {
     global: Array<{ id: string; title: string }>;
@@ -567,6 +625,7 @@ export async function getContextSnapshot(
         step_id: latestPreviewRaw.step_id ?? null,
       }
     : null;
+  const draftSummary = detail.draft?.summary ?? null;
 
   // Workflow version context for committed conversations — surfaces
   // the current version number for the bound workflow, so `/context`
@@ -596,14 +655,29 @@ export async function getContextSnapshot(
     connector_id: detail.conversation.target_connector_id,
     workflow_id: detail.conversation.target_workflow_id,
     draft_mode: detail.draft?.mode ?? "onboarding",
-    draft_summary: detail.draft?.summary
+    authoring_mode: draftSummary?.mode ?? null,
+    authoring_stage: draftSummary?.stage ?? null,
+    draft_summary: draftSummary
       ? {
-          readiness: detail.draft.summary.readiness,
-          next_action: detail.draft.summary.next_action,
-          missing_fields: detail.draft.summary.missing_fields,
-          progress_label: detail.draft.summary.progress_label,
+          readiness: draftSummary.readiness,
+          next_action: draftSummary.next_action,
+          next_required_action: draftSummary.next_required_action,
+          missing_fields: draftSummary.missing_fields,
+          progress_label: draftSummary.progress_label,
+          lifecycle_state: draftSummary.lifecycle_state,
+          blocked_by: draftSummary.blocked_by,
         }
       : null,
+    active_target: draftSummary?.active_target ?? null,
+    checkpoint_statuses: draftSummary?.checkpoints ?? [],
+    stale_checkpoints:
+      draftSummary?.checkpoints
+        .filter((checkpoint) => checkpoint.status === "stale")
+        .map((checkpoint) => checkpoint.key) ?? [],
+    next_required_action: draftSummary?.next_required_action ?? null,
+    persisted_resources: draftSummary?.persisted_resources ?? [],
+    latest_execution: draftSummary?.latest_execution ?? null,
+    latest_diagnosis: draftSummary?.latest_diagnosis ?? null,
     skills: {
       ...byScope,
       total: applicable.length,

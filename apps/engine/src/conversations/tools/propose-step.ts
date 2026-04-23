@@ -9,6 +9,7 @@
 import { z } from "@hono/zod-openapi";
 import { type ValidationError, validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
+import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -159,10 +160,11 @@ export const proposeStepTool: ConversationTool = {
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    const workflowDraft = structuredClone(getWorkflowDraft(ctx.getDraft()));
+    const currentDraft = ctx.getDraft();
+    const workflowDraft = structuredClone(getWorkflowDraft(currentDraft));
     const stepId = typeof args.step.id === "string" ? (args.step.id as string) : undefined;
+    const existing = stepId ? workflowDraft.steps.findIndex((step) => step.id === stepId) : -1;
     if (stepId) {
-      const existing = workflowDraft.steps.findIndex((s) => s.id === stepId);
       if (existing >= 0) {
         workflowDraft.steps[existing] = args.step;
       } else {
@@ -175,20 +177,29 @@ export const proposeStepTool: ConversationTool = {
     if (!validation.ok) {
       return {
         ok: false,
-        data: buildErrorPayload(args.step, validation.errors, stepId ?? null),
+        data: buildGateError(currentDraft, {
+          error_code: "step_invalid",
+          message: buildErrorPayload(args.step, validation.errors, stepId ?? null)
+            .message as string,
+          recommended_mode: "workflow",
+          extra: buildErrorPayload(args.step, validation.errors, stepId ?? null),
+        }),
       };
     }
-    await ctx.setDraft(withWorkflowDraft(ctx.getDraft(), workflowDraft, "workflow_step_updated"));
+    const nextDraft = withWorkflowDraft(currentDraft, workflowDraft, "workflow_step_updated");
+    await ctx.setDraft(nextDraft);
     return {
       ok: true,
-      data: {
-        steps: workflowDraft.steps.length,
-        step_id: stepId ?? null,
-        step_type: typeof args.step.kind === "string" ? args.step.kind : null,
-        replaced:
-          stepId !== undefined && workflowDraft.steps.findIndex((s) => s.id === stepId) >= 0,
-        last_step_id: workflowDraft.steps[workflowDraft.steps.length - 1]?.id ?? null,
-      },
+      data: buildDraftMutationPayload(nextDraft, {
+        resource_kind: "workflow",
+        extra: {
+          steps: workflowDraft.steps.length,
+          step_id: stepId ?? null,
+          step_type: typeof args.step.kind === "string" ? args.step.kind : null,
+          replaced: stepId !== undefined && existing >= 0,
+          last_step_id: workflowDraft.steps[workflowDraft.steps.length - 1]?.id ?? null,
+        },
+      }),
     };
   },
 };

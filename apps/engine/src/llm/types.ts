@@ -2,6 +2,13 @@
 // pipeline pull from the same shapes.
 
 import type { FilePart, ImagePart, TextPart } from "ai";
+import type {
+  AuthoringActiveTarget,
+  AuthoringCheckpointView,
+  AuthoringLifecycleState,
+  AuthoringStage,
+  AuthoringSurfaceMode,
+} from "../conversations/types.ts";
 import type { Skill } from "../skills/types.ts";
 import type { ProviderKind } from "./core/model-init.ts";
 
@@ -67,6 +74,22 @@ export interface IncludedKnowledgeChunk {
   tokens: number;
 }
 
+export interface AuthoringPromptHint {
+  mode: AuthoringSurfaceMode;
+  stage: AuthoringStage;
+  lifecycle_state: AuthoringLifecycleState;
+  active_target: Pick<AuthoringActiveTarget, "kind" | "lifecycle_state">;
+  blocked_by: string[];
+  next_required_action: string | null;
+  checkpoints: AuthoringCheckpointView[];
+  latest_execution: {
+    diagnosis_available: boolean;
+  } | null;
+  latest_diagnosis: {
+    reason: string;
+  } | null;
+}
+
 export interface AssembleContextParams {
   tenant_id: string;
   flow: LlmFlow;
@@ -103,6 +126,11 @@ export interface AssembleContextParams {
    * must be masked before this string reaches the assembler.
    */
   authoring_context?: string;
+  /**
+   * Small machine-readable authoring snapshot used to pick the
+   * mode/stage-specific converse focus block.
+   */
+  authoring_hint?: AuthoringPromptHint;
   /**
    * Real runtime context the model must quote verbatim instead of
    * inventing placeholders. Rendered into a stable block placed right

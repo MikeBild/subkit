@@ -53,6 +53,8 @@ describe("conversations/audit-trail", () => {
       "fetch_connector_docs",
       "propose_step",
       "propose_step",
+      "propose_step",
+      "inspect_workflow_draft",
       "validate_draft",
       "dry_run_step",
       "ask_user_confirm",

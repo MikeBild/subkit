@@ -5,7 +5,8 @@
 
 import { z } from "@hono/zod-openapi";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
-import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
+import { getWorkflowDraft, withWorkflowValidation } from "../authoring-state.ts";
+import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z.object({}).openapi("ValidateDraftToolInput");
@@ -19,10 +20,31 @@ export const validateDraftTool: ConversationTool = {
     const draft = ctx.getDraft();
     const workflowDraft = getWorkflowDraft(draft);
     const validation = validateWorkflowDef(workflowDraft);
+    const nextDraft = withWorkflowValidation(
+      draft,
+      validation.ok,
+      validation.ok
+        ? `Workflow draft validated with ${workflowDraft.steps.length} step${workflowDraft.steps.length === 1 ? "" : "s"}.`
+        : "Workflow draft validation reported blocking issues.",
+    );
+    await ctx.setDraft(nextDraft);
     if (!validation.ok) {
-      return { ok: false, data: { errors: validation.errors } };
+      return {
+        ok: false,
+        data: buildLifecyclePayload(nextDraft, {
+          name: workflowDraft.name,
+          errors: validation.errors,
+          steps: workflowDraft.steps.length,
+        }),
+      };
     }
-    await ctx.setDraft(withWorkflowDraft(draft, workflowDraft, "workflow_validated"));
-    return { ok: true, data: { errors: [], steps: workflowDraft.steps.length } };
+    return {
+      ok: true,
+      data: buildLifecyclePayload(nextDraft, {
+        name: workflowDraft.name,
+        errors: [],
+        steps: workflowDraft.steps.length,
+      }),
+    };
   },
 };

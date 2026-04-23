@@ -10,6 +10,7 @@ import {
   shouldAutoSelectConnectorTemplate,
 } from "../connector-template-intelligence.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
+import { buildDraftMutationPayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -83,36 +84,39 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
       template_name: template?.name ?? null,
     };
     const validation = validateConnectorDraft(connector);
-    await ctx.setDraft(
-      withConnectorDraft(
-        ctx.getDraft(),
-        { ...connector, validation },
-        "connector_started_from_description",
-      ),
+    const nextDraft = withConnectorDraft(
+      ctx.getDraft(),
+      { ...connector, validation },
+      "connector_started_from_description",
     );
+    await ctx.setDraft(nextDraft);
     return {
       ok: true,
-      data: {
-        connector: {
-          name: connector.name,
-          slug: connector.slug,
-          driver: connector.driver,
-          environment: connector.environment,
-          auth_type: connector.auth_type,
-          template_id: connector.template_id ?? null,
-          template_name: connector.template_name ?? null,
+      data: buildDraftMutationPayload(nextDraft, {
+        resource_kind: "connector",
+        extra: {
+          connector: {
+            name: connector.name,
+            slug: connector.slug,
+            driver: connector.driver,
+            environment: connector.environment,
+            auth_type: connector.auth_type,
+            template_id: connector.template_id ?? null,
+            template_name: connector.template_name ?? null,
+            validation,
+          },
+          validation,
+          matched_template:
+            template && bestTemplate
+              ? {
+                  slug: template.slug,
+                  name: template.name,
+                  score: bestTemplate.score,
+                  required_fields: inferTemplateRequiredFields(template),
+                }
+              : null,
         },
-        validation,
-        matched_template:
-          template && bestTemplate
-            ? {
-                slug: template.slug,
-                name: template.name,
-                score: bestTemplate.score,
-                required_fields: inferTemplateRequiredFields(template),
-              }
-            : null,
-      },
+      }),
     };
   },
 };

@@ -60,12 +60,15 @@ describe("conversations/loop", () => {
 
     // Expected tool call sequence:
     //   list_skills, fetch_connector_docs, propose_step (fail),
-    //   propose_step (fix), validate_draft, dry_run_step, ask_user_confirm
+    //   propose_step (fix request), propose_step (add previewable transform),
+    //   inspect_workflow_draft, validate_draft, dry_run_step, ask_user_confirm
     expect(toolCallEvents.map((e) => e.tool)).toEqual([
       "list_skills",
       "fetch_connector_docs",
       "propose_step",
       "propose_step",
+      "propose_step",
+      "inspect_workflow_draft",
       "validate_draft",
       "dry_run_step",
       "ask_user_confirm",

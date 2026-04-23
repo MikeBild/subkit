@@ -248,7 +248,8 @@ export function getMockProvider(): MockProvider {
  * the user asks to list users from an API. Covers propose_step →
  * validate_draft → ask_user_confirm → commit_draft with an intentional
  * first-pass validation-error (missing url) so the self-correct loop
- * is exercised.
+ * is exercised. The preview step runs a pure transform over sample
+ * input so the commit gate stays deterministic in hermetic CI.
  */
 export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
   return [
@@ -266,28 +267,50 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
           kind: "request",
           id: "get-users",
           method: "GET",
-          url: "https://jsonplaceholder.typicode.com/users",
-          ...(connector_id ? { connector_id } : {}),
+          ...(connector_id
+            ? { connector_id, path: "/users" }
+            : { url: "https://jsonplaceholder.typicode.com/users" }),
         },
       },
     },
+    {
+      tool: "propose_step",
+      args: {
+        step: {
+          kind: "transform",
+          id: "shape-users",
+          expression: "$input.users",
+          language: "jsonata",
+        },
+      },
+    },
+    { tool: "inspect_workflow_draft", args: {} },
     { tool: "validate_draft", args: {} },
-    // Preview the request step before asking for commit approval. The
-    // underlying fetch hits jsonplaceholder in canned flows, which is
-    // unreachable in hermetic CI — the commit uses `force: true` so the
-    // journey test is not network-dependent. The override lands in the
-    // audit log (WORKFLOW_COMMITTED_OVERRIDE) where operators can review.
-    { tool: "dry_run_step", args: { step_id: "get-users" } },
+    // Preview a pure transform step before asking for commit approval.
+    // This keeps the authoring loop deterministic even when request
+    // endpoints are unreachable in CI.
+    {
+      tool: "dry_run_step",
+      args: {
+        step_id: "shape-users",
+        input: {
+          users: [
+            { id: 1, name: "Ada", email: "ada@example.com" },
+            { id: 2, name: "Grace", email: "grace@example.com" },
+          ],
+        },
+      },
+    },
     {
       tool: "ask_user_confirm",
       args: {
-        question: "Commit this 1-step workflow?",
+        question: "Commit this 2-step workflow?",
         kind: "commit_draft",
-        summary: "commit 1-step workflow",
+        summary: "commit 2-step workflow",
       },
     },
     // Resume after the user answers:
-    { tool: "commit_draft", args: { force: true } },
+    { tool: "commit_draft", args: {} },
   ];
 }
 
@@ -401,6 +424,7 @@ export function cannedConnectorWorkflowPlan(baseUrl: string): ConverseMockStep[]
       },
     },
     { tool: "inspect_workflow_draft", args: {} },
+    { tool: "validate_draft", args: {} },
     { tool: "dry_run_step", args: { step_id: "health", input: { source: "smoke" } } },
     {
       tool: "ask_user_confirm",

@@ -1,10 +1,14 @@
 // Preview-before-commit gate — commit_draft refuses without a successful
-// dry-run on record, unless the caller supplies force=true (which writes
-// the WORKFLOW_COMMITTED_OVERRIDE audit row).
+// dry-run on record. Legacy force-like fields must not bypass the gate.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, conversationElicitations, conversations } from "../../db/schema/index.ts";
+import {
+  withLatestPreview,
+  withWorkflowInspection,
+  withWorkflowValidation,
+} from "../authoring-state.ts";
 import { commitDraftTool } from "../tools/commit-draft.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
@@ -53,6 +57,10 @@ async function seedApprovedConfirm(conversationId: string): Promise<void> {
 }
 
 describe("commit_draft preview-before-commit gate", () => {
+  function buildValidatedDraft(base: DraftDocument): DraftDocument {
+    return withWorkflowValidation(withWorkflowInspection(base), true, "Workflow draft validated.");
+  }
+
   test("refuses commit when no successful preview is recorded", async () => {
     const [conv] = await ctx.testDb.db
       .insert(conversations)
@@ -65,25 +73,25 @@ describe("commit_draft preview-before-commit gate", () => {
     if (!conv) throw new Error("conversation insert failed");
     await seedApprovedConfirm(conv.id);
 
-    const draft: DraftDocument = {
+    const draft = buildValidatedDraft({
       workflow: {
         name: "no-preview",
         slug: "no-preview",
         steps: [{ id: "s1", kind: "transform", expression: "$input.n", language: "jsonata" }],
       },
       // No latest_preview — gate must refuse.
-    };
+    });
     const result = await commitDraftTool.execute(
       toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
       {},
     );
     expect(result.ok).toBe(false);
-    const data = result.data as { error?: unknown; reason?: unknown };
-    expect(data.error).toBe("preview_required");
-    expect(data.reason).toBe("no_successful_preview");
+    const data = result.data as { error_code?: unknown; stale_checkpoints?: unknown };
+    expect(data.error_code).toBe("workflow_not_ready");
+    expect(data.stale_checkpoints).toEqual(expect.arrayContaining(["workflow_previewed"]));
   });
 
-  test("commits with force=true and writes a WORKFLOW_COMMITTED_OVERRIDE audit row", async () => {
+  test("legacy force-like fields do not bypass the preview gate", async () => {
     const [conv] = await ctx.testDb.db
       .insert(conversations)
       .values({
@@ -95,10 +103,10 @@ describe("commit_draft preview-before-commit gate", () => {
     if (!conv) throw new Error("conversation insert failed");
     await seedApprovedConfirm(conv.id);
 
-    const draft: DraftDocument = {
+    const draft = buildValidatedDraft({
       workflow: {
         name: "forced-commit",
-        slug: `forced-${Date.now()}`,
+        slug: "forced-preview-gate",
         steps: [
           {
             id: "fetch",
@@ -108,13 +116,14 @@ describe("commit_draft preview-before-commit gate", () => {
           },
         ],
       },
-    };
+    });
     const result = await commitDraftTool.execute(
       toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
       { force: true },
     );
-    expect(result.ok).toBe(true);
-    expect(typeof result.committed_workflow_id).toBe("string");
+    expect(result.ok).toBe(false);
+    const data = result.data as { error_code?: unknown };
+    expect(data.error_code).toBe("workflow_not_ready");
 
     const rows = await ctx.testDb.db
       .select()
@@ -125,12 +134,7 @@ describe("commit_draft preview-before-commit gate", () => {
           eq(auditLog.action, "workflow.committed_override"),
         ),
       );
-    expect(rows.length).toBeGreaterThanOrEqual(1);
-    const last = rows[rows.length - 1];
-    expect(last?.resource_id).toBe(result.committed_workflow_id ?? "");
-    const meta = last?.metadata as { conversation_id?: string; latest_preview_ok?: unknown };
-    expect(meta.conversation_id).toBe(conv.id);
-    expect(meta.latest_preview_ok).toBeNull();
+    expect(rows.length).toBe(0);
   });
 
   test("commits without force when the draft carries a successful preview", async () => {
@@ -145,18 +149,20 @@ describe("commit_draft preview-before-commit gate", () => {
     if (!conv) throw new Error("conversation insert failed");
     await seedApprovedConfirm(conv.id);
 
-    const draft: DraftDocument = {
-      workflow: {
-        name: "previewed-commit",
-        slug: `previewed-${Date.now()}`,
-        steps: [{ id: "t1", kind: "transform", expression: "$input.n", language: "jsonata" }],
-      },
-      latest_preview: {
+    const draft = withLatestPreview(
+      buildValidatedDraft({
+        workflow: {
+          name: "previewed-commit",
+          slug: "previewed-preview-gate",
+          steps: [{ id: "t1", kind: "transform", expression: "$input.n", language: "jsonata" }],
+        },
+      }),
+      {
         ok: true,
         step_id: "t1",
         summary: "Previewed t1 in 1ms.",
       },
-    };
+    );
     const result = await commitDraftTool.execute(
       toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
       {},

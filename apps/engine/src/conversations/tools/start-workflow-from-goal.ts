@@ -9,6 +9,7 @@
 import { z } from "@hono/zod-openapi";
 import { withWorkflowDraft } from "../authoring-state.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
+import { buildDraftMutationPayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -72,19 +73,26 @@ export const startWorkflowFromGoalTool: ConversationTool = {
       connector_ids: args.connector_ids,
     };
     const merged = { ...nextWorkflow, ...extra } as WorkflowDraftDocument;
-    await ctx.setDraft(withWorkflowDraft(draft, merged, "workflow_seeded_from_goal"));
+    const nextDraft = withWorkflowDraft(draft, merged, "workflow_seeded_from_goal");
+    await ctx.setDraft(nextDraft);
     return {
       ok: true,
-      data: {
-        workflow: {
+      data: buildDraftMutationPayload(nextDraft, {
+        resource_kind: "workflow",
+        extra: {
           name: args.name,
-          slug,
-          goal: args.goal,
-          connector_ids: args.connector_ids,
+          steps: 0,
+          workflow: {
+            name: args.name,
+            slug,
+            goal: args.goal,
+            connector_ids: args.connector_ids,
+            step_count: 0,
+          },
+          next_hint:
+            "Propose the first step with propose_step. Preview with dry_run_step before committing.",
         },
-        next_hint:
-          "Propose the first step with propose_step. Preview with dry_run_step before committing.",
-      },
+      }),
     };
   },
 };

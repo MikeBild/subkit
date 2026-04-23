@@ -22,6 +22,7 @@ import { createElicitation } from "../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
 import { type PermissionMode, resolveToolMode, type ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
+import { filterByAuthoringPalette } from "./authoring-palette.ts";
 import { compileDescription } from "./describe.ts";
 import { filterBySkillGate } from "./gated.ts";
 import { type ConversationTool, listTools, type ToolContext, type ToolResult } from "./index.ts";
@@ -564,7 +565,11 @@ export function wrapTools(
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   // Apply skill-gate: tools whose `requires_skill` isn't in loadedSkills
   // are hidden from the model until the matching `load_skill` call.
-  for (const t of filterBySkillGate(listTools(), loadedSkills)) {
+  const visibleTools = filterByAuthoringPalette(
+    filterBySkillGate(listTools(), loadedSkills),
+    ctx.getDraft(),
+  );
+  for (const t of visibleTools) {
     out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode);
   }
   return out;
