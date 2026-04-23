@@ -41,7 +41,7 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
           {
             kind: "branch",
             id: "check_status",
-            when: "prepare.status = 'approved'",
+            when: "prepare.data.status = 'approved'",
             then_steps: ["handle_approved"],
             else_steps: ["handle_rejected"],
           },
@@ -97,7 +97,7 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
           {
             kind: "branch",
             id: "check_status",
-            when: "prepare.status = 'approved'",
+            when: "prepare.data.status = 'approved'",
             then_steps: ["handle_approved"],
             else_steps: ["handle_rejected"],
           },
