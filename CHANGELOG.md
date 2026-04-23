@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.0](https://github.com/MikeBild/subkit/compare/subkit-v2.0.0...subkit-v2.1.0) (2026-04-23)
+
+
+### Features
+
+* **authoring:** harden guided state, palette, and prompt flow ([6e5eed1](https://github.com/MikeBild/subkit/commit/6e5eed14c717a2d9a67b895f18d02304679bad54))
+* **sk:** add full debug trace logging ([236d978](https://github.com/MikeBild/subkit/commit/236d978c13d90f7aaf2b2ad8f268b4a81abd4b9e))
+
 ## [2.0.0](https://github.com/MikeBild/subkit/compare/subkit-v1.18.1...subkit-v2.0.0) (2026-04-23)
 
 
