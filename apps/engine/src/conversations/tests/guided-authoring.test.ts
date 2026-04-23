@@ -116,7 +116,10 @@ describe("guided authoring conversation loop", () => {
     expect(detail?.draft?.connector?.name).toBe("Subkit Engine");
     expect(detail?.draft?.connector?.saved_connector_id).toBeTruthy();
     expect(detail?.draft?.connector?.latest_probe?.summary).toContain("Probe succeeded");
-    expect(detail?.draft?.latest_preview?.summary).toContain("Previewed");
+    // Post-hart-cut: dry_run_step routes through runSingleStep, so the
+    // summary now reads "Ran step `health` (request) in Nms." The word
+    // "Previewed" is gone alongside preview.ts.
+    expect(detail?.draft?.latest_preview?.summary).toContain("Ran step");
     expect(detail?.draft?.latest_preview?.summary).toContain("health");
   });
 });
