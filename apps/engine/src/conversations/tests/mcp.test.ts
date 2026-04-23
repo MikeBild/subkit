@@ -16,6 +16,10 @@ let connectorId: string;
 
 beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
+  // The mode-split MCP catalog hides conversation.* by default; this
+  // suite tests the authoring cluster specifically, so opt into
+  // authoring mode explicitly for the duration of the run.
+  process.env.SK_MCP_MODE = "authoring";
   resetMockProvider();
   suite = await startMcpTestSuite("conversations");
   const [row] = await suite.http.db
@@ -37,6 +41,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await suite.cleanup();
+  delete process.env.SK_MCP_MODE;
 });
 
 describe("mcp conversation tools", () => {
