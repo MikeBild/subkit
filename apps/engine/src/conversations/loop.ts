@@ -36,6 +36,7 @@ import {
 import { loadDraft } from "./draft.ts";
 import { setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
+import { detectUserIntent } from "./intent-detector.ts";
 import {
   appendMessage,
   buildModelMessages,
@@ -514,6 +515,26 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     p.permission_mode ?? null,
   );
 
+  // Steer toolChoice from explicit user intent. Without this, the model
+  // sees "auto" and can decide to just narrate ("Der Workflow filtert
+  // bereits korrekt") without actually calling the tool — exactly the
+  // hallucination reported in session f44bf9b4. We only force a tool when
+  // (a) the detector sees a strong verb like "ausführen" / "run" and
+  // (b) that tool actually exists in the palette this turn.
+  const detectedIntent = detectUserIntent(p.user_message);
+  const preferredTool =
+    detectedIntent.forceTool && tools[detectedIntent.forceTool] ? detectedIntent.forceTool : null;
+  if (preferredTool) {
+    logger.debug({
+      module: "conversation",
+      action: "loop.intent.force_tool",
+      msg: "steering toolChoice from user intent",
+      conversation_id: p.conversation_id,
+      forced_tool: preferredTool,
+      reason: detectedIntent.reason,
+    });
+  }
+
   /**
    * Run `streamText` once against `modelId`. Wired-in side-effects
    * (tool execution, DB writes, events) happen inside the tool
@@ -546,7 +567,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       system: prompt.system,
       messages: attemptMessages,
       tools,
-      toolChoice: "auto",
+      toolChoice: preferredTool ? { type: "tool" as const, toolName: preferredTool } : "auto",
       stopWhen: [
         stepCountIs(budget),
         hasToolCall("ask_user_choice"),
