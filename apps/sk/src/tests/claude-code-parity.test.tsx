@@ -177,7 +177,7 @@ describe("chat-first parity", () => {
     await type(instance, "hi");
     await pressEnter(instance);
     await tick(80);
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("session abcd1234");
     expect(frame).toContain("chat");
     expect(frame).toContain("❯");
