@@ -9,10 +9,15 @@ import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
 beforeAll(async () => {
+  // The mode-split MCP catalog hides conversation.* and tenant.* from
+  // the default product surface; this suite validates the combined
+  // authoring+admin surface, so opt in explicitly.
+  process.env.SK_MCP_MODE = "admin";
   env = await boot("mcp-surface");
 }, 90_000);
 afterAll(async () => {
   await shutdown(env);
+  delete process.env.SK_MCP_MODE;
 }, 30_000);
 
 // MCP streamable-http requires a persistent session — the first
