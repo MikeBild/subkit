@@ -12,10 +12,22 @@
 // piped into a file), we fall back to the readline REPL so scripts
 // still see line-based output.
 
-import type { SkSessionState, TurnEvent } from "@cli-core/index.ts";
+import {
+  applyTurnEvent,
+  initialSessionState,
+  lastAssistantText,
+  type SkSessionState,
+  type TurnEvent,
+} from "@cli-core/index.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { loadConfig, type ResolvedProfile, resolveProfile, saveConfig } from "./config.ts";
 import { ConnectionPinger, type ConnectionSnapshot } from "./connection-pinger.ts";
+import {
+  type DebugCorrelationFields,
+  debugLog,
+  newDebugTurnId,
+  serializeDebugError,
+} from "./debug.ts";
 import { EngineClient, type SetupValidationResponse, type StatusSummary } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
@@ -142,6 +154,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     api_key: opts.profile.api_key,
     tenant: opts.profile.active_tenant_id,
     user_agent: `sk-cli/${VERSION} (ink)`,
+    debug_mode: "ink",
   });
 
   let currentPersona = await resolvePersona(client, opts.profile);
@@ -208,73 +221,169 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     text: string,
     promptOpts?: { permission_mode?: "auto" | "ask" | "plan" },
   ): Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }> => {
-    const resolved = await resolveMentions(text, {
-      cwd: process.cwd(),
-      additionalDirectories: settings.merged.additionalDirectories ?? [],
-      ...(settings.merged.maxInlineMentionBytes !== undefined
-        ? { maxBytes: settings.merged.maxInlineMentionBytes }
-        : {}),
-      client: currentClient,
+    const turn_id = newDebugTurnId("ink");
+    const baseCtx = (): DebugCorrelationFields => ({
+      mode: "ink",
+      conversation_id: currentConversationId,
+      turn_id,
     });
-    // The POST responses from `/v1/conversations` + `/messages` each
-    // carry the complete `events[]` for THIS turn (user message +
-    // tool calls + assistant text + completed). We drive the reducer
-    // from those events directly — re-opening the SSE stream after
-    // each turn would replay the full conversation history and
-    // multiply messages, which was the v1 bug.
-    let outcome: {
-      conversation: { id: string; title: string | null; model: string | null };
-      events: unknown[];
-    };
-    if (!currentConversationId) {
-      const created = await currentClient.createConversation({
-        initial_message: resolved.prompt,
-        ...(memory.content ? { memory: memory.content } : {}),
-        ...(settings.merged.model ? { model: settings.merged.model } : {}),
-        ...(promptOpts?.permission_mode ? { permission_mode: promptOpts.permission_mode } : {}),
+    debugLog(
+      "dialog.turn_start",
+      {
+        input_kind: "prompt",
+        raw_input: text,
+        permission_mode: promptOpts?.permission_mode ?? null,
+        memory_sources: memory.sources,
+      },
+      baseCtx(),
+    );
+    try {
+      const resolved = await resolveMentions(text, {
+        cwd: process.cwd(),
+        additionalDirectories: settings.merged.additionalDirectories ?? [],
+        ...(settings.merged.maxInlineMentionBytes !== undefined
+          ? { maxBytes: settings.merged.maxInlineMentionBytes }
+          : {}),
+        client: currentClient,
       });
-      currentConversationId = created.conversation.id;
-      outcome = created;
-      try {
-        const now = new Date().toISOString();
-        saveSessionMetadata({
-          conversation_id: currentConversationId,
-          engine_url: opts.profile.engine_url,
-          tenant_id: opts.profile.active_tenant_id,
-          title: created.conversation.title ?? null,
-          model: created.conversation.model ?? null,
-          created_at: now,
-          last_used_at: now,
-        });
-      } catch {
-        /* ignore */
+      debugLog(
+        "dialog.prompt_resolved",
+        {
+          raw_input: text,
+          resolved_prompt: resolved.prompt,
+          artifacts: resolved.artifacts,
+          warnings: resolved.warnings,
+        },
+        baseCtx(),
+      );
+      for (const warning of resolved.warnings) {
+        debugLog("dialog.warning", { warning }, baseCtx());
       }
-    } else {
-      outcome = await currentClient.appendConversationMessage(currentConversationId, {
-        message: resolved.prompt,
-        ...(memory.content ? { memory: memory.content } : {}),
-        ...(promptOpts?.permission_mode ? { permission_mode: promptOpts.permission_mode } : {}),
-      });
-    }
-
-    // Wrap the events array in an async iterable so the Ink app can
-    // consume them the same way it consumed streamConversationFrames.
-    // Tap `completed` at the tail so we can refresh the status snapshot
-    // (tokens_today, budget remaining) once the turn has settled.
-    async function* iterTurnEvents(): AsyncGenerator<TurnEvent, void, void> {
-      for (const ev of outcome.events as TurnEvent[]) {
-        yield ev;
-        if (ev.type === "completed") {
-          // Fire-and-forget — the next frame will pick up whatever new
-          // numbers the status listener pushed.
-          void refreshStatus();
+      // The POST responses from `/v1/conversations` + `/messages` each
+      // carry the complete `events[]` for THIS turn (user message +
+      // tool calls + assistant text + completed). We drive the reducer
+      // from those events directly — re-opening the SSE stream after
+      // each turn would replay the full conversation history and
+      // multiply messages, which was the v1 bug.
+      let outcome: {
+        conversation: { id: string; title: string | null; model: string | null };
+        events: unknown[];
+      };
+      let operation: "create_conversation" | "append_message";
+      if (!currentConversationId) {
+        const created = await currentClient.createConversation(
+          {
+            initial_message: resolved.prompt,
+            ...(memory.content ? { memory: memory.content } : {}),
+            ...(settings.merged.model ? { model: settings.merged.model } : {}),
+            ...(promptOpts?.permission_mode ? { permission_mode: promptOpts.permission_mode } : {}),
+          },
+          baseCtx(),
+        );
+        currentConversationId = created.conversation.id;
+        outcome = created;
+        operation = "create_conversation";
+        try {
+          const now = new Date().toISOString();
+          saveSessionMetadata({
+            conversation_id: currentConversationId,
+            engine_url: opts.profile.engine_url,
+            tenant_id: opts.profile.active_tenant_id,
+            title: created.conversation.title ?? null,
+            model: created.conversation.model ?? null,
+            created_at: now,
+            last_used_at: now,
+          });
+        } catch {
+          /* ignore */
         }
+      } else {
+        outcome = await currentClient.appendConversationMessage(
+          currentConversationId,
+          {
+            message: resolved.prompt,
+            ...(memory.content ? { memory: memory.content } : {}),
+            ...(promptOpts?.permission_mode ? { permission_mode: promptOpts.permission_mode } : {}),
+          },
+          baseCtx(),
+        );
+        operation = "append_message";
       }
+      const outcomeCtx = (): DebugCorrelationFields => ({
+        mode: "ink",
+        conversation_id: currentConversationId,
+        turn_id,
+      });
+      debugLog(
+        "conversation.turn_events",
+        {
+          operation,
+          response_status: "status" in outcome ? outcome.status : null,
+          events: outcome.events,
+        },
+        outcomeCtx(),
+      );
+
+      // Wrap the events array in an async iterable so the Ink app can
+      // consume them the same way it consumed streamConversationFrames.
+      // Tap `completed` at the tail so we can refresh the status snapshot
+      // (tokens_today, budget remaining) once the turn has settled.
+      async function* iterTurnEvents(): AsyncGenerator<TurnEvent, void, void> {
+        let state = initialSessionState(currentConversationId);
+        for (const ev of outcome.events as TurnEvent[]) {
+          debugLog("dialog.turn_event", { event: ev }, outcomeCtx());
+          state = applyTurnEvent(state, ev);
+          yield ev;
+          if (ev.type === "completed") {
+            // Fire-and-forget — the next frame will pick up whatever new
+            // numbers the status listener pushed.
+            void refreshStatus();
+          }
+        }
+        debugLog(
+          "dialog.render_output",
+          {
+            assistant_text: lastAssistantText(state),
+            messages: state.messages,
+            tool_calls: state.toolCalls,
+            pending_elicitation: state.pendingElicitation,
+            validation_errors: state.validationErrors,
+            usage: state.usage,
+          },
+          outcomeCtx(),
+        );
+        debugLog(
+          "dialog.turn_end",
+          {
+            input_kind: "prompt",
+            status: state.status,
+            message_count: state.messages.length,
+            tool_call_count: state.toolCalls.length,
+            validation_error_count: state.validationErrors.length,
+            assistant_text: lastAssistantText(state),
+            pending_elicitation: state.pendingElicitation,
+            usage: state.usage,
+          },
+          outcomeCtx(),
+        );
+      }
+      return {
+        events: iterTurnEvents(),
+        conversationId: currentConversationId,
+      };
+    } catch (err) {
+      debugLog(
+        "dialog.error",
+        {
+          input_kind: "prompt",
+          stage: "onPrompt",
+          raw_input: text,
+          error: serializeDebugError(err),
+        },
+        baseCtx(),
+      );
+      throw err;
     }
-    return {
-      events: iterTurnEvents(),
-      conversationId: currentConversationId,
-    };
   };
 
   const onElicitResponse = async (
@@ -283,24 +392,104 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     reason?: string,
   ): Promise<{ events?: AsyncIterable<TurnEvent>; conversationId?: string | null }> => {
     if (!currentConversationId) return {};
-    const outcome = await currentClient.respondElicitation(
-      currentConversationId,
-      elicitationId,
-      output,
-      reason,
+    const turn_id = newDebugTurnId("ink-elicit");
+    const ctx = (): DebugCorrelationFields => ({
+      mode: "ink",
+      conversation_id: currentConversationId,
+      turn_id,
+    });
+    debugLog(
+      "dialog.turn_start",
+      {
+        input_kind: "elicitation",
+        elicitation_id: elicitationId,
+        output,
+        reason: reason ?? null,
+      },
+      ctx(),
     );
+    debugLog(
+      "elicitation.response",
+      {
+        elicitation_id: elicitationId,
+        output,
+        reason: reason ?? null,
+      },
+      ctx(),
+    );
+    try {
+      const outcome = await currentClient.respondElicitation(
+        currentConversationId,
+        elicitationId,
+        output,
+        reason,
+        ctx(),
+      );
+      debugLog(
+        "conversation.turn_events",
+        {
+          operation: "respond_elicitation",
+          response_status: outcome.status,
+          events: outcome.events,
+        },
+        ctx(),
+      );
 
-    async function* iterTurnEvents(): AsyncGenerator<TurnEvent, void, void> {
-      for (const ev of outcome.events as TurnEvent[]) {
-        yield ev;
-        if (ev.type === "completed") void refreshStatus();
+      async function* iterTurnEvents(): AsyncGenerator<TurnEvent, void, void> {
+        let state = initialSessionState(outcome.conversation.id);
+        for (const ev of outcome.events as TurnEvent[]) {
+          debugLog("dialog.turn_event", { event: ev }, ctx());
+          state = applyTurnEvent(state, ev);
+          yield ev;
+          if (ev.type === "completed") void refreshStatus();
+        }
+        debugLog(
+          "dialog.render_output",
+          {
+            assistant_text: lastAssistantText(state),
+            messages: state.messages,
+            tool_calls: state.toolCalls,
+            pending_elicitation: state.pendingElicitation,
+            validation_errors: state.validationErrors,
+            usage: state.usage,
+          },
+          ctx(),
+        );
+        debugLog(
+          "dialog.turn_end",
+          {
+            input_kind: "elicitation",
+            status: state.status,
+            message_count: state.messages.length,
+            tool_call_count: state.toolCalls.length,
+            validation_error_count: state.validationErrors.length,
+            assistant_text: lastAssistantText(state),
+            pending_elicitation: state.pendingElicitation,
+            usage: state.usage,
+          },
+          ctx(),
+        );
       }
-    }
 
-    return {
-      events: iterTurnEvents(),
-      conversationId: outcome.conversation.id,
-    };
+      return {
+        events: iterTurnEvents(),
+        conversationId: outcome.conversation.id,
+      };
+    } catch (err) {
+      debugLog(
+        "dialog.error",
+        {
+          input_kind: "elicitation",
+          stage: "onElicitResponse",
+          elicitation_id: elicitationId,
+          output,
+          reason: reason ?? null,
+          error: serializeDebugError(err),
+        },
+        ctx(),
+      );
+      throw err;
+    }
   };
 
   const onSelectConversation = async (id: string): Promise<void> => {
@@ -322,6 +511,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       api_key: newProfile.api_key,
       tenant: newProfile.active_tenant_id,
       user_agent: `sk-cli/${VERSION} (ink)`,
+      debug_mode: "ink",
     });
 
     currentClient = newClient;
@@ -375,6 +565,13 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     liveSession: SkSessionState,
   ): Promise<string | null> => {
     const rawArgs = raw.split(/\s+/).slice(1);
+    const turn_id = newDebugTurnId("ink-slash");
+    const ctx = (): DebugCorrelationFields => ({
+      mode: "ink",
+      conversation_id: liveSession.conversationId,
+      turn_id,
+    });
+    debugLog("dialog.turn_start", { input_kind: "slash", name, raw_input: raw }, ctx());
     try {
       const line = await handleSlash(name, rawArgs, {
         client: currentClient,
@@ -389,9 +586,34 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         setupSnapshot,
         openPane,
       });
+      if (line !== null) {
+        debugLog("dialog.render_output", { output_text: line }, ctx());
+      }
+      debugLog(
+        "dialog.turn_end",
+        { input_kind: "slash", name, status: "completed", output_text: line },
+        ctx(),
+      );
       return line;
     } catch (err) {
-      return humanizeRequestError(err);
+      const message = humanizeRequestError(err);
+      debugLog(
+        "dialog.error",
+        {
+          input_kind: "slash",
+          name,
+          raw_input: raw,
+          error: serializeDebugError(err),
+        },
+        ctx(),
+      );
+      debugLog("dialog.render_output", { output_text: message }, ctx());
+      debugLog(
+        "dialog.turn_end",
+        { input_kind: "slash", name, status: "error", output_text: message },
+        ctx(),
+      );
+      return message;
     }
   };
 

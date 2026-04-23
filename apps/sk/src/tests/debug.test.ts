@@ -31,7 +31,7 @@ describe("debug logger", () => {
     process.env.SK_DEBUG_FILE = logPath;
     const dbg = await import("../debug.ts");
     dbg.setDebugMode(false);
-    dbg.debugLog("http", { url: "/v1/x" });
+    dbg.debugLog("http.request", { url: "/v1/x" });
     expect(fs.existsSync(logPath)).toBe(false);
   });
 
@@ -41,10 +41,11 @@ describe("debug logger", () => {
     const dbg = await import("../debug.ts");
     // setDebugMode resets the cache; combined with env=1 it stays on.
     dbg.setDebugMode(true);
-    dbg.debugLog("http", { url: "/v1/x", status: 500 });
+    dbg.debugLog("http.request", { url: "/v1/x", status: 500 });
     const raw = fs.readFileSync(logPath, "utf8").trim();
     const obj = JSON.parse(raw);
-    expect(obj).toMatchObject({ scope: "http", url: "/v1/x", status: 500 });
+    expect(obj).toMatchObject({ kind: "http.request", url: "/v1/x", status: 500 });
+    expect(typeof obj.seq).toBe("number");
     expect(typeof obj.ts).toBe("string");
   });
 
@@ -54,9 +55,25 @@ describe("debug logger", () => {
     const dbg = await import("../debug.ts");
     dbg.setDebugMode(true);
     expect(dbg.debugLogTail(5)).toEqual([]);
-    for (let i = 0; i < 10; i++) dbg.debugLog("http", { i });
+    for (let i = 0; i < 10; i++) dbg.debugLog("http.request", { i });
     const tail = dbg.debugLogTail(3);
     expect(tail).toHaveLength(3);
     expect(JSON.parse(tail[2] ?? "{}")).toMatchObject({ i: 9 });
+  });
+
+  it("redacts sensitive fields before writing the trace record", async () => {
+    process.env.SK_DEBUG = "1";
+    process.env.SK_DEBUG_FILE = logPath;
+    const dbg = await import("../debug.ts");
+    dbg.setDebugMode(true);
+    dbg.debugLog("dialog.prompt_resolved", {
+      request_headers: { Authorization: "Bearer abc123" },
+      request_body: { api_key: "wf_live_secret", nested: { password: "secret123" } },
+    });
+    const raw = fs.readFileSync(logPath, "utf8").trim();
+    const obj = JSON.parse(raw);
+    expect(obj.request_headers.Authorization).toBe("***redacted***");
+    expect(obj.request_body.api_key).toBe("***redacted***");
+    expect(obj.request_body.nested.password).toBe("***redacted***");
   });
 });
