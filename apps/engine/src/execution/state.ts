@@ -9,6 +9,7 @@ import { logger } from "../logging/logger.ts";
 import { recordExecutionTerminal } from "../observability/instrumentation.ts";
 import type {
   ExecutionMode,
+  ExecutionSourceKind,
   ExecutionStatus,
   RequestSource,
   StepResult,
@@ -17,8 +18,12 @@ import type {
 
 export interface CreateExecutionParams {
   tenant_id: string;
-  workflow_id: string;
-  workflow_version_id: string;
+  /** NULL for draft and step runs — those have no persisted workflow row. */
+  workflow_id: string | null;
+  /** NULL for draft and step runs. */
+  workflow_version_id: string | null;
+  source_kind: ExecutionSourceKind;
+  source_ref: Record<string, unknown> | null;
   request_source: RequestSource;
   parent_execution_id?: string | null;
   execution_mode?: ExecutionMode;
@@ -32,6 +37,8 @@ export async function createExecution(db: Db, params: CreateExecutionParams): Pr
         tenant_id: params.tenant_id,
         workflow_id: params.workflow_id,
         workflow_version_id: params.workflow_version_id,
+        source_kind: params.source_kind,
+        source_ref: params.source_ref,
         status: "queued",
         request_source: params.request_source,
         execution_mode: params.execution_mode ?? "dev",
@@ -46,6 +53,7 @@ export async function createExecution(db: Db, params: CreateExecutionParams): Pr
       payload: {
         execution_id: row.id,
         workflow_id: params.workflow_id,
+        source_kind: params.source_kind,
         request_source: params.request_source,
         parent_execution_id: params.parent_execution_id ?? null,
       },
@@ -57,7 +65,8 @@ export async function createExecution(db: Db, params: CreateExecutionParams): Pr
     action: "execution.queued",
     msg: "execution created",
     execution_id: id,
-    workflow_id: params.workflow_id,
+    workflow_id: params.workflow_id ?? null,
+    source_kind: params.source_kind,
     request_source: params.request_source,
   });
   return id;
@@ -95,6 +104,8 @@ export async function finalizeExecution(
   status: ExecutionStatus,
   result_storage_uri: string | null,
 ): Promise<void> {
+  // workflow_id is NULL for draft and step runs; observability code must
+  // handle the null case (e.g. report duration without workflow breakdown).
   let workflow_id: string | null = null;
   let request_source: string = "api";
   let duration_ms: number | null = null;
@@ -116,7 +127,7 @@ export async function finalizeExecution(
       });
     const row = updated[0];
     if (row) {
-      workflow_id = row.workflow_id;
+      workflow_id = row.workflow_id ?? null;
       request_source = row.request_source ?? "api";
       if (row.started_at && row.finished_at) {
         duration_ms = row.finished_at.getTime() - row.started_at.getTime();

@@ -7,6 +7,10 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
 
+/** Discriminates how the execution definition was sourced.
+ *  Persisted verbatim into `executions.source_kind`. */
+export type ExecutionSourceKind = "saved" | "draft" | "step";
+
 export type RequestSource = "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
 
 export type ExecutionMode = "dev" | "prod";

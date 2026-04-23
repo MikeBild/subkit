@@ -278,6 +278,8 @@ export class SchedulerReconciler {
       tenant_id: payload.tenant_id,
       workflow_id: payload.workflow_id,
       workflow_version_id,
+      source_kind: "saved",
+      source_ref: null,
       request_source: "scheduler",
       parent_execution_id: null,
     });

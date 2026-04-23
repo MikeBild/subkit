@@ -18,7 +18,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
-import { workflows, workflowVersions } from "../db/schema/index.ts";
+import { workflows } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
 import {
@@ -33,6 +33,7 @@ import {
 
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
+import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import {
   createExecution,
   finalizeExecution,
@@ -116,41 +117,29 @@ function envelopeFor(outcome: { result: StepResult; scope_value: unknown }): Sco
 export interface RunExecutionParams {
   db: Db;
   tenant_id: string;
-  workflow_id: string;
+  /** Discriminated union: "saved" | "draft" | "step". The engine pipeline
+   *  is identical for all three; only the origin differs. */
+  source: RunExecutionSource;
   input: unknown;
   options?: RunOptions;
 }
 
 export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
-  const { db, tenant_id, workflow_id } = p;
+  const { db, tenant_id } = p;
   const opts: RunOptions = p.options ?? {};
   const depth = opts.depth ?? 0;
   if (depth > MAX_CALL_DEPTH) {
     throw new Error(`call chain depth exceeded ${MAX_CALL_DEPTH}`);
   }
-  // Resolve workflow + current version.
-  const wfRows = await db
-    .select()
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, tenant_id),
-        eq(workflows.id, workflow_id),
-        isNull(workflows.deleted_at),
-      ),
-    )
-    .limit(1);
-  const wfRow = wfRows[0];
-  if (!wfRow) throw new Error(`workflow not found: ${workflow_id}`);
-  if (!wfRow.current_version_id) throw new Error("workflow has no current version");
-  const versionRows = await db
-    .select()
-    .from(workflowVersions)
-    .where(eq(workflowVersions.id, wfRow.current_version_id))
-    .limit(1);
-  const versionRow = versionRows[0];
-  if (!versionRow) throw new Error("workflow version not found");
-  const def = WorkflowDefSchema.parse(versionRow.dag);
+
+  // Resolve the execution definition from one of three sources:
+  //   saved — persisted workflow + current_version_id
+  //   draft — inline WorkflowDef (validated, not persisted)
+  //   step  — single StepDef wrapped as a one-step WorkflowDef
+  const resolved = await resolveDefinition(db, tenant_id, p.source);
+  const def = resolved.def;
+  const workflow_id = resolved.workflow_id;
+  const workflow_version_id = resolved.workflow_version_id;
 
   const request_source: RequestSource = opts.request_source ?? "api";
   const parent_execution_id = opts.parent_execution_id ?? null;
@@ -158,13 +147,16 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
 
   // Persist queued execution row (unless one already exists — the queue
   // worker passes `existing_execution_id` so the HTTP-created row is
-  // reused instead of spawning a new one).
+  // reused instead of spawning a new one). For draft / step runs the
+  // workflow_id / workflow_version_id columns stay NULL.
   const execution_id = opts.existing_execution_id
     ? opts.existing_execution_id
     : await createExecution(db, {
         tenant_id,
-        workflow_id,
-        workflow_version_id: versionRow.id,
+        workflow_id: resolved.persist_workflow_refs ? workflow_id : null,
+        workflow_version_id: resolved.persist_workflow_refs ? workflow_version_id : null,
+        source_kind: resolved.source_kind,
+        source_ref: resolved.source_ref,
         request_source,
         parent_execution_id,
         execution_mode,
@@ -178,7 +170,12 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       resource_type: "execution",
       resource_id: execution_id,
       result: "success",
-      metadata: { workflow_id, request_source, parent_execution_id },
+      metadata: {
+        workflow_id: resolved.persist_workflow_refs ? workflow_id : null,
+        source_kind: resolved.source_kind,
+        request_source,
+        parent_execution_id,
+      },
     },
     db,
   );
@@ -257,14 +254,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       tenant_id,
       execution_id,
       workflow_id,
-      workflow_version_id: versionRow.id,
+      workflow_version_id,
       request_source,
       parent_execution_id,
       depth,
       signal,
       scope,
       started_at: new Date(),
-      workflow_slug: wfRow.slug,
+      workflow_slug: resolved.workflow_slug,
       trace_id: opts.trace_id ?? null,
       principal: opts.principal ?? null,
       execution_mode,
@@ -353,14 +350,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               tenant_id,
               execution_id,
               workflow_id,
-              workflow_version_id: versionRow.id,
+              workflow_version_id,
               request_source,
               parent_execution_id,
               depth,
               signal,
               scope: childScope,
               started_at: new Date(),
-              workflow_slug: wfRow.slug,
+              workflow_slug: resolved.workflow_slug,
               trace_id: opts.trace_id ?? null,
               principal: opts.principal ?? null,
               execution_mode,
@@ -416,14 +413,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               tenant_id,
               execution_id,
               workflow_id,
-              workflow_version_id: versionRow.id,
+              workflow_version_id,
               request_source,
               parent_execution_id,
               depth,
               signal,
               scope: branchScope,
               started_at: new Date(),
-              workflow_slug: wfRow.slug,
+              workflow_slug: resolved.workflow_slug,
               trace_id: opts.trace_id ?? null,
               principal: opts.principal ?? null,
               execution_mode,
@@ -599,7 +596,7 @@ async function runCallStep(db: Db, ctx: StepRunContext, step: CallStep): Promise
     const child = await runExecution({
       db,
       tenant_id: ctx.tenant_id,
-      workflow_id: targetId,
+      source: { kind: "saved", workflow_id: targetId },
       input: step.input ?? null,
       options: {
         request_source: "tool-chain",
@@ -634,6 +631,6 @@ async function runCallStep(db: Db, ctx: StepRunContext, step: CallStep): Promise
   }
 }
 
-export type { WorkflowDef };
+export type { RunExecutionSource, WorkflowDef };
 // Re-export the schema so consumers (workflow service) can validate.
 export { WorkflowDefSchema };

@@ -44,7 +44,7 @@ describe("abort", () => {
     const runPromise = runExecution({
       db: ctx.testDb.db,
       tenant_id: ctx.tenantId,
-      workflow_id,
+      source: { kind: "saved", workflow_id },
       input: null,
     });
     // Wait for the executions row + abort registration to materialize.

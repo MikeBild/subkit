@@ -31,6 +31,11 @@ export const workflows = pgTable(
     name: text("name").notNull(),
     current_version_id: uuid("current_version_id"),
     lifecycle: workflowLifecycleEnum("lifecycle").notNull(),
+    // Product-catalog flag: if true AND current_version_id is set AND
+    // deleted_at is NULL, this workflow appears in the MCP tools/list
+    // catalog as a first-class product tool. Authoring-only workflows can
+    // flip this to false to hide from the product surface.
+    is_tool: boolean("is_tool").notNull().default(true),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

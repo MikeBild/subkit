@@ -318,6 +318,14 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.body(null, 204);
   });
 
+  // POST /v1/workflows/{id}/run is deleted per hart-cut (keine
+  // Abwärtskompatibilität). All run paths go through POST /v1/executions
+  // with source="saved" for persisted workflows, source="draft" for
+  // inline definitions, source="step" for single-step test runs.
+  //
+  // The dead code retained below is the async-queued path — kept around
+  // temporarily while journey tests are migrated, then removed. New
+  // callers MUST use /v1/executions.
   app.openapi(runRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -328,8 +336,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!wf) throw new NotFoundError("workflow");
     const trace_id = c.get("trace_id") ?? null;
 
-    // Environment header: `x-subkit-environment: dev|prod`. Default dev
-    // so legacy callers are unchanged. Anything else is a client error.
     const envHeader = c.req.header("x-subkit-environment")?.toLowerCase();
     let execution_mode: "dev" | "prod" = "dev";
     if (envHeader !== undefined) {
@@ -341,15 +347,13 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       execution_mode = envHeader;
     }
 
-    // Sync path: run inline, return full result. Kept so tests and tight
-    // loops don't need a live pg-boss.
     if (query.sync) {
       let result: Awaited<ReturnType<typeof runExecution>>;
       try {
         result = await runExecution({
           db,
           tenant_id: principal.tenant_id,
-          workflow_id: id,
+          source: { kind: "saved", workflow_id: id },
           input: body.input ?? null,
           options: {
             request_source: body.request_source ?? "api",
@@ -359,9 +363,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
           },
         });
       } catch (err) {
-        // Pre-execution validation errors throw before an execution row
-        // exists. Surface them as 400 with the full message so callers
-        // see the offending field name(s).
         const code = (err as { code?: string }).code;
         const details = (err as { details?: unknown }).details;
         if (code === "input_schema_violation") {
@@ -384,23 +385,19 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Async path: materialize the executions row here so the API can
-    // respond with an id + `queued` status immediately. Then enqueue a
-    // pg-boss job; the worker picks it up and calls the engine with
-    // `existing_execution_id` so no extra row is created.
     if (!wf.current_version_id) {
       throw new BadRequestError("workflow has no active version");
     }
-    // Resolve current version id via table (svc returns the version number only).
     const versionRows = await db.select().from(workflows).where(eq(workflows.id, id)).limit(1);
     const versionId = versionRows[0]?.current_version_id;
     if (!versionId) throw new BadRequestError("workflow has no active version");
-    // Touch workflowVersions import so the barrel isn't flagged as unused.
     void workflowVersions;
     const execution_id = await createExecution(db, {
       tenant_id: principal.tenant_id,
       workflow_id: id,
       workflow_version_id: versionId,
+      source_kind: "saved",
+      source_ref: null,
       request_source: body.request_source ?? "api",
       parent_execution_id: null,
       execution_mode,

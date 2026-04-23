@@ -40,7 +40,7 @@ describe("request step", () => {
     const result = await runExecution({
       db: ctx.testDb.db,
       tenant_id: ctx.tenantId,
-      workflow_id,
+      source: { kind: "saved", workflow_id },
       input: null,
     });
     expect(result.status).toBe("succeeded");

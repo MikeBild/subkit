@@ -29,7 +29,7 @@ export const runWorkflowTool: ConversationTool = {
       const result = await runExecution({
         db: ctx.db,
         tenant_id: ctx.tenant_id,
-        workflow_id: args.workflow_id,
+        source: { kind: "saved", workflow_id: args.workflow_id },
         input: args.input ?? null,
         options: {
           request_source: "chat",

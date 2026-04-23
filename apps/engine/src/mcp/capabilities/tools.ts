@@ -42,6 +42,12 @@ import { can } from "../../rbac/evaluator.ts";
 import { synthesizeInputSchema } from "../../workflows/input-schema-synth.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
+import { modeFlags, resolveMcpMode } from "../mode-resolver.ts";
+import {
+  AUTHENTICATE_TOOL_NAME,
+  authenticateTool,
+  handleAuthenticate,
+} from "../tools/authenticate.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import {
   CONVERSATION_TOOL_PREFIX,
@@ -81,15 +87,25 @@ interface ListToolsParams {
 }
 
 async function listWorkflowTools({ db, principal }: ListToolsParams): Promise<Tool[]> {
+  // Product-catalog rule: only workflows flagged `is_tool=true` are
+  // exposed as MCP tools. Drafts (no current_version_id) never show up,
+  // regardless of the flag.
   const rows = await db
     .select({
       id: workflows.id,
       slug: workflows.slug,
       name: workflows.name,
       current_version_id: workflows.current_version_id,
+      is_tool: workflows.is_tool,
     })
     .from(workflows)
-    .where(and(eq(workflows.tenant_id, principal.tenant_id), isNull(workflows.deleted_at)))
+    .where(
+      and(
+        eq(workflows.tenant_id, principal.tenant_id),
+        isNull(workflows.deleted_at),
+        eq(workflows.is_tool, true),
+      ),
+    )
     .orderBy(asc(workflows.created_at));
 
   const out: Tool[] = [];
@@ -216,22 +232,29 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
 
   server.registerCapabilities({ tools: { listChanged: false } });
 
-  // Writes via tenant.* are visible by default and guarded at call time
-  // by `gateTenantToolCall` (confirm-before-execution envelope for any
-  // tool whose policy demands it). Operators who want a strictly
-  // read-only MCP deployment set SK_MCP_READ_ONLY=1 to hide every
-  // tenant_write tool entirely.
-  const allowTenantWrites = process.env.SK_MCP_READ_ONLY !== "1";
+  // Write-tools inside the tenant.* family are additionally gated at
+  // call time by `gateTenantToolCall`. The env var below forces a strictly
+  // read-only MCP deployment — overriding mode-based visibility.
+  const readOnly = process.env.SK_MCP_READ_ONLY === "1";
+  const allowTenantWrites = !readOnly;
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools = await listWorkflowTools({ db, principal });
-    return {
-      tools: [
-        ...tools,
-        ...listConversationTools(),
-        ...listTenantTools({ allowWrites: allowTenantWrites }),
-      ],
-    };
+    // The catalog surface is shaped by the principal's mcp mode:
+    //   • product   — saved workflows + authenticate (default)
+    //   • authoring — adds conversation.* + tenant reads
+    //   • admin     — adds tenant.* writes
+    // Default product surface: client sees saved tools + authenticate,
+    // nothing else.
+    const mode = resolveMcpMode(principal);
+    const flags = modeFlags(mode, readOnly);
+    const tools: Tool[] = [];
+    tools.push(...(await listWorkflowTools({ db, principal })));
+    tools.push(authenticateTool);
+    if (flags.showConversationTools) tools.push(...listConversationTools());
+    if (flags.showTenantReads || flags.showTenantWrites) {
+      tools.push(...listTenantTools({ allowWrites: flags.showTenantWrites }));
+    }
+    return { tools };
   });
 
   server.setRequestHandler(
@@ -258,6 +281,27 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         tenant_id: principal.tenant_id,
         progress_token: progressToken ?? null,
       });
+
+      // Product-surface tool: authenticate. Always handled here, regardless
+      // of mcp mode. Returns a connector-reauth OAuth2 authorize URL.
+      if (name === AUTHENTICATE_TOOL_NAME) {
+        const result = await handleAuthenticate(
+          { db, principal },
+          args as Record<string, unknown> as Parameters<typeof handleAuthenticate>[1],
+        );
+        logger.info({
+          module: "mcp",
+          action: "mcp.tool.result",
+          msg: "mcp authenticate tool call completed",
+          tool: name,
+          duration_ms: Date.now() - started,
+          is_error: !result.ok,
+        });
+        return {
+          isError: !result.ok,
+          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
+        };
+      }
 
       if (name.startsWith(CONVERSATION_TOOL_PREFIX)) {
         const result = await handleConversationTool({
@@ -491,7 +535,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       const runPromise = runExecution({
         db,
         tenant_id: principal.tenant_id,
-        workflow_id: wf.id,
+        source: { kind: "saved", workflow_id: wf.id },
         input: args,
         options: {
           request_source: "mcp",

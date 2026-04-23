@@ -57,9 +57,12 @@ export async function detectSuccessPatterns(tenant_id: string, exec: Db): Promis
     return [];
   }
 
-  // Group by workflow_id (proxy for connector context)
+  // Group by workflow_id (proxy for connector context). Draft and step
+  // runs skip this loop — they're not persisted workflows and can't form
+  // a success-pattern signal for a tool-candidate.
   const byWorkflow = new Map<string, StepRecord[]>();
   for (const row of rows) {
+    if (!row.workflow_id) continue;
     const list = byWorkflow.get(row.workflow_id) ?? [];
     list.push({
       execution_id: row.execution_id,

@@ -56,6 +56,8 @@ describe("queue: execution.run worker", () => {
       tenant_id: engineCtx.tenantId,
       workflow_id,
       workflow_version_id: version_id,
+      source_kind: "saved",
+      source_ref: null,
       request_source: "api",
       parent_execution_id: null,
     });

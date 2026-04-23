@@ -40,7 +40,7 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db): Promise<void> {
     const result = await runExecution({
       db,
       tenant_id: data.tenant_id,
-      workflow_id: data.workflow_id,
+      source: { kind: "saved", workflow_id: data.workflow_id },
       input: data.input ?? null,
       options: runOptions,
     });
