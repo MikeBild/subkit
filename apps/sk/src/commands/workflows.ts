@@ -52,24 +52,94 @@ const getCommand = defineCommand({
 });
 
 const runCommand = defineCommand({
-  meta: { name: "run", description: "Run a workflow" },
+  meta: {
+    name: "run",
+    description: "Run a saved workflow, an inline draft definition, or a single step",
+  },
   args: {
-    id: { type: "positional", required: true, description: "Workflow id" },
+    id: {
+      type: "positional",
+      required: false,
+      description: "Workflow id (omit when using --draft or --step)",
+    },
     input: { type: "string", description: "Input JSON string" },
+    draft: {
+      type: "string",
+      description: "Path to a draft WorkflowDef JSON file (no commit)",
+    },
+    step: {
+      type: "string",
+      description: "Path to a single StepDef JSON file (no workflow persistence)",
+    },
+    name: {
+      type: "string",
+      description: "Optional label for --draft runs (goes to executions.source_ref)",
+    },
+    slug: {
+      type: "string",
+      description: "Optional workflow_slug for --step runs (cosmetic)",
+    },
   },
   async run({ args }) {
     const client = makeClient();
-    let input: Record<string, unknown> = {};
+
+    // Parse the --input JSON blob once; it is reused across all three
+    // source kinds.
+    let input: unknown = null;
     if (args.input) {
       try {
-        input = JSON.parse(args.input as string) as Record<string, unknown>;
+        input = JSON.parse(args.input as string);
       } catch {
         process.stderr.write("invalid JSON for --input\n");
         process.exit(1);
       }
     }
+
+    const { readFileSync } = await import("node:fs");
+
     try {
-      printJson(await client.runWorkflow(args.id, input));
+      // --step: run a single step definition directly.
+      if (args.step) {
+        const step = JSON.parse(readFileSync(String(args.step), "utf8")) as Record<string, unknown>;
+        const body = {
+          source: "step" as const,
+          step,
+          ...(args.slug ? { workflow_slug: String(args.slug) } : {}),
+          ...(input !== null ? { input } : {}),
+        };
+        printJson(await client.runExecution(body));
+        return;
+      }
+
+      // --draft: run an inline workflow definition without persistence.
+      if (args.draft) {
+        const definition = JSON.parse(readFileSync(String(args.draft), "utf8")) as Record<
+          string,
+          unknown
+        >;
+        const body = {
+          source: "draft" as const,
+          definition,
+          ...(args.name ? { name: String(args.name) } : {}),
+          ...(input !== null ? { input } : {}),
+        };
+        printJson(await client.runExecution(body));
+        return;
+      }
+
+      // Saved workflow (default).
+      if (!args.id) {
+        process.stderr.write(
+          "workflow id is required (positional) unless --draft or --step is provided\n",
+        );
+        process.exit(1);
+      }
+      const body = {
+        source: "saved" as const,
+        workflow_id: String(args.id),
+        ...(input !== null ? { input } : {}),
+      };
+      printJson(await client.runExecution(body));
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));
