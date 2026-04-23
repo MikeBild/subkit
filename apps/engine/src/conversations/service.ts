@@ -59,6 +59,8 @@ export interface CreateConversationParams {
   model?: string | null;
   /** Optional human title (sets conversations.title). */
   title?: string | null;
+  /** Client-supplied permission mode for the initial turn. */
+  permission_mode?: "auto" | "ask" | "plan" | null;
   /** Real runtime context (engine_url, tenant_slug, actor email/role) — see runtime-context.ts. */
   runtime_context?: {
     engine_url?: string;
@@ -173,6 +175,7 @@ export async function createConversation(
         user_memory: memory,
         model_override: p.model ?? null,
         ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
+        ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
       })
     : { events: [], status: "active" as const };
 
@@ -200,6 +203,8 @@ export interface AppendMessageParams {
     actor_email?: string;
     actor_role?: string;
   };
+  /** Client-supplied permission mode for this turn. */
+  permission_mode?: "auto" | "ask" | "plan" | null;
 }
 
 export async function appendUserMessage(
@@ -306,6 +311,7 @@ export async function appendUserMessage(
     ...(p.surface ? { surface: p.surface } : {}),
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
     ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
+    ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
   });
   const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!updated) throw new Error("conversation disappeared");

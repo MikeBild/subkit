@@ -77,6 +77,8 @@ describe("conversations/hardening", () => {
       toolChain: Promise.resolve(),
       pendingChildToolCallIds: [],
       pendingChildElicitationIds: [],
+      toolInvocationCount: new Map(),
+      toolLastErrorHash: new Map(),
     };
     const events: TurnEvent[] = [];
     // Register a fake tool via wrapOne-like closure by reusing wrapTools

@@ -39,6 +39,8 @@ describe("policy confirm_before_execution wiring", () => {
       toolChain: Promise.resolve(),
       pendingChildToolCallIds: [],
       pendingChildElicitationIds: [],
+      toolInvocationCount: new Map(),
+      toolLastErrorHash: new Map(),
     };
     const engineClient = new EngineClient({
       tenant_id: ctx.tenant_id,
@@ -111,6 +113,8 @@ describe("policy confirm_before_execution wiring", () => {
       toolChain: Promise.resolve(),
       pendingChildToolCallIds: [],
       pendingChildElicitationIds: [],
+      toolInvocationCount: new Map(),
+      toolLastErrorHash: new Map(),
     };
     const engineClient = new EngineClient({
       tenant_id: ctx.tenant_id,

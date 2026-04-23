@@ -21,6 +21,34 @@ export interface ToolPolicies {
   [toolName: string]: ToolPolicyMode;
 }
 
+/**
+ * Permission mode the client advertises for a turn. Overrides the
+ * per-tool policy matrix:
+ *   - "auto"  — skip confirmations for all non-dangerous tools
+ *   - "ask"   — confirm every tenant_write before execution
+ *   - "plan"  — confirm every tenant_write, client is expected to
+ *               hold the approvals until the user leaves plan mode
+ *
+ * "dangerous" for this purpose = tools whose side effects cannot be
+ * reversed from within the conversation (delete_*, revoke_*,
+ * approve_patch_candidate). These stay on confirm_before_execution
+ * even in "auto" so a sloppy prompt cannot nuke data silently.
+ */
+export type PermissionMode = "auto" | "ask" | "plan";
+
+const DANGEROUS_TOOLS: ReadonlySet<string> = new Set([
+  "delete_workflow",
+  "delete_connector",
+  "delete_knowledge_source",
+  "delete_subscription",
+  "delete_tunnel",
+  "revoke_api_key",
+  "revoke_portal_token",
+  "approve_patch_candidate",
+  "approve_skill_candidate",
+  "approve_discovery_artifact",
+]);
+
 export async function getToolPolicies(db: Db, conversation_id: string): Promise<ToolPolicies> {
   const rows = await db
     .select({ tool_policies: conversations.tool_policies })
@@ -175,8 +203,17 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
 };
 
 /**
- * Full mode-resolution stack: per-conversation override → dynamic
- * compute-from-input → category-default. Called from `sdk-wrap.ts`
+ * Full mode-resolution stack:
+ *   1. client permission_mode ("auto" / "ask" / "plan") — outer gate
+ *   2. per-conversation override (`conversations.tool_policies` jsonb)
+ *   3. dynamic compute-from-input hook
+ *   4. per-tool default mode
+ *   5. category default
+ *
+ * The permission_mode gate fires first and **short-circuits** when
+ * the tool is not in the dangerous set. Dangerous tools (delete_*,
+ * revoke_*, approve_*) always go through the normal policy matrix so
+ * `auto` cannot silently wipe tenant data. Called from `sdk-wrap.ts`
  * before every tool dispatch.
  */
 export function resolveToolMode(args: {
@@ -184,8 +221,21 @@ export function resolveToolMode(args: {
   category: "draft_write" | "tenant_read" | "tenant_write";
   input: unknown;
   overrides: ToolPolicies;
+  permission_mode?: PermissionMode | null;
 }): ToolPolicyMode {
-  const { tool, category, input, overrides } = args;
+  const { tool, category, input, overrides, permission_mode } = args;
+
+  const isDangerous = DANGEROUS_TOOLS.has(tool);
+  if (permission_mode === "auto" && !isDangerous) {
+    return "no_confirm";
+  }
+  if (permission_mode === "ask" || permission_mode === "plan") {
+    // "plan" is surfaced to the client identically to "ask" — the UI
+    // holds the confirmations until the user leaves plan mode. From
+    // the engine's perspective both modes gate tenant_write on confirm.
+    if (category === "tenant_write" || isDangerous) return "confirm_before_execution";
+  }
+
   if (overrides[tool]) return overrides[tool];
   const def = TOOL_POLICIES[tool];
   if (def?.computeModeFromInput) {

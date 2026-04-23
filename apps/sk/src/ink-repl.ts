@@ -206,6 +206,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
 
   const onPrompt = async (
     text: string,
+    promptOpts?: { permission_mode?: "auto" | "ask" | "plan" },
   ): Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }> => {
     const resolved = await resolveMentions(text, {
       cwd: process.cwd(),
@@ -230,6 +231,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         initial_message: resolved.prompt,
         ...(memory.content ? { memory: memory.content } : {}),
         ...(settings.merged.model ? { model: settings.merged.model } : {}),
+        ...(promptOpts?.permission_mode ? { permission_mode: promptOpts.permission_mode } : {}),
       });
       currentConversationId = created.conversation.id;
       outcome = created;
@@ -251,6 +253,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       outcome = await currentClient.appendConversationMessage(currentConversationId, {
         message: resolved.prompt,
         ...(memory.content ? { memory: memory.content } : {}),
+        ...(promptOpts?.permission_mode ? { permission_mode: promptOpts.permission_mode } : {}),
       });
     }
 
