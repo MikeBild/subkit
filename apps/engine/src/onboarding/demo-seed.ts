@@ -75,7 +75,7 @@ export const DEMO_WORKFLOWS: ReadonlyArray<DemoWorkflowSpec> = [
           id: "top_names",
           language: "jsonata",
           // JSONata slice + map: take the first 5 elements, keep name + stars.
-          expression: "$.fetch_repos[[0..4]].{ 'name': name, 'stars': stargazers_count }",
+          expression: "$.fetch_repos.data[[0..4]].{ 'name': name, 'stars': stargazers_count }",
         },
       ],
     },

@@ -41,7 +41,7 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
           {
             kind: "loop",
             id: "process_numbers",
-            over: "get_numbers",
+            over: "get_numbers.data",
             item_var: "num",
             body: ["double_num"],
           },
@@ -74,9 +74,9 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
     const loopOutput = body.output as Array<Record<string, number>>;
     expect(Array.isArray(loopOutput)).toBe(true);
     expect(loopOutput).toHaveLength(3);
-    expect(loopOutput[0]?.double_num).toBe(2);
-    expect(loopOutput[1]?.double_num).toBe(4);
-    expect(loopOutput[2]?.double_num).toBe(6);
+    expect((loopOutput[0]?.double_num as { data: number } | undefined)?.data).toBe(2);
+    expect((loopOutput[1]?.double_num as { data: number } | undefined)?.data).toBe(4);
+    expect((loopOutput[2]?.double_num as { data: number } | undefined)?.data).toBe(6);
   });
 
   test("AC3: $loop_index increments per iteration", async () => {
@@ -94,7 +94,7 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
           {
             kind: "loop",
             id: "tag_items",
-            over: "get_items",
+            over: "get_items.data",
             item_var: "letter",
             body: ["build_tag"],
           },
@@ -116,10 +116,12 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
     });
     expect(runRes.status).toBe(200);
     const runBody = (await runRes.json()) as { output: unknown };
-    const out = runBody.output as Array<{ build_tag: { index: number; letter: string } }>;
-    expect(out[0]?.build_tag?.index).toBe(0);
-    expect(out[1]?.build_tag?.index).toBe(1);
-    expect(out[2]?.build_tag?.index).toBe(2);
+    const out = runBody.output as Array<{
+      build_tag: { data: { index: number; letter: string } };
+    }>;
+    expect(out[0]?.build_tag?.data?.index).toBe(0);
+    expect(out[1]?.build_tag?.data?.index).toBe(1);
+    expect(out[2]?.build_tag?.data?.index).toBe(2);
   });
 
   test("AC4: body step is skipped in linear walk (not double-executed)", async () => {
@@ -133,7 +135,7 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
           {
             kind: "loop",
             id: "process_items",
-            over: "get_items",
+            over: "get_items.data",
             item_var: "val",
             body: ["halve"],
           },
