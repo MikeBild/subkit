@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.0.0](https://github.com/MikeBild/subkit/compare/subkit-v1.18.1...subkit-v2.0.0) (2026-04-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **execution:** runExecution() accepts a discriminated `source` union instead of a bare workflow_id. All three kinds (saved, draft, step) flow through the same runtime pipeline; only the origin differs.
+
+### Features
+
+* **execution:** definition-driven run model with saved/draft/step sources ([40131f8](https://github.com/MikeBild/subkit/commit/40131f874406d8d0e580e8ebdcf506355ebc0162))
+* **mcp:** mode-split tool catalog with native authenticate tool ([868dd1d](https://github.com/MikeBild/subkit/commit/868dd1dea22bfc570bda4fce27d67097cca51132))
+* **sk:** run command supports saved/draft/step sources, new sk auth ([6775c0f](https://github.com/MikeBild/subkit/commit/6775c0f4c301aa9727f3bf5d3265402c13ecd1f8))
+
+
+### Bug Fixes
+
+* **conversations:** steer toolChoice from explicit user run intent ([af8f94c](https://github.com/MikeBild/subkit/commit/af8f94c2f1a3d9f1470c66e15a2baad871dcfcd7))
+
+
+### Miscellaneous
+
+* **release:** subkit 1.19.0 ([fcfedbe](https://github.com/MikeBild/subkit/commit/fcfedbef12dae757f4c4fc488d7c0f0a3c35ba39))
+
 ## [1.18.0](https://github.com/MikeBild/subkit/compare/subkit-v1.17.1...subkit-v1.18.0) (2026-04-23)
 
 
