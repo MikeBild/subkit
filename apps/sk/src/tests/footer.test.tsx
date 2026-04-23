@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import type React from "react";
-import { engineHost, Footer, MODE_LABELS } from "../repl/footer.tsx";
+import { engineHost, Footer, layoutFooterLines, MODE_LABELS } from "../repl/footer.tsx";
 
 function stripAnsi(frame: string): string {
   const ansiPattern = `${String.fromCharCode(27)}\\[[0-9;]*m`;
@@ -82,5 +82,21 @@ describe("Footer mode and view", () => {
     expect(MODE_LABELS.ask).toBe("ask");
     expect(MODE_LABELS.auto).toBe("auto");
     expect(MODE_LABELS.plan).toBe("plan");
+  });
+
+  test("narrow widths drop host and long hints before session + mode", () => {
+    const layout = layoutFooterLines({
+      user: "alice@example.com",
+      tenant: "acme",
+      engineUrl: "https://subkit-api.example.dev",
+      sessionId: "abcd1234-0000-0000-0000-000000000000",
+      mode: "ask",
+      transcriptMode: "chat",
+      columns: 22,
+    });
+    expect(layout.identityPrefix).toBe("session ");
+    expect(layout.identityHighlight).toBe("abcd1234");
+    expect(layout.modeLabel).toBe("ask");
+    expect(layout.activitySuffix).toBe(" · chat");
   });
 });

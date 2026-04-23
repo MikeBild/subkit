@@ -28,7 +28,12 @@ import {
   ThemeProvider,
   useTheme,
 } from "@chat-ui/index.ts";
-import type { SkSessionState, ToolCallState, TurnEvent } from "@cli-core/index.ts";
+import type {
+  RenderableMessagePart,
+  SkSessionState,
+  ToolCallState,
+  TurnEvent,
+} from "@cli-core/index.ts";
 import { applyTurnEvent, initialSessionState } from "@cli-core/index.ts";
 import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import type React from "react";
@@ -62,6 +67,8 @@ import {
   type MentionCandidate,
   MentionPicker,
 } from "./repl/mention-picker.tsx";
+import { MessageContent } from "./repl/message-content.tsx";
+import { type NoticeItem, NoticeStack, type NoticeTone } from "./repl/notices.tsx";
 import {
   createPasteStore,
   expandRefs,
@@ -235,6 +242,20 @@ function summarizeSuccessData(data: unknown): string | null {
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
+function latestToolOutcome(calls: ToolCallState[], names: Set<string>): string | null {
+  for (let i = calls.length - 1; i >= 0; i--) {
+    const call = calls[i];
+    if (!call || !names.has(call.name)) continue;
+    if (call.status === "failed") return "failed";
+    if (call.status === "done") return "ok";
+    return null;
+  }
+  return null;
+}
+
+const PROBE_TOOLS = new Set(["probe_connector", "probe_connector_draft"]);
+const PREVIEW_TOOLS = new Set(["dry_run_step", "dry_run_workflow", "test_workflow"]);
+
 interface ToolCardProps {
   call: ToolCallState;
   columns: number;
@@ -329,7 +350,11 @@ ToolCard.displayName = "ToolCard";
 
 // ---------- Message row (Claude Code style) ----------
 
-const MessageRow: React.FC<{ role: string; content: string }> = memo(({ role, content }) => {
+const MessageRow: React.FC<{
+  role: string;
+  content: string;
+  parts?: RenderableMessagePart[] | undefined;
+}> = memo(({ role, content, parts }) => {
   const theme = useTheme();
   const prefix = role === "user" ? "▸" : role === "assistant" ? "◆" : "·";
   const color =
@@ -352,28 +377,12 @@ const MessageRow: React.FC<{ role: string; content: string }> = memo(({ role, co
         </Text>
       </Box>
       <Box flexDirection="column" flexGrow={1}>
-        <Text wrap="wrap">
-          {role === "assistant" ? normalizeAssistantMarkdown(content) : content}
-        </Text>
+        <MessageContent content={content} parts={parts} />
       </Box>
     </Box>
   );
 });
 MessageRow.displayName = "MessageRow";
-
-function normalizeAssistantMarkdown(content: string): string {
-  return content
-    .replace(/```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g, (_m, lang, code: string) => {
-      const body = code.trimEnd();
-      return lang ? `${lang}\n${body}` : body;
-    })
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^\s*[-*]\s+/gm, "• ")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/__(.*?)__/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\n{3,}/g, "\n\n");
-}
 
 // ---------- Status bar ----------
 
@@ -531,16 +540,9 @@ const SURFACE_HELP_STARTER_PROMPT = [
   "If something is not exposed in this conversation surface, say that plainly.",
 ].join("\n");
 
-const StickyErrorPanel: React.FC<{ message: string }> = memo(({ message }) => (
-  <Box flexDirection="column" marginBottom={1}>
-    <Text color="red" bold>
-      error
-    </Text>
-    <Text color="red">{message}</Text>
-    <Text dimColor>Esc to dismiss</Text>
-  </Box>
-));
-StickyErrorPanel.displayName = "StickyErrorPanel";
+interface TranscriptNotice extends NoticeItem {
+  expires_at?: number | undefined;
+}
 
 const PaneLabelRow: React.FC<{ label: string; value: string; dim?: boolean }> = memo(
   ({ label, value, dim = false }) => (
@@ -958,8 +960,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   const busyRef = useRef(false);
   const [altScreen, setAltScreen] = useState(false);
   const [statusLine, setStatusLine] = useState<string>("");
-  const [banner, setBanner] = useState<string | null>(null);
-  const [stickyError, setStickyError] = useState<string | null>(null);
+  const [notices, setNotices] = useState<TranscriptNotice[]>([]);
   const [pane, setPane] = useState<PaneSpec | null>(null);
   const setupBannerShownRef = useRef(false);
   // Inline Ctrl-R history search (above-composer widget). The old
@@ -1003,13 +1004,52 @@ export const InkApp: React.FC<InkAppProps> = ({
   const syncPendingAttachments = useCallback(() => {
     setPendingAttachments([...pasteStoreRef.current.all()]);
   }, []);
-  const showInfo = useCallback((message: string) => {
-    setBanner(message);
-    setStickyError(null);
+  const pushNotice = useCallback((tone: NoticeTone, message: string, persistent = false) => {
+    setNotices((current) => {
+      const next: TranscriptNotice = {
+        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        tone,
+        message,
+        persistent,
+        ...(persistent ? {} : { expires_at: Date.now() + 4500 }),
+      };
+      return [next, ...current.filter((item) => item.message !== message)].slice(0, 4);
+    });
   }, []);
-  const showError = useCallback((message: string) => {
-    setStickyError(message);
-    setBanner(null);
+  const dismissNotice = useCallback(() => {
+    setNotices((current) => {
+      const idx = current.findIndex((item) => item.persistent);
+      if (idx < 0) return current;
+      return current.filter((_item, itemIdx) => itemIdx !== idx);
+    });
+  }, []);
+  const showInfo = useCallback(
+    (message: string) => {
+      pushNotice("info", message);
+    },
+    [pushNotice],
+  );
+  const showWarning = useCallback(
+    (message: string, persistent = true) => {
+      pushNotice("warning", message, persistent);
+    },
+    [pushNotice],
+  );
+  const showError = useCallback(
+    (message: string) => {
+      pushNotice("error", message, true);
+    },
+    [pushNotice],
+  );
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNotices((current) => {
+        const now = Date.now();
+        return current.filter((item) => item.persistent || (item.expires_at ?? 0) > now);
+      });
+    }, 500);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -1022,9 +1062,11 @@ export const InkApp: React.FC<InkAppProps> = ({
     const warnings = setupSnapshot.summary_counts.warnings;
     const blockerLabel = `${blockers} blocker${blockers === 1 ? "" : "s"}`;
     const warningLabel = `${warnings} warning${warnings === 1 ? "" : "s"}`;
-    setBanner(`setup ${setupSnapshot.overall_status} · ${blockerLabel}, ${warningLabel} · /setup`);
+    showWarning(
+      `setup ${setupSnapshot.overall_status} · ${blockerLabel}, ${warningLabel} · /setup`,
+    );
     setupBannerShownRef.current = true;
-  }, [setupSnapshot]);
+  }, [setupSnapshot, showWarning]);
 
   // -------- Status line ticker --------
   useEffect(() => {
@@ -1056,6 +1098,13 @@ export const InkApp: React.FC<InkAppProps> = ({
         cwd: cwdValue,
         git_branch: null,
         timestamp: new Date().toISOString(),
+        authoring_mode: resumeSummary?.stage ?? null,
+        target_kind: resumeSummary?.active_target.kind ?? null,
+        target_name: resumeSummary?.active_target.name ?? null,
+        environment: resumeSummary?.active_target.environment ?? null,
+        pending_approvals: session.pendingElicitation ? 1 : 0,
+        latest_probe_state: latestToolOutcome(session.toolCalls, PROBE_TOOLS),
+        latest_preview_state: latestToolOutcome(session.toolCalls, PREVIEW_TOOLS),
         connection_state: connectionSnapshot?.state ?? "unknown",
         connection_reason: connectionSnapshot?.reason ?? null,
       };
@@ -1083,6 +1132,7 @@ export const InkApp: React.FC<InkAppProps> = ({
     statusSnapshot,
     connectionSnapshot,
     activeMode,
+    resumeSummary,
   ]);
 
   // -------- Slash command handlers that live inside ink-app --------
@@ -1395,7 +1445,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       syncPendingAttachments();
 
       try {
-        setStickyError(null);
+        setNotices((current) => current.filter((item) => item.tone !== "error"));
         const { events, conversationId } = await onPrompt(finalPrompt, {
           permission_mode: activeMode,
         });
@@ -1484,11 +1534,19 @@ export const InkApp: React.FC<InkAppProps> = ({
         return;
       }
       if (key.ctrl && char === "o") {
-        setTranscriptMode((mode) => (mode === "chat" ? "inspect" : "chat"));
+        setTranscriptMode((mode) => {
+          const next = mode === "chat" ? "inspect" : "chat";
+          showInfo(`/view: ${next}`);
+          return next;
+        });
         return;
       }
       if (key.shift && key.tab) {
-        setActiveMode((m) => (m === "ask" ? "auto" : m === "auto" ? "plan" : "ask"));
+        setActiveMode((m) => {
+          const next = m === "ask" ? "auto" : m === "auto" ? "plan" : "ask";
+          showInfo(`/mode: ${next}`);
+          return next;
+        });
         return;
       }
       // Ctrl-R opens inline history-search (Claude-Code-style
@@ -1503,8 +1561,13 @@ export const InkApp: React.FC<InkAppProps> = ({
         process.stdout.write("\x1b[2J\x1b[H");
         return;
       }
-      if (key.escape && stickyError && pane === null && !inlineSearchOpen) {
-        setStickyError(null);
+      if (
+        key.escape &&
+        notices.some((item) => item.persistent) &&
+        pane === null &&
+        !inlineSearchOpen
+      ) {
+        dismissNotice();
         return;
       }
       if (busyRef.current) {
@@ -1885,7 +1948,9 @@ export const InkApp: React.FC<InkAppProps> = ({
   for (let i = 0; i < deferredMessages.length; i++) {
     const m = deferredMessages[i];
     if (!m) continue;
-    transcriptRows.push(<MessageRow key={`msg-${i}`} role={m.role} content={m.content} />);
+    transcriptRows.push(
+      <MessageRow key={`msg-${i}`} role={m.role} content={m.content} parts={m.parts} />,
+    );
     if (m.id) {
       const childCalls = callsByParent.get(m.id);
       if (childCalls && childCalls.length > 0) {
@@ -1940,18 +2005,23 @@ export const InkApp: React.FC<InkAppProps> = ({
 
   const content = (
     <Box flexDirection="column">
-      {showBanner ? (
-        <>
-          <WelcomeBanner
-            persona={persona.label}
-            tenant={persona.tenant}
-            engineUrl={persona.engineUrl}
-            profileName={persona.profileName}
-            tip={tip.current}
-          />
-          {showWelcomeActions ? <StarterActions actions={starterActions} /> : null}
-        </>
-      ) : null}
+      <WelcomeBanner
+        persona={persona.label}
+        tenant={persona.tenant}
+        engineUrl={persona.engineUrl}
+        profileName={persona.profileName}
+        sessionId={session.conversationId}
+        mode={activeMode}
+        transcriptMode={transcriptMode}
+        connectionState={connectionSnapshot?.state ?? "unknown"}
+        connectionReason={connectionSnapshot?.reason ?? null}
+        targetKind={resumeSummary?.active_target.kind ?? null}
+        targetName={resumeSummary?.active_target.name ?? null}
+        environment={resumeSummary?.active_target.environment ?? null}
+        compact={!showBanner}
+        {...(showBanner ? { tip: tip.current } : {})}
+      />
+      {showWelcomeActions ? <StarterActions actions={starterActions} /> : null}
 
       {/* Resume banner — single "where were we / what next" card on
           fresh attach when the engine returned a resume_summary. */}
@@ -1966,13 +2036,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         />
       ) : null}
 
-      {/* Transient banner (help / errors / command feedback) */}
-      {banner ? (
-        <Box marginBottom={1}>
-          <Text color="cyan">{banner}</Text>
-        </Box>
-      ) : null}
-      {stickyError ? <StickyErrorPanel message={stickyError} /> : null}
+      <NoticeStack items={notices} />
 
       {/* Committed scrollback — written once to stdout via Ink Static.
           Survives re-renders, so terminal mouse-selection and copy
@@ -2172,6 +2236,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         transcriptMode={transcriptMode}
         connectionState={connectionSnapshot?.state ?? "unknown"}
         connectionReason={connectionSnapshot?.reason ?? null}
+        columns={columns}
       />
 
       {/* Inline @-mention picker — shown when the buffer has an
