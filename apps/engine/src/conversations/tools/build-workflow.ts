@@ -25,7 +25,7 @@ import { describeConnectorPlaceholders, parsePlaceholders } from "../../llm/subs
 import { sampleToSchema } from "../../workflows/sample-to-schema.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
-import type { WorkflowDraftDocument } from "../types.ts";
+import type { DraftDocument, WorkflowDraftDocument } from "../types.ts";
 import { verifyWorkflow } from "../verifier.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -76,6 +76,59 @@ function collectStrings(value: unknown, out: string[] = []): string[] {
   return out;
 }
 
+function buildWorkflowErrorPayload(gateError: ReturnType<typeof buildGateError>) {
+  const { error: legacyError, ...rest } = gateError;
+  return {
+    ...rest,
+    error: {
+      code: rest.error_code,
+      message: rest.message,
+      details: {
+        error: legacyError,
+        ...rest,
+      },
+    },
+  };
+}
+
+function buildWorkflowSuccessPayload(
+  draft: DraftDocument,
+  args: {
+    name: string;
+    slug: string;
+    steps: Array<Record<string, unknown>>;
+    input_schema_inferred: boolean;
+    warnings: string[];
+    infos: string[];
+  },
+) {
+  const workflowSummary = {
+    slug: args.slug,
+    name: args.name,
+    step_count: args.steps.length,
+    input_schema_inferred: args.input_schema_inferred,
+  };
+  const lastStep = args.steps.at(-1);
+  return {
+    ...buildDraftMutationPayload(draft, {
+      resource_kind: "workflow",
+      extra: {
+        name: args.name,
+        workflow: workflowSummary,
+        steps: args.steps.length,
+        last_step_id: typeof lastStep?.id === "string" ? lastStep.id : null,
+        step_type: typeof lastStep?.kind === "string" ? lastStep.kind : null,
+        warnings: args.warnings,
+        infos: args.infos,
+      },
+    }),
+    persistence: "draft_only" as const,
+    draft: workflowSummary,
+    warnings: args.warnings,
+    infos: args.infos,
+  };
+}
+
 export const buildWorkflowTool: ConversationTool = {
   name: "build_workflow",
   description:
@@ -110,20 +163,21 @@ export const buildWorkflowTool: ConversationTool = {
     const currentDraft = ctx.getDraft();
     const parsed = BuildWorkflowInput.safeParse(rawArgs);
     if (!parsed.success) {
+      const gateError = buildGateError(currentDraft, {
+        error_code: "invalid_input",
+        message: "workflow build input failed schema validation",
+        recommended_mode: "workflow",
+        extra: {
+          errors: parsed.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+            code: issue.code,
+          })),
+        },
+      });
       return {
         ok: false,
-        data: buildGateError(currentDraft, {
-          error_code: "invalid_input",
-          message: "workflow build input failed schema validation",
-          recommended_mode: "workflow",
-          extra: {
-            errors: parsed.error.issues.map((issue) => ({
-              path: issue.path.join("."),
-              message: issue.message,
-              code: issue.code,
-            })),
-          },
-        }),
+        data: buildWorkflowErrorPayload(gateError),
       };
     }
     const args = parsed.data;
@@ -138,20 +192,21 @@ export const buildWorkflowTool: ConversationTool = {
       steps: args.steps,
     });
     if (!defValidation.success) {
+      const gateError = buildGateError(currentDraft, {
+        error_code: "workflow_schema_invalid",
+        message: "workflow definition failed schema validation",
+        recommended_mode: "workflow",
+        extra: {
+          errors: defValidation.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+            code: issue.code,
+          })),
+        },
+      });
       return {
         ok: false,
-        data: buildGateError(currentDraft, {
-          error_code: "workflow_schema_invalid",
-          message: "workflow definition failed schema validation",
-          recommended_mode: "workflow",
-          extra: {
-            errors: defValidation.error.issues.map((issue) => ({
-              path: issue.path.join("."),
-              message: issue.message,
-              code: issue.code,
-            })),
-          },
-        }),
+        data: buildWorkflowErrorPayload(gateError),
       };
     }
 
@@ -232,18 +287,19 @@ export const buildWorkflowTool: ConversationTool = {
 
     if (problems.length > 0) {
       const firstCode = problems[0]?.code ?? "placeholder_connector_missing";
+      const gateError = buildGateError(currentDraft, {
+        error_code: firstCode,
+        message:
+          "one or more placeholder references are unresolved against the current environment",
+        recommended_mode: "workflow",
+        next_best_actions: ["list_connectors", "get_connector"],
+        extra: {
+          problems,
+        },
+      });
       return {
         ok: false,
-        data: buildGateError(currentDraft, {
-          error_code: firstCode,
-          message:
-            "one or more placeholder references are unresolved against the current environment",
-          recommended_mode: "workflow",
-          next_best_actions: ["list_connectors", "get_connector"],
-          extra: {
-            problems,
-          },
-        }),
+        data: buildWorkflowErrorPayload(gateError),
       };
     }
 
@@ -260,18 +316,19 @@ export const buildWorkflowTool: ConversationTool = {
       ...(args.output_transform ? { output_transform: args.output_transform } : {}),
     });
     if (verdict.errors.length > 0) {
+      const gateError = buildGateError(currentDraft, {
+        error_code: "verifier_rejected",
+        message: `static verifier found ${verdict.errors.length} error(s)`,
+        recommended_mode: "workflow",
+        extra: {
+          errors: verdict.errors,
+          warnings: verdict.warnings,
+          infos: verdict.infos,
+        },
+      });
       return {
         ok: false,
-        data: buildGateError(currentDraft, {
-          error_code: "verifier_rejected",
-          message: `static verifier found ${verdict.errors.length} error(s)`,
-          recommended_mode: "workflow",
-          extra: {
-            errors: verdict.errors,
-            warnings: verdict.warnings,
-            infos: verdict.infos,
-          },
-        }),
+        data: buildWorkflowErrorPayload(gateError),
       };
     }
 
@@ -297,33 +354,21 @@ export const buildWorkflowTool: ConversationTool = {
     const nextDraft = withWorkflowDraft(currentDraft, workflowDraft, "workflow_built");
     await ctx.setDraft(nextDraft);
 
+    const infos = verdict.infos.map((info) => `${info.code}:${info.path}`);
+    const warningCodes = [
+      ...warnings,
+      ...verdict.warnings.map((warning) => `${warning.code}:${warning.path}`),
+    ];
+
     return {
       ok: true,
-      data: buildDraftMutationPayload(nextDraft, {
-        resource_kind: "workflow",
-        extra: {
-          name: args.name,
-          workflow: {
-            slug: args.slug,
-            name: args.name,
-            step_count: args.steps.length,
-            input_schema_inferred: input_schema !== undefined && args.input_schema === undefined,
-          },
-          steps: args.steps.length,
-          last_step_id:
-            typeof args.steps[args.steps.length - 1]?.id === "string"
-              ? (args.steps[args.steps.length - 1]?.id as string)
-              : null,
-          step_type:
-            typeof args.steps[args.steps.length - 1]?.kind === "string"
-              ? (args.steps[args.steps.length - 1]?.kind as string)
-              : null,
-          warnings: [
-            ...warnings,
-            ...verdict.warnings.map((warning) => `${warning.code}:${warning.path}`),
-          ],
-          infos: verdict.infos.map((info) => `${info.code}:${info.path}`),
-        },
+      data: buildWorkflowSuccessPayload(nextDraft, {
+        name: args.name,
+        slug: args.slug,
+        steps: args.steps,
+        input_schema_inferred: input_schema !== undefined && args.input_schema === undefined,
+        warnings: warningCodes,
+        infos,
       }),
     };
   },
