@@ -17,6 +17,7 @@ import { VERSION } from "@cli-core/version.ts";
 import { defineCommand, runCommand, showUsage } from "citty";
 import { apiKeysCommand } from "./commands/apikeys.ts";
 import { auditCommand } from "./commands/audit.ts";
+import { authCommand } from "./commands/auth.ts";
 import { connectorTemplatesCommand } from "./commands/connector-templates.ts";
 import { connectorsCommand } from "./commands/connectors.ts";
 import { credentialsCommand } from "./commands/credentials.ts";
@@ -458,6 +459,7 @@ const mainCommand = defineCommand({
     rm: skRm,
     health: healthCommand,
     extract: extractCommand,
+    auth: authCommand,
     // operator commands
     workflows: workflowsCommand,
     connectors: connectorsCommand,
@@ -616,6 +618,7 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   rm: { command: skRm },
   health: { command: healthCommand },
   extract: { command: extractCommand, requires: "conversation:write" },
+  auth: { command: authCommand, requires: "connector:write" },
   // operator
   workflows: { command: workflowsCommand, requires: "workflow:read" },
   connectors: { command: connectorsCommand, requires: "connector:read" },

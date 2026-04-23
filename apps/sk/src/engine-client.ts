@@ -18,6 +18,32 @@ export interface ClientOptions {
   user_agent?: string | undefined;
 }
 
+/** Discriminated union matching the engine's RunBodySchema for
+ *  POST /v1/executions. Keep in sync with
+ *  apps/engine/src/http/routes/executions.ts. */
+export type RunExecutionBody =
+  | {
+      source: "saved";
+      workflow_id: string;
+      version_id?: string;
+      input?: unknown;
+      sync?: boolean;
+    }
+  | {
+      source: "draft";
+      definition: Record<string, unknown>;
+      name?: string;
+      input?: unknown;
+    }
+  | {
+      source: "step";
+      step: Record<string, unknown>;
+      workflow_slug?: string;
+      input?: unknown;
+      scope?: Record<string, unknown>;
+      timeout_ms?: number;
+    };
+
 export class SkEngineError extends Error {
   readonly status: number;
   readonly code: string;
@@ -408,6 +434,14 @@ export class EngineClient {
   ): Promise<Record<string, unknown>> {
     const query = opts.sync ? { sync: "1" } : undefined;
     return this.request("POST", `/v1/workflows/${encodeURIComponent(id)}/run`, body, query);
+  }
+
+  // -------------------- Executions --------------------
+  /** Run a saved workflow, a draft definition, or a single step via the
+   *  unified `POST /v1/executions` surface. Mirrors the discriminated
+   *  union accepted by the server. */
+  runExecution(body: RunExecutionBody): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/executions", body as Record<string, unknown>);
   }
 
   // -------------------- Connectors --------------------
