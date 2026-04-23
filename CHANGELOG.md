@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.2.0](https://github.com/MikeBild/subkit/compare/subkit-v2.1.0...subkit-v2.2.0) (2026-04-23)
+
+
+### Features
+
+* **sk:** enrich transcript and session surfaces ([049dc60](https://github.com/MikeBild/subkit/commit/049dc60c809d6cfcdbdb54fddc0e5a21795ed9ed))
+
+
+### Bug Fixes
+
+* **engine:** restore build_workflow response contract ([1e8fa1e](https://github.com/MikeBild/subkit/commit/1e8fa1e9b6962c10e8bdfb820d752ff454af2bdf))
+
 ## [2.1.0](https://github.com/MikeBild/subkit/compare/subkit-v2.0.0...subkit-v2.1.0) (2026-04-23)
 
 
