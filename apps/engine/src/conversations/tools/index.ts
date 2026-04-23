@@ -72,6 +72,12 @@ export interface ToolContext {
    * leave it unused.
    */
   onLog?: (level: "debug" | "info" | "warn" | "error", message: string) => void;
+  /**
+   * Permission mode the client advertised for this turn (auto / ask /
+   * plan). Tools that stage confirmations (`ask_user_confirm`) can use
+   * this to auto-resolve in `auto` mode without pausing the loop.
+   */
+  permission_mode?: "auto" | "ask" | "plan" | null;
 }
 
 export interface ToolResult {

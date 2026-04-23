@@ -282,6 +282,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     actor_id: p.actor_id,
     connector_id: p.connector_id,
     workflow_id: p.workflow_id,
+    permission_mode: p.permission_mode ?? null,
     engineClient: new EngineClient({
       tenant_id: p.tenant_id,
       actor_id: p.actor_id,
