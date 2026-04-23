@@ -1,24 +1,56 @@
-// Debug logger for the `sk` CLI.
+// Full-trace debug logger for the `sk` CLI.
 //
 // Activation (any of):
 //   - `SK_DEBUG=1` env var (or `DEBUG=sk` / `DEBUG=sk:*`)
 //   - `--debug` / `-d` argv flag
 //
-// Activation is decided ONCE at module-load via `isDebugMode()`. The
-// helpers in this module are no-ops when debug is off, so they are
-// safe to call from hot paths (every HTTP request) — the cost is one
-// boolean check.
-//
-// When active, every `debug.log({...})` call appends a single
-// JSON-Lines record to `~/.sk/debug.log`. The path is exposed via
-// `debugLogPath()` so the `/debug` slash command can show it and tail
-// the file.
+// When active, `sk` appends JSON-Lines records to `~/.sk/debug.log`.
+// The records are structured, correlated per turn, and redacted before
+// they hit disk so operators can inspect failures without leaking
+// secrets into local debug artifacts.
 
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { redact } from "@cli-core/index.ts";
 
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
+
+export type DebugMode = "ink" | "repl" | "headless" | "command" | "unknown";
+
+export type DebugRecordKind =
+  | "dialog.turn_start"
+  | "dialog.prompt_resolved"
+  | "dialog.warning"
+  | "dialog.turn_event"
+  | "dialog.render_output"
+  | "dialog.turn_end"
+  | "dialog.error"
+  | "conversation.turn_events"
+  | "elicitation.response"
+  | "http.request"
+  | "http.response"
+  | "http.transport_error"
+  | "sse.open"
+  | "sse.frame"
+  | "sse.close"
+  | "sse.transport_error";
+
+export interface DebugCorrelationFields {
+  mode?: DebugMode;
+  session_id?: string | null;
+  conversation_id?: string | null;
+  turn_id?: string | null;
+  trace_id?: string | null;
+  request_id?: string | null;
+}
+
+export interface DebugRecord extends DebugCorrelationFields {
+  ts: string;
+  seq: number;
+  kind: DebugRecordKind;
+  [key: string]: unknown;
+}
 
 function envEnabled(): boolean {
   const sk = process.env.SK_DEBUG?.toLowerCase().trim();
@@ -37,6 +69,9 @@ function argvEnabled(): boolean {
 }
 
 let cachedActive: boolean | null = null;
+let writeFailed = false;
+let nextRecordSeq = 0;
+let nextTurnSeq = 0;
 
 export function isDebugMode(): boolean {
   if (cachedActive !== null) return cachedActive;
@@ -59,13 +94,46 @@ export function debugLogPath(): string {
   return join(homedir(), ".sk", "debug.log");
 }
 
-interface DebugRecord {
-  ts: string;
-  scope: string;
-  [key: string]: unknown;
+export function newDebugTurnId(prefix = "turn"): string {
+  nextTurnSeq += 1;
+  return `${prefix}-${Date.now().toString(36)}-${nextTurnSeq.toString(36)}`;
 }
 
-let writeFailed = false;
+export function extractTraceId(headers: Headers): string | null {
+  return headers.get("x-trace-id") ?? headers.get("x-request-id") ?? null;
+}
+
+export function serializeDebugError(err: unknown): Record<string, unknown> {
+  if (err instanceof Error) {
+    const errFields = err as Error & Record<string, unknown>;
+    const out: Record<string, unknown> = {
+      name: err.name,
+      message: err.message,
+    };
+    if (typeof err.stack === "string" && err.stack.length > 0) out.stack = err.stack;
+    if ("cause" in err && err.cause !== undefined) {
+      out.cause =
+        err.cause instanceof Error
+          ? { name: err.cause.name, message: err.cause.message }
+          : err.cause;
+    }
+    for (const key of ["status", "code", "trace_id", "details", "body"] as const) {
+      if (key in errFields) {
+        const value = errFields[key];
+        if (value !== undefined) out[key] = value;
+      }
+    }
+    return out;
+  }
+  if (typeof err === "object" && err !== null) {
+    return {
+      message:
+        "message" in err && typeof err.message === "string" ? err.message : JSON.stringify(err),
+      error: err,
+    };
+  }
+  return { message: String(err) };
+}
 
 function appendRecord(rec: DebugRecord): void {
   const path = debugLogPath();
@@ -86,9 +154,20 @@ function appendRecord(rec: DebugRecord): void {
   }
 }
 
-export function debugLog(scope: string, fields: Record<string, unknown>): void {
+export function debugLog(
+  kind: DebugRecordKind,
+  fields: Record<string, unknown> = {},
+  context: DebugCorrelationFields = {},
+): void {
   if (!isDebugMode()) return;
-  appendRecord({ ts: new Date().toISOString(), scope, ...fields });
+  const raw: DebugRecord = {
+    ts: new Date().toISOString(),
+    seq: ++nextRecordSeq,
+    kind,
+    ...context,
+    ...fields,
+  };
+  appendRecord(redact(raw) as DebugRecord);
 }
 
 /**

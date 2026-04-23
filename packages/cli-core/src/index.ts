@@ -44,6 +44,7 @@ export {
   type InterruptPhase,
   makeInterruptController,
 } from "./interrupt.ts";
+export { redact } from "./redact.ts";
 export { readSse, type SseFrame } from "./sse.ts";
 export {
   applyTurnEvent,

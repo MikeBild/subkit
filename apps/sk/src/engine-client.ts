@@ -5,7 +5,14 @@
 // graph in. Deliberately separate from apps/cli/src/engine-client.ts
 // because the two CLIs wrap different engine surfaces.
 
-import { debugLog, isDebugMode } from "./debug.ts";
+import {
+  type DebugCorrelationFields,
+  type DebugMode,
+  debugLog,
+  extractTraceId,
+  isDebugMode,
+  serializeDebugError,
+} from "./debug.ts";
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -16,6 +23,8 @@ export interface ClientOptions {
   fetchImpl?: FetchLike | undefined;
   /** User-Agent header value. sk-cli sets its own to tag audit rows. */
   user_agent?: string | undefined;
+  /** Optional mode tag used in debug traces. */
+  debug_mode?: DebugMode | undefined;
 }
 
 /** Discriminated union matching the engine's RunBodySchema for
@@ -89,6 +98,7 @@ export class EngineClient {
   private readonly tenant: string | null;
   private readonly fetchImpl: FetchLike;
   private readonly userAgent: string;
+  private readonly debugMode: DebugMode;
 
   constructor(opts: ClientOptions) {
     this.base = opts.engine_url.replace(/\/+$/, "");
@@ -96,6 +106,7 @@ export class EngineClient {
     this.tenant = opts.tenant ?? null;
     this.fetchImpl = opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.userAgent = opts.user_agent ?? "sk-cli/0.0.1";
+    this.debugMode = opts.debug_mode ?? "command";
   }
 
   private headers(extra?: Record<string, string>): Record<string, string> {
@@ -115,6 +126,7 @@ export class EngineClient {
     path: string,
     body?: unknown,
     query?: Record<string, string | number | boolean | undefined>,
+    debugContext?: DebugCorrelationFields,
   ): Promise<T> {
     const qs = buildQuery(query);
     const url = `${this.base}${path}${qs}`;
@@ -122,13 +134,22 @@ export class EngineClient {
     if (body !== undefined) init.body = typeof body === "string" ? body : JSON.stringify(body);
     const startedAt = Date.now();
     const debugActive = isDebugMode();
+    const ctx = this.debugContext(debugContext);
     if (debugActive) {
-      debugLog("http.request", {
-        method,
-        url,
-        tenant: this.tenant,
-        body_bytes: typeof init.body === "string" ? init.body.length : 0,
-      });
+      debugLog(
+        "http.request",
+        {
+          method,
+          path,
+          url,
+          tenant: this.tenant,
+          query: query ?? null,
+          request_headers: normalizeHeaders(init.headers),
+          request_body: body ?? null,
+          request_kind: "json",
+        },
+        ctx,
+      );
     }
     let res: Response;
     try {
@@ -136,67 +157,141 @@ export class EngineClient {
     } catch (cause) {
       const duration_ms = Date.now() - startedAt;
       if (debugActive) {
-        debugLog("http.transport_error", {
-          method,
-          url,
-          duration_ms,
-          error: cause instanceof Error ? cause.message : String(cause),
-        });
+        debugLog(
+          "http.transport_error",
+          {
+            method,
+            path,
+            url,
+            tenant: this.tenant,
+            query: query ?? null,
+            duration_ms,
+            error: serializeDebugError(cause),
+          },
+          ctx,
+        );
       }
       throw new SkTransportError(cause);
     }
     const text = await res.text();
     const duration_ms = Date.now() - startedAt;
+    const parsed = parseResponseBody(text);
+    const trace_id = extractTraceId(res.headers);
     if (!res.ok) {
-      let parsed: unknown = text;
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        /* keep as string */
-      }
       if (debugActive) {
-        debugLog("http.response", {
-          method,
-          url,
-          status: res.status,
-          duration_ms,
-          // Cap the body excerpt so a large 500 page does not blow the
-          // log file; the full text already lives in the engine logs.
-          body: typeof parsed === "string" ? parsed.slice(0, 2000) : parsed,
-          trace_id: res.headers.get("x-trace-id") ?? res.headers.get("x-request-id") ?? null,
-        });
+        debugLog(
+          "http.response",
+          {
+            method,
+            path,
+            url,
+            tenant: this.tenant,
+            query: query ?? null,
+            status: res.status,
+            ok: res.ok,
+            duration_ms,
+            trace_id,
+            response_headers: normalizeHeaders(res.headers),
+            response_body: parsed,
+          },
+          { ...ctx, trace_id: ctx.trace_id ?? trace_id },
+        );
       }
       throw new SkEngineError(res.status, parsed);
     }
     if (debugActive) {
-      debugLog("http.response", {
-        method,
-        url,
-        status: res.status,
-        duration_ms,
-        body_bytes: text.length,
-      });
+      debugLog(
+        "http.response",
+        {
+          method,
+          path,
+          url,
+          tenant: this.tenant,
+          query: query ?? null,
+          status: res.status,
+          ok: res.ok,
+          duration_ms,
+          trace_id,
+          response_headers: normalizeHeaders(res.headers),
+          response_body: parsed,
+        },
+        { ...ctx, trace_id: ctx.trace_id ?? trace_id },
+      );
     }
     if (!text || res.status === 204) return undefined as T;
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      return text as unknown as T;
-    }
+    return parsed as T;
   }
 
   async stream(
     path: string,
     query?: Record<string, string | number | undefined>,
+    debugContext?: DebugCorrelationFields,
   ): Promise<Response> {
     const qs = buildQuery(query);
     const url = `${this.base}${path}${qs}`;
+    const headers = this.headers({ accept: "text/event-stream" });
+    const debugActive = isDebugMode();
+    const ctx = this.debugContext(debugContext);
+    if (debugActive) {
+      debugLog(
+        "http.request",
+        {
+          method: "GET",
+          path,
+          url,
+          tenant: this.tenant,
+          query: query ?? null,
+          request_headers: normalizeHeaders(headers),
+          request_body: null,
+          request_kind: "sse",
+        },
+        ctx,
+      );
+    }
     try {
-      return await this.fetchImpl(url, {
+      const res = await this.fetchImpl(url, {
         method: "GET",
-        headers: this.headers({ accept: "text/event-stream" }),
+        headers,
       });
+      if (debugActive) {
+        const trace_id = extractTraceId(res.headers);
+        const error_body = !res.ok
+          ? await res
+              .clone()
+              .text()
+              .catch(() => null)
+          : null;
+        debugLog(
+          "sse.open",
+          {
+            path,
+            url,
+            tenant: this.tenant,
+            query: query ?? null,
+            status: res.status,
+            ok: res.ok,
+            trace_id,
+            response_headers: normalizeHeaders(res.headers),
+            response_body: error_body ? parseResponseBody(error_body) : null,
+          },
+          { ...ctx, trace_id: ctx.trace_id ?? trace_id },
+        );
+      }
+      return res;
     } catch (cause) {
+      if (debugActive) {
+        debugLog(
+          "sse.transport_error",
+          {
+            path,
+            url,
+            tenant: this.tenant,
+            query: query ?? null,
+            error: serializeDebugError(cause),
+          },
+          ctx,
+        );
+      }
       throw new SkTransportError(cause);
     }
   }
@@ -266,16 +361,19 @@ export class EngineClient {
   ): Promise<{ items: ConversationSummary[] }> {
     return this.request("GET", "/v1/conversations", undefined, query);
   }
-  createConversation(body: {
-    initial_message?: string;
-    connector_id?: string;
-    workflow_id?: string;
-    memory?: string;
-    model?: string;
-    title?: string;
-    permission_mode?: "auto" | "ask" | "plan";
-  }): Promise<ConversationRunOutcome> {
-    return this.request("POST", "/v1/conversations", body);
+  createConversation(
+    body: {
+      initial_message?: string;
+      connector_id?: string;
+      workflow_id?: string;
+      memory?: string;
+      model?: string;
+      title?: string;
+      permission_mode?: "auto" | "ask" | "plan";
+    },
+    debugContext?: DebugCorrelationFields,
+  ): Promise<ConversationRunOutcome> {
+    return this.request("POST", "/v1/conversations", body, undefined, debugContext);
   }
   getConversation(id: string): Promise<ConversationDetail> {
     return this.request("GET", `/v1/conversations/${id}`);
@@ -283,8 +381,9 @@ export class EngineClient {
   appendConversationMessage(
     id: string,
     body: { message: string; memory?: string; permission_mode?: "auto" | "ask" | "plan" },
+    debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
-    return this.request("POST", `/v1/conversations/${id}/messages`, body);
+    return this.request("POST", `/v1/conversations/${id}/messages`, body, undefined, debugContext);
   }
   patchConversation(
     id: string,
@@ -307,11 +406,12 @@ export class EngineClient {
     elicitationId: string,
     output: unknown,
     reason?: string,
+    debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
     const path = `/v1/conversations/${conversationId}/elicitations/${elicitationId}/respond`;
     const body: Record<string, unknown> = { output };
     if (reason) body.reason = reason;
-    return this.request("POST", path, body);
+    return this.request("POST", path, body, undefined, debugContext);
   }
   cancelConversation(id: string): Promise<unknown> {
     return this.request("POST", `/v1/conversations/${id}/cancel`);
@@ -319,8 +419,8 @@ export class EngineClient {
   getConversationContextSnapshot(id: string): Promise<ConversationContextSnapshot> {
     return this.request("GET", `/v1/conversations/${id}/context-snapshot`);
   }
-  streamConversation(id: string): Promise<Response> {
-    return this.stream(`/v1/conversations/${id}/stream`);
+  streamConversation(id: string, debugContext?: DebugCorrelationFields): Promise<Response> {
+    return this.stream(`/v1/conversations/${id}/stream`, undefined, debugContext);
   }
 
   // --------------------------- Skills ---------------------------
@@ -375,7 +475,12 @@ export class EngineClient {
   }
 
   // -------------------- Multipart helper --------------------
-  private async requestForm<T = unknown>(method: string, path: string, form: FormData): Promise<T> {
+  private async requestForm<T = unknown>(
+    method: string,
+    path: string,
+    form: FormData,
+    debugContext?: DebugCorrelationFields,
+  ): Promise<T> {
     const qs = "";
     const url = `${this.base}${path}${qs}`;
     // Omit content-type so the browser/bun sets it with boundary automatically.
@@ -385,28 +490,88 @@ export class EngineClient {
     };
     if (this.apiKey) h.authorization = `Bearer ${this.apiKey}`;
     if (this.tenant) h["x-subkit-tenant"] = this.tenant;
+    const debugActive = isDebugMode();
+    const ctx = this.debugContext(debugContext);
+    if (debugActive) {
+      debugLog(
+        "http.request",
+        {
+          method,
+          path,
+          url,
+          tenant: this.tenant,
+          query: null,
+          request_headers: normalizeHeaders(h),
+          request_body: await serializeFormData(form),
+          request_kind: "form",
+        },
+        ctx,
+      );
+    }
     let res: Response;
     try {
       res = await this.fetchImpl(url, { method, headers: h, body: form });
     } catch (cause) {
+      if (debugActive) {
+        debugLog(
+          "http.transport_error",
+          {
+            method,
+            path,
+            url,
+            tenant: this.tenant,
+            query: null,
+            error: serializeDebugError(cause),
+          },
+          ctx,
+        );
+      }
       throw new SkTransportError(cause);
     }
     const text = await res.text();
+    const parsed = parseResponseBody(text);
+    const trace_id = extractTraceId(res.headers);
     if (!res.ok) {
-      let parsed: unknown = text;
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        /* keep as string */
+      if (debugActive) {
+        debugLog(
+          "http.response",
+          {
+            method,
+            path,
+            url,
+            tenant: this.tenant,
+            query: null,
+            status: res.status,
+            ok: res.ok,
+            trace_id,
+            response_headers: normalizeHeaders(res.headers),
+            response_body: parsed,
+          },
+          { ...ctx, trace_id: ctx.trace_id ?? trace_id },
+        );
       }
       throw new SkEngineError(res.status, parsed);
     }
-    if (!text || res.status === 204) return undefined as T;
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      return text as unknown as T;
+    if (debugActive) {
+      debugLog(
+        "http.response",
+        {
+          method,
+          path,
+          url,
+          tenant: this.tenant,
+          query: null,
+          status: res.status,
+          ok: res.ok,
+          trace_id,
+          response_headers: normalizeHeaders(res.headers),
+          response_body: parsed,
+        },
+        { ...ctx, trace_id: ctx.trace_id ?? trace_id },
+      );
     }
+    if (!text || res.status === 204) return undefined as T;
+    return parsed as T;
   }
 
   // -------------------- Workflows --------------------
@@ -966,6 +1131,10 @@ export class EngineClient {
   getIdentityTenant(id: string): Promise<Record<string, unknown>> {
     return this.request("GET", `/v1/identity/tenants/${encodeURIComponent(id)}`);
   }
+
+  private debugContext(debugContext?: DebugCorrelationFields): DebugCorrelationFields {
+    return { mode: this.debugMode, ...debugContext };
+  }
 }
 
 export interface EngineErrorEntry {
@@ -1020,6 +1189,76 @@ export interface SetupValidationResponse {
   };
   issues: SetupValidationIssue[];
   recommendations: string[];
+}
+
+function parseResponseBody(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function normalizeHeaders(
+  headers?: HeadersInit | Record<string, string | undefined>,
+): Record<string, string> {
+  if (!headers) return {};
+  if (headers instanceof Headers) {
+    const out: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      out[key] = value;
+    });
+    return out;
+  }
+  if (Array.isArray(headers)) {
+    return headers.reduce<Record<string, string>>((acc, [key, value]) => {
+      acc[key] = value;
+      return acc;
+    }, {});
+  }
+  return Object.entries(headers).reduce<Record<string, string>>((acc, [key, value]) => {
+    if (typeof value === "string") acc[key] = value;
+    return acc;
+  }, {});
+}
+
+async function serializeFormData(form: FormData): Promise<Array<Record<string, unknown>>> {
+  const entries: Array<Record<string, unknown>> = [];
+  for (const [name, value] of form.entries()) {
+    if (typeof value === "string") {
+      entries.push({ name, kind: "text", value });
+      continue;
+    }
+    const fileValue = value as Blob & { name?: string };
+    const entry: Record<string, unknown> = {
+      name,
+      kind: "file",
+      file: {
+        name: fileValue.name ?? null,
+        type: fileValue.type,
+        size: fileValue.size,
+      },
+    };
+    if (looksTextual(fileValue.type)) {
+      try {
+        entry.text = await fileValue.text();
+      } catch {
+        entry.text = "[unreadable]";
+      }
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
+function looksTextual(contentType: string): boolean {
+  return (
+    contentType.startsWith("text/") ||
+    contentType.includes("json") ||
+    contentType.includes("xml") ||
+    contentType.includes("yaml")
+  );
 }
 
 function buildQuery(params: Record<string, unknown> | undefined): string {

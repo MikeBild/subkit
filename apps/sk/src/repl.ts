@@ -25,6 +25,12 @@ import {
   type TurnEvent,
 } from "@cli-core/index.ts";
 import type { ResolvedProfile } from "./config.ts";
+import {
+  type DebugCorrelationFields,
+  debugLog,
+  newDebugTurnId,
+  serializeDebugError,
+} from "./debug.ts";
 import { EngineClient, SkEngineError, SkTransportError } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
@@ -135,14 +141,38 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
     api_key: opts.profile.api_key,
     tenant: opts.profile.active_tenant_id,
     user_agent: "sk-cli/0.0.1",
+    debug_mode: "repl",
   });
 
   const persona = await resolvePersona(client, opts.profile);
   const canReadSetup = persona.probe.allows("audit:read") || persona.probe.allows("identity:read");
 
   // Banner + status line.
+  let activeDebugContext: DebugCorrelationFields | null = null;
+  const currentDebugContext = (): DebugCorrelationFields | null =>
+    activeDebugContext
+      ? {
+          ...activeDebugContext,
+          conversation_id: session.conversationId ?? activeDebugContext.conversation_id ?? null,
+        }
+      : null;
   const line = (s: string): void => {
     stdout.write(`${s}\n`);
+    const debugCtx = currentDebugContext();
+    if (debugCtx) {
+      debugLog("dialog.render_output", { stream: "stdout", output_text: s }, debugCtx);
+    }
+  };
+  const writeErr = (s: string): void => {
+    stderr.write(s);
+    const debugCtx = currentDebugContext();
+    if (debugCtx) {
+      debugLog(
+        "dialog.render_output",
+        { stream: "stderr", output_text: s.replace(/\n$/, "") },
+        debugCtx,
+      );
+    }
   };
   line(`sk — signed in as ${persona.label}@${opts.profile.active_tenant_id ?? "(no-tenant)"}`);
   line(`   engine: ${opts.profile.engine_url}`);
@@ -171,7 +201,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
     if (session.conversationId && session.status === "running") {
       try {
         await client.cancelConversation(session.conversationId);
-        stderr.write("\nsk: turn cancelled\n");
+        writeErr("\nsk: turn cancelled\n");
       } catch {
         /* ignore */
       }
@@ -188,40 +218,95 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
   const runTurn = async (rawInput: string): Promise<void> => {
     const input = rawInput.trim();
     if (!input) return;
-
-    // Slash dispatch.
-    if (input.startsWith("/")) {
-      const cmd = findSlashCommand(input.split(/\s+/)[0] ?? "");
-      if (!cmd) {
-        stderr.write(`sk: unknown slash command '${input}'. Try /help.\n`);
-        return;
-      }
-      if (cmd.requires && !persona.probe.allows(cmd.requires)) {
-        stderr.write(`sk: /${cmd.name} requires ${cmd.requires} (not granted)\n`);
-        return;
-      }
-      await handleSlash(cmd.name, input);
-      return;
-    }
-
-    // Plain prompt → append to current conversation or create a new one.
-    const resolved = await resolveMentions(input, {
-      cwd: process.cwd(),
-      additionalDirectories: settings.merged.additionalDirectories ?? [],
-      ...(settings.merged.maxInlineMentionBytes !== undefined
-        ? { maxBytes: settings.merged.maxInlineMentionBytes }
-        : {}),
-      client,
+    const input_kind = input.startsWith("/") ? "slash" : "prompt";
+    const turn_id = newDebugTurnId("repl");
+    const traceContext = (): DebugCorrelationFields => ({
+      mode: "repl",
+      conversation_id: session.conversationId,
+      turn_id,
     });
-    for (const w of resolved.warnings) stderr.write(`sk: ${w}\n`);
-
+    activeDebugContext = traceContext();
+    let turnStatus: "completed" | "error" = "completed";
+    debugLog(
+      "dialog.turn_start",
+      {
+        input_kind,
+        raw_input: input,
+        ...(input_kind === "prompt" ? { memory_sources: memory.sources } : {}),
+      },
+      traceContext(),
+    );
     try {
+      // Slash dispatch.
+      if (input.startsWith("/")) {
+        const cmd = findSlashCommand(input.split(/\s+/)[0] ?? "");
+        if (!cmd) {
+          debugLog(
+            "dialog.error",
+            { input_kind, error: { message: "unknown slash command" } },
+            traceContext(),
+          );
+          writeErr(`sk: unknown slash command '${input}'. Try /help.\n`);
+          return;
+        }
+        if (cmd.requires && !persona.probe.allows(cmd.requires)) {
+          debugLog(
+            "dialog.error",
+            {
+              input_kind,
+              error: { message: `missing permission ${cmd.requires}` },
+            },
+            traceContext(),
+          );
+          writeErr(`sk: /${cmd.name} requires ${cmd.requires} (not granted)\n`);
+          return;
+        }
+        await handleSlash(cmd.name, input);
+        return;
+      }
+
+      // Plain prompt → append to current conversation or create a new one.
+      const resolved = await resolveMentions(input, {
+        cwd: process.cwd(),
+        additionalDirectories: settings.merged.additionalDirectories ?? [],
+        ...(settings.merged.maxInlineMentionBytes !== undefined
+          ? { maxBytes: settings.merged.maxInlineMentionBytes }
+          : {}),
+        client,
+      });
+      debugLog(
+        "dialog.prompt_resolved",
+        {
+          raw_input: input,
+          resolved_prompt: resolved.prompt,
+          artifacts: resolved.artifacts,
+          warnings: resolved.warnings,
+        },
+        traceContext(),
+      );
+      for (const w of resolved.warnings) {
+        debugLog("dialog.warning", { warning: w }, traceContext());
+        writeErr(`sk: ${w}\n`);
+      }
+
       if (!session.conversationId) {
-        const created = await client.createConversation({
-          initial_message: resolved.prompt,
-          ...(memory.content ? { memory: memory.content } : {}),
-          ...(settings.merged.model ? { model: settings.merged.model } : {}),
-        });
+        const created = await client.createConversation(
+          {
+            initial_message: resolved.prompt,
+            ...(memory.content ? { memory: memory.content } : {}),
+            ...(settings.merged.model ? { model: settings.merged.model } : {}),
+          },
+          traceContext(),
+        );
+        debugLog(
+          "conversation.turn_events",
+          {
+            operation: "create_conversation",
+            response_status: created.status,
+            events: created.events,
+          },
+          traceContext(),
+        );
         session = initialSessionState(created.conversation.id);
         try {
           const now = new Date().toISOString();
@@ -238,25 +323,55 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           /* local cache write is best-effort */
         }
       } else {
-        await client.appendConversationMessage(session.conversationId, {
-          message: resolved.prompt,
-          ...(memory.content ? { memory: memory.content } : {}),
-        });
+        const appended = await client.appendConversationMessage(
+          session.conversationId,
+          {
+            message: resolved.prompt,
+            ...(memory.content ? { memory: memory.content } : {}),
+          },
+          traceContext(),
+        );
+        debugLog(
+          "conversation.turn_events",
+          {
+            operation: "append_message",
+            response_status: appended.status,
+            events: appended.events,
+          },
+          traceContext(),
+        );
       }
       if (!session.conversationId) {
-        stderr.write("sk: no conversation id after create\n");
+        debugLog(
+          "dialog.error",
+          { input_kind, error: { message: "no conversation id after create" } },
+          traceContext(),
+        );
+        writeErr("sk: no conversation id after create\n");
         return;
       }
-      const stream = await client.streamConversation(session.conversationId);
+      const stream = await client.streamConversation(session.conversationId, traceContext());
       await readSse(stream, (frame) => {
+        debugLog("sse.frame", { event: frame.event, raw_data: frame.data }, traceContext());
         try {
           const ev = JSON.parse(frame.data) as TurnEvent;
+          debugLog("dialog.turn_event", { event: ev }, traceContext());
           session = applyTurnEvent(session, ev);
           renderFrame(ev);
-        } catch {
-          /* skip malformed */
+        } catch (err) {
+          debugLog(
+            "dialog.error",
+            {
+              input_kind,
+              stage: "sse_frame_parse",
+              raw_frame: frame.data,
+              error: serializeDebugError(err),
+            },
+            traceContext(),
+          );
         }
       });
+      debugLog("sse.close", { final_status: session.status }, traceContext());
       // After the stream closes, print the final assistant text and any usage.
       const text = lastAssistantText(session).trim();
       if (text) line(`\nassistant> ${text}`);
@@ -267,13 +382,38 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         );
       }
     } catch (err) {
+      turnStatus = "error";
+      debugLog(
+        "dialog.error",
+        {
+          input_kind,
+          error: serializeDebugError(err),
+        },
+        traceContext(),
+      );
       if (err instanceof SkEngineError) {
-        stderr.write(`sk: engine error ${err.status}: ${err.message}\n`);
+        writeErr(`sk: engine error ${err.status}: ${err.message}\n`);
       } else if (err instanceof SkTransportError) {
-        stderr.write(`sk: transport error: ${err.message}\n`);
+        writeErr(`sk: transport error: ${err.message}\n`);
       } else {
-        stderr.write(`sk: ${err instanceof Error ? err.message : String(err)}\n`);
+        writeErr(`sk: ${err instanceof Error ? err.message : String(err)}\n`);
       }
+    } finally {
+      debugLog(
+        "dialog.turn_end",
+        {
+          input_kind,
+          status: turnStatus === "error" ? "error" : session.status,
+          assistant_text: input_kind === "prompt" ? lastAssistantText(session) : null,
+          message_count: session.messages.length,
+          tool_call_count: session.toolCalls.length,
+          validation_error_count: session.validationErrors.length,
+          pending_elicitation: session.pendingElicitation,
+          usage: session.usage,
+        },
+        traceContext(),
+      );
+      activeDebugContext = null;
     }
   };
 
@@ -444,7 +584,13 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           line("usage: /approve [elicitation_id]");
           return;
         }
-        await client.respondElicitation(session.conversationId, elicitationId, { confirmed: true });
+        await client.respondElicitation(
+          session.conversationId,
+          elicitationId,
+          { confirmed: true },
+          undefined,
+          activeDebugContext ?? undefined,
+        );
         session = { ...session, pendingElicitation: null, status: "running" };
         line("approval sent");
         return;
@@ -461,6 +607,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           elicitationId,
           { confirmed: false },
           reason,
+          activeDebugContext ?? undefined,
         );
         session = { ...session, pendingElicitation: null, status: "running" };
         line("rejection sent");
@@ -479,7 +626,13 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         } catch {
           output = { text: raw };
         }
-        await client.respondElicitation(session.conversationId, elicitationId, output);
+        await client.respondElicitation(
+          session.conversationId,
+          elicitationId,
+          output,
+          undefined,
+          activeDebugContext ?? undefined,
+        );
         session = { ...session, pendingElicitation: null, status: "running" };
         line("response sent");
         return;

@@ -128,7 +128,7 @@ export function humanizeRequestError(err: unknown): string {
     const head = `sk: HTTP ${err.status} ${err.code} — ${err.message || "(no detail)"}`;
     const trace = err.trace_id ? ` · trace_id ${err.trace_id}` : "";
     const hint = !isDebugMode()
-      ? "\n  ↳ run with SK_DEBUG=1 to log requests/responses to ~/.sk/debug.log, or /logs to tail engine logs"
+      ? "\n  ↳ run with SK_DEBUG=1 to log the full local trace to ~/.sk/debug.log, or /logs to tail engine logs"
       : `\n  ↳ details in ${debugLogPath()}`;
     return `${head}${trace}${hint}`;
   }

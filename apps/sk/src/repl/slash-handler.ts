@@ -1114,7 +1114,7 @@ export async function handleSlash(
         const path = debugLogPath();
         return panify(ctx, `debug ${sub}`, [
           sub === "on"
-            ? `request logging enabled — appending to ${path}`
+            ? `full trace logging enabled — appending to ${path}`
             : "request logging disabled (env SK_DEBUG / --debug still works on next launch)",
         ]);
       }
@@ -1135,7 +1135,7 @@ export async function handleSlash(
       return panify(ctx, `debug ${active ? "on" : "off"}`, [
         `path: ${debugLogPath()}`,
         active
-          ? "every HTTP request to the engine is logged as JSONL"
+          ? "every dialog turn, request/response, and streamed event is logged as JSONL"
           : "logging is OFF — turn on with `/debug on`, env `SK_DEBUG=1`, or `--debug` flag",
         "subcommands: `/debug on` · `/debug off` · `/debug tail` · `/debug path`",
       ]);

@@ -175,7 +175,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
   {
     name: "debug",
-    help: "Toggle SK_DEBUG request logging — `/debug on|off|tail` or `/debug` for status",
+    help: "Toggle SK_DEBUG full trace logging — `/debug on|off|tail` or `/debug` for status",
     category: "util",
   },
   { name: "exit", aliases: ["quit"], help: "Exit the REPL", category: "util" },
