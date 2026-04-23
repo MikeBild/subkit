@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/MikeBild/subkit/compare/subkit-v1.16.0...subkit-v1.17.0) (2026-04-23)
+
+
+### Features
+
+* align runtime with documented envelope + surface drift feedback ([d3775b1](https://github.com/MikeBild/subkit/commit/d3775b193435942c93d8fefb598b3b815a60653a))
+
 ## [1.16.0](https://github.com/MikeBild/subkit/compare/subkit-v1.15.0...subkit-v1.16.0) (2026-04-22)
 
 
