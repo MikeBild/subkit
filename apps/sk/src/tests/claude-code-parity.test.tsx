@@ -139,6 +139,30 @@ describe("chat-first parity", () => {
     instance.unmount();
   });
 
+  test("assistant fenced code blocks render without raw fences", async () => {
+    const instance = renderApp({
+      onPrompt: async () => ({
+        events: framesOf(
+          {
+            type: "message",
+            role: "assistant",
+            content: { text: '```json\n{"ok":true}\n```' },
+          },
+          { type: "completed", status: "active" },
+        ),
+        conversationId: "c-code",
+      }),
+    });
+    await tick();
+    await type(instance, "show code");
+    await pressEnter(instance);
+    await tick(80);
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain('{"ok":true}');
+    expect(frame).not.toContain("```json");
+    instance.unmount();
+  });
+
   test("footer stays visible after a streamed turn", async () => {
     const instance = renderApp({
       onPrompt: async () => ({

@@ -6,19 +6,69 @@ import { VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+import type { PermissionMode } from "../status-line.ts";
 
 export interface WelcomeBannerProps {
   persona: string;
   tenant: string | null;
   engineUrl: string;
   profileName?: string;
+  sessionId?: string | null;
+  mode?: PermissionMode | undefined;
+  transcriptMode?: "chat" | "inspect" | undefined;
+  connectionState?: "online" | "reconnecting" | "offline" | "unknown" | undefined;
+  connectionReason?: string | null | undefined;
+  targetKind?: "connector" | "workflow" | "none" | null | undefined;
+  targetName?: string | null | undefined;
+  environment?: string | null | undefined;
+  compact?: boolean | undefined;
   /** One-line tip shown under the hint row. Rotate via `pickTip`. */
   tip?: string;
 }
 
-const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({ persona, tenant, tip }) => {
+function engineHost(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.port ? `${u.hostname}:${u.port}` : u.hostname;
+  } catch {
+    return url;
+  }
+}
+
+const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
+  persona,
+  tenant,
+  engineUrl,
+  profileName,
+  sessionId,
+  mode = "ask",
+  transcriptMode = "chat",
+  connectionState = "unknown",
+  connectionReason = null,
+  targetKind = null,
+  targetName = null,
+  environment = null,
+  compact = false,
+  tip,
+}) => {
   const theme = useTheme();
   const personaSlot = tenant ? `${persona}@${tenant}` : persona;
+  const host = engineHost(engineUrl);
+  const sessionLabel = sessionId ? sessionId.slice(0, 8) : "new";
+  const modeColor = theme.mode[mode];
+  const nextView = transcriptMode === "chat" ? "inspect" : "chat";
+  const connectionLabel =
+    connectionState === "offline"
+      ? connectionReason
+        ? `offline · ${connectionReason}`
+        : "offline"
+      : connectionState === "reconnecting"
+        ? "reconnecting"
+        : "online";
+  const targetLabel =
+    targetKind && targetKind !== "none"
+      ? `${targetKind}${targetName ? ` "${targetName}"` : ""}${environment ? ` · ${environment}` : ""}`
+      : null;
   return (
     <Box
       flexDirection="column"
@@ -30,29 +80,50 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({ persona, tenant, tip 
       <Box>
         <Text bold>sk</Text>
         <Text color={theme.severity.dim}> · v{VERSION}</Text>
-        <Text color={theme.severity.dim}> · {personaSlot}</Text>
+        {profileName ? <Text color={theme.severity.dim}> · profile {profileName}</Text> : null}
       </Box>
-      <Text>
-        Resume work, connect a system, build a workflow, inspect tenant state, or ask about API /
-        MCP / chat.
-      </Text>
+      <Box>
+        <Text color={theme.role.user} bold>
+          {personaSlot}
+        </Text>
+        <Text color={theme.severity.dim}> · </Text>
+        <Text color={theme.severity.dim}>{host}</Text>
+        <Text color={theme.severity.dim}> · session </Text>
+        <Text color={theme.role.assistant}>{sessionLabel}</Text>
+      </Box>
+      <Box>
+        <Text color={modeColor} bold>
+          {mode}
+        </Text>
+        <Text color={theme.severity.dim}> · {transcriptMode}</Text>
+        <Text color={theme.severity.dim}> · {connectionLabel}</Text>
+        {targetLabel ? <Text color={theme.severity.dim}> · {targetLabel}</Text> : null}
+      </Box>
+      {!compact ? (
+        <Text>
+          Resume work, connect a system, build a workflow, inspect tenant state, or ask about API /
+          MCP / chat.
+        </Text>
+      ) : null}
       {tip ? (
         <Box marginTop={1}>
           <Text color={theme.severity.warning}>◦ </Text>
           <Text color={theme.severity.dim}>{tip}</Text>
         </Box>
       ) : null}
-      <Box marginTop={1}>
-        <Text color={theme.severity.dim}>type a request · </Text>
-        <Text color={theme.role.assistant}>/help</Text>
-        <Text color={theme.severity.dim}> · </Text>
-        <Text color={theme.role.assistant}>/resume</Text>
-        <Text color={theme.severity.dim}> · </Text>
-        <Text color={theme.role.assistant}>/view inspect</Text>
-        <Text color={theme.severity.dim}> · </Text>
-        <Text color={theme.role.assistant}>Ctrl-O</Text>
-        <Text color={theme.severity.dim}> inspect</Text>
-      </Box>
+      {!compact ? (
+        <Box marginTop={1}>
+          <Text color={theme.severity.dim}>type a request · </Text>
+          <Text color={theme.role.assistant}>/help</Text>
+          <Text color={theme.severity.dim}> · </Text>
+          <Text color={theme.role.assistant}>/resume</Text>
+          <Text color={theme.severity.dim}> · </Text>
+          <Text color={theme.role.assistant}>/view inspect</Text>
+          <Text color={theme.severity.dim}> · </Text>
+          <Text color={theme.role.assistant}>Ctrl-O</Text>
+          <Text color={theme.severity.dim}> {nextView}</Text>
+        </Box>
+      ) : null}
     </Box>
   );
 };

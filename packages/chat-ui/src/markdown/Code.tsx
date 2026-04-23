@@ -13,6 +13,8 @@ export interface CodeProps {
   language?: string;
   /** When true, prepend 1-indexed line numbers. */
   showLineNumbers?: boolean;
+  /** When false, suppress the surrounding ```fence markers. */
+  showFence?: boolean;
 }
 
 const SUPPORTED = new Set([
@@ -32,7 +34,12 @@ const SUPPORTED = new Set([
   "py",
 ]);
 
-export const Code: React.FC<CodeProps> = ({ code, language, showLineNumbers }) => {
+export const Code: React.FC<CodeProps> = ({
+  code,
+  language,
+  showLineNumbers,
+  showFence = true,
+}) => {
   const theme = useTheme();
   const lang = language?.toLowerCase();
   let rendered = code;
@@ -48,7 +55,7 @@ export const Code: React.FC<CodeProps> = ({ code, language, showLineNumbers }) =
 
   return (
     <Box flexDirection="column" marginY={1}>
-      {language ? <Text color={theme.severity.dim}>```{language}</Text> : null}
+      {language && showFence ? <Text color={theme.severity.dim}>```{language}</Text> : null}
       {lines.map((line, i) => (
         <Text key={`code-${i}`}>
           {showLineNumbers ? (
@@ -57,7 +64,7 @@ export const Code: React.FC<CodeProps> = ({ code, language, showLineNumbers }) =
           {line}
         </Text>
       ))}
-      {language ? <Text color={theme.severity.dim}>```</Text> : null}
+      {language && showFence ? <Text color={theme.severity.dim}>```</Text> : null}
     </Box>
   );
 };

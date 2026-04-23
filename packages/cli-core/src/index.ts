@@ -53,6 +53,8 @@ export {
   lastAssistantText,
   type MessageState,
   type PendingElicitation,
+  parseRenderableMessageContent,
+  type RenderableMessagePart,
   type SkSessionState,
   type ToolCallState,
   type ToolLogEntry,

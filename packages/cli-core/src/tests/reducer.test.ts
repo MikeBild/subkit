@@ -177,6 +177,28 @@ describe("applyTurnEvent — streaming frames", () => {
     expect(s.messages[s.messages.length - 1]?.content).toBe("partial finalised");
   });
 
+  test("message events keep structured render parts for code blocks and tables", () => {
+    const s = applyTurnEvent(initialSessionState("conv-rich"), {
+      type: "message",
+      role: "assistant",
+      content: {
+        text: [
+          "## Preview",
+          "",
+          "| name | status |",
+          "| --- | --- |",
+          "| sync | ok |",
+          "",
+          "```json",
+          '{"ok":true}',
+          "```",
+        ].join("\n"),
+      },
+    });
+    const parts = s.messages[0]?.parts ?? [];
+    expect(parts.map((part) => part.type)).toEqual(["text", "table", "code_block"]);
+  });
+
   test("tool_call_start records explicit parent_message_id", () => {
     const s = initialSessionState("conv-anchor");
     const next = applyTurnEvent(s, {
