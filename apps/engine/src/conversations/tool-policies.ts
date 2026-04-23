@@ -126,9 +126,18 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   run_workflow: {
     defaultMode: "confirm_before_execution",
     computeModeFromInput: (input) => {
-      // Dev-environment runs default to auto; prod requires confirm.
-      const env = asObj(input).environment;
+      // Dev-environment runs default to auto; prod requires confirm
+      // unless the caller explicitly opts into auto-approval via
+      // `_meta.sk_auto_approve=true`. The auto-approval path was added so
+      // `permission_mode=auto` clients can run saved tools in prod
+      // without bouncing through a confirm envelope the user already
+      // authorized in chat input.
+      const obj = asObj(input);
+      const env = obj.environment;
+      const meta = asObj(obj._meta);
+      const auto = meta.sk_auto_approve === true;
       if (env === "dev") return "no_confirm";
+      if (auto) return "no_confirm";
       return "confirm_before_execution";
     },
   },
