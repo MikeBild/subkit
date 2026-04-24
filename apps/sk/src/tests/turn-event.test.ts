@@ -1,6 +1,5 @@
-// Unit tests for apps/sk/src/turn-event.ts. Ported from the
-// equivalent tests under apps/cli so the reducer stays behavior-
-// compatible between the two binaries.
+// Unit tests for apps/sk/src/turn-event.ts. Shared reducer coverage
+// keeps the interactive and headless `sk` surfaces behavior-compatible.
 
 import { describe, expect, test } from "bun:test";
 import {

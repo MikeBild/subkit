@@ -37,8 +37,7 @@ order them and work the highest-risk (state-mutating, audit-producing) subsystem
 | Audit log (new action type, query) | `apps/engine/src/audit/` | callsites everywhere | `docs/07-security-governance.md` |
 | Observability (metric, trace, log field) | `apps/engine/src/observability/`, `logging/` | | `docs/08-operations.md` |
 | Data model / migration | `apps/engine/src/db/` (drizzle schema) | `domain/` types | `docs/07-security-governance.md` |
-| Admin CLI (`subkit`) | `apps/cli/` | shared `packages/cli-core/` | `docs/03-input-surfaces.md` |
-| Conversational CLI (`sk`) | `apps/sk/` | `packages/cli-core/` | `docs/03-input-surfaces.md` |
+| Unified CLI (`sk`) | `apps/sk/` | shared `packages/cli-core/` | `docs/03-input-surfaces.md` |
 | Run search / history | `apps/engine/src/execution/`, `http/routes/` | | `docs/06-execution.md` |
 | Extract from PDF / doc | `apps/engine/src/docs-ingestion/` | | `docs/04-authoring.md` |
 

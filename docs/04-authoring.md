@@ -142,7 +142,7 @@ The AI provider is an implementation detail of the authoring layer. Once a workf
 
 The AI is only as useful as the context it has. Without organization-specific context, it can propose generic workflows — but it cannot propose a workflow that follows your GDPR handling policy, or one that uses your organization's specific Salesforce field mappings, or one that respects your internal API versioning conventions.
 
-Skills are the mechanism for injecting that context. A Skill is a curated, reusable piece of context loaded into the AI's context window during a Conversation. Skills encode best practices, integration patterns, security policies, and domain knowledge specific to your organization. When the AI is proposing a workflow that involves your Stripe connector, the Stripe Skill is loaded automatically — and the AI's proposals reflect your organization's conventions, not just generic Stripe API knowledge.
+Skills are the mechanism for injecting that context. A Skill is a curated, reusable piece of context loaded into the AI's context window during a Conversation and other AI-assisted authoring flows such as discovery, diagnosis, and bounded repair. Skills encode best practices, integration patterns, security policies, and domain knowledge specific to your organization. When the AI is proposing a workflow that involves your Stripe connector, the Stripe Skill is loaded automatically — and the AI's proposals reflect your organization's conventions, not just generic Stripe API knowledge.
 
 Operators create and manage Skills. They can be scoped globally (available in all Conversations), per-Connector (loaded when that Connector is referenced), or per-Workflow.
 
@@ -154,11 +154,34 @@ Skills are not auto-generated and not auto-promoted. The platform detects recurr
 
 Skills are concise and curated. For richer, document-scale context — runbooks, API specifications, compliance frameworks, architecture diagrams — sk provides Knowledge Sources.
 
-A Knowledge Source is a persistent document store. Operators upload PDFs, runbooks, API specs, compliance documents, and architecture diagrams. The platform chunks and indexes them for semantic search. During a Conversation, the AI searches Knowledge Sources to ground its proposals in organization-specific context. A workflow that correctly follows your GDPR compliance runbook is possible because the runbook is a Knowledge Source the AI can search.
+A Knowledge Source is a persistent document store. Operators upload PDFs, runbooks, API specs, compliance documents, and architecture diagrams. The platform chunks and indexes them for semantic search. During a Conversation, discovery pass, or diagnosis/repair loop, the AI searches Knowledge Sources to ground its proposals in organization-specific context. A workflow that correctly follows your GDPR compliance runbook is possible because the runbook is a Knowledge Source the AI can search.
 
 Knowledge Sources have configurable refresh strategies: manual, scheduled, or webhook-triggered. When a runbook is updated, the source can be refreshed automatically so the AI is always working from current documentation. Sources can be scoped to a tenant (available globally) or to specific workflows.
 
 The distinction between Skills and Knowledge Sources matters. Skills are dense, operator-authored guidance — specific instructions the AI should follow. Knowledge Sources are broader organizational artifacts — the AI searches them for relevant context but does not treat them as prescriptive rules.
+
+Committed workflow execution does not query Skills or Knowledge Sources. Those systems improve
+authoring and repair quality; the runtime path stays deterministic once a workflow is committed.
+
+## Context Assembly And Trimming
+
+For each AI-assisted authoring turn, the engine assembles prompt context in a fixed order:
+
+1. Base prompt plus runtime context (engine, tenant, actor, surface)
+2. Auto-loaded Skills (global → connector → workflow)
+3. Explicitly loaded Skills
+4. Knowledge Source chunks
+5. Connector documentation chunks
+6. Prior failures relevant to the current task
+7. User memory and authoring-context blocks
+8. The current turn history as user/assistant messages
+
+This order is part of the contract, not just an implementation detail. When the prompt is too
+large for the active model budget, the engine trims in a fixed order as well: failures →
+connector docs → knowledge → user memory → authoring context → explicitly loaded Skills →
+workflow Skills → connector Skills → global Skills. User turns are not trimmed away. This is why
+operator-curated connector and workflow guidance survives longer than incidental historical
+context under tight budgets.
 
 ---
 

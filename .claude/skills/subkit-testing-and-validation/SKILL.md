@@ -16,6 +16,7 @@ Three test layers. Pick by what the change touches, not by convenience.
 | Pure logic: `llm/`, `logging/`, `observability/`, `audit/`, `workflows/` (pure), `execution/` (pure) | **unit** | `bun run test:unit` |
 | Database, queue, HTTP routes, webhooks (anything that talks to Postgres / pg-boss / Hono) | **integration** | `bun run test:integration` |
 | End-user flow through the `subkit` or `sk` CLI against a live engine | **e2e** | `bun run test:e2e` |
+| Prompting, context assembly, turn routing, authoring gates, or verification contract drift | **eval** | `bun run verify:ai` |
 
 Unit runs with `SKIP_DOCKER=1 SKIP_DB_TESTS=1` — fast, no containers. Use it as your
 inner loop.
@@ -23,8 +24,12 @@ inner loop.
 Integration uses `testcontainers` for a real Postgres. Slower but catches schema and
 query issues.
 
-E2E compiles `dist/subkit` and `dist/sk` and drives them against the engine. Slowest but
-the only layer that covers CLI arg parsing + REST contract + binary wiring together.
+E2E compiles `dist/sk` and drives it against the engine. Slowest but the only layer that covers
+CLI arg parsing + REST contract + binary wiring together.
+
+Eval runs fixture-backed contract checks under `apps/engine/eval/`. Use it whenever a change
+could make prompts, tool routing, context trimming, or authoring-stage rules disagree with the
+live implementation.
 
 ## Test location
 
@@ -49,11 +54,14 @@ Always, in order:
 
 1. `bun run lint` — biome check clean.
 2. `bun run typecheck` — tsc clean.
-3. `bun run test:unit` — unit green.
-4. If the change touches db/queue/http/webhooks: `bun run test:integration`.
-5. If the change touches CLI binaries or cross-binary behavior: `bun run test:e2e`.
+3. `bun run check:terminology` — canonical wording and banned terminology clean.
+4. `bun run test:determinism` — deterministic test contract clean.
+5. `bun run test:unit` — unit green.
+6. If the change touches prompting/context/authoring/runtime contract: `bun run verify:ai`.
+7. If the change touches db/queue/http/webhooks: `bun run test:integration`.
+8. If the change touches CLI binaries or cross-binary behavior: `bun run test:e2e`.
 
-Or use the `/verify` slash-command, which chains 1–3.
+Or use the `/verify` slash-command, which runs `bun run verify`.
 
 ## CI expectations
 

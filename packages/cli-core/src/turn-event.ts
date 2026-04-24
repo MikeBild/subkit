@@ -1,6 +1,5 @@
-// TurnEvent union + shared reducer. Used by `apps/sk` (via
-// @cli-core) and — for new code — also the REPL surfaces in
-// `apps/cli`. Mirrors the engine's `TurnEvent` shape in
+// TurnEvent union + shared reducer. Used by `apps/sk` across its
+// interactive and headless surfaces. Mirrors the engine's `TurnEvent` shape in
 // `apps/engine/src/conversations/types.ts`, with the
 // CLI-friendly richer `completed` frame that carries usage.
 

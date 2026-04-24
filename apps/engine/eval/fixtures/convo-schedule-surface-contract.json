@@ -1,0 +1,10 @@
+{
+  "name": "convo-schedule-surface-contract",
+  "description": "Prompt guidance and turn routing agree that schedule tools are exposed in the conversation surface.",
+  "flow": "converse",
+  "input": {
+    "how_message": "How do I schedule a workflow?",
+    "write_message": "schedule this workflow every hour",
+    "list_message": "list schedules"
+  }
+}

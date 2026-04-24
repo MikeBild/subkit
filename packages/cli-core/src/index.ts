@@ -1,7 +1,7 @@
-// Shared CLI helpers reused across `apps/cli` (the operator CLI) and
-// `apps/sk` (the end-user CLI). Extracting these out keeps the two
-// binaries behavior-compatible — a bug fix in one place lands in
-// both — without forcing either to import from the other app.
+// Shared CLI helpers reused across the `sk` CLI surfaces and any
+// packaged compatibility aliases. Extracting these out keeps
+// behavior-compatible code in one place without forcing app-local
+// modules to import from each other.
 //
 // Modules live as flat files under `packages/cli-core/src/` and are
 // imported via the `@cli-core/*` path alias (see tsconfig.json).

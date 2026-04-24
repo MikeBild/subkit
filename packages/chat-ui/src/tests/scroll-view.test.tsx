@@ -1,6 +1,6 @@
 // Unit tests for the ScrollView primitive — windowing, auto-pin,
-// keyboard scrolling. Lives in @chat-ui because both `sk` and
-// `apps/cli` consume it.
+// keyboard scrolling. Lives in @chat-ui because multiple `sk`
+// surfaces consume it.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { Text } from "ink";

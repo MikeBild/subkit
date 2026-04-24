@@ -7,8 +7,8 @@ When rules conflict, the more specific file wins (this one).
 
 `apps/engine/` owns the server: HTTP API, MCP server, queue workers, scheduler,
 pub/sub, connector drivers, AI flows, self-healing, audit log, RBAC. It's the only
-surface with domain logic. CLI (`apps/cli/`), `sk` (`apps/sk/`), and the tunnel
-agent (`apps/agent/`) are thin wrappers on top of it.
+surface with domain logic. `sk` (`apps/sk/`) and the tunnel agent (`apps/agent/`) are
+thin wrappers on top of it.
 
 See the subsystem table in `../../AGENTS.md` for the 35 directories and their
 responsibilities.
@@ -70,8 +70,8 @@ you need a new one:
 
 ## Quality gate before "done"
 
-Run `bun run verify` — full matrix (lint, typecheck, determinism lint, unit,
-integration, build:sk, e2e). See `.claude/commands/verify.md` for the
+Run `bun run verify` — full matrix (lint, typecheck, terminology, determinism lint, unit,
+eval, integration, build:sk, e2e). See `.claude/commands/verify.md` for the
 per-step breakdown.
 
 If Postgres is not already listening on `localhost:5432`, start it first:

@@ -27,12 +27,14 @@ bun run lint                # biome
 bun run typecheck           # tsc --noEmit
 bun run test:unit           # fast inner loop (needs Postgres — see note below)
 bun run test:integration    # db/queue/http/webhooks/credentials-oauth2
-bun run test:e2e            # compiles subkit + sk and runs journeys
+bun run test:e2e            # compiles sk and runs journeys
 ```
 
 > **Note.** `test:unit` includes `execution/tests`, which uses a throwaway Postgres database. It's fast (seconds) because each file gets its own database, but you do need `compose:up` running.
 
-`bun run /verify` is the shortcut for lint + typecheck + unit.
+`bun run verify` is the local release gate. It runs terminology checks, determinism lint,
+unit tests, eval fixtures, integration tests, `build:sk`, and e2e coverage on top of lint and
+typecheck. `bun run verify:ai` is the focused contract suite for prompt/context/authoring changes.
 
 ## 4. Develop
 

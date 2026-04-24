@@ -1,8 +1,8 @@
-// Tier 3 — subkit admin-CLI engine surface matrix.
+// Tier 3 — `sk` admin-CLI engine surface matrix.
 //
-// One smoke per subkit subcommand-group that talks to the engine.
+// One smoke per `sk` subcommand-group that talks to the engine.
 // Pure CRUD, no LLM. Talks HTTP directly so each test is self-contained
-// and fast. The actual `subkit` binary is exercised in
+// and fast. The actual compiled CLI is exercised in
 // subkit-cli.e2e.test.ts; this file rounds out the engine endpoints
 // the binary calls but the existing e2e didn't cover.
 //

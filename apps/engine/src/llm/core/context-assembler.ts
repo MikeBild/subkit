@@ -216,7 +216,7 @@ USER FLOW RULES:
 - \`delete_workflow\` is available in the conversation tool palette. Use it for workflow cleanup; do not claim deletion is unsupported when the tool exists.
 - Workflow archiving is not exposed as a conversation tool today. If asked to archive, say that plainly and only offer delete_workflow when the user actually wants cleanup.
 - Subkit's HTTP API facts: the live OpenAPI contract is at \`/openapi.json\`, the interactive docs are at \`/docs\`, and exact routes must be grounded in the live contract or the actual route definitions. Do not invent endpoints.
-- Subkit's MCP facts: use Streamable HTTP at \`/mcp\` or the stdio proxy via \`subkit mcp\`. Do not mention the deprecated SSE MCP transport as a supported path.
+- Subkit's MCP facts: use Streamable HTTP at \`/mcp\` or the stdio proxy via \`sk mcp\`. Do not mention the deprecated SSE MCP transport as a supported path.
 - Google Chat is a first-class chat adapter. Using it as a conversation surface requires chat workspace install plus \`/subkit link\` identity linking.
 - The engine has scheduled workflow execution exposed via \`tenant.create_schedule\`, \`tenant.list_schedules\`, \`tenant.update_schedule\`, \`tenant.delete_schedule\`. Cron syntax is standard 5-field (\`* * * * *\`), or the shorthand \`every:<seconds>\` for sub-minute intervals (e.g. \`every:60\`). Schedules enqueue \`execution.run\` jobs; the result is readable via \`get_execution\` or \`list_executions\`. A schedule cannot push messages into a live chat session — if the user asks for that, offer the correct alternative (a scheduled outbound webhook step to Slack / email / etc.).
 
@@ -616,7 +616,8 @@ export async function assembleEnhancedPrompt(
 
   // Drop order (lowest priority dropped first):
   //   failures → connector docs → knowledge chunks → user memory →
-  //   workflow skills → connector skills → global skills.
+  //   authoring context → explicitly loaded skills → workflow skills →
+  //   connector skills → global skills.
   const recount = () => {
     system = render();
     systemTokens = countTokens(system);
@@ -692,7 +693,10 @@ export async function assembleEnhancedPrompt(
     messages: p.user_turns,
     token_counts: {
       system: systemTokens,
-      skills: includedSkills.reduce((t, s) => t + countTokens(formatSkill(s)), 0),
+      skills: includedSkills.reduce(
+        (t, s) => t + countTokens(formatSkill(s, p.runtime_context)),
+        0,
+      ),
       knowledge: knowledgeChunks.reduce((t, kc) => t + kc.tokens, 0),
       docs: chunks.reduce((t, c) => t + c.tokens, 0),
       failures: failures.reduce((t, f) => t + countTokens(formatFailure(f)), 0),
@@ -874,6 +878,10 @@ export async function assembleContext(
 ): Promise<AssembledContext> {
   const prompt = await assembleEnhancedPrompt(params, exec);
   const blocks = splitPromptIntoBlocks(prompt, params.flow);
+  const effectiveCap = Math.min(params.max_tokens, contextCapFor(params.model ?? "default"));
+  const includedFailureCount = prompt.dropped_sections.includes("failures")
+    ? 0
+    : (params.prior_failures ?? []).length;
 
   const { dropped_sections, ...promptWithoutDropped } = prompt;
 
@@ -881,7 +889,7 @@ export async function assembleContext(
     prompt: promptWithoutDropped,
     blocks,
     budget_report: {
-      cap_tokens: params.max_tokens,
+      cap_tokens: effectiveCap,
       total_tokens: prompt.token_counts.total,
       stable_tokens: blocks.token_counts.stable,
       volatile_tokens: blocks.token_counts.volatile,
@@ -890,7 +898,7 @@ export async function assembleContext(
         skills: prompt.included_skill_ids.length,
         knowledge: prompt.included_knowledge_chunk_ids.length,
         docs: prompt.included_chunk_ids.length,
-        failures: (params.prior_failures ?? []).length,
+        failures: includedFailureCount,
       },
       dropped_sections,
     },

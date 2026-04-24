@@ -1,5 +1,5 @@
 {
-  "$comment": "Canonical sk/subkit CLI surface. Hand-curated and asserted against `sk <cmd> --help` by cli-manifest.contract.test.ts. Add new subcommands or flags here when the CLI changes.",
+  "$comment": "Canonical `sk` CLI surface, plus the `subkit` compatibility alias. Hand-curated and asserted against `sk <cmd> --help` by cli-manifest.contract.test.ts. Add new subcommands or flags here when the CLI changes.",
   "binary": "sk",
   "aliases": ["subkit"],
   "global_flags": [

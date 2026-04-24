@@ -2,8 +2,7 @@
 // surfaces the `sk` end-user CLI needs. Hand-written rather than
 // `hono/client` so the compiled binary stays tight — pulling the
 // engine's `AppType` through Hono drags the entire server module
-// graph in. Deliberately separate from apps/cli/src/engine-client.ts
-// because the two CLIs wrap different engine surfaces.
+// graph in.
 
 import {
   type DebugCorrelationFields,

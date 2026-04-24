@@ -31,16 +31,23 @@ subkit separates curated context (Skills, Knowledge Sources) from detected patte
 
 ## Prompt assembly order (from `llm/`)
 
+Prompt context is assembled only for AI-assisted surfaces: conversations, discovery, diagnosis,
+and bounded repair loops. Committed workflow execution does **not** re-enter this path.
+
 Base prompt augmented with, in this order:
 
-1. Matching **Skills** (global → connector → workflow scope).
-2. Matching **Knowledge Sources** (workflow-scoped first, then global).
-3. Matching **Connector documentation** (from `docs-ingestion/`).
-4. Prior execution failures relevant to this step.
-5. User turns (Conversation history).
+1. Runtime context block (engine URL, actor, tenant, surface).
+2. Matching **Skills** (global → connector → workflow scope).
+3. Explicitly loaded Skills (`load_skill`).
+4. Matching **Knowledge Sources** (workflow-scoped first, then global).
+5. Matching **Connector documentation** (from `docs-ingestion/`).
+6. Prior execution failures relevant to this step.
+7. User memory and authoring-context blocks.
+8. User turns (Conversation history) as separate messages.
 
-The per-tenant token budget caps the final size. When budget is tight, drop lower-priority
-items first (failures > knowledge > connector docs > skills).
+The per-tenant token budget caps the final size. When budget is tight, trim in this order:
+failures → connector docs → knowledge → user memory → authoring context → loaded skills →
+workflow skills → connector skills → global skills. User turns are not trimmed away.
 
 ## Human-in-the-loop rules
 
@@ -51,6 +58,8 @@ items first (failures > knowledge > connector docs > skills).
   before the patch is applied.
 - **Discovery writes proposals**, not committed Connectors / Skills.
 - Every approval writes an `audit_log` entry with actor + structured diff.
+- Knowledge Sources and Skills do not participate in deterministic workflow execution; they
+  only guide authoring, diagnosis, and repair-oriented AI turns.
 
 ## Conversation tool-use loop
 

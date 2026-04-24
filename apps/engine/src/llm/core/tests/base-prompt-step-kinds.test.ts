@@ -54,7 +54,7 @@ describe("base prompts — step-kind enumeration", () => {
     const p = basePromptFor("converse", "sk_interactive");
     expect(p).toContain("/openapi.json");
     expect(p).toContain("/docs");
-    expect(p).toContain("subkit mcp");
+    expect(p).toContain("sk mcp");
     expect(p).toContain("Google Chat is a first-class chat adapter");
     // Scheduler tools ARE exposed now (A8); the prompt names them
     // so the LLM recommends `tenant.create_schedule` rather than

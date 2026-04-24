@@ -20,7 +20,7 @@ An Execution is an immutable record. It captures the specific Workflow version t
 
 ## Step Kinds
 
-A Workflow is composed of Steps. sk supports seven Step kinds, covering the range of patterns that enterprise workflows require.
+A Workflow is composed of Steps. sk supports eight Step kinds, covering the range of patterns that enterprise workflows require.
 
 A **Request** Step calls a Connector endpoint. This is the most common Step type — it is how workflows read from and write to external integrations. Every Request Step is executed through the Connector's configured Driver, with the tenant's Credentials, through the governance layer. Connector tests and request steps share the same request execution core, so authoring-time probes and runtime behavior stay aligned.
 
@@ -34,7 +34,9 @@ A **Parallel** Step executes multiple sub-workflows concurrently, then collects 
 
 A **Wait** Step introduces a deliberate delay. It is used for polling patterns, rate-limit management, and human-paced flows where a workflow must pause and resume after a period of time.
 
-A **Call** Step invokes another Workflow or Skill. This is the composition mechanism — workflows can delegate to other workflows, enabling reuse and keeping individual workflows focused on a single concern.
+A **Call** Step invokes another Workflow. This is the composition mechanism — workflows can delegate to other workflows, enabling reuse and keeping individual workflows focused on a single concern.
+
+A **Tool** Step runs a sandboxed container step. This is the escape hatch for tightly controlled user-supplied tool images that need isolated execution without embedding that logic in the engine.
 
 ---
 
@@ -91,6 +93,10 @@ No Patch Candidate is ever applied automatically. Self-healing is a proposal sys
 ## Synchronous and Queued Execution
 
 `POST /v1/executions` is synchronous by default. The caller receives the full `RunResult` — output, step summaries, connector resolutions, warnings — in the HTTP response body. Draft runs and single-step previews always execute inline regardless of the `async` flag, because they have no persisted workflow context for a queue worker to rehydrate.
+
+Warnings are a first-class runtime state, not a hidden side channel. A run can report
+`status: "succeeded"` while still carrying structured `warnings[]`; CLI and MCP clients are
+expected to surface that distinction so operators can diagnose partial or suspicious results.
 
 Queued (`async: true`) execution is available **only** for `source=saved` runs. In that case the engine inserts the execution row synchronously, enqueues the job on `pg-boss`, and returns `202 Accepted` with `{ execution_id, status: "queued" }`. A worker picks the job up and runs it through the same `runExecution()` core. Scheduler fires, webhook fan-out, and any other detached trigger also land on the queue — but every inline caller gets the run on the request path.
 

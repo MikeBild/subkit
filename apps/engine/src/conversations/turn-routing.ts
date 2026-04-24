@@ -47,7 +47,7 @@ const HTTP_API_PATTERNS = [
   /\/docs\b/,
   /\/openapi\.json/,
 ] as const;
-const SCHEDULE_PATTERNS = [/\bschedule(?:d)?\b/, /\bcron\b/] as const;
+const SCHEDULE_PATTERNS = [/\bschedules?\b/, /\bscheduled\b/, /\bcron\b/] as const;
 const PERMISSION_PATTERNS = [/\bpermission/, /\brbac\b/, /\brole\b/, /what am i allowed/] as const;
 const CAPABILITY_PATTERNS = [
   /what can i do/,
@@ -144,7 +144,7 @@ export function planTurnRouting(args: {
       intent: "surface_help",
       confidence: "high",
       action:
-        "Explain MCP using Subkit's actual transports: Streamable HTTP on `/mcp`, plus the stdio proxy via `subkit mcp`. Do not mention the deprecated SSE MCP transport.",
+        "Explain MCP using Subkit's actual transports: Streamable HTTP on `/mcp`, plus the stdio proxy via `sk mcp`. Do not mention the deprecated SSE MCP transport.",
       question: null,
       required_grounding: ["docs/03-input-surfaces.md", "docs/03-input-surfaces.md"],
       notes: [
@@ -176,23 +176,45 @@ export function planTurnRouting(args: {
         intent: "surface_help",
         confidence: "high",
         action:
-          "Explain that the engine has scheduled workflow execution, but schedule-management conversation tools are not exposed here today. Do not invent working schedule endpoints in chat.",
+          "Explain that scheduled workflow execution is available here through `create_schedule`, `list_schedules`, `update_schedule`, and `delete_schedule`. Ground the answer in the cron/every:<seconds> contract and tell the user to resolve the workflow first when needed.",
         question: null,
-        required_grounding: ["docs/06-execution.md", "apps/cli/src/commands/schedules.ts"],
+        required_grounding: [
+          "docs/06-execution.md",
+          "apps/engine/src/conversations/tools/generated/writes/schedules.ts",
+          "list_workflows",
+        ],
         notes: [
-          "Use code truth over aspirational docs if route availability is unclear.",
-          "Prefer stating the current surface limitation directly.",
+          "Prefer the real schedule tool names over invented schedule endpoints.",
+          "Ground workflow ids before you propose a schedule mutation.",
         ],
         forbidden_fallbacks: fallbackList(),
       };
     }
+    if (matchesAny(text, LIST_PATTERNS)) {
+      return {
+        intent: "tenant_read",
+        confidence: "high",
+        action:
+          "Use `list_schedules` for schedule inspection. If the user names a workflow rather than an id, ground it with `list_workflows` first.",
+        question: null,
+        required_grounding: ["list_schedules", "list_workflows"],
+        notes: ["Do not invent schedule ids or `/v1/schedules` endpoints."],
+        forbidden_fallbacks: fallbackList(),
+      };
+    }
     return {
-      intent: "unsupported_or_unavailable",
+      intent: "tenant_write",
       confidence: "high",
       action:
-        "State that schedule management is not exposed in this conversation surface today. Do not claim that schedule creation, pause, or resume already works here unless a real tool exposes it.",
+        "Use `create_schedule`, `update_schedule`, or `delete_schedule` as appropriate. Ground workflow ids and existing schedule ids first; do not invent them.",
       question: null,
-      required_grounding: ["apps/cli/src/commands/schedules.ts"],
+      required_grounding: [
+        "create_schedule",
+        "update_schedule",
+        "delete_schedule",
+        "list_workflows",
+        "list_schedules",
+      ],
       notes: ["Do not invent `/v1/schedules` usage in the chat response."],
       forbidden_fallbacks: fallbackList(),
     };

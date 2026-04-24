@@ -1,15 +1,13 @@
 // `~/.sk/config.json` — multi-profile config for the `sk` end-user CLI.
 //
-// This is the `sk` analogue of `apps/cli/src/config.ts`, kept separate
-// because the two binaries are separate compile units. The `sk` file
-// supports multiple named profiles up-front; switching profiles is a
-// single flag (`--profile <name>`) or the active one via `/tenant` at
-// runtime. A single legacy profile layout is also accepted for
-// interoperability when an operator imports their `~/.subkit/config.json`.
+// The `sk` config supports multiple named profiles up-front; switching
+// profiles is a single flag (`--profile <name>`) or the active one via
+// `/tenant` at runtime. A single legacy profile layout is also accepted
+// for interoperability when an operator imports their `~/.subkit/config.json`.
 //
 // runDeviceFlow + readSse + the TurnEvent reducer live under
-// packages/cli-core (@cli-core/*) and are imported by both
-// `apps/cli` and `apps/sk`.
+// packages/cli-core (@cli-core/*) and are imported by the shared `sk`
+// CLI surfaces.
 
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";

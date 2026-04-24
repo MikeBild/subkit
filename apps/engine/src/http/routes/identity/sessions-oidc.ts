@@ -1,5 +1,5 @@
 // POST /v1/identity/sessions/oidc — exchange an OIDC id_token for a
-// personal subkit API key. Used by `subkit login` after a successful
+// personal subkit API key. Used by `sk login` after a successful
 // device-code flow.
 //
 // Flow:

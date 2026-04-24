@@ -20,7 +20,7 @@ The **Tunnel Agent** is a separate small binary deployed in private networks. Wh
 
 ## Installation
 
-sk ships pre-compiled binaries for macOS (Intel and Apple Silicon), Linux (x64 and ARM64), and Windows (x64). All four apps — `sk`, the `subkit` CLI, the engine, and the Tunnel Agent — are available as standalone binaries.
+sk ships pre-compiled binaries for macOS (Intel and Apple Silicon), Linux (x64 and ARM64), and Windows (x64). The primary binaries are `sk`, the engine, and the Tunnel Agent. Some release channels also publish a `subkit` compatibility alias for the CLI, but contributor docs and operator examples use `sk`.
 
 A one-line install script covers the common cases for bash and PowerShell environments. The engine is also published as a container image for Kubernetes and cloud-native deployments.
 
@@ -44,7 +44,7 @@ The engine validates its configuration at boot and exits with a descriptive erro
 
 **Structured Logging.** All engine output is structured JSON on stdout. Every log entry carries a trace ID, tenant ID, request source, and severity level. Logs can be shipped to any standard log aggregation system — Datadog, Grafana Loki, CloudWatch, Elasticsearch — without transformation. The structured format means you can query and alert on log fields directly, not just on log message text.
 
-**Execution Inspection.** Every workflow execution has per-step logs accessible through the API and CLI. Operators can follow a running execution in real time with `sk runs tail <execution-id>`. Failed steps include the full error, the inputs that were passed to the step, and the raw connector response. There is no guesswork about what happened.
+**Execution Inspection.** Every workflow execution has per-step logs accessible through the API and CLI. Operators can follow a running execution in real time with `sk executions tail <execution-id>`. Failed steps include the full error, the inputs that were passed to the step, and the raw connector response. There is no guesswork about what happened.
 
 **Event Streaming.** A tenant-wide Server-Sent Events stream delivers real-time execution events. External monitoring systems, dashboards, and alerting integrations can subscribe to this stream for custom logic. The SSE stream carries the same events that drive the CLI's live-tail mode.
 

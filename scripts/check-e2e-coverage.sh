@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Coverage guard — fails when a CLI surface (slash command or subkit
-# subcommand) is registered without a covering reference in tests/e2e/.
+# Coverage guard — fails when a CLI surface (slash command or `sk`
+# subcommand group) is registered without a covering reference in
+# tests/e2e/.
 #
 # Heuristic, not a proof of coverage. The point is to nudge — every
 # new surface gets one e2e mention before it ships. If the grep finds
@@ -27,18 +28,10 @@ extract_slash_names() {
     | sort -u
 }
 
-extract_subkit_subcommands() {
-  ls apps/cli/src/commands 2>/dev/null \
-    | sed -E 's/\.ts$//' \
-    | sort -u
-}
-
 extract_sk_subcommands() {
-  # sk top-level commands are declared as `meta: { name: "..." }` in
-  # apps/sk/src/index.ts. Plus the headless mode is the bare `sk -p`
-  # invocation — that's covered by tier1, sk-cli.e2e.test.ts, etc.
-  grep -E 'meta: *\{ *name: *"[a-z][a-z-]*"' apps/sk/src/index.ts 2>/dev/null \
-    | sed -E 's/.*name: *"([^"]+)".*/\1/' \
+  awk '/const SUB_COMMANDS: Record<string, SubEntry> = \{/{f=1; next} f{print} /^\};/{if(f) exit}' apps/sk/src/index.ts \
+    | grep -E '^[[:space:]]+("[a-z][a-z-]*"|[a-z][a-z-]*): *\{' \
+    | sed -E 's/^[[:space:]]+"?([a-z][a-z-]*)"?:.*/\1/' \
     | sort -u
 }
 
@@ -48,14 +41,6 @@ echo "==> Slash commands"
 for name in $(extract_slash_names); do
   if ! grep -RIE "/${name}\b|\"${name}\"" $E2E_GLOB >/dev/null 2>&1; then
     echo "  ✘ /${name} — no e2e reference"
-    missing=$((missing + 1))
-  fi
-done
-
-echo "==> subkit subcommands"
-for name in $(extract_subkit_subcommands); do
-  if ! grep -RIE "\b${name}\b" $E2E_GLOB >/dev/null 2>&1; then
-    echo "  ✘ subkit ${name} — no e2e reference"
     missing=$((missing + 1))
   fi
 done
