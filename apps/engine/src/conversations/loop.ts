@@ -423,6 +423,19 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           : null,
       }
     : undefined;
+  // When the last dry-run surfaced warnings (unresolved identifiers, rate
+  // limits, etc.), fold them into prior_failures so the next turn's prompt
+  // carries them as structured context — the LLM sees what to fix without
+  // the user having to quote the warning text back.
+  const previewWarnings = draft.latest_preview?.warnings ?? [];
+  const priorFailuresFromPreview =
+    previewWarnings.length > 0
+      ? previewWarnings.slice(0, 10).map((w) => ({
+          step_id: w.step_key ?? "preview",
+          error: `dry-run warning ${w.code ?? "unknown"}: ${w.message ?? ""}`,
+        }))
+      : [];
+
   const prompt = await assembleEnhancedPrompt(
     {
       tenant_id: p.tenant_id,
@@ -449,6 +462,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ...(p.surface ? { surface: p.surface } : {}),
       ...(authoringContext ? { authoring_context: authoringContext } : {}),
       ...(authoringHint ? { authoring_hint: authoringHint } : {}),
+      ...(priorFailuresFromPreview.length > 0 ? { prior_failures: priorFailuresFromPreview } : {}),
       ...(p.runtime_context
         ? {
             runtime_context: {

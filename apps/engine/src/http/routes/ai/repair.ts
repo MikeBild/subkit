@@ -27,7 +27,14 @@ const RepairResponse = z
   .object({
     patch_proposal: z.object({
       classification: z.enum(["safe", "unsafe"]),
-      kind: z.enum(["update_field_path", "rename_param", "change_type", "add_header", "other"]),
+      kind: z.enum([
+        "update_field_path",
+        "rename_param",
+        "change_type",
+        "add_header",
+        "rate_limited",
+        "other",
+      ]),
       description: z.string(),
       patch: z.record(z.string(), z.unknown()),
       reasoning: z.string(),

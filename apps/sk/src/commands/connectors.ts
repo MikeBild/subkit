@@ -49,17 +49,101 @@ const getCommand = defineCommand({
 });
 
 const createCommand = defineCommand({
-  meta: { name: "create", description: "Create a connector from a template slug" },
+  meta: {
+    name: "create",
+    description:
+      "Create a connector from a template slug. Runs a driver probe after create unless --skip-checks is set.",
+  },
   args: {
     template: { type: "string", required: true, description: "Template slug" },
     name: { type: "string", description: "Override connector name" },
+    "skip-checks": {
+      type: "boolean",
+      description: "Skip the post-create driver probe (NOT recommended).",
+    },
   },
   async run({ args }) {
     const client = makeClient();
     try {
       const body: Record<string, unknown> = {};
       if (args.name) body.name = args.name;
-      printJson(await client.createConnectorFromTemplate(args.template as string, body));
+      const created = (await client.createConnectorFromTemplate(
+        args.template as string,
+        body,
+      )) as Record<string, unknown> & { id?: string };
+      printJson(created);
+      const skip = Boolean((args as Record<string, unknown>)["skip-checks"]);
+      if (!skip && typeof created.id === "string") {
+        try {
+          const probe = await client.testConnector(created.id);
+          process.stderr.write(
+            `post-create probe: ${probe.ok ? "ok" : "FAILED"} (connector=${created.id})\n`,
+          );
+          if (!probe.ok) {
+            process.stderr.write(
+              "re-run `sk connectors probe <id>` after fixing credentials, or use --skip-checks on create to defer.\n",
+            );
+            process.exit(1);
+          }
+        } catch (err) {
+          process.stderr.write(
+            `post-create probe failed: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+          process.stderr.write(
+            "re-run `sk connectors probe <id>` after fixing credentials, or use --skip-checks on create to defer.\n",
+          );
+          process.exit(1);
+        }
+      } else if (skip) {
+        process.stderr.write(
+          "warning: --skip-checks active; no post-create probe was run. Run `sk connectors probe <id>` manually.\n",
+        );
+      }
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      process.exit(exitCodeFor(err));
+    }
+  },
+});
+
+// probe is an alias for `test` that mirrors the conversational authoring
+// vocabulary: "inspect -> validate -> probe -> save". The CLI exposes both
+// names so operators can follow the same mental model from either surface.
+const probeCommand = defineCommand({
+  meta: {
+    name: "probe",
+    description: "Probe a connector's upstream boundary (alias of `test`).",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "Connector id" },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    try {
+      const result = await client.testConnector(args.id);
+      process.stdout.write(`ok: ${result.ok}\n`);
+      if (!result.ok) process.exit(1);
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      process.exit(exitCodeFor(err));
+    }
+  },
+});
+
+// inspect is an alias for `get` that mirrors the conversational authoring
+// vocabulary. Returns the current connector resource body.
+const inspectCommand = defineCommand({
+  meta: {
+    name: "inspect",
+    description: "Inspect a connector resource (alias of `get`).",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "Connector id" },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    try {
+      printJson(await client.getConnector(args.id));
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));
@@ -202,10 +286,12 @@ export const connectorsCommand = defineCommand({
   subCommands: {
     list: listCommand,
     get: getCommand,
+    inspect: inspectCommand,
     create: createCommand,
     patch: patchCommand,
     delete: deleteCommand,
     test: testCommand,
+    probe: probeCommand,
     "docs-ingest": docsIngestCommand,
     "docs-list": docsListCommand,
     "docs-search": docsSearchCommand,

@@ -27,7 +27,11 @@ import { type Db, getDb } from "../../db/client.ts";
 import { tenantLlmSettings, tenants } from "../../db/schema/index.ts";
 import { env, listLlmEnvironmentIssues } from "../../env.ts";
 import { log, logger } from "../../logging/logger.ts";
-import { recordLlmQuotaExhausted, recordLlmTokens } from "../../observability/instrumentation.ts";
+import {
+  recordLlmCacheUsage,
+  recordLlmQuotaExhausted,
+  recordLlmTokens,
+} from "../../observability/instrumentation.ts";
 import { checkAndDecrement, checkBudget, recordUsage } from "../budgets.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../errors.ts";
 import { getMockProvider, type MockResult } from "../mock-provider.ts";
@@ -358,7 +362,12 @@ async function dispatchMock<T>(
   let fell_back = false;
   let res: MockResult<T>;
   try {
-    res = mock.call<T>({ flow: params.flow, model: route.primary, prompt: mockPrompt });
+    res = mock.call<T>({
+      flow: params.flow,
+      model: route.primary,
+      prompt: mockPrompt,
+      enable_prompt_cache: route.enable_prompt_cache,
+    });
   } catch (err) {
     if (!(err instanceof LlmProviderError)) throw err;
     // Record the primary-model error row so observability + test parity
@@ -391,7 +400,12 @@ async function dispatchMock<T>(
         fallback: route.fallback,
         kind: err.kind,
       });
-      res = mock.call<T>({ flow: params.flow, model: route.fallback, prompt: mockPrompt });
+      res = mock.call<T>({
+        flow: params.flow,
+        model: route.fallback,
+        prompt: mockPrompt,
+        enable_prompt_cache: route.enable_prompt_cache,
+      });
     } else {
       throw err;
     }
@@ -416,6 +430,14 @@ async function dispatchMock<T>(
     flow: params.flow,
     prompt_tokens: res.prompt_tokens,
     completion_tokens: res.completion_tokens,
+  });
+  recordLlmCacheUsage({
+    tenant_id: params.tenant_id,
+    model: modelUsed,
+    flow: params.flow,
+    prompt_tokens: res.prompt_tokens,
+    cache_read_tokens: res.cache_read_tokens ?? 0,
+    cache_creation_tokens: res.cache_creation_tokens ?? 0,
   });
   return {
     ...(res.object !== undefined ? { object: res.object } : {}),
@@ -483,12 +505,18 @@ async function dispatchReal<T>(
 
   try {
     if (params.schema) {
+      // Every schema flow runs through the same submit/abort tool loop with
+      // `toolChoice: "required"`. The loop is capped at MAX_TOOL_LOOP_ATTEMPTS
+      // (see `ai-sdk-model.ts`); callers can tighten it per-flow via an
+      // explicit `maxAttempts` on the `schema` path once we expose it on
+      // `InvokeParams` (not yet wired — use the default for now).
       const jsonSchema = zodToJson(params.schema);
       const r = await model.generateObject<T>({
         messages,
         schema: jsonSchema,
         temperature: 0,
         metadata: telemetryMeta,
+        toolChoice: "required",
       });
       usage = r.usage;
       if (r.success) {
@@ -564,6 +592,14 @@ async function dispatchReal<T>(
     flow: params.flow,
     prompt_tokens: usage.input_tokens,
     completion_tokens: usage.output_tokens,
+  });
+  recordLlmCacheUsage({
+    tenant_id: params.tenant_id,
+    model: modelUsed,
+    flow: params.flow,
+    prompt_tokens: usage.input_tokens,
+    cache_read_tokens: usage.cache_read_tokens,
+    cache_creation_tokens: usage.cache_creation_tokens,
   });
   audit({
     tenant_id: params.tenant_id,

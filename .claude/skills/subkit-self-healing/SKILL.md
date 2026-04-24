@@ -32,13 +32,40 @@ that bypass it.
    `run_in_fixture`).
 4. **Dry-run.** The candidate patch executes against an **Execution Fixture**
    (recorded prior successful execution). Pass/fail/partial recorded.
-5. **Patch Candidate written.** To `self-healing/` persistent store. Status:
-   `proposed`. Includes diff, dry-run result, confidence, reason.
-6. **Operator approval.** Explicit action (API / CLI / chat) promotes the patch
+5. **Retry-with-feedback.** When the classifier marks the proposal unsafe OR
+   the fixture dry-run fails, the orchestrator re-invokes `runRepairFlow`
+   with the rejection reason folded into `prior_failures`. Total attempts
+   capped at `REPAIR_MAX_ATTEMPTS = 2`. The `self_healing_repair_retried_total`
+   metric tracks retry count per drift signal.
+6. **Patch Candidate written.** To `self-healing/` persistent store. Status:
+   `proposed`. Includes diff, dry-run result, confidence, reason. When
+   retries occurred, a `metadata.rejection_chain` array records every prior
+   rejection so reviewers can see what was tried.
+7. **Operator approval.** Explicit action (API / CLI / chat) promotes the patch
    to `applied` (status change + audit entry + runtime activation). Operator can
    also reject or defer.
-7. **Audit every phase.** Drift detection, loop start, dry-run outcome, approval,
+8. **Audit every phase.** Drift detection, loop start, dry-run outcome, approval,
    application.
+
+## Patch kinds
+
+`PatchProposal.kind` covers six shapes. The classifier's safe-set is:
+`update_field_path`, `rename_param`, `add_header`, `change_type`, and `rate_limited`.
+Everything else falls to `unsafe` unless the proposal itself self-flags safe and
+every conservative guard in `classifier.ts` passes.
+
+`rate_limited` is a distinct kind: the engine reads a connector template's
+`capabilities.rate_limits` hint, detects HTTP 429 / 503, and proposes a
+backoff-adjustment patch through the same loop. The classifier treats it as safe
+by default (the patch only touches retry metadata, not URLs or payloads).
+
+## Fixture retention
+
+`execution_fixtures` is trimmed by `pruneExecutionFixtures()` (exported from
+`self-healing/fixture-prune.ts`) to `FIXTURE_MAX_PER_ENDPOINT` rows per
+`(tenant_id, connector_id, endpoint_key)`, keeping the newest. Safe: fixtures are
+replaceable evidence, so retention doesn't need an approval gate. Operators invoke
+it from an ops schedule or from `sk diagnostics`.
 
 ## Non-negotiables
 

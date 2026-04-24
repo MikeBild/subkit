@@ -32,6 +32,7 @@ describe("conversation tools — registration", () => {
     "propose_skill",
     "propose_step",
     "save_connector_draft",
+    "search_docs",
     "search_knowledge",
     "start_connector_from_description",
     "start_connector_from_template",

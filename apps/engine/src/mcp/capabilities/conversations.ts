@@ -79,6 +79,12 @@ export interface HandleConversationToolParams {
   principal: ResolvedPrincipal;
   name: string;
   args: Record<string, unknown>;
+  /**
+   * Permission mode pulled from the tool-call `_meta.sk_permission_mode`.
+   * Matches the sk REPL + HTTP surface contract (auto / ask / plan).
+   * When undefined, the conversation falls back to the tenant default.
+   */
+  permission_mode?: "auto" | "ask" | "plan" | null;
 }
 
 export interface HandleConversationToolResult {
@@ -89,7 +95,7 @@ export interface HandleConversationToolResult {
 export async function handleConversationTool(
   p: HandleConversationToolParams,
 ): Promise<HandleConversationToolResult> {
-  const { db, principal, name, args } = p;
+  const { db, principal, name, args, permission_mode } = p;
   try {
     if (name === "conversation.start") {
       const message = args.message;
@@ -103,6 +109,7 @@ export async function handleConversationTool(
           ...(typeof args.connector_id === "string" ? { connector_id: args.connector_id } : {}),
           ...(typeof args.workflow_id === "string" ? { workflow_id: args.workflow_id } : {}),
           initial_message: message,
+          ...(permission_mode ? { permission_mode } : {}),
         },
         db,
       );
@@ -131,6 +138,7 @@ export async function handleConversationTool(
           conversation_id,
           actor_id: principal.id,
           message,
+          ...(permission_mode ? { permission_mode } : {}),
         },
         db,
       );

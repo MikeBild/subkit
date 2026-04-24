@@ -146,7 +146,12 @@ describe("sk CLI admin commands", () => {
         steps: [{ kind: "request", id: "step-1", method: "GET", url: "https://httpbin.org/get" }],
       });
       const filePath = writeTempFile(env.personas.admin, "e2e-ping.json", wfDef);
-      const result = await cli(["workflows", "create", "--file", filePath], { env });
+      // --skip-checks bypasses the validate+preview pre-flight; the
+      // post-create `executions list starts empty` assertion below
+      // relies on no preview executions having been written yet.
+      const result = await cli(["workflows", "create", "--file", filePath, "--skip-checks"], {
+        env,
+      });
       expectSuccess(result, "workflows create");
       // Extract the workflow ID from the output.
       const json = await runJson<Array<{ id: string }> | { id: string }>(["workflows", "list"], {

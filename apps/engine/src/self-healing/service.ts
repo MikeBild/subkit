@@ -34,15 +34,32 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
-import { type PatchProposal, runRepairFlow } from "../llm/flows/repair.ts";
+import { LlmQuotaExhausted } from "../llm/errors.ts";
+import {
+  type PatchProposal,
+  type PreviousRepairAttempt,
+  runRepairFlow,
+} from "../llm/flows/repair.ts";
 import { log, logger } from "../logging/logger.ts";
-import { recordPatchCandidate } from "../observability/instrumentation.ts";
+import {
+  recordPatchCandidate,
+  recordSelfHealingRepairRetried,
+} from "../observability/instrumentation.ts";
 import { getLatestShape } from "../schema-versions/service.ts";
 import { classifyPatch } from "./classifier.ts";
 import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from "./drift-detector.ts";
 import { runFixtureDryRun } from "./fixture-runner.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import type { DriftSignal, DryRunStep, WorkflowRepairJob } from "./types.ts";
+
+/**
+ * Max LLM repair attempts per drift signal. The first attempt gets a clean
+ * prior_failures block; every subsequent attempt folds in the previous
+ * rejected proposal so the model can revise instead of re-emitting the same
+ * shape. 2 is enough to catch the common "LLM proposed unsafe patch first"
+ * case without burning budget on pathological drift.
+ */
+export const REPAIR_MAX_ATTEMPTS = 2;
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -262,71 +279,141 @@ export async function runSelfHealingLoop(
     drift_kind: signal.kind,
   });
 
-  // 4. Ask the repair LLM flow for a patch proposal.
+  // 4–6. Bounded repair loop. We let the LLM revise up to
+  // REPAIR_MAX_ATTEMPTS times when the classifier marks the proposal
+  // unsafe OR the fixture dry-run rejects it. Rejection context is
+  // folded into `prior_failures` so each attempt starts with the
+  // structured reasons the previous attempt was rejected.
   const diff = renderDriftDiff(signal);
-  const repair = await runRepairFlow(
-    {
-      tenant_id: params.tenant_id,
-      execution_id: params.execution_id ?? "unknown",
-      failing_step: {
-        id: snapshot.id,
-        request: snapshot.request_meta,
-        response: snapshot.output_preview,
-      },
-      drift_diff: diff,
-      ...(params.connector_id ? { connector_id: params.connector_id } : {}),
-    },
-    db,
-  );
-  const proposal = repair.patch_proposal;
-
-  // 5. Classify.
-  const decision = classifyPatch(proposal, signal);
-  logger.info({
-    module: "self-healing",
-    action: "patch.classified",
-    msg: "patch classified",
-    tenant_id: params.tenant_id,
-    workflow_id: params.workflow_id,
-    classification: decision.classification,
-    reasons: decision.reasons,
-  });
-
-  // 6. Fixture dry-run (no network). We look up the fixture BEFORE
-  // inserting so we can record `fixture_id` on the patch_candidates
-  // row in the same transaction.
   const fixture = await loadFixture(params.tenant_id, params.connector_id, params.endpoint_key, db);
+
+  const rejectionChain: Array<{
+    attempt: number;
+    classification: "safe" | "unsafe";
+    dry_run_passed: boolean | null;
+    reason: string;
+  }> = [];
+  const previousAttempts: PreviousRepairAttempt[] = [];
+
+  let proposal: PatchProposal | null = null;
+  let decision: ReturnType<typeof classifyPatch> | null = null;
   let dryRunOk = false;
   let dryRunError: string | undefined;
-  if (fixture) {
-    const dryRun = await runFixtureDryRun({
-      step: buildDryRunStep(snapshot),
-      patch: proposal,
-      fixture: { request: fixture.request, response: fixture.response },
-    });
-    dryRunOk = dryRun.ok;
-    if (!dryRun.ok) dryRunError = dryRun.error;
-    if (dryRun.ok) {
-      log.selfHealing.fixture.passed({
-        tenant_id: params.tenant_id,
-        workflow_id: params.workflow_id,
-        fixture_id: fixture.id,
-      });
-    } else {
-      log.selfHealing.fixture.failed({
-        tenant_id: params.tenant_id,
-        workflow_id: params.workflow_id,
-        fixture_id: fixture.id,
-        error: dryRun.error,
-      });
+
+  for (let attempt = 1; attempt <= REPAIR_MAX_ATTEMPTS; attempt++) {
+    let repair: Awaited<ReturnType<typeof runRepairFlow>>;
+    try {
+      repair = await runRepairFlow(
+        {
+          tenant_id: params.tenant_id,
+          execution_id: params.execution_id ?? "unknown",
+          failing_step: {
+            id: snapshot.id,
+            request: snapshot.request_meta,
+            response: snapshot.output_preview,
+          },
+          drift_diff: diff,
+          ...(params.connector_id ? { connector_id: params.connector_id } : {}),
+          ...(previousAttempts.length > 0 ? { previous_attempts: [...previousAttempts] } : {}),
+        },
+        db,
+      );
+    } catch (err) {
+      // Budget exhaustion aborts the retry loop but keeps whatever we
+      // proposed last so the operator still has something to review.
+      if (err instanceof LlmQuotaExhausted && proposal) {
+        logger.warn({
+          module: "self-healing",
+          action: "repair.budget_exhausted",
+          msg: "LLM budget exhausted mid-retry — persisting last proposal",
+          tenant_id: params.tenant_id,
+          workflow_id: params.workflow_id,
+          attempts_done: attempt - 1,
+        });
+        break;
+      }
+      throw err;
     }
-  } else {
+
+    proposal = repair.patch_proposal;
+    decision = classifyPatch(proposal, signal);
     logger.info({
       module: "self-healing",
-      action: "fixture.missing",
-      msg: "no fixture available — auto-apply disabled",
+      action: "patch.classified",
+      msg: "patch classified",
       tenant_id: params.tenant_id,
       workflow_id: params.workflow_id,
+      classification: decision.classification,
+      reasons: decision.reasons,
+      attempt,
+    });
+
+    // Fixture dry-run for this attempt (no network).
+    dryRunOk = false;
+    dryRunError = undefined;
+    if (fixture) {
+      const dryRun = await runFixtureDryRun({
+        step: buildDryRunStep(snapshot),
+        patch: proposal,
+        fixture: { request: fixture.request, response: fixture.response },
+      });
+      dryRunOk = dryRun.ok;
+      if (!dryRun.ok) dryRunError = dryRun.error;
+      if (dryRun.ok) {
+        log.selfHealing.fixture.passed({
+          tenant_id: params.tenant_id,
+          workflow_id: params.workflow_id,
+          fixture_id: fixture.id,
+        });
+      } else {
+        log.selfHealing.fixture.failed({
+          tenant_id: params.tenant_id,
+          workflow_id: params.workflow_id,
+          fixture_id: fixture.id,
+          error: dryRun.error,
+        });
+      }
+    } else if (attempt === 1) {
+      logger.info({
+        module: "self-healing",
+        action: "fixture.missing",
+        msg: "no fixture available — auto-apply disabled",
+        tenant_id: params.tenant_id,
+        workflow_id: params.workflow_id,
+      });
+    }
+
+    // Stop as soon as the proposal clears both gates.
+    const classifierOk = decision.classification === "safe";
+    const fixtureOk = !fixture || dryRunOk;
+    if (classifierOk && fixtureOk) break;
+
+    // Record the rejection reason and feed it into the next attempt.
+    const reason =
+      !classifierOk && !fixtureOk
+        ? `unsafe classification (${decision.reasons.join("; ") || "no reasons"}) and fixture dry-run failed (${dryRunError ?? "unknown"})`
+        : !classifierOk
+          ? `unsafe classification: ${decision.reasons.join("; ") || "no reasons"}`
+          : `fixture dry-run failed: ${dryRunError ?? "unknown"}`;
+    rejectionChain.push({
+      attempt,
+      classification: decision.classification,
+      dry_run_passed: fixture ? dryRunOk : null,
+      reason,
+    });
+    previousAttempts.push({ proposal, rejection: reason });
+  }
+
+  if (!proposal || !decision) {
+    // Defensive: should not reach here because the loop always runs at
+    // least once. Fall back to empty-result semantics.
+    return emptyResult("repair flow returned no proposal");
+  }
+
+  if (rejectionChain.length > 0) {
+    recordSelfHealingRepairRetried({
+      tenant_id: params.tenant_id,
+      attempts: rejectionChain.length + 1,
     });
   }
 
@@ -371,6 +458,7 @@ export async function runSelfHealingLoop(
           policy,
           step_id: snapshot.id,
           execution_id: params.execution_id,
+          ...(rejectionChain.length > 0 ? { rejection_chain: rejectionChain } : {}),
         },
         status: "proposed",
       })

@@ -318,6 +318,13 @@ export const METRIC_NAMES = {
   LLM_OUTPUT_VIOLATIONS_TOTAL: "llm_output_violations_total",
   LLM_OUTPUT_GUARD_DURATION_MS: "llm_output_guard_duration_ms",
   CANNOT_HELP_INVOCATIONS_TOTAL: "cannot_help_invocations_total",
+  SELF_HEALING_REPAIR_RETRIED_TOTAL: "self_healing_repair_retried_total",
+  EXECUTION_WARNINGS_EMITTED_TOTAL: "execution_warnings_emitted_total",
+  EXECUTION_DRY_RUN_TOTAL: "execution_dry_run_total",
+  LLM_CACHE_HIT_TOTAL: "llm_cache_hit_tokens_total",
+  LLM_CACHE_CREATION_TOTAL: "llm_cache_creation_tokens_total",
+  LLM_PROMPT_TOKENS_TOTAL: "llm_prompt_tokens_total",
+  CONVERSATION_TURN_DURATION_MS: "conversation_turn_duration_ms",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -441,6 +448,42 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.CONVERSATION_CONFIRMATIONS_TOTAL,
     help: "Confirmation state transitions, partitioned by to_state.",
     labels: ["to_state", "tool"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.SELF_HEALING_REPAIR_RETRIED_TOTAL,
+    help: "Self-healing repair-flow retries (final attempts count per drift signal).",
+    labels: ["tenant_id", "attempts"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.EXECUTION_WARNINGS_EMITTED_TOTAL,
+    help: "Step warnings emitted during workflow execution (e.g. unresolved identifiers).",
+    labels: ["tenant_id", "step_kind"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.EXECUTION_DRY_RUN_TOTAL,
+    help: "Dry-run previews of workflows or steps, partitioned by source kind.",
+    labels: ["tenant_id", "source_kind"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.LLM_CACHE_HIT_TOTAL,
+    help: "LLM prompt-cache read tokens (cached stable-block reuse).",
+    labels: ["tenant_id", "model", "flow"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.LLM_CACHE_CREATION_TOTAL,
+    help: "LLM prompt-cache write tokens (first-turn cache seeding).",
+    labels: ["tenant_id", "model", "flow"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.LLM_PROMPT_TOKENS_TOTAL,
+    help: "LLM prompt tokens billed as regular input (denominator for cache hit rate).",
+    labels: ["tenant_id", "model", "flow"],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.CONVERSATION_TURN_DURATION_MS,
+    help: "Conversation-turn wall-clock duration in milliseconds.",
+    labels: ["tenant_id"],
+    buckets: HISTOGRAM_DURATION_BUCKETS_MS,
   });
 
   return reg;

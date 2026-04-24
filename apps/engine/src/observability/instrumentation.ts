@@ -213,3 +213,92 @@ export function recordConfirmationTransition(args: { to_state: string; tool: str
     });
   });
 }
+
+export function recordSelfHealingRepairRetried(args: {
+  tenant_id: string;
+  attempts: number;
+}): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.SELF_HEALING_REPAIR_RETRIED_TOTAL, {
+      tenant_id: args.tenant_id,
+      attempts: String(args.attempts),
+    });
+  });
+}
+
+export function recordExecutionWarningsEmitted(args: {
+  tenant_id: string;
+  step_kind: string;
+  count: number;
+}): void {
+  safe(() => {
+    if (!Number.isFinite(args.count) || args.count <= 0) return;
+    getMetrics().inc(
+      METRIC_NAMES.EXECUTION_WARNINGS_EMITTED_TOTAL,
+      {
+        tenant_id: args.tenant_id,
+        step_kind: args.step_kind,
+      },
+      args.count,
+    );
+  });
+}
+
+export function recordExecutionDryRun(args: { tenant_id: string; source_kind: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.EXECUTION_DRY_RUN_TOTAL, {
+      tenant_id: args.tenant_id,
+      source_kind: args.source_kind,
+    });
+  });
+}
+
+export function recordLlmCacheUsage(args: {
+  tenant_id: string;
+  model: string;
+  flow: string;
+  prompt_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+}): void {
+  safe(() => {
+    const reg = getMetrics();
+    const promptBillable = Math.max(
+      0,
+      (args.prompt_tokens ?? 0) - (args.cache_read_tokens ?? 0) - (args.cache_creation_tokens ?? 0),
+    );
+    if (promptBillable > 0) {
+      reg.inc(
+        METRIC_NAMES.LLM_PROMPT_TOKENS_TOTAL,
+        { tenant_id: args.tenant_id, model: args.model, flow: args.flow },
+        promptBillable,
+      );
+    }
+    if ((args.cache_read_tokens ?? 0) > 0) {
+      reg.inc(
+        METRIC_NAMES.LLM_CACHE_HIT_TOTAL,
+        { tenant_id: args.tenant_id, model: args.model, flow: args.flow },
+        args.cache_read_tokens,
+      );
+    }
+    if ((args.cache_creation_tokens ?? 0) > 0) {
+      reg.inc(
+        METRIC_NAMES.LLM_CACHE_CREATION_TOTAL,
+        { tenant_id: args.tenant_id, model: args.model, flow: args.flow },
+        args.cache_creation_tokens,
+      );
+    }
+  });
+}
+
+export function recordConversationTurnDuration(args: {
+  tenant_id: string;
+  duration_ms: number;
+}): void {
+  safe(() => {
+    if (!Number.isFinite(args.duration_ms)) return;
+    getMetrics().observe(METRIC_NAMES.CONVERSATION_TURN_DURATION_MS, args.duration_ms, {
+      tenant_id: args.tenant_id,
+    });
+  });
+}

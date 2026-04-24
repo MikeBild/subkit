@@ -354,11 +354,25 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       }
 
       if (name.startsWith(CONVERSATION_TOOL_PREFIX)) {
+        // Accept `_meta.sk_permission_mode` on MCP calls so the sk REPL
+        // and external MCP clients can drive the same auto / ask / plan
+        // loop the HTTP surface exposes. Unknown values are ignored and
+        // the conversation falls back to the tenant default.
+        const permissionModeMeta = (
+          request.params._meta as { sk_permission_mode?: unknown } | undefined
+        )?.sk_permission_mode;
+        const permissionMode =
+          permissionModeMeta === "auto" ||
+          permissionModeMeta === "ask" ||
+          permissionModeMeta === "plan"
+            ? permissionModeMeta
+            : undefined;
         const result = await handleConversationTool({
           db,
           principal,
           name,
           args: args as Record<string, unknown>,
+          ...(permissionMode ? { permission_mode: permissionMode } : {}),
         });
         logger.info({
           module: "mcp",

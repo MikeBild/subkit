@@ -240,6 +240,18 @@ export interface WorkflowDraftPreviewSummary {
   step_id?: string | null;
   summary: string;
   preview?: unknown;
+  /**
+   * Structured warnings surfaced by the last dry-run (unresolved identifiers,
+   * rate-limit hits, pagination edges). Populated by `dry_run_workflow` /
+   * `dry_run_step` / `dry_run_transform`. The conversation loop folds these
+   * into the next turn's `prior_failures` so the LLM automatically sees what
+   * to fix rather than relying on the user to quote them back.
+   */
+  warnings?: Array<{
+    step_key?: string | null;
+    code?: string;
+    message?: string;
+  }>;
 }
 
 export interface AuthoringSummary {

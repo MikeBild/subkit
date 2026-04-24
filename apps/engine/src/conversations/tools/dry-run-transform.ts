@@ -28,6 +28,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { applySelector } from "../../execution/selectors.ts";
 import { resolveStringPlaceholders } from "../../llm/substitution/resolver.ts";
+import { recordExecutionDryRun } from "../../observability/instrumentation.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const Dialect = z.enum(["jsonata", "jsonpath", "template"]);
@@ -230,6 +231,8 @@ export const dryRunTransformTool: ConversationTool = {
     }
 
     const duration_ms = Date.now() - started;
+
+    recordExecutionDryRun({ tenant_id: ctx.tenant_id, source_kind: "transform" });
 
     // Audit — expression hash only; dialect; duration; ok flag.
     await auditAwait(
