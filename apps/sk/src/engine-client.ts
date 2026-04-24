@@ -407,10 +407,12 @@ export class EngineClient {
     output: unknown,
     reason?: string,
     debugContext?: DebugCorrelationFields,
+    permission_mode?: "auto" | "ask" | "plan",
   ): Promise<ConversationRunOutcome> {
     const path = `/v1/conversations/${conversationId}/elicitations/${elicitationId}/respond`;
     const body: Record<string, unknown> = { output };
     if (reason) body.reason = reason;
+    if (permission_mode) body.permission_mode = permission_mode;
     return this.request("POST", path, body, undefined, debugContext);
   }
   cancelConversation(id: string): Promise<unknown> {
@@ -599,6 +601,71 @@ export class EngineClient {
   ): Promise<Record<string, unknown>> {
     const query = opts.sync ? { sync: "1" } : undefined;
     return this.request("POST", `/v1/workflows/${encodeURIComponent(id)}/run`, body, query);
+  }
+
+  // -------------------- Automations --------------------
+  listAutomations(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request("GET", "/v1/automations", undefined, query);
+  }
+  getAutomation(id: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/v1/automations/${encodeURIComponent(id)}`);
+  }
+  createAutomation(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/automations", body);
+  }
+  updateAutomation(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("PUT", `/v1/automations/${encodeURIComponent(id)}`, body);
+  }
+  deleteAutomation(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/automations/${encodeURIComponent(id)}`);
+  }
+  previewAutomation(body: {
+    definition: Record<string, unknown>;
+    input?: unknown;
+    request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler";
+  }): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/automations/preview", body);
+  }
+  runAutomation(
+    id: string,
+    body: {
+      input?: unknown;
+      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler";
+    } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/automations/${encodeURIComponent(id)}/run`, body);
+  }
+  previewAutomationChanges(
+    id: string,
+    body: {
+      definition: Record<string, unknown>;
+      input?: unknown;
+      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler";
+    },
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/automations/${encodeURIComponent(id)}/changes/preview`, body);
+  }
+  applyAutomationChanges(
+    id: string,
+    body: { definition: Record<string, unknown> },
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/automations/${encodeURIComponent(id)}/changes/apply`, body);
+  }
+  applyAndRunAutomation(
+    id: string,
+    body: {
+      definition: Record<string, unknown>;
+      input?: unknown;
+      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler";
+    },
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      "POST",
+      `/v1/automations/${encodeURIComponent(id)}/changes/apply-and-run`,
+      body,
+    );
   }
 
   // -------------------- Executions --------------------

@@ -14,6 +14,8 @@ When a user describes what they need in natural language, the AI proposes a work
 
 sk is built for enterprise use: multi-tenant by design, RBAC-enforced at every boundary, and observable by default.
 
+In addition to the conversation-driven authoring loop, sk now exposes a direct automation surface. Persisted automations can be listed, fetched, previewed, updated, diffed, applied, and run without reopening a conversation, while still flowing through the same RBAC, audit, and deterministic execution contracts.
+
 ---
 
 ## What sk Is Not

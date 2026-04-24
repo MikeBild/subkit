@@ -1021,6 +1021,480 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/automations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List automations */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number | null;
+                    status?: "draft" | "active" | "archived";
+                    name_contains?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AutomationListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create an automation */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AutomationDefinitionInput"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Automation"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/automations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch an automation */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Automation"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Update an automation */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AutomationDefinitionInput"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Automation"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Delete an automation */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/automations/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview an inline automation definition */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AutomationPreviewBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AutomationPreviewResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/automations/{id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run a saved automation inline */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AutomationRunBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AutomationExecution"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/automations/{id}/changes/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview changes against a saved automation */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AutomationPreviewBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AutomationChangePreviewResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/automations/{id}/changes/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply proposed changes to a saved automation */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AutomationApplyBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AutomationApplyResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/automations/{id}/changes/apply-and-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply changes, save them, and run the saved automation inline */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AutomationApplyAndRunBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AutomationApplyAndRunResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows": {
         parameters: {
             query?: never;
@@ -1397,7 +1871,51 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        /** Run a saved workflow, a draft definition, or a single step */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    "x-subkit-environment"?: "dev" | "prod";
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ExecutionRunSavedBody"] | components["schemas"]["ExecutionRunDraftBody"] | components["schemas"]["ExecutionRunStepBody"];
+                };
+            };
+            responses: {
+                /** @description Run completed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExecutionRunResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Workflow not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -6079,6 +6597,95 @@ export interface components {
             email: string | null;
             role_name: string | null;
             provider: string;
+            base_url: string | null;
+            scopes: string[] | null;
+        };
+        AutomationListResponse: {
+            items: components["schemas"]["Automation"][];
+        };
+        Automation: {
+            id: string;
+            tenant_id: string;
+            slug: string;
+            name: string;
+            lifecycle: string;
+            current_version_id: string | null;
+            current_version: number | null;
+            created_at: string;
+            updated_at: string;
+            definition?: unknown;
+            steps: unknown[];
+        };
+        AutomationDefinitionInput: {
+            name: string;
+            slug?: string;
+            description?: string;
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            output_schema?: {
+                [key: string]: unknown;
+            };
+            steps: {
+                [key: string]: unknown;
+            }[];
+            timeout_ms?: number;
+        };
+        AutomationPreviewResponse: {
+            execution: components["schemas"]["AutomationExecution"];
+        };
+        AutomationExecution: {
+            execution_id: string;
+            status: string;
+            output?: unknown;
+            error?: unknown;
+            steps: unknown[];
+            warnings?: unknown[];
+        };
+        AutomationPreviewBody: {
+            definition: components["schemas"]["AutomationDefinitionInput"];
+            input?: unknown;
+            /** @enum {string} */
+            request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler";
+        };
+        AutomationRunBody: {
+            input?: unknown;
+            /** @enum {string} */
+            request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler";
+        };
+        AutomationChangePreviewResponse: {
+            automation: components["schemas"]["Automation"];
+            proposed_definition?: unknown;
+            changed: boolean;
+            operations: components["schemas"]["AutomationPatchOperation"][];
+            execution: components["schemas"]["AutomationExecution"];
+        };
+        AutomationPatchOperation: {
+            /** @enum {string} */
+            op: "add" | "remove" | "replace" | "move" | "copy" | "test";
+            path: string;
+            from?: string;
+            value?: unknown;
+        };
+        AutomationApplyResponse: {
+            automation: components["schemas"]["Automation"];
+            changed: boolean;
+            operations: components["schemas"]["AutomationPatchOperation"][];
+        };
+        AutomationApplyBody: {
+            definition: components["schemas"]["AutomationDefinitionInput"];
+        };
+        AutomationApplyAndRunResponse: {
+            automation: components["schemas"]["Automation"];
+            changed: boolean;
+            operations: components["schemas"]["AutomationPatchOperation"][];
+            execution: components["schemas"]["AutomationExecution"];
+        };
+        AutomationApplyAndRunBody: {
+            definition: components["schemas"]["AutomationDefinitionInput"];
+            input?: unknown;
+            /** @enum {string} */
+            request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler";
         };
         WorkflowListResponse: {
             items: components["schemas"]["Workflow"][];
@@ -6133,14 +6740,84 @@ export interface components {
             created_at: string;
             dag?: unknown;
         };
+        ExecutionRunResponse: {
+            execution_id: string;
+            status: string;
+            output?: unknown;
+            error?: unknown;
+            steps?: unknown[];
+            warnings?: unknown[];
+        };
+        ExecutionRunSavedBody: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            source: "saved";
+            /** Format: uuid */
+            workflow_id: string;
+            /** Format: uuid */
+            version_id?: string;
+            input?: unknown;
+            sync?: boolean;
+        };
+        ExecutionRunDraftBody: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            source: "draft";
+            definition: components["schemas"]["ExecutionRunDraftDefinition"];
+            name?: string;
+            input?: unknown;
+        };
+        ExecutionRunDraftDefinition: {
+            name: string;
+            slug?: string;
+            description?: string;
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            output_schema?: {
+                [key: string]: unknown;
+            };
+            steps: {
+                [key: string]: unknown;
+            }[];
+            timeout_ms?: number;
+        };
+        ExecutionRunStepBody: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            source: "step";
+            step: components["schemas"]["ExecutionRunStep"];
+            workflow_slug?: string;
+            input?: unknown;
+            scope?: {
+                [key: string]: unknown;
+            };
+            timeout_ms?: number;
+        };
+        ExecutionRunStep: {
+            kind: string;
+        } & {
+            [key: string]: unknown;
+        };
         ExecutionListResponse: {
             items: components["schemas"]["Execution"][];
             next_cursor?: string | null;
         };
         Execution: {
             id: string;
-            workflow_id: string;
-            workflow_version_id: string;
+            workflow_id: string | null;
+            workflow_version_id: string | null;
+            /** @enum {string} */
+            source_kind: "saved" | "draft" | "step";
+            source_ref: {
+                [key: string]: unknown;
+            } | null;
             status: string;
             request_source: string;
             parent_execution_id: string | null;
@@ -6282,7 +6959,7 @@ export interface components {
             name: string;
             slug?: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp";
+            driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp" | "sftp" | "smb" | "redis";
             /**
              * @default dev
              * @enum {string}
@@ -6402,6 +7079,8 @@ export interface components {
             connector_id: string | null;
             /** Format: uuid */
             workflow_id: string | null;
+            /** @default null */
+            slug: string | null;
             title: string;
             body: string;
             /** @default [] */
@@ -6639,6 +7318,8 @@ export interface components {
             memory?: string;
             model?: string;
             title?: string;
+            /** @enum {string} */
+            permission_mode?: "auto" | "ask" | "plan";
         };
         ConversationDetail: {
             conversation: components["schemas"]["Conversation"];
@@ -6676,17 +7357,82 @@ export interface components {
         AppendConversationMessageBody: {
             message: string;
             memory?: string;
+            /** @enum {string} */
+            permission_mode?: "auto" | "ask" | "plan";
         };
         ContextSnapshot: {
             conversation_id: string;
             connector_id: string | null;
             workflow_id: string | null;
             draft_mode: string;
+            authoring_mode: string | null;
+            authoring_stage: string | null;
             draft_summary: {
                 readiness: string;
                 next_action: string | null;
+                next_required_action: string | null;
                 missing_fields: string[];
                 progress_label: string | null;
+                lifecycle_state: string;
+                blocked_by: string[];
+            } | null;
+            active_target: {
+                /** @enum {string} */
+                kind: "connector" | "workflow" | "none";
+                name: string | null;
+                slug: string | null;
+                id: string | null;
+                environment: string | null;
+                lifecycle_state: string;
+            } | null;
+            checkpoint_statuses: {
+                key: string;
+                status: string;
+                verified_at: string | null;
+                verified_by_tool: string | null;
+                ok: boolean | null;
+                summary: string | null;
+            }[];
+            stale_checkpoints: string[];
+            next_required_action: string | null;
+            persisted_resources: {
+                kind: string;
+                id: string;
+                slug: string | null;
+                name: string | null;
+                version_id: string | null;
+                version: number | null;
+                environment: string | null;
+                saved_at: string;
+            }[];
+            latest_execution: {
+                execution_id: string;
+                workflow_id: string | null;
+                workflow_version_id: string | null;
+                status: string;
+                environment: string;
+                warnings_count: number;
+                recorded_at: string;
+                diagnosis_available: boolean;
+            } | null;
+            latest_diagnosis: {
+                execution_id: string;
+                recorded_at: string;
+                reason: string;
+                warning_sources: {
+                    step_key: string;
+                    code: string;
+                    identifier: string | null;
+                }[];
+                steps: {
+                    step_key: string;
+                    kind: string;
+                    status: string;
+                    duration_ms: number | null;
+                    output_preview?: unknown;
+                    error?: unknown;
+                    request_meta?: unknown;
+                }[];
             } | null;
             skills: {
                 global: {
@@ -6735,6 +7481,8 @@ export interface components {
         RespondElicitationBody: {
             output?: unknown;
             reason?: string;
+            /** @enum {string} */
+            permission_mode?: "auto" | "ask" | "plan";
         };
         CompactConversationResponse: {
             conversation: components["schemas"]["Conversation"];

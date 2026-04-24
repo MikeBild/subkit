@@ -43,24 +43,25 @@ export function enforce(
 
 export const policyHelpers = policy;
 
-// Matches `/v1/workflows/<id>/run` — accepts a trailing slash or query.
+// Matches `/v1/workflows/<id>/run` and `/v1/automations/<id>/run`.
 // The id segment is captured so we can check it against the
 // principal's allowlist without involving the route handler.
-const WORKFLOW_RUN_PATH = /^\/v1\/workflows\/([^/]+)\/run\/?$/;
+const WORKFLOW_RUN_PATH = /^\/v1\/(?:workflows|automations)\/([^/]+)\/run\/?$/;
 
 /**
  * Middleware that enforces `allowed_workflows` on a portal-token
  * principal when the caller tries to execute `POST
- * /v1/workflows/:id/run`. This exists as a standalone middleware so
- * the workflows route handler can stay agnostic about the provider —
- * it just reads `c.get("principal")` the same way it did before.
+ * /v1/workflows/:id/run` or `POST /v1/automations/:id/run`. This
+ * exists as a standalone middleware so the route handlers can stay
+ * agnostic about the provider — they just read `c.get("principal")`
+ * the same way they did before.
  *
  * Rules:
  *   - Only triggers for principals carrying `roles: ["enduser"]` (the
  *     shape produced by the portal-token provider). Every other
  *     principal passes through untouched.
- *   - Only triggers on POST `/v1/workflows/:id/run`. Every other route
- *     is a no-op.
+ *   - Only triggers on POST `/v1/workflows/:id/run` and
+ *     `/v1/automations/:id/run`. Every other route is a no-op.
  *   - If `allowed_workflows` is the literal string `"all"`, any id
  *     passes. Otherwise the id must be present in the array.
  *   - On deny, writes a `policy.denied` audit row with the attempted

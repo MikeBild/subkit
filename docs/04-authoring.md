@@ -16,6 +16,8 @@ Conversations are persistent and resumable. They survive page reloads, reconnect
 
 Internally, the AI operates over a palette of structured-intent tools. It does not generate free-form code or make autonomous decisions. It calls tools like "propose a step," "look up a connector," "validate the draft," and "ask for clarification." This structure is what makes the authoring process reliable and auditable — the AI's reasoning is visible as a sequence of tool calls, not as an opaque text generation.
 
+For operators and scripted clients that already know the target definition, the same authoring model is also available through the direct automation surface. That path skips the conversational proposal loop and works on the persisted automation object directly: preview, diff, apply, save, and run.
+
 ---
 
 ## The Authoring State Machine

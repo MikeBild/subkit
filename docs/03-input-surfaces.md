@@ -34,6 +34,8 @@ The REST API is the full programmatic interface to sk. Every capability availabl
 
 **Coverage.** The API exposes CRUD endpoints for all platform resources: Workflows, Connectors, Executions, Credentials, Skills, Skill Candidates, Knowledge Sources, Conversations, Schedules, Webhooks, Audit Log entries, and more. Every operation that changes state goes through the API layer, which means RBAC and the Audit Log apply uniformly.
 
+**Direct automation surface.** The API also exposes a first-class automation facade for direct build-test-apply-run loops. Clients can create or update an automation definition, preview it inline, inspect a structured diff against a saved automation, apply the change set, and run the saved result through a single consistent REST surface.
+
 **Schema-first design.** All request and response shapes are defined as Zod schemas. The OpenAPI 3.1 specification is generated from those schemas — it is never hand-written. This means the spec is always accurate, and client code generated from it is always consistent with the actual implementation.
 
 **Conversation state surfaces.** Conversation responses expose the authoring state machine directly, including `authoring_mode`, `authoring_stage`, active target metadata, checkpoint statuses, stale checkpoints, `next_required_action`, persisted resources, and latest execution or diagnosis references. API clients do not have to reconstruct progress from free-form assistant messages.
