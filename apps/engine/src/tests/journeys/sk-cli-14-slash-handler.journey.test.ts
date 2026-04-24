@@ -174,11 +174,11 @@ describe("journey: sk-cli slash handler", () => {
     expect(line).toContain("Prefer list-users response shapes");
   });
 
-  test("AC7: /mcp renders prompts / resources / tools sections", async () => {
+  test("AC7: /mcp renders prompts / resources / callable entries sections", async () => {
     const line = await handleSlash("mcp", [], slashCtx());
     expect(line).toContain("prompts (");
     expect(line).toContain("resources (");
-    expect(line).toContain("tools (");
+    expect(line).toContain("callable entries (");
     // the seeded skill shows up as an MCP prompt entry
     expect(line).toContain("/mcp__skill.");
   });
