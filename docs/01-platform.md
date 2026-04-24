@@ -8,7 +8,7 @@ sk bridges that gap. It is an enterprise AI platform that uses conversational AI
 
 ## What sk Is
 
-sk is a governed automation platform. It combines a conversational authoring surface with a strict execution engine, connected by an explicit human approval step.
+sk is a governed workflow platform. It combines a conversational authoring surface with a strict execution engine, connected by an explicit human approval step.
 
 When a user describes what they need in natural language, the AI proposes a workflow. That proposal is reviewed and approved by a human. Once approved, the workflow runs deterministically — no AI inference, no hallucination risk, no hidden behavior. The platform records every state change in an immutable audit log.
 

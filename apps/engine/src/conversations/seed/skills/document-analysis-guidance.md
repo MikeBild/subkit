@@ -34,7 +34,7 @@ Found 8 endpoints:
 Which endpoints should the workflow use?
 ```
 
-## Step 3: Extract integration metadata
+## Step 3: Extract connector metadata
 
 Before generating steps, identify:
 - **Authentication**: type (API key, Bearer, OAuth2, Basic), header/parameter name

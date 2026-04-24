@@ -80,7 +80,7 @@ Terms are grouped by concern. Read the groups in order for a complete mental mod
 
 ## Group 6: Surfaces
 
-**sk CLI** — the conversational command-line interface and primary human-facing surface for sk. Built on Ink, it provides a terminal UI that opens a Conversation for end users describing automation goals, and a full admin surface for operators managing the platform. The sk CLI supports four authentication modes: API Key, OIDC, Portal Token, and headless (stdin pipe for scripted usage). Persona-aware: the surface adapts based on the authenticated user's role.
+**sk CLI** — the conversational command-line interface and primary human-facing surface for sk. Built on Ink, it provides a terminal UI that opens a Conversation for end users describing workflow goals, and a full admin surface for operators managing the platform. The sk CLI supports four authentication modes: API Key, OIDC, Portal Token, and headless (stdin pipe for scripted usage). Persona-aware: the surface adapts based on the authenticated user's role.
 
 **subkit CLI** — the operator-focused command-line tool for administrative tasks. Used for managing Connectors, running diagnostics, querying the Audit Log, managing Schedules, and performing platform maintenance. The subkit CLI is separate from the sk conversational REPL and is oriented toward operators and developers rather than end users.
 
