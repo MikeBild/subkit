@@ -3,6 +3,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../workflows/service.ts";
+import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -173,6 +174,38 @@ const restoreRoute = createRoute({
   },
 });
 
+const ValidateBody = z
+  .object({
+    name: z.string().optional(),
+    slug: z.string().optional(),
+    description: z.string().optional(),
+    input_schema: z.record(z.string(), z.unknown()).optional(),
+    output_schema: z.record(z.string(), z.unknown()).optional(),
+    steps: z.array(z.record(z.string(), z.unknown())),
+    timeout_ms: z.number().int().positive().optional(),
+  })
+  .openapi("ValidateWorkflowBody");
+
+const ValidateResponse = z
+  .object({
+    ok: z.boolean(),
+    errors: z.array(z.object({ path: z.string(), message: z.string() })).optional(),
+  })
+  .openapi("ValidateWorkflowResponse");
+
+const validateRoute = createRoute({
+  method: "post",
+  path: "/v1/workflows/validate",
+  tags: ["workflows"],
+  summary:
+    "Validate a workflow definition (structural + step schema). Does not persist; returns errors inline.",
+  security: [{ bearerAuth: [] }],
+  request: { body: { content: { "application/json": { schema: ValidateBody } } } },
+  responses: {
+    200: { description: "OK", content: { "application/json": { schema: ValidateResponse } } },
+  },
+});
+
 export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   // Pass-2 C5: RBAC gating. Every mutation + run goes through
   // `requirePermission` which calls the `can()` evaluator. Admin
@@ -180,6 +213,12 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/workflows", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("workflow:read")(c, next);
     if (c.req.method === "POST") return requirePermission("workflow:write")(c, next);
+    return next();
+  });
+  // /v1/workflows/validate is a read-only utility; operators that can read
+  // workflows can validate a draft without write perms.
+  app.use("/v1/workflows/validate", async (c, next) => {
+    if (c.req.method === "POST") return requirePermission("workflow:read")(c, next);
     return next();
   });
   app.use("/v1/workflows/:id", async (c, next) => {
@@ -229,6 +268,14 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       throw new BadRequestError("invalid workflow", { errors: result.errors });
     }
     return c.json(serializeWorkflow(result.workflow), 201);
+  });
+
+  app.openapi(validateRoute, async (c) => {
+    requireAuth(c);
+    const body = c.req.valid("json");
+    const res = validateWorkflowDef(body);
+    if (res.ok) return c.json({ ok: true }, 200);
+    return c.json({ ok: false, errors: res.errors }, 200);
   });
 
   app.openapi(getRoute, async (c) => {

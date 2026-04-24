@@ -14,6 +14,7 @@
 // Per-tenant overrides: `getVendorRecipeForTenant(db, tenant_id, client)`
 // shallow-merges rows from `vendor_recipe_overrides` over the base entry.
 
+import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import claudeDesktop from "../../conversations/seed/vendor-recipes/claude-desktop.json" with {
   type: "json",
@@ -22,15 +23,25 @@ import codex from "../../conversations/seed/vendor-recipes/codex.json" with { ty
 import type { Db } from "../../db/client.ts";
 import { vendorRecipeOverrides } from "../../db/schema/index.ts";
 
-export interface VendorRecipe {
-  client: string;
-  verified_at: string;
-  transports: string[];
-  config_path_hints: string[];
-  config_template_streamable_http?: Record<string, unknown>;
-  config_template_stdio?: Record<string, unknown>;
-  notes?: string;
-}
+/**
+ * Zod schema for a single vendor-recipe JSON document. Every JSON file
+ * under `apps/engine/src/conversations/seed/vendor-recipes/` is validated
+ * against this shape at engine start; a malformed or drifted recipe
+ * fails the boot rather than silently shipping bad config to the model.
+ */
+export const VendorRecipeSchema = z
+  .object({
+    client: z.string().min(1).max(80),
+    verified_at: z.string().regex(/^\d{4}-\d{2}-\d{2}/),
+    transports: z.array(z.string()).min(1),
+    config_path_hints: z.array(z.string()),
+    config_template_streamable_http: z.record(z.string(), z.unknown()).optional(),
+    config_template_stdio: z.record(z.string(), z.unknown()).optional(),
+    notes: z.string().optional(),
+  })
+  .openapi("VendorRecipe");
+
+export type VendorRecipe = z.infer<typeof VendorRecipeSchema>;
 
 export interface VendorRecipeFreshness {
   recipe: VendorRecipe;
@@ -38,7 +49,22 @@ export interface VendorRecipeFreshness {
   status: "fresh" | "warn" | "stale";
 }
 
-const RECIPES: VendorRecipe[] = [codex as VendorRecipe, claudeDesktop as VendorRecipe];
+function validateRecipe(raw: unknown, source: string): VendorRecipe {
+  const parsed = VendorRecipeSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(
+      `vendor-recipe ${source} is malformed: ${parsed.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join("; ")}`,
+    );
+  }
+  return parsed.data;
+}
+
+const RECIPES: VendorRecipe[] = [
+  validateRecipe(codex, "codex.json"),
+  validateRecipe(claudeDesktop, "claude-desktop.json"),
+];
 
 const WARN_DAYS = 60;
 const STALE_DAYS = 90;

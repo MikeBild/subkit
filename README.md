@@ -27,7 +27,7 @@ flowchart LR
         direction TB
         Conv["Conversation Engine"]
         AI["Multi-AI Provider\n(Claude · OpenAI · Gemini)"]
-        Conn["89 Connector Templates\n& Credential Vault"]
+        Conn["90 Connector Templates\n& Credential Vault"]
         Skills["Skills &\nKnowledge Sources"]
     end
 
@@ -76,7 +76,7 @@ anything is committed.
 - **Multi-AI provider** — Claude, OpenAI, and Gemini are all supported. The platform
   routes to the best model for the task; swap providers without changing workflows.
 
-- **Connector Catalog** — 89 pre-built connector templates for Stripe, Salesforce,
+- **Connector Catalog** — 90 pre-built connector templates for Stripe, Salesforce,
   GitHub, Slack, Jira, and more. Each template includes setup guidance, documentation
   ingestion, and auth configuration. The AI uses these templates to propose accurate
   integrations, not generic HTTP requests.

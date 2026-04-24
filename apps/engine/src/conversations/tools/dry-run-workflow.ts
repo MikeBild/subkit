@@ -7,6 +7,10 @@ import { z } from "@hono/zod-openapi";
 import type { PreviewStepSummary } from "../../execution/classify.ts";
 import { classifyRunResult } from "../../execution/classify.ts";
 import { runExecution } from "../../execution/engine.ts";
+import {
+  recordExecutionDryRun,
+  recordExecutionWarningsEmitted,
+} from "../../observability/instrumentation.ts";
 import type { StepDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
@@ -114,6 +118,19 @@ export const dryRunWorkflowTool: ConversationTool = {
       : undefined;
 
     const stoppedForDraft = stoppedId ?? lastStep?.step_id ?? "(end)";
+    const runWarnings = (run.warnings ?? []).map((w) => ({
+      step_key: (w as { step_key?: string | null }).step_key ?? null,
+      code: (w as { code?: string }).code ?? "unknown",
+      message: (w as { message?: string }).message ?? "",
+    }));
+    recordExecutionDryRun({ tenant_id: ctx.tenant_id, source_kind: "workflow" });
+    if (runWarnings.length > 0) {
+      recordExecutionWarningsEmitted({
+        tenant_id: ctx.tenant_id,
+        step_kind: "workflow",
+        count: runWarnings.length,
+      });
+    }
     const nextDraft = withLatestPreview(
       ctx.getDraft(),
       {
@@ -121,6 +138,7 @@ export const dryRunWorkflowTool: ConversationTool = {
         step_id: stoppedForDraft,
         summary: lastStep?.summary ?? `Run completed with status ${run.status}.`,
         preview: lastStep?.output_preview ?? null,
+        ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
       },
       "dry_run_workflow",
       "workflow_previewed",
@@ -140,6 +158,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} with no errors.`
             : `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`,
         execution_id: run.execution_id,
+        ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
         ...(lastStep
           ? {
               last_step: {

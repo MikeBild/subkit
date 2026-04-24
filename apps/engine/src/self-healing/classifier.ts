@@ -50,6 +50,12 @@ const SAFE_KINDS = new Set<PatchProposal["kind"]>([
   "rename_param",
   "add_header",
   "change_type",
+  // rate_limited patches are considered safe by default — they only adjust
+  // the step's retry/backoff metadata to honour an upstream 429/503 hint,
+  // they do not change URLs, auth, or payload shapes. The narrower checks
+  // below still guard against the LLM trying to smuggle unsafe fields into
+  // a patch under the `rate_limited` label.
+  "rate_limited",
 ]);
 
 /**

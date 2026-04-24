@@ -64,11 +64,20 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Terminology gate
+        run: bun run check:terminology
+
+      - name: Determinism lint
+        run: bun run test:determinism
+
       - name: Migrate database
         run: bun run db:migrate
 
       - name: Unit + integration tests
         run: bun test apps/ packages/
+
+      - name: AI eval contract
+        run: bun run verify:ai
 
       - name: Build all binaries
         run: bun run build:all

@@ -49,6 +49,44 @@ The per-tenant token budget caps the final size. When budget is tight, trim in t
 failures → connector docs → knowledge → user memory → authoring context → loaded skills →
 workflow skills → connector skills → global skills. User turns are not trimmed away.
 
+Stable sections (skills, docs, knowledge) land in an Anthropic ephemeral cache block with
+`cache_control: { type: "ephemeral", ttl: "1h" }`. Volatile sections (user memory, prior
+failures) are refreshed every call. The cache hit rate is visible via the
+`llm_cache_hit_tokens_total` / `llm_prompt_tokens_total` metric pair. The mock provider
+simulates this accounting so tests can assert cache behaviour without a real model.
+
+## Structured output: submit/abort loop
+
+Every schema-constrained flow (`generate`, `extract`, `repair`, `discover`, plus the
+structured `summarize` variant) goes through `AiSdkModel.generateObject` with
+`toolChoice: "required"` and a submit/abort tool pair. The model must call `submit` with
+a schema-valid object or `abort` with a reason. Unknown tool calls loop back with the
+tool result appended, so the model can self-correct. Hard cap is
+`MAX_TOOL_LOOP_ATTEMPTS = 8`; callers can tighten it per-flow via `maxAttempts`. The
+eval fixture `schema-flow-shape` pins this contract so future refactors can't silently
+drop a flow to text + best-effort JSON parsing.
+
+## On-demand context tools
+
+Besides the pre-assembled block, the conversation loop exposes four context tools the
+LLM can call mid-turn. Use them in this precedence order:
+
+1. `search_knowledge` — tenant Knowledge Sources (semantic search).
+2. `search_docs` — connector-scoped semantic search over ingested documentation chunks
+   (`docs-ingestion/`). Use when `search_knowledge` is empty and the question is about
+   a specific connector's endpoints or fields.
+3. `fetch_connector_docs` — full doc overview for a connector.
+4. `web_search` — Tavily escalation. Advisory policy in
+   `apps/engine/src/conversations/policies/web-search-escalation.ts`; gated by the
+   operator-flipped tenant setting `allow_web_search`.
+
+## Warnings feed the next turn
+
+`dry_run_workflow` / `dry_run_step` / `dry_run_transform` attach `RunResult.warnings` to
+`draft.latest_preview.warnings`. The conversation loop folds these into the next turn's
+`prior_failures` block so the LLM automatically sees unresolved identifiers, rate-limit
+hits, and pagination edges — the user does not have to quote them back.
+
 ## Human-in-the-loop rules
 
 - **Skill Candidates are never auto-promoted.** The operator must explicitly promote

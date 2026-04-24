@@ -16,19 +16,21 @@ This separation has practical consequences. Multiple Connectors can share the sa
 
 ---
 
-## The Four Drivers
+## The Nine Drivers
 
-Drivers are the protocol layer. Every Connector in sk uses one of four built-in drivers.
+Drivers are the protocol layer. Every Connector in sk uses one of nine built-in drivers: `http`, `graphql`, `postgres`, `s3`, `ftp`, `sftp`, `smb`, `mssql`, and `redis`.
 
 The **HTTP driver** handles REST APIs. It manages request construction, response parsing, pagination patterns, and error normalization. When a Step calls an HTTP Connector, the driver handles the protocol details so the workflow step only needs to describe what to call and what to do with the result.
 
 The **GraphQL driver** handles GraphQL APIs. It manages query and mutation construction, variable binding, and schema awareness. Workflows that target GraphQL APIs benefit from the driver's understanding of the schema structure — the AI can propose specific queries rather than generic HTTP calls.
 
-The **PostgreSQL driver** handles direct database connections. It manages query execution, parameterized inputs, and result set handling. This driver enables workflows that read from or write to relational databases directly, without requiring an intermediate API layer.
+The **PostgreSQL driver** handles direct database connections. It manages query execution, parameterized inputs, and result set handling. This driver enables workflows that read from or write to relational databases directly, without requiring an intermediate API layer. The **MSSQL driver** covers Microsoft SQL Server with the same model.
 
-The **S3 driver** handles object storage. It manages bucket operations, presigned URL generation, and streaming transfers. This covers not just AWS S3 but any S3-compatible object store.
+The **S3 driver** handles object storage. It manages bucket operations, presigned URL generation, and streaming transfers. This covers not just AWS S3 but any S3-compatible object store. The **FTP**, **SFTP**, and **SMB** drivers complete the file-transfer surface for enterprise file-exchange scenarios.
 
-Every Connector in sk uses one of these four drivers. Custom drivers are not part of the platform.
+The **Redis driver** handles key-value + pub/sub patterns for cache-backed workflows and lightweight inter-step coordination.
+
+Every Connector in sk uses one of these nine drivers. Custom drivers are not part of the platform.
 
 ### GraphQL vs REST: when to pick which
 
@@ -46,7 +48,7 @@ The two connectors can coexist in a tenant — one `github` connector for writes
 
 Templates are what make the AI's proposals accurate. Without templates, the AI can suggest "use an HTTP connector to call Salesforce" — but it cannot propose the correct authentication pattern, suggest the right endpoints, or explain the connector target's specific behaviors and limitations.
 
-sk ships 89 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Microsoft Teams, Google services, AWS services, databases, and more.
+sk ships 90 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Microsoft Teams, Google services, AWS services, databases, and more.
 
 A Template is more than a configuration skeleton. It includes: the appropriate driver, the authentication configuration for that service (OAuth2 scopes, API key placement, basic auth conventions), links to documentation that the platform will index, setup guidance the AI presents when a user configures the Connector, and example Skill content the AI can draw on when proposing integrations.
 

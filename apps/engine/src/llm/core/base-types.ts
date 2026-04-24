@@ -54,6 +54,12 @@ export interface SubkitLlmObjectGeneratorInput {
   tools?: SubkitLlmToolWithContext[];
   toolChoice?: "auto" | "required" | "none" | { type: "tool"; toolName: string };
   metadata?: Record<string, unknown>;
+  /**
+   * Hard cap on the submit/abort tool-use loop inside `generateObject()`.
+   * Defaults to `MAX_TOOL_LOOP_ATTEMPTS` (8). Callers can lower it for
+   * cheap flows or raise it for genuinely multi-step planning prompts.
+   */
+  maxAttempts?: number;
 }
 
 export interface SubkitLlmTelemetryMetadata {

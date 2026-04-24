@@ -5,11 +5,27 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient, type RunExecutionResponse } from "../engine-client.ts";
 
-/** Print the workflow run JSON, then — when connector_resolutions is
- *  present — a compact summary to stderr so humans can eyeball which
- *  connector, auth method, and environment every step actually hit. */
+/** Print the workflow run JSON, then — when connector_resolutions or
+ *  warnings are present — a compact summary to stderr so humans can
+ *  eyeball which connector, auth method, and environment every step
+ *  actually hit, and which steps surfaced warnings (unresolved
+ *  identifiers, rate-limit hits, pagination edges). */
 function printRunResult(result: RunExecutionResponse): void {
   printJson(result);
+  const warnings = (result.warnings ?? []) as Array<{
+    step_key?: string;
+    code?: string;
+    message?: string;
+  }>;
+  if (warnings.length > 0) {
+    process.stderr.write(`\n${pc.dim("warnings:")}\n`);
+    for (const w of warnings) {
+      const step = w.step_key ?? "(run)";
+      const code = w.code ?? "unknown";
+      const msg = w.message ?? "";
+      process.stderr.write(`  ${pc.yellow("WARN")} step=${step} code=${code} msg=${msg}\n`);
+    }
+  }
   const rs = result.connector_resolutions ?? [];
   if (rs.length === 0) return;
   process.stderr.write(`\n${pc.dim("connector resolutions:")}\n`);
@@ -160,7 +176,81 @@ const runCommand = defineCommand({
         ...(input !== null ? { input } : {}),
         request_source: "cli" as const,
       };
-      printJson(await client.runExecution(body));
+      printRunResult(await client.runExecution(body));
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      process.exit(exitCodeFor(err));
+    }
+  },
+});
+
+const validateCommand = defineCommand({
+  meta: {
+    name: "validate",
+    description:
+      "Validate a draft WorkflowDef JSON file (structural + step schema checks). No execution, no persistence.",
+  },
+  args: {
+    file: { type: "positional", required: true, description: "Path to WorkflowDef JSON" },
+  },
+  async run({ args }) {
+    const { readFileSync } = await import("node:fs");
+    const client = makeClient();
+    try {
+      const body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
+      const res = await client.validateWorkflowDraft(body);
+      if (res.ok) {
+        process.stdout.write(`${pc.green("ok")}  workflow draft validates cleanly\n`);
+        return;
+      }
+      process.stderr.write(`${pc.red("invalid")}  workflow draft:\n`);
+      for (const e of res.errors ?? []) {
+        process.stderr.write(`  ${pc.yellow(e.path)}  ${e.message}\n`);
+      }
+      process.exit(1);
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      process.exit(exitCodeFor(err));
+    }
+  },
+});
+
+const previewCommand = defineCommand({
+  meta: {
+    name: "preview",
+    description:
+      "Preview a draft WorkflowDef by dry-running it via runExecution (source=draft). No persistence. Alias: dry-run.",
+  },
+  args: {
+    file: { type: "positional", required: true, description: "Path to WorkflowDef JSON" },
+    input: { type: "string", description: "Input JSON string" },
+    name: { type: "string", description: "Optional label (goes to executions.source_ref)" },
+  },
+  async run({ args }) {
+    const { readFileSync } = await import("node:fs");
+    const client = makeClient();
+    let input: unknown = null;
+    if (args.input) {
+      try {
+        input = JSON.parse(args.input as string);
+      } catch {
+        process.stderr.write("invalid JSON for --input\n");
+        process.exit(1);
+      }
+    }
+    try {
+      const definition = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<
+        string,
+        unknown
+      >;
+      const body = {
+        source: "draft" as const,
+        definition,
+        ...(args.name ? { name: String(args.name) } : {}),
+        ...(input !== null ? { input } : {}),
+        request_source: "cli" as const,
+      };
+      printRunResult(await client.runExecution(body));
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));
@@ -225,15 +315,75 @@ const restoreCommand = defineCommand({
 });
 
 const createCommand = defineCommand({
-  meta: { name: "create", description: "Create a workflow from a JSON file" },
+  meta: {
+    name: "create",
+    description:
+      "Create a workflow from a JSON file. Runs `validate` and `preview` by default; pass --skip-checks to bypass.",
+  },
   args: {
     file: { type: "string", required: true, description: "Path to WorkflowDef JSON" },
+    "skip-checks": {
+      type: "boolean",
+      description: "Skip the validate+preview pre-flight (NOT recommended).",
+    },
+    input: {
+      type: "string",
+      description: "Input JSON string passed to the preview dry-run.",
+    },
   },
   async run({ args }) {
     const { readFileSync } = await import("node:fs");
     const client = makeClient();
     try {
       const body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
+      const skip = Boolean((args as Record<string, unknown>)["skip-checks"]);
+      if (!skip) {
+        const validation = await client.validateWorkflowDraft(body);
+        if (!validation.ok) {
+          process.stderr.write(`${pc.red("invalid")}  workflow draft:\n`);
+          for (const e of validation.errors ?? []) {
+            process.stderr.write(`  ${pc.yellow(e.path)}  ${e.message}\n`);
+          }
+          process.stderr.write(
+            `Re-run with --skip-checks to force, or fix the errors above and try again.\n`,
+          );
+          process.exit(1);
+        }
+        let input: unknown = null;
+        if (args.input) {
+          try {
+            input = JSON.parse(args.input as string);
+          } catch {
+            process.stderr.write("invalid JSON for --input\n");
+            process.exit(1);
+          }
+        }
+        const preview = await client.runExecution({
+          source: "draft",
+          definition: body,
+          ...(input !== null ? { input } : {}),
+          request_source: "cli",
+        });
+        if ((preview.warnings ?? []).length > 0) {
+          process.stderr.write(`${pc.yellow("preview warnings:")}\n`);
+          for (const w of preview.warnings ?? []) {
+            const ww = w as { step_key?: string; code?: string; message?: string };
+            process.stderr.write(
+              `  ${pc.yellow("WARN")} step=${ww.step_key ?? "(run)"} code=${ww.code ?? "unknown"} msg=${ww.message ?? ""}\n`,
+            );
+          }
+        }
+        if (preview.status !== "succeeded") {
+          process.stderr.write(
+            `preview did not succeed (status=${preview.status}). Re-run with --skip-checks to force.\n`,
+          );
+          process.exit(1);
+        }
+      } else {
+        process.stderr.write(
+          `${pc.yellow("warning:")} --skip-checks active; no validate or preview was run\n`,
+        );
+      }
       printJson(await client.createWorkflow(body));
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
@@ -248,6 +398,9 @@ export const workflowsCommand = defineCommand({
     list: listCommand,
     get: getCommand,
     run: runCommand,
+    validate: validateCommand,
+    preview: previewCommand,
+    "dry-run": previewCommand,
     delete: deleteCommand,
     history: historyCommand,
     restore: restoreCommand,

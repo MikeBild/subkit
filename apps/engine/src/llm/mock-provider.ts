@@ -69,6 +69,15 @@ class MockProvider {
    */
   conversePlans: Map<string, ConverseMockStep[]> = new Map();
   converseCursors: Map<string, number> = new Map();
+  /**
+   * Per-(model, flow) cache-state tracking used by `call()` to simulate
+   * prompt-cache write-on-first-turn + read-on-subsequent-turns semantics.
+   * Real providers report `cache_creation_tokens` the first time a stable
+   * block lands and `cache_read_tokens` on every reuse; the mock mirrors
+   * that shape so tests can assert the accounting without needing a live
+   * provider.
+   */
+  cacheSeenKey: Set<string> = new Set();
 
   reset(): void {
     this.calls = [];
@@ -76,6 +85,7 @@ class MockProvider {
     this.generateOverrides = {};
     this.conversePlans = new Map();
     this.converseCursors = new Map();
+    this.cacheSeenKey = new Set();
   }
 
   setConversePlan(conversation_id: string, plan: ConverseMockStep[]): void {
@@ -213,7 +223,12 @@ class MockProvider {
     }
   }
 
-  call<T = unknown>(args: { flow: LlmFlow; model: string; prompt: EnhancedPrompt }): MockResult<T> {
+  call<T = unknown>(args: {
+    flow: LlmFlow;
+    model: string;
+    prompt: EnhancedPrompt;
+    enable_prompt_cache?: boolean;
+  }): MockResult<T> {
     this.maybeFail(args.model, args.prompt);
     const lastUser =
       [...args.prompt.messages].reverse().find((m) => m.role === "user")?.content ?? "";
@@ -228,11 +243,33 @@ class MockProvider {
     });
     const canned = this.canned(args.flow, lastUser);
     const completion_tokens = Math.max(16, Math.min(400, Math.floor(canned.text.length / 4)));
+
+    // Simulate Anthropic-style prompt-cache accounting. First call for a
+    // given (model, flow) with cache enabled and a non-trivial stable
+    // block produces `cache_creation_tokens`; subsequent calls produce
+    // `cache_read_tokens` covering the same stable span. Tests asserting
+    // cache hit rate use `LLM_PROVIDER=mock` + `enable_prompt_cache=true`
+    // and read the recorded metric.
+    const stableTokens = Math.max(0, Math.floor(args.prompt.token_counts.system / 2));
+    let cache_creation_tokens = 0;
+    let cache_read_tokens = 0;
+    if (args.enable_prompt_cache && stableTokens > 0) {
+      const cacheKey = `${args.model}::${args.flow}`;
+      if (this.cacheSeenKey.has(cacheKey)) {
+        cache_read_tokens = stableTokens;
+      } else {
+        cache_creation_tokens = stableTokens;
+        this.cacheSeenKey.add(cacheKey);
+      }
+    }
+
     return {
       text: canned.text,
       object: canned.object as T,
       prompt_tokens: args.prompt.token_counts.total,
       completion_tokens,
+      cache_read_tokens,
+      cache_creation_tokens,
     };
   }
 }

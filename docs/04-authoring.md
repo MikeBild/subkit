@@ -98,6 +98,46 @@ The engine tracks these as fresh or stale checkpoints. Any draft mutation invali
 
 The result is a much more deterministic authoring loop: the assistant does not "think" a connector is ready or a workflow is runnable; it reads that from checkpoint state.
 
+### CLI parity
+
+The `sk` CLI mirrors the conversational gates so operators get the same guarantees when they drive authoring from a script or pipeline:
+
+| Conversation tool | sk CLI subcommand |
+|---|---|
+| `validate_draft` | `sk workflows validate <file.json>` |
+| `dry_run_workflow` / `dry_run_step` | `sk workflows preview <file.json>` (alias: `dry-run`) |
+| `commit_draft` | `sk workflows create <file.json>` |
+| `validate_connector_draft` (shape check) | — (use the conversational loop for structural checks) |
+| `probe_connector_draft` / `test` | `sk connectors probe <id>` (alias of `test`) |
+| `inspect_connector_draft` | `sk connectors inspect <id>` (alias of `get`) |
+
+`sk workflows create` runs `validate` + `preview` as a pre-flight by default. `sk connectors create` runs a driver probe after the create returns. Both commands accept `--skip-checks` as an explicit escape hatch — this surfaces a stderr warning and is reserved for cases where the caller has already validated elsewhere. The same `inspect → validate → preview/probe → commit/save` state machine gates the persisted write on both surfaces.
+
+### Warnings feed the next turn
+
+When a dry-run (`dry_run_workflow`, `dry_run_step`) produces structured warnings — unresolved identifiers, rate-limit signals, pagination edges — the warnings are attached to the draft's `latest_preview` and fed automatically into the next turn's `prior_failures` block. The assistant sees the warnings as structured context on its next prompt without the user having to quote them back. The `sk workflows run` CLI mirrors this by printing a `WARN step=<key> code=<code> msg=<text>` line per warning on stderr while keeping the JSON payload on stdout unchanged.
+
+### Submit/abort retry loop
+
+Every structured LLM flow — `generate`, `extract`, `repair`, `discover` — goes through the same tool loop in `AiSdkModel.generateObject`. The model must call either `submit` (to return the final structured object) or `abort` (to give up with a reason). Unknown tool calls trigger another iteration with the tool result appended to the transcript so the model can self-correct. The loop is hard-capped at `MAX_TOOL_LOOP_ATTEMPTS = 8`; callers can tighten it per-flow by passing `maxAttempts`.
+
+### Prompt caching
+
+Stable context (skills, ingested docs, knowledge chunks) is marked with an Anthropic ephemeral `cache_control: { type: "ephemeral", ttl: "1h" }` breakpoint. Volatile context (user memory, prior failures, the current turn's messages) is refreshed every call. The `llm.cache.hit_rate` metric (derived from `llm_cache_hit_tokens_total` / `llm_prompt_tokens_total`) tracks how often stable blocks are reused within the 1-hour window, and the mock provider simulates the same accounting so tests can assert on cache behaviour.
+
+### Tools for context
+
+The assembler pre-loads Skills + docs + Knowledge chunks before every turn. On-demand retrieval is available through four conversation tools, used in this precedence order:
+
+1. `search_knowledge` — semantic search over tenant Knowledge Sources.
+2. `search_docs` — scoped search over a connector's ingested documentation (OpenAPI, GraphQL, HTML, Markdown chunks). Use when `search_knowledge` is empty and the answer is connector-specific.
+3. `fetch_connector_docs` — full doc overview for a connector.
+4. `web_search` — Tavily public-web fallback. Advisory policy in `apps/engine/src/conversations/policies/web-search-escalation.ts`; the tool is only available when an operator has flipped `tenant_llm_settings.allow_web_search = true`.
+
+### Self-healing retry
+
+When drift is detected, the repair flow proposes a patch, classifies it, and dry-runs it against the most recent `execution_fixtures` row. If either gate rejects the proposal, the loop re-prompts the LLM with the structured rejection reason folded into `prior_failures`, up to `REPAIR_MAX_ATTEMPTS = 2` total attempts. The final patch candidate carries a `metadata.rejection_chain` array recording every prior rejection, so reviewers can see what was tried before the final proposal landed. Rate-limit-class drift (HTTP 429 / 503 with a template `rate_limits` hint) produces a distinct `kind: "rate_limited"` patch candidate — the same retry loop, but the patch only adjusts backoff metadata.
+
 ---
 
 ## Diagnosis Is Part of Authoring
@@ -189,7 +229,7 @@ context under tight budgets.
 
 When a user mentions an external connector boundary — "pull data from our Salesforce instance" or "post a message to Slack" — the AI needs accurate, connector-specific knowledge to propose a useful integration. Generic HTTP knowledge is not enough.
 
-sk ships 89 Connector Templates covering the most common enterprise services. When a user mentions a connector target, the AI draws on the matching template to propose an accurate integration. Templates include the driver type, authentication configuration, documentation references, and setup guidance. The AI understands the target API, not just the idea of it.
+sk ships 90 Connector Templates covering the most common enterprise services. When a user mentions a connector target, the AI draws on the matching template to propose an accurate integration. Templates include the driver type, authentication configuration, documentation references, and setup guidance. The AI understands the target API, not just the idea of it.
 
 Documentation Ingestion is part of Connector setup. OpenAPI specs, GraphQL schemas, and HTML documentation are automatically indexed and become part of the AI's context for that Connector. The AI can refer to specific endpoints, parameters, and error codes because the documentation is available to it.
 

@@ -9,6 +9,7 @@
 // default false). Operators opt in explicitly.
 
 import { z } from "@hono/zod-openapi";
+import { WEB_SEARCH_ESCALATION_POLICY } from "../policies/web-search-escalation.ts";
 import type { ConversationTool } from "./index.ts";
 
 const Input = z
@@ -32,8 +33,7 @@ interface TavilyResponse {
 
 export const webSearchTool: ConversationTool = {
   name: "web_search",
-  description:
-    "Public web search via Tavily. Use ONLY as a fallback when `search_knowledge` returns nothing useful and the question is about public-internet facts. Requires operator to have enabled web_search for this tenant.",
+  description: `Public web search via Tavily. ${WEB_SEARCH_ESCALATION_POLICY.summary} Requires operator to have enabled \`${WEB_SEARCH_ESCALATION_POLICY.opt_in_setting}\` for this tenant.`,
   inputSchema: Input,
   category: "tenant_read",
   async execute(ctx, rawArgs) {

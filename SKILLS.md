@@ -25,8 +25,8 @@ by an agent. See `AGENTS.md` for the canonical repo-wide contract and
 ## Domain / procedural
 
 - [`subkit-connector-patterns`](.claude/skills/subkit-connector-patterns/SKILL.md) —
-  Add a connector template, driver tweak, or OAuth2 flow. References the 89 existing
-  templates and 4 drivers.
+  Add a connector template, driver tweak, or OAuth2 flow. References the 90 existing
+  templates and 9 drivers.
 - [`subkit-ai-context-pipeline`](.claude/skills/subkit-ai-context-pipeline/SKILL.md) —
   Work on Skills, Knowledge Sources, Skill Candidates, Conversations, Self-Healing,
   and Discovery. Human-in-the-loop rules are strict.

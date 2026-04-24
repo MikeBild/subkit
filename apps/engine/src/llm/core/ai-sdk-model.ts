@@ -78,6 +78,13 @@ export function isFallbackEligible(err: unknown): boolean {
 }
 
 const DEFAULT_MODEL_ID = "claude-sonnet-4-5";
+
+// Hard cap on the submit/abort tool-use loop in `generateObject()`. Prevents a
+// buggy or adversarial model from looping indefinitely when it keeps calling
+// auxiliary tools without ever choosing `submit` or `abort`. Eight attempts is
+// enough for a legitimate multi-step tool workflow and cheap to surface as a
+// structured failure (reason = `max_attempts_exceeded`).
+export const MAX_TOOL_LOOP_ATTEMPTS = 8;
 const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
   "claude-sonnet-4-5": 200_000,
   "claude-haiku-4-5-20251001": 200_000,
@@ -306,7 +313,18 @@ export class AiSdkModel implements SubkitLlm {
       cache_creation_tokens: 0,
     };
 
+    const maxAttempts = input.maxAttempts ?? MAX_TOOL_LOOP_ATTEMPTS;
+    let attempts = 0;
     while (finalResult === undefined && abortReason === undefined) {
+      if (attempts >= maxAttempts) {
+        return {
+          success: false,
+          response: `max_attempts_exceeded after ${attempts} tool-loop iterations`,
+          messages: convo,
+          usage: aggregatedUsage,
+        };
+      }
+      attempts += 1;
       const tools = this.buildTools(schemaObj, input.tools, usageCounts);
       const cwfParams: Parameters<typeof this.callWithFallback>[0] = {
         messages: convo,

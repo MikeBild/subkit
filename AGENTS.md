@@ -9,7 +9,7 @@ instruction files are compatibility layers or indexes — not competing sources 
 - **subkit is a control layer for enterprise AI integration.** It is not a chat product,
   not an LLM provider, and not a general workflow-automation tool. It owns:
   identity & access (RBAC/ABAC, encrypted credentials, portal tokens, API keys),
-  unified data/tool interfaces (4 typed drivers, 89 connector templates, tunnels),
+  unified data/tool interfaces (9 typed drivers, 90 connector templates, tunnels),
   governed execution (immutable audit log, human-in-the-loop approvals,
   versioned workflows with full snapshots), observability (Prometheus, structured logs,
   drift detection), and multi-tenant conversation-first surfaces (CLI, `sk`, Slack, Teams,
@@ -30,7 +30,7 @@ Priority when sources conflict:
 
 1. Code, types, tests, and verified inline decisions.
 2. Canonical docs in `docs/` (numbered) and workflow/config files.
-3. Existing implementation examples (e.g. the 89 templates, the 4 drivers).
+3. Existing implementation examples (e.g. the 90 templates, the 9 drivers).
 
 High-value references (by task type):
 
@@ -57,6 +57,18 @@ High-value references (by task type):
 - **Every HTTP boundary uses Zod schemas.** Add a `@hono/zod-openapi` schema for every
   route in `apps/engine/src/http/routes/` — inputs and outputs. OpenAPI is generated from Zod;
   do not hand-edit the OpenAPI surface.
+- **Structured LLM flows use submit/abort.** `generate`, `extract`, `repair`, `discover`
+  all call `AiSdkModel.generateObject` with `toolChoice:"required"` and a submit/abort
+  tool pair, capped at `MAX_TOOL_LOOP_ATTEMPTS = 8`. Don't drop a flow back to
+  text + best-effort JSON parsing — the eval gate (`verify:ai`) will catch it.
+- **CLI parity with the conversational gates.** `sk workflows {validate, preview, create}`
+  and `sk connectors {inspect, probe, create}` enforce the same
+  `inspect → validate → preview/probe → commit/save` state machine the conversation loop
+  enforces. `--skip-checks` is the only escape hatch; use it sparingly.
+- **Dry-run warnings feed the next turn.** When `dry_run_workflow` / `dry_run_step`
+  emit warnings (`unresolved_identifier`, rate limits, pagination edges), they land on
+  `draft.latest_preview.warnings` and the loop folds them into the next turn's
+  `prior_failures` automatically.
 - **Use the structured logger** (`apps/engine/src/logging/`) in engine, CLI, agent, and `sk`
   code. Do not introduce raw `console.log / warn / error` there. Build scripts under
   `scripts/` may use console output.
@@ -84,7 +96,7 @@ layer, stop and move it.
 - **`packages/shared/`** — shared domain types & helpers. Pure, deterministic, no
   `apps/*` imports. See `packages/shared/AGENTS.md` for stricter rules.
 
-Subsystem map inside `apps/engine/src/` (35 directories, each owns one concern):
+Subsystem map inside `apps/engine/src/` (37 directories, each owns one concern):
 
 | Concern | Directory | Key docs |
 |---|---|---|
@@ -92,7 +104,7 @@ Subsystem map inside `apps/engine/src/` (35 directories, each owns one concern):
 | Immutable audit log | `audit/` | `docs/07-security-governance.md` |
 | Auth providers (OIDC, API key, portal token) | `auth/` | `docs/07-security-governance.md` |
 | Chat adapters (Slack, Teams, Google Chat) | `chat/` | `docs/03-input-surfaces.md` |
-| 4 drivers + 89 templates | `connectors/` | `docs/05-connectors.md` |
+| 9 drivers + 90 templates | `connectors/` | `docs/05-connectors.md` |
 | AI authoring loop + tool use | `conversations/` | `docs/04-authoring.md` |
 | Encrypted secret storage | `credentials/` | `docs/07-security-governance.md` |
 | AES-256-GCM + redaction | `crypto/` | `docs/07-security-governance.md` |

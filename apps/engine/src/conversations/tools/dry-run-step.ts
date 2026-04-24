@@ -7,6 +7,10 @@
 import { z } from "@hono/zod-openapi";
 import { classifyRunResult } from "../../execution/classify.ts";
 import { runSingleStep } from "../../execution/step-run.ts";
+import {
+  recordExecutionDryRun,
+  recordExecutionWarningsEmitted,
+} from "../../observability/instrumentation.ts";
 import type { StepDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
@@ -82,6 +86,19 @@ export const dryRunStepTool: ConversationTool = {
       request_source: "chat",
     });
     const summary = classifyRunResult(step, run);
+    const runWarnings = (run.warnings ?? []).map((w) => ({
+      step_key: (w as { step_key?: string | null }).step_key ?? args.step_id,
+      code: (w as { code?: string }).code ?? "unknown",
+      message: (w as { message?: string }).message ?? "",
+    }));
+    recordExecutionDryRun({ tenant_id: ctx.tenant_id, source_kind: "step" });
+    if (runWarnings.length > 0) {
+      recordExecutionWarningsEmitted({
+        tenant_id: ctx.tenant_id,
+        step_kind: summary.kind ?? "step",
+        count: runWarnings.length,
+      });
+    }
     const nextDraft = withLatestPreview(
       ctx.getDraft(),
       {
@@ -89,6 +106,7 @@ export const dryRunStepTool: ConversationTool = {
         step_id: summary.step_id,
         summary: summary.summary,
         preview: summary.output_preview ?? null,
+        ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
       },
       "dry_run_step",
       "workflow_previewed",
@@ -103,6 +121,7 @@ export const dryRunStepTool: ConversationTool = {
         classification: summary.classification,
         summary: summary.summary,
         execution_id: run.execution_id,
+        ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
         ...(summary.output_preview !== undefined ? { output_preview: summary.output_preview } : {}),
         ...(summary.error ? { error: summary.error } : {}),
       }),
