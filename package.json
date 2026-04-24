@@ -31,7 +31,7 @@
     "db:migrate": "bun run apps/engine/src/db/migrate.ts",
     "gen:openapi-client": "bun run scripts/gen-openapi-client.ts",
     "check:openapi-drift": "bun run gen:openapi-client && git diff --exit-code packages/cli-core/src/engine-api",
-    "check:terminology": "sh scripts/check-terminology.sh",
+    "check:terminology": "bash scripts/check-terminology.sh",
     "db:seed": "bun run apps/engine/src/db/seed.ts",
     "db:issue-admin-key": "bun run apps/engine/src/db/issue-admin-key.ts",
     "compose:up": "sh scripts/ensure-env.sh && docker compose up -d --build",
