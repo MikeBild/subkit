@@ -48,10 +48,13 @@ const ElicitationParam = z.object({
   elicitation_id: z.string().uuid(),
 });
 
+const PermissionModeSchema = z.enum(["auto", "ask", "plan"]);
+
 const RespondElicitationBody = z
   .object({
     output: z.unknown(),
     reason: z.string().optional(),
+    permission_mode: PermissionModeSchema.optional(),
   })
   .openapi("RespondElicitationBody");
 
@@ -123,8 +126,6 @@ const ConversationDetailSchema = z
       .optional(),
   })
   .openapi("ConversationDetail");
-
-const PermissionModeSchema = z.enum(["auto", "ask", "plan"]);
 
 const CreateBody = z
   .object({
@@ -657,6 +658,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
         actor_id: principal.id,
         output: body.output,
         ...(body.reason ? { reason: body.reason } : {}),
+        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
       },
       db,
     );

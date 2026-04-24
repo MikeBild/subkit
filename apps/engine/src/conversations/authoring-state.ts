@@ -1061,6 +1061,7 @@ export function refreshDraftSummary(draft: DraftDocument): DraftDocument {
     mode,
     workflow,
     connector,
+    ...(draft.session ? { session: draft.session } : {}),
     state,
     summary,
   };
@@ -1075,6 +1076,16 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
     ...(typeof raw.mode === "string" ? { mode: raw.mode as AuthoringMode } : {}),
     workflow,
     connector,
+    ...(isRecord(raw.session) &&
+    (raw.session.permission_mode === "auto" ||
+      raw.session.permission_mode === "ask" ||
+      raw.session.permission_mode === "plan")
+      ? {
+          session: {
+            permission_mode: raw.session.permission_mode,
+          },
+        }
+      : {}),
     ...(isRecord(raw.latest_preview)
       ? {
           latest_preview: {

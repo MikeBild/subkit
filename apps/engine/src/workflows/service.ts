@@ -24,6 +24,7 @@ export interface WorkflowView {
   current_version: number | null;
   created_at: Date;
   updated_at: Date;
+  definition: WorkflowDef;
   steps: WorkflowDef["steps"];
 }
 
@@ -84,6 +85,7 @@ async function loadWorkflowView(
     current_version: version,
     created_at: wf.created_at,
     updated_at: wf.updated_at,
+    definition: def,
     steps: def.steps,
   };
 }

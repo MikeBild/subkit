@@ -5,6 +5,7 @@ import type { AuthType, DriverName, Environment } from "../connectors/types.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 
 export type ConversationStatus = "active" | "awaiting_input" | "committed" | "abandoned";
+export type ConversationPermissionMode = "auto" | "ask" | "plan";
 
 export type ConversationRole = "user" | "assistant" | "tool" | "system";
 
@@ -270,6 +271,9 @@ export interface DraftDocument {
   summary?: AuthoringSummary;
   latest_preview?: WorkflowDraftPreviewSummary | null;
   state?: AuthoringState;
+  session?: {
+    permission_mode?: ConversationPermissionMode | null;
+  };
 }
 
 /**

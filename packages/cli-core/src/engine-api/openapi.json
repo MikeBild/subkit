@@ -733,6 +733,17 @@
           },
           "provider": {
             "type": "string"
+          },
+          "base_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "scopes": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -742,7 +753,357 @@
           "tenant_slug",
           "email",
           "role_name",
-          "provider"
+          "provider",
+          "base_url",
+          "scopes"
+        ]
+      },
+      "AutomationListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Automation"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "Automation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "lifecycle": {
+            "type": "string"
+          },
+          "current_version_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "current_version": {
+            "type": "number",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "definition": {
+            "nullable": true
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "slug",
+          "name",
+          "lifecycle",
+          "current_version_id",
+          "current_version",
+          "created_at",
+          "updated_at",
+          "steps"
+        ]
+      },
+      "AutomationDefinitionInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "nullable": true
+              }
+            },
+            "minItems": 1,
+            "maxItems": 200
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          }
+        },
+        "required": [
+          "name",
+          "steps"
+        ]
+      },
+      "AutomationPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "execution": {
+            "$ref": "#/components/schemas/AutomationExecution"
+          }
+        },
+        "required": [
+          "execution"
+        ]
+      },
+      "AutomationExecution": {
+        "type": "object",
+        "properties": {
+          "execution_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "output": {
+            "nullable": true
+          },
+          "error": {
+            "nullable": true
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "nullable": true
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "execution_id",
+          "status",
+          "steps"
+        ]
+      },
+      "AutomationPreviewBody": {
+        "type": "object",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/AutomationDefinitionInput"
+          },
+          "input": {
+            "nullable": true
+          },
+          "request_source": {
+            "type": "string",
+            "enum": [
+              "api",
+              "cli",
+              "mcp",
+              "webhook",
+              "tool-chain",
+              "scheduler"
+            ]
+          }
+        },
+        "required": [
+          "definition"
+        ]
+      },
+      "AutomationRunBody": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "nullable": true
+          },
+          "request_source": {
+            "type": "string",
+            "enum": [
+              "api",
+              "cli",
+              "mcp",
+              "webhook",
+              "tool-chain",
+              "scheduler"
+            ]
+          }
+        }
+      },
+      "AutomationChangePreviewResponse": {
+        "type": "object",
+        "properties": {
+          "automation": {
+            "$ref": "#/components/schemas/Automation"
+          },
+          "proposed_definition": {
+            "nullable": true
+          },
+          "changed": {
+            "type": "boolean"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutomationPatchOperation"
+            }
+          },
+          "execution": {
+            "$ref": "#/components/schemas/AutomationExecution"
+          }
+        },
+        "required": [
+          "automation",
+          "changed",
+          "operations",
+          "execution"
+        ]
+      },
+      "AutomationPatchOperation": {
+        "type": "object",
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "add",
+              "remove",
+              "replace",
+              "move",
+              "copy",
+              "test"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "value": {
+            "nullable": true
+          }
+        },
+        "required": [
+          "op",
+          "path"
+        ]
+      },
+      "AutomationApplyResponse": {
+        "type": "object",
+        "properties": {
+          "automation": {
+            "$ref": "#/components/schemas/Automation"
+          },
+          "changed": {
+            "type": "boolean"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutomationPatchOperation"
+            }
+          }
+        },
+        "required": [
+          "automation",
+          "changed",
+          "operations"
+        ]
+      },
+      "AutomationApplyBody": {
+        "type": "object",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/AutomationDefinitionInput"
+          }
+        },
+        "required": [
+          "definition"
+        ]
+      },
+      "AutomationApplyAndRunResponse": {
+        "type": "object",
+        "properties": {
+          "automation": {
+            "$ref": "#/components/schemas/Automation"
+          },
+          "changed": {
+            "type": "boolean"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutomationPatchOperation"
+            }
+          },
+          "execution": {
+            "$ref": "#/components/schemas/AutomationExecution"
+          }
+        },
+        "required": [
+          "automation",
+          "changed",
+          "operations",
+          "execution"
+        ]
+      },
+      "AutomationApplyAndRunBody": {
+        "type": "object",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/AutomationDefinitionInput"
+          },
+          "input": {
+            "nullable": true
+          },
+          "request_source": {
+            "type": "string",
+            "enum": [
+              "api",
+              "cli",
+              "mcp",
+              "webhook",
+              "tool-chain",
+              "scheduler"
+            ]
+          }
+        },
+        "required": [
+          "definition"
         ]
       },
       "WorkflowListResponse": {
@@ -946,6 +1307,191 @@
           "created_at"
         ]
       },
+      "ExecutionRunResponse": {
+        "type": "object",
+        "properties": {
+          "execution_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "output": {
+            "nullable": true
+          },
+          "error": {
+            "nullable": true
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "nullable": true
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "execution_id",
+          "status"
+        ]
+      },
+      "ExecutionRunSavedBody": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "saved"
+            ]
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "input": {
+            "nullable": true
+          },
+          "sync": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source",
+          "workflow_id"
+        ]
+      },
+      "ExecutionRunDraftBody": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "draft"
+            ]
+          },
+          "definition": {
+            "$ref": "#/components/schemas/ExecutionRunDraftDefinition"
+          },
+          "name": {
+            "type": "string"
+          },
+          "input": {
+            "nullable": true
+          }
+        },
+        "required": [
+          "source",
+          "definition"
+        ]
+      },
+      "ExecutionRunDraftDefinition": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "nullable": true
+              }
+            },
+            "minItems": 1,
+            "maxItems": 200
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          }
+        },
+        "required": [
+          "name",
+          "steps"
+        ]
+      },
+      "ExecutionRunStepBody": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "step"
+            ]
+          },
+          "step": {
+            "$ref": "#/components/schemas/ExecutionRunStep"
+          },
+          "workflow_slug": {
+            "type": "string"
+          },
+          "input": {
+            "nullable": true
+          },
+          "scope": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "maximum": 60000
+          }
+        },
+        "required": [
+          "source",
+          "step"
+        ]
+      },
+      "ExecutionRunStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": {
+          "nullable": true
+        }
+      },
       "ExecutionListResponse": {
         "type": "object",
         "properties": {
@@ -971,10 +1517,27 @@
             "type": "string"
           },
           "workflow_id": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "workflow_version_id": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
+          },
+          "source_kind": {
+            "type": "string",
+            "enum": [
+              "saved",
+              "draft",
+              "step"
+            ]
+          },
+          "source_ref": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
           },
           "status": {
             "type": "string"
@@ -1002,6 +1565,8 @@
           "id",
           "workflow_id",
           "workflow_version_id",
+          "source_kind",
+          "source_ref",
           "status",
           "request_source",
           "parent_execution_id",
@@ -1613,7 +2178,10 @@
               "grpc",
               "mqtt",
               "imap",
-              "ftp"
+              "ftp",
+              "sftp",
+              "smb",
+              "redis"
             ]
           },
           "environment": {
@@ -2023,6 +2591,11 @@
             "type": "string",
             "nullable": true,
             "format": "uuid"
+          },
+          "slug": {
+            "type": "string",
+            "nullable": true,
+            "default": null
           },
           "title": {
             "type": "string",
@@ -2993,6 +3566,14 @@
           },
           "title": {
             "type": "string"
+          },
+          "permission_mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "ask",
+              "plan"
+            ]
           }
         }
       },
@@ -3151,6 +3732,14 @@
           },
           "memory": {
             "type": "string"
+          },
+          "permission_mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "ask",
+              "plan"
+            ]
           }
         },
         "required": [
@@ -3174,6 +3763,14 @@
           "draft_mode": {
             "type": "string"
           },
+          "authoring_mode": {
+            "type": "string",
+            "nullable": true
+          },
+          "authoring_stage": {
+            "type": "string",
+            "nullable": true
+          },
           "draft_summary": {
             "type": "object",
             "nullable": true,
@@ -3182,6 +3779,10 @@
                 "type": "string"
               },
               "next_action": {
+                "type": "string",
+                "nullable": true
+              },
+              "next_required_action": {
                 "type": "string",
                 "nullable": true
               },
@@ -3194,13 +3795,284 @@
               "progress_label": {
                 "type": "string",
                 "nullable": true
+              },
+              "lifecycle_state": {
+                "type": "string"
+              },
+              "blocked_by": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "required": [
               "readiness",
               "next_action",
+              "next_required_action",
               "missing_fields",
-              "progress_label"
+              "progress_label",
+              "lifecycle_state",
+              "blocked_by"
+            ]
+          },
+          "active_target": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "connector",
+                  "workflow",
+                  "none"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "nullable": true
+              },
+              "slug": {
+                "type": "string",
+                "nullable": true
+              },
+              "id": {
+                "type": "string",
+                "nullable": true
+              },
+              "environment": {
+                "type": "string",
+                "nullable": true
+              },
+              "lifecycle_state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "name",
+              "slug",
+              "id",
+              "environment",
+              "lifecycle_state"
+            ]
+          },
+          "checkpoint_statuses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "verified_at": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "verified_by_tool": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "ok": {
+                  "type": "boolean",
+                  "nullable": true
+                },
+                "summary": {
+                  "type": "string",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "key",
+                "status",
+                "verified_at",
+                "verified_by_tool",
+                "ok",
+                "summary"
+              ]
+            }
+          },
+          "stale_checkpoints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "next_required_action": {
+            "type": "string",
+            "nullable": true
+          },
+          "persisted_resources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "name": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "version_id": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "version": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "environment": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "saved_at": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "slug",
+                "name",
+                "version_id",
+                "version",
+                "environment",
+                "saved_at"
+              ]
+            }
+          },
+          "latest_execution": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "execution_id": {
+                "type": "string"
+              },
+              "workflow_id": {
+                "type": "string",
+                "nullable": true
+              },
+              "workflow_version_id": {
+                "type": "string",
+                "nullable": true
+              },
+              "status": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "string"
+              },
+              "warnings_count": {
+                "type": "number"
+              },
+              "recorded_at": {
+                "type": "string"
+              },
+              "diagnosis_available": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "execution_id",
+              "workflow_id",
+              "workflow_version_id",
+              "status",
+              "environment",
+              "warnings_count",
+              "recorded_at",
+              "diagnosis_available"
+            ]
+          },
+          "latest_diagnosis": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "execution_id": {
+                "type": "string"
+              },
+              "recorded_at": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "warning_sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "step_key": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "identifier": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "step_key",
+                    "code",
+                    "identifier"
+                  ]
+                }
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "step_key": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "duration_ms": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "output_preview": {
+                      "nullable": true
+                    },
+                    "error": {
+                      "nullable": true
+                    },
+                    "request_meta": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "step_key",
+                    "kind",
+                    "status",
+                    "duration_ms"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "execution_id",
+              "recorded_at",
+              "reason",
+              "warning_sources",
+              "steps"
             ]
           },
           "skills": {
@@ -3396,7 +4268,16 @@
           "connector_id",
           "workflow_id",
           "draft_mode",
+          "authoring_mode",
+          "authoring_stage",
           "draft_summary",
+          "active_target",
+          "checkpoint_statuses",
+          "stale_checkpoints",
+          "next_required_action",
+          "persisted_resources",
+          "latest_execution",
+          "latest_diagnosis",
           "skills",
           "messages",
           "tool_calls_total",
@@ -3415,6 +4296,14 @@
           },
           "reason": {
             "type": "string"
+          },
+          "permission_mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "ask",
+              "plan"
+            ]
           }
         }
       },
@@ -6301,6 +7190,557 @@
         }
       }
     },
+    "/v1/automations": {
+      "get": {
+        "tags": [
+          "automations"
+        ],
+        "summary": "List automations",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "active",
+                "archived"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "name_contains",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "automations"
+        ],
+        "summary": "Create an automation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationDefinitionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Automation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/automations/{id}": {
+      "get": {
+        "tags": [
+          "automations"
+        ],
+        "summary": "Fetch an automation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Automation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "automations"
+        ],
+        "summary": "Update an automation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationDefinitionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Automation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "automations"
+        ],
+        "summary": "Delete an automation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/automations/preview": {
+      "post": {
+        "tags": [
+          "automations"
+        ],
+        "summary": "Preview an inline automation definition",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationPreviewBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/automations/{id}/run": {
+      "post": {
+        "tags": [
+          "automations"
+        ],
+        "summary": "Run a saved automation inline",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationRunBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationExecution"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/automations/{id}/changes/preview": {
+      "post": {
+        "tags": [
+          "automations"
+        ],
+        "summary": "Preview changes against a saved automation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationPreviewBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationChangePreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/automations/{id}/changes/apply": {
+      "post": {
+        "tags": [
+          "automations"
+        ],
+        "summary": "Apply proposed changes to a saved automation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationApplyBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationApplyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/automations/{id}/changes/apply-and-run": {
+      "post": {
+        "tags": [
+          "automations"
+        ],
+        "summary": "Apply changes, save them, and run the saved automation inline",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationApplyAndRunBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationApplyAndRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workflows": {
       "get": {
         "tags": [
@@ -6723,6 +8163,90 @@
       }
     },
     "/v1/executions": {
+      "post": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "Run a saved workflow, a draft definition, or a single step",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "dev",
+                "prod"
+              ]
+            },
+            "required": false,
+            "name": "x-subkit-environment",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ExecutionRunSavedBody"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ExecutionRunDraftBody"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ExecutionRunStepBody"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "source",
+                  "mapping": {
+                    "saved": "#/components/schemas/ExecutionRunSavedBody",
+                    "draft": "#/components/schemas/ExecutionRunDraftBody",
+                    "step": "#/components/schemas/ExecutionRunStepBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Run completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workflow not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": [
           "executions"

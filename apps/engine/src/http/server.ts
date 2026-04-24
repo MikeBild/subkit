@@ -32,6 +32,7 @@ import { registerAiGenerateRoute } from "./routes/ai/generate.ts";
 import { registerAiRepairRoute } from "./routes/ai/repair.ts";
 import { registerAiSummarizeRoute } from "./routes/ai/summarize.ts";
 import { registerAuditLogRoutes } from "./routes/audit-log.ts";
+import { registerAutomationRoutes } from "./routes/automations.ts";
 import { registerChatRoutes } from "./routes/chat.ts";
 import { registerConnectorDocsRoutes } from "./routes/connector-docs.ts";
 import { registerConnectorTemplateRoutes } from "./routes/connector-templates.ts";
@@ -215,6 +216,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerSessionsOidcRoute(app);
   registerLoginRoutes(app);
   registerWhoamiRoute(app);
+  registerAutomationRoutes(app);
   registerWorkflowRoutes(app);
   registerExecutionRoutes(app);
   registerConnectorTemplateRoutes(app);

@@ -18,12 +18,13 @@ import { getMockProvider } from "../llm/mock-provider.ts";
 import { log } from "../logging/logger.ts";
 import { cancelConversationAbort } from "./abort.ts";
 import { createEmptyDraftDocument } from "./authoring-state.ts";
-import { loadDraft, undoLastSnapshot } from "./draft.ts";
+import { appendSnapshot, loadDraft, undoLastSnapshot } from "./draft.ts";
 import { type RunLoopResult, runLoop } from "./loop.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "./resume.ts";
 import type {
   ConversationDetail,
   ConversationMessageRecord,
+  ConversationPermissionMode,
   ConversationRecord,
   ConversationStatus,
   ConversationToolCallRecord,
@@ -31,6 +32,41 @@ import type {
 } from "./types.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+function normalizePermissionMode(value: unknown): ConversationPermissionMode | null {
+  return value === "auto" || value === "ask" || value === "plan" ? value : null;
+}
+
+function getStoredPermissionMode(
+  draft: DraftDocument | null | undefined,
+): ConversationPermissionMode | null {
+  return normalizePermissionMode(draft?.session?.permission_mode);
+}
+
+async function persistPermissionModeIfChanged(params: {
+  exec: Executor;
+  tenant_id: string;
+  conversation_id: string;
+  draft: DraftDocument | null | undefined;
+  permission_mode: ConversationPermissionMode | null;
+}): Promise<void> {
+  const current = getStoredPermissionMode(params.draft);
+  const nextMode = normalizePermissionMode(params.permission_mode);
+  if (current === nextMode) return;
+  const baseDraft = params.draft ?? createEmptyDraftDocument();
+  await appendSnapshot(
+    params.tenant_id,
+    params.conversation_id,
+    {
+      ...baseDraft,
+      session: {
+        ...(baseDraft.session ?? {}),
+        permission_mode: nextMode,
+      },
+    },
+    params.exec,
+  );
+}
 
 function rowToRecord(row: typeof conversations.$inferSelect): ConversationRecord {
   return {
@@ -80,6 +116,11 @@ export async function createConversation(
   exec: Db,
 ): Promise<ConversationTurnOutcome> {
   const memory = typeof p.memory === "string" ? p.memory : null;
+  const initialPermissionMode = normalizePermissionMode(p.permission_mode);
+  const initialDraft = createEmptyDraftDocument();
+  if (initialPermissionMode) {
+    initialDraft.session = { permission_mode: initialPermissionMode };
+  }
   const [row] = await exec
     .insert(conversations)
     .values({
@@ -87,7 +128,7 @@ export async function createConversation(
       target_connector_id: p.connector_id ?? null,
       target_workflow_id: p.workflow_id ?? null,
       status: "active",
-      draft: createEmptyDraftDocument(),
+      draft: initialDraft,
       owner_id: p.actor_id ?? null,
       ...(p.model ? { model: p.model } : {}),
       ...(p.title ? { title: p.title } : {}),
@@ -175,7 +216,7 @@ export async function createConversation(
         user_memory: memory,
         model_override: p.model ?? null,
         ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
-        ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
+        ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
       })
     : { events: [], status: "active" as const };
 
@@ -213,6 +254,18 @@ export async function appendUserMessage(
 ): Promise<ConversationTurnOutcome> {
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
+  const explicitPermissionMode = normalizePermissionMode(p.permission_mode);
+  const storedPermissionMode = getStoredPermissionMode(conv.draft);
+  const effectivePermissionMode = explicitPermissionMode ?? storedPermissionMode;
+  if (explicitPermissionMode && explicitPermissionMode !== storedPermissionMode) {
+    await persistPermissionModeIfChanged({
+      exec,
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      draft: conv.draft,
+      permission_mode: explicitPermissionMode,
+    });
+  }
   log.conversation.appended({
     conversation_id: p.conversation_id,
     tenant_id: p.tenant_id,
@@ -311,7 +364,7 @@ export async function appendUserMessage(
     ...(p.surface ? { surface: p.surface } : {}),
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
     ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
-    ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
+    ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
   });
   const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!updated) throw new Error("conversation disappeared");
@@ -326,6 +379,7 @@ export interface RespondElicitationParams {
   /** User's answer — shape depends on the tool (choice/multi/text/form/confirm). */
   output: unknown;
   reason?: string;
+  permission_mode?: ConversationPermissionMode | null;
 }
 
 /**
@@ -400,6 +454,18 @@ export async function respondElicitation(
 
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
+  const explicitPermissionMode = normalizePermissionMode(p.permission_mode);
+  const storedPermissionMode = getStoredPermissionMode(conv.draft);
+  const effectivePermissionMode = explicitPermissionMode ?? storedPermissionMode;
+  if (explicitPermissionMode && explicitPermissionMode !== storedPermissionMode) {
+    await persistPermissionModeIfChanged({
+      exec,
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      draft: conv.draft,
+      permission_mode: explicitPermissionMode,
+    });
+  }
 
   const result = await runLoop({
     db: exec,
@@ -409,6 +475,7 @@ export async function respondElicitation(
     connector_id: conv.conversation.target_connector_id,
     workflow_id: conv.conversation.target_workflow_id,
     user_message: null,
+    ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
   });
   const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!updated) throw new Error("conversation disappeared");
