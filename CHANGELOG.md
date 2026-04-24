@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.2](https://github.com/MikeBild/subkit/compare/subkit-v2.2.1...subkit-v2.2.2) (2026-04-24)
+
+
+### Bug Fixes
+
+* **testing:** stabilize tty-sensitive release gate ([bc1a342](https://github.com/MikeBild/subkit/commit/bc1a342ea1469f5594e8becd00d19c4576fc6378))
+
 ## [2.2.1](https://github.com/MikeBild/subkit/compare/subkit-v2.2.0...subkit-v2.2.1) (2026-04-24)
 
 
