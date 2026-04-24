@@ -96,11 +96,14 @@ const rolesCreateCmd = defineCommand({
 
 const rolesDeleteCmd = defineCommand({
   meta: { name: "delete", description: "Delete a custom role" },
-  args: { id: { type: "positional", required: true, description: "Role id" } },
+  args: {
+    id: { type: "positional", required: true, description: "Role id" },
+    yes: { type: "boolean", description: "Skip the interactive confirmation prompt" },
+  },
   async run({ args }) {
     const client = makeClient();
     try {
-      if (process.stdin.isTTY) {
+      if (!args.yes && process.stdin.isTTY) {
         const confirmed = await prompts.confirm({ message: `Delete role "${args.id}"?` });
         if (!confirmed || prompts.isCancel(confirmed)) return;
       }
@@ -238,12 +241,17 @@ const grantsCreateCmd = defineCommand({
 
 const grantsDeleteCmd = defineCommand({
   meta: { name: "delete", description: "Delete a resource grant" },
-  args: { id: { type: "positional", required: true, description: "Grant id" } },
+  args: {
+    id: { type: "positional", required: true, description: "Grant id" },
+    yes: { type: "boolean", description: "Skip the interactive confirmation prompt" },
+  },
   async run({ args }) {
     const client = makeClient();
     try {
-      const confirmed = await prompts.confirm({ message: `Delete grant "${args.id}"?` });
-      if (!confirmed || prompts.isCancel(confirmed)) return;
+      if (!args.yes && process.stdin.isTTY) {
+        const confirmed = await prompts.confirm({ message: `Delete grant "${args.id}"?` });
+        if (!confirmed || prompts.isCancel(confirmed)) return;
+      }
       await client.deleteGrant(String(args.id));
       process.stdout.write("deleted\n");
     } catch (err) {
@@ -300,12 +308,17 @@ const groupsCreateCmd = defineCommand({
 
 const groupsDeleteCmd = defineCommand({
   meta: { name: "delete", description: "Delete a group" },
-  args: { id: { type: "positional", required: true, description: "Group id" } },
+  args: {
+    id: { type: "positional", required: true, description: "Group id" },
+    yes: { type: "boolean", description: "Skip the interactive confirmation prompt" },
+  },
   async run({ args }) {
     const client = makeClient();
     try {
-      const confirmed = await prompts.confirm({ message: `Delete group "${args.id}"?` });
-      if (!confirmed || prompts.isCancel(confirmed)) return;
+      if (!args.yes && process.stdin.isTTY) {
+        const confirmed = await prompts.confirm({ message: `Delete group "${args.id}"?` });
+        if (!confirmed || prompts.isCancel(confirmed)) return;
+      }
       await client.deleteGroup(String(args.id));
       process.stdout.write("deleted\n");
     } catch (err) {
@@ -423,12 +436,17 @@ const requestHooksCreateCmd = defineCommand({
 
 const requestHooksDeleteCmd = defineCommand({
   meta: { name: "delete", description: "Delete a request hook" },
-  args: { id: { type: "positional", required: true, description: "Hook id" } },
+  args: {
+    id: { type: "positional", required: true, description: "Hook id" },
+    yes: { type: "boolean", description: "Skip the interactive confirmation prompt" },
+  },
   async run({ args }) {
     const client = makeClient();
     try {
-      const confirmed = await prompts.confirm({ message: `Delete request hook "${args.id}"?` });
-      if (!confirmed || prompts.isCancel(confirmed)) return;
+      if (!args.yes && process.stdin.isTTY) {
+        const confirmed = await prompts.confirm({ message: `Delete request hook "${args.id}"?` });
+        if (!confirmed || prompts.isCancel(confirmed)) return;
+      }
       await client.deleteRequestHook(String(args.id));
       process.stdout.write("deleted\n");
     } catch (err) {

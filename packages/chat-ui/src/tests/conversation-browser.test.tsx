@@ -39,6 +39,11 @@ async function tick(ms = 20): Promise<void> {
   await new Promise((r) => setTimeout(r, ms)); // allow-wall-clock: legacy; review before changing
 }
 
+function stripAnsi(frame: string): string {
+  const ansiPattern = `${String.fromCharCode(27)}\\[[0-9;]*m`;
+  return frame.replace(new RegExp(ansiPattern, "g"), "");
+}
+
 describe("ConversationBrowser", () => {
   afterEach(() => cleanup());
 
@@ -110,7 +115,7 @@ describe("ConversationBrowser", () => {
     await tick();
     instance.stdin.write("hub");
     await tick(30);
-    const frame = instance.lastFrame() ?? "";
+    const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("hubspot export");
     expect(frame).not.toContain("invoice digest");
     expect(frame).toContain("filter: hub");
