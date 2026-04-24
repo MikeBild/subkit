@@ -8,6 +8,7 @@ import { z } from "@hono/zod-openapi";
 import { classifyRunResult } from "../../execution/classify.ts";
 import { runSingleStep } from "../../execution/step-run.ts";
 import type { StepDef } from "../../workflows/types.ts";
+import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -30,6 +31,30 @@ export const dryRunStepTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const workflowDraft = getWorkflowDraft(ctx.getDraft());
+    const validation = validateWorkflowDef(workflowDraft);
+    if (!validation.ok) {
+      const nextDraft = withLatestPreview(
+        ctx.getDraft(),
+        {
+          ok: false,
+          step_id: args.step_id,
+          summary: "Preview blocked until the workflow draft validates cleanly.",
+          preview: null,
+        },
+        "dry_run_step",
+        "workflow_previewed",
+      );
+      await ctx.setDraft(nextDraft);
+      return {
+        ok: false,
+        data: buildLifecyclePayload(nextDraft, {
+          step_id: args.step_id,
+          errors: validation.errors,
+          steps: workflowDraft.steps.length,
+          summary: "Preview blocked until the workflow draft validates cleanly.",
+        }),
+      };
+    }
     const rawStep = workflowDraft.steps.find(
       (candidate): candidate is Record<string, unknown> =>
         typeof candidate === "object" &&

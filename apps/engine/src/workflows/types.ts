@@ -85,6 +85,26 @@ export const PaginationSchema = z
 
 const onError = z.enum(["fail", "continue"]).default("fail");
 
+type GraphQLConfig = {
+  operation?: "query" | "mutation" | "subscription" | undefined;
+  query: string;
+  variables?: Record<string, unknown> | undefined;
+};
+
+const GraphQLConfigSchema: z.ZodType<GraphQLConfig> = z
+  .object({
+    operation: z.enum(["query", "mutation", "subscription"]).optional(),
+    query: z.string().min(1),
+    variables: z.record(z.string(), z.unknown()).optional(),
+  })
+  .or(
+    z
+      .string()
+      .trim()
+      .min(1, "graphql string must be a non-empty query")
+      .transform((query): GraphQLConfig => ({ query })),
+  );
+
 const baseStep = {
   id: z.string().min(1),
   on_error: onError.optional(),
@@ -137,13 +157,7 @@ export const RequestStepSchema = z
     retry_on_status: z.array(z.number().int().min(100).max(599)).optional(),
     // Optional GraphQL operation. When present, the request step routes
     // through the GraphQL driver instead of the HTTP retry pipeline.
-    graphql: z
-      .object({
-        operation: z.enum(["query", "mutation", "subscription"]).optional(),
-        query: z.string().min(1),
-        variables: z.record(z.string(), z.unknown()).optional(),
-      })
-      .optional(),
+    graphql: GraphQLConfigSchema.optional(),
     body_schema: z.record(z.string(), z.unknown()).optional(),
     response_schema: z.record(z.string(), z.unknown()).optional(),
     expected_statuses: z.array(z.number().int()).optional(),

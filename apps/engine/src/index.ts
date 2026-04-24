@@ -113,6 +113,14 @@ async function runServer(): Promise<void> {
     void (async () => {
       try {
         const loaded = await loadSkillSeedsFromDisk();
+        logger.info({
+          module: "skills.seed",
+          action: "seed.resolved_dir",
+          msg: "skill seed directory resolved",
+          resolved_dir: loaded.resolved_dir,
+          searched_dirs: loaded.searched_dirs,
+          missing_dirs: loaded.missing_dirs,
+        });
         if (loaded.errors.length > 0) {
           logger.warn({
             module: "skills.seed",
@@ -126,6 +134,9 @@ async function runServer(): Promise<void> {
             module: "skills.seed",
             action: "seed.empty",
             msg: "no skill seeds found on disk; skipping",
+            resolved_dir: loaded.resolved_dir,
+            searched_dirs: loaded.searched_dirs,
+            missing_dirs: loaded.missing_dirs,
           });
           return;
         }

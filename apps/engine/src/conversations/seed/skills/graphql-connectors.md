@@ -10,10 +10,11 @@ version: 1
 # GraphQL Connectors
 
 The `graphql` driver posts to a single GraphQL endpoint and returns the
-`data` field of the response in the envelope's `data`. It unwraps one level:
-what the server sends as `{ "data": { "foo": 42 }, "errors": [...] }` comes
-out as envelope `data = { "foo": 42 }`, with any `errors` promoted to the
-envelope's `error` field when present.
+raw GraphQL JSON body in the envelope's `data`. What the server sends as
+`{ "data": { "foo": 42 }, "errors": [...] }` comes out as
+`$scope.<step_id>.data = { "data": { "foo": 42 }, "errors": [...] }`.
+That means downstream transforms typically read
+`$scope.<step_id>.data.data.<field>`.
 
 ## Step shape
 
@@ -21,23 +22,28 @@ envelope's `error` field when present.
 {
   "id": "list_repos",
   "kind": "request",
-  "config": {
-    "connector": "github_gql",
-    "graphql": {
-      "operation": "ListRepos",
-      "query": "query ListRepos($owner: String!, $first: Int!) { user(login: $owner) { repositories(first: $first) { nodes { name stargazerCount } } } }",
-      "variables": { "owner": "${input.owner}", "first": 20 }
-    }
+  "connector_id": "00000000-0000-0000-0000-000000000001",
+  "graphql": {
+    "query": "query ListRepos($owner: String!, $first: Int!) { user(login: $owner) { repositories(first: $first) { nodes { name stargazerCount } } } }",
+    "variables": { "owner": "${input.owner}", "first": 20 }
   }
 }
 ```
 
-Three config keys under `graphql`:
+For GraphQL request steps, `connector_id`, `method`, `path`, `query`, `headers`,
+and `graphql` live at the top level of the step. Do not wrap them in a legacy
+`config` object.
+
+Three keys under `graphql`:
 
 - **`query`** — the raw GraphQL document (query, mutation, or subscription).
 - **`variables`** — a plain object. Placeholders are resolved before dispatch.
-- **`operation`** — optional operation name, required only when `query` contains
-  multiple named operations.
+- **`operation`** — optional transport mode: `"query"`, `"mutation"`, or
+  `"subscription"`. Omit it for reads; set `"mutation"` explicitly for writes.
+
+The engine does **not** expose GraphQL `operationName` yet. Keep one query or
+mutation per step instead of packing multiple named operations into a single
+document.
 
 ## Variable placeholders
 
@@ -78,19 +84,18 @@ Example mutation:
 {
   "id": "move_deal",
   "kind": "request",
-  "config": {
-    "connector": "hubspot_gql",
-    "graphql": {
-      "operation": "MoveDeal",
-      "query": "mutation MoveDeal($id: ID!, $stage: String!, $key: String!) { updateDeal(id: $id, input: { stage: $stage }, idempotencyKey: $key) { id stage } }",
-      "variables": {
-        "id": "${input.deal_id}",
-        "stage": "${input.target_stage}",
-        "key": "${input.run_id}"
-      }
+  "connector_id": "00000000-0000-0000-0000-000000000002",
+  "graphql": {
+    "operation": "mutation",
+    "query": "mutation MoveDeal($id: ID!, $stage: String!, $key: String!) { updateDeal(id: $id, input: { stage: $stage }, idempotencyKey: $key) { id stage } }",
+    "variables": {
+      "id": "${input.deal_id}",
+      "stage": "${input.target_stage}",
+      "key": "${input.run_id}"
     }
   },
-  "onError": { "mode": "retry", "max_retries": 2, "backoff_ms": 500 }
+  "max_retries": 2,
+  "retry_backoff_ms": 500
 }
 ```
 
@@ -102,16 +107,15 @@ GraphQL's natural batching is putting multiple root fields in one query:
 {
   "id": "dashboard",
   "kind": "request",
-  "config": {
-    "connector": "api_gql",
-    "graphql": {
-      "query": "query { orders(status: OPEN) { id total } customers(active: true) { id email } revenue(since: \"2026-01-01\") { total } }"
-    }
+  "connector_id": "00000000-0000-0000-0000-000000000003",
+  "graphql": {
+    "query": "query { orders(status: OPEN) { id total } customers(active: true) { id email } revenue(since: \"2026-01-01\") { total } }"
   }
 }
 ```
 
-Envelope `data` is the union: `{ "orders": [...], "customers": [...], "revenue": {...} }`.
+Envelope `data` is the raw GraphQL body, so the payload sits under `.data`:
+`$scope.dashboard.data.data.orders`, `$scope.dashboard.data.data.customers`, and so on.
 
 This is almost always better than three separate steps hitting the same
 endpoint — fewer round-trips, lower scope pressure, one auth flow. Use separate
@@ -154,13 +158,12 @@ need them inside variables (e.g. an API key as an input to the query).
 - **Interpolating into `query`.** Breaks syntax, breaks cache hits, and opens
   injection. Variables always.
 - **Treating `status_code: 200` as success.** GraphQL errors ride on 200. Check
-  envelope `error` before trusting `data`.
-- **Missing `operation` with a multi-op document.** If `query` has
-  `query A ... query B ...`, the server returns an error asking for
-  `operationName`. Set `operation`.
+  `$scope.<step>.data.errors` before trusting `$scope.<step>.data.data`.
+- **Sending multiple named operations.** The current step contract has no
+  `operationName` field. Keep one query or mutation per step.
 - **Retrying mutations without idempotency keys.** You'll create duplicates.
-  Either guard with a server-side idempotency key or set `onError.mode: "fail"`
-  for mutations.
+  Either guard with a server-side idempotency key or leave retries off for
+  mutations.
 - **Selecting fields the schema doesn't expose.** Results in `400 Bad Request`
   with a schema validation error. Use `probe_connector` with an introspection
   query first.

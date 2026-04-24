@@ -19,11 +19,11 @@ A workflow is an ordered array of steps plus optional top-level metadata:
 
 ```json
 {
-  "id": "weekly_sales_digest",
+  "name": "Weekly sales digest",
   "name": "Weekly sales digest",
   "input_schema": { "type": "object", "properties": { "week": { "type": "string" } } },
   "steps": [ /* ordered step objects */ ],
-  "outputTransform": "$scope.send_email.data"
+  "output_transform": "$scope.send_email.data"
 }
 ```
 
@@ -33,30 +33,33 @@ Each **step** has at minimum:
 {
   "id": "list_orders",
   "kind": "request",
-  "config": { /* kind-specific */ },
+  "connector_id": "00000000-0000-0000-0000-000000000001",
+  "method": "GET",
+  "path": "/orders",
   "data_selector": "$",
-  "onError": { "mode": "fail" }
+  "on_error": "fail"
 }
 ```
 
 - `id` — unique within the workflow, snake_case. Referenced by downstream steps.
 - `kind` — one of the eight kinds listed below.
-- `config` — shape is kind-specific.
+- request-step fields are **flattened**: `connector_id`, `method`, `path`, `query`,
+  `headers`, `body`, and `graphql` live at the top level. Do not wrap them in `config`.
 - `data_selector` — optional JSONata that trims the envelope's `data` before downstream steps see it.
-- `onError` — behavior when the step fails.
+- `on_error` — behavior when the step fails.
 
 ## The 8 step kinds
 
 | Kind | Purpose | One-line config example |
 |---|---|---|
-| `request` | Call an external system via a connector (http / graphql / postgres / s3) | `{ "connector": "hubspot", "method": "GET", "path": "/crm/v3/objects/contacts" }` |
+| `request` | Call an external system via a connector (http / graphql / s3) | `{ "connector_id": "00000000-0000-0000-0000-000000000001", "method": "GET", "path": "/crm/v3/objects/contacts" }` |
 | `transform` | Reshape data with JSONata, no I/O | `{ "expression": "$scope.list_orders.data.results[amount > 100]" }` |
-| `wait` | Pause for a duration or until a timestamp | `{ "seconds": 30 }` |
-| `branch` | Conditional routing; executes the first matching case | `{ "cases": [{ "when": "$scope.classify.data.tier = 'gold'", "steps": [...] }], "default": [...] }` |
-| `parallel` | Run child step groups concurrently, join on completion | `{ "branches": [[...stepsA], [...stepsB]], "join": "all" }` |
-| `loop` | Iterate over an array and run a child step body per item | `{ "over": "$scope.list_orders.data.results", "as": "order", "body": [...] }` |
-| `call` | Invoke another workflow as a subroutine | `{ "workflow": "send_receipt", "input": { "order_id": "$scope.loop_item.data.id" } }` |
-| `tool` | Invoke a registered engine tool (e.g. hash, uuid, audit write) | `{ "tool": "uuid.v4" }` |
+| `wait` | Pause for a duration | `{ "duration_ms": 30000 }` |
+| `branch` | Conditional routing by step id | `{ "when": "$scope.classify.data.tier = 'gold'", "then_steps": ["notify_gold"], "else_steps": ["notify_standard"] }` |
+| `parallel` | Run child step ids concurrently | `{ "branches": [["write_pg"], ["write_s3"]] }` |
+| `loop` | Iterate over an array and run a child step body by id | `{ "over": "$scope.list_orders.data.results", "body": ["process_order"], "item_var": "order" }` |
+| `call` | Invoke another workflow as a subroutine | `{ "workflow_slug": "send_receipt", "input": { "order_id": "${scope.lookup.data.id}" } }` |
+| `tool` | Invoke a sandboxed container step | `{ "image": "ghcr.io/example/uuid:1.0", "cmd": ["generate"] }` |
 
 ## The step output envelope
 
@@ -129,49 +132,31 @@ long as connector slugs match and required credentials exist in the prod env.
 
 ```json
 {
-  "id": "enrich_new_signups",
   "name": "Enrich new signups",
   "input_schema": { "type": "object", "required": ["since"], "properties": { "since": { "type": "string" } } },
   "steps": [
     {
       "id": "fetch_signups",
       "kind": "request",
-      "config": {
-        "connector": "warehouse",
-        "method": "SELECT",
-        "query": "SELECT id, email FROM users WHERE created_at > $1",
-        "params": ["${input.since}"]
-      }
+      "connector_id": "00000000-0000-0000-0000-000000000001",
+      "method": "GET",
+      "path": "/users",
+      "query": { "since": "${input.since}" }
     },
     {
-      "id": "enrich",
-      "kind": "loop",
-      "config": {
-        "over": "$scope.fetch_signups.data",
-        "as": "user",
-        "body": [
-          {
-            "id": "lookup_company",
-            "kind": "request",
-            "config": {
-              "connector": "clearbit",
-              "method": "GET",
-              "path": "/v2/people/find?email=${scope.user.data.email}"
-            },
-            "onError": { "mode": "fallback", "fallback_value": { "company": null } }
-          }
-        ]
-      }
+      "id": "pick_fields",
+      "kind": "transform",
+      "expression": "$scope.fetch_signups.data.{ 'id': id, 'email': email }",
+      "language": "jsonata"
     },
     {
       "id": "shape",
       "kind": "transform",
-      "config": {
-        "expression": "$scope.enrich.data.{ 'email': email, 'company': lookup_company.data.company }"
-      }
+      "expression": "{ 'users': $scope.pick_fields.data, 'count': $count($scope.pick_fields.data) }",
+      "language": "jsonata"
     }
   ],
-  "outputTransform": "$scope.shape.data"
+  "output_transform": "$scope.shape.data"
 }
 ```
 
