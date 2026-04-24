@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.1](https://github.com/MikeBild/subkit/compare/subkit-v2.3.0...subkit-v2.3.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* **sandboxes:** embed sk-stdlib.js into compiled engine binary ([2c02125](https://github.com/MikeBild/subkit/commit/2c021255551704182c53dcb2f9b163521b2b17b0))
+
 ## [2.3.0](https://github.com/MikeBild/subkit/compare/subkit-v2.2.2...subkit-v2.3.0) (2026-04-24)
 
 
