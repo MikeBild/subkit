@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/MikeBild/subkit/compare/subkit-v2.2.0...subkit-v2.2.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* **authoring:** harden seeded skills and graphql drafts ([75b0b8a](https://github.com/MikeBild/subkit/commit/75b0b8a0e26c8347b6a4e42530a1eb067f8f42d8))
+
 ## [2.2.0](https://github.com/MikeBild/subkit/compare/subkit-v2.1.0...subkit-v2.2.0) (2026-04-23)
 
 
