@@ -28,6 +28,14 @@ function asObj(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
+function isGraphqlStep(step: Record<string, unknown>): boolean {
+  return (
+    step.graphql !== undefined ||
+    step.driver === "graphql" ||
+    asObj(step.config).driver === "graphql"
+  );
+}
+
 const RULES: readonly AutoloadRule[] = [
   // Any probe or request-step authoring activates HTTP connector knowledge.
   { tool: "probe_connector", skills: ["http-connectors"] },
@@ -49,6 +57,14 @@ const RULES: readonly AutoloadRule[] = [
       return cfg.driver === "postgres" || obj.driver === "postgres";
     },
     skills: ["postgres-connectors"],
+  },
+  {
+    tool: "propose_step",
+    match: (input) => {
+      const obj = asObj(asObj(input).step ?? input);
+      return isGraphqlStep(obj);
+    },
+    skills: ["graphql-connectors"],
   },
   {
     tool: "propose_step",
@@ -87,9 +103,7 @@ const RULES: readonly AutoloadRule[] = [
     match: (input) => {
       const steps = asObj(input).steps as Array<Record<string, unknown>> | undefined;
       if (!Array.isArray(steps)) return false;
-      return steps.some(
-        (s) => asObj(s.config).driver === "graphql" || asObj(s).driver === "graphql",
-      );
+      return steps.some((step) => isGraphqlStep(asObj(step)));
     },
     skills: ["graphql-connectors"],
   },

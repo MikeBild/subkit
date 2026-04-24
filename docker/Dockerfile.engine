@@ -45,6 +45,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY --from=builder /out/engine /usr/local/bin/engine
+COPY --from=builder /app/apps/engine/src/conversations/seed/skills /usr/local/share/subkit/skills
 
 # Writable data directory for blob offload fallback when S3 is not configured.
 RUN mkdir -p /var/data/blobs && chown -R nobody:nogroup /var/data/blobs

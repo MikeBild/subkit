@@ -47,6 +47,9 @@ export interface ParseError {
 export interface LoadResult {
   skills: SeededSkill[];
   errors: ParseError[];
+  resolved_dir: string | null;
+  searched_dirs: string[];
+  missing_dirs: string[];
 }
 
 export interface ApplyOutcome {
@@ -57,28 +60,102 @@ export interface ApplyOutcome {
 }
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const DEFAULT_SEED_DIR = path.resolve(HERE, "..", "conversations", "seed", "skills");
+export const DEFAULT_SEED_DIR = path.resolve(
+  process.cwd(),
+  "apps",
+  "engine",
+  "src",
+  "conversations",
+  "seed",
+  "skills",
+);
+export const DEFAULT_RUNTIME_SEED_DIR = path.resolve(
+  path.dirname(process.execPath),
+  "..",
+  "share",
+  "subkit",
+  "skills",
+);
+const BUNDLE_FALLBACK_SEED_DIR = path.resolve(HERE, "..", "conversations", "seed", "skills");
 
-export async function loadSkillSeedsFromDisk(dir: string = DEFAULT_SEED_DIR): Promise<LoadResult> {
+function uniquePaths(paths: Array<string | null | undefined>): string[] {
+  return [
+    ...new Set(
+      paths.filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  ];
+}
+
+export function resolveSkillSeedDirCandidates(
+  env: NodeJS.ProcessEnv = process.env,
+  cwd: string = process.cwd(),
+  execPath: string = process.execPath,
+): string[] {
+  return uniquePaths([
+    env.SK_SEED_SKILLS_DIR,
+    path.resolve(cwd, "apps", "engine", "src", "conversations", "seed", "skills"),
+    path.resolve(path.dirname(execPath), "..", "share", "subkit", "skills"),
+    BUNDLE_FALLBACK_SEED_DIR,
+  ]);
+}
+
+async function resolveSeedDir(candidates: string[]): Promise<{
+  resolved_dir: string | null;
+  searched_dirs: string[];
+  missing_dirs: string[];
+}> {
+  const missing_dirs: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      const stat = await fs.stat(candidate);
+      if (stat.isDirectory()) {
+        return {
+          resolved_dir: candidate,
+          searched_dirs: candidates,
+          missing_dirs,
+        };
+      }
+      missing_dirs.push(candidate);
+    } catch {
+      missing_dirs.push(candidate);
+    }
+  }
+  return {
+    resolved_dir: null,
+    searched_dirs: candidates,
+    missing_dirs,
+  };
+}
+
+export async function loadSkillSeedsFromDisk(dir?: string): Promise<LoadResult> {
   const out: SeededSkill[] = [];
   const errors: ParseError[] = [];
-  let entries: string[];
-  try {
-    entries = await fs.readdir(dir);
-  } catch (_err) {
-    // If the directory does not exist (fresh clone without seeds), return
-    // an empty result. The engine boots without seeded skills, not a crash.
+  const searched_dirs = dir ? [dir] : resolveSkillSeedDirCandidates();
+  const resolved = await resolveSeedDir(searched_dirs);
+  if (!resolved.resolved_dir) {
+    // If none of the candidate directories exists (fresh clone without
+    // copied seed assets), return an empty result. The engine boots
+    // without seeded skills, not a crash.
     logger.info({
       module: "skills.seed",
       action: "seed_dir_missing",
-      dir,
+      dir: dir ?? null,
+      searched_dirs: resolved.searched_dirs,
+      missing_dirs: resolved.missing_dirs,
       msg: "skill seed directory does not exist; skipping",
     });
-    return { skills: [], errors: [] };
+    return {
+      skills: [],
+      errors: [],
+      resolved_dir: null,
+      searched_dirs: resolved.searched_dirs,
+      missing_dirs: resolved.missing_dirs,
+    };
   }
+  const entries = await fs.readdir(resolved.resolved_dir);
   for (const name of entries) {
     if (!name.endsWith(".md")) continue;
-    const file = path.join(dir, name);
+    const file = path.join(resolved.resolved_dir, name);
     const raw = await fs.readFile(file, "utf8");
     const parsed = parseFrontmatter(raw, file);
     if ("error" in parsed) {
@@ -87,7 +164,13 @@ export async function loadSkillSeedsFromDisk(dir: string = DEFAULT_SEED_DIR): Pr
     }
     out.push(parsed.skill);
   }
-  return { skills: out, errors };
+  return {
+    skills: out,
+    errors,
+    resolved_dir: resolved.resolved_dir,
+    searched_dirs: resolved.searched_dirs,
+    missing_dirs: resolved.missing_dirs,
+  };
 }
 
 export async function applySkillSeeds(

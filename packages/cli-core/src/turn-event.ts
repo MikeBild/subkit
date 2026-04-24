@@ -407,7 +407,11 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
           ...(anchor ? { parent_message_id: anchor } : {}),
         });
       }
-      return { ...state, toolCalls: calls };
+      return {
+        ...state,
+        toolCalls: calls,
+        validationErrors: isFailure ? state.validationErrors : [],
+      };
     }
     case "validation_error": {
       return { ...state, status: "error", validationErrors: ev.errors };

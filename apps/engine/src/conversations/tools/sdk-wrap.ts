@@ -65,12 +65,10 @@ export interface TurnSignals {
   pendingChildElicitationIds: string[];
   /**
    * Loop-breaker: per-turn counter of how many times each tool has
-   * been invoked, plus the hash of the last error payload per tool.
-   * When the same tool fails with the same error twice in a row, or
-   * any tool is invoked more than `MAX_TOOL_CALLS_PER_TURN` times,
-   * the wrapper short-circuits with a `tool.loop_detected` result so
-   * the model has to change approach. This broke the 6-iteration
-   * commit_draft / delete_workflow loop observed in session 46ee7ec8.
+   * been invoked. Read-only tenant tools get a lower cap than draft /
+   * write tools because repeated reads burn tokens without changing
+   * state. This broke the repeated list_workflows loop observed in
+   * session 64e36248 and the older commit/delete loop in 46ee7ec8.
    */
   toolInvocationCount: Map<string, number>;
   toolLastErrorHash: Map<string, string>;
@@ -155,7 +153,7 @@ function wrapOne(
         // Loop-breaker: short-circuit before doing any side effects
         // when the model has already called this tool too many times
         // in the current turn.
-        const MAX_CALLS_PER_TURN = 5;
+        const MAX_CALLS_PER_TURN = inner.category === "tenant_read" ? 3 : 5;
         const priorCount = signals.toolInvocationCount.get(inner.name) ?? 0;
         if (priorCount >= MAX_CALLS_PER_TURN) {
           log.conversation.tool.called({

@@ -8,6 +8,7 @@ import type { PreviewStepSummary } from "../../execution/classify.ts";
 import { classifyRunResult } from "../../execution/classify.ts";
 import { runExecution } from "../../execution/engine.ts";
 import type { StepDef } from "../../workflows/types.ts";
+import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -29,6 +30,32 @@ export const dryRunWorkflowTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const draft = getWorkflowDraft(ctx.getDraft());
+    const validation = validateWorkflowDef(draft);
+    if (!validation.ok) {
+      const invalidStepId =
+        typeof draft.steps[0]?.id === "string" ? draft.steps[0].id : "(invalid-draft)";
+      const nextDraft = withLatestPreview(
+        ctx.getDraft(),
+        {
+          ok: false,
+          step_id: invalidStepId,
+          summary: "Preview blocked until the workflow draft validates cleanly.",
+          preview: null,
+        },
+        "dry_run_workflow",
+        "workflow_previewed",
+      );
+      await ctx.setDraft(nextDraft);
+      return {
+        ok: false,
+        data: buildLifecyclePayload(nextDraft, {
+          name: draft.name,
+          errors: validation.errors,
+          steps: draft.steps.length,
+          summary: "Preview blocked until the workflow draft validates cleanly.",
+        }),
+      };
+    }
     const steps = draft.steps.filter(
       (candidate): candidate is StepDef =>
         typeof candidate === "object" &&

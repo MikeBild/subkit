@@ -14,9 +14,50 @@ const inputSchema = z
   })
   .openapi("UpdateParamToolInput");
 
+const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+
+function parseParamPath(param: string): string[] {
+  return param
+    .split(".")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+}
+
+function applyParamPath(
+  target: Record<string, unknown>,
+  param: string,
+  value: unknown,
+): Record<string, unknown> {
+  const segments = parseParamPath(param);
+  if (segments.length === 0) {
+    throw new Error("param must contain at least one path segment");
+  }
+  for (const segment of segments) {
+    if (UNSAFE_PATH_SEGMENTS.has(segment)) {
+      throw new Error(`param path contains forbidden segment: ${segment}`);
+    }
+  }
+  const next = structuredClone(target);
+  let cursor: Record<string, unknown> = next;
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const segment = segments[i]!;
+    const current = cursor[segment];
+    if (typeof current === "object" && current !== null && !Array.isArray(current)) {
+      cursor = current as Record<string, unknown>;
+      continue;
+    }
+    const created: Record<string, unknown> = {};
+    cursor[segment] = created;
+    cursor = created;
+  }
+  cursor[segments[segments.length - 1]!] = value;
+  return next;
+}
+
 export const updateParamTool: ConversationTool = {
   name: "update_param",
-  description: "Replace a single field on an existing step in the draft.",
+  description:
+    "Replace a single field on an existing step in the draft. Supports dotted paths like `graphql.query`.",
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
@@ -35,7 +76,29 @@ export const updateParamTool: ConversationTool = {
         }),
       };
     }
-    const step = { ...workflowDraft.steps[idx], [args.param]: args.value };
+    let step: Record<string, unknown>;
+    try {
+      step = applyParamPath(workflowDraft.steps[idx] ?? {}, args.param, args.value);
+    } catch (err) {
+      return {
+        ok: false,
+        data: buildGateError(currentDraft, {
+          error_code: "step_update_invalid",
+          message: err instanceof Error ? err.message : String(err),
+          recommended_mode: "workflow",
+          extra: {
+            errors: [
+              {
+                path: args.param,
+                message: err instanceof Error ? err.message : String(err),
+              },
+            ],
+            step_id: args.step_id,
+            param: args.param,
+          },
+        }),
+      };
+    }
     workflowDraft.steps[idx] = step;
     const validation = validateWorkflowDef(workflowDraft);
     if (!validation.ok) {

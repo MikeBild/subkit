@@ -32,6 +32,10 @@ produces drafts that fail at runtime or in review.
 6. **`commit_draft`** — once all steps run green and the outputTransform shape
    matches the intent, commit. Commits are cheap; runs are where governance kicks in.
 
+For request steps, use the current flattened shape: `connector_id`, `method`,
+`path`, `query`, `headers`, `body`, and `graphql` live directly on the step.
+Do not wrap them in `config`.
+
 ## `propose_step` vs `build_workflow`
 
 | Question | Use `build_workflow` | Use `propose_step` (one per step) |
@@ -63,24 +67,27 @@ Example combining all three:
     {
       "id": "fetch_orders",
       "kind": "request",
-      "config": { "connector": "shopify", "method": "GET", "path": "/admin/api/2024-04/orders.json" },
+      "connector_id": "00000000-0000-0000-0000-000000000001",
+      "method": "GET",
+      "path": "/admin/api/2024-04/orders.json",
       "data_selector": "$.orders.{ 'id': id, 'total': total_price, 'customer_email': email }"
     },
     {
       "id": "fetch_customers",
       "kind": "request",
-      "config": { "connector": "hubspot", "method": "GET", "path": "/crm/v3/objects/contacts" },
+      "connector_id": "00000000-0000-0000-0000-000000000002",
+      "method": "GET",
+      "path": "/crm/v3/objects/contacts",
       "data_selector": "$.results.{ 'email': properties.email, 'lifecycle': properties.lifecyclestage }"
     },
     {
       "id": "merge",
       "kind": "transform",
-      "config": {
-        "expression": "$scope.fetch_orders.data.{ 'order_id': id, 'total': total, 'lifecycle': $scope.fetch_customers.data[email = $$.customer_email].lifecycle }"
-      }
+      "expression": "$scope.fetch_orders.data.{ 'order_id': id, 'total': total, 'lifecycle': $scope.fetch_customers.data[email = $$.customer_email].lifecycle }",
+      "language": "jsonata"
     }
   ],
-  "outputTransform": "{ 'report': $scope.merge.data, 'generated_at': $now() }"
+  "output_transform": "{ 'report': $scope.merge.data, 'generated_at': $now() }"
 }
 ```
 
@@ -124,23 +131,9 @@ binding with its own envelope (`$scope.<as>.data` is the current item).
 {
   "id": "send_emails",
   "kind": "loop",
-  "config": {
-    "over": "$scope.segment.data.users",
-    "as": "user",
-    "body": [
-      {
-        "id": "send",
-        "kind": "request",
-        "config": {
-          "connector": "sendgrid",
-          "method": "POST",
-          "path": "/v3/mail/send",
-          "body": { "personalizations": [{ "to": [{ "email": "${scope.user.data.email}" }] }] }
-        },
-        "onError": { "mode": "skip" }
-      }
-    ]
-  }
+  "over": "$scope.segment.data.users",
+  "body": ["send"],
+  "item_var": "user"
 }
 ```
 
@@ -188,8 +181,8 @@ steps that finished before the `parallel`.
   that never existed. Probe first, every time.
 - **Committing before every step has a green dry-run.** `commit_draft` doesn't
   run the steps. Bad drafts commit cleanly and then fail at first invocation.
-- **Confusing `outputTransform` with `data_selector`.** `outputTransform` runs
-  once, at the end. `data_selector` runs per step. Using `outputTransform` to
+- **Confusing `output_transform` with `data_selector`.** `output_transform` runs
+  once, at the end. `data_selector` runs per step. Using `output_transform` to
   trim an early step wastes scope space for the whole run.
 - **Nested loop id collisions.** `loop.body[].id` values must be unique across
   the whole workflow, not just within the body. The validator rejects duplicates.
