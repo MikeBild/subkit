@@ -35,4 +35,27 @@ describe("openapi", () => {
     expect(text).toContain("api-reference");
     expect(text).toContain("/openapi.json");
   });
+
+  test("openapi exposes ExecutionRunResponse with request_meta and connector_resolutions", async () => {
+    const res = await fetch(`${ctx.baseUrl}/openapi.json`);
+    const spec = (await res.json()) as {
+      paths: Record<string, unknown>;
+      components: { schemas: Record<string, unknown> };
+    };
+    const runResp = spec.components.schemas.ExecutionRunResponse as {
+      properties: Record<string, unknown>;
+    };
+    expect(runResp).toBeDefined();
+    expect(runResp.properties.steps).toBeDefined();
+    expect(runResp.properties.connector_resolutions).toBeDefined();
+    expect(spec.components.schemas.ConnectorResolutionSummary).toBeDefined();
+    expect(spec.components.schemas.ExecutionRunStepSummary).toBeDefined();
+  });
+
+  test("openapi carries no legacy Automation* schemas or /v1/automations paths", async () => {
+    const res = await fetch(`${ctx.baseUrl}/openapi.json`);
+    const json = await res.text();
+    expect(json).not.toContain("Automation");
+    expect(json).not.toContain("/v1/automations");
+  });
 });
