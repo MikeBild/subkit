@@ -17,7 +17,9 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { policy } from "../../auth/policy.ts";
 import * as connectorSvc from "../../connectors/service.ts";
+import { enrichConnectorFromTemplate } from "../../connectors/template-enrichment.ts";
 import templateSkillsJson from "../../connectors/template-skills.json" with { type: "json" };
+import { matchTemplatesByUrl, type TemplateUrlMatch } from "../../connectors/template-url-match.ts";
 import {
   type ConnectorTemplate,
   ConnectorTemplateSchema,
@@ -71,9 +73,56 @@ const FromTemplateBody = z
   .object({
     name: z.string().min(1).optional(),
     environment: z.enum(["dev", "prod"]).optional(),
+    base_url_environment: z.string().optional(),
     ingest_now: z.boolean().optional(),
   })
   .openapi("ConnectorFromTemplateBody");
+
+const MatchUrlQuery = z.object({
+  url: z.string().url(),
+  limit: z.coerce.number().int().min(1).max(5).default(3),
+});
+
+const MatchUrlMatchSchema = z
+  .object({
+    slug: z.string(),
+    name: z.string(),
+    driver: z.string(),
+    score: z.number(),
+    matched_segment: z.string(),
+    description: z.string(),
+    setup_instructions: z.string(),
+    credential_hints: z.array(
+      z.object({
+        field: z.string(),
+        label: z.string(),
+        placeholder: z.string(),
+        doc_url: z.string().nullable(),
+        secret: z.boolean(),
+      }),
+    ),
+    keywords: z.array(z.string()),
+    capabilities: z.object({
+      webhooks: z.boolean(),
+      webhook_events: z.array(z.string()),
+      rate_limits: z
+        .object({
+          requests_per_second: z.number(),
+          burst_size: z.number(),
+          recommended_backoff_ms: z.number(),
+        })
+        .nullable(),
+    }),
+  })
+  .openapi("ConnectorTemplateUrlMatchItem");
+
+const MatchUrlResponseSchema = z
+  .object({
+    url: z.string(),
+    matched: z.boolean(),
+    matches: z.array(MatchUrlMatchSchema),
+  })
+  .openapi("ConnectorTemplateUrlMatchResponse");
 
 const SlugParam = z.object({ slug: z.string().min(1) });
 
@@ -113,6 +162,78 @@ const deleteRouteSpec = createRoute({
     204: { description: "Deleted" },
     403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const ImportRequestSchema = z
+  .object({
+    source: z.enum(["postman", "har", "openapi", "graphql", "graphql_introspection", "curl"]),
+    content: z.string().min(1),
+    headers: z.record(z.string(), z.string()).optional(),
+    name: z.string().min(1).optional(),
+    environment: z.enum(["dev", "prod"]).default("dev"),
+    base_url_environment: z.string().optional(),
+  })
+  .openapi("ConnectorSpecImportRequest");
+
+const ImportDraftSchema = z
+  .object({
+    name: z.string().optional(),
+    slug: z.string().optional(),
+    driver: z.string(),
+    environment: z.string(),
+    base_url: z.string().optional(),
+    auth_type: z.string(),
+    config: z.record(z.string(), z.unknown()),
+  })
+  .openapi("ConnectorSpecImportDraft");
+
+const ImportResponseSchema = z
+  .object({
+    draft: ImportDraftSchema,
+    template_match: z
+      .object({
+        slug: z.string(),
+        score: z.number(),
+        matched_segment: z.string(),
+      })
+      .nullable(),
+    recommended_next: z.array(z.string()),
+  })
+  .openapi("ConnectorSpecImportResponse");
+
+const importRoute = createRoute({
+  method: "post",
+  path: "/v1/connector-templates/import",
+  tags: ["connectors"],
+  summary: "Import a connector draft from a Postman/HAR/OpenAPI/GraphQL/curl spec",
+  security: [{ bearerAuth: [] }],
+  request: { body: { content: { "application/json": { schema: ImportRequestSchema } } } },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: ImportResponseSchema } },
+    },
+    400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
+    502: {
+      description: "Upstream spec fetch failed",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
+const matchUrlRoute = createRoute({
+  method: "get",
+  path: "/v1/connector-templates/match-url",
+  tags: ["connectors"],
+  summary: "Match a URL to connector templates by url_pattern regex",
+  security: [{ bearerAuth: [] }],
+  request: { query: MatchUrlQuery },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: MatchUrlResponseSchema } },
+    },
   },
 });
 
@@ -166,6 +287,69 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
     if (c.req.method === "POST") return requirePermission("connector:write")(c, next);
     return next();
   });
+  app.use("/v1/connector-templates/match-url", async (c, next) => {
+    if (c.req.method === "GET") return requirePermission("connector:read")(c, next);
+    return next();
+  });
+  app.use("/v1/connector-templates/import", async (c, next) => {
+    if (c.req.method === "POST") return requirePermission("connector:write")(c, next);
+    return next();
+  });
+
+  app.openapi(importRoute, async (c) => {
+    requireAuth(c);
+    const body = c.req.valid("json");
+    const tool = await import("../../conversations/tools/import-connector-from-spec.ts");
+    try {
+      const result = await tool.importConnectorFromSpecTool.execute(
+        // The tool only uses args — context is unused for the import operation.
+        {} as Parameters<typeof tool.importConnectorFromSpecTool.execute>[0],
+        body,
+      );
+      if (!result.ok) {
+        throw new BadRequestError(
+          String((result.data as { error?: string } | null)?.error ?? "import failed"),
+        );
+      }
+      const data = result.data as {
+        draft: unknown;
+        template_match: { slug: string; score: number; matched_segment: string } | null;
+        recommended_next: string[];
+      };
+      return c.json(data as z.infer<typeof ImportResponseSchema>, 200);
+    } catch (err) {
+      const mod = await import("../../connectors/spec-fetchers.ts");
+      if (err instanceof mod.SpecFetchError) {
+        throw new BadRequestError(`spec fetch failed: ${err.message}`);
+      }
+      throw err;
+    }
+  });
+
+  app.openapi(matchUrlRoute, async (c) => {
+    requireAuth(c);
+    const { url, limit } = c.req.valid("query");
+    const matches: TemplateUrlMatch[] = matchTemplatesByUrl(url, limit);
+    return c.json(
+      {
+        url,
+        matched: matches.length > 0,
+        matches: matches.map(({ template, score, matched_segment }) => ({
+          slug: template.slug,
+          name: template.name,
+          driver: template.driver,
+          score,
+          matched_segment,
+          description: template.description,
+          setup_instructions: template.setup_instructions,
+          credential_hints: template.credential_hints,
+          keywords: template.keywords,
+          capabilities: template.capabilities,
+        })),
+      },
+      200,
+    );
+  });
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
@@ -185,7 +369,9 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
       items.push({ ...t, source: "builtin", id: null });
     }
     for (const row of overrides) {
+      const r = row as Record<string, unknown>;
       items.push({
+        version: 1,
         slug: row.slug,
         name: row.name,
         driver: row.driver as ConnectorTemplate["driver"],
@@ -197,12 +383,30 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
         ingestion_url: row.ingestion_url ?? null,
         icon: row.icon,
         description: row.description,
-        category: (row as Record<string, unknown>).category as string | undefined,
-        tags: ((row as Record<string, unknown>).tags as string[]) ?? [],
-        setup_hint: ((row as Record<string, unknown>).setup_hint as string) ?? null,
-        auth_options:
-          ((row as Record<string, unknown>).auth_options as ConnectorTemplate["auth_options"]) ??
-          [],
+        category: (r.category as string | null | undefined) || "custom",
+        tags: (r.tags as string[] | undefined) ?? [],
+        setup_instructions:
+          (r.setup_instructions as string | undefined) ||
+          `Provide credentials to connect to ${row.name}.`,
+        auth_options: (r.auth_options as ConnectorTemplate["auth_options"] | undefined) ?? [],
+        url_pattern:
+          (r.url_pattern as string | undefined) ||
+          `^${row.base_url.replace(/[.\\/+?()[\]{}|^$]/g, "\\$&")}(/|$)`,
+        keywords: (r.keywords as string[] | undefined) ?? [],
+        inline_schema: (r.inline_schema as ConnectorTemplate["inline_schema"] | undefined) ?? null,
+        probe_endpoint:
+          (r.probe_endpoint as ConnectorTemplate["probe_endpoint"] | undefined) ?? null,
+        credential_hints:
+          (r.credential_hints as ConnectorTemplate["credential_hints"] | undefined) ?? [],
+        base_url_options:
+          (r.base_url_options as ConnectorTemplate["base_url_options"] | undefined) ?? [],
+        pagination_defaults:
+          (r.pagination_defaults as ConnectorTemplate["pagination_defaults"] | undefined) ?? null,
+        capabilities: (r.capabilities as ConnectorTemplate["capabilities"] | undefined) ?? {
+          webhooks: false,
+          webhook_events: [],
+          rate_limits: null,
+        },
         source: "tenant",
         id: row.id,
       });
@@ -230,10 +434,19 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
         ingestion_url: body.ingestion_url ?? null,
         icon: body.icon,
         description: body.description,
-        category: body.category ?? null,
+        category: body.category,
         tags: body.tags ?? [],
-        setup_hint: body.setup_hint ?? null,
+        setup_instructions: body.setup_instructions,
         auth_options: body.auth_options ?? [],
+        version: 1,
+        url_pattern: body.url_pattern,
+        keywords: body.keywords ?? [],
+        inline_schema: body.inline_schema ?? null,
+        probe_endpoint: body.probe_endpoint ?? null,
+        credential_hints: body.credential_hints ?? [],
+        base_url_options: body.base_url_options ?? [],
+        pagination_defaults: body.pagination_defaults ?? null,
+        capabilities: body.capabilities,
       })
       .returning();
     const row = inserted[0];
@@ -306,7 +519,9 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
     let template: ConnectorTemplate | null = null;
     if (overrideRows[0]) {
       const row = overrideRows[0];
+      const r = row as Record<string, unknown>;
       template = {
+        version: 1,
         slug: row.slug,
         name: row.name,
         driver: row.driver as ConnectorTemplate["driver"],
@@ -318,12 +533,30 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
         ingestion_url: row.ingestion_url ?? null,
         icon: row.icon,
         description: row.description,
-        category: (row as Record<string, unknown>).category as string | undefined,
-        tags: ((row as Record<string, unknown>).tags as string[]) ?? [],
-        setup_hint: ((row as Record<string, unknown>).setup_hint as string) ?? null,
-        auth_options:
-          ((row as Record<string, unknown>).auth_options as ConnectorTemplate["auth_options"]) ??
-          [],
+        category: (r.category as string | null | undefined) || "custom",
+        tags: (r.tags as string[] | undefined) ?? [],
+        setup_instructions:
+          (r.setup_instructions as string | undefined) ||
+          `Provide credentials to connect to ${row.name}.`,
+        auth_options: (r.auth_options as ConnectorTemplate["auth_options"] | undefined) ?? [],
+        url_pattern:
+          (r.url_pattern as string | undefined) ||
+          `^${row.base_url.replace(/[.\\/+?()[\]{}|^$]/g, "\\$&")}(/|$)`,
+        keywords: (r.keywords as string[] | undefined) ?? [],
+        inline_schema: (r.inline_schema as ConnectorTemplate["inline_schema"] | undefined) ?? null,
+        probe_endpoint:
+          (r.probe_endpoint as ConnectorTemplate["probe_endpoint"] | undefined) ?? null,
+        credential_hints:
+          (r.credential_hints as ConnectorTemplate["credential_hints"] | undefined) ?? [],
+        base_url_options:
+          (r.base_url_options as ConnectorTemplate["base_url_options"] | undefined) ?? [],
+        pagination_defaults:
+          (r.pagination_defaults as ConnectorTemplate["pagination_defaults"] | undefined) ?? null,
+        capabilities: (r.capabilities as ConnectorTemplate["capabilities"] | undefined) ?? {
+          webhooks: false,
+          webhook_events: [],
+          rate_limits: null,
+        },
       };
     } else {
       template = loadBuiltinTemplates().find((t) => t.slug === slug) ?? null;
@@ -334,18 +567,21 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
       throw new UnsupportedIngestionSourceError(template.slug);
     }
 
+    const enriched = enrichConnectorFromTemplate(
+      {
+        name: body.name ?? template.name,
+        slug: template.slug,
+        driver: template.driver,
+        environment: body.environment ?? "dev",
+        auth_type: templateAuthToConnectorAuth(template.auth_type),
+      },
+      template,
+      body.base_url_environment ? { environment: body.base_url_environment } : undefined,
+    );
     const created = await connectorSvc.createConnector(
       {
         tenant_id: principal.tenant_id,
-        input: {
-          name: body.name ?? template.name,
-          slug: template.slug,
-          driver: template.driver,
-          environment: body.environment ?? "dev",
-          base_url: template.base_url,
-          auth_type: templateAuthToConnectorAuth(template.auth_type),
-          config: template.oauth ? { ...template.oauth } : {},
-        },
+        input: enriched,
         actor_id: principal.id,
       },
       db,

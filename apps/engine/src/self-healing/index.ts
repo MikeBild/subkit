@@ -2,7 +2,8 @@
 // fixture dry-run gate, and safe-patches-only auto-apply policy.
 // Implemented in P9 — the full loop lives in `service.ts`.
 
-export { classifyPatch } from "./classifier.ts";
+export type { RateLimitPatchCandidate } from "./classifier.ts";
+export { classifyPatch, classifyRateLimitFromTemplate } from "./classifier.ts";
 export type { FailingStepSnapshot } from "./drift-detector.ts";
 export { analyzeStepFailure, renderDriftDiff } from "./drift-detector.ts";
 export { applyPatchToStep, runFixtureDryRun } from "./fixture-runner.ts";

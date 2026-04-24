@@ -6,8 +6,22 @@
 //
 // Binary formats (PDF, DOCX, XLSX) are planned but not yet supported.
 // Callers should validate MIME/extension before calling.
+//
+// `parseInlineSchema` below handles connector templates that carry an
+// `inline_schema` field (format: "openapi" | "graphql"). The ingestion
+// pipeline should call this instead of fetching `ingestion_url` when
+// `template.inline_schema !== null`.
+// TODO(ingestion call-site): in docs-ingestion/service.ts (or wherever
+// connector-template ingestion is triggered), check
+// `template.inline_schema !== null` first and delegate to
+// `parseInlineSchema(template.inline_schema)`, falling back to
+// `ingestion_url` only when inline_schema is null.
 
+import type { InlineSchema } from "../connectors/templates.ts";
 import type { RawChunk } from "../docs-ingestion/types.ts";
+import type { EndpointSpec } from "../llm/flows/document-analysis.ts";
+import { parseGraphQLIntrospection } from "../llm/flows/document-parsers/graphql-introspection.ts";
+import { parseOpenApi } from "../llm/flows/document-parsers/openapi.ts";
 
 export type ParsedFormat =
   | "json"
@@ -154,4 +168,23 @@ function parsePlaintextChunks(content: string, filename: string): RawChunk[] {
     path: filename,
     content: p.trim(),
   }));
+}
+
+/**
+ * Parse a connector template's `inline_schema` into `EndpointSpec[]` without
+ * any network fetch. Delegates to the same parsers used by the spec-import
+ * conversation tool so behaviour is consistent.
+ *
+ * Use this when `template.inline_schema !== null` instead of fetching
+ * `ingestion_url`. See the TODO at the top of this file for the call-site.
+ */
+export function parseInlineSchema(schema: InlineSchema): EndpointSpec[] {
+  if (schema.format === "openapi") {
+    return parseOpenApi(schema.content);
+  }
+  // graphql — the inline content is an introspection JSON envelope
+  // ({ data: IntrospectionQuery }). If a plain SDL is stored instead,
+  // parseGraphQLIntrospection will throw; the caller should catch and
+  // fall back to ingestion_url in that case.
+  return parseGraphQLIntrospection(schema.content);
 }
