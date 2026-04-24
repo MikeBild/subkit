@@ -1,14 +1,15 @@
-// Loader for the sk-Stdlib source. Reads `stdlib.js` at module
-// initialization and exposes the string for injection into QuickJS
-// contexts. Also exposes STDLIB_VERSION parsed from the source so
-// callers can persist it into workflow manifests for drift detection.
+// Loader for the sk-Stdlib source. Imports `stdlib.js` as text so the
+// content is bundled into the `bun build --compile` single-file binary.
+// Reading via `readFileSync(import.meta.dir + "/stdlib.js")` worked under
+// `bun run` but silently failed once the binary is shipped — Bun only
+// embeds assets that the bundler can see as imports.
+//
+// Also exposes STDLIB_VERSION parsed from the source so callers do not
+// have to boot QuickJS just to learn the stdlib version.
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import stdlibSource from "./stdlib.js" with { type: "text" };
 
-const SOURCE_PATH = join(import.meta.dir, "stdlib.js");
-
-export const STDLIB_SOURCE: string = readFileSync(SOURCE_PATH, "utf8");
+export const STDLIB_SOURCE: string = stdlibSource as unknown as string;
 
 // Extracted at load time so callers do not have to boot QuickJS just
 // to learn the stdlib version. Keep the regex aligned with stdlib.js.
