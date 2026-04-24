@@ -198,6 +198,18 @@ In both cases, the pattern is the same: the platform surfaces improvement propos
 
 ---
 
+## The sk-Stdlib In The Sandbox
+
+JavaScript that operators author — transform steps with `language: "javascript"`, before-request hooks — runs inside a QuickJS-WASM sandbox with zero host globals. To keep that user-code concise, uniform, and reviewable, every sandbox context ships with a curated `sk` global: a frozen, versioned, deterministic standard library.
+
+The surface is intentionally small. It covers the patterns that showed up repeatedly in real tenant code: HTTP-method classification, null-safe property access, allow/deny decision builders, common array reshapers, and type guards. Authors call `sk.http.isMutating(method)` instead of maintaining a POST/PUT/PATCH/DELETE list by hand, `sk.deny("reason")` instead of hand-coding `{ allow: false, reason }`, and `sk.get(input, "request.method", "")` instead of chained null checks. Nothing in the stdlib touches the host — no `Date.now`, no `Math.random`, no I/O — so dry-runs stay reproducible and self-healing stays deterministic.
+
+The stdlib is versioned with semantic versioning. Additive changes are minor bumps; signature or semantic changes are major bumps that must be paired with a migration proposal. When the engine's stdlib version drifts past the major recorded on a persisted workflow, self-healing surfaces a Patch Candidate so operators can review the migration before anything runs.
+
+The conversational authoring layer is aware of the stdlib and proposes `sk.*` forms by default. Operators can still write raw comparisons in edge cases, but the stdlib form is the norm — it shortens code review and keeps policy uniform across tenants.
+
+---
+
 ## What to Read Next
 
 - [docs/05-connectors.md](05-connectors.md) — how Connectors, Drivers, Credentials, and Tunnels form the integration fabric that authoring draws on.

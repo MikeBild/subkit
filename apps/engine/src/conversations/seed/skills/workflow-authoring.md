@@ -175,6 +175,45 @@ steps that finished before the `parallel`.
 }
 ```
 
+## sk-Stdlib in the sandbox
+
+Every `transform` step with `language: "javascript"` and every before-request
+hook runs inside QuickJS with a curated `sk` global already installed. Use it
+instead of re-implementing the same helpers inline — the surface is frozen,
+versioned, and deterministic (no `Date.now`, no `Math.random`, no host I/O).
+
+| Call | Purpose |
+|---|---|
+| `sk.http.isMutating(method)` / `sk.http.isSafe(method)` | Classify HTTP methods without typo-prone string lists |
+| `sk.http.METHODS.READ` / `sk.http.METHODS.WRITE` | Pre-baked method arrays |
+| `sk.get(obj, "a.b.c", fallback)` / `sk.has(obj, path)` | Null-safe property access |
+| `sk.allow()` / `sk.deny(reason)` | Canonical decision shapes for hooks |
+| `sk.pick(obj, keys)` / `sk.omit(obj, keys)` | Shape-preserving subset / exclusion |
+| `sk.pluck(arr, key)` / `sk.groupBy(arr, keyOrFn)` / `sk.uniq(arr)` | Common array reshapers |
+| `sk.isString / isNumber / isArray / isObject / isNil` | Type guards |
+| `sk.version` | Stdlib version — persisted on workflows for drift detection |
+
+Prefer the stdlib over raw comparisons so hook and transform code stays
+uniform. Example: write
+
+```js
+return sk.http.isMutating(sk.get(input, "request.method", ""))
+  ? sk.deny("mutating_denied")
+  : sk.allow();
+```
+
+rather than
+
+```js
+var m = (input && input.request && input.request.method) || "";
+if (m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE") {
+  return { allow: false, reason: "mutating_denied" };
+}
+return { allow: true };
+```
+
+Both are correct; the stdlib form is the one the authoring layer proposes.
+
 ## Common pitfalls
 
 - **Skipping `probe_connector`.** You'll spend five turns debugging a credential

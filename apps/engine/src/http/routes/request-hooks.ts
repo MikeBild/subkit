@@ -17,6 +17,7 @@ import { lintHookSource } from "../../auth/hooks.ts";
 import { policy } from "../../auth/policy.ts";
 import { writeAudit } from "../../db/audit.ts";
 import { requestHooks } from "../../db/schema/request_hooks.ts";
+import { STDLIB_VERSION } from "../../sandboxes/quickjs/stdlib/index.ts";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -178,6 +179,7 @@ export function registerRequestHookRoutes(app: OpenAPIHono<AppEnv>): void {
         description: body.description ?? null,
         enabled: body.enabled ?? true,
         updated_by: principal.id,
+        stdlib_version: STDLIB_VERSION,
       })
       .returning();
     if (!row) throw new Error("insert failed");
@@ -227,6 +229,7 @@ export function registerRequestHookRoutes(app: OpenAPIHono<AppEnv>): void {
     if (body.code !== undefined) {
       updates.source = body.code;
       updates.version = cur.version + 1;
+      updates.stdlib_version = STDLIB_VERSION;
     }
     if (body.description !== undefined) updates.description = body.description;
     if (body.enabled !== undefined) updates.enabled = body.enabled;

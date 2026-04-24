@@ -150,6 +150,14 @@ export function renderDriftDiff(signal: DriftSignal): string {
         `removed: ${signal.removed.join(", ") || "(none)"}`,
         `widened: ${signal.widened.join(", ") || "(none)"}`,
       ].join("\n");
+    case "stdlib_version_drift":
+      return [
+        `kind: stdlib_version_drift`,
+        `surface: ${signal.surface}`,
+        `resource_id: ${signal.resource_id}`,
+        `recorded_version: ${signal.recorded_version}`,
+        `current_version: ${signal.current_version}`,
+      ].join("\n");
   }
 }
 

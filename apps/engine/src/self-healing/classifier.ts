@@ -75,6 +75,16 @@ function _classify(proposal: PatchProposal, signal: DriftSignal | null): PatchDe
     reasons.push(`drift removes keys: ${signal.removed.join(",")}`);
     return { classification: "unsafe", reasons };
   }
+  if (signal && signal.kind === "stdlib_version_drift") {
+    // Stdlib major-version drift is never safe to auto-apply: a major
+    // bump implies the author needs to re-check hook/transform
+    // semantics against the new surface. The patch-candidate record
+    // exists purely for operator review.
+    reasons.push(
+      `stdlib drift: recorded major ${signal.recorded_major}, current major ${signal.current_major}`,
+    );
+    return { classification: "unsafe", reasons };
+  }
   reasons.push("rename/widening/optional-only patch");
   return { classification: "safe", reasons };
 }

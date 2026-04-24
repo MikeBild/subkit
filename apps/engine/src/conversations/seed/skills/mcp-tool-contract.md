@@ -88,3 +88,7 @@ When a workflow does not declare `input_schema`, subkit scans the DAG:
 - Jsonata `$input.foo` or bare `input.foo` references inside transforms and branch conditions.
 
 The identifiers become `properties: { foo: {type: "string"} }` with `additionalProperties: true`. Pass anything the workflow references; strings are safe. Operators who want stricter typing declare `input_schema` on the DAG explicitly.
+
+## Authoring sandbox code via MCP
+
+When an MCP client submits JavaScript for a `transform` step or a before-request hook (e.g. through `tenant.create_request_hook`, `tenant.update_workflow`, or the conversational authoring loop), prefer the `sk.*` stdlib surface over raw comparisons — `sk.http.isMutating(method)`, `sk.get(obj, path, fallback)`, `sk.allow()`, `sk.deny(reason)`. The full surface and rationale live in `workflow-authoring.md`. The stdlib is injected into every sandbox context, is frozen, versioned, and deterministic; proposing `sk.*`-based code keeps the policy surface uniform across tenants.

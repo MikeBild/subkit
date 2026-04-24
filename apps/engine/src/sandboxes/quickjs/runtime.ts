@@ -18,6 +18,7 @@
 // `SandboxError` subclass on every failure mode.
 
 import { getQuickJS, type QuickJSHandle, type QuickJSWASMModule } from "quickjs-emscripten";
+import { STDLIB_SOURCE } from "./stdlib/index.ts";
 import {
   DEFAULT_LIMITS,
   SandboxError,
@@ -27,9 +28,22 @@ import {
   type SandboxRunResult,
   SandboxRuntimeError,
   type SandboxStats,
+  SandboxStdlibInitError,
   SandboxSyntaxError,
   SandboxTimeoutError,
 } from "./types.ts";
+
+// Interrupt ticks between successive `computeMemoryUsage()` samples.
+// Higher = cheaper overall cost; lower = more accurate peak. 512 keeps
+// the sampling cost negligible (<1 % of tick budget) while still
+// capturing spikes above 2k-tick budgets.
+const MEMORY_SAMPLE_EVERY_TICKS = 512;
+
+// Interrupt-tick to QuickJS-opcode ratio, derived from the
+// `tick-calibration.test.ts` microbenchmark. One tick covers roughly
+// this many underlying opcodes; we treat `opcode_budget` as an upper
+// bound on ticks divided by this ratio.
+const TICKS_PER_OPCODE_BATCH = 8;
 
 let _mod: QuickJSWASMModule | null = null;
 
@@ -72,17 +86,48 @@ export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRun
   let ticks = 0;
   let interrupted = false;
   let timedOut = false;
+  let peakMemory = 0;
+
+  // Safe wrapper around runtime.computeMemoryUsage(): returns null if
+  // anything throws (sampling must never take down the host). On
+  // success, extracts the `memory_used_size` field and records the
+  // running peak.
+  const samplePeakMemory = (): void => {
+    try {
+      const handle = runtime.computeMemoryUsage();
+      try {
+        const dumped = context.dump(handle) as Record<string, number> | null;
+        if (dumped && typeof dumped.memory_used_size === "number") {
+          if (dumped.memory_used_size > peakMemory) {
+            peakMemory = dumped.memory_used_size;
+          }
+        }
+      } finally {
+        handle.dispose();
+      }
+    } catch {
+      // Sampling is best-effort. If quickjs can't report memory here
+      // (e.g. mid-abort), we just keep the previous peak value.
+    }
+  };
+
   // QuickJS fires the handler between basic blocks. Each tick covers a
-  // chunk of bytecode so we multiply by 8 to stay in the same order of
-  // magnitude as the configured opcode budget. The wall-clock check is
-  // sampled inside the same callback to avoid a separate timer.
+  // chunk of bytecode (see TICKS_PER_OPCODE_BATCH). The wall-clock
+  // check and the periodic memory sample are both piggy-backed onto
+  // the interrupt callback so we do not need a separate timer.
   runtime.setInterruptHandler(() => {
     ticks += 1;
-    // QuickJS fires the interrupt handler between basic blocks — a tick
-    // is ~hundreds of underlying opcodes, so we treat `opcode_budget` as
-    // an upper bound on ticks and cap it at 2k ticks minimum so even a
-    // "1M-opcode" budget terminates within a few hundred ms.
-    const tick_cap = Math.min(limits.opcode_budget, Math.max(2_000, limits.opcode_budget / 1000));
+    if (ticks % MEMORY_SAMPLE_EVERY_TICKS === 0) {
+      samplePeakMemory();
+    }
+    // Treat opcode_budget as an upper bound on ticks and cap it at 2k
+    // ticks minimum so even a "1M-opcode" budget terminates within a
+    // few hundred ms. Dividing by TICKS_PER_OPCODE_BATCH translates
+    // the user-facing "opcode" budget into a tick budget.
+    const tick_cap = Math.min(
+      limits.opcode_budget,
+      Math.max(2_000, limits.opcode_budget / TICKS_PER_OPCODE_BATCH),
+    );
     if (ticks >= tick_cap) {
       interrupted = true;
       return true;
@@ -98,10 +143,22 @@ export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRun
   const makeStats = (): SandboxStats => ({
     opcode_ticks: ticks,
     duration_ms: Date.now() - started,
-    peak_memory_bytes: null,
+    peak_memory_bytes: peakMemory > 0 ? peakMemory : null,
   });
 
   try {
+    // Install the sk-Stdlib global (sk.http, sk.get, sk.allow, …)
+    // before any user code runs. Failure here is an engine bug, not a
+    // user error — surface it as a distinct sandbox kind so callers
+    // can tell it apart from a user SyntaxError.
+    const stdlibResult = context.evalCode(STDLIB_SOURCE, "sk-stdlib.js");
+    if (stdlibResult.error) {
+      const err = dumpError(context, stdlibResult.error);
+      stdlibResult.error.dispose();
+      throw new SandboxStdlibInitError(`sk-stdlib init failed: ${err.message}`, makeStats());
+    }
+    stdlibResult.value.dispose();
+
     // Marshal the input by JSON-encoding it on the host, shipping the
     // string into the VM, and parsing it there. This avoids building
     // arbitrarily-deep handle trees by hand.
@@ -124,6 +181,7 @@ export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRun
     if (evalResult.error) {
       const err = dumpError(context, evalResult.error);
       evalResult.error.dispose();
+      samplePeakMemory();
       // Distinguish syntax vs. runtime errors by name where possible.
       if (timedOut) {
         throw new SandboxTimeoutError("sandbox exceeded wall-clock budget", makeStats());
@@ -160,6 +218,9 @@ export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRun
     jsonObj2.dispose();
     resultHandle.dispose();
 
+    // Take the final peak sample while the VM is still alive and well-
+    // behaved, so the returned stats reflect actual end-of-run memory.
+    samplePeakMemory();
     const stats = makeStats();
     let parsed: unknown;
     if (outputJson !== undefined) {
@@ -177,6 +238,7 @@ export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRun
   } catch (err) {
     if (err instanceof SandboxError) throw err;
     const message = err instanceof Error ? err.message : String(err);
+    samplePeakMemory();
     const stats = makeStats();
     if (interrupted) {
       throw new SandboxInterruptError(message, stats);

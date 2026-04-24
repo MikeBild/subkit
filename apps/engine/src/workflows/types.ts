@@ -256,6 +256,15 @@ export const StepSchema = z.discriminatedUnion("kind", [
   ToolStepSchema,
 ]);
 
+export const WorkflowRuntimeSchema = z
+  .object({
+    // sk-stdlib version active at commit time, set by the engine when a
+    // workflow contains steps with language: "javascript". Read by
+    // self-healing for drift detection.
+    stdlib_version: z.string().optional(),
+  })
+  .openapi("WorkflowRuntime");
+
 export const WorkflowDefSchema = z
   .object({
     name: z.string().min(1),
@@ -265,6 +274,7 @@ export const WorkflowDefSchema = z
     output_schema: z.record(z.string(), z.unknown()).optional(),
     steps: z.array(StepSchema).min(1).max(200),
     timeout_ms: z.number().int().positive().optional(),
+    runtime: WorkflowRuntimeSchema.optional(),
   })
   .openapi("WorkflowDef");
 

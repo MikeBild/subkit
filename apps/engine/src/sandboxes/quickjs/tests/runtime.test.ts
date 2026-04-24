@@ -77,4 +77,16 @@ describe("quickjs runtime", () => {
     expect(output.Bun).toBe("undefined");
     expect(output.globalThis_fetch).toBe("undefined");
   });
+
+  test("peak_memory_bytes is populated and bounded by the memory limit", async () => {
+    const { stats } = await runJs<number>({
+      // Allocate ~4 MB of strings to force memory usage above idle noise.
+      code: "var bucket = []; for (var i = 0; i < 64; i++) { bucket.push(new Array(1024).join('x')); } return bucket.length;",
+      input: null,
+      limits: { memory_bytes: 32 * 1024 * 1024, wall_ms: 3_000 },
+    });
+    expect(stats.peak_memory_bytes).not.toBeNull();
+    expect(stats.peak_memory_bytes! > 0).toBe(true);
+    expect(stats.peak_memory_bytes! <= 32 * 1024 * 1024).toBe(true);
+  });
 });
