@@ -38,12 +38,57 @@ describe("connector templates", () => {
     expect(openapi.length).toBeGreaterThanOrEqual(25);
   });
 
-  test("every template has category, setup_hint and valid slug", () => {
+  test("every template has category, setup_instructions and valid slug", () => {
     const rows = loadBuiltinTemplates();
     for (const row of rows) {
       expect(row.category).toBeTruthy();
-      expect(row.setup_hint).toBeTruthy();
+      expect(row.setup_instructions).toBeTruthy();
       expect(row.slug).toMatch(/^[a-z0-9][a-z0-9-]*$/);
+    }
+  });
+
+  test("every template carries the new enriched fields with valid shape", () => {
+    const rows = loadBuiltinTemplates();
+    for (const row of rows) {
+      expect(row.version).toBe(1);
+      expect(row.url_pattern).toBeTruthy();
+      expect(() => new RegExp(row.url_pattern)).not.toThrow();
+      expect(Array.isArray(row.keywords)).toBe(true);
+      expect(Array.isArray(row.credential_hints)).toBe(true);
+      expect(Array.isArray(row.base_url_options)).toBe(true);
+      expect(row.capabilities).toBeDefined();
+      expect(typeof row.capabilities.webhooks).toBe("boolean");
+      expect(Array.isArray(row.capabilities.webhook_events)).toBe(true);
+      const fields = row.credential_hints.map((h) => h.field);
+      expect(new Set(fields).size).toBe(fields.length);
+      const envs = row.base_url_options.map((o) => o.environment);
+      expect(new Set(envs).size).toBe(envs.length);
+    }
+  });
+
+  test("OAuth2 blocks declare the extended control fields", () => {
+    const rows = loadBuiltinTemplates();
+    const withOauth = rows.filter((r) => r.oauth !== null);
+    expect(withOauth.length).toBeGreaterThanOrEqual(30);
+    for (const row of withOauth) {
+      const o = row.oauth!;
+      expect(["authorization_code", "client_credentials"]).toContain(o.grant_type);
+      expect(["body", "basic_auth"]).toContain(o.token_auth_method);
+      expect(["form", "json"]).toContain(o.token_content_type);
+      expect(typeof o.use_pkce).toBe("boolean");
+      expect(o.extra_headers).toBeDefined();
+    }
+  });
+
+  test("curated top templates carry rich discovery metadata", () => {
+    const rows = loadBuiltinTemplates();
+    const bySlug = new Map(rows.map((r) => [r.slug, r] as const));
+    const top = ["stripe", "hubspot", "shopify", "github", "slack"];
+    for (const slug of top) {
+      const t = bySlug.get(slug);
+      expect(t, `expected top template ${slug}`).toBeDefined();
+      expect(t!.keywords.length).toBeGreaterThanOrEqual(3);
+      expect(t!.probe_endpoint).not.toBeNull();
     }
   });
 
@@ -93,6 +138,7 @@ describe("connector templates", () => {
 
   test("superRefine rejects an auth-inconsistent template", () => {
     const bad = {
+      version: 1,
       slug: "bad-auth",
       name: "Bad Auth",
       driver: "http" as const,
@@ -100,6 +146,12 @@ describe("connector templates", () => {
       auth_type: "bearer" as const,
       oauth: {
         issuer_url: "https://bad.test",
+        grant_type: "authorization_code",
+        token_auth_method: "body",
+        token_content_type: "form",
+        use_pkce: false,
+        client_id: null,
+        extra_headers: {},
       },
       default_skill: null,
       ingestion_source: "openapi" as const,
@@ -108,8 +160,16 @@ describe("connector templates", () => {
       description: "Bad",
       category: "test",
       tags: [],
-      setup_hint: "x",
+      setup_instructions: "Set up Bad Auth by following these instructions.",
       auth_options: [],
+      url_pattern: "^https://bad\\.test(/|$)",
+      keywords: [],
+      inline_schema: null,
+      probe_endpoint: null,
+      credential_hints: [],
+      base_url_options: [],
+      pagination_defaults: null,
+      capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
     };
     const parsed = ConnectorTemplateSchema.safeParse(bad);
     expect(parsed.success).toBe(false);

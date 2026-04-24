@@ -402,12 +402,32 @@ export interface HttpProbeResult {
   latency_ms: number;
   status?: number;
   detail?: string;
+  // When true the probe is advisory only — callers should not block on it.
+  warning_only: boolean;
+  warnings: Array<{ code: string; message: string }>;
+}
+
+// Shape stored in connector.config.probe_endpoint (mirrors ProbeEndpointSchema).
+interface ProbeEndpointConfig {
+  method: "GET" | "HEAD" | "POST";
+  path: string;
+  expected_status: [number, number];
+  description: string;
+}
+
+function isProbeEndpointConfig(v: unknown): v is ProbeEndpointConfig {
+  if (!v || typeof v !== "object") return false;
+  const c = v as Record<string, unknown>;
+  return (
+    typeof c.path === "string" && Array.isArray(c.expected_status) && c.expected_status.length === 2
+  );
 }
 
 /**
- * Health probe: do a minimal HEAD/GET against the connector's base url
- * (or "/" if absolute), applying credentials. Used by
- * `POST /v1/connectors/:id/test`.
+ * Health probe: do a minimal request against the connector's base_url,
+ * respecting `connector.config.probe_endpoint` when present.
+ * Falls back to GET / and marks the result warning_only when the
+ * fallback returns 404 or 405.
  */
 export async function probeHttpConnector(p: {
   db: Db;
@@ -417,17 +437,55 @@ export async function probeHttpConnector(p: {
   const start = Date.now();
   try {
     if (!p.connector.base_url) {
-      return { ok: false, latency_ms: 0, detail: "connector has no base_url" };
+      return {
+        ok: false,
+        latency_ms: 0,
+        detail: "connector has no base_url",
+        warning_only: false,
+        warnings: [],
+      };
     }
+
+    const rawProbe = p.connector.config?.probe_endpoint as unknown;
+    const probeConfig = isProbeEndpointConfig(rawProbe) ? rawProbe : null;
+
+    const method = probeConfig?.method ?? "GET";
+    // Empty path means probe the base_url directly (no path segment appended).
+    const pathOrUrl = probeConfig !== null && probeConfig.path !== "" ? probeConfig.path : "/";
+
     const res = await executeConnectorHttpRequest({
       db: p.db,
       tenant_id: p.tenant_id,
       connector: p.connector,
-      method: "GET",
-      path_or_url: "/",
+      method,
+      path_or_url: pathOrUrl,
     });
+
     const latency_ms = Date.now() - start;
-    const result: HttpProbeResult = { ok: res.status < 500, latency_ms, status: res.status };
+    const warnings: Array<{ code: string; message: string }> = [];
+    let ok: boolean;
+    let warning_only = false;
+
+    if (probeConfig !== null) {
+      // Explicit probe: success iff status is within the declared range.
+      const [lo, hi] = probeConfig.expected_status;
+      ok = res.status >= lo && res.status <= hi;
+    } else {
+      // Fallback probe: 404/405 from "GET /" is ambiguous — the service may
+      // simply not expose that path, not a connectivity failure.
+      if (res.status === 404 || res.status === 405) {
+        ok = true;
+        warning_only = true;
+        warnings.push({
+          code: "PROBE_AMBIGUOUS",
+          message: `Fallback probe GET / returned ${res.status}; connectivity likely OK but endpoint unknown.`,
+        });
+      } else {
+        ok = res.status < 500;
+      }
+    }
+
+    const result: HttpProbeResult = { ok, latency_ms, status: res.status, warning_only, warnings };
     log.connector.probe.completed({
       connector_id: p.connector.id,
       ok: result.ok,
@@ -436,10 +494,12 @@ export async function probeHttpConnector(p: {
     });
     return result;
   } catch (err) {
-    const result = {
+    const result: HttpProbeResult = {
       ok: false,
       latency_ms: Date.now() - start,
       detail: err instanceof Error ? err.message : String(err),
+      warning_only: false,
+      warnings: [],
     };
     log.connector.probe.completed({
       connector_id: p.connector.id,

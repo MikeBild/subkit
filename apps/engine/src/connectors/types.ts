@@ -69,9 +69,15 @@ export const OAuth2AuthConfigSchema = z
   .object({
     auth_type: z.literal("oauth2"),
     issuer_url: z.string().url(),
+    authorization_endpoint: z.string().url().optional(),
+    token_endpoint: z.string().url().optional(),
     client_id: z.string(),
     client_secret: z.string().optional(),
-    grant_type: z.enum(["authorization_code", "client_credentials", "device_code"]),
+    grant_type: z.enum(["authorization_code", "client_credentials"]),
+    token_auth_method: z.enum(["body", "basic_auth"]).default("body"),
+    token_content_type: z.enum(["form", "json"]).default("form"),
+    use_pkce: z.boolean().default(true),
+    extra_token_headers: z.record(z.string(), z.string()).default({}),
     scope: z.string().optional(),
     redirect_uri: z.string().optional(),
     audience: z.string().optional(),
@@ -102,6 +108,29 @@ export const HttpConnectorConfig = z
     timeout_ms: z.number().positive().max(300_000).optional(),
     max_retries: z.number().int().min(0).max(5).optional(),
     follow_redirects: z.boolean().default(true).optional(),
+    // Template-enrichment metadata — drivers and the LLM context may read
+    // these but they are not validated here beyond shape. The template
+    // schema (connectors/templates.ts) is the authoritative source.
+    probe_endpoint: z.record(z.string(), z.unknown()).nullable().optional(),
+    pagination_defaults: z.record(z.string(), z.unknown()).nullable().optional(),
+    capabilities: z.record(z.string(), z.unknown()).optional(),
+    credential_hints: z.array(z.record(z.string(), z.unknown())).optional(),
+    imported_sample_endpoints: z.array(z.record(z.string(), z.unknown())).optional(),
+    imported_source: z.string().optional(),
+    // OAuth2-enrichment fields (flattened into config for the OAuth2 client).
+    issuer_url: z.string().optional(),
+    authorization_endpoint: z.string().optional(),
+    token_endpoint: z.string().optional(),
+    scope: z.string().optional(),
+    grant_type: z.enum(["authorization_code", "client_credentials"]).optional(),
+    token_auth_method: z.enum(["body", "basic_auth"]).optional(),
+    token_content_type: z.enum(["form", "json"]).optional(),
+    use_pkce: z.boolean().optional(),
+    extra_token_headers: z.record(z.string(), z.string()).optional(),
+    client_id: z.string().optional(),
+    client_secret: z.string().optional(),
+    audience: z.string().optional(),
+    redirect_uri: z.string().optional(),
   })
   .strict();
 
