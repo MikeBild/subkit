@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Terminology gate: fail the build if legacy or superglue vocabulary
+# Terminology gate: fail the build if legacy vocabulary
 # leaks back into subkit source code.
 #
 # Permitted contexts (allow-list handled by path globs below):
