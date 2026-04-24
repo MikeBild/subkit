@@ -349,7 +349,26 @@ export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
   // is read-only.
   app.use("/v1/executions", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("execution:read")(c, next);
-    if (c.req.method === "POST") return requirePermission("workflow:run")(c, next);
+    if (c.req.method === "POST") {
+      // Resource-scoped RBAC: peek at body so a `workflow:run` grant on
+      // the specific workflow id authorises the call. Hono caches the
+      // parsed body so the handler re-reads cheaply.
+      let workflowId: string | undefined;
+      try {
+        const body = (await c.req.json().catch(() => null)) as { workflow_id?: string } | null;
+        workflowId = body?.workflow_id;
+      } catch {
+        // Body may be missing / invalid — fall through to the unscoped check.
+      }
+      if (workflowId) {
+        const targetId = workflowId;
+        return requirePermission("workflow:run", () => ({
+          type: "workflow",
+          id: targetId,
+        }))(c, next);
+      }
+      return requirePermission("workflow:run")(c, next);
+    }
     return next();
   });
   app.use("/v1/executions/:id", async (c, next) => {

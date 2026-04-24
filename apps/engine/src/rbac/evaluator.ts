@@ -289,10 +289,17 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
   }
 
   recordMetric("deny", check.permission, "none");
-  log.rbac.denied({ reason: `permission_denied:${check.permission}`, ...rbacCtx(check) });
+  // Portal-token principals that fall through without an allowlist match
+  // get a workflow-specific reason so operators see why the allowlist
+  // rejected them instead of a generic `permission_denied:…`.
+  const reason =
+    isPortalToken && (check.permission === "workflow:run" || check.permission === "workflow:read")
+      ? "workflow_not_in_allowlist"
+      : `permission_denied:${check.permission}`;
+  log.rbac.denied({ reason, ...rbacCtx(check) });
   return {
     allow: false,
-    reason: `permission_denied:${check.permission}`,
+    reason,
   };
 }
 
