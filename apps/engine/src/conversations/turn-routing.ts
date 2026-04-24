@@ -116,6 +116,12 @@ export function planTurnRouting(args: {
     text.includes("how do i");
   const mentionsWorkflows = /\bworkflow\b/.test(text);
   const mentionsConnectors = /\bconnector\b/.test(text);
+  const containsUrl = /\bhttps?:\/\/\S+/.test(text);
+  const looksLikeSpec =
+    text.startsWith("curl ") ||
+    text.trimStart().startsWith("{") ||
+    /^openapi:/m.test(text) ||
+    /^swagger:/m.test(text);
 
   if (/\barchive\b/.test(text) && mentionsWorkflows) {
     return {
@@ -272,13 +278,22 @@ export function planTurnRouting(args: {
     text.includes("tenant state")
   ) {
     if (matchesAny(text, CONNECTOR_PATTERNS) && !mentionsWorkflows && !mentionsConnectors) {
+      const grounding = containsUrl
+        ? [
+            "match_connector_template_by_url",
+            "suggest_connector_templates",
+            "start_connector_from_description",
+          ]
+        : looksLikeSpec
+          ? ["import_connector_from_spec", "start_connector_from_description"]
+          : ["suggest_connector_templates", "start_connector_from_description"];
       return {
         intent: "author_connector",
         confidence: "medium",
         action:
           "Start connector authoring. Ask one high-signal question at a time and probe before saving.",
         question: "Which connector are we creating first?",
-        required_grounding: ["suggest_connector_templates", "start_connector_from_description"],
+        required_grounding: grounding,
         notes: ["Offer templates only when they clearly accelerate the setup."],
         forbidden_fallbacks: fallbackList(),
       };
@@ -309,17 +324,21 @@ export function planTurnRouting(args: {
   }
 
   if (mode === "connector_authoring" || matchesAny(text, CONNECTOR_PATTERNS)) {
+    const connectorGrounding: string[] = [];
+    if (containsUrl) connectorGrounding.push("match_connector_template_by_url");
+    if (looksLikeSpec) connectorGrounding.push("import_connector_from_spec");
+    connectorGrounding.push(
+      "inspect_connector_draft",
+      "validate_connector_draft",
+      "probe_connector_draft",
+    );
     return {
       intent: "author_connector",
       confidence: mode === "connector_authoring" ? "high" : "medium",
       action:
         "Drive connector authoring with one high-signal question at a time. Suggest a template only when it clearly helps and probe before saving.",
       question: "Which connector are we creating, and what auth method should we expect?",
-      required_grounding: [
-        "inspect_connector_draft",
-        "validate_connector_draft",
-        "probe_connector_draft",
-      ],
+      required_grounding: connectorGrounding,
       notes: ["Keep the user in connector setup until auth and endpoint details are grounded."],
       forbidden_fallbacks: fallbackList(),
     };

@@ -31,6 +31,8 @@ export interface NextAction {
   kind: NextActionKind;
   summary: string;
   rationale: string;
+  /** Advisory tool names the LLM should consider first. */
+  tool_hints?: string[];
 }
 
 export type QuestionKind = "choice" | "text" | "confirm";
@@ -49,6 +51,18 @@ export interface PolicyInput {
     summary: string | null;
   } | null;
   expertise?: ExpertiseHint;
+  /** Current user message — used for URL/spec detection hints at classification time. */
+  user_message?: string | null;
+}
+
+/** Derive tool hints from a raw user message at intent-classification time. */
+function intentClassificationToolHints(msg: string): string[] {
+  const hints: string[] = [];
+  if (/\bhttps?:\/\/\S+/.test(msg)) hints.push("match_connector_template_by_url");
+  if (msg.trimStart().startsWith("curl ") || /^openapi:/m.test(msg) || /^swagger:/m.test(msg)) {
+    hints.push("import_connector_from_spec");
+  }
+  return hints;
 }
 
 export function nextRecommendedAction(input: PolicyInput): NextAction {
@@ -62,10 +76,13 @@ export function nextRecommendedAction(input: PolicyInput): NextAction {
   }
   const d = input.draft;
   if (!d) {
+    const msg = input.user_message ?? "";
+    const toolHints = intentClassificationToolHints(msg);
     return {
       kind: "intent_classification",
       summary: "Acknowledge the goal and classify the user's intent.",
       rationale: "No draft exists yet — this is either onboarding or an informational turn.",
+      ...(toolHints.length > 0 ? { tool_hints: toolHints } : {}),
     };
   }
   const mode = d.mode ?? "onboarding";
