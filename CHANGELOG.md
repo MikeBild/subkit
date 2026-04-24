@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.4.0](https://github.com/MikeBild/subkit/compare/subkit-v2.3.1...subkit-v2.4.0) (2026-04-24)
+
+
+### Features
+
+* close end-to-end prompting/eval/context/execution/verification gaps ([85c9400](https://github.com/MikeBild/subkit/commit/85c9400311da8ab546e9baaa2487f94cd12d3e4b))
+
+
+### Bug Fixes
+
+* align authoring, eval, and sk surface contracts ([22a1eb6](https://github.com/MikeBild/subkit/commit/22a1eb6157071c305fbabb77766ebd9e39c8bc72))
+* **ci:** invoke terminology gate with bash, not sh (dash lacks pipefail) ([7073c08](https://github.com/MikeBild/subkit/commit/7073c0893cc28f72bd262d48ddd955bdabb2655a))
+
+
+### Documentation
+
+* cleanup ([4b41b3f](https://github.com/MikeBild/subkit/commit/4b41b3f438c9c376d97d96219a128dfa065d912e))
+
 ## [2.3.1](https://github.com/MikeBild/subkit/compare/subkit-v2.3.0...subkit-v2.3.1) (2026-04-24)
 
 
