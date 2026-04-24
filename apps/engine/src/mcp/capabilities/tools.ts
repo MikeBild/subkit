@@ -48,6 +48,18 @@ import {
   authenticateTool,
   handleAuthenticate,
 } from "../tools/authenticate.ts";
+import {
+  handleImportConnectorFromSpec,
+  IMPORT_CONNECTOR_FROM_SPEC_TOOL_NAME,
+  type ImportConnectorFromSpecArgs,
+  importConnectorFromSpecMcpTool,
+} from "../tools/import-connector-from-spec.ts";
+import {
+  handleMatchConnectorTemplateByUrl,
+  MATCH_CONNECTOR_TEMPLATE_BY_URL_TOOL_NAME,
+  type MatchConnectorTemplateByUrlArgs,
+  matchConnectorTemplateByUrlMcpTool,
+} from "../tools/match-connector-template-by-url.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import {
   CONVERSATION_TOOL_PREFIX,
@@ -250,6 +262,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     const tools: Tool[] = [];
     tools.push(...(await listWorkflowTools({ db, principal })));
     tools.push(authenticateTool);
+    tools.push(matchConnectorTemplateByUrlMcpTool);
+    tools.push(importConnectorFromSpecMcpTool);
     if (flags.showConversationTools) tools.push(...listConversationTools());
     if (flags.showTenantReads || flags.showTenantWrites) {
       tools.push(...listTenantTools({ allowWrites: flags.showTenantWrites }));
@@ -293,6 +307,42 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           module: "mcp",
           action: "mcp.tool.result",
           msg: "mcp authenticate tool call completed",
+          tool: name,
+          duration_ms: Date.now() - started,
+          is_error: !result.ok,
+        });
+        return {
+          isError: !result.ok,
+          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
+        };
+      }
+
+      if (name === MATCH_CONNECTOR_TEMPLATE_BY_URL_TOOL_NAME) {
+        const result = handleMatchConnectorTemplateByUrl(
+          args as unknown as MatchConnectorTemplateByUrlArgs,
+        );
+        logger.info({
+          module: "mcp",
+          action: "mcp.tool.result",
+          msg: "mcp match_connector_template_by_url completed",
+          tool: name,
+          duration_ms: Date.now() - started,
+          is_error: !result.ok,
+        });
+        return {
+          isError: !result.ok,
+          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
+        };
+      }
+
+      if (name === IMPORT_CONNECTOR_FROM_SPEC_TOOL_NAME) {
+        const result = await handleImportConnectorFromSpec(
+          args as unknown as ImportConnectorFromSpecArgs,
+        );
+        logger.info({
+          module: "mcp",
+          action: "mcp.tool.result",
+          msg: "mcp import_connector_from_spec completed",
           tool: name,
           duration_ms: Date.now() - started,
           is_error: !result.ok,

@@ -10,9 +10,40 @@
 // drift signal that triggered the repair and makes a one-shot
 // decision.
 
+import type { TemplateCapabilities } from "../connectors/templates.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import { log } from "../logging/logger.ts";
 import type { DriftSignal, PatchDecision } from "./types.ts";
+
+export interface RateLimitPatchCandidate {
+  kind: "rate_limited";
+  recommended_action: "retry_with_backoff";
+  recommended_backoff_ms: number;
+}
+
+/**
+ * When an execution step receives a 429 or 503 and the connector's template
+ * capabilities include rate_limits, classify the failure as `rate_limited`
+ * and surface a `retry_with_backoff` patch candidate with the template's
+ * recommended_backoff_ms. Returns null when the status is not 429/503 or
+ * the connector carries no rate_limit hint.
+ *
+ * The connector's `config.capabilities` is typed as `unknown` at the
+ * call-site; callers should cast to `TemplateCapabilities | null` when
+ * reading from connector.config.
+ */
+export function classifyRateLimitFromTemplate(
+  capabilities: TemplateCapabilities | null | undefined,
+  httpStatus: number,
+): RateLimitPatchCandidate | null {
+  if (httpStatus !== 429 && httpStatus !== 503) return null;
+  if (!capabilities?.rate_limits) return null;
+  return {
+    kind: "rate_limited",
+    recommended_action: "retry_with_backoff",
+    recommended_backoff_ms: capabilities.rate_limits.recommended_backoff_ms,
+  };
+}
 
 const SAFE_KINDS = new Set<PatchProposal["kind"]>([
   "update_field_path",
