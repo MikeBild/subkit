@@ -16,7 +16,16 @@ import type { OAuth2ClientConfig, OAuth2TokenBundle } from "./types.ts";
 const configCache = new Map<string, oauth.Configuration>();
 
 function cacheKey(cfg: OAuth2ClientConfig): string {
-  return `${cfg.issuer_url}|${cfg.client_id}`;
+  return `${cfg.issuer_url}|${cfg.client_id}|${cfg.token_auth_method ?? "body"}`;
+}
+
+function resolveClientAuth(cfg: OAuth2ClientConfig): oauth.ClientAuth | undefined {
+  if (!cfg.client_secret) return undefined;
+  if (cfg.token_auth_method === "basic_auth") {
+    return oauth.ClientSecretBasic(cfg.client_secret);
+  }
+  // Default: "body" — post client_id/client_secret in the request body.
+  return oauth.ClientSecretPost(cfg.client_secret);
 }
 
 async function getConfig(cfg: OAuth2ClientConfig): Promise<oauth.Configuration> {
@@ -24,19 +33,34 @@ async function getConfig(cfg: OAuth2ClientConfig): Promise<oauth.Configuration> 
   const existing = configCache.get(key);
   if (existing) return existing;
   const server = new URL(cfg.issuer_url);
-  // Allow plaintext HTTP for local mock servers (tests). Discovery
-  // itself also has to run over http:// so we pass `execute` at call
-  // time rather than waiting to call allowInsecureRequests on the
-  // finished Configuration.
-  const discoveryOptions: oauth.DiscoveryRequestOptions =
-    server.protocol === "http:" ? { execute: [oauth.allowInsecureRequests] } : {};
-  const configuration = await oauth.discovery(
-    server,
-    cfg.client_id,
-    cfg.client_secret,
-    undefined,
-    discoveryOptions,
-  );
+  const clientAuth = resolveClientAuth(cfg);
+
+  // If the caller hands us explicit authorization_endpoint + token_endpoint,
+  // we skip the discovery round-trip. That keeps templates that don't
+  // publish /.well-known (Trello, Asana, early-access APIs) functional.
+  let configuration: oauth.Configuration;
+  if (cfg.authorization_endpoint && cfg.token_endpoint) {
+    configuration = new oauth.Configuration(
+      {
+        issuer: cfg.issuer_url,
+        authorization_endpoint: cfg.authorization_endpoint,
+        token_endpoint: cfg.token_endpoint,
+      },
+      cfg.client_id,
+      cfg.client_secret,
+      clientAuth,
+    );
+  } else {
+    const discoveryOptions: oauth.DiscoveryRequestOptions =
+      server.protocol === "http:" ? { execute: [oauth.allowInsecureRequests] } : {};
+    configuration = await oauth.discovery(
+      server,
+      cfg.client_id,
+      cfg.client_secret,
+      clientAuth,
+      discoveryOptions,
+    );
+  }
   if (server.protocol === "http:") {
     oauth.allowInsecureRequests(configuration);
   }
@@ -80,16 +104,19 @@ export async function startAuthorizationCode(
     throw new Error("startAuthorizationCode requires config.redirect_uri");
   }
   const configuration = await getConfig(cfg);
-  const code_verifier = oauth.randomPKCECodeVerifier();
-  const code_challenge = await oauth.calculatePKCECodeChallenge(code_verifier);
+  const usePkce = cfg.use_pkce !== false; // default true
+  const code_verifier = usePkce ? oauth.randomPKCECodeVerifier() : "";
   const state = oauth.randomState();
   const params: Record<string, string> = {
     redirect_uri: cfg.redirect_uri,
     scope: cfg.scope ?? "openid",
-    code_challenge,
-    code_challenge_method: "S256",
     state,
   };
+  if (usePkce) {
+    const code_challenge = await oauth.calculatePKCECodeChallenge(code_verifier);
+    params.code_challenge = code_challenge;
+    params.code_challenge_method = "S256";
+  }
   if (cfg.audience) params.audience = cfg.audience;
   const url = oauth.buildAuthorizationUrl(configuration, params);
   return {
@@ -110,10 +137,13 @@ export async function completeAuthorizationCode(
   p: CompleteAuthCodeParams,
 ): Promise<OAuth2TokenBundle> {
   const configuration = await getConfig(p.cfg);
-  const res = await oauth.authorizationCodeGrant(configuration, p.current_url, {
-    pkceCodeVerifier: p.code_verifier,
+  const grantOpts: Parameters<typeof oauth.authorizationCodeGrant>[2] = {
     expectedState: p.state,
-  });
+  };
+  if (p.cfg.use_pkce !== false && p.code_verifier) {
+    grantOpts.pkceCodeVerifier = p.code_verifier;
+  }
+  const res = await oauth.authorizationCodeGrant(configuration, p.current_url, grantOpts);
   return toBundle(res);
 }
 

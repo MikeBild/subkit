@@ -1,5 +1,6 @@
 [
   {
+    "version": 1,
     "slug": "stripe",
     "name": "Stripe",
     "driver": "http",
@@ -13,10 +14,63 @@
     "description": "Stripe payments API",
     "category": "payments",
     "tags": ["rest", "webhooks", "idempotent", "form-encoded"],
-    "setup_hint": "Create a Stripe Secret Key at Dashboard > Developers > API keys (starts with sk_live_ or sk_test_).",
-    "auth_options": []
+    "setup_instructions": "Create a Stripe Secret Key at Dashboard > Developers > API keys (starts with sk_live_ or sk_test_).",
+    "auth_options": [],
+    "url_pattern": "^https:\\/\\/api\\.stripe\\.com\\/v[0-9]+(\\/|$)",
+    "keywords": [
+      "customers",
+      "charges",
+      "payment_intents",
+      "invoices",
+      "subscriptions",
+      "products",
+      "prices",
+      "refunds",
+      "disputes",
+      "payouts",
+      "payment_methods"
+    ],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/customers?limit=1",
+      "expected_status": [200, 200],
+      "description": "List one customer to validate the key"
+    },
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "Stripe Secret Key (sk_live_... or sk_test_...)",
+        "placeholder": "sk_live_...",
+        "doc_url": "https://stripe.com/docs/keys",
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": {
+      "strategy": "cursor",
+      "cursor_request_param": "starting_after",
+      "cursor_response_path": "data[last].id",
+      "page_size": 100
+    },
+    "capabilities": {
+      "webhooks": true,
+      "webhook_events": [
+        "charge.created",
+        "customer.created",
+        "customer.updated",
+        "invoice.paid",
+        "payment_intent.succeeded"
+      ],
+      "rate_limits": {
+        "requests_per_second": 100,
+        "burst_size": 25,
+        "recommended_backoff_ms": 500
+      }
+    }
   },
   {
+    "version": 1,
     "slug": "paypal",
     "name": "PayPal",
     "driver": "http",
@@ -26,7 +80,13 @@
       "issuer_url": "https://api-m.paypal.com",
       "authorization_endpoint": "https://www.paypal.com/signin/authorize",
       "token_endpoint": "https://api-m.paypal.com/v1/oauth2/token",
-      "scopes": "openid"
+      "scopes": "openid",
+      "grant_type": "client_credentials",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "paypal-basics",
     "ingestion_source": "openapi",
@@ -35,10 +95,54 @@
     "description": "PayPal REST API for payments and orders",
     "category": "payments",
     "tags": ["rest", "webhooks", "client-credentials"],
-    "setup_hint": "Create a PayPal app at developer.paypal.com to get client_id and secret; exchange via Basic Auth at /v1/oauth2/token for a Bearer token.",
-    "auth_options": []
+    "setup_instructions": "Create a PayPal app at developer.paypal.com to get client_id and secret; exchange via Basic Auth at /v1/oauth2/token for a Bearer token.",
+    "auth_options": [],
+    "url_pattern": "^https:\\/\\/api[-.]m?\\.(sandbox\\.)?paypal\\.com(\\/|$)",
+    "keywords": ["orders", "payments", "payouts", "subscriptions", "products", "invoices"],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/v1/identity/oauth2/userinfo",
+      "expected_status": [200, 401],
+      "description": "Identity echo endpoint"
+    },
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [
+      {
+        "environment": "sandbox",
+        "base_url": "https://api-m.sandbox.paypal.com",
+        "label": "Sandbox"
+      },
+      {
+        "environment": "production",
+        "base_url": "https://api-m.paypal.com",
+        "label": "Production"
+      }
+    ],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": true,
+      "webhook_events": ["CHECKOUT.ORDER.COMPLETED", "PAYMENT.SALE.COMPLETED"],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "square",
     "name": "Square",
     "driver": "http",
@@ -48,7 +152,13 @@
       "issuer_url": "https://squareup.com",
       "authorization_endpoint": "https://connect.squareup.com/oauth2/authorize",
       "token_endpoint": "https://connect.squareup.com/oauth2/token",
-      "scopes": "ITEMS_READ ORDERS_READ PAYMENTS_READ"
+      "scopes": "ITEMS_READ ORDERS_READ PAYMENTS_READ",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "square-basics",
     "ingestion_source": "openapi",
@@ -57,7 +167,7 @@
     "description": "Square payments and commerce API",
     "category": "payments",
     "tags": ["rest", "versioned-api", "cursor-pagination"],
-    "setup_hint": "Get an access token from Square Developer Portal; include Square-Version header (e.g., 2025-01-22) on every request.",
+    "setup_instructions": "Get an access token from Square Developer Portal; include Square-Version header (e.g., 2025-01-22) on every request.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -70,15 +180,63 @@
         "label": "OAuth 2.0 (Authorization Code)",
         "description": "Register an OAuth app in the Square Developer Portal, configure redirect URIs.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://squareup.com",
           "authorization_endpoint": "https://connect.squareup.com/oauth2/authorize",
           "token_endpoint": "https://connect.squareup.com/oauth2/token",
           "scopes": "ITEMS_READ ORDERS_READ PAYMENTS_READ"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https:\\/\\/connect\\.squareup(sandbox)?\\.com(\\/|$)",
+    "keywords": ["payments", "orders", "customers", "catalog", "inventory", "locations", "refunds"],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/v2/locations",
+      "expected_status": [200, 200],
+      "description": "List merchant locations"
+    },
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [
+      {
+        "environment": "sandbox",
+        "base_url": "https://connect.squareupsandbox.com",
+        "label": "Sandbox"
+      },
+      {
+        "environment": "production",
+        "base_url": "https://connect.squareup.com",
+        "label": "Production"
+      }
+    ],
+    "pagination_defaults": {
+      "strategy": "cursor",
+      "cursor_request_param": "cursor",
+      "cursor_response_path": "cursor",
+      "page_size": 100
+    },
+    "capabilities": {
+      "webhooks": true,
+      "webhook_events": ["payment.updated", "order.created"],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "shopify",
     "name": "Shopify",
     "driver": "http",
@@ -92,10 +250,53 @@
     "description": "Shopify Admin REST API",
     "category": "ecommerce",
     "tags": ["rest", "graphql", "webhooks", "versioned-api"],
-    "setup_hint": "Create a custom app in Shopify Admin > Settings > Apps and development; copy the Admin API access token (header: X-Shopify-Access-Token).",
-    "auth_options": []
+    "setup_instructions": "Create a custom app in Shopify Admin > Settings > Apps and development; copy the Admin API access token (header: X-Shopify-Access-Token).",
+    "auth_options": [],
+    "url_pattern": "^https:\\/\\/[^/]+\\.myshopify\\.com\\/admin\\/api(\\/|$)",
+    "keywords": [
+      "orders",
+      "products",
+      "customers",
+      "collections",
+      "fulfillments",
+      "inventory_items",
+      "transactions"
+    ],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/shop.json",
+      "expected_status": [200, 200],
+      "description": "Fetch shop details"
+    },
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": {
+      "strategy": "cursor",
+      "cursor_request_param": "page_info",
+      "cursor_response_path": "Link",
+      "page_size": 50
+    },
+    "capabilities": {
+      "webhooks": true,
+      "webhook_events": ["orders/create", "products/update", "customers/create"],
+      "rate_limits": {
+        "requests_per_second": 2,
+        "burst_size": 40,
+        "recommended_backoff_ms": 500
+      }
+    }
   },
   {
+    "version": 1,
     "slug": "salesforce",
     "name": "Salesforce",
     "driver": "http",
@@ -105,7 +306,13 @@
       "issuer_url": "https://login.salesforce.com",
       "authorization_endpoint": "https://login.salesforce.com/services/oauth2/authorize",
       "token_endpoint": "https://login.salesforce.com/services/oauth2/token",
-      "scopes": "api refresh_token"
+      "scopes": "api refresh_token",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "salesforce-basics",
     "ingestion_source": "openapi",
@@ -114,10 +321,59 @@
     "description": "Salesforce REST API",
     "category": "crm",
     "tags": ["rest", "soql", "bulk-api"],
-    "setup_hint": "Create a Connected App in Salesforce Setup > App Manager; note client_id and client_secret for OAuth2 authorization code flow.",
-    "auth_options": []
+    "setup_instructions": "Create a Connected App in Salesforce Setup > App Manager; note client_id and client_secret for OAuth2 authorization code flow.",
+    "auth_options": [],
+    "url_pattern": "^https:\\/\\/[^/]+\\.my\\.salesforce\\.com(\\/|$)",
+    "keywords": ["Account", "Contact", "Opportunity", "Lead", "Case", "Task", "SOQL"],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/services/data",
+      "expected_status": [200, 200],
+      "description": "List API versions"
+    },
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [
+      {
+        "environment": "sandbox",
+        "base_url": "https://test.salesforce.com",
+        "label": "Sandbox"
+      },
+      {
+        "environment": "production",
+        "base_url": "https://login.salesforce.com",
+        "label": "Production"
+      }
+    ],
+    "pagination_defaults": {
+      "strategy": "cursor",
+      "cursor_request_param": "nextRecordsUrl",
+      "cursor_response_path": "nextRecordsUrl",
+      "page_size": 200
+    },
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "hubspot",
     "name": "HubSpot",
     "driver": "http",
@@ -127,7 +383,13 @@
       "issuer_url": "https://app.hubspot.com",
       "authorization_endpoint": "https://app.hubspot.com/oauth/authorize",
       "token_endpoint": "https://api.hubapi.com/oauth/v1/token",
-      "scopes": "crm.objects.contacts.read crm.objects.contacts.write"
+      "scopes": "crm.objects.contacts.read crm.objects.contacts.write",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "hubspot-basics",
     "ingestion_source": "openapi",
@@ -136,7 +398,7 @@
     "description": "HubSpot CRM API",
     "category": "crm",
     "tags": ["rest", "webhooks", "batch-api"],
-    "setup_hint": "Create a private app in HubSpot > Settings > Integrations > Private Apps; copy the access token, or use OAuth for public apps.",
+    "setup_instructions": "Create a private app in HubSpot > Settings > Integrations > Private Apps; copy the access token, or use OAuth for public apps.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -149,15 +411,66 @@
         "label": "OAuth 2.0 (Authorization Code)",
         "description": "Register a public HubSpot app; use Authorization Code flow for per-portal installs.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://app.hubspot.com",
           "authorization_endpoint": "https://app.hubspot.com/oauth/authorize",
           "token_endpoint": "https://api.hubapi.com/oauth/v1/token",
           "scopes": "crm.objects.contacts.read crm.objects.contacts.write"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https:\\/\\/api\\.hubapi\\.com(\\/|$)",
+    "keywords": [
+      "contacts",
+      "companies",
+      "deals",
+      "tickets",
+      "products",
+      "engagements",
+      "associations",
+      "properties",
+      "pipelines"
+    ],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/crm/v3/objects/contacts?limit=1",
+      "expected_status": [200, 200],
+      "description": "List one contact to validate access"
+    },
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "HubSpot Private App token",
+        "placeholder": "pat-na1-...",
+        "doc_url": "https://developers.hubspot.com/docs/api/private-apps",
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": {
+      "strategy": "cursor",
+      "cursor_request_param": "after",
+      "cursor_response_path": "paging.next.after",
+      "page_size": 100
+    },
+    "capabilities": {
+      "webhooks": true,
+      "webhook_events": ["contact.creation", "contact.propertyChange", "deal.creation"],
+      "rate_limits": {
+        "requests_per_second": 10,
+        "burst_size": 10,
+        "recommended_backoff_ms": 1000
+      }
+    }
   },
   {
+    "version": 1,
     "slug": "pipedrive",
     "name": "Pipedrive",
     "driver": "http",
@@ -167,7 +480,13 @@
       "issuer_url": "https://oauth.pipedrive.com",
       "authorization_endpoint": "https://oauth.pipedrive.com/oauth/authorize",
       "token_endpoint": "https://oauth.pipedrive.com/oauth/token",
-      "scopes": "base deals:read deals:full contacts:read contacts:full"
+      "scopes": "base deals:read deals:full contacts:read contacts:full",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "pipedrive-basics",
     "ingestion_source": "openapi",
@@ -176,7 +495,7 @@
     "description": "Pipedrive CRM API",
     "category": "crm",
     "tags": ["rest", "cursor-pagination", "webhooks"],
-    "setup_hint": "Find API token under Settings > Personal Preferences > API, or register an OAuth app in the Developer Hub.",
+    "setup_instructions": "Find API token under Settings > Personal Preferences > API, or register an OAuth app in the Developer Hub.",
     "auth_options": [
       {
         "auth_type": "query",
@@ -195,15 +514,42 @@
         "label": "OAuth 2.0",
         "description": "Register an OAuth app in the Pipedrive Developer Hub for Authorization Code flow.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://oauth.pipedrive.com",
           "authorization_endpoint": "https://oauth.pipedrive.com/oauth/authorize",
           "token_endpoint": "https://oauth.pipedrive.com/oauth/token",
           "scopes": "base deals:read deals:full contacts:read contacts:full"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.pipedrive\\.com/api/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "zoho-crm",
     "name": "Zoho CRM",
     "driver": "http",
@@ -213,7 +559,13 @@
       "issuer_url": "https://accounts.zoho.com",
       "authorization_endpoint": "https://accounts.zoho.com/oauth/v2/auth",
       "token_endpoint": "https://accounts.zoho.com/oauth/v2/token",
-      "scopes": "ZohoCRM.modules.ALL ZohoCRM.settings.ALL"
+      "scopes": "ZohoCRM.modules.ALL ZohoCRM.settings.ALL",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "zoho-crm-basics",
     "ingestion_source": "unsupported",
@@ -222,10 +574,38 @@
     "description": "Zoho CRM API",
     "category": "crm",
     "tags": ["rest", "oauth2-only", "region-specific"],
-    "setup_hint": "Register a self-client at Zoho API Console, generate a grant token with CRM scopes, exchange for tokens. Access tokens expire in 1 hour.",
-    "auth_options": []
+    "setup_instructions": "Register a self-client at Zoho API Console, generate a grant token with CRM scopes, exchange for tokens. Access tokens expire in 1 hour.",
+    "auth_options": [],
+    "url_pattern": "^https://www\\.zohoapis\\.com/crm/v7(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "jira",
     "name": "Jira",
     "driver": "http",
@@ -235,7 +615,13 @@
       "issuer_url": "https://auth.atlassian.com",
       "authorization_endpoint": "https://auth.atlassian.com/authorize",
       "token_endpoint": "https://auth.atlassian.com/oauth/token",
-      "scopes": "read:jira-work write:jira-work read:jira-user offline_access"
+      "scopes": "read:jira-work write:jira-work read:jira-user offline_access",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "jira-basics",
     "ingestion_source": "openapi",
@@ -244,7 +630,7 @@
     "description": "Jira Cloud REST API",
     "category": "project-management",
     "tags": ["rest", "jql", "webhooks", "atlassian"],
-    "setup_hint": "Choose: (1) API Token — create at id.atlassian.com/manage-profile/security/api-tokens, use Basic Auth. (2) OAuth 2.0 — register app at developer.atlassian.com.",
+    "setup_instructions": "Choose: (1) API Token \u2014 create at id.atlassian.com/manage-profile/security/api-tokens, use Basic Auth. (2) OAuth 2.0 \u2014 register app at developer.atlassian.com.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -257,15 +643,49 @@
         "label": "OAuth 2.0 (3LO)",
         "description": "Register an OAuth 2.0 app at developer.atlassian.com/console/myapps/. Requires audience=api.atlassian.com parameter. Base URL: https://api.atlassian.com/ex/jira/{cloudId}/rest/api/3",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://auth.atlassian.com",
           "authorization_endpoint": "https://auth.atlassian.com/authorize",
           "token_endpoint": "https://auth.atlassian.com/oauth/token",
           "scopes": "read:jira-work write:jira-work read:jira-user offline_access"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.atlassian\\.com/ex/jira/\\[\\^/\\]\\+/rest/api/3(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "linear",
     "name": "Linear",
     "driver": "graphql",
@@ -275,7 +695,13 @@
       "issuer_url": "https://linear.app",
       "authorization_endpoint": "https://linear.app/oauth/authorize",
       "token_endpoint": "https://api.linear.app/oauth/token",
-      "scopes": "read,write"
+      "scopes": "read,write",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "linear-basics",
     "ingestion_source": "graphql",
@@ -284,7 +710,7 @@
     "description": "Linear GraphQL API",
     "category": "project-management",
     "tags": ["graphql", "webhooks", "real-time"],
-    "setup_hint": "Create a personal API key at linear.app/settings/api or register an OAuth app under Settings > API > OAuth Applications.",
+    "setup_instructions": "Create a personal API key at linear.app/settings/api or register an OAuth app under Settings > API > OAuth Applications.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -297,15 +723,42 @@
         "label": "OAuth 2.0 (Authorization Code)",
         "description": "Register an OAuth application at Settings > API > OAuth Applications for per-user installs.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://linear.app",
           "authorization_endpoint": "https://linear.app/oauth/authorize",
           "token_endpoint": "https://api.linear.app/oauth/token",
           "scopes": "read,write"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.linear\\.app/graphql(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "asana",
     "name": "Asana",
     "driver": "http",
@@ -315,7 +768,13 @@
       "issuer_url": "https://app.asana.com",
       "authorization_endpoint": "https://app.asana.com/-/oauth_authorize",
       "token_endpoint": "https://app.asana.com/-/oauth_token",
-      "scopes": "default"
+      "scopes": "default",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "asana-basics",
     "ingestion_source": "openapi",
@@ -324,7 +783,7 @@
     "description": "Asana project management API",
     "category": "project-management",
     "tags": ["rest", "webhooks", "opt-in-fields"],
-    "setup_hint": "Create a Personal Access Token at app.asana.com/0/my-apps, or register an OAuth app there.",
+    "setup_instructions": "Create a Personal Access Token at app.asana.com/0/my-apps, or register an OAuth app there.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -337,15 +796,42 @@
         "label": "OAuth 2.0 (Authorization Code)",
         "description": "Register an OAuth app at app.asana.com/0/my-apps for Authorization Code flow.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://app.asana.com",
           "authorization_endpoint": "https://app.asana.com/-/oauth_authorize",
           "token_endpoint": "https://app.asana.com/-/oauth_token",
           "scopes": "default"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://app\\.asana\\.com/api/1\\.0(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "monday",
     "name": "Monday.com",
     "driver": "graphql",
@@ -355,7 +841,13 @@
       "issuer_url": "https://auth.monday.com",
       "authorization_endpoint": "https://auth.monday.com/oauth2/authorize",
       "token_endpoint": "https://auth.monday.com/oauth2/token",
-      "scopes": "me:read boards:read boards:write"
+      "scopes": "me:read boards:read boards:write",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "monday-basics",
     "ingestion_source": "graphql",
@@ -364,7 +856,7 @@
     "description": "Monday.com GraphQL API",
     "category": "project-management",
     "tags": ["graphql", "webhooks", "complexity-based-limits"],
-    "setup_hint": "Find your personal API token under avatar > Developers > My Access Tokens, or create an OAuth app in the Developer Center.",
+    "setup_instructions": "Find your personal API token under avatar > Developers > My Access Tokens, or create an OAuth app in the Developer Center.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -377,15 +869,42 @@
         "label": "OAuth 2.0 (Authorization Code)",
         "description": "Create an OAuth app in the Monday.com Developer Center.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://auth.monday.com",
           "authorization_endpoint": "https://auth.monday.com/oauth2/authorize",
           "token_endpoint": "https://auth.monday.com/oauth2/token",
           "scopes": "me:read boards:read boards:write"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.monday\\.com/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "trello",
     "name": "Trello",
     "driver": "http",
@@ -399,10 +918,31 @@
     "description": "Trello REST API",
     "category": "project-management",
     "tags": ["rest", "query-auth", "atlassian"],
-    "setup_hint": "Create a Power-Up at trello.com/power-ups/admin to get an API key, then authorize a token via /1/authorize URL.",
-    "auth_options": []
+    "setup_instructions": "Create a Power-Up at trello.com/power-ups/admin to get an API key, then authorize a token via /1/authorize URL.",
+    "auth_options": [],
+    "url_pattern": "^https://api\\.trello\\.com/1(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (query parameter value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "clickup",
     "name": "ClickUp",
     "driver": "http",
@@ -412,7 +952,13 @@
       "issuer_url": "https://app.clickup.com",
       "authorization_endpoint": "https://app.clickup.com/api",
       "token_endpoint": "https://api.clickup.com/api/v2/oauth/token",
-      "scopes": ""
+      "scopes": "",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "clickup-basics",
     "ingestion_source": "openapi",
@@ -421,7 +967,7 @@
     "description": "ClickUp project management API",
     "category": "project-management",
     "tags": ["rest", "webhooks", "hierarchy"],
-    "setup_hint": "Find your personal API token under Settings > Apps in ClickUp (starts with pk_), or create an OAuth app.",
+    "setup_instructions": "Find your personal API token under Settings > Apps in ClickUp (starts with pk_), or create an OAuth app.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -434,15 +980,42 @@
         "label": "OAuth 2.0 (Authorization Code)",
         "description": "Create an OAuth app in the ClickUp Developer Portal.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://app.clickup.com",
           "authorization_endpoint": "https://app.clickup.com/api",
           "token_endpoint": "https://api.clickup.com/api/v2/oauth/token",
           "scopes": ""
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.clickup\\.com/api/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "slack",
     "name": "Slack",
     "driver": "http",
@@ -452,7 +1025,13 @@
       "issuer_url": "https://slack.com",
       "authorization_endpoint": "https://slack.com/oauth/v2/authorize",
       "token_endpoint": "https://slack.com/api/oauth.v2.access",
-      "scopes": "chat:write,channels:read"
+      "scopes": "chat:write,channels:read",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "slack-basics",
     "ingestion_source": "unsupported",
@@ -461,7 +1040,7 @@
     "description": "Slack Web API",
     "category": "communication",
     "tags": ["rest", "webhooks", "bot-token", "socket-mode"],
-    "setup_hint": "Create a Slack app at api.slack.com/apps, add Bot Token Scopes, install to workspace, copy the Bot User OAuth Token (xoxb-).",
+    "setup_instructions": "Create a Slack app at api.slack.com/apps, add Bot Token Scopes, install to workspace, copy the Bot User OAuth Token (xoxb-).",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -474,15 +1053,64 @@
         "label": "OAuth 2.0 (Authorization Code)",
         "description": "Register a distributable Slack app for per-workspace installation via Authorization Code flow.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://slack.com",
           "authorization_endpoint": "https://slack.com/oauth/v2/authorize",
           "token_endpoint": "https://slack.com/api/oauth.v2.access",
           "scopes": "chat:write,channels:read"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https:\\/\\/slack\\.com\\/api(\\/|$)",
+    "keywords": [
+      "conversations",
+      "users",
+      "files",
+      "reactions",
+      "chat.postMessage",
+      "views",
+      "team"
+    ],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/auth.test",
+      "expected_status": [200, 200],
+      "description": "Verify auth token"
+    },
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": {
+      "strategy": "cursor",
+      "cursor_request_param": "cursor",
+      "cursor_response_path": "response_metadata.next_cursor",
+      "page_size": 100
+    },
+    "capabilities": {
+      "webhooks": true,
+      "webhook_events": ["message", "app_mention", "reaction_added"],
+      "rate_limits": {
+        "requests_per_second": 1,
+        "burst_size": 50,
+        "recommended_backoff_ms": 1000
+      }
+    }
   },
   {
+    "version": 1,
     "slug": "discord",
     "name": "Discord",
     "driver": "http",
@@ -492,7 +1120,13 @@
       "issuer_url": "https://discord.com",
       "authorization_endpoint": "https://discord.com/oauth2/authorize",
       "token_endpoint": "https://discord.com/api/oauth2/token",
-      "scopes": "identify guilds bot"
+      "scopes": "identify guilds bot",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "discord-basics",
     "ingestion_source": "openapi",
@@ -501,7 +1135,7 @@
     "description": "Discord REST API",
     "category": "communication",
     "tags": ["rest", "websocket", "bot", "snowflake-ids"],
-    "setup_hint": "Create an app at discord.com/developers/applications, add a Bot, copy the token, use as `Authorization: Bot {token}`.",
+    "setup_instructions": "Create an app at discord.com/developers/applications, add a Bot, copy the token, use as `Authorization: Bot {token}`.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -514,15 +1148,42 @@
         "label": "OAuth 2.0 (User OAuth)",
         "description": "Register an OAuth2 app at discord.com/developers/applications for user-level access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://discord.com",
           "authorization_endpoint": "https://discord.com/oauth2/authorize",
           "token_endpoint": "https://discord.com/api/oauth2/token",
           "scopes": "identify guilds bot"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://discord\\.com/api/v10(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "twilio",
     "name": "Twilio",
     "driver": "http",
@@ -536,10 +1197,38 @@
     "description": "Twilio SMS, Voice, and Messaging API",
     "category": "communication",
     "tags": ["rest", "webhooks", "sms", "voice"],
-    "setup_hint": "Sign up at twilio.com, grab Account SID + Auth Token from Console, use as Basic Auth (SID=username, token=password).",
-    "auth_options": []
+    "setup_instructions": "Sign up at twilio.com, grab Account SID + Auth Token from Console, use as Basic Auth (SID=username, token=password).",
+    "auth_options": [],
+    "url_pattern": "^https://api\\.twilio\\.com/2010\\-04\\-01(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "sendgrid",
     "name": "SendGrid",
     "driver": "http",
@@ -553,10 +1242,31 @@
     "description": "SendGrid email delivery API",
     "category": "communication",
     "tags": ["rest", "email", "templates"],
-    "setup_hint": "Generate an API key under Settings > API Keys (starts with SG.), pass as Bearer token.",
-    "auth_options": []
+    "setup_instructions": "Generate an API key under Settings > API Keys (starts with SG.), pass as Bearer token.",
+    "auth_options": [],
+    "url_pattern": "^https://api\\.sendgrid\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "mailchimp",
     "name": "Mailchimp",
     "driver": "http",
@@ -566,7 +1276,13 @@
       "issuer_url": "https://login.mailchimp.com",
       "authorization_endpoint": "https://login.mailchimp.com/oauth2/authorize",
       "token_endpoint": "https://login.mailchimp.com/oauth2/token",
-      "scopes": ""
+      "scopes": "",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "mailchimp-basics",
     "ingestion_source": "openapi",
@@ -575,7 +1291,7 @@
     "description": "Mailchimp email marketing API",
     "category": "marketing",
     "tags": ["rest", "email-marketing", "audiences"],
-    "setup_hint": "Generate an API key from Account & Billing > Extras > API Keys; the suffix (e.g., -us19) determines your data center for the base URL.",
+    "setup_instructions": "Generate an API key from Account & Billing > Extras > API Keys; the suffix (e.g., -us19) determines your data center for the base URL.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -594,15 +1310,42 @@
         "label": "OAuth 2.0",
         "description": "Register an OAuth app in the Mailchimp Developer Portal.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.mailchimp.com",
           "authorization_endpoint": "https://login.mailchimp.com/oauth2/authorize",
           "token_endpoint": "https://login.mailchimp.com/oauth2/token",
           "scopes": ""
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.api\\.mailchimp\\.com/3\\.0(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "notion",
     "name": "Notion",
     "driver": "http",
@@ -612,7 +1355,13 @@
       "issuer_url": "https://api.notion.com",
       "authorization_endpoint": "https://api.notion.com/v1/oauth/authorize",
       "token_endpoint": "https://api.notion.com/v1/oauth/token",
-      "scopes": ""
+      "scopes": "",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "notion-basics",
     "ingestion_source": "unsupported",
@@ -621,7 +1370,7 @@
     "description": "Notion API",
     "category": "productivity",
     "tags": ["rest", "block-based", "databases"],
-    "setup_hint": "Create an internal integration at notion.so/my-integrations, copy the token (ntn_), share pages with the integration.",
+    "setup_instructions": "Create an internal integration at notion.so/my-integrations, copy the token (ntn_), share pages with the integration.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -634,15 +1383,56 @@
         "label": "OAuth 2.0 (Authorization Code)",
         "description": "Register a public Notion integration for per-workspace installs via Authorization Code flow.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://api.notion.com",
           "authorization_endpoint": "https://api.notion.com/v1/oauth/authorize",
           "token_endpoint": "https://api.notion.com/v1/oauth/token",
           "scopes": ""
         }
       }
-    ]
+    ],
+    "url_pattern": "^https:\\/\\/api\\.notion\\.com\\/v[0-9]+(\\/|$)",
+    "keywords": ["databases", "pages", "blocks", "users", "search", "comments"],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/users/me",
+      "expected_status": [200, 200],
+      "description": "Fetch integration bot user"
+    },
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": {
+      "strategy": "cursor",
+      "cursor_request_param": "start_cursor",
+      "cursor_response_path": "next_cursor",
+      "page_size": 100
+    },
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": {
+        "requests_per_second": 3,
+        "burst_size": 3,
+        "recommended_backoff_ms": 1000
+      }
+    }
   },
   {
+    "version": 1,
     "slug": "airtable",
     "name": "Airtable",
     "driver": "http",
@@ -656,10 +1446,45 @@
     "description": "Airtable REST API",
     "category": "productivity",
     "tags": ["rest", "spreadsheet-db", "formulas"],
-    "setup_hint": "Create a personal access token at airtable.com/create/tokens with scopes for the bases you need.",
-    "auth_options": []
+    "setup_instructions": "Create a personal access token at airtable.com/create/tokens with scopes for the bases you need.",
+    "auth_options": [],
+    "url_pattern": "^https:\\/\\/api\\.airtable\\.com\\/v[0-9]+(\\/|$)",
+    "keywords": ["bases", "tables", "records", "fields", "views", "comments"],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/meta/bases",
+      "expected_status": [200, 200],
+      "description": "List accessible bases"
+    },
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": {
+      "strategy": "cursor",
+      "cursor_request_param": "offset",
+      "cursor_response_path": "offset",
+      "page_size": 100
+    },
+    "capabilities": {
+      "webhooks": true,
+      "webhook_events": ["record.created", "record.updated"],
+      "rate_limits": {
+        "requests_per_second": 5,
+        "burst_size": 5,
+        "recommended_backoff_ms": 1000
+      }
+    }
   },
   {
+    "version": 1,
     "slug": "confluence",
     "name": "Confluence",
     "driver": "http",
@@ -669,7 +1494,13 @@
       "issuer_url": "https://auth.atlassian.com",
       "authorization_endpoint": "https://auth.atlassian.com/authorize",
       "token_endpoint": "https://auth.atlassian.com/oauth/token",
-      "scopes": "read:confluence-content.all write:confluence-content offline_access"
+      "scopes": "read:confluence-content.all write:confluence-content offline_access",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "confluence-basics",
     "ingestion_source": "openapi",
@@ -678,7 +1509,7 @@
     "description": "Confluence Cloud wiki API",
     "category": "productivity",
     "tags": ["rest", "wiki", "atlassian", "cursor-pagination"],
-    "setup_hint": "Create an API token at id.atlassian.com for Basic Auth, or register an OAuth 2.0 (3LO) app at developer.atlassian.com.",
+    "setup_instructions": "Create an API token at id.atlassian.com for Basic Auth, or register an OAuth 2.0 (3LO) app at developer.atlassian.com.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -691,15 +1522,49 @@
         "label": "OAuth 2.0 (3LO)",
         "description": "Register an OAuth 2.0 app at developer.atlassian.com/console/myapps/. Same Atlassian OAuth app works for Jira and Confluence.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://auth.atlassian.com",
           "authorization_endpoint": "https://auth.atlassian.com/authorize",
           "token_endpoint": "https://auth.atlassian.com/oauth/token",
           "scopes": "read:confluence-content.all write:confluence-content offline_access"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.atlassian\\.com/ex/confluence/\\[\\^/\\]\\+/wiki/api/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "dropbox",
     "name": "Dropbox",
     "driver": "http",
@@ -709,7 +1574,13 @@
       "issuer_url": "https://www.dropbox.com",
       "authorization_endpoint": "https://www.dropbox.com/oauth2/authorize",
       "token_endpoint": "https://api.dropboxapi.com/oauth2/token",
-      "scopes": "account_info.read files.metadata.read files.content.read files.content.write"
+      "scopes": "account_info.read files.metadata.read files.content.read files.content.write",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "dropbox-basics",
     "ingestion_source": "unsupported",
@@ -718,22 +1589,56 @@
     "description": "Dropbox file storage API",
     "category": "storage",
     "tags": ["rest", "file-storage", "content-upload"],
-    "setup_hint": "Create an app at dropbox.com/developers/apps, choose 'Scoped access', configure scopes in Permissions tab, note App key and secret.",
+    "setup_instructions": "Create an app at dropbox.com/developers/apps, choose 'Scoped access', configure scopes in Permissions tab, note App key and secret.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (PKCE supported)",
         "description": "Only auth method. Create app at dropbox.com/developers/apps, use Authorization Code flow with or without PKCE.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://www.dropbox.com",
           "authorization_endpoint": "https://www.dropbox.com/oauth2/authorize",
           "token_endpoint": "https://api.dropboxapi.com/oauth2/token",
           "scopes": "account_info.read files.metadata.read files.content.read files.content.write"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.dropboxapi\\.com/2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "box",
     "name": "Box",
     "driver": "http",
@@ -743,7 +1648,13 @@
       "issuer_url": "https://account.box.com",
       "authorization_endpoint": "https://account.box.com/api/oauth2/authorize",
       "token_endpoint": "https://api.box.com/oauth2/token",
-      "scopes": "root_readwrite"
+      "scopes": "root_readwrite",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "box-basics",
     "ingestion_source": "openapi",
@@ -752,10 +1663,38 @@
     "description": "Box cloud content management API",
     "category": "storage",
     "tags": ["rest", "file-storage", "enterprise"],
-    "setup_hint": "Create a Box app at app.box.com/developers/console, choose OAuth 2.0, configure redirect URI, note Client ID and Secret.",
-    "auth_options": []
+    "setup_instructions": "Create a Box app at app.box.com/developers/console, choose OAuth 2.0, configure redirect URI, note Client ID and Secret.",
+    "auth_options": [],
+    "url_pattern": "^https://api\\.box\\.com/2\\.0(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "google-workspace",
     "name": "Google Workspace",
     "driver": "http",
@@ -765,7 +1704,13 @@
       "issuer_url": "https://accounts.google.com",
       "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly"
+      "scopes": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "google-workspace-basics",
     "ingestion_source": "openapi",
@@ -774,13 +1719,19 @@
     "description": "Google Workspace APIs (Gmail, Calendar, Drive)",
     "category": "productivity",
     "tags": ["rest", "google", "oauth2", "discovery-doc"],
-    "setup_hint": "Create a Google Cloud project, enable APIs, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "setup_instructions": "Create a Google Cloud project, enable APIs, configure OAuth consent screen, create OAuth 2.0 credentials.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
           "token_endpoint": "https://oauth2.googleapis.com/token",
@@ -792,14 +1743,48 @@
         "label": "Service Account (JWT)",
         "description": "Use a service account JSON key for server-to-server access without user interaction.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "token_endpoint": "https://oauth2.googleapis.com/token",
           "scopes": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://www\\.googleapis\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "google-gmail",
     "name": "Google Gmail",
     "driver": "http",
@@ -809,7 +1794,13 @@
       "issuer_url": "https://accounts.google.com",
       "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send"
+      "scopes": "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "google-gmail-basics",
     "ingestion_source": "openapi",
@@ -818,13 +1809,19 @@
     "description": "Google Gmail API",
     "category": "communication",
     "tags": ["rest", "google", "email", "quota-units"],
-    "setup_hint": "Create a Google Cloud project, enable Gmail API, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "setup_instructions": "Create a Google Cloud project, enable Gmail API, configure OAuth consent screen, create OAuth 2.0 credentials.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
           "token_endpoint": "https://oauth2.googleapis.com/token",
@@ -836,14 +1833,48 @@
         "label": "Service Account (JWT)",
         "description": "Use a service account with domain-wide delegation for server-to-server access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "token_endpoint": "https://oauth2.googleapis.com/token",
           "scopes": "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://gmail\\.googleapis\\.com/gmail/v1(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "google-calendar",
     "name": "Google Calendar",
     "driver": "http",
@@ -853,7 +1884,13 @@
       "issuer_url": "https://accounts.google.com",
       "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/calendar.events"
+      "scopes": "https://www.googleapis.com/auth/calendar.events",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "google-calendar-basics",
     "ingestion_source": "openapi",
@@ -862,13 +1899,19 @@
     "description": "Google Calendar API",
     "category": "productivity",
     "tags": ["rest", "google", "scheduling", "webhooks"],
-    "setup_hint": "Create a Google Cloud project, enable Calendar API, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "setup_instructions": "Create a Google Cloud project, enable Calendar API, configure OAuth consent screen, create OAuth 2.0 credentials.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
           "token_endpoint": "https://oauth2.googleapis.com/token",
@@ -880,14 +1923,48 @@
         "label": "Service Account (JWT)",
         "description": "Use a service account for server-to-server access without user interaction.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "token_endpoint": "https://oauth2.googleapis.com/token",
           "scopes": "https://www.googleapis.com/auth/calendar.events"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://www\\.googleapis\\.com/calendar/v3(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "google-drive",
     "name": "Google Drive",
     "driver": "http",
@@ -897,7 +1974,13 @@
       "issuer_url": "https://accounts.google.com",
       "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/drive.file"
+      "scopes": "https://www.googleapis.com/auth/drive.file",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "google-drive-basics",
     "ingestion_source": "openapi",
@@ -906,13 +1989,19 @@
     "description": "Google Drive file storage API",
     "category": "storage",
     "tags": ["rest", "google", "file-storage", "resumable-upload"],
-    "setup_hint": "Create a Google Cloud project, enable Drive API, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "setup_instructions": "Create a Google Cloud project, enable Drive API, configure OAuth consent screen, create OAuth 2.0 credentials.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
           "token_endpoint": "https://oauth2.googleapis.com/token",
@@ -924,14 +2013,48 @@
         "label": "Service Account (JWT)",
         "description": "Use a service account for server-to-server access without user interaction.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "token_endpoint": "https://oauth2.googleapis.com/token",
           "scopes": "https://www.googleapis.com/auth/drive.file"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://www\\.googleapis\\.com/drive/v3(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "google-docs",
     "name": "Google Docs",
     "driver": "http",
@@ -941,7 +2064,13 @@
       "issuer_url": "https://accounts.google.com",
       "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/documents"
+      "scopes": "https://www.googleapis.com/auth/documents",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "google-docs-basics",
     "ingestion_source": "openapi",
@@ -950,13 +2079,19 @@
     "description": "Google Docs API",
     "category": "productivity",
     "tags": ["rest", "google", "documents", "batch-update"],
-    "setup_hint": "Create a Google Cloud project, enable Docs API, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "setup_instructions": "Create a Google Cloud project, enable Docs API, configure OAuth consent screen, create OAuth 2.0 credentials.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
           "token_endpoint": "https://oauth2.googleapis.com/token",
@@ -968,14 +2103,48 @@
         "label": "Service Account (JWT)",
         "description": "Use a service account for server-to-server access without user interaction.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "token_endpoint": "https://oauth2.googleapis.com/token",
           "scopes": "https://www.googleapis.com/auth/documents"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://docs\\.googleapis\\.com/v1(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "google-sheets",
     "name": "Google Sheets",
     "driver": "http",
@@ -985,7 +2154,13 @@
       "issuer_url": "https://accounts.google.com",
       "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/spreadsheets"
+      "scopes": "https://www.googleapis.com/auth/spreadsheets",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "google-sheets-basics",
     "ingestion_source": "openapi",
@@ -994,13 +2169,19 @@
     "description": "Google Sheets API",
     "category": "productivity",
     "tags": ["rest", "google", "spreadsheets", "a1-notation"],
-    "setup_hint": "Create a Google Cloud project, enable Sheets API, configure OAuth consent screen, create OAuth 2.0 credentials.",
+    "setup_instructions": "Create a Google Cloud project, enable Sheets API, configure OAuth consent screen, create OAuth 2.0 credentials.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
           "token_endpoint": "https://oauth2.googleapis.com/token",
@@ -1012,14 +2193,48 @@
         "label": "Service Account (JWT)",
         "description": "Use a service account for server-to-server access without user interaction.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "token_endpoint": "https://oauth2.googleapis.com/token",
           "scopes": "https://www.googleapis.com/auth/spreadsheets"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://sheets\\.googleapis\\.com/v4(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "google-chat",
     "name": "Google Chat",
     "driver": "http",
@@ -1029,7 +2244,13 @@
       "issuer_url": "https://accounts.google.com",
       "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/chat.messages https://www.googleapis.com/auth/chat.spaces"
+      "scopes": "https://www.googleapis.com/auth/chat.messages https://www.googleapis.com/auth/chat.spaces",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "google-chat-basics",
     "ingestion_source": "openapi",
@@ -1038,13 +2259,19 @@
     "description": "Google Chat API",
     "category": "communication",
     "tags": ["rest", "google", "chat", "workspace"],
-    "setup_hint": "Create a Google Cloud project, enable Chat API, configure Chat app, set up OAuth, publish to Workspace domain.",
+    "setup_instructions": "Create a Google Cloud project, enable Chat API, configure Chat app, set up OAuth, publish to Workspace domain.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
           "token_endpoint": "https://oauth2.googleapis.com/token",
@@ -1056,14 +2283,48 @@
         "label": "Service Account (JWT)",
         "description": "Use a service account for server-to-server access. Requires Google Workspace domain.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "token_endpoint": "https://oauth2.googleapis.com/token",
           "scopes": "https://www.googleapis.com/auth/chat.messages https://www.googleapis.com/auth/chat.spaces"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://chat\\.googleapis\\.com/v1(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "google-cloud-storage",
     "name": "Google Cloud Storage",
     "driver": "http",
@@ -1073,7 +2334,13 @@
       "issuer_url": "https://accounts.google.com",
       "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/devstorage.read_write"
+      "scopes": "https://www.googleapis.com/auth/devstorage.read_write",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "google-cloud-storage-basics",
     "ingestion_source": "openapi",
@@ -1082,13 +2349,19 @@
     "description": "Google Cloud Storage JSON API",
     "category": "cloud",
     "tags": ["rest", "google", "object-storage", "gcs"],
-    "setup_hint": "Create a Google Cloud project, enable Cloud Storage JSON API, create a service account with Storage Object Admin IAM role.",
+    "setup_instructions": "Create a Google Cloud project, enable Cloud Storage JSON API, create a service account with Storage Object Admin IAM role.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Standard OAuth 2.0 Authorization Code flow for user-level access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
           "token_endpoint": "https://oauth2.googleapis.com/token",
@@ -1100,14 +2373,48 @@
         "label": "Service Account (JWT)",
         "description": "Use a service account JSON key for server-to-server access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://accounts.google.com",
           "token_endpoint": "https://oauth2.googleapis.com/token",
           "scopes": "https://www.googleapis.com/auth/devstorage.read_write"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://storage\\.googleapis\\.com/storage/v1(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "microsoft-graph",
     "name": "Microsoft Graph",
     "driver": "http",
@@ -1117,7 +2424,13 @@
       "issuer_url": "https://login.microsoftonline.com",
       "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      "scopes": "User.Read Mail.Read Files.Read Sites.Read.All"
+      "scopes": "User.Read Mail.Read Files.Read Sites.Read.All",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "microsoft-graph-basics",
     "ingestion_source": "openapi",
@@ -1126,13 +2439,19 @@
     "description": "Microsoft Graph unified API",
     "category": "enterprise",
     "tags": ["rest", "odata", "microsoft", "unified-api"],
-    "setup_hint": "Register an app in Azure Portal > App registrations, add Microsoft Graph API permissions, generate a client secret, use tenant-specific or /common/ OAuth endpoints.",
+    "setup_instructions": "Register an app in Azure Portal > App registrations, add Microsoft Graph API permissions, generate a client secret, use tenant-specific or /common/ OAuth endpoints.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Authorization Code flow for delegated user access. Use /common/ for multi-tenant or tenant GUID for single-tenant.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
@@ -1144,14 +2463,48 @@
         "label": "OAuth 2.0 (Client Credentials)",
         "description": "Client Credentials flow for app-only access without a user. Requires admin consent for application permissions.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
           "scopes": "https://graph.microsoft.com/.default"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://graph\\.microsoft\\.com/v1\\.0(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "microsoft-outlook",
     "name": "Microsoft Outlook",
     "driver": "http",
@@ -1161,7 +2514,13 @@
       "issuer_url": "https://login.microsoftonline.com",
       "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      "scopes": "Mail.Read Mail.ReadWrite Mail.Send"
+      "scopes": "Mail.Read Mail.ReadWrite Mail.Send",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "microsoft-outlook-basics",
     "ingestion_source": "openapi",
@@ -1170,13 +2529,19 @@
     "description": "Microsoft Outlook mail API via Graph",
     "category": "enterprise",
     "tags": ["rest", "email", "calendar", "microsoft"],
-    "setup_hint": "Register an app in Azure Portal, add Mail.Read/Mail.Send permissions; for app-level access to all mailboxes, use application permissions with admin consent.",
+    "setup_instructions": "Register an app in Azure Portal, add Mail.Read/Mail.Send permissions; for app-level access to all mailboxes, use application permissions with admin consent.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Authorization Code flow for delegated user access to their own mailbox.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
@@ -1188,14 +2553,48 @@
         "label": "OAuth 2.0 (Client Credentials)",
         "description": "Client Credentials for app-only access to all mailboxes. Requires admin consent.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
           "scopes": "https://graph.microsoft.com/.default"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://graph\\.microsoft\\.com/v1\\.0(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "microsoft-teams",
     "name": "Microsoft Teams",
     "driver": "http",
@@ -1205,7 +2604,13 @@
       "issuer_url": "https://login.microsoftonline.com",
       "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      "scopes": "Team.ReadBasic.All Channel.ReadBasic.All Chat.Read"
+      "scopes": "Team.ReadBasic.All Channel.ReadBasic.All Chat.Read",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "microsoft-teams-basics",
     "ingestion_source": "openapi",
@@ -1214,13 +2619,19 @@
     "description": "Microsoft Teams API via Graph",
     "category": "enterprise",
     "tags": ["rest", "chat", "channels", "microsoft"],
-    "setup_hint": "Register an app in Azure Portal with Teams-specific Graph permissions; many Teams permissions require admin consent.",
+    "setup_instructions": "Register an app in Azure Portal with Teams-specific Graph permissions; many Teams permissions require admin consent.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Authorization Code flow for delegated user access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
@@ -1232,14 +2643,48 @@
         "label": "OAuth 2.0 (Client Credentials)",
         "description": "Client Credentials for app-only access. Most Teams permissions require admin consent.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
           "scopes": "https://graph.microsoft.com/.default"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://graph\\.microsoft\\.com/v1\\.0(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "microsoft-sharepoint",
     "name": "Microsoft SharePoint",
     "driver": "http",
@@ -1249,7 +2694,13 @@
       "issuer_url": "https://login.microsoftonline.com",
       "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      "scopes": "Sites.Read.All Sites.ReadWrite.All"
+      "scopes": "Sites.Read.All Sites.ReadWrite.All",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "microsoft-sharepoint-basics",
     "ingestion_source": "openapi",
@@ -1258,13 +2709,19 @@
     "description": "Microsoft SharePoint API via Graph",
     "category": "enterprise",
     "tags": ["rest", "document-management", "microsoft", "intranet"],
-    "setup_hint": "Register an app in Azure Portal with Sites.Read.All or Sites.ReadWrite.All Graph permissions; use Graph API (not legacy SharePoint REST _api).",
+    "setup_instructions": "Register an app in Azure Portal with Sites.Read.All or Sites.ReadWrite.All Graph permissions; use Graph API (not legacy SharePoint REST _api).",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Authorization Code flow for delegated user access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
@@ -1276,14 +2733,48 @@
         "label": "OAuth 2.0 (Client Credentials)",
         "description": "Client Credentials for app-only access. Sites.ReadWrite.All grants access to ALL sites.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
           "scopes": "https://graph.microsoft.com/.default"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://graph\\.microsoft\\.com/v1\\.0(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "microsoft-onedrive",
     "name": "Microsoft OneDrive",
     "driver": "http",
@@ -1293,7 +2784,13 @@
       "issuer_url": "https://login.microsoftonline.com",
       "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      "scopes": "Files.Read Files.ReadWrite"
+      "scopes": "Files.Read Files.ReadWrite",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "microsoft-onedrive-basics",
     "ingestion_source": "openapi",
@@ -1302,13 +2799,19 @@
     "description": "Microsoft OneDrive file storage API via Graph",
     "category": "enterprise",
     "tags": ["rest", "file-storage", "microsoft", "sync"],
-    "setup_hint": "Register an app in Azure Portal with Files.Read/ReadWrite permissions; use /me/drive for personal, Sites.Read.All for org SharePoint drives.",
+    "setup_instructions": "Register an app in Azure Portal with Files.Read/ReadWrite permissions; use /me/drive for personal, Sites.Read.All for org SharePoint drives.",
     "auth_options": [
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Auth Code)",
         "description": "Authorization Code flow for delegated user access to personal OneDrive.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
@@ -1318,16 +2821,50 @@
       {
         "auth_type": "oauth2",
         "label": "OAuth 2.0 (Client Credentials)",
-        "description": "Client Credentials for app-only access. Files.Read is personal only — org drives need Sites.Read.All.",
+        "description": "Client Credentials for app-only access. Files.Read is personal only \u2014 org drives need Sites.Read.All.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
           "scopes": "https://graph.microsoft.com/.default"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://graph\\.microsoft\\.com/v1\\.0(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "github",
     "name": "GitHub (REST)",
     "driver": "http",
@@ -1337,16 +2874,22 @@
       "issuer_url": "https://github.com",
       "authorization_endpoint": "https://github.com/login/oauth/authorize",
       "token_endpoint": "https://github.com/login/oauth/access_token",
-      "scopes": "repo,read:org"
+      "scopes": "repo,read:org",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "github-basics",
     "ingestion_source": "openapi",
     "ingestion_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
     "icon": "github.svg",
-    "description": "GitHub REST API v3 — best for write operations (issue creation, PR merge, file commits) where REST is more expressive than GraphQL.",
+    "description": "GitHub REST API v3 \u2014 best for write operations (issue creation, PR merge, file commits) where REST is more expressive than GraphQL.",
     "category": "devops",
     "tags": ["rest", "webhooks", "git"],
-    "setup_hint": "Create a PAT at github.com/settings/tokens, or register an OAuth App under Developer Settings.",
+    "setup_instructions": "Create a PAT at github.com/settings/tokens, or register an OAuth App under Developer Settings.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -1359,15 +2902,66 @@
         "label": "OAuth App (Authorization Code)",
         "description": "Register an OAuth App under github.com/settings/developers for per-user installs.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://github.com",
           "authorization_endpoint": "https://github.com/login/oauth/authorize",
           "token_endpoint": "https://github.com/login/oauth/access_token",
           "scopes": "repo,read:org"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https:\\/\\/api\\.github\\.com(\\/|$)",
+    "keywords": [
+      "repos",
+      "issues",
+      "pulls",
+      "commits",
+      "users",
+      "orgs",
+      "actions",
+      "releases",
+      "branches",
+      "reviews"
+    ],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/user",
+      "expected_status": [200, 200],
+      "description": "Fetch the authenticated user"
+    },
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "GitHub Personal Access Token (Classic or Fine-grained)",
+        "placeholder": "ghp_... or github_pat_...",
+        "doc_url": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens",
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": {
+      "strategy": "page",
+      "page_param": "page",
+      "page_size": 100
+    },
+    "capabilities": {
+      "webhooks": true,
+      "webhook_events": ["push", "pull_request", "issues", "release"],
+      "rate_limits": {
+        "requests_per_second": 17,
+        "burst_size": 5000,
+        "recommended_backoff_ms": 1000
+      }
+    }
   },
   {
+    "version": 1,
     "slug": "github-graphql",
     "name": "GitHub (GraphQL)",
     "driver": "graphql",
@@ -1377,16 +2971,22 @@
       "issuer_url": "https://github.com",
       "authorization_endpoint": "https://github.com/login/oauth/authorize",
       "token_endpoint": "https://github.com/login/oauth/access_token",
-      "scopes": "repo,read:org"
+      "scopes": "repo,read:org",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "github-graphql-basics",
     "ingestion_source": "graphql",
     "ingestion_url": "https://docs.github.com/public/fpt/schema.docs.graphql",
     "icon": "github.svg",
-    "description": "GitHub GraphQL API v4 — one roundtrip instead of N+1 REST fetches for deep traversals (repo → issues → comments → labels).",
+    "description": "GitHub GraphQL API v4 \u2014 one roundtrip instead of N+1 REST fetches for deep traversals (repo \u2192 issues \u2192 comments \u2192 labels).",
     "category": "devops",
     "tags": ["graphql", "webhooks", "git", "efficient"],
-    "setup_hint": "Use the same PAT as the REST template (repo + read:org). Send queries to https://api.github.com/graphql. Monitor X-RateLimit-Cost.",
+    "setup_instructions": "Use the same PAT as the REST template (repo + read:org). Send queries to https://api.github.com/graphql. Monitor X-RateLimit-Cost.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -1397,17 +2997,53 @@
       {
         "auth_type": "oauth2",
         "label": "OAuth App (Authorization Code)",
-        "description": "Same OAuth App as the REST connector — the token works against both APIs.",
+        "description": "Same OAuth App as the REST connector \u2014 the token works against both APIs.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://github.com",
           "authorization_endpoint": "https://github.com/login/oauth/authorize",
           "token_endpoint": "https://github.com/login/oauth/access_token",
           "scopes": "repo,read:org"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https:\\/\\/api\\.github\\.com\\/graphql(\\/|$)",
+    "keywords": ["viewer", "repository", "issue", "pullRequest", "organization", "search", "user"],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "POST",
+      "path": "",
+      "expected_status": [200, 200],
+      "description": "GraphQL introspection"
+    },
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": {
+        "requests_per_second": 17,
+        "burst_size": 5000,
+        "recommended_backoff_ms": 1000
+      }
+    }
   },
   {
+    "version": 1,
     "slug": "gitlab",
     "name": "GitLab",
     "driver": "http",
@@ -1417,7 +3053,13 @@
       "issuer_url": "https://gitlab.com",
       "authorization_endpoint": "https://gitlab.com/oauth/authorize",
       "token_endpoint": "https://gitlab.com/oauth/token",
-      "scopes": "api read_user read_repository write_repository"
+      "scopes": "api read_user read_repository write_repository",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "gitlab-basics",
     "ingestion_source": "openapi",
@@ -1426,7 +3068,7 @@
     "description": "GitLab REST API",
     "category": "devops",
     "tags": ["rest", "graphql", "ci-cd", "git", "self-hosted"],
-    "setup_hint": "Choose: (1) PAT — create at User Settings > Access Tokens, use PRIVATE-TOKEN header. (2) OAuth 2.0 — register app under Applications.",
+    "setup_instructions": "Choose: (1) PAT \u2014 create at User Settings > Access Tokens, use PRIVATE-TOKEN header. (2) OAuth 2.0 \u2014 register app under Applications.",
     "auth_options": [
       {
         "auth_type": "header",
@@ -1439,15 +3081,42 @@
         "label": "OAuth 2.0",
         "description": "Register an OAuth app under User Settings > Applications. Uses standard Authorization: Bearer flow.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://gitlab.com",
           "authorization_endpoint": "https://gitlab.com/oauth/authorize",
           "token_endpoint": "https://gitlab.com/oauth/token",
           "scopes": "api read_user read_repository write_repository"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://gitlab\\.com/api/v4(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "bitbucket",
     "name": "Bitbucket",
     "driver": "http",
@@ -1457,7 +3126,13 @@
       "issuer_url": "https://bitbucket.org",
       "authorization_endpoint": "https://bitbucket.org/site/oauth2/authorize",
       "token_endpoint": "https://bitbucket.org/site/oauth2/access_token",
-      "scopes": "repository pullrequest account"
+      "scopes": "repository pullrequest account",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "bitbucket-basics",
     "ingestion_source": "openapi",
@@ -1466,7 +3141,7 @@
     "description": "Bitbucket Cloud REST API",
     "category": "devops",
     "tags": ["rest", "git", "atlassian", "pipelines"],
-    "setup_hint": "Create an API token at id.atlassian.com for Basic Auth, or register an OAuth consumer under Workspace Settings.",
+    "setup_instructions": "Create an API token at id.atlassian.com for Basic Auth, or register an OAuth consumer under Workspace Settings.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -1479,15 +3154,49 @@
         "label": "OAuth 2.0",
         "description": "Register an OAuth consumer under Workspace Settings. Token endpoint is /access_token (not /token).",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://bitbucket.org",
           "authorization_endpoint": "https://bitbucket.org/site/oauth2/authorize",
           "token_endpoint": "https://bitbucket.org/site/oauth2/access_token",
           "scopes": "repository pullrequest account"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.bitbucket\\.org/2\\.0(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "circleci",
     "name": "CircleCI",
     "driver": "http",
@@ -1501,10 +3210,31 @@
     "description": "CircleCI CI/CD API",
     "category": "devops",
     "tags": ["rest", "ci-cd", "pipelines"],
-    "setup_hint": "Generate a Personal API Token from User Settings in CircleCI, pass as `Circle-Token` header.",
-    "auth_options": []
+    "setup_instructions": "Generate a Personal API Token from User Settings in CircleCI, pass as `Circle-Token` header.",
+    "auth_options": [],
+    "url_pattern": "^https://circleci\\.com/api/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "vercel",
     "name": "Vercel",
     "driver": "http",
@@ -1518,10 +3248,31 @@
     "description": "Vercel deployment and hosting API",
     "category": "devops",
     "tags": ["rest", "deployments", "serverless", "edge"],
-    "setup_hint": "Create an access token at vercel.com/account/tokens. For team resources, append `?teamId={id}`.",
-    "auth_options": []
+    "setup_instructions": "Create an access token at vercel.com/account/tokens. For team resources, append `?teamId={id}`.",
+    "auth_options": [],
+    "url_pattern": "^https://api\\.vercel\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "cloudflare",
     "name": "Cloudflare",
     "driver": "http",
@@ -1535,10 +3286,31 @@
     "description": "Cloudflare API for DNS, CDN, Workers, and security",
     "category": "devops",
     "tags": ["rest", "cdn", "dns", "workers", "security"],
-    "setup_hint": "Go to My Profile > API Tokens in Cloudflare dashboard, create a scoped API Token, use as Bearer.",
-    "auth_options": []
+    "setup_instructions": "Go to My Profile > API Tokens in Cloudflare dashboard, create a scoped API Token, use as Bearer.",
+    "auth_options": [],
+    "url_pattern": "^https://api\\.cloudflare\\.com/client/v4(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "aws-s3",
     "name": "AWS S3",
     "driver": "s3",
@@ -1552,10 +3324,31 @@
     "description": "Amazon S3 object storage",
     "category": "cloud",
     "tags": ["s3", "object-storage", "aws", "sigv4"],
-    "setup_hint": "Create an IAM user, generate Access Key ID + Secret Access Key, note target S3 region and bucket.",
-    "auth_options": []
+    "setup_instructions": "Create an IAM user, generate Access Key ID + Secret Access Key, note target S3 region and bucket.",
+    "auth_options": [],
+    "url_pattern": "^https://s3\\.us\\-east\\-1\\.amazonaws\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "aws-lambda",
     "name": "AWS Lambda",
     "driver": "http",
@@ -1569,10 +3362,31 @@
     "description": "AWS Lambda serverless functions API",
     "category": "cloud",
     "tags": ["rest", "serverless", "aws", "sigv4"],
-    "setup_hint": "Create IAM user/role with Lambda permissions, generate Access Key ID + Secret, note function region.",
-    "auth_options": []
+    "setup_instructions": "Create IAM user/role with Lambda permissions, generate Access Key ID + Secret, note function region.",
+    "auth_options": [],
+    "url_pattern": "^https://lambda\\.us\\-east\\-1\\.amazonaws\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "aws-dynamodb",
     "name": "AWS DynamoDB",
     "driver": "http",
@@ -1586,10 +3400,31 @@
     "description": "AWS DynamoDB NoSQL database API",
     "category": "cloud",
     "tags": ["rest", "nosql", "aws", "sigv4"],
-    "setup_hint": "Create IAM user/role with DynamoDB permissions, generate keys, note region.",
-    "auth_options": []
+    "setup_instructions": "Create IAM user/role with DynamoDB permissions, generate keys, note region.",
+    "auth_options": [],
+    "url_pattern": "^https://dynamodb\\.us\\-east\\-1\\.amazonaws\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "aws-ses",
     "name": "AWS SES",
     "driver": "http",
@@ -1603,10 +3438,31 @@
     "description": "AWS Simple Email Service API",
     "category": "cloud",
     "tags": ["rest", "email", "aws", "sigv4"],
-    "setup_hint": "Create IAM user with SES permissions, verify sender email/domain, request production access to leave sandbox.",
-    "auth_options": []
+    "setup_instructions": "Create IAM user with SES permissions, verify sender email/domain, request production access to leave sandbox.",
+    "auth_options": [],
+    "url_pattern": "^https://email\\.us\\-east\\-1\\.amazonaws\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "aws-sqs",
     "name": "AWS SQS",
     "driver": "http",
@@ -1620,10 +3476,31 @@
     "description": "AWS Simple Queue Service API",
     "category": "cloud",
     "tags": ["rest", "queue", "aws", "sigv4"],
-    "setup_hint": "Create IAM user/role with SQS permissions, note queue URL and region.",
-    "auth_options": []
+    "setup_instructions": "Create IAM user/role with SQS permissions, note queue URL and region.",
+    "auth_options": [],
+    "url_pattern": "^https://sqs\\.us\\-east\\-1\\.amazonaws\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "azure-devops",
     "name": "Azure DevOps",
     "driver": "http",
@@ -1637,7 +3514,7 @@
     "description": "Azure DevOps REST API",
     "category": "cloud",
     "tags": ["rest", "ci-cd", "azure", "boards", "repos"],
-    "setup_hint": "Choose: (1) PAT — create at User Settings > Personal Access Tokens, use Basic Auth. (2) OAuth — register Entra ID app for service principal access.",
+    "setup_instructions": "Choose: (1) PAT \u2014 create at User Settings > Personal Access Tokens, use Basic Auth. (2) OAuth \u2014 register Entra ID app for service principal access.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -1650,15 +3527,49 @@
         "label": "OAuth 2.0 (Microsoft Entra ID)",
         "description": "Register an app in Azure Portal, use Entra ID OAuth2 endpoints with scope 499b84ac-1321-427f-aa17-267ca6975798/.default",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
           "scopes": "499b84ac-1321-427f-aa17-267ca6975798/.default"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://dev\\.azure\\.com/\\[\\^/\\]\\+/_apis(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "azure-blob-storage",
     "name": "Azure Blob Storage",
     "driver": "http",
@@ -1672,10 +3583,31 @@
     "description": "Azure Blob Storage REST API",
     "category": "cloud",
     "tags": ["rest", "object-storage", "azure", "sas"],
-    "setup_hint": "Create Storage Account in Azure Portal, find access keys under 'Access keys', or generate SAS token.",
-    "auth_options": []
+    "setup_instructions": "Create Storage Account in Azure Portal, find access keys under 'Access keys', or generate SAS token.",
+    "auth_options": [],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.blob\\.core\\.windows\\.net(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "azure-functions",
     "name": "Azure Functions",
     "driver": "http",
@@ -1685,7 +3617,13 @@
       "issuer_url": "https://login.microsoftonline.com",
       "authorization_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      "scopes": "https://management.azure.com/.default"
+      "scopes": "https://management.azure.com/.default",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "azure-functions-basics",
     "ingestion_source": "unsupported",
@@ -1694,10 +3632,38 @@
     "description": "Azure Functions management API",
     "category": "cloud",
     "tags": ["rest", "serverless", "azure", "arm"],
-    "setup_hint": "Register app in Microsoft Entra ID, grant Contributor role on Function App, obtain client ID, secret, tenant ID.",
-    "auth_options": []
+    "setup_instructions": "Register app in Microsoft Entra ID, grant Contributor role on Function App, obtain client ID, secret, tenant ID.",
+    "auth_options": [],
+    "url_pattern": "^https://management\\.azure\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "digitalocean",
     "name": "DigitalOcean",
     "driver": "http",
@@ -1711,10 +3677,31 @@
     "description": "DigitalOcean cloud API",
     "category": "cloud",
     "tags": ["rest", "droplets", "kubernetes", "databases"],
-    "setup_hint": "In DigitalOcean Control Panel, go to API > Tokens, generate PAT (dop_v1_) with read/write scope.",
-    "auth_options": []
+    "setup_instructions": "In DigitalOcean Control Panel, go to API > Tokens, generate PAT (dop_v1_) with read/write scope.",
+    "auth_options": [],
+    "url_pattern": "^https://api\\.digitalocean\\.com/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "postgres",
     "name": "PostgreSQL",
     "driver": "postgres",
@@ -1728,10 +3715,42 @@
     "description": "PostgreSQL relational database",
     "category": "database",
     "tags": ["sql", "relational", "introspection"],
-    "setup_hint": "Provide a PostgreSQL DSN: postgres://user:password@host:5432/database. Engine introspects tables via information_schema.",
-    "auth_options": []
+    "setup_instructions": "Provide a PostgreSQL DSN: postgres://user:password@host:5432/database. Engine introspects tables via information_schema.",
+    "auth_options": [],
+    "url_pattern": "^postgres(ql)?:\\/\\/",
+    "keywords": ["select", "insert", "update", "delete", "schema", "table", "transaction"],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Postgres user",
+        "placeholder": "postgres",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Postgres password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": {
+      "strategy": "offset",
+      "offset_param": "OFFSET",
+      "page_size": 1000
+    },
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "mssql",
     "name": "Microsoft SQL Server",
     "driver": "mssql",
@@ -1745,7 +3764,7 @@
     "description": "Microsoft SQL Server database",
     "category": "database",
     "tags": ["sql", "relational", "introspection", "azure-sql"],
-    "setup_hint": "Provide an MSSQL connection string: mssql://user:password@hostname:1433/database?encrypt=true. For Azure SQL, enable 'Allow Azure services' in firewall rules.",
+    "setup_instructions": "Provide an MSSQL connection string: mssql://user:password@hostname:1433/database?encrypt=true. For Azure SQL, enable 'Allow Azure services' in firewall rules.",
     "auth_options": [
       {
         "auth_type": "none",
@@ -1758,14 +3777,33 @@
         "label": "Microsoft Entra ID (Azure SQL)",
         "description": "Use Entra ID token-based auth for Azure SQL. Register app in Azure Portal, assign SQL roles.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://login.microsoftonline.com",
           "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
           "scopes": "https://database.windows.net/.default"
         }
       }
-    ]
+    ],
+    "url_pattern": "^$",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "mysql",
     "name": "MySQL",
     "driver": "mysql",
@@ -1779,10 +3817,23 @@
     "description": "MySQL relational database",
     "category": "database",
     "tags": ["sql", "relational", "introspection", "mariadb"],
-    "setup_hint": "Provide a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Works with MySQL 5.7+, MySQL 8.x, and MariaDB 10.x+.",
-    "auth_options": []
+    "setup_instructions": "Provide a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Works with MySQL 5.7+, MySQL 8.x, and MariaDB 10.x+.",
+    "auth_options": [],
+    "url_pattern": "^$",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "cockroachdb",
     "name": "CockroachDB",
     "driver": "postgres",
@@ -1796,10 +3847,23 @@
     "description": "CockroachDB distributed SQL database",
     "category": "database",
     "tags": ["sql", "relational", "introspection", "distributed", "postgresql-compatible"],
-    "setup_hint": "Provide a CockroachDB DSN: postgresql://user:password@host:26257/defaultdb?sslmode=verify-full. Uses PostgreSQL wire protocol — fully compatible with the PostgreSQL driver.",
-    "auth_options": []
+    "setup_instructions": "Provide a CockroachDB DSN: postgresql://user:password@host:26257/defaultdb?sslmode=verify-full. Uses PostgreSQL wire protocol \u2014 fully compatible with the PostgreSQL driver.",
+    "auth_options": [],
+    "url_pattern": "^$",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "oracle-ords",
     "name": "Oracle ORDS",
     "driver": "http",
@@ -1813,7 +3877,7 @@
     "description": "Oracle REST Data Services (ORDS) API",
     "category": "database",
     "tags": ["rest", "sql", "oracle", "ords", "odata"],
-    "setup_hint": "Oracle REST Data Services (ORDS) exposes a SQL execution API. For Oracle Cloud Autonomous DB, ORDS is always-on. For on-premise, deploy ORDS. POST SQL to /_/sql endpoint.",
+    "setup_instructions": "Oracle REST Data Services (ORDS) exposes a SQL execution API. For Oracle Cloud Autonomous DB, ORDS is always-on. For on-premise, deploy ORDS. POST SQL to /_/sql endpoint.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -1827,9 +3891,37 @@
         "description": "Register an OAuth client in ORDS: BEGIN OAUTH.create_client(...); Authorize via ORDS OAuth endpoints.",
         "oauth": null
       }
-    ]
+    ],
+    "url_pattern": "^https://\\[\\^/\\]\\+/ords/\\[\\^/\\]\\+(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "supabase",
     "name": "Supabase",
     "driver": "http",
@@ -1843,10 +3935,31 @@
     "description": "Supabase PostgREST API",
     "category": "database",
     "tags": ["rest", "postgrest", "realtime", "auth"],
-    "setup_hint": "Get project URL and API keys from Dashboard > Settings > API. Use `apikey` header with anon or service_role key.",
-    "auth_options": []
+    "setup_instructions": "Get project URL and API keys from Dashboard > Settings > API. Use `apikey` header with anon or service_role key.",
+    "auth_options": [],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.supabase\\.co/rest/v1(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "firebase",
     "name": "Firebase",
     "driver": "http",
@@ -1856,7 +3969,13 @@
       "issuer_url": "https://accounts.google.com",
       "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_endpoint": "https://oauth2.googleapis.com/token",
-      "scopes": "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase"
+      "scopes": "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "firebase-basics",
     "ingestion_source": "openapi",
@@ -1865,10 +3984,38 @@
     "description": "Firebase Firestore REST API",
     "category": "database",
     "tags": ["rest", "google", "nosql", "realtime"],
-    "setup_hint": "Enable Firestore in Firebase Console, create service account with Firestore Admin role.",
-    "auth_options": []
+    "setup_instructions": "Enable Firestore in Firebase Console, create service account with Firestore Admin role.",
+    "auth_options": [],
+    "url_pattern": "^https://firestore\\.googleapis\\.com/v1(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "snowflake",
     "name": "Snowflake",
     "driver": "http",
@@ -1882,10 +4029,31 @@
     "description": "Snowflake data warehouse SQL API",
     "category": "database",
     "tags": ["rest", "data-warehouse", "sql", "analytics"],
-    "setup_hint": "Generate RSA key pair, assign public key via ALTER USER SET RSA_PUBLIC_KEY, sign JWTs with private key; or create OAuth security integration.",
-    "auth_options": []
+    "setup_instructions": "Generate RSA key pair, assign public key via ALTER USER SET RSA_PUBLIC_KEY, sign JWTs with private key; or create OAuth security integration.",
+    "auth_options": [],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.snowflakecomputing\\.com/api/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "datadog",
     "name": "Datadog",
     "driver": "http",
@@ -1899,10 +4067,31 @@
     "description": "Datadog monitoring and analytics API",
     "category": "analytics",
     "tags": ["rest", "monitoring", "metrics", "apm"],
-    "setup_hint": "In Datadog Org Settings, create API key and Application key; pass as `DD-API-KEY` and `DD-APPLICATION-KEY` headers.",
-    "auth_options": []
+    "setup_instructions": "In Datadog Org Settings, create API key and Application key; pass as `DD-API-KEY` and `DD-APPLICATION-KEY` headers.",
+    "auth_options": [],
+    "url_pattern": "^https://api\\.datadoghq\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "pagerduty",
     "name": "PagerDuty",
     "driver": "http",
@@ -1916,7 +4105,7 @@
     "description": "PagerDuty incident management API",
     "category": "analytics",
     "tags": ["rest", "incident-management", "on-call", "webhooks"],
-    "setup_hint": "In PagerDuty, go to Integrations > API Access Keys, create REST API key, use as `Authorization: Token token={key}`.",
+    "setup_instructions": "In PagerDuty, go to Integrations > API Access Keys, create REST API key, use as `Authorization: Token token={key}`.",
     "auth_options": [
       {
         "auth_type": "header",
@@ -1929,15 +4118,42 @@
         "label": "OAuth 2.0",
         "description": "Register an OAuth app in PagerDuty Developer Mode for Authorization Code flow.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://identity.pagerduty.com",
           "authorization_endpoint": "https://identity.pagerduty.com/oauth/authorize",
           "token_endpoint": "https://identity.pagerduty.com/oauth/token",
           "scopes": "read write"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.pagerduty\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "sentry",
     "name": "Sentry",
     "driver": "http",
@@ -1951,10 +4167,31 @@
     "description": "Sentry error tracking and performance API",
     "category": "analytics",
     "tags": ["rest", "error-tracking", "performance", "releases"],
-    "setup_hint": "Create auth token at sentry.io Settings > Auth Tokens with needed scopes, pass as Bearer.",
-    "auth_options": []
+    "setup_instructions": "Create auth token at sentry.io Settings > Auth Tokens with needed scopes, pass as Bearer.",
+    "auth_options": [],
+    "url_pattern": "^https://sentry\\.io/api/0(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "servicenow",
     "name": "ServiceNow",
     "driver": "http",
@@ -1964,7 +4201,13 @@
       "issuer_url": "https://{instance}.service-now.com",
       "authorization_endpoint": "https://{instance}.service-now.com/oauth_auth.do",
       "token_endpoint": "https://{instance}.service-now.com/oauth_token.do",
-      "scopes": "useraccount"
+      "scopes": "useraccount",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "servicenow-basics",
     "ingestion_source": "unsupported",
@@ -1973,7 +4216,7 @@
     "description": "ServiceNow ITSM REST API",
     "category": "enterprise",
     "tags": ["rest", "itsm", "workflows", "cmdb"],
-    "setup_hint": "In ServiceNow, go to System OAuth > Application Registry to create an OAuth endpoint; use client_id/secret with instance token endpoint. Or use Basic Auth with admin credentials.",
+    "setup_instructions": "In ServiceNow, go to System OAuth > Application Registry to create an OAuth endpoint; use client_id/secret with instance token endpoint. Or use Basic Auth with admin credentials.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -1986,15 +4229,49 @@
         "label": "OAuth 2.0",
         "description": "Create an OAuth endpoint in System OAuth > Application Registry, use client_id/secret with instance token endpoint.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://{instance}.service-now.com",
           "authorization_endpoint": "https://{instance}.service-now.com/oauth_auth.do",
           "token_endpoint": "https://{instance}.service-now.com/oauth_token.do",
           "scopes": "useraccount"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.service\\-now\\.com/api/now(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "okta",
     "name": "Okta",
     "driver": "http",
@@ -2008,7 +4285,7 @@
     "description": "Okta identity and access management API",
     "category": "enterprise",
     "tags": ["rest", "identity", "sso", "scim", "mfa"],
-    "setup_hint": "In Okta Admin Console, go to Security > API > Tokens for SSWS API key (header: `Authorization: SSWS {token}`), or register OAuth app under Applications.",
+    "setup_instructions": "In Okta Admin Console, go to Security > API > Tokens for SSWS API key (header: `Authorization: SSWS {token}`), or register OAuth app under Applications.",
     "auth_options": [
       {
         "auth_type": "header",
@@ -2021,15 +4298,42 @@
         "label": "OAuth 2.0",
         "description": "Register an OAuth app under Applications for Authorization Code or Client Credentials flow.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://{domain}.okta.com",
           "authorization_endpoint": "https://{domain}.okta.com/oauth2/v1/authorize",
           "token_endpoint": "https://{domain}.okta.com/oauth2/v1/token",
           "scopes": "okta.users.read okta.groups.read okta.apps.read"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.okta\\.com/api/v1(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "auth0",
     "name": "Auth0",
     "driver": "http",
@@ -2039,7 +4343,13 @@
       "issuer_url": "https://{tenant}.auth0.com",
       "authorization_endpoint": "https://{tenant}.auth0.com/authorize",
       "token_endpoint": "https://{tenant}.auth0.com/oauth/token",
-      "scopes": "read:users create:users read:connections read:logs"
+      "scopes": "read:users create:users read:connections read:logs",
+      "grant_type": "client_credentials",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "auth0-basics",
     "ingestion_source": "unsupported",
@@ -2048,10 +4358,38 @@
     "description": "Auth0 identity management API",
     "category": "enterprise",
     "tags": ["rest", "identity", "oauth2", "management-api"],
-    "setup_hint": "Create a Machine-to-Machine app in Auth0 Dashboard, authorize for Management API with scopes, use client_credentials grant.",
-    "auth_options": []
+    "setup_instructions": "Create a Machine-to-Machine app in Auth0 Dashboard, authorize for Management API with scopes, use client_credentials grant.",
+    "auth_options": [],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.auth0\\.com/api/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "intercom",
     "name": "Intercom",
     "driver": "http",
@@ -2061,7 +4399,13 @@
       "issuer_url": "https://app.intercom.com",
       "authorization_endpoint": "https://app.intercom.com/oauth",
       "token_endpoint": "https://api.intercom.io/auth/eagle/token",
-      "scopes": ""
+      "scopes": "",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "intercom-basics",
     "ingestion_source": "openapi",
@@ -2070,7 +4414,7 @@
     "description": "Intercom customer messaging API",
     "category": "enterprise",
     "tags": ["rest", "customer-messaging", "support", "crm"],
-    "setup_hint": "In Intercom Developer Hub, create app, find access token under Authentication; for OAuth, configure redirect URIs.",
+    "setup_instructions": "In Intercom Developer Hub, create app, find access token under Authentication; for OAuth, configure redirect URIs.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -2083,15 +4427,42 @@
         "label": "OAuth 2.0 (Authorization Code)",
         "description": "Register a public Intercom app and configure redirect URIs for per-workspace installs.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://app.intercom.com",
           "authorization_endpoint": "https://app.intercom.com/oauth",
           "token_endpoint": "https://api.intercom.io/auth/eagle/token",
           "scopes": ""
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.intercom\\.io(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "freshdesk",
     "name": "Freshdesk",
     "driver": "http",
@@ -2105,10 +4476,38 @@
     "description": "Freshdesk helpdesk and ticketing API",
     "category": "enterprise",
     "tags": ["rest", "ticketing", "help-desk", "support"],
-    "setup_hint": "In Freshdesk, click Profile > Profile Settings, find API key on right sidebar, use as Basic Auth username with 'X' as password.",
-    "auth_options": []
+    "setup_instructions": "In Freshdesk, click Profile > Profile Settings, find API key on right sidebar, use as Basic Auth username with 'X' as password.",
+    "auth_options": [],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.freshdesk\\.com/api/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "bamboohr",
     "name": "BambooHR",
     "driver": "http",
@@ -2122,7 +4521,7 @@
     "description": "BambooHR human resources API",
     "category": "enterprise",
     "tags": ["rest", "hr", "employees", "time-tracking"],
-    "setup_hint": "In BambooHR, gear icon > API Keys > Add New Key; use as Basic Auth username with 'x' as password. Or use OIDC OAuth flow.",
+    "setup_instructions": "In BambooHR, gear icon > API Keys > Add New Key; use as Basic Auth username with 'x' as password. Or use OIDC OAuth flow.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -2135,15 +4534,49 @@
         "label": "OAuth 2.0 (OIDC)",
         "description": "Use OIDC OAuth flow via id.bamboohr.com for token-based access.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://id.bamboohr.com",
           "authorization_endpoint": "https://id.bamboohr.com/authorize",
           "token_endpoint": "https://id.bamboohr.com/token",
           "scopes": "openid offline_access"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.bamboohr\\.com/api/gateway\\.php/\\[\\^/\\]\\+/v1(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "zendesk",
     "name": "Zendesk",
     "driver": "http",
@@ -2153,7 +4586,13 @@
       "issuer_url": "https://{subdomain}.zendesk.com",
       "authorization_endpoint": "https://{subdomain}.zendesk.com/oauth/authorizations/new",
       "token_endpoint": "https://{subdomain}.zendesk.com/oauth/tokens",
-      "scopes": "read write"
+      "scopes": "read write",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
     },
     "default_skill": "zendesk-basics",
     "ingestion_source": "unsupported",
@@ -2162,7 +4601,7 @@
     "description": "Zendesk customer support API",
     "category": "support",
     "tags": ["rest", "ticketing", "help-desk", "webhooks"],
-    "setup_hint": "Choose: (1) API Token — enable in Admin > APIs, use Basic Auth with email/token as username. (2) OAuth 2.0 — register client in Admin Center.",
+    "setup_instructions": "Choose: (1) API Token \u2014 enable in Admin > APIs, use Basic Auth with email/token as username. (2) OAuth 2.0 \u2014 register client in Admin Center.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -2175,15 +4614,42 @@
         "label": "OAuth 2.0",
         "description": "Register an OAuth client in Admin Center > Apps > OAuth Clients. Uses subdomain-specific endpoints.",
         "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
           "issuer_url": "https://{subdomain}.zendesk.com",
           "authorization_endpoint": "https://{subdomain}.zendesk.com/oauth/authorizations/new",
           "token_endpoint": "https://{subdomain}.zendesk.com/oauth/tokens",
           "scopes": "read write"
         }
       }
-    ]
+    ],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.zendesk\\.com/api/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "apple-icloud-calendar",
     "name": "Apple iCloud Calendar",
     "driver": "caldav",
@@ -2197,10 +4663,38 @@
     "description": "Apple iCloud Calendar via CalDAV",
     "category": "productivity",
     "tags": ["caldav", "calendar", "apple", "ics"],
-    "setup_hint": "Apple iCloud CalDAV requires an app-specific password: go to appleid.apple.com > Sign-In and Security > App-Specific Passwords. Use Apple ID email + app-specific password as Basic Auth.",
-    "auth_options": []
+    "setup_instructions": "Apple iCloud CalDAV requires an app-specific password: go to appleid.apple.com > Sign-In and Security > App-Specific Passwords. Use Apple ID email + app-specific password as Basic Auth.",
+    "auth_options": [],
+    "url_pattern": "^https://caldav\\.icloud\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "apple-icloud-contacts",
     "name": "Apple iCloud Contacts",
     "driver": "caldav",
@@ -2214,10 +4708,38 @@
     "description": "Apple iCloud Contacts via CardDAV",
     "category": "productivity",
     "tags": ["carddav", "contacts", "apple", "vcard"],
-    "setup_hint": "Apple iCloud CardDAV requires an app-specific password: go to appleid.apple.com > Sign-In and Security > App-Specific Passwords.",
-    "auth_options": []
+    "setup_instructions": "Apple iCloud CardDAV requires an app-specific password: go to appleid.apple.com > Sign-In and Security > App-Specific Passwords.",
+    "auth_options": [],
+    "url_pattern": "^https://contacts\\.icloud\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "caldav-generic",
     "name": "CalDAV (Generic)",
     "driver": "caldav",
@@ -2231,7 +4753,7 @@
     "description": "Generic CalDAV calendar server",
     "category": "productivity",
     "tags": ["caldav", "calendar", "ics", "open-standard"],
-    "setup_hint": "Provide your CalDAV server URL and credentials. Common servers: Nextcloud (/remote.php/dav), Google (apidata.googleusercontent.com/caldav/v2), Fastmail (caldav.fastmail.com).",
+    "setup_instructions": "Provide your CalDAV server URL and credentials. Common servers: Nextcloud (/remote.php/dav), Google (apidata.googleusercontent.com/caldav/v2), Fastmail (caldav.fastmail.com).",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -2245,9 +4767,37 @@
         "description": "Some CalDAV servers (Google) support OAuth2. Configure with your provider's OAuth endpoints.",
         "oauth": null
       }
-    ]
+    ],
+    "url_pattern": "^https://\\[\\^/\\]\\+/remote\\.php/dav(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "webdav-generic",
     "name": "WebDAV (Generic)",
     "driver": "webdav",
@@ -2261,7 +4811,7 @@
     "description": "Generic WebDAV file storage server",
     "category": "storage",
     "tags": ["webdav", "file-storage", "open-standard"],
-    "setup_hint": "Provide your WebDAV server URL and credentials. Common servers: Nextcloud, ownCloud, Apache mod_dav, Nginx DAV, Box (dav.box.com).",
+    "setup_instructions": "Provide your WebDAV server URL and credentials. Common servers: Nextcloud, ownCloud, Apache mod_dav, Nginx DAV, Box (dav.box.com).",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -2275,9 +4825,37 @@
         "description": "Some WebDAV servers support Bearer token auth.",
         "oauth": null
       }
-    ]
+    ],
+    "url_pattern": "^https://\\[\\^/\\]\\+/remote\\.php/dav/files/\\[\\^/\\]\\+(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "soap-generic",
     "name": "SOAP (Generic)",
     "driver": "soap",
@@ -2291,7 +4869,7 @@
     "description": "Generic SOAP/WSDL web service",
     "category": "enterprise",
     "tags": ["soap", "xml", "wsdl", "enterprise"],
-    "setup_hint": "Provide the SOAP endpoint URL. Append ?wsdl to fetch the service definition. Choose auth method: HTTP Basic, WS-Security (UsernameToken), or OAuth Bearer.",
+    "setup_instructions": "Provide the SOAP endpoint URL. Append ?wsdl to fetch the service definition. Choose auth method: HTTP Basic, WS-Security (UsernameToken), or OAuth Bearer.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -2311,9 +4889,37 @@
         "description": "Bearer token in HTTP Authorization header for modern SOAP services.",
         "oauth": null
       }
-    ]
+    ],
+    "url_pattern": "^https://\\[\\^/\\]\\+(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "sap-soap",
     "name": "SAP SOAP",
     "driver": "soap",
@@ -2327,10 +4933,38 @@
     "description": "SAP S/4HANA SOAP web services",
     "category": "enterprise",
     "tags": ["soap", "sap", "erp", "wsdl"],
-    "setup_hint": "SAP exposes SOAP services via /sap/bc/srt/. Find your WSDL at the service endpoint + ?wsdl. Use SAP technical user credentials for Basic Auth.",
-    "auth_options": []
+    "setup_instructions": "SAP exposes SOAP services via /sap/bc/srt/. Find your WSDL at the service endpoint + ?wsdl. Use SAP technical user credentials for Basic Auth.",
+    "auth_options": [],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.s4hana\\.cloud\\.sap/sap/bc/srt/scs_ext/\\[\\^/\\]\\+(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "servicenow-soap",
     "name": "ServiceNow SOAP",
     "driver": "soap",
@@ -2344,10 +4978,38 @@
     "description": "ServiceNow SOAP API for legacy integrations",
     "category": "enterprise",
     "tags": ["soap", "itsm", "servicenow", "wsdl"],
-    "setup_hint": "ServiceNow exposes SOAP via /{tableName}.do?WSDL. Use admin credentials for Basic Auth.",
-    "auth_options": []
+    "setup_instructions": "ServiceNow exposes SOAP via /{tableName}.do?WSDL. Use admin credentials for Basic Auth.",
+    "auth_options": [],
+    "url_pattern": "^https://\\[\\^/\\]\\+\\.service\\-now\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "grpc-connect",
     "name": "gRPC Connect",
     "driver": "http",
@@ -2361,10 +5023,31 @@
     "description": "gRPC Connect protocol over HTTP/1.1",
     "category": "protocol",
     "tags": ["grpc", "connect-rpc", "protobuf", "http"],
-    "setup_hint": "Connect RPC services expose gRPC over standard HTTP/1.1. Provide the base URL and an auth token if required. Uses JSON encoding by default (protobuf optional).",
-    "auth_options": []
+    "setup_instructions": "Connect RPC services expose gRPC over standard HTTP/1.1. Provide the base URL and an auth token if required. Uses JSON encoding by default (protobuf optional).",
+    "auth_options": [],
+    "url_pattern": "^https://\\[\\^/\\]\\+(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "grpc-native",
     "name": "gRPC Native",
     "driver": "grpc",
@@ -2378,10 +5061,31 @@
     "description": "Native gRPC over HTTP/2 with protobuf",
     "category": "protocol",
     "tags": ["grpc", "protobuf", "http2", "streaming"],
-    "setup_hint": "Provide the gRPC server address (host:port). If the server has reflection enabled, operations are auto-discovered. Otherwise, provide .proto files.",
-    "auth_options": []
+    "setup_instructions": "Provide the gRPC server address (host:port). If the server has reflection enabled, operations are auto-discovered. Otherwise, provide .proto files.",
+    "auth_options": [],
+    "url_pattern": "^grpc://\\[\\^/\\]\\+:50051(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "mqtt",
     "name": "MQTT",
     "driver": "mqtt",
@@ -2395,7 +5099,7 @@
     "description": "MQTT pub/sub messaging protocol",
     "category": "protocol",
     "tags": ["mqtt", "pub-sub", "iot", "event-driven"],
-    "setup_hint": "Provide MQTT broker URL (mqtt:// or mqtts:// for TLS). Username/password if required. Common brokers: Mosquitto, HiveMQ, EMQX, AWS IoT Core, Azure IoT Hub.",
+    "setup_instructions": "Provide MQTT broker URL (mqtt:// or mqtts:// for TLS). Username/password if required. Common brokers: Mosquitto, HiveMQ, EMQX, AWS IoT Core, Azure IoT Hub.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -2412,12 +5116,40 @@
       {
         "auth_type": "none",
         "label": "Anonymous",
-        "description": "No authentication — for development/testing brokers only.",
+        "description": "No authentication \u2014 for development/testing brokers only.",
         "oauth": null
       }
-    ]
+    ],
+    "url_pattern": "^mqtt://\\[\\^/\\]\\+:1883(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "imap-email",
     "name": "IMAP Email",
     "driver": "imap",
@@ -2431,7 +5163,7 @@
     "description": "IMAP/SMTP email protocol",
     "category": "communication",
     "tags": ["imap", "smtp", "email", "mime"],
-    "setup_hint": "Provide IMAP server host and port (993 for TLS). For Apple iCloud: imap.mail.me.com with app-specific password. For Gmail: imap.gmail.com with XOAUTH2 or app password.",
+    "setup_instructions": "Provide IMAP server host and port (993 for TLS). For Apple iCloud: imap.mail.me.com with app-specific password. For Gmail: imap.gmail.com with XOAUTH2 or app password.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -2445,9 +5177,37 @@
         "description": "Gmail and Outlook support IMAP XOAUTH2. Provide OAuth token in credential.",
         "oauth": null
       }
-    ]
+    ],
+    "url_pattern": "^imaps://\\[\\^/\\]\\+:993(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "firecrawl",
     "name": "Firecrawl",
     "driver": "http",
@@ -2461,7 +5221,7 @@
     "description": "Firecrawl web scraping and crawling API",
     "category": "scraping",
     "tags": ["rest", "web-scraping", "crawling", "llm-extraction", "docker"],
-    "setup_hint": "SaaS: sign up at firecrawl.dev, get API key (starts with fc-). Self-hosted: `docker compose up` from the Firecrawl repo (port 3002). Pass key as Bearer token.",
+    "setup_instructions": "SaaS: sign up at firecrawl.dev, get API key (starts with fc-). Self-hosted: `docker compose up` from the Firecrawl repo (port 3002). Pass key as Bearer token.",
     "auth_options": [
       {
         "auth_type": "bearer",
@@ -2475,9 +5235,30 @@
         "description": "Set FIRECRAWL_API_KEY env var in Docker, use same value as Bearer token.",
         "oauth": null
       }
-    ]
+    ],
+    "url_pattern": "^https://api\\.firecrawl\\.dev/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "crawl4ai",
     "name": "Crawl4AI",
     "driver": "http",
@@ -2491,12 +5272,12 @@
     "description": "Crawl4AI self-hosted web scraping API",
     "category": "scraping",
     "tags": ["rest", "web-scraping", "llm-extraction", "docker", "python"],
-    "setup_hint": "Self-hosted only: `docker run -d -p 11235:11235 --shm-size=1g unclecode/crawl4ai:latest`. OpenAPI docs at /docs. Optional JWT auth via POST /token.",
+    "setup_instructions": "Self-hosted only: `docker run -d -p 11235:11235 --shm-size=1g unclecode/crawl4ai:latest`. OpenAPI docs at /docs. Optional JWT auth via POST /token.",
     "auth_options": [
       {
         "auth_type": "bearer",
         "label": "JWT Token",
-        "description": "POST /token with credentials to get JWT, use as Bearer. Optional — can run without auth.",
+        "description": "POST /token with credentials to get JWT, use as Bearer. Optional \u2014 can run without auth.",
         "oauth": null
       },
       {
@@ -2505,9 +5286,30 @@
         "description": "For local/trusted network deployments without authentication.",
         "oauth": null
       }
-    ]
+    ],
+    "url_pattern": "^http://localhost:11235(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "apify",
     "name": "Apify",
     "driver": "http",
@@ -2521,10 +5323,31 @@
     "description": "Apify cloud web scraping and automation API",
     "category": "scraping",
     "tags": ["rest", "web-scraping", "actors", "crawlee", "automation"],
-    "setup_hint": "Sign up at apify.com, get API token from Console > Settings > Integrations. Pass as Bearer token. Runs Crawlee-based actors in the cloud.",
-    "auth_options": []
+    "setup_instructions": "Sign up at apify.com, get API token from Console > Settings > Integrations. Pass as Bearer token. Runs Crawlee-based actors in the cloud.",
+    "auth_options": [],
+    "url_pattern": "^https://api\\.apify\\.com/v2(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "scrapingbee",
     "name": "ScrapingBee",
     "driver": "http",
@@ -2538,10 +5361,31 @@
     "description": "ScrapingBee web scraping proxy API",
     "category": "scraping",
     "tags": ["rest", "web-scraping", "proxy", "js-rendering"],
-    "setup_hint": "Sign up at scrapingbee.com, get API key. Pass as `api_key` query parameter. Single endpoint: GET /api/v1?api_key=KEY&url=TARGET.",
-    "auth_options": []
+    "setup_instructions": "Sign up at scrapingbee.com, get API key. Pass as `api_key` query parameter. Single endpoint: GET /api/v1?api_key=KEY&url=TARGET.",
+    "auth_options": [],
+    "url_pattern": "^https://app\\.scrapingbee\\.com/api/v1(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API Key (query parameter value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "browserless",
     "name": "Browserless",
     "driver": "http",
@@ -2555,7 +5399,7 @@
     "description": "Browserless headless Chrome API",
     "category": "scraping",
     "tags": ["rest", "headless-chrome", "screenshots", "pdf", "docker"],
-    "setup_hint": "SaaS: get token at browserless.io. Self-hosted: `docker run -p 3000:3000 -e TOKEN=my-token ghcr.io/browserless/chrome`. Pass token as `?token=` query param or Bearer.",
+    "setup_instructions": "SaaS: get token at browserless.io. Self-hosted: `docker run -p 3000:3000 -e TOKEN=my-token ghcr.io/browserless/chrome`. Pass token as `?token=` query param or Bearer.",
     "auth_options": [
       {
         "auth_type": "query",
@@ -2569,9 +5413,30 @@
         "description": "Pass token as Authorization: Bearer header.",
         "oauth": null
       }
-    ]
+    ],
+    "url_pattern": "^https://production\\-sfo\\.browserless\\.io(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "jina-reader",
     "name": "Jina Reader",
     "driver": "http",
@@ -2585,12 +5450,12 @@
     "description": "Jina Reader URL-to-markdown and search API",
     "category": "scraping",
     "tags": ["rest", "url-to-markdown", "search", "ai-extraction"],
-    "setup_hint": "Simplest: GET https://r.jina.ai/{url} works with no auth (20 RPM). For higher limits, get free key at jina.ai and pass as Bearer token.",
+    "setup_instructions": "Simplest: GET https://r.jina.ai/{url} works with no auth (20 RPM). For higher limits, get free key at jina.ai and pass as Bearer token.",
     "auth_options": [
       {
         "auth_type": "none",
         "label": "No Auth (20 RPM)",
-        "description": "Works immediately — just prefix any URL with https://r.jina.ai/. Limited to 20 requests/minute.",
+        "description": "Works immediately \u2014 just prefix any URL with https://r.jina.ai/. Limited to 20 requests/minute.",
         "oauth": null
       },
       {
@@ -2599,9 +5464,30 @@
         "description": "Get free key at jina.ai/?sui=apikey for 500 RPM (Reader) / 100 RPM (Search).",
         "oauth": null
       }
-    ]
+    ],
+    "url_pattern": "^https://r\\.jina\\.ai(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "brightdata",
     "name": "Bright Data",
     "driver": "http",
@@ -2615,10 +5501,31 @@
     "description": "Bright Data web scraping and proxy API",
     "category": "scraping",
     "tags": ["rest", "web-scraping", "proxy", "enterprise", "anti-bot"],
-    "setup_hint": "Sign up at brightdata.com, get API key from Control Panel > Settings > Users. 660+ pre-built dataset scrapers available. Pass as Bearer token.",
-    "auth_options": []
+    "setup_instructions": "Sign up at brightdata.com, get API key from Control Panel > Settings > Users. 660+ pre-built dataset scrapers available. Pass as Bearer token.",
+    "auth_options": [],
+    "url_pattern": "^https://api\\.brightdata\\.com(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "API Bearer Token",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   },
   {
+    "version": 1,
     "slug": "ftp",
     "name": "FTP/FTPS",
     "driver": "ftp",
@@ -2632,7 +5539,7 @@
     "description": "FTP/FTPS file transfer protocol",
     "category": "storage",
     "tags": ["ftp", "ftps", "file-transfer", "legacy"],
-    "setup_hint": "Provide FTP server host, port (21 for FTP, 990 for implicit FTPS, 21 with STARTTLS for explicit FTPS), username and password. For FTPS, the engine uses TLS encryption.",
+    "setup_instructions": "Provide FTP server host, port (21 for FTP, 990 for implicit FTPS, 21 with STARTTLS for explicit FTPS), username and password. For FTPS, the engine uses TLS encryption.",
     "auth_options": [
       {
         "auth_type": "basic",
@@ -2646,6 +5553,33 @@
         "description": "Anonymous access (username: anonymous, password: email or empty).",
         "oauth": null
       }
-    ]
+    ],
+    "url_pattern": "^ftp://\\[\\^/\\]\\+:21(\\/|$)",
+    "keywords": [],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Username",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
   }
 ]
