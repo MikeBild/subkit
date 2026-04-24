@@ -90,9 +90,9 @@ describe("50: registry expected_statuses fallback", () => {
     expect(wfRes.status).toBe(201);
     const wf = (await wfRes.json()) as { id: string };
 
-    const runRes = await journeyFetch(ctx, `/v1/workflows/${wf.id}/run?sync=1`, {
+    const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: wf.id, input: {} }),
     });
     expect(runRes.status).toBe(200);
     const body = (await runRes.json()) as { status: string };
@@ -124,9 +124,9 @@ describe("50: registry expected_statuses fallback", () => {
     expect(wfRes.status).toBe(201);
     const wf = (await wfRes.json()) as { id: string };
 
-    const runRes = await journeyFetch(ctx, `/v1/workflows/${wf.id}/run?sync=1`, {
+    const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: wf.id, input: {} }),
     });
     expect(runRes.status).toBe(200);
     const body = (await runRes.json()) as {

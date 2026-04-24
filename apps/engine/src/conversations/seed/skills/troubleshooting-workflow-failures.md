@@ -2,7 +2,7 @@
 slug: troubleshooting-workflow-failures
 scope: global
 title: Execution-Time Workflow Failure Diagnosis
-description: Systematic guide for diagnosing failures of workflows that have already been committed and executed — reading `list_executions` / `get_execution`, interpreting schema violations, and reading connector circuit-breaker state. For errors that surface while authoring in a conversation (tool call returned `{ok:false}`), see `error-recovery`.
+description: Systematic guide for diagnosing failures of workflows that have already been committed and executed — reading `list_executions` / `get_execution`, interpreting schema violations, and reading connector circuit-breaker state. For errors that surface while authoring in a conversation (an authoring action returned `{ok:false}`), see `error-recovery`.
 gates_tools: []
 version: 2
 auto_load: true

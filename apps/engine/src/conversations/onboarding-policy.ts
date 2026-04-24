@@ -57,7 +57,7 @@ export function nextRecommendedAction(input: PolicyInput): NextAction {
       kind: "resolve_pending_approval",
       summary: "Resolve the pending approval (approve or reject) before proceeding.",
       rationale:
-        "A tool paused the loop on an elicitation. Nothing else progresses until the user answers.",
+        "An authoring action paused the loop on an elicitation. Nothing else progresses until the user answers.",
     };
   }
   const d = input.draft;
@@ -160,10 +160,14 @@ export function nextQuestion(input: PolicyInput): NextQuestion | null {
         options: [
           {
             id: "connect_system",
-            label: "Connect a system",
+            label: "Create a connector",
             detail: "Start a new connector draft",
           },
-          { id: "build_workflow", label: "Build a workflow", detail: "Author a multi-step tool" },
+          {
+            id: "build_workflow",
+            label: "Build a workflow",
+            detail: "Author a multi-step workflow",
+          },
           { id: "import_spec", label: "Import a spec or docs", detail: "Start from OpenAPI/notes" },
           {
             id: "resume_prior",
@@ -182,7 +186,7 @@ export function nextQuestion(input: PolicyInput): NextQuestion | null {
           {
             id: "describe",
             label: "Describe it in your own words",
-            detail: "Works for any system",
+            detail: "Works for any connector target",
           },
         ],
       };
@@ -190,7 +194,7 @@ export function nextQuestion(input: PolicyInput): NextQuestion | null {
       return {
         kind: "choice",
         subject: action.kind,
-        prompt: "How does this system authenticate?",
+        prompt: "How should this connector authenticate?",
         options: [
           { id: "none", label: "None (public)" },
           { id: "bearer", label: "Bearer / API token" },

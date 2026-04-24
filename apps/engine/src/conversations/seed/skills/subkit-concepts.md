@@ -52,7 +52,7 @@ Each **step** has at minimum:
 
 | Kind | Purpose | One-line config example |
 |---|---|---|
-| `request` | Call an external system via a connector (http / graphql / s3) | `{ "connector_id": "00000000-0000-0000-0000-000000000001", "method": "GET", "path": "/crm/v3/objects/contacts" }` |
+| `request` | Call an external connector boundary via a connector (http / graphql / s3) | `{ "connector_id": "00000000-0000-0000-0000-000000000001", "method": "GET", "path": "/crm/v3/objects/contacts" }` |
 | `transform` | Reshape data with JSONata, no I/O | `{ "expression": "$scope.list_orders.data.results[amount > 100]" }` |
 | `wait` | Pause for a duration | `{ "duration_ms": 30000 }` |
 | `branch` | Conditional routing by step id | `{ "when": "$scope.classify.data.tier = 'gold'", "then_steps": ["notify_gold"], "else_steps": ["notify_standard"] }` |

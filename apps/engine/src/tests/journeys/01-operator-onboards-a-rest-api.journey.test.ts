@@ -144,29 +144,35 @@ describe("journey: operator onboards a REST API", () => {
     workflowId = wf.id;
 
     // Sync run.
-    const runRes = await journeyFetch(ctx, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
     });
     expect(runRes.status).toBe(200);
     const runBody = (await runRes.json()) as {
       status: string;
       output: unknown;
-      id: string;
+      execution_id: string;
     };
     expect(runBody.status).toBe("succeeded");
     expect(runBody.output).toBeDefined();
   });
 
   test("AC3: async run queues via pg-boss and lands terminal + audit", async () => {
-    const asyncRes = await journeyFetch(ctx, `/v1/workflows/${workflowId}/run`, {
+    const asyncRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {}, request_source: "api" }),
+      body: JSON.stringify({
+        source: "saved",
+        workflow_id: workflowId,
+        input: {},
+        request_source: "api",
+        async: true,
+      }),
     });
     expect(asyncRes.status).toBe(202);
-    const asyncBody = (await asyncRes.json()) as { id: string; status: string };
+    const asyncBody = (await asyncRes.json()) as { execution_id: string; status: string };
     expect(asyncBody.status).toBe("queued");
-    const execution_id = asyncBody.id;
+    const execution_id = asyncBody.execution_id;
 
     // Wait for the worker to finish.
     const finalStatus = await waitFor(

@@ -72,7 +72,7 @@ describe("chat-first parity", () => {
     await tick();
     const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toMatch(/sk[\s·]+v\d+\.\d+\.\d+(?:-[\w.-]+)?/);
-    expect(frame).toContain("Resume work, connect a system");
+    expect(frame).toContain("Resume work, create a connector");
     expect(frame).toContain("❯");
     expect(frame).toContain("session new");
     expect(frame).toContain("ask");
@@ -95,7 +95,7 @@ describe("chat-first parity", () => {
     await pressEnter(instance);
     await tick(60);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).not.toContain("Resume work, connect a system");
+    expect(frame).not.toContain("Resume work, create a connector");
     expect(frame).toContain("ok");
     instance.unmount();
   });
@@ -121,7 +121,7 @@ describe("chat-first parity", () => {
           {
             type: "message",
             role: "assistant",
-            content: { text: "**Ready**\n\n- Connect a system\n- Build a workflow" },
+            content: { text: "**Ready**\n\n- Create a connector\n- Build a workflow" },
           },
           { type: "completed", status: "active" },
         ),
@@ -134,7 +134,7 @@ describe("chat-first parity", () => {
     await tick(80);
     const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("Ready");
-    expect(frame).toContain("Connect a system");
+    expect(frame).toContain("Create a connector");
     expect(frame).not.toContain("**Ready**");
     instance.unmount();
   });

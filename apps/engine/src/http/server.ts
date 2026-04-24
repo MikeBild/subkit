@@ -23,7 +23,6 @@ import { HttpError } from "./errors.ts";
 import { authMiddleware } from "./middleware/auth.ts";
 import { errorMiddleware } from "./middleware/error.ts";
 import { loggingMiddleware } from "./middleware/logging.ts";
-import { portalTokenWorkflowGuard } from "./middleware/policy.ts";
 import { rateLimitMiddleware } from "./middleware/rate-limit.ts";
 import { traceMiddleware } from "./middleware/trace.ts";
 import { type AppEnv, createOpenApiApp, OPENAPI_INFO, SECURITY_SCHEMES } from "./openapi.ts";
@@ -32,7 +31,6 @@ import { registerAiGenerateRoute } from "./routes/ai/generate.ts";
 import { registerAiRepairRoute } from "./routes/ai/repair.ts";
 import { registerAiSummarizeRoute } from "./routes/ai/summarize.ts";
 import { registerAuditLogRoutes } from "./routes/audit-log.ts";
-import { registerAutomationRoutes } from "./routes/automations.ts";
 import { registerChatRoutes } from "./routes/chat.ts";
 import { registerConnectorDocsRoutes } from "./routes/connector-docs.ts";
 import { registerConnectorTemplateRoutes } from "./routes/connector-templates.ts";
@@ -200,9 +198,6 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
     });
   }
   app.use("*", authMiddleware(registry));
-  // Portal-token allowlist gate for `POST /v1/workflows/:id/run`. No-op
-  // for every other route and every non-enduser principal.
-  app.use("*", portalTokenWorkflowGuard());
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
   registerStatusRoute(app);
@@ -216,7 +211,6 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerSessionsOidcRoute(app);
   registerLoginRoutes(app);
   registerWhoamiRoute(app);
-  registerAutomationRoutes(app);
   registerWorkflowRoutes(app);
   registerExecutionRoutes(app);
   registerConnectorTemplateRoutes(app);

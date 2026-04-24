@@ -54,9 +54,9 @@ The engine validates its configuration at boot and exits with a descriptive erro
 
 sk enforces limits at multiple levels to protect overall system reliability.
 
-Per-execution and per-step timeouts prevent runaway workflows from consuming resources indefinitely. Per-tenant token budgets cap AI usage costs. Rate limits on API endpoints prevent any single caller from monopolizing capacity. Circuit breakers on connector requests detect when an external system is degraded and fail fast — after a configurable number of consecutive failures, the circuit opens and requests fail immediately until the system recovers. Queue depth caps prevent unbounded work accumulation.
+Per-execution and per-step timeouts prevent runaway workflows from consuming resources indefinitely. Per-tenant token budgets cap AI usage costs. Rate limits on API endpoints prevent any single caller from monopolizing capacity. Circuit breakers on connector requests detect when an external connector boundary is degraded and fail fast — after a configurable number of consecutive failures, the circuit opens and requests fail immediately until the boundary recovers. Queue depth caps prevent unbounded work accumulation.
 
-These limits have documented defaults and can be tuned by operators for their specific workloads. They are designed so that no single workflow, tenant, or external system dependency can degrade the platform for others.
+These limits have documented defaults and can be tuned by operators for their specific workloads. They are designed so that no single workflow, tenant, or external connector dependency can degrade the platform for others.
 
 When a circuit breaker trips, the audit log records it and the event stream delivers a notification. Operators see the failure before users do.
 

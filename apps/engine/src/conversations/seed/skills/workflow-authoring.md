@@ -99,7 +99,7 @@ added a timestamp envelope for the caller.
 
 - **`input_schema`** — a JSON Schema. The engine validates workflow input against
   it before the first step runs. Use when the shape is stable and the caller is
-  a trusted system (another workflow, a webhook with a known contract).
+  a trusted connector boundary (another workflow, a webhook with a known contract).
 - **`input_schema_sample`** — a literal example payload. Used for dev-time
   dry-runs and LLM context; **not** enforced at runtime. Use when the shape is
   still evolving and over-constraining would slow down iteration.

@@ -653,7 +653,7 @@ export async function handleSlash(
         "Ask the assistant to `suggest_connector_templates` for a ranked list,",
         "or use `start_connector_from_template` to seed a draft from one.",
         "",
-        "Templates are optional — describe the system in your own words any time.",
+        "Templates are optional — describe the connector target in your own words any time.",
       );
       if (ctx.openPane) {
         ctx.openPane({
@@ -818,7 +818,7 @@ export async function handleSlash(
         `next action: ${snapshot.draft_summary?.next_action ?? "—"}`,
         `messages: ${snapshot.messages.total}`,
         `last role: ${snapshot.messages.last_role ?? "—"}`,
-        `tool calls: ${snapshot.tool_calls_total}`,
+        `calls: ${snapshot.tool_calls_total}`,
         `pending elicitations: ${snapshot.pending_elicitations}`,
         "",
         `skills in scope: ${snapshot.skills.total}`,
@@ -888,7 +888,7 @@ export async function handleSlash(
     case "export": {
       // Render the current session transcript to a Markdown file in
       // the current working directory. Covers user/assistant messages,
-      // tool calls (with truncated output), and the usage summary so
+      // call history (with truncated output), and the usage summary so
       // operators can share a conversation without screenshots.
       if (!ctx.session.conversationId) return "no active conversation to export";
       const parts: string[] = [];
@@ -928,7 +928,7 @@ export async function handleSlash(
         const tcs = m.id ? byId.get(m.id) : undefined;
         if (tcs && tcs.length > 0) {
           for (const tc of tcs) {
-            parts.push(`**tool:** \`${tc.name}\` · ${tc.status}`);
+            parts.push(`**call:** \`${tc.name}\` · ${tc.status}`);
             if (tc.args !== undefined) {
               parts.push("```json");
               parts.push(JSON.stringify(tc.args, null, 2).slice(0, 2000));
@@ -945,7 +945,7 @@ export async function handleSlash(
         }
       }
       if (orphan.length > 0) {
-        parts.push("### Orphan tool calls (no parent message)");
+        parts.push("### Orphan calls (no parent message)");
         for (const tc of orphan) {
           parts.push(`- \`${tc.name}\` · ${tc.status}`);
         }
@@ -1028,7 +1028,7 @@ export async function handleSlash(
       lines.push(`resources (${resources.items.length}):`);
       for (const r of resources.items) lines.push(`  ${r.uri} · ${r.name}`);
       lines.push("");
-      lines.push(`tools (${tools.items.length}):`);
+      lines.push(`callable entries (${tools.items.length}):`);
       for (const t of tools.items) lines.push(`  ${t.name} — ${t.description}`);
       return panify(ctx, "mcp catalog", lines);
     }

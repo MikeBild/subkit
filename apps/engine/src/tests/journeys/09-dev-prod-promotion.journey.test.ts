@@ -130,15 +130,15 @@ describe("journey: dev/prod promotion", () => {
     expect(wfRes.status).toBe(201);
     workflowId = ((await wfRes.json()) as { id: string }).id;
 
-    const run = await journeyFetch(ctx, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const run = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
     });
     expect(run.status).toBe(200);
-    const rb = (await run.json()) as { id: string; status: string };
+    const rb = (await run.json()) as { execution_id: string; status: string };
     expect(rb.status).toBe("succeeded");
 
-    const rows = await ctx.db.select().from(executions).where(eq(executions.id, rb.id));
+    const rows = await ctx.db.select().from(executions).where(eq(executions.id, rb.execution_id));
     expect(rows[0]?.execution_mode).toBe("dev");
   });
 
@@ -149,20 +149,20 @@ describe("journey: dev/prod promotion", () => {
     expect(prodHits).toBe(0);
     const devHitsBefore = devHits;
 
-    const run = await journeyFetch(ctx, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const run = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
       headers: { "x-subkit-environment": "prod" },
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
     });
     expect(run.status).toBe(200);
-    const rb = (await run.json()) as { id: string; status: string };
+    const rb = (await run.json()) as { execution_id: string; status: string };
     expect(rb.status).toBe("succeeded");
 
     // The prod mock was hit, not dev.
     expect(prodHits).toBe(1);
     expect(devHits).toBe(devHitsBefore);
 
-    const rows = await ctx.db.select().from(executions).where(eq(executions.id, rb.id));
+    const rows = await ctx.db.select().from(executions).where(eq(executions.id, rb.execution_id));
     expect(rows[0]?.execution_mode).toBe("prod");
 
     // Touch prodConnectorId so the unused-variable lint stays quiet.

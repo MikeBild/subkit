@@ -101,8 +101,8 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
       </Box>
       {!compact ? (
         <Text>
-          Resume work, connect a system, build a workflow, inspect tenant state, or ask about API /
-          MCP / chat.
+          Resume work, create a connector, build a workflow, inspect tenant state, or ask about API
+          / MCP / chat.
         </Text>
       ) : null}
       {tip ? (
@@ -137,7 +137,7 @@ export const BANNER_TIPS: readonly string[] = [
   'Run `sk -p "your prompt"` for headless output in scripts or CI.',
   "Use /permissions when you need the fastest grounded view of your current access.",
   "Use /status for tenant state before asking the assistant to summarize what exists.",
-  "Use /view inspect when you need the raw tool trace behind the chat view.",
+  "Use /view inspect when you need the raw call trace behind the chat view.",
   "Shift-Tab cycles ask / auto / plan; the footer always shows the active mode.",
   "`/approve` or `/reject` resolves the current confirmation request inline.",
   "Use /compact when a long conversation needs a smaller working context.",

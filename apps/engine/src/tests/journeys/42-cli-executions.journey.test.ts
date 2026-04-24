@@ -183,13 +183,13 @@ beforeAll(async () => {
   wfId = wf.id;
 
   // Run the workflow via HTTP to create an execution row.
-  const runResp = await journeyFetch(ctx, `/v1/workflows/${wfId}/run?sync=1`, {
+  const runResp = await journeyFetch(ctx, "/v1/executions", {
     method: "POST",
-    body: JSON.stringify({ input: {} }),
+    body: JSON.stringify({ source: "saved", workflow_id: wfId, input: {} }),
   });
   expect(runResp.status).toBe(200);
-  const runData = (await runResp.json()) as { id: string };
-  executionId = runData.id;
+  const runData = (await runResp.json()) as { execution_id: string };
+  executionId = runData.execution_id;
 
   // Seed a second workflow for the abort test. Use a deliberately long
   // external request so the execution stays in-flight long enough to abort.
@@ -211,13 +211,13 @@ beforeAll(async () => {
   abortWfId = abortWf.id;
 
   // Start the abort workflow asynchronously (do NOT pass ?sync=1).
-  const abortRunResp = await journeyFetch(ctx, `/v1/workflows/${abortWfId}/run`, {
+  const abortRunResp = await journeyFetch(ctx, "/v1/executions", {
     method: "POST",
-    body: JSON.stringify({ input: {} }),
+    body: JSON.stringify({ source: "saved", workflow_id: abortWfId, input: {}, async: true }),
   });
   expect(abortRunResp.status).toBe(202);
-  const abortRunData = (await abortRunResp.json()) as { id: string };
-  abortExecutionId = abortRunData.id;
+  const abortRunData = (await abortRunResp.json()) as { execution_id: string };
+  abortExecutionId = abortRunData.execution_id;
 }, 60_000);
 
 afterAll(async () => {

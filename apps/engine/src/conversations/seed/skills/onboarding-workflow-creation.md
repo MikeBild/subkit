@@ -2,11 +2,11 @@
 slug: onboarding-workflow-creation
 scope: global
 title: Workflow Creation Onboarding
-description: Guides users through creating their first connector and workflow via conversation.
+description: Guides first-time users through creating their first connector and workflow via conversation.
 gates_tools: []
-version: 1
-auto_load: true
-trigger_keywords: [onboarding, first, getting-started, create, workflow, connector, automate, integration, connect]
+version: 2
+auto_load: false
+trigger_keywords: [getting-started, first workflow, first connector, onboarding, new to sk]
 ---
 
 # Workflow Creation Onboarding
@@ -18,11 +18,11 @@ When a user describes a workflow need for the first time, clarify three things b
 **1. TRIGGER** — What starts the workflow?
 - Scheduled (cron)? → Ask for frequency (e.g. "every hour", "daily at 9am")
 - Manual (MCP call or API)? → Ask what the caller will provide as input
-- Webhook? → Ask what event triggers it and from which system
+- Webhook? → Ask what event triggers it and from which connector boundary
 
 **2. DATA FLOW** — What goes in, what comes out?
 - What data does the workflow receive as input?
-- What systems does it read from or write to?
+- Which connectors does it read from or write to?
 - What should the final output look like?
 
 **3. SUCCESS** — What does a successful run look like?
@@ -34,9 +34,9 @@ Do NOT generate steps until these three questions are answered. One good questio
 
 ## Common misunderstandings to address
 
-- **"Real-time sync"** → Ask if a webhook is available from the source system. If not, scheduled polling is the alternative. Clarify the acceptable delay.
+- **"Real-time sync"** → Ask if a webhook is available from the source connector boundary. If not, scheduled polling is the alternative. Clarify the acceptable delay.
 - **"Do it automatically"** → Clarify what triggers the automation. Nothing runs without a trigger.
-- **"Connect system A to system B"** → Ask which specific operations are needed (read from A, write to B? both directions?). Don't assume bidirectional sync.
+- **"Connect connector A to connector B"** → Ask which specific operations are needed (read from A, write to B? both directions?). Don't assume bidirectional sync.
 - **"Get the latest data"** → Ask what "latest" means: last updated timestamp? a specific ID? a date range?
 
 ## After the three answers are clear

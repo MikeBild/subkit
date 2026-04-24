@@ -40,7 +40,7 @@ For transform steps, set `input_schema` to document what must be in scope and `o
 
 Each branch of a `parallel` step runs concurrently. Use parallel steps when:
 - Steps are fully independent (no data dependency between branches)
-- Each branch targets a different connector or system
+- Each branch targets a different connector boundary
 - You want to reduce total wall-clock time
 
 Do NOT use parallel when one branch's output feeds another branch's input — use sequential steps instead.

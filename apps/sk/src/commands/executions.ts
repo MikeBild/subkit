@@ -65,10 +65,33 @@ const stepsCommand = defineCommand({
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
       const { items } = await client.executionSteps(args.id);
+      // Flatten request_meta so operators can see, at a glance, which URL
+      // was hit with what status, size, retry count, and which auth method
+      // actually applied to the request.
+      const rows = (items as Record<string, unknown>[]).map((s) => {
+        const rm = (s.request_meta ?? null) as Record<string, unknown> | null;
+        const conn = (rm?.connector ?? null) as Record<string, unknown> | null;
+        return {
+          ...s,
+          url: (rm?.url as string | undefined) ?? "—",
+          status_code: (rm?.status as number | undefined) ?? "—",
+          bytes_in: (rm?.bytes_in as number | undefined) ?? "—",
+          auth_method: (conn?.auth_method as string | undefined) ?? "—",
+        };
+      });
       emitList(
         !!args.json,
-        ["step_id", "name", "status", "duration_ms"],
-        items as Record<string, unknown>[],
+        [
+          "step_id",
+          "name",
+          "status",
+          "duration_ms",
+          "url",
+          "status_code",
+          "bytes_in",
+          "auth_method",
+        ],
+        rows,
       );
     } catch (err) {
       process.stderr.write(

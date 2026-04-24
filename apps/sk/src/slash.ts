@@ -160,7 +160,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
   {
     name: "mcp",
-    help: "List MCP prompts / resources / tools",
+    help: "List MCP prompts / resources / callable entries",
     category: "mcp",
     requires: "mcp:read",
   },

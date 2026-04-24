@@ -55,14 +55,8 @@ const CAPABILITY_PATTERNS = [
   /what is possible/,
   /what's possible/,
 ] as const;
-const CONNECTOR_PATTERNS = [
-  /\bconnect(?: a)? system\b/,
-  /\bconnector\b/,
-  /\bapi spec\b/,
-  /openapi/,
-  /\bimport docs\b/,
-] as const;
-const WORKFLOW_PATTERNS = [/\bbuild(?: a)? workflow\b/, /\bworkflow\b/, /\bautomation\b/] as const;
+const CONNECTOR_PATTERNS = [/\bconnector\b/, /\bapi spec\b/, /openapi/, /\bimport docs\b/] as const;
+const WORKFLOW_PATTERNS = [/\bbuild(?: a)? workflow\b/, /\bworkflow\b/] as const;
 const LIST_PATTERNS = [/\blist\b/, /\bshow\b/, /\bwhat\b/, /\bwhich\b/, /\binspect\b/] as const;
 const DELETE_PATTERNS = [
   /\bdelete\b/,
@@ -86,7 +80,7 @@ export function planTurnRouting(args: {
         intent: "author_connector",
         confidence: "medium",
         action: "Continue connector authoring and ask for the single most important missing field.",
-        question: "What system are we connecting and how does it authenticate?",
+        question: "Which connector are we creating and how should it authenticate?",
         required_grounding: ["inspect_connector_draft", "validate_connector_draft"],
         notes: ["Stay in connector setup until the draft is grounded and probed."],
         forbidden_fallbacks: fallbackList(),
@@ -97,7 +91,7 @@ export function planTurnRouting(args: {
         intent: "author_workflow",
         confidence: "medium",
         action:
-          "Continue workflow authoring and ask for the trigger, involved systems, or expected result.",
+          "Continue workflow authoring and ask for the trigger, involved connectors, or expected result.",
         question: "What should trigger this workflow, and what should a successful run produce?",
         required_grounding: ["inspect_workflow_draft", "validate_draft"],
         notes: ["Keep the workflow grounded in real connectors and preview before commit."],
@@ -108,7 +102,7 @@ export function planTurnRouting(args: {
       intent: "surface_help",
       confidence: "medium",
       action:
-        "Orient the user around the next concrete job in sk: resume work, connect a system, build a workflow, inspect tenant state, or ask about API/MCP/chat surfaces.",
+        "Orient the user around the next concrete job in sk: resume work, create a connector, build a workflow, inspect tenant state, or ask about API/MCP/chat surfaces.",
       question: "Which job should we do next?",
       required_grounding: ["get_engine_status", "list_workflows", "list_connectors"],
       notes: ["Prefer capability-grounded suggestions over generic onboarding prose."],
@@ -206,7 +200,7 @@ export function planTurnRouting(args: {
       intent: "surface_help",
       confidence: "high",
       action:
-        "Ground the answer in real tenant state first, then suggest the next concrete job in sk: resume, connect a system, build a workflow, inspect existing resources, or ask about API/MCP/chat surfaces.",
+        "Ground the answer in real tenant state first, then suggest the next concrete job in sk: resume, create a connector, build a workflow, inspect existing resources, or ask about API/MCP/chat surfaces.",
       question: null,
       required_grounding: ["get_engine_status", "list_workflows", "list_connectors"],
       notes: [
@@ -283,7 +277,7 @@ export function planTurnRouting(args: {
         confidence: "medium",
         action:
           "Start connector authoring. Ask one high-signal question at a time and probe before saving.",
-        question: "Which system are we connecting first?",
+        question: "Which connector are we creating first?",
         required_grounding: ["suggest_connector_templates", "start_connector_from_description"],
         notes: ["Offer templates only when they clearly accelerate the setup."],
         forbidden_fallbacks: fallbackList(),
@@ -320,7 +314,7 @@ export function planTurnRouting(args: {
       confidence: mode === "connector_authoring" ? "high" : "medium",
       action:
         "Drive connector authoring with one high-signal question at a time. Suggest a template only when it clearly helps and probe before saving.",
-      question: "What system are we connecting, and what auth method should we expect?",
+      question: "Which connector are we creating, and what auth method should we expect?",
       required_grounding: [
         "inspect_connector_draft",
         "validate_connector_draft",

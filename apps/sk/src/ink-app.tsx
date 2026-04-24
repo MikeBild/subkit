@@ -518,12 +518,12 @@ type TranscriptMode = "chat" | "inspect";
 const WORKFLOW_STARTER_PROMPT = [
   "I want to build a workflow.",
   "Guide me one question at a time.",
-  "Ask first what systems are involved, what should trigger it, and what success looks like.",
+  "Ask first which connectors are involved, what should trigger it, and what success looks like.",
   "Preview before commit.",
 ].join("\n");
 
 const CONNECTOR_STARTER_PROMPT = [
-  "I want to connect a system.",
+  "I want to create a connector.",
   "Suggest a template only if it clearly helps, but do not require one.",
   "Ask me one high-signal question at a time and probe before saving.",
 ].join("\n");
@@ -531,7 +531,7 @@ const CONNECTOR_STARTER_PROMPT = [
 const MANAGE_STARTER_PROMPT = [
   "I want to inspect or manage existing tenant resources.",
   "Ground me in the workflows, connectors, runs, or credentials that actually exist first.",
-  "If a write tool exists, use it with confirmation instead of inventing off-surface fallbacks.",
+  "If a matching write action exists, use it with confirmation instead of inventing off-surface fallbacks.",
 ].join("\n");
 
 const SURFACE_HELP_STARTER_PROMPT = [
@@ -681,7 +681,7 @@ const ContextPane: React.FC<{
     />
     <PaneLabelRow label="messages" value={String(pane.snapshot.messages.total)} />
     <PaneLabelRow label="last role" value={pane.snapshot.messages.last_role ?? "—"} />
-    <PaneLabelRow label="tool calls" value={String(pane.snapshot.tool_calls_total)} />
+    <PaneLabelRow label="calls" value={String(pane.snapshot.tool_calls_total)} />
     <PaneLabelRow label="pending elicitations" value={String(pane.snapshot.pending_elicitations)} />
     {pane.snapshot.active_target ? (
       <Box flexDirection="column" marginTop={1}>

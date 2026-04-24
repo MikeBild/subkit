@@ -13,7 +13,7 @@
 import { and, eq } from "drizzle-orm";
 import { evaluateHook } from "../../auth/hooks.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
-import { buildRequestPlan, fetchViaTunnel } from "../../connectors/drivers/http.ts";
+import { buildRequestPlan, executePlannedHttpRequest } from "../../connectors/drivers/http.ts";
 import { executeS3Request, type S3Method } from "../../connectors/drivers/s3.ts";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { connectorEndpointSchemas, connectors } from "../../db/schema/index.ts";
@@ -56,6 +56,18 @@ export class RequestError extends Error {
 function jitter(ms: number): number {
   const j = ms * 0.2;
   return ms + (Math.random() * 2 - 1) * j;
+}
+
+/** Map a connector's declared `auth_type` to the applied-auth-method
+ *  vocabulary used in request_meta.connector.auth_method. For HTTP
+ *  requests this is overwritten with the plan's observed value (which
+ *  distinguishes oauth2_refreshed vs oauth2_static). GraphQL/S3 paths
+ *  use this directly since they don't do inline oauth2 refresh. */
+function deriveAuthMethodFromAuthType(
+  authType: "none" | "bearer" | "basic" | "oauth2" | "header" | "query",
+): "none" | "bearer" | "header" | "query" | "basic" | "oauth2_static" | "oauth2_refreshed" {
+  if (authType === "oauth2") return "oauth2_static";
+  return authType;
 }
 
 function backoffMs(attempt: number, base_ms: number = RETRY_BASE_MS): number {
@@ -127,76 +139,20 @@ async function fetchOnce(
   signal: AbortSignal,
   tunnel?: TunnelRoute,
 ): Promise<FetchAttemptResult> {
-  if (tunnel) {
-    // Tunnel-routed requests re-use the existing retry loop but delegate
-    // the actual byte transport to the tunnel registry. The plan already
-    // had credentials injected into `headers` before we got here.
-    const parsed = new URL(url);
-    const effectiveBody =
-      body !== undefined && body !== null && method !== "GET" && method !== "HEAD"
-        ? typeof body === "string"
-          ? body
-          : JSON.stringify(body)
-        : null;
-    if (effectiveBody !== null && !headers["content-type"] && !headers["Content-Type"]) {
-      headers["content-type"] = "application/json";
-    }
-    const tunnelRes = await fetchViaTunnel({
-      tenant_id: tunnel.tenant_id,
-      tunnel_target: tunnel.target,
-      method,
-      url: parsed,
-      headers,
-      body: effectiveBody,
-    });
-    const text = tunnelRes.body ?? "";
-    let parsedBody: unknown = text;
-    const ct = tunnelRes.headers["content-type"] ?? tunnelRes.headers["Content-Type"] ?? "";
-    if (typeof ct === "string" && ct.includes("application/json") && text.length > 0) {
-      try {
-        parsedBody = JSON.parse(text);
-      } catch {
-        parsedBody = text;
-      }
-    }
-    return {
-      status: tunnelRes.status,
-      headers: tunnelRes.headers,
-      body: parsedBody,
-      bytes_in: Buffer.byteLength(text, "utf8"),
-    };
-  }
-  const init: RequestInit = {
+  const execution = await executePlannedHttpRequest({
+    tenant_id: tunnel?.tenant_id ?? "",
     method,
+    url: new URL(url),
     headers,
+    body,
     signal,
-  };
-  if (body !== undefined && body !== null && method !== "GET" && method !== "HEAD") {
-    init.body = typeof body === "string" ? body : JSON.stringify(body);
-    if (!headers["content-type"] && !headers["Content-Type"]) {
-      (init.headers as Record<string, string>)["content-type"] = "application/json";
-    }
-  }
-  const res = await fetch(url, init);
-  const text = await res.text();
-  let parsed: unknown = text;
-  const ct = res.headers.get("content-type") ?? "";
-  if (ct.includes("application/json") && text.length > 0) {
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = text;
-    }
-  }
-  const headerObj: Record<string, string> = {};
-  res.headers.forEach((v, k) => {
-    headerObj[k] = v;
+    ...(tunnel ? { tunnel_target: tunnel.target } : {}),
   });
   return {
-    status: res.status,
-    headers: headerObj,
-    body: parsed,
-    bytes_in: Buffer.byteLength(text, "utf8"),
+    status: execution.status,
+    headers: execution.headers,
+    body: execution.body,
+    bytes_in: execution.bytes_in,
   };
 }
 
@@ -370,6 +326,16 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // Holds the resolved HTTP connector so circuit state can be updated on
   // success / failure in the outer try/catch block.
   let activeConnector: Awaited<ReturnType<typeof getConnectorForEnvironment>> = null;
+  let connectorResolution: {
+    connector_id: string;
+    connector_slug: string;
+    requested_environment: string;
+    resolved_environment: string;
+    driver: string;
+    auth_method: string;
+    base_url: string | null;
+    tunnel_target?: string | null;
+  } | null = null;
   try {
     if (p.step.connector_id) {
       const connector = await getConnectorForEnvironment(
@@ -390,6 +356,20 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           },
         };
       }
+      connectorResolution = {
+        connector_id: connector.id,
+        connector_slug: connector.slug,
+        requested_environment: p.ctx.execution_mode,
+        resolved_environment: connector.environment,
+        driver: connector.driver,
+        // auth_method + base_url are filled once the driver-specific path
+        // runs (HTTP: buildRequestPlan tells us; GraphQL/S3: derived from
+        // connector.auth_type which matches the applied method since those
+        // drivers don't do inline oauth2 refresh yet).
+        auth_method: deriveAuthMethodFromAuthType(connector.auth_type),
+        base_url: connector.base_url ?? null,
+        tunnel_target: null,
+      };
       if (connector.driver === "graphql" || p.step.graphql) {
         clearTimeout(timer);
         if (!p.step.graphql) {
@@ -426,6 +406,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               driver: "graphql",
               status: res.status,
               operation: p.step.graphql.operation ?? "query",
+              operation_name: res.operation_name,
+              bytes_in: res.bytes_in,
+              ...(connectorResolution ? { connector: connectorResolution } : {}),
             },
             ...(res.status >= 200 && res.status < 300
               ? {}
@@ -469,7 +452,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             output: res.body,
             retry_count: 0,
             duration_ms: Date.now() - start,
-            request_meta: { driver: "s3", method: p.step.method ?? "GET", status: res.status },
+            request_meta: {
+              driver: "s3",
+              method: p.step.method ?? "GET",
+              status: res.status,
+              ...(connectorResolution ? { connector: connectorResolution } : {}),
+            },
           };
         } catch (err) {
           return {
@@ -533,8 +521,14 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       for (const [k, v] of Object.entries(plan.headers)) {
         headers[k] = v;
       }
+      if (connectorResolution) {
+        // The plan observed whether the credential was refreshed inline —
+        // prefer its auth_method over the connector's declared auth_type.
+        connectorResolution.auth_method = plan.auth_method;
+      }
       if (plan.tunnel_target) {
         tunnelRoute = { tenant_id: p.ctx.tenant_id, target: plan.tunnel_target };
+        if (connectorResolution) connectorResolution.tunnel_target = plan.tunnel_target;
       }
     } else {
       if (!p.step.url) {
@@ -745,6 +739,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         method: p.step.method,
         status: res.status,
         bytes_in: res.bytes_in,
+        ...(connectorResolution ? { connector: connectorResolution } : {}),
       };
       return {
         status: "succeeded",
@@ -797,6 +792,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         method: p.step.method,
         status: res.status,
         page_idx: pageIdx,
+        ...(connectorResolution ? { connector: connectorResolution } : {}),
       };
       if (pages_fetched % PAGE_PROGRESS_INTERVAL === 0) {
         logger.info({

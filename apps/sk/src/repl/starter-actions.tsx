@@ -10,7 +10,7 @@ export interface StarterAction {
 
 export const DEFAULT_STARTER_ACTIONS: readonly StarterAction[] = [
   { key: "1", label: "Resume recent", detail: "/resume" },
-  { key: "2", label: "Connect a system", detail: "guided setup" },
+  { key: "2", label: "Create a connector", detail: "guided setup" },
   { key: "3", label: "Build a workflow", detail: "guided authoring" },
   { key: "4", label: "Inspect tenant state", detail: "workflows · connectors · runs" },
   { key: "5", label: "API / MCP / chat help", detail: "surface guidance" },

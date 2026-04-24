@@ -2,7 +2,7 @@
 // run exactly one workflow, without expanding their role.
 // Acceptance criteria:
 //   - AC1: Admin issues a workflow:run grant on workflow X to user U.
-//   - AC2: User U can run workflow X via /v1/workflows/X/run.
+//   - AC2: User U can run workflow X via POST /v1/executions.
 //   - AC3: User U gets 403 when running workflow Y (no grant).
 //   - AC4: DELETE /v1/rbac/grants/:id removes the grant, revoking access.
 // Spec refs: gap-pass-2 C2 / C4 / C8
@@ -77,7 +77,9 @@ describe("journey: rbac resource grants", () => {
   async function asMember(path: string, init: RequestInit = {}) {
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${memberApiKey}`);
-    if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
+    if (init.body && !headers.has("content-type")) {
+      headers.set("content-type", "application/json");
+    }
     return fetch(`${ctx.baseUrl}${path}`, { ...init, headers });
   }
 
@@ -99,9 +101,9 @@ describe("journey: rbac resource grants", () => {
     });
 
     // Confirm the member now cannot run X.
-    const preX = await asMember(`/v1/workflows/${workflowX}/run?sync=1`, {
+    const preX = await asMember("/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowX, input: {} }),
     });
     expect(preX.status).toBe(403);
 
@@ -121,16 +123,16 @@ describe("journey: rbac resource grants", () => {
     grantId = grantBody.id;
 
     // AC2: now member can run X.
-    const postX = await asMember(`/v1/workflows/${workflowX}/run?sync=1`, {
+    const postX = await asMember("/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowX, input: {} }),
     });
     expect([200, 202]).toContain(postX.status);
 
     // AC3: member still can't run Y.
-    const postY = await asMember(`/v1/workflows/${workflowY}/run?sync=1`, {
+    const postY = await asMember("/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowY, input: {} }),
     });
     expect(postY.status).toBe(403);
   });
@@ -140,9 +142,9 @@ describe("journey: rbac resource grants", () => {
       method: "DELETE",
     });
     expect(revoke.status).toBe(204);
-    const postX = await asMember(`/v1/workflows/${workflowX}/run?sync=1`, {
+    const postX = await asMember("/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowX, input: {} }),
     });
     expect(postX.status).toBe(403);
   });

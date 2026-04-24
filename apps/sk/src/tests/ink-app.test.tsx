@@ -1273,12 +1273,12 @@ describe("ink-app: journey 12 — onboarding and transcript controls", () => {
     let frame = instance.lastFrame() ?? "";
     expect(frame).toContain("start with");
     expect(frame).toContain("Resume recent");
-    expect(frame).toContain("Connect a system");
+    expect(frame).toContain("Create a connector");
     expect(frame).toContain("Inspect tenant state");
     instance.stdin.write("2");
     await tick(40);
     frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("I want to connect a system.");
+    expect(frame).toContain("I want to create a connector.");
     expect(frame).toContain("probe before saving");
     instance.unmount();
   });

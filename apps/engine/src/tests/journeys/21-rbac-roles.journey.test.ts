@@ -51,7 +51,9 @@ async function createUserWithKey(opsUserEmail: string, roleId: string | null) {
 async function asUser(apiKey: string, path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   headers.set("authorization", `Bearer ${apiKey}`);
-  if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
+  if (init.body && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
   return fetch(`${ctx.baseUrl}${path}`, { ...init, headers });
 }
 
@@ -107,9 +109,9 @@ describe("journey: rbac custom role", () => {
       throw new Error(`list failed: ${listRes.status} ${body}`);
     }
     expect(listRes.status).toBe(200);
-    const runRes = await asUser(apiKey, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const runRes = await asUser(apiKey, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
     });
     expect([200, 202]).toContain(runRes.status);
 

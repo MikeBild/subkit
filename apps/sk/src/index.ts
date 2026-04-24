@@ -18,7 +18,6 @@ import { defineCommand, runCommand, showUsage } from "citty";
 import { apiKeysCommand } from "./commands/apikeys.ts";
 import { auditCommand } from "./commands/audit.ts";
 import { authCommand } from "./commands/auth.ts";
-import { automationsCommand } from "./commands/automations.ts";
 import { connectorTemplatesCommand } from "./commands/connector-templates.ts";
 import { connectorsCommand } from "./commands/connectors.ts";
 import { credentialsCommand } from "./commands/credentials.ts";
@@ -462,7 +461,6 @@ const mainCommand = defineCommand({
     extract: extractCommand,
     auth: authCommand,
     // operator commands
-    automations: automationsCommand,
     workflows: workflowsCommand,
     connectors: connectorsCommand,
     "connector-templates": connectorTemplatesCommand,
@@ -622,7 +620,6 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   extract: { command: extractCommand, requires: "conversation:write" },
   auth: { command: authCommand, requires: "connector:write" },
   // operator
-  automations: { command: automationsCommand, requires: "workflow:read" },
   workflows: { command: workflowsCommand, requires: "workflow:read" },
   connectors: { command: connectorsCommand, requires: "connector:read" },
   "connector-templates": { command: connectorTemplatesCommand, requires: "connector:read" },

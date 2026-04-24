@@ -32,12 +32,18 @@ export interface GraphQLResponse<T = unknown> {
   status: number;
   headers: Record<string, string>;
   body: { data?: T; errors?: unknown };
+  bytes_in: number;
+  duration_ms: number;
+  operation_name: string;
 }
 
 export interface GraphQLNotImplementedError {
   status: 501;
   headers: Record<string, string>;
   body: { error: { code: "not_implemented"; message: string } };
+  bytes_in: number;
+  duration_ms: number;
+  operation_name: string;
 }
 
 function parseConfig(connector: ConnectorView): GraphQLConnectorConfig {
@@ -71,6 +77,14 @@ async function resolveCredential(
  * the only visible difference is the typed step contract. Subscriptions
  * return a structured `not_implemented` error response instead of throwing.
  */
+/** Extract the first named operation in the source. Lets request_meta
+ *  report e.g. `GetViewerRepos` instead of the bare `query`/`mutation`
+ *  keyword — useful when one connector test fires multiple named ops. */
+function extractOperationName(query: string, fallback: string): string {
+  const match = query.match(/^\s*(?:query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)/);
+  return match?.[1] ?? fallback;
+}
+
 export async function executeGraphQLRequest(p: {
   db: Db;
   tenant_id: string;
@@ -78,6 +92,8 @@ export async function executeGraphQLRequest(p: {
   op: GraphQLOperation;
   fetchImpl?: typeof fetch;
 }): Promise<GraphQLResponse | GraphQLNotImplementedError> {
+  const start = Date.now();
+  const operationName = extractOperationName(p.op.query, p.op.operation);
   if (p.op.operation === "subscription") {
     return {
       status: 501,
@@ -88,6 +104,9 @@ export async function executeGraphQLRequest(p: {
           message: "graphql subscriptions are not supported by this driver",
         },
       },
+      bytes_in: 0,
+      duration_ms: Date.now() - start,
+      operation_name: operationName,
     };
   }
   const cfg = parseConfig(p.connector);
@@ -111,6 +130,7 @@ export async function executeGraphQLRequest(p: {
     action: "graphql.request",
     connector_id: p.connector.id,
     operation: p.op.operation,
+    operation_name: operationName,
     url_host: new URL(cfg.endpoint).host,
     has_credential: credential !== null,
   });
@@ -138,6 +158,7 @@ export async function executeGraphQLRequest(p: {
       action: "graphql.request.error",
       connector_id: p.connector.id,
       operation: p.op.operation,
+      operation_name: operationName,
       status: res.status,
       has_graphql_errors: hasErrors,
     });
@@ -146,6 +167,9 @@ export async function executeGraphQLRequest(p: {
     status: res.status,
     headers: headerObj,
     body: parsed as { data?: unknown; errors?: unknown },
+    bytes_in: Buffer.byteLength(text, "utf8"),
+    duration_ms: Date.now() - start,
+    operation_name: operationName,
   };
 }
 

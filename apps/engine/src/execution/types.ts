@@ -96,6 +96,33 @@ export interface RunOptions {
   existing_execution_id?: string;
 }
 
+/** Auth method actually applied at request time. Distinguishes a static
+ *  bearer from one that was just refreshed via OAuth2 token rotation — the
+ *  operator reading the run result can tell whether credentials are fresh. */
+export type AppliedAuthMethod =
+  | "none"
+  | "bearer"
+  | "header"
+  | "query"
+  | "basic"
+  | "oauth2_static"
+  | "oauth2_refreshed";
+
+/** Per-connector rollup in `RunResult.connector_resolutions`. One entry per
+ *  unique (step_key, connector_id) pair — lets debuggers see at a glance
+ *  which driver / auth / environment / tunnel each step actually used. */
+export interface ConnectorResolutionSummary {
+  step_key: string;
+  connector_id: string;
+  connector_slug: string;
+  driver: string;
+  requested_environment: ExecutionMode;
+  resolved_environment: ExecutionMode;
+  auth_method: AppliedAuthMethod;
+  tunnel_target?: string | null;
+  base_url?: string | null;
+}
+
 export interface RunResult {
   execution_id: string;
   status: ExecutionStatus;
@@ -109,7 +136,12 @@ export interface RunResult {
     duration_ms: number | null;
     retry_count: number;
     error: unknown;
+    request_meta?: Record<string, unknown> | null;
   }>;
+  /** One entry per unique connector used in this run. Deduped per
+   *  connector_id, first occurrence wins. Absent when no request/graphql
+   *  step touched a connector. */
+  connector_resolutions?: ConnectorResolutionSummary[];
   /** Non-fatal diagnostics rolled up from every step. Present when
    *  at least one step emitted a warning (typically jsonata
    *  `unresolved_identifier`). Absent when the run had none. */

@@ -596,12 +596,30 @@
     ],
     "best_practices": [
       "Use conditional requests (If-None-Match with ETag) to avoid consuming rate limit on unchanged data",
-      "Use the GraphQL API (api.github.com/graphql) for complex queries requiring nested data"
+      "Prefer the GraphQL connector (github-graphql) for deep read traversals — one query replaces many REST roundtrips"
     ],
     "pitfalls": [
       "Personal Access Tokens (classic) with no expiration are a security risk — use fine-grained tokens with expiration"
     ],
     "doc_refs": ["https://docs.github.com/en/rest"]
+  },
+  "github-graphql-basics": {
+    "title": "GitHub GraphQL API Basics",
+    "body": "The GraphQL connector targets https://api.github.com/graphql and reuses the same PAT or OAuth token as the REST connector (scopes repo + read:org). One query can fetch nested data (repo → issues → comments → labels) that would cost many REST roundtrips. Cost, not request count, is the rate-limit budget — observe the X-RateLimit-Cost and X-RateLimit-Remaining response headers.",
+    "examples": [
+      "query { viewer { login } } — sanity check the credential",
+      "query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ issues(last:20,states:OPEN){ nodes { number title comments(last:5){ nodes { body } } labels(first:10){ nodes { name } } } } } } — 20 issues with comments and labels in one roundtrip"
+    ],
+    "best_practices": [
+      "Page large lists with pageInfo.endCursor + first:50 rather than fetching everything at once",
+      "Request only the fields you consume — every extra field increases the query cost",
+      "Use named operations (query MyOp { ... }) so request_meta.operation_name is human-readable in traces"
+    ],
+    "pitfalls": [
+      "Write operations in GraphQL are incomplete — organisation-admin mutations often don't exist. Fall back to the REST connector (github) for those.",
+      "Subscriptions are not supported by the subkit graphql driver — plan for webhook-based push instead"
+    ],
+    "doc_refs": ["https://docs.github.com/en/graphql"]
   },
   "gitlab-basics": {
     "title": "GitLab REST API Basics",
