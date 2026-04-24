@@ -38,6 +38,8 @@ describe("conversation tools — registration", () => {
     "start_workflow_from_goal",
     "submit_connector_credential",
     "suggest_connector_templates",
+    "match_connector_template_by_url",
+    "import_connector_from_spec",
     "update_connector_draft",
     "update_param",
     "validate_connector_draft",

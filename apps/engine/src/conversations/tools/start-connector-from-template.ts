@@ -1,10 +1,10 @@
 import { z } from "@hono/zod-openapi";
+import { enrichConnectorFromTemplate } from "../../connectors/template-enrichment.ts";
 import { getBuiltinTemplate } from "../../connectors/templates.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import {
   allowedTemplateAuthTypes,
-  defaultTemplateAuthType,
   inferTemplateRequiredFields,
 } from "../connector-template-intelligence.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
@@ -15,6 +15,8 @@ const inputSchema = z
     template_slug: z.string().min(1),
     environment: z.enum(["dev", "prod"]).default("dev"),
     name: z.string().min(1).optional(),
+    /** Selects base_url_options by environment label (e.g. "eu", "sandbox"). */
+    base_url_environment: z.string().optional(),
   })
   .openapi("StartConnectorFromTemplateToolInput");
 
@@ -38,14 +40,20 @@ export const startConnectorFromTemplateTool: ConversationTool = {
         }),
       };
     }
+    const enriched = enrichConnectorFromTemplate(
+      { name: args.name, environment: args.environment },
+      template,
+      args.base_url_environment ? { environment: args.base_url_environment } : undefined,
+    );
     const connector = {
-      name: args.name ?? template.name,
-      slug: template.slug,
-      driver: template.driver,
-      environment: args.environment,
-      base_url: template.base_url,
-      auth_type: defaultTemplateAuthType(template),
-      config: {},
+      name: enriched.name,
+      slug: enriched.slug ?? template.slug,
+      driver: enriched.driver,
+      environment: enriched.environment,
+      // enriched.base_url is always set because resolveBaseUrl falls back to template.base_url.
+      base_url: enriched.base_url ?? template.base_url,
+      auth_type: enriched.auth_type,
+      config: enriched.config ?? {},
       description: template.description,
       template_id: template.slug,
       template_name: template.name,

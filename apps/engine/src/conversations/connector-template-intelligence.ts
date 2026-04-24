@@ -66,6 +66,12 @@ export function scoreConnectorTemplate(
       else if (candidate.includes(token)) score += 2;
     }
   }
+  // Keyword scoring: exact keyword hit scores higher than substring.
+  for (const kw of template.keywords) {
+    const kwl = kw.toLowerCase();
+    if (kwl === q) score += 10;
+    else if (kwl.includes(q)) score += 4;
+  }
   return score;
 }
 
