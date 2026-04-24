@@ -74,7 +74,7 @@ export function validateWorkflowDef(input: unknown): {
         });
       }
     }
-    if (step.kind === "transform") {
+    if (step.kind === "transform" && (step.language ?? "jsonata") === "jsonata") {
       try {
         jsonata(step.expression);
       } catch (e) {

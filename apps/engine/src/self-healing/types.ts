@@ -42,6 +42,21 @@ export type DriftSignal =
       added: string[];
       removed: string[];
       widened: string[];
+    }
+  | {
+      // sk-stdlib major-version drift. Emitted when a workflow or
+      // request_hook was persisted against a recorded stdlib major
+      // that differs from the engine's current major. Unlike the
+      // other drift kinds, this one is not tied to a failing step —
+      // it's a proactive scan surfaced by the self-healing service
+      // so operators can review a migration before the next run.
+      kind: "stdlib_version_drift";
+      surface: "workflow" | "request_hook";
+      resource_id: string;
+      recorded_version: string;
+      current_version: string;
+      recorded_major: number;
+      current_major: number;
     };
 
 // The classifier output. A PatchDecision says whether the engine may

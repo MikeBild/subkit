@@ -34,11 +34,19 @@ export class SandboxError extends Error {
       | "timeout"
       | "syntax"
       | "runtime"
-      | "marshal",
+      | "marshal"
+      | "stdlib_init",
     public readonly stats?: SandboxStats,
   ) {
     super(message);
     this.name = "SandboxError";
+  }
+}
+
+export class SandboxStdlibInitError extends SandboxError {
+  constructor(message: string, stats?: SandboxStats) {
+    super(message, "stdlib_init", stats);
+    this.name = "SandboxStdlibInitError";
   }
 }
 

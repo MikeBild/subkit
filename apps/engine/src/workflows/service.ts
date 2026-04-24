@@ -9,6 +9,7 @@ import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
+import { annotateRuntime } from "./runtime-annotation.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
 
@@ -111,7 +112,7 @@ export async function createWorkflow(
     });
     return { errors: validation.errors.map((e) => `${e.path}: ${e.message}`) };
   }
-  const def = validation.workflow;
+  const def = annotateRuntime(validation.workflow);
   const slug = def.slug ?? slugify(def.name);
   const result = await db.transaction(async (tx) => {
     const [wf] = await tx
@@ -186,7 +187,7 @@ export async function updateWorkflow(
     });
     return { errors: validation.errors.map((e) => `${e.path}: ${e.message}`) };
   }
-  const def = validation.workflow;
+  const def = annotateRuntime(validation.workflow);
   const updated = await db.transaction(async (tx) => {
     const wfRows = await tx
       .select()
