@@ -183,6 +183,31 @@ describe("graphql driver", () => {
     expect(body.data?.users?.[0]?.name).toBe("alice");
   });
 
+  test("response carries bytes_in, duration_ms and named operation", async () => {
+    const fresh = await getConnector(tenantId, connectorId, testDb.db);
+    const res = await gqlQuery({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh!,
+      query: "query GetUsers { users(limit: 1) { id name } }",
+    });
+    expect(res.status).toBe(200);
+    expect(res.bytes_in).toBeGreaterThan(0);
+    expect(res.duration_ms).toBeGreaterThanOrEqual(0);
+    expect(res.operation_name).toBe("GetUsers");
+  });
+
+  test("anonymous query falls back to 'query' as operation name", async () => {
+    const fresh = await getConnector(tenantId, connectorId, testDb.db);
+    const res = await gqlQuery({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh!,
+      query: "{ users(limit: 1) { id } }",
+    });
+    expect(res.operation_name).toBe("query");
+  });
+
   test("mutation operation routes through POST", async () => {
     const fresh = await getConnector(tenantId, connectorId, testDb.db);
     const res = await gqlQuery({

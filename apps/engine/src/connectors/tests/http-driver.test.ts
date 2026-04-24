@@ -172,4 +172,83 @@ describe("http driver auth application", () => {
     await fetch(plan.url.toString(), { method: "GET", headers: plan.headers });
     expect(lastRequest?.headers["x-static"]).toBe("static-v");
   });
+
+  test("plan reports applied auth_method per credential mode", async () => {
+    // none
+    const anon = await makeConnector({ auth_type: "none" });
+    const anonFresh = await getConnector(ctx.tenantId, anon.id, ctx.testDb.db);
+    const anonPlan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: anonFresh!,
+      path_or_url: "/a",
+    });
+    expect(anonPlan.auth_method).toBe("none");
+
+    // bearer
+    const bearer = await makeConnector({ auth_type: "bearer" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: bearer.id,
+        environment: "dev",
+        mode: "bearer",
+        value: { mode: "bearer", token: "t-123" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const bearerFresh = await getConnector(ctx.tenantId, bearer.id, ctx.testDb.db);
+    const bearerPlan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: bearerFresh!,
+      path_or_url: "/b",
+    });
+    expect(bearerPlan.auth_method).toBe("bearer");
+
+    // header
+    const header = await makeConnector({ auth_type: "header" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: header.id,
+        environment: "dev",
+        mode: "header",
+        value: { mode: "header", headers: { "x-api-key": "k" } },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const headerFresh = await getConnector(ctx.tenantId, header.id, ctx.testDb.db);
+    const headerPlan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: headerFresh!,
+      path_or_url: "/h",
+    });
+    expect(headerPlan.auth_method).toBe("header");
+
+    // basic
+    const basic = await makeConnector({ auth_type: "basic" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: basic.id,
+        environment: "dev",
+        mode: "basic",
+        value: { mode: "basic", username: "u", password: "p" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const basicFresh = await getConnector(ctx.tenantId, basic.id, ctx.testDb.db);
+    const basicPlan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: basicFresh!,
+      path_or_url: "/ba",
+    });
+    expect(basicPlan.auth_method).toBe("basic");
+  });
 });
