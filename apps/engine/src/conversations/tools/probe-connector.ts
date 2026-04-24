@@ -23,13 +23,12 @@ import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { buildRequestPlan, fetchViaTunnel } from "../../connectors/drivers/http.ts";
+import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
 import type { Db } from "../../db/client.ts";
 import { connectors as connectorsTable } from "../../db/schema/index.ts";
 import { resolvePlaceholders } from "../../llm/substitution/resolver.ts";
 import { logger } from "../../logging/logger.ts";
-import { mergeAbortSignals } from "../abort.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
 
@@ -231,64 +230,21 @@ export const probeConnectorTool: ConversationTool = {
     let usedHost = "";
 
     try {
-      const plan = await buildRequestPlan({
+      const execution = await executeConnectorHttpRequest({
         db: ctx.db,
         tenant_id: ctx.tenant_id,
         connector,
+        method: args.method,
         path_or_url: resolvedValue.path,
-        headers: resolvedValue.headers,
-        query: resolvedValue.query,
+        ...(resolvedValue.headers ? { headers: resolvedValue.headers } : {}),
+        ...(resolvedValue.query ? { query: resolvedValue.query } : {}),
+        ...(resolvedValue.body !== undefined ? { body: resolvedValue.body } : {}),
+        timeout_ms: args.timeout_ms,
+        ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
       });
-      usedHost = hostOf(plan.url);
-      const init: RequestInit = { method: args.method, headers: plan.headers };
-      if (
-        resolvedValue.body !== null &&
-        resolvedValue.body !== undefined &&
-        args.method !== "GET" &&
-        args.method !== "HEAD"
-      ) {
-        if (typeof resolvedValue.body === "string") {
-          init.body = resolvedValue.body;
-        } else {
-          init.body = JSON.stringify(resolvedValue.body);
-          if (!("content-type" in plan.headers) && !("Content-Type" in plan.headers)) {
-            plan.headers["content-type"] = "application/json";
-            init.headers = plan.headers;
-          }
-        }
-      }
-
-      if (plan.tunnel_target) {
-        const tunnelRes = await fetchViaTunnel({
-          tenant_id: ctx.tenant_id,
-          tunnel_target: plan.tunnel_target,
-          method: args.method,
-          url: plan.url,
-          headers: plan.headers,
-          body: typeof init.body === "string" ? init.body : null,
-          timeoutMs: args.timeout_ms,
-        });
-        status = tunnelRes.status;
-        responseBody = tunnelRes.body;
-      } else {
-        const timeoutSignal = AbortSignal.timeout(args.timeout_ms);
-        const signal = ctx.abortSignal
-          ? mergeAbortSignals([ctx.abortSignal, timeoutSignal])
-          : timeoutSignal;
-        const res = await fetch(plan.url, { ...init, signal });
-        status = res.status;
-        const ct = res.headers.get("content-type") ?? "";
-        const text = await res.text();
-        if (ct.includes("application/json") && text.length > 0) {
-          try {
-            responseBody = JSON.parse(text);
-          } catch {
-            responseBody = text;
-          }
-        } else {
-          responseBody = text;
-        }
-      }
+      usedHost = hostOf(new URL(execution.url));
+      status = execution.status;
+      responseBody = execution.body;
     } catch (err) {
       errorDetail = err instanceof Error ? err.message : String(err);
       logger.warn({

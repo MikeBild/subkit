@@ -22,7 +22,7 @@ Terms are grouped by concern. Read the groups in order for a complete mental mod
 
 ## Group 2: Authoring
 
-**Conversation** — the primary authoring session in sk. A User and the AI exchange messages; the AI uses structured tools internally to propose, validate, and assemble a workflow. Conversations are persistent and resumable — a session can be paused and continued without losing context. The Conversation is where Drafts are created, refined, and committed.
+**Conversation** — the primary authoring session in sk. A User and the AI exchange messages; the AI uses structured authoring actions internally to propose, validate, and assemble a workflow. Conversations are persistent and resumable — a session can be paused and continued without losing context. The Conversation is where Drafts are created, refined, and committed.
 
 **Draft** — a workflow under construction within a Conversation. A Draft exists only in the context of the Conversation until a User explicitly commits it. Committing a Draft creates a versioned, immutable Workflow. Drafts are never executed directly; only committed Workflows run in the execution engine.
 
@@ -38,7 +38,7 @@ Terms are grouped by concern. Read the groups in order for a complete mental mod
 
 ## Group 3: Integration
 
-**Connector** — a configured connection to an external system. A Connector is built from a template, a driver, and credentials. It represents a specific integration instance — for example, a Stripe production account or a GitHub organization. Connectors are tenant-scoped, versioned, and can be bound to a Tunnel when the target system lives in a private network.
+**Connector** — a configured connection to an external integration boundary. A Connector is built from a template, a driver, and credentials. It represents a specific integration instance — for example, a Stripe production account or a GitHub organization. Connectors are tenant-scoped, versioned, and can be bound to a Tunnel when the target boundary lives in a private network.
 
 **Connector Template** — a pre-built blueprint for a well-known service. Templates include the driver type, authentication configuration, documentation ingestion setup, and guided setup instructions. sk ships 89 Connector Templates covering services across payments, CRM, DevOps, data, communication, and cloud infrastructure. Templates are the starting point for creating a Connector; they are not Connectors themselves.
 
@@ -68,11 +68,11 @@ Terms are grouped by concern. Read the groups in order for a complete mental mod
 
 **Audit Log** — the immutable, append-only record of every state change in the platform. Every entry carries: what changed, who initiated it, from which surface (API, CLI, MCP, chat, scheduler, webhook), and when. The Audit Log cannot be modified or deleted. It is the authoritative record for compliance, debugging, and incident review.
 
-**RBAC** — role-based access control enforced at every platform boundary. Every API route, MCP tool, webhook trigger, and execution path checks the caller's role and permissions before proceeding. sk ships four built-in roles. Custom roles and resource-level grants are supported for more granular control. RBAC decisions are recorded in the Audit Log.
+**RBAC** — role-based access control enforced at every platform boundary. Every API route, MCP call, webhook trigger, and execution path checks the caller's role and permissions before proceeding. sk ships four built-in roles. Custom roles and resource-level grants are supported for more granular control. RBAC decisions are recorded in the Audit Log.
 
 **Before-Request Hook** — a sandboxed script that runs before a Connector request executes. Hooks can inspect or modify the outbound request, enforce policy (such as blocking writes during maintenance windows), or abort execution entirely. Hooks run in an isolated sandbox with a strict CPU budget and no access to the host environment. Hook execution is audited. Any error or timeout fails closed and denies the request.
 
-**Self-Healing** — the platform's drift detection and bounded repair system. When a Connector's schema or behavior changes in a way that causes Step failures, the engine detects the drift, compares the new response against the last known Schema Version, proposes a repair using the AI within a narrow tool loop, and dry-runs the proposed repair against recorded Execution Fixtures. The result is a Patch Candidate presented to an operator for approval. Self-Healing never applies a repair automatically without operator approval.
+**Self-Healing** — the platform's drift detection and bounded repair system. When a Connector's schema or behavior changes in a way that causes Step failures, the engine detects the drift, compares the new response against the last known Schema Version, proposes a repair using the AI within a narrow repair loop, and dry-runs the proposed repair against recorded Execution Fixtures. The result is a Patch Candidate presented to an operator for approval. Self-Healing never applies a repair automatically without operator approval.
 
 **Patch Candidate** — a proposed repair generated by the Self-Healing process. Each Patch Candidate carries the proposed change, a classification of safe or unsafe based on the scope and risk of the repair, the Execution Fixtures it was validated against, and a full audit trail. Patch Candidates require explicit operator approval before they are applied to a live Workflow.
 
@@ -84,7 +84,7 @@ Terms are grouped by concern. Read the groups in order for a complete mental mod
 
 **subkit CLI** — the operator-focused command-line tool for administrative tasks. Used for managing Connectors, running diagnostics, querying the Audit Log, managing Schedules, and performing platform maintenance. The subkit CLI is separate from the sk conversational REPL and is oriented toward operators and developers rather than end users.
 
-**MCP Server** — the Model Context Protocol server embedded in the sk engine. It exposes Workflows as callable tools, Connectors as structured resources, and Skills as curated prompts that can be injected into an AI's context. Any MCP-compatible client — including Claude Code, GitHub Copilot, Codex CLI, and Gemini — can connect to the MCP Server and interact with the platform. All MCP calls are governed by the same RBAC and Audit Log as direct API calls.
+**MCP Server** — the Model Context Protocol server embedded in the sk engine. It exposes Workflows as callable `wf.<slug>` entries inside the MCP callable surface, Connectors as structured resources, and Skills as curated prompts that can be injected into an AI's context. Any MCP-compatible client — including Claude Code, GitHub Copilot, Codex CLI, and Gemini — can connect to the MCP Server and interact with the platform. All MCP calls are governed by the same RBAC and Audit Log as direct API calls.
 
 **Chat Adapter** — the integration layer for enterprise chat platforms (Slack, Microsoft Teams, Google Chat). Each adapter normalizes platform-specific events — mentions, slash commands, interaction callbacks — into sk's Conversation model, and renders responses back as native platform messages. Approval flows surface as interactive cards with approve and reject buttons. Identity linking connects a chat user's platform identity to their sk Tenant account.
 

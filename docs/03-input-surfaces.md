@@ -12,7 +12,7 @@ Many doors. One platform.
 
 The sk CLI is the primary human-facing authoring tool. It is a terminal interface built on Ink that opens a Conversation when launched — a live session where the user describes what they want and the AI proposes, iterates, and assembles a workflow.
 
-**Who uses it.** End users describe automation goals in natural language and work through the AI-assisted authoring loop. Operators use the same CLI to manage Connectors, review Skill Candidates and Patch Candidates, query the Audit Log, and administer the platform — the surface adapts based on the authenticated user's role.
+**Who uses it.** End users describe workflow goals in natural language and work through the AI-assisted authoring loop. Operators use the same CLI to manage Connectors, review Skill Candidates and Patch Candidates, query the Audit Log, and administer the platform — the surface adapts based on the authenticated user's role.
 
 **Authentication.** The sk CLI supports four modes: API Key (for developers and CI), OIDC (for SSO-enabled organizations), Portal Token (for scoped external-user flows), and headless mode where input is piped from stdin for scripted or automated usage. All modes resolve to the same identity and RBAC model.
 
@@ -34,7 +34,7 @@ The REST API is the full programmatic interface to sk. Every capability availabl
 
 **Coverage.** The API exposes CRUD endpoints for all platform resources: Workflows, Connectors, Executions, Credentials, Skills, Skill Candidates, Knowledge Sources, Conversations, Schedules, Webhooks, Audit Log entries, and more. Every operation that changes state goes through the API layer, which means RBAC and the Audit Log apply uniformly.
 
-**Direct automation surface.** The API also exposes a first-class automation facade for direct build-test-apply-run loops. Clients can create or update an automation definition, preview it inline, inspect a structured diff against a saved automation, apply the change set, and run the saved result through a single consistent REST surface.
+**Direct workflow and execution surface.** The API exposes workflow CRUD plus a single runtime entry point at `POST /v1/executions`. Persisted workflows, inline draft definitions, and single-step previews all run through that same execution contract. Inline runs complete synchronously by default; queued background execution is explicit.
 
 **Schema-first design.** All request and response shapes are defined as Zod schemas. The OpenAPI 3.1 specification is generated from those schemas — it is never hand-written. This means the spec is always accurate, and client code generated from it is always consistent with the actual implementation.
 
@@ -54,33 +54,33 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 
 **Three capability types.** The MCP server exposes sk's capabilities in three forms that match the MCP standard:
 
-- **Tools** are Workflows exposed as callable functions. A workflow named `payment-sync` becomes a tool named `run_payment_sync` that any connected AI tool can invoke directly. The AI sees the workflow's input schema, can call it, and receives the result.
-- **Resources** are Connectors exposed as structured data access. A Stripe Connector might surface as a `stripe://customers` resource that an AI tool can read to understand available data shapes.
-- **Prompts** are Skills exposed as curated context. When an AI tool requests a prompt, sk injects the relevant Skill content — best practices, integration patterns, known failure modes — directly into the AI's context.
+- **Callable entries** expose Workflows as `wf.<slug>` functions. A workflow named `payment-sync` becomes a callable workflow entry that an MCP client can invoke directly. The client sees the workflow's input schema, can call it, and receives the result.
+- **Resources** expose Connectors as structured data access. A Stripe Connector might surface as a `stripe://customers` resource that an MCP client can read to understand available data shapes.
+- **Prompts** expose Skills as curated context. When an MCP client requests a prompt, sk injects the relevant Skill content — best practices, integration patterns, known failure modes — directly into the AI's context.
 
 **Transport.** The MCP server supports Streamable HTTP transport, which is the current MCP standard. Stdio transport is also supported for legacy compatibility with tools that expect a subprocess interface.
 
-**Governance.** All MCP tool calls are subject to the same RBAC checks and Audit Log entries as direct API calls. There is no privileged back channel through MCP; identity and permissions are enforced identically regardless of which surface initiated the request.
+**Governance.** All MCP calls are subject to the same RBAC checks and Audit Log entries as direct API calls. There is no privileged back channel through MCP; identity and permissions are enforced identically regardless of which surface initiated the request.
 
-**Destructive-action flow.** `tenant.*` writes (e.g. `tenant.delete_workflow`, `tenant.revoke_api_key`) follow the same `confirm_before_execution` policy as in-conversation tools. The first call returns a structured pending envelope — `{pending: true, confirm_required: true, target: {...}, resume: "..." , tool_call_id: "..."}` — and an `approval.requested` audit row. The client relays the target to the operator, obtains consent, and re-issues the same call with `_meta.sk_confirm: true` (or `__policy_confirmed: true` inside the arguments). The second call emits `approval.approved` and executes the tool. This is two MCP round-trips and one human confirmation — no authoring conversation required for routine CRUD.
+**Destructive-action flow.** `tenant.*` writes (e.g. `tenant.delete_workflow`, `tenant.revoke_api_key`) follow the same `confirm_before_execution` policy as in-conversation authoring actions. The first call returns a structured pending envelope — `{pending: true, confirm_required: true, target: {...}, resume: "..." , tool_call_id: "..."}` — and an `approval.requested` audit row. The client relays the target to the operator, obtains consent, and re-issues the same call with `_meta.sk_confirm: true` (or `__policy_confirmed: true` inside the arguments). The second call emits `approval.approved` and executes the callable entry. This is two MCP round-trips and one human confirmation — no authoring conversation required for routine CRUD.
 
-**Tool hints.** Every listed tool carries `_meta.subkit = {category, confirm_required, destructive}` so clients can render destructive warnings and skip self-authored pre-confirms. Clients that honour `confirm_required` from the listing avoid the two-elicitation trap.
+**Callable hints.** Every listed callable entry carries `_meta.subkit = {category, confirm_required, destructive}` so clients can render destructive warnings and skip self-authored pre-confirms. Clients that honour `confirm_required` from the listing avoid the two-elicitation trap.
 
-**Workflow inputs.** Each `wf.<slug>` tool advertises an `inputSchema`. When the workflow declares `input_schema` on its DAG, that is passed through verbatim. When it doesn't, sk synthesises one by scanning the DAG for `${input.X}` placeholders in request steps and `$input.X` references in jsonata transforms, yielding `{type:"object", properties:{X:{type:"string"}}, additionalProperties: true}`.
+**Workflow inputs.** Each `wf.<slug>` callable entry advertises an `inputSchema`. When the workflow declares `input_schema` on its DAG, that is passed through verbatim. When it doesn't, sk synthesises one by scanning the DAG for `${input.X}` placeholders in request steps and `$input.X` references in jsonata transforms, yielding `{type:"object", properties:{X:{type:"string"}}, additionalProperties: true}`.
 
 **Non-fatal warnings.** When a workflow run hits a soft signal — for example a jsonata transform that referenced an identifier not in scope — the MCP response wraps the output as `{output, warnings: [{code:"unresolved_identifier", identifier, step_key, message}]}`. The run still reports `status: "succeeded"` but the client can surface the diagnostic so operators know why a payload looks partial.
 
-**Read-only deployments.** For MCP deployments that expose only read tools (no write surface at all), set `SK_MCP_READ_ONLY=1`. Writes are visible by default and rely on the policy gate for safety.
+**Read-only deployments.** For MCP deployments that expose only read callables (no write surface at all), set `SK_MCP_READ_ONLY=1`. Writes are visible by default and rely on the policy gate for safety.
 
 ---
 
 ## Chat Systems (Slack, Teams, Google Chat)
 
-Enterprise teams spend much of their day in chat. The sk chat integrations bring the Conversation authoring loop into the tools teams already use, so automation work does not require context switching.
+Enterprise teams spend much of their day in chat. The sk chat integrations bring the Conversation authoring loop into the surfaces teams already use, so workflow authoring does not require context switching.
 
 **How it works.** Each chat platform has a dedicated adapter that normalizes incoming messages — mentions, slash commands, interaction callbacks — into sk's Conversation model. The same AI authoring loop that runs in the sk CLI runs inside a Chat Session. Responses are rendered as native platform messages. A conversation started in Slack and continued the next day picks up exactly where it left off.
 
-**Approval flow.** When a Draft or Patch Candidate requires approval, the platform surfaces an interactive card in the relevant chat thread. Operators see an approve button and a reject button as native chat UI elements — no separate tool required. The approval decision is recorded in the Audit Log with the chat platform as the request source.
+**Approval flow.** When a Draft or Patch Candidate requires approval, the platform surfaces an interactive card in the relevant chat thread. Operators see an approve button and a reject button as native chat UI elements — no separate workflow call required. The approval decision is recorded in the Audit Log with the chat platform as the request source.
 
 **Identity linking.** A chat user's platform identity (their Slack user ID, Teams user principal, or Google Chat identity) is linked to their sk Tenant account through a user-initiated flow. Once linked, messages from that user carry their full sk identity, including role and permissions.
 
@@ -90,11 +90,11 @@ Enterprise teams spend much of their day in chat. The sk chat integrations bring
 
 ## Webhooks and Scheduled Triggers
 
-Not all automation starts with a human. Scheduled triggers and inbound webhooks let sk respond to time and to external system events without requiring a person to initiate anything.
+Not every workflow starts with a human. Scheduled triggers and inbound webhooks let sk respond to time and to connector-boundary events without requiring a person to initiate anything.
 
-**Inbound webhooks.** Each inbound webhook endpoint has a unique URL and is bound to a specific Workflow. When an external system — a payment processor, a CI system, a monitoring tool — sends a request to that endpoint, sk verifies the signature using the Standard Webhooks specification, deduplicates replays, and triggers the bound Workflow. The trigger is recorded in the Audit Log with source `webhook`.
+**Inbound webhooks.** Each inbound webhook endpoint has a unique URL and is bound to a specific Workflow. When an external connector boundary — a payment processor, a CI service, a monitoring service — sends a request to that endpoint, sk verifies the signature using the Standard Webhooks specification, deduplicates replays, and triggers the bound Workflow. The trigger is recorded in the Audit Log with source `webhook`.
 
-**Outbound webhooks.** sk can also push events outward. Operators configure Subscriptions that match internal platform events and fan them out to external systems as signed webhook deliveries. Delivery retries follow a well-defined cadence, failed deliveries go to a dead-letter queue, and repeated failures trip a per-subscriber circuit breaker to prevent cascading problems.
+**Outbound webhooks.** sk can also push events outward. Operators configure Subscriptions that match internal platform events and fan them out to external connector boundaries as signed webhook deliveries. Delivery retries follow a well-defined cadence, failed deliveries go to a dead-letter queue, and repeated failures trip a per-subscriber circuit breaker to prevent cascading problems.
 
 **Scheduled triggers.** Cron expressions can be attached to any Workflow. The sk scheduler fires the Workflow at the configured time with catch-up semantics — if the engine was offline when a scheduled run was due, it fires the missed run when it comes back online (subject to a configurable window). Scheduled fires are recorded in the Audit Log with source `scheduler`.
 

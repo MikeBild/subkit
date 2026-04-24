@@ -36,13 +36,15 @@ export type RunExecutionBody =
       workflow_id: string;
       version_id?: string;
       input?: unknown;
-      sync?: boolean;
+      async?: boolean;
+      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
     }
   | {
       source: "draft";
       definition: Record<string, unknown>;
       name?: string;
       input?: unknown;
+      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
     }
   | {
       source: "step";
@@ -51,7 +53,51 @@ export type RunExecutionBody =
       input?: unknown;
       scope?: Record<string, unknown>;
       timeout_ms?: number;
+      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
     };
+
+/** Response shape of POST /v1/executions. Kept in sync with the engine's
+ *  ExecutionRunResponse OpenAPI schema. Fields beyond `execution_id` and
+ *  `status` are absent for async (queued) runs. */
+export interface RunExecutionStepSummary {
+  step_key: string;
+  step_index: number;
+  kind: string;
+  status: string;
+  duration_ms: number | null;
+  retry_count: number;
+  error: unknown;
+  request_meta?: Record<string, unknown> | null;
+}
+
+export interface ConnectorResolutionSummary {
+  step_key: string;
+  connector_id: string;
+  connector_slug: string;
+  driver: string;
+  requested_environment: "dev" | "prod";
+  resolved_environment: "dev" | "prod";
+  auth_method:
+    | "none"
+    | "bearer"
+    | "header"
+    | "query"
+    | "basic"
+    | "oauth2_static"
+    | "oauth2_refreshed";
+  tunnel_target?: string | null;
+  base_url?: string | null;
+}
+
+export interface RunExecutionResponse {
+  execution_id: string;
+  status: string;
+  output?: unknown;
+  error?: unknown;
+  steps?: RunExecutionStepSummary[];
+  connector_resolutions?: ConnectorResolutionSummary[];
+  warnings?: unknown[];
+}
 
 export class SkEngineError extends Error {
   readonly status: number;
@@ -594,86 +640,16 @@ export class EngineClient {
   deleteWorkflow(id: string): Promise<void> {
     return this.request("DELETE", `/v1/workflows/${encodeURIComponent(id)}`);
   }
-  runWorkflow(
-    id: string,
-    body: Record<string, unknown> = {},
-    opts: { sync?: boolean } = {},
-  ): Promise<Record<string, unknown>> {
-    const query = opts.sync ? { sync: "1" } : undefined;
-    return this.request("POST", `/v1/workflows/${encodeURIComponent(id)}/run`, body, query);
-  }
-
-  // -------------------- Automations --------------------
-  listAutomations(
-    query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/automations", undefined, query);
-  }
-  getAutomation(id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/automations/${encodeURIComponent(id)}`);
-  }
-  createAutomation(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/automations", body);
-  }
-  updateAutomation(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.request("PUT", `/v1/automations/${encodeURIComponent(id)}`, body);
-  }
-  deleteAutomation(id: string): Promise<void> {
-    return this.request("DELETE", `/v1/automations/${encodeURIComponent(id)}`);
-  }
-  previewAutomation(body: {
-    definition: Record<string, unknown>;
-    input?: unknown;
-    request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler";
-  }): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/automations/preview", body);
-  }
-  runAutomation(
-    id: string,
-    body: {
-      input?: unknown;
-      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler";
-    } = {},
-  ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/automations/${encodeURIComponent(id)}/run`, body);
-  }
-  previewAutomationChanges(
-    id: string,
-    body: {
-      definition: Record<string, unknown>;
-      input?: unknown;
-      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler";
-    },
-  ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/automations/${encodeURIComponent(id)}/changes/preview`, body);
-  }
-  applyAutomationChanges(
-    id: string,
-    body: { definition: Record<string, unknown> },
-  ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/automations/${encodeURIComponent(id)}/changes/apply`, body);
-  }
-  applyAndRunAutomation(
-    id: string,
-    body: {
-      definition: Record<string, unknown>;
-      input?: unknown;
-      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler";
-    },
-  ): Promise<Record<string, unknown>> {
-    return this.request(
-      "POST",
-      `/v1/automations/${encodeURIComponent(id)}/changes/apply-and-run`,
-      body,
-    );
-  }
-
   // -------------------- Executions --------------------
   /** Run a saved workflow, a draft definition, or a single step via the
    *  unified `POST /v1/executions` surface. Mirrors the discriminated
    *  union accepted by the server. */
-  runExecution(body: RunExecutionBody): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/executions", body as Record<string, unknown>);
+  runExecution(body: RunExecutionBody): Promise<RunExecutionResponse> {
+    return this.request<RunExecutionResponse>(
+      "POST",
+      "/v1/executions",
+      body as Record<string, unknown>,
+    );
   }
 
   // -------------------- Connectors --------------------

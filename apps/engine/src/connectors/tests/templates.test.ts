@@ -73,6 +73,53 @@ describe("connector templates", () => {
     expect(drivers.has("ftp")).toBe(true);
   });
 
+  test("github-graphql ships alongside github REST", () => {
+    const rows = loadBuiltinTemplates();
+    const rest = rows.find((r) => r.slug === "github");
+    const gql = rows.find((r) => r.slug === "github-graphql");
+    expect(rest?.driver).toBe("http");
+    expect(gql?.driver).toBe("graphql");
+    expect(gql?.base_url).toBe("https://api.github.com/graphql");
+    expect(gql?.default_skill).toBe("github-graphql-basics");
+  });
+
+  test("templates that mix auth_type with an oauth block declare auth_options", () => {
+    const rows = loadBuiltinTemplates();
+    const mixed = rows.filter((r) => r.oauth !== null && r.auth_type !== "oauth2");
+    for (const row of mixed) {
+      expect(row.auth_options.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  test("superRefine rejects an auth-inconsistent template", () => {
+    const bad = {
+      slug: "bad-auth",
+      name: "Bad Auth",
+      driver: "http" as const,
+      base_url: "https://bad.test",
+      auth_type: "bearer" as const,
+      oauth: {
+        issuer_url: "https://bad.test",
+      },
+      default_skill: null,
+      ingestion_source: "openapi" as const,
+      ingestion_url: null,
+      icon: "bad.svg",
+      description: "Bad",
+      category: "test",
+      tags: [],
+      setup_hint: "x",
+      auth_options: [],
+    };
+    const parsed = ConnectorTemplateSchema.safeParse(bad);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      const joined = parsed.error.issues.map((i) => i.message).join("; ");
+      expect(joined).toContain("bad-auth");
+      expect(joined).toContain("auth_options");
+    }
+  });
+
   test("GET /v1/connector-templates returns built-ins + tenant override", async () => {
     // Insert a tenant override row.
     const { connectorTemplates } = await import("../../db/schema/index.ts");

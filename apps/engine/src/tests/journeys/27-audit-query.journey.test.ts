@@ -112,9 +112,9 @@ describe("journey: audit query surface", () => {
     expect(delSkillRes.status).toBe(204);
 
     // 4. Run a workflow → execution.started
-    const runRes = await journeyFetch(ctx, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
     });
     expect(runRes.status).toBe(200);
 

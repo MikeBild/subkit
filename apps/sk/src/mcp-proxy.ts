@@ -64,7 +64,7 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
       },
       {
         name: "sk.conversation.get",
-        description: "Fetch a conversation detail (messages, tool calls, draft, approvals).",
+        description: "Fetch a conversation detail (messages, call history, draft, approvals).",
         inputSchema: {
           type: "object",
           required: ["conversation_id"],

@@ -57,9 +57,9 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
     expect(createRes.status).toBe(201);
     const wf = (await createRes.json()) as { id: string };
 
-    const runRes = await journeyFetch(ctx, `/v1/workflows/${wf.id}/run?sync=1`, {
+    const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: wf.id, input: {} }),
     });
     expect(runRes.status).toBe(200);
     const body = (await runRes.json()) as {
@@ -110,9 +110,9 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
     expect(createRes.status).toBe(201);
     const wf = (await createRes.json()) as { id: string };
 
-    const runRes = await journeyFetch(ctx, `/v1/workflows/${wf.id}/run?sync=1`, {
+    const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: wf.id, input: {} }),
     });
     expect(runRes.status).toBe(200);
     const runBody = (await runRes.json()) as { output: unknown };
@@ -146,9 +146,9 @@ describe("47: Loop step — iterates items, injects item_var and $loop_index", (
     expect(createRes.status).toBe(201);
     const wf = (await createRes.json()) as { id: string };
 
-    const runRes = await journeyFetch(ctx, `/v1/workflows/${wf.id}/run?sync=1`, {
+    const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: wf.id, input: {} }),
     });
     expect(runRes.status).toBe(200);
     const runBody = (await runRes.json()) as {

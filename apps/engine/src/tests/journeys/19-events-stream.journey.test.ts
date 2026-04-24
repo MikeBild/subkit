@@ -122,13 +122,14 @@ describe("journey 19: events SSE stream", () => {
     const res = await journeyFetch(ctx, "/v1/events/stream");
     expect(res.status).toBe(200);
 
-    // Trigger a synchronous run in the background. `?sync=1` blocks
-    // until the execution reaches a terminal state, at which point all
-    // of `execution.queued`, `execution.started`, and
-    // `execution.succeeded` have been written to the outbox.
-    const runPromise = journeyFetch(ctx, `/v1/workflows/${workflowId}/run?sync=1`, {
+    // Trigger a synchronous run in the background. The inline
+    // `/v1/executions` path blocks until the execution reaches a
+    // terminal state, at which point all of `execution.queued`,
+    // `execution.started`, and `execution.succeeded` have been written
+    // to the outbox.
+    const runPromise = journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: { seed: 1 } }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: { seed: 1 } }),
     });
 
     const frames = await collectFrames(

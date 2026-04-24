@@ -137,7 +137,25 @@
     "category": "crm",
     "tags": ["rest", "webhooks", "batch-api"],
     "setup_hint": "Create a private app in HubSpot > Settings > Integrations > Private Apps; copy the access token, or use OAuth for public apps.",
-    "auth_options": []
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Private App Access Token",
+        "description": "Create a Private App in HubSpot > Settings > Integrations > Private Apps; use the generated access token as a bearer credential.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Authorization Code)",
+        "description": "Register a public HubSpot app; use Authorization Code flow for per-portal installs.",
+        "oauth": {
+          "issuer_url": "https://app.hubspot.com",
+          "authorization_endpoint": "https://app.hubspot.com/oauth/authorize",
+          "token_endpoint": "https://api.hubapi.com/oauth/v1/token",
+          "scopes": "crm.objects.contacts.read crm.objects.contacts.write"
+        }
+      }
+    ]
   },
   {
     "slug": "pipedrive",
@@ -267,7 +285,25 @@
     "category": "project-management",
     "tags": ["graphql", "webhooks", "real-time"],
     "setup_hint": "Create a personal API key at linear.app/settings/api or register an OAuth app under Settings > API > OAuth Applications.",
-    "auth_options": []
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Personal API Key",
+        "description": "Create a personal API key at linear.app/settings/api. Use as Bearer token.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Authorization Code)",
+        "description": "Register an OAuth application at Settings > API > OAuth Applications for per-user installs.",
+        "oauth": {
+          "issuer_url": "https://linear.app",
+          "authorization_endpoint": "https://linear.app/oauth/authorize",
+          "token_endpoint": "https://api.linear.app/oauth/token",
+          "scopes": "read,write"
+        }
+      }
+    ]
   },
   {
     "slug": "asana",
@@ -329,7 +365,25 @@
     "category": "project-management",
     "tags": ["graphql", "webhooks", "complexity-based-limits"],
     "setup_hint": "Find your personal API token under avatar > Developers > My Access Tokens, or create an OAuth app in the Developer Center.",
-    "auth_options": []
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Personal API Token",
+        "description": "Find your personal token under avatar > Developers > My Access Tokens.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Authorization Code)",
+        "description": "Create an OAuth app in the Monday.com Developer Center.",
+        "oauth": {
+          "issuer_url": "https://auth.monday.com",
+          "authorization_endpoint": "https://auth.monday.com/oauth2/authorize",
+          "token_endpoint": "https://auth.monday.com/oauth2/token",
+          "scopes": "me:read boards:read boards:write"
+        }
+      }
+    ]
   },
   {
     "slug": "trello",
@@ -408,7 +462,25 @@
     "category": "communication",
     "tags": ["rest", "webhooks", "bot-token", "socket-mode"],
     "setup_hint": "Create a Slack app at api.slack.com/apps, add Bot Token Scopes, install to workspace, copy the Bot User OAuth Token (xoxb-).",
-    "auth_options": []
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Bot User OAuth Token (xoxb-)",
+        "description": "Install a Slack app into your workspace and copy the Bot User OAuth Token. Use as Bearer.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Authorization Code)",
+        "description": "Register a distributable Slack app for per-workspace installation via Authorization Code flow.",
+        "oauth": {
+          "issuer_url": "https://slack.com",
+          "authorization_endpoint": "https://slack.com/oauth/v2/authorize",
+          "token_endpoint": "https://slack.com/api/oauth.v2.access",
+          "scopes": "chat:write,channels:read"
+        }
+      }
+    ]
   },
   {
     "slug": "discord",
@@ -550,7 +622,25 @@
     "category": "productivity",
     "tags": ["rest", "block-based", "databases"],
     "setup_hint": "Create an internal integration at notion.so/my-integrations, copy the token (ntn_), share pages with the integration.",
-    "auth_options": []
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Internal Integration Token",
+        "description": "Create an internal integration at notion.so/my-integrations and share the target pages with it.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Authorization Code)",
+        "description": "Register a public Notion integration for per-workspace installs via Authorization Code flow.",
+        "oauth": {
+          "issuer_url": "https://api.notion.com",
+          "authorization_endpoint": "https://api.notion.com/v1/oauth/authorize",
+          "token_endpoint": "https://api.notion.com/v1/oauth/token",
+          "scopes": ""
+        }
+      }
+    ]
   },
   {
     "slug": "airtable",
@@ -1239,7 +1329,7 @@
   },
   {
     "slug": "github",
-    "name": "GitHub",
+    "name": "GitHub (REST)",
     "driver": "http",
     "base_url": "https://api.github.com",
     "auth_type": "bearer",
@@ -1253,11 +1343,69 @@
     "ingestion_source": "openapi",
     "ingestion_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
     "icon": "github.svg",
-    "description": "GitHub REST API v3",
+    "description": "GitHub REST API v3 — best for write operations (issue creation, PR merge, file commits) where REST is more expressive than GraphQL.",
     "category": "devops",
-    "tags": ["rest", "graphql", "webhooks", "git"],
+    "tags": ["rest", "webhooks", "git"],
     "setup_hint": "Create a PAT at github.com/settings/tokens, or register an OAuth App under Developer Settings.",
-    "auth_options": []
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Personal Access Token (classic or fine-grained)",
+        "description": "Create a PAT at github.com/settings/tokens with repo + read:org scopes. Use as Bearer.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth App (Authorization Code)",
+        "description": "Register an OAuth App under github.com/settings/developers for per-user installs.",
+        "oauth": {
+          "issuer_url": "https://github.com",
+          "authorization_endpoint": "https://github.com/login/oauth/authorize",
+          "token_endpoint": "https://github.com/login/oauth/access_token",
+          "scopes": "repo,read:org"
+        }
+      }
+    ]
+  },
+  {
+    "slug": "github-graphql",
+    "name": "GitHub (GraphQL)",
+    "driver": "graphql",
+    "base_url": "https://api.github.com/graphql",
+    "auth_type": "bearer",
+    "oauth": {
+      "issuer_url": "https://github.com",
+      "authorization_endpoint": "https://github.com/login/oauth/authorize",
+      "token_endpoint": "https://github.com/login/oauth/access_token",
+      "scopes": "repo,read:org"
+    },
+    "default_skill": "github-graphql-basics",
+    "ingestion_source": "graphql",
+    "ingestion_url": "https://docs.github.com/public/fpt/schema.docs.graphql",
+    "icon": "github.svg",
+    "description": "GitHub GraphQL API v4 — one roundtrip instead of N+1 REST fetches for deep traversals (repo → issues → comments → labels).",
+    "category": "devops",
+    "tags": ["graphql", "webhooks", "git", "efficient"],
+    "setup_hint": "Use the same PAT as the REST template (repo + read:org). Send queries to https://api.github.com/graphql. Monitor X-RateLimit-Cost.",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Personal Access Token (classic or fine-grained)",
+        "description": "A PAT with repo + read:org works for both REST and GraphQL endpoints.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth App (Authorization Code)",
+        "description": "Same OAuth App as the REST connector — the token works against both APIs.",
+        "oauth": {
+          "issuer_url": "https://github.com",
+          "authorization_endpoint": "https://github.com/login/oauth/authorize",
+          "token_endpoint": "https://github.com/login/oauth/access_token",
+          "scopes": "repo,read:org"
+        }
+      }
+    ]
   },
   {
     "slug": "gitlab",
@@ -1923,7 +2071,25 @@
     "category": "enterprise",
     "tags": ["rest", "customer-messaging", "support", "crm"],
     "setup_hint": "In Intercom Developer Hub, create app, find access token under Authentication; for OAuth, configure redirect URIs.",
-    "auth_options": []
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "Access Token",
+        "description": "Create an app in the Intercom Developer Hub and copy the access token from Authentication.",
+        "oauth": null
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Authorization Code)",
+        "description": "Register a public Intercom app and configure redirect URIs for per-workspace installs.",
+        "oauth": {
+          "issuer_url": "https://app.intercom.com",
+          "authorization_endpoint": "https://app.intercom.com/oauth",
+          "token_endpoint": "https://api.intercom.io/auth/eagle/token",
+          "scopes": ""
+        }
+      }
+    ]
   },
   {
     "slug": "freshdesk",

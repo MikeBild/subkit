@@ -2,21 +2,27 @@
 //
 // The POST /v1/executions endpoint is the single runtime entry point —
 // saved, draft, and step runs all flow through it via a discriminated
-// union. Per hart-cut: POST /v1/workflows/{id}/run no longer exists.
+// union.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
+import { auditAwait } from "../../audit/audit.ts";
+import { AuditAction } from "../../audit/types.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { writeEvent } from "../../db/events.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
 import { cancel as abortCancel, getAbort } from "../../execution/abort.ts";
 import { runExecution } from "../../execution/engine.ts";
-import type { RunExecutionSource } from "../../execution/resolve-definition.ts";
+import { type RunExecutionSource, resolveDefinition } from "../../execution/resolve-definition.ts";
+import { createExecution } from "../../execution/state.ts";
 import type { ExecutionMode } from "../../execution/types.ts";
 import { logger } from "../../logging/logger.ts";
+import { getBoss } from "../../queue/boss.ts";
+import type { ExecutionRunJob } from "../../queue/queues.ts";
 import { EXECUTION_RUN_QUEUE } from "../../queue/queues.ts";
 import { StepSchema, WorkflowDefSchema } from "../../workflows/types.ts";
-import { BadRequestError, NotFoundError } from "../errors.ts";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -128,11 +134,6 @@ const cancelRoute = createRoute({
 //   • draft  → inline WorkflowDef, no commit required
 //   • step   → single StepDef, one-step synthetic workflow
 //
-// `sync=true` returns the full RunResult inline (no queue).
-// `sync=false` (default) queues the run and returns a 202 with an
-// execution id. Only saved runs support the async queued path — draft
-// and step runs always execute inline because there's no persisted
-// workflow to reference from a queue job.
 const RuntimeRunBodySchema = z.discriminatedUnion("source", [
   z
     .object({
@@ -140,7 +141,10 @@ const RuntimeRunBodySchema = z.discriminatedUnion("source", [
       workflow_id: z.string().uuid(),
       version_id: z.string().uuid().optional(),
       input: z.unknown().optional(),
-      sync: z.boolean().optional(),
+      async: z.boolean().optional(),
+      request_source: z
+        .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
+        .optional(),
     })
     .openapi("RunSavedBody"),
   z
@@ -149,6 +153,9 @@ const RuntimeRunBodySchema = z.discriminatedUnion("source", [
       definition: WorkflowDefSchema,
       name: z.string().optional(),
       input: z.unknown().optional(),
+      request_source: z
+        .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
+        .optional(),
     })
     .openapi("RunDraftBody"),
   z
@@ -159,6 +166,9 @@ const RuntimeRunBodySchema = z.discriminatedUnion("source", [
       input: z.unknown().optional(),
       scope: z.record(z.string(), z.unknown()).optional(),
       timeout_ms: z.number().int().positive().max(60_000).optional(),
+      request_source: z
+        .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
+        .optional(),
     })
     .openapi("RunStepBody"),
 ]);
@@ -189,7 +199,10 @@ const RunBodySchema = z.discriminatedUnion("source", [
       workflow_id: z.string().uuid(),
       version_id: z.string().uuid().optional(),
       input: z.unknown().optional(),
-      sync: z.boolean().optional(),
+      async: z.boolean().optional(),
+      request_source: z
+        .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
+        .optional(),
     })
     .openapi("ExecutionRunSavedBody"),
   z
@@ -198,6 +211,9 @@ const RunBodySchema = z.discriminatedUnion("source", [
       definition: OpenApiDraftDefinitionSchema,
       name: z.string().optional(),
       input: z.unknown().optional(),
+      request_source: z
+        .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
+        .optional(),
     })
     .openapi("ExecutionRunDraftBody"),
   z
@@ -208,9 +224,49 @@ const RunBodySchema = z.discriminatedUnion("source", [
       input: z.unknown().optional(),
       scope: z.record(z.string(), z.unknown()).optional(),
       timeout_ms: z.number().int().positive().max(60_000).optional(),
+      request_source: z
+        .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
+        .optional(),
     })
     .openapi("ExecutionRunStepBody"),
 ]);
+
+const AppliedAuthMethodEnum = z.enum([
+  "none",
+  "bearer",
+  "header",
+  "query",
+  "basic",
+  "oauth2_static",
+  "oauth2_refreshed",
+]);
+
+const ConnectorResolutionSummarySchema = z
+  .object({
+    step_key: z.string(),
+    connector_id: z.string(),
+    connector_slug: z.string(),
+    driver: z.string(),
+    requested_environment: z.enum(["dev", "prod"]),
+    resolved_environment: z.enum(["dev", "prod"]),
+    auth_method: AppliedAuthMethodEnum,
+    tunnel_target: z.string().nullable().optional(),
+    base_url: z.string().nullable().optional(),
+  })
+  .openapi("ConnectorResolutionSummary");
+
+const RunStepSummarySchema = z
+  .object({
+    step_key: z.string(),
+    step_index: z.number().int(),
+    kind: z.string(),
+    status: z.string(),
+    duration_ms: z.number().nullable(),
+    retry_count: z.number().int(),
+    error: z.unknown().nullable(),
+    request_meta: z.record(z.string(), z.unknown()).nullable().optional(),
+  })
+  .openapi("ExecutionRunStepSummary");
 
 const RunResponseSchema = z
   .object({
@@ -218,7 +274,8 @@ const RunResponseSchema = z
     status: z.string(),
     output: z.unknown().optional(),
     error: z.unknown().nullable().optional(),
-    steps: z.array(z.unknown()).optional(),
+    steps: z.array(RunStepSummarySchema).optional(),
+    connector_resolutions: z.array(ConnectorResolutionSummarySchema).optional(),
     warnings: z.array(z.unknown()).optional(),
   })
   .openapi("ExecutionRunResponse");
@@ -236,6 +293,10 @@ const runExecutionRoute = createRoute({
   responses: {
     200: {
       description: "Run completed",
+      content: { "application/json": { schema: RunResponseSchema } },
+    },
+    202: {
+      description: "Run queued",
       content: { "application/json": { schema: RunResponseSchema } },
     },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
@@ -283,10 +344,9 @@ function serializeStep(row: typeof executionSteps.$inferSelect) {
 
 export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
   // RBAC: execution reads go through `execution:read`; cancel goes
-  // through `execution:abort`. POST /v1/executions goes through
-  // `workflow:run` for saved runs and `workflow:draft_run` for draft/step
-  // runs (a strictly weaker grant that does not imply access to any
-  // persisted workflow). The SSE stream is read-only.
+  // through `execution:abort`. POST /v1/executions currently requires
+  // `workflow:run` regardless of saved vs inline source. The SSE stream
+  // is read-only.
   app.use("/v1/executions", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("execution:read")(c, next);
     if (c.req.method === "POST") return requirePermission("workflow:run")(c, next);
@@ -323,9 +383,9 @@ export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
       });
     }
     const body = runtimeBody.data;
+    await enforceWorkflowAllowlist(principal, body, db);
 
-    // Resolve execution_mode from the `x-subkit-environment` header, same
-    // shape POST /v1/workflows/{id}/run used to accept.
+    // Resolve execution_mode from the `x-subkit-environment` header.
     const envHeader = c.req.header("x-subkit-environment");
     let execution_mode: ExecutionMode = "dev";
     if (envHeader === "dev" || envHeader === "prod") execution_mode = envHeader;
@@ -351,6 +411,38 @@ export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
       };
     }
 
+    if (body.source === "saved" && body.async) {
+      const resolved = await resolveDefinition(db, principal.tenant_id, source);
+      const execution_id = await createExecution(db, {
+        tenant_id: principal.tenant_id,
+        workflow_id: resolved.workflow_id,
+        workflow_version_id: resolved.workflow_version_id,
+        source_kind: "saved",
+        source_ref: null,
+        request_source: body.request_source ?? "api",
+        parent_execution_id: null,
+        execution_mode,
+      });
+      const trace_id = c.get("trace_id") ?? null;
+      const job: ExecutionRunJob = {
+        tenant_id: principal.tenant_id,
+        workflow_id: resolved.workflow_id,
+        execution_id,
+        input: body.input ?? null,
+        request_source: body.request_source ?? "api",
+        trace_id,
+        execution_mode,
+      };
+      await getBoss().send(EXECUTION_RUN_QUEUE, job);
+      return c.json(
+        {
+          execution_id,
+          status: "queued",
+        },
+        202,
+      );
+    }
+
     try {
       const result = await runExecution({
         db,
@@ -358,7 +450,7 @@ export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
         source,
         input: "input" in body ? (body.input ?? null) : null,
         options: {
-          request_source: "api",
+          request_source: body.request_source ?? "api",
           principal,
           execution_mode,
         },
@@ -370,6 +462,9 @@ export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
           output: result.output,
           error: result.error,
           steps: result.steps,
+          ...(result.connector_resolutions?.length
+            ? { connector_resolutions: result.connector_resolutions }
+            : {}),
           ...(result.warnings?.length ? { warnings: result.warnings } : {}),
         },
         200,
@@ -499,4 +594,41 @@ export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
     }
     return c.body(null, 202);
   });
+}
+
+async function enforceWorkflowAllowlist(
+  principal: ResolvedPrincipal,
+  body: z.infer<typeof RuntimeRunBodySchema>,
+  db: AppEnv["Variables"]["db"],
+): Promise<void> {
+  if (body.source !== "saved") return;
+  if (!principal.roles?.includes("enduser")) return;
+
+  const allow = principal.allowed_workflows;
+  const permitted = allow === "all" || (Array.isArray(allow) && allow.includes(body.workflow_id));
+  if (permitted) return;
+
+  try {
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        action: AuditAction.POLICY_DENIED,
+        resource_type: "workflow",
+        resource_id: body.workflow_id,
+        result: "denied",
+        reason: "workflow_not_in_allowlist",
+        metadata: {
+          route_action: "workflow.run",
+          allowed_workflows: Array.isArray(allow) ? allow : (allow ?? null),
+        },
+      },
+      db,
+    );
+  } catch {
+    // Preserve the deny even if audit persistence fails.
+  }
+
+  throw new ForbiddenError("workflow_not_in_allowlist");
 }

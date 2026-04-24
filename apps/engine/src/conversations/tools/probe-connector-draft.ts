@@ -2,10 +2,9 @@ import { z } from "@hono/zod-openapi";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { probeGraphQLConnector } from "../../connectors/drivers/graphql.ts";
-import { buildRequestPlan } from "../../connectors/drivers/http.ts";
+import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import { probePgConnector } from "../../connectors/drivers/postgres.ts";
 import { probeS3Connector } from "../../connectors/drivers/s3.ts";
-import { mergeAbortSignals } from "../abort.ts";
 import { withConnectorProbe, withConnectorValidation } from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
@@ -235,44 +234,21 @@ export const probeConnectorDraftTool: ConversationTool = {
     let requestUrl = "";
 
     try {
-      const plan = await buildRequestPlan({
+      const execution = await executeConnectorHttpRequest({
         db: ctx.db,
         tenant_id: ctx.tenant_id,
         connector: draftView,
+        method: args.method,
         path_or_url: args.path,
-        headers: args.headers ?? {},
-        query: args.query ?? {},
+        ...(args.headers ? { headers: args.headers } : {}),
+        ...(args.query ? { query: args.query } : {}),
+        ...(args.body !== undefined ? { body: args.body } : {}),
+        timeout_ms: args.timeout_ms,
+        ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
       });
-      requestUrl = plan.url.toString();
-      const headers = { ...plan.headers };
-      const init: RequestInit = { method: args.method, headers };
-      if (args.body !== undefined && args.method !== "GET" && args.method !== "HEAD") {
-        if (typeof args.body === "string") {
-          init.body = args.body;
-        } else {
-          init.body = JSON.stringify(args.body);
-          if (!("content-type" in headers) && !("Content-Type" in headers)) {
-            headers["content-type"] = "application/json";
-          }
-        }
-      }
-      const timeoutSignal = AbortSignal.timeout(args.timeout_ms);
-      const signal = ctx.abortSignal
-        ? mergeAbortSignals([ctx.abortSignal, timeoutSignal])
-        : timeoutSignal;
-      const res = await fetch(plan.url, { ...init, signal });
-      status = res.status;
-      const contentType = res.headers.get("content-type") ?? "";
-      const text = await res.text();
-      if (contentType.includes("application/json") && text.length > 0) {
-        try {
-          responseBody = JSON.parse(text);
-        } catch {
-          responseBody = text;
-        }
-      } else {
-        responseBody = text;
-      }
+      requestUrl = execution.url;
+      status = execution.status;
+      responseBody = execution.body;
     } catch (error) {
       errorDetail = error instanceof Error ? error.message : String(error);
     }

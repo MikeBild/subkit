@@ -141,17 +141,17 @@ describe("journey: before-request hook denial", () => {
     const wfBody = (await wfRes.json()) as { id: string };
     const wfId = wfBody.id;
 
-    const run = await fetch(`${ctx.baseUrl}/v1/workflows/${wfId}/run?sync=1`, {
+    const run = await fetch(`${ctx.baseUrl}/v1/executions`, {
       method: "POST",
+      body: JSON.stringify({ source: "saved", workflow_id: wfId, input: {} }),
       headers: {
         authorization: `Bearer ${plaintext}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ input: {} }),
     });
     expect(run.status).toBe(200);
     const rb = (await run.json()) as {
-      id: string;
+      execution_id: string;
       status: string;
       error: { code: string; message: string } | null;
       steps: Array<{ error: { code?: string } | null }>;
@@ -189,9 +189,9 @@ describe("journey: before-request hook denial", () => {
       }),
     });
     const wfId = ((await wfRes.json()) as { id: string }).id;
-    const run = await journeyFetch(ctx, `/v1/workflows/${wfId}/run?sync=1`, {
+    const run = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: wfId, input: {} }),
     });
     const rb = (await run.json()) as { status: string };
     expect(rb.status).toBe("succeeded");

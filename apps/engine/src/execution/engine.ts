@@ -42,6 +42,9 @@ import {
 } from "./state.ts";
 import { runStep } from "./step-runner.ts";
 import {
+  type AppliedAuthMethod,
+  type ConnectorResolutionSummary,
+  type ExecutionMode,
   type ExecutionStatus,
   MAX_CALL_DEPTH,
   type RequestSource,
@@ -462,6 +465,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       duration_ms: outcome.result.duration_ms ?? null,
       retry_count: outcome.result.retry_count ?? 0,
       error: outcome.result.error ?? null,
+      request_meta: outcome.result.request_meta ?? null,
     });
     if (outcome.result.status !== "succeeded") {
       const onError = step.on_error ?? "fail";
@@ -481,6 +485,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             duration_ms: 0,
             retry_count: 0,
             error: { code: "skipped", message: "skipped due to upstream failure" },
+            request_meta: null,
           });
         }
         break;
@@ -554,8 +559,67 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     error: lastError,
     steps: stepSummaries,
   };
+  const resolutions = rollupConnectorResolutions(stepSummaries, execution_mode);
+  if (resolutions.length > 0) runResult.connector_resolutions = resolutions;
   if (warningsAccum.length > 0) runResult.warnings = warningsAccum;
   return runResult;
+}
+
+/** Extract one ConnectorResolutionSummary per unique connector id from the
+ *  step summaries. Each request/graphql step writes a `connector` sub-object
+ *  into `request_meta`; this rollup dedupes so the operator sees one row per
+ *  connector regardless of how many steps touched it. First occurrence wins
+ *  — the step_key on the summary is the first step that used that connector.
+ *  Exported for unit testing. */
+export function rollupConnectorResolutions(
+  stepSummaries: Array<{
+    step_key: string;
+    request_meta?: Record<string, unknown> | null;
+  }>,
+  requested_environment: ExecutionMode,
+): ConnectorResolutionSummary[] {
+  const seen = new Set<string>();
+  const out: ConnectorResolutionSummary[] = [];
+  for (const s of stepSummaries) {
+    const meta = s.request_meta;
+    if (!meta || typeof meta !== "object") continue;
+    const c = (meta as { connector?: Record<string, unknown> }).connector;
+    if (!c || typeof c !== "object") continue;
+    const id = typeof c.connector_id === "string" ? c.connector_id : undefined;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const resolvedEnv =
+      c.resolved_environment === "dev" || c.resolved_environment === "prod"
+        ? c.resolved_environment
+        : requested_environment;
+    out.push({
+      step_key: s.step_key,
+      connector_id: id,
+      connector_slug: typeof c.connector_slug === "string" ? c.connector_slug : "",
+      driver: typeof c.driver === "string" ? c.driver : "",
+      requested_environment,
+      resolved_environment: resolvedEnv,
+      auth_method: normalizeAuthMethod(c.auth_method),
+      tunnel_target: typeof c.tunnel_target === "string" ? c.tunnel_target : null,
+      base_url: typeof c.base_url === "string" ? c.base_url : null,
+    });
+  }
+  return out;
+}
+
+function normalizeAuthMethod(v: unknown): AppliedAuthMethod {
+  if (
+    v === "none" ||
+    v === "bearer" ||
+    v === "header" ||
+    v === "query" ||
+    v === "basic" ||
+    v === "oauth2_static" ||
+    v === "oauth2_refreshed"
+  ) {
+    return v;
+  }
+  return "none";
 }
 
 async function runCallStep(db: Db, ctx: StepRunContext, step: CallStep): Promise<StepResult> {

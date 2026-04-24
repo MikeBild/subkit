@@ -1,13 +1,7 @@
-// Workflow CRUD + run + history routes.
+// Workflow CRUD + history routes.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { workflows, workflowVersions } from "../../db/schema/index.ts";
-import { runExecution } from "../../execution/engine.ts";
-import { createExecution } from "../../execution/state.ts";
-import { getBoss } from "../../queue/boss.ts";
-import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../../queue/queues.ts";
 import * as svc from "../../workflows/service.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -59,23 +53,6 @@ const CreateBody = z
     timeout_ms: z.number().int().positive().optional(),
   })
   .openapi("CreateWorkflowBody");
-
-const RunBody = z
-  .object({
-    input: z.unknown().optional(),
-    request_source: z.enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler"]).optional(),
-  })
-  .openapi("RunWorkflowBody");
-
-const ExecutionResponseSchema = z
-  .object({
-    id: z.string(),
-    status: z.string(),
-    output: z.unknown().optional(),
-    error: z.unknown().nullable().optional(),
-    steps: z.array(z.unknown()).optional(),
-  })
-  .openapi("WorkflowRunResponse");
 
 const IdVersionParam = z.object({ id: z.string().uuid(), version: z.string() });
 
@@ -171,30 +148,6 @@ const deleteRoute = createRoute({
   },
 });
 
-const runRoute = createRoute({
-  method: "post",
-  path: "/v1/workflows/{id}/run",
-  tags: ["workflows"],
-  summary: "Run a workflow (async by default, ?sync=1 for inline)",
-  security: [{ bearerAuth: [] }],
-  request: {
-    params: IdParam,
-    query: z.object({ sync: z.coerce.boolean().optional() }).openapi("RunWorkflowQuery"),
-    body: { content: { "application/json": { schema: RunBody } } },
-  },
-  responses: {
-    200: {
-      description: "OK",
-      content: { "application/json": { schema: ExecutionResponseSchema } },
-    },
-    202: {
-      description: "Queued",
-      content: { "application/json": { schema: ExecutionResponseSchema } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
 const historyRoute = createRoute({
   method: "get",
   path: "/v1/workflows/{id}/history",
@@ -241,10 +194,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       return requirePermission("workflow:delete", () => ({ type: "workflow", id }))(c, next);
     }
     return next();
-  });
-  app.use("/v1/workflows/:id/run", async (c, next) => {
-    const id = c.req.param("id");
-    return requirePermission("workflow:run", () => ({ type: "workflow", id }))(c, next);
   });
   app.use("/v1/workflows/:id/history", async (c, next) => {
     const id = c.req.param("id");
@@ -316,104 +265,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const ok = await svc.deleteWorkflow(principal.tenant_id, id, principal.id, db);
     if (!ok) throw new NotFoundError("workflow");
     return c.body(null, 204);
-  });
-
-  // POST /v1/workflows/{id}/run is deleted per hart-cut (keine
-  // Abwärtskompatibilität). All run paths go through POST /v1/executions
-  // with source="saved" for persisted workflows, source="draft" for
-  // inline definitions, source="step" for single-step test runs.
-  //
-  // The dead code retained below is the async-queued path — kept around
-  // temporarily while journey tests are migrated, then removed. New
-  // callers MUST use /v1/executions.
-  app.openapi(runRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const query = c.req.valid("query");
-    const wf = await svc.getWorkflow(principal.tenant_id, id, db);
-    if (!wf) throw new NotFoundError("workflow");
-    const trace_id = c.get("trace_id") ?? null;
-
-    const envHeader = c.req.header("x-subkit-environment")?.toLowerCase();
-    let execution_mode: "dev" | "prod" = "dev";
-    if (envHeader !== undefined) {
-      if (envHeader !== "dev" && envHeader !== "prod") {
-        throw new BadRequestError("invalid x-subkit-environment header", {
-          expected: ["dev", "prod"],
-        });
-      }
-      execution_mode = envHeader;
-    }
-
-    if (query.sync) {
-      let result: Awaited<ReturnType<typeof runExecution>>;
-      try {
-        result = await runExecution({
-          db,
-          tenant_id: principal.tenant_id,
-          source: { kind: "saved", workflow_id: id },
-          input: body.input ?? null,
-          options: {
-            request_source: body.request_source ?? "api",
-            trace_id,
-            principal,
-            execution_mode,
-          },
-        });
-      } catch (err) {
-        const code = (err as { code?: string }).code;
-        const details = (err as { details?: unknown }).details;
-        if (code === "input_schema_violation") {
-          throw new BadRequestError((err as Error).message, {
-            code,
-            ...(details ? { details } : {}),
-          });
-        }
-        throw err;
-      }
-      return c.json(
-        {
-          id: result.execution_id,
-          status: result.status,
-          output: result.output,
-          error: result.error,
-          steps: result.steps,
-        },
-        200,
-      );
-    }
-
-    if (!wf.current_version_id) {
-      throw new BadRequestError("workflow has no active version");
-    }
-    const versionRows = await db.select().from(workflows).where(eq(workflows.id, id)).limit(1);
-    const versionId = versionRows[0]?.current_version_id;
-    if (!versionId) throw new BadRequestError("workflow has no active version");
-    void workflowVersions;
-    const execution_id = await createExecution(db, {
-      tenant_id: principal.tenant_id,
-      workflow_id: id,
-      workflow_version_id: versionId,
-      source_kind: "saved",
-      source_ref: null,
-      request_source: body.request_source ?? "api",
-      parent_execution_id: null,
-      execution_mode,
-    });
-    const job: ExecutionRunJob = {
-      tenant_id: principal.tenant_id,
-      workflow_id: id,
-      execution_id,
-      input: body.input ?? null,
-      request_source: body.request_source ?? "api",
-      trace_id,
-      execution_mode,
-    };
-    const boss = getBoss();
-    await boss.send(EXECUTION_RUN_QUEUE, job);
-    return c.json({ id: execution_id, status: "queued" }, 202);
   });
 
   app.openapi(historyRoute, async (c) => {

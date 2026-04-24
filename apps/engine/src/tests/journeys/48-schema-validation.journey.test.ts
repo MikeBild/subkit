@@ -53,9 +53,13 @@ afterAll(async () => {
 
 describe("48: Input schema validation — required fields enforced at run start", () => {
   test("AC1: valid input (all required fields present) → status succeeded", async () => {
-    const runRes = await journeyFetch(ctx, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: { amount: 1000, currency: "usd" } }),
+      body: JSON.stringify({
+        source: "saved",
+        workflow_id: workflowId,
+        input: { amount: 1000, currency: "usd" },
+      }),
     });
     expect(runRes.status).toBe(200);
     const body = (await runRes.json()) as { status: string };
@@ -64,9 +68,9 @@ describe("48: Input schema validation — required fields enforced at run start"
 
   test("AC2+AC3: missing required field → error response mentioning the field", async () => {
     // Provide only `amount`, omitting `currency`.
-    const runRes = await journeyFetch(ctx, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: { amount: 500 } }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: { amount: 500 } }),
     });
     // input_schema_violation is a client-supplied-data error → 400.
     expect(runRes.status).toBe(400);
@@ -75,9 +79,9 @@ describe("48: Input schema validation — required fields enforced at run start"
   });
 
   test("AC3: completely empty input → error mentions each required field", async () => {
-    const runRes = await journeyFetch(ctx, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
     });
     expect(runRes.status).toBe(400);
     const errBody = (await runRes.json()) as { message: string };

@@ -2,13 +2,15 @@
 
 Everything the AI builds in sk ends up here. The authoring layer is conversational and exploratory; the execution layer is the opposite — deterministic, immutable, and governed.
 
-This document explains how approved workflows run, what governance looks like at runtime, how the platform stays observable at scale, and how the self-healing subsystem keeps workflows healthy as the external systems they depend on change over time.
+This document explains how approved workflows run, what governance looks like at runtime, how the platform stays observable at scale, and how the self-healing subsystem keeps workflows healthy as the connected boundaries they depend on change over time.
 
 ---
 
 ## The Execution Model
 
 Execution in sk is deterministic. A Workflow is a DAG of Steps; the execution engine walks that DAG in order, following branching and parallel directives exactly as defined. The engine does not re-interpret, adapt, or infer at runtime. There is no AI in the execution path.
+
+There is a single runtime entry point for manual execution: `POST /v1/executions`. Persisted workflows, inline draft definitions, and single-step previews all flow through this same route and the same execution engine. Inline runs complete synchronously by default. Queued background execution is explicit and reserved for persisted workflows, scheduler fires, webhook fan-out, and other detached cases.
 
 This is a deliberate architectural decision, not a limitation. AI is for authoring — exploring, proposing, and revising. Once a Workflow is approved and committed, the enterprise needs to know it will run the same way every time. Reproducibility and auditability require determinism. The moment execution involves inference, the audit trail becomes "the AI decided" rather than "the workflow ran as specified."
 
@@ -18,9 +20,9 @@ An Execution is an immutable record. It captures the specific Workflow version t
 
 ## Step Kinds
 
-A Workflow is composed of Steps. sk supports seven Step kinds, covering the range of patterns that enterprise automation requires.
+A Workflow is composed of Steps. sk supports seven Step kinds, covering the range of patterns that enterprise workflows require.
 
-A **Request** Step calls a Connector endpoint. This is the most common Step type — it is how workflows read from and write to external systems. Every Request Step is executed through the Connector's configured Driver, with the tenant's Credentials, through the governance layer.
+A **Request** Step calls a Connector endpoint. This is the most common Step type — it is how workflows read from and write to external integrations. Every Request Step is executed through the Connector's configured Driver, with the tenant's Credentials, through the governance layer. Connector tests and request steps share the same request execution core, so authoring-time probes and runtime behavior stay aligned.
 
 A **Transform** Step reshapes data between Steps using a sandboxed script. It runs in an isolated environment with no external calls and no network access. Transform Steps let workflows project, filter, aggregate, or reformat data without leaving the engine.
 
@@ -42,9 +44,9 @@ A Workflow is triggered in one of four ways, and the trigger source is recorded 
 
 The **Scheduler** trigger fires a workflow at a configured cron expression. The scheduler has catch-up semantics: if the engine was down when a run was due, the run fires on the next start rather than being silently skipped.
 
-The **Inbound Webhook** trigger fires when an external system posts to the workflow's dedicated endpoint. Payloads are signature-verified before any processing begins, and replay-id deduplication ensures that a retried delivery does not trigger duplicate executions.
+The **Inbound Webhook** trigger fires when an external connector boundary posts to the workflow's dedicated endpoint. Payloads are signature-verified before any processing begins, and replay-id deduplication ensures that a retried delivery does not trigger duplicate executions.
 
-The **API** trigger fires when a direct call arrives through the REST API or an MCP tool. This is the programmatic entry point — the right path for another system or an AI agent that needs to run a workflow on demand.
+The **API** trigger fires when a direct call arrives through the REST API or an MCP client. This is the programmatic entry point — the right path for another connector boundary or an AI agent that needs to run a workflow on demand.
 
 The **Conversation** trigger fires when a user asks sk to run a workflow through the conversational interface. The Conversation shows real-time execution progress as the workflow runs.
 
@@ -62,9 +64,9 @@ This is the rollback story for sk. When a change introduces failures, the respon
 
 ## Scheduling and Event Architecture
 
-The scheduler uses a durable job queue so that scheduled runs survive engine restarts. A schedule is a commitment: if the engine was unavailable when a run was due, it will fire when availability is restored.
+The scheduler uses a durable job queue so that scheduled runs survive engine restarts. A schedule is a commitment: if the engine was unavailable when a run was due, it will fire when availability is restored. The same queue also backs explicitly asynchronous workflow runs, while synchronous API-initiated runs stay inline on the request path.
 
-Execution state changes — a run starting, a step completing, a run finishing — are published as events through a pub/sub system. Subscribers receive these events in real time: the sk CLI can tail a live execution, chat adapters can show progress in a thread, SSE streams can update a web interface, and outbound webhook Subscriptions can notify external systems.
+Execution state changes — a run starting, a step completing, a run finishing — are published as events through a pub/sub system. Subscribers receive these events in real time: the sk CLI can tail a live execution, chat adapters can show progress in a thread, SSE consumers drive external observers, and outbound webhook Subscriptions can notify external connector boundaries.
 
 The platform uses an outbox pattern to ensure that events are never silently lost. Events are written to the database as part of the same transaction as the state change that produced them. Delivery is attempted after the transaction commits, and any undelivered event is retried. The outbox provides a durable event log that survives restarts and partial failures.
 
@@ -72,7 +74,7 @@ The platform uses an outbox pattern to ensure that events are never silently los
 
 ## Self-Healing
 
-External systems change. The APIs a workflow depends on today may behave differently in six months. Schema fields are renamed, endpoints are moved, error codes change, pagination patterns evolve. Workflows that are not maintained will eventually fail.
+Connected boundaries change. The APIs a workflow depends on today may behave differently in six months. Schema fields are renamed, endpoints are moved, error codes change, pagination patterns evolve. Workflows that are not maintained will eventually fail.
 
 sk's self-healing subsystem is designed to catch these failures early and propose repairs before they cause sustained disruption.
 
@@ -86,13 +88,38 @@ No Patch Candidate is ever applied automatically. Self-healing is a proposal sys
 
 ---
 
+## Synchronous and Queued Execution
+
+`POST /v1/executions` is synchronous by default. The caller receives the full `RunResult` — output, step summaries, connector resolutions, warnings — in the HTTP response body. Draft runs and single-step previews always execute inline regardless of the `async` flag, because they have no persisted workflow context for a queue worker to rehydrate.
+
+Queued (`async: true`) execution is available **only** for `source=saved` runs. In that case the engine inserts the execution row synchronously, enqueues the job on `pg-boss`, and returns `202 Accepted` with `{ execution_id, status: "queued" }`. A worker picks the job up and runs it through the same `runExecution()` core. Scheduler fires, webhook fan-out, and any other detached trigger also land on the queue — but every inline caller gets the run on the request path.
+
+---
+
+## Per-step Request Meta
+
+Every Step in the `RunResult` carries a `request_meta` object with driver-specific fields. For HTTP and GraphQL Request Steps:
+
+- `url` — the final URL actually hit (after path composition and static query merge).
+- `method` / `operation` / `operation_name` — HTTP verb or GraphQL operation kind and name.
+- `status` — HTTP status code (or HTTP status of the GraphQL endpoint).
+- `bytes_in` — response body size in bytes.
+- `retry_count` — retries consumed before success or failure (also surfaced at top level).
+- `connector` — a sub-object with `connector_id`, `connector_slug`, `driver`, `requested_environment`, `resolved_environment`, `auth_method`, `base_url`, and optional `tunnel_target`.
+
+`auth_method` is observable at request time, not configured: it distinguishes `oauth2_static` (cached token still fresh) from `oauth2_refreshed` (a stale token was rotated inline before the request went out). Debugging a mysteriously failing credential becomes a lookup in the run result rather than a server-side hunt.
+
+The `RunResult` also rolls the per-step connector info up into `connector_resolutions[]` — one entry per unique connector touched during the run. Operators see at a glance which workflow step landed on which connector, against which environment, with which auth method.
+
+---
+
 ## Observability
 
 The execution layer is designed to be fully transparent to operators.
 
 Each Execution emits structured events at every Step boundary. Operators can tail execution logs in real time from the CLI or via SSE streams. Log entries are structured — machine-readable and queryable — not free-form text.
 
-Prometheus metrics cover the dimensions operators need to monitor platform health: execution duration, Step latency, error rates, retry counts, and queue depth, all scoped per tenant. These metrics are the basis for dashboards, alerts, and capacity planning.
+Prometheus metrics cover the dimensions operators need to monitor platform health: execution duration, Step latency, error rates, retry counts, and queue depth, all scoped per tenant. These metrics are the basis for dashboards, alerts, and capacity planning. Connection pools export their own counters (`pg_pool_*`, `mssql_pool_*`, `redis_clients_open`) so operators can spot saturation before it shows up as step failures.
 
 The Audit Log records every execution trigger, every Step completion, every error, and every approval decision — with full context for forensic investigation. The audit trail is immutable: it cannot be modified or deleted, and it persists independently of execution records.
 

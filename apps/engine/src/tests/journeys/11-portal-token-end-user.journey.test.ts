@@ -140,24 +140,27 @@ describe("journey: portal token end-user", () => {
 
   test("AC4: end-user drives the scoped workflow with the plaintext token", async () => {
     const issued = await issueFreshPortalToken([workflowId]);
-    const res = await endUserFetch(issued.plaintext, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const res = await endUserFetch(issued.plaintext, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: { hello: "world" } }),
+      body: JSON.stringify({
+        source: "saved",
+        workflow_id: workflowId,
+        input: { hello: "world" },
+      }),
     });
     // Sync runs return 200 + the full execution envelope.
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { id: string; status: string };
-    expect(typeof body.id).toBe("string");
+    const body = (await res.json()) as { execution_id: string; status: string };
+    expect(typeof body.execution_id).toBe("string");
     expect(body.status).toBe("succeeded");
   });
 
   test("AC5: end-user receives 403 on a non-allowed workflow with an audited deny", async () => {
     const issued = await issueFreshPortalToken([workflowId]);
-    const res = await endUserFetch(
-      issued.plaintext,
-      `/v1/workflows/${otherWorkflowId}/run?sync=1`,
-      { method: "POST", body: JSON.stringify({ input: {} }) },
-    );
+    const res = await endUserFetch(issued.plaintext, "/v1/executions", {
+      method: "POST",
+      body: JSON.stringify({ source: "saved", workflow_id: otherWorkflowId, input: {} }),
+    });
     expect(res.status).toBe(403);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe("forbidden");
@@ -187,9 +190,9 @@ describe("journey: portal token end-user", () => {
       .update(portalTokens)
       .set({ expires_at: new Date(Date.now() - 1_000) })
       .where(and(eq(portalTokens.tenant_id, ctx.tenantId), eq(portalTokens.id, issued.id)));
-    const res = await endUserFetch(issued.plaintext, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const res = await endUserFetch(issued.plaintext, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
     });
     expect(res.status).toBe(401);
   });

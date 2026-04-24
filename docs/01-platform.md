@@ -14,7 +14,7 @@ When a user describes what they need in natural language, the AI proposes a work
 
 sk is built for enterprise use: multi-tenant by design, RBAC-enforced at every boundary, and observable by default.
 
-In addition to the conversation-driven authoring loop, sk now exposes a direct automation surface. Persisted automations can be listed, fetched, previewed, updated, diffed, applied, and run without reopening a conversation, while still flowing through the same RBAC, audit, and deterministic execution contracts.
+In addition to the conversation-driven authoring loop, sk exposes direct workflow and execution APIs. Clients can list workflows, manage versions, and execute persisted workflows, draft definitions, or single steps through the same governed runtime contract centered on `POST /v1/executions`.
 
 ---
 
@@ -39,7 +39,7 @@ Users reach sk through multiple entry points: the sk CLI (a conversational termi
 
 ### Layer 2 — AI-Assisted Authoring
 
-When a user starts a Conversation, the AI enters an authoring loop. It proposes workflow structure, suggests Connectors and Steps, validates the draft against available integrations and Knowledge Sources, and iterates based on user feedback. The AI uses structured tools internally — it does not generate free-form code. Every proposal is surfaced to the human for review. Nothing advances to production without an explicit approval gate.
+When a user starts a Conversation, the AI enters an authoring loop. It proposes workflow structure, suggests Connectors and Steps, validates the draft against available integrations and Knowledge Sources, and iterates based on user feedback. The AI uses structured authoring actions internally — it does not generate free-form code. Every proposal is surfaced to the human for review. Nothing advances to production without an explicit approval gate.
 
 ### Layer 3 — Deterministic Execution
 
@@ -57,7 +57,7 @@ All authoring starts with natural language. A user describes their goal; the AI 
 
 ### 2. Human in the Loop
 
-The AI proposes; humans approve. Before any workflow reaches production, an operator or authorized user explicitly commits it. Sensitive tool calls within a Conversation — such as committing a Draft or applying a Patch Candidate — pause the AI loop and wait for a human decision. Approval is not a UX feature; it is an architectural checkpoint.
+The AI proposes; humans approve. Before any workflow reaches production, an operator or authorized user explicitly commits it. Sensitive authoring actions within a Conversation — such as committing a Draft or applying a Patch Candidate — pause the AI loop and wait for a human decision. Approval is not a UX feature; it is an architectural checkpoint.
 
 ### 3. Deterministic Execution
 
@@ -81,7 +81,7 @@ The AI layer is not tied to a single model provider. Claude, OpenAI, and Gemini 
 
 sk is designed around three distinct personas, each interacting with the platform differently.
 
-**End Users** are the people describing automation goals. They may be business analysts, operations staff, or developers who want to automate a process without building infrastructure from scratch. They interact through the conversational REPL, chat platforms, or web interfaces. They need the platform to understand their intent, propose something useful, and make approval and execution straightforward.
+**End Users** are the people describing workflow goals. They may be business analysts, operations staff, or developers who want to automate a process without building infrastructure from scratch. They interact through the conversational REPL (sk CLI) or chat platforms (Slack, Teams, or the MCP adapter). They need the platform to understand their intent, propose something useful, and make approval and execution straightforward.
 
 **Operators** run the engine for teams and organizations. They configure connectors, manage credentials, set RBAC policies, curate skills, review Patch Candidates, and monitor execution health. They need visibility into what is running, confidence that the governance controls are working, and tools to intervene when something drifts.
 

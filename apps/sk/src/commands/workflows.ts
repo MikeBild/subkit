@@ -1,8 +1,26 @@
 import { exitCodeFor } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
+import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
-import { EngineClient } from "../engine-client.ts";
+import { EngineClient, type RunExecutionResponse } from "../engine-client.ts";
+
+/** Print the workflow run JSON, then — when connector_resolutions is
+ *  present — a compact summary to stderr so humans can eyeball which
+ *  connector, auth method, and environment every step actually hit. */
+function printRunResult(result: RunExecutionResponse): void {
+  printJson(result);
+  const rs = result.connector_resolutions ?? [];
+  if (rs.length === 0) return;
+  process.stderr.write(`\n${pc.dim("connector resolutions:")}\n`);
+  for (const r of rs) {
+    const env = `${r.requested_environment} → ${r.resolved_environment}`;
+    const tunnel = r.tunnel_target ? `  tunnel=${r.tunnel_target}` : "";
+    process.stderr.write(
+      `  ${pc.cyan(r.step_key)}  ${r.connector_slug} (${r.driver})  ${env}  ${pc.yellow(r.auth_method)}${tunnel}\n`,
+    );
+  }
+}
 
 function makeClient() {
   const profile = resolveProfile();
@@ -106,8 +124,9 @@ const runCommand = defineCommand({
           step,
           ...(args.slug ? { workflow_slug: String(args.slug) } : {}),
           ...(input !== null ? { input } : {}),
+          request_source: "cli" as const,
         };
-        printJson(await client.runExecution(body));
+        printRunResult(await client.runExecution(body));
         return;
       }
 
@@ -122,8 +141,9 @@ const runCommand = defineCommand({
           definition,
           ...(args.name ? { name: String(args.name) } : {}),
           ...(input !== null ? { input } : {}),
+          request_source: "cli" as const,
         };
-        printJson(await client.runExecution(body));
+        printRunResult(await client.runExecution(body));
         return;
       }
 
@@ -138,6 +158,7 @@ const runCommand = defineCommand({
         source: "saved" as const,
         workflow_id: String(args.id),
         ...(input !== null ? { input } : {}),
+        request_source: "cli" as const,
       };
       printJson(await client.runExecution(body));
     } catch (err) {

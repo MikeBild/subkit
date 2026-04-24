@@ -1,10 +1,10 @@
 # AI-Assisted Authoring
 
-Traditional workflow automation tools put the burden of construction on the builder. You need to know the integration, understand the configuration syntax, and map it all onto a blank canvas. The result is automation that reflects what developers can build, not what the business actually needs.
+Traditional enterprise workflow tools put the burden of construction on the builder. You need to know the connector, understand the configuration syntax, and map it all onto a blank canvas. The result is a workflow that reflects what developers can build, not what the business actually needs.
 
 sk inverts that burden. The authoring layer is a conversational interface where a user describes a goal in natural language and the AI does the structural work: proposing steps, looking up connectors, validating the draft, and asking clarifying questions. The user's job is to review and approve — not to build.
 
-This is what separates sk from traditional workflow tools, and it is what this document explains: how Conversations produce governed, production-ready automation, and why the human-in-the-loop model is the right architecture for enterprise AI.
+This is what separates sk from traditional workflow tools, and it is what this document explains: how Conversations produce governed, production-ready workflows, and why the human-in-the-loop model is the right architecture for enterprise AI.
 
 ---
 
@@ -14,15 +14,15 @@ A Conversation is the primary authoring interface in sk. When a user starts one,
 
 Conversations are persistent and resumable. They survive page reloads, reconnects, and multi-day authoring sessions. A user can start a Conversation on Monday, return on Wednesday, and pick up exactly where they left off. The AI recalls the context, the draft state, and the pending questions.
 
-Internally, the AI operates over a palette of structured-intent tools. It does not generate free-form code or make autonomous decisions. It calls tools like "propose a step," "look up a connector," "validate the draft," and "ask for clarification." This structure is what makes the authoring process reliable and auditable — the AI's reasoning is visible as a sequence of tool calls, not as an opaque text generation.
+Internally, the AI operates over a palette of structured authoring actions. It does not generate free-form code or make autonomous decisions. It performs actions like proposing a step, looking up a connector, validating the draft, and asking for clarification. This structure is what makes the authoring process reliable and auditable — the AI's reasoning is visible as a sequence of explicit authoring actions, not as opaque text generation.
 
-For operators and scripted clients that already know the target definition, the same authoring model is also available through the direct automation surface. That path skips the conversational proposal loop and works on the persisted automation object directly: preview, diff, apply, save, and run.
+For operators and scripted clients that already know the target definition, the same authoring model is also available through the direct workflow and execution surface. That path skips the conversational proposal loop and works directly with workflow definitions plus `POST /v1/executions` for preview and execution.
 
 ---
 
 ## The Authoring State Machine
 
-Conversations are no longer just a loose draft plus a few helper tools. The engine maintains an explicit Authoring State Machine for every conversation and uses it to decide which tools are visible, which actions are blocked, and what the next valid move is.
+Conversations are no longer just a loose draft plus a few helper actions. The engine maintains an explicit Authoring State Machine for every conversation and uses it to decide which actions are visible, which moves are blocked, and what the next valid move is.
 
 The canonical progression is:
 
@@ -118,13 +118,13 @@ Diagnosis is therefore a first-class authoring phase, not an operator-only debug
 
 ## Stage-Aware Prompting And Tool Narrowing
 
-The authoring loop now constrains both prompt guidance and visible tool surface by mode and stage.
+The authoring loop now constrains both prompt guidance and the visible authoring-action surface by mode and stage.
 
 When the conversation is in connector mode, the model is guided to stay inside connector work until the connector is persisted. During workflow drafting, the prompt shifts to inspection, validation, preview, and commit guidance. During execution and diagnosis, the prompt focuses on the latest persisted run and its repair path.
 
-The same state machine also narrows the visible tool palette. The model does not just see every authoring tool all the time and rely on runtime rejection. Premature actions such as connector save, workflow commit, or diagnosis only become visible when the relevant stage and checkpoint state permit them.
+The same state machine also narrows the visible authoring palette. The model does not just see every authoring action all the time and rely on runtime rejection. Premature actions such as connector save, workflow commit, or diagnosis only become visible when the relevant stage and checkpoint state permit them.
 
-This is one of the key reasons the authoring flow stays consistent across turns: prompt, tool visibility, and runtime gates all read from the same state model.
+This is one of the key reasons the authoring flow stays consistent across turns: prompt guidance, action visibility, and runtime gates all read from the same state model.
 
 ---
 
@@ -164,9 +164,9 @@ The distinction between Skills and Knowledge Sources matters. Skills are dense, 
 
 ## The Connector Catalog
 
-When a user mentions an external system — "pull data from our Salesforce instance" or "post a message to Slack" — the AI needs accurate, system-specific knowledge to propose a useful integration. Generic HTTP knowledge is not enough.
+When a user mentions an external connector boundary — "pull data from our Salesforce instance" or "post a message to Slack" — the AI needs accurate, connector-specific knowledge to propose a useful integration. Generic HTTP knowledge is not enough.
 
-sk ships 89 Connector Templates covering the most common enterprise services. When a user mentions a system, the AI draws on the matching template to propose an accurate integration. Templates include the driver type, authentication configuration, documentation references, and setup guidance. The AI understands the system's actual API, not just the idea of it.
+sk ships 89 Connector Templates covering the most common enterprise services. When a user mentions a connector target, the AI draws on the matching template to propose an accurate integration. Templates include the driver type, authentication configuration, documentation references, and setup guidance. The AI understands the target API, not just the idea of it.
 
 Documentation Ingestion is part of Connector setup. OpenAPI specs, GraphQL schemas, and HTML documentation are automatically indexed and become part of the AI's context for that Connector. The AI can refer to specific endpoints, parameters, and error codes because the documentation is available to it.
 

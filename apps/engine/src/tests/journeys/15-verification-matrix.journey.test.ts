@@ -146,14 +146,19 @@ describe("journey: verification matrix (docs/33)", () => {
       steps: [{ kind: "request", id: "ping", method: "GET", url: `${mockBase}/ping` }],
     });
     workflowId = wf.id;
-    const run = await journeyFetch(ctx, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const run = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {}, request_source: "api" }),
+      body: JSON.stringify({
+        source: "saved",
+        workflow_id: workflowId,
+        input: {},
+        request_source: "api",
+      }),
     });
-    const rb = (await run.json()) as { status: string; id: string };
+    const rb = (await run.json()) as { status: string; execution_id: string };
     expect(rb.status).toBe("succeeded");
 
-    const rows = await ctx.db.select().from(executions).where(eq(executions.id, rb.id));
+    const rows = await ctx.db.select().from(executions).where(eq(executions.id, rb.execution_id));
     expect(rows[0]?.request_source).toBe("api");
   });
 
@@ -274,12 +279,18 @@ describe("journey: verification matrix (docs/33)", () => {
   test("14. Abort propagation — cancel a queued execution", async () => {
     // Cheap variant: cancel via the execution cancel endpoint and
     // make sure the aborted state is reachable.
-    const asyncRun = await journeyFetch(ctx, `/v1/workflows/${workflowId}/run`, {
+    const asyncRun = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
-      body: JSON.stringify({ input: {}, request_source: "api" }),
+      body: JSON.stringify({
+        source: "saved",
+        workflow_id: workflowId,
+        input: {},
+        request_source: "api",
+        async: true,
+      }),
     });
-    const body = (await asyncRun.json()) as { id: string };
-    const cancel = await journeyFetch(ctx, `/v1/executions/${body.id}/cancel`, {
+    const body = (await asyncRun.json()) as { execution_id: string };
+    const cancel = await journeyFetch(ctx, `/v1/executions/${body.execution_id}/cancel`, {
       method: "POST",
     });
     expect([200, 202, 404, 409]).toContain(cancel.status);
@@ -303,16 +314,16 @@ describe("journey: verification matrix (docs/33)", () => {
     });
     expect(prodRes.status).toBe(201);
 
-    const run = await journeyFetch(ctx, `/v1/workflows/${workflowId}/run?sync=1`, {
+    const run = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
       headers: { "x-subkit-environment": "prod" },
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
     });
     expect(run.status).toBe(200);
-    const rb = (await run.json()) as { id: string; status: string };
+    const rb = (await run.json()) as { execution_id: string; status: string };
     expect(rb.status).toBe("succeeded");
 
-    const rows = await ctx.db.select().from(executions).where(eq(executions.id, rb.id));
+    const rows = await ctx.db.select().from(executions).where(eq(executions.id, rb.execution_id));
     expect(rows[0]?.execution_mode).toBe("prod");
   });
 

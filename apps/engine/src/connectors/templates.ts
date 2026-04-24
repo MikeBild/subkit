@@ -91,6 +91,24 @@ export const ConnectorTemplateSchema = z
     setup_hint: z.string().nullable().optional(),
     auth_options: z.array(TemplateAuthOptionSchema).default([]),
   })
+  // Consistency gate: a template that offers BOTH a primary non-oauth auth
+  // AND an oauth block MUST enumerate both paths in `auth_options` so the
+  // operator/LLM can pick one deliberately. Otherwise the UI shows two
+  // options (header/bearer plus the oauth block) without a clear default
+  // and callers silently pick the wrong one.
+  .superRefine((t, ctx) => {
+    const mixesWithOauth = t.oauth !== null && t.auth_type !== "oauth2";
+    if (mixesWithOauth && t.auth_options.length < 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["auth_options"],
+        message:
+          `template "${t.slug}" mixes auth_type=${t.auth_type} with an oauth block ` +
+          `but declares fewer than 2 auth_options — add an explicit auth_options ` +
+          `array enumerating the primary + oauth2 paths, or remove the oauth block.`,
+      });
+    }
+  })
   .openapi("ConnectorTemplate");
 
 export type ConnectorTemplate = z.infer<typeof ConnectorTemplateSchema>;
