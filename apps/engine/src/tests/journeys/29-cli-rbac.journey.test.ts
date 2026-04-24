@@ -333,7 +333,7 @@ describe("journey 29: subkit rbac CLI", () => {
       .limit(1);
     expect(adminRole).toBeTruthy();
 
-    const { message, captured } = await runExpectError(["roles", "delete", adminRole!.id]);
+    const { message, captured } = await runExpectError(["roles", "delete", adminRole!.id, "--yes"]);
     // Either the CLI throws with a 409/forbidden message or prints it
     // on stderr — accept either path.
     const combined = `${message}\n${captured.stderr}`.toLowerCase();
