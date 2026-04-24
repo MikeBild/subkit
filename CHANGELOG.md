@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.3.0](https://github.com/MikeBild/subkit/compare/subkit-v2.2.2...subkit-v2.3.0) (2026-04-24)
+
+
+### Features
+
+* add direct automation workflow surface ([caa4449](https://github.com/MikeBild/subkit/commit/caa4449bd7b3926645667cded669c79e8bc4c2ec))
+* **connectors:** enrich template model with URL matching, smart probes, OAuth2 details, and spec import ([78742ba](https://github.com/MikeBild/subkit/commit/78742ba3e45eaaefabf46866e553f753f10d70ab))
+* **conversations:** add match_connector_template_by_url and import_connector_from_spec tools ([47e8600](https://github.com/MikeBild/subkit/commit/47e8600c5e7d41328126e77729f6895ee5d2020d))
+* **execution:** surface request_meta and connector_resolutions in run result ([5aa1708](https://github.com/MikeBild/subkit/commit/5aa170886859dc2297b5e018d134384d0fd5c83d))
+* **http,mcp,self-healing:** expose URL match and spec import, rate-limit classifier, inline_schema indexer ([693c2ea](https://github.com/MikeBild/subkit/commit/693c2eae1dab9a48186b6cd0e87960b54422721b))
+* **sandbox:** sk-stdlib with version tracking and drift detection ([2d5fe5f](https://github.com/MikeBild/subkit/commit/2d5fe5f5449fcdffce6f2cd5bb0c40bcc7beaba3))
+
+
+### Bug Fixes
+
+* **rbac,cli:** resource-scoped execution RBAC, portal-token deny reason, slash MCP label drift ([2f348e4](https://github.com/MikeBild/subkit/commit/2f348e44e4c09d5ca6c75c3aba8eab0a52c67d89))
+
+
+### Documentation
+
+* align terminology — 'automation' → 'workflow', 'integration' → 'connector' ([039b384](https://github.com/MikeBild/subkit/commit/039b384f187bf7a004b545f94792ec9fad0517a8))
+
 ## [2.2.2](https://github.com/MikeBild/subkit/compare/subkit-v2.2.1...subkit-v2.2.2) (2026-04-24)
 
 
