@@ -155,12 +155,15 @@ Three test layers (picked by subsystem and command):
 |---|---|---|---|
 | unit | `bun run test:unit` | Fast inner loop. Requires a running Postgres (compose) for the subset that uses `createTestDb`; otherwise no external dependencies. | `observability`, `logging`, `audit`, `llm`, `workflows`, `execution/tests` |
 | integration | `bun run test:integration` | Needs Postgres + pg-boss (Docker Compose). | `db`, `queue`, `http`, `webhooks`, `credentials/oauth2` |
-| e2e | `bun run test:e2e` | Compiles `subkit` + `sk` binaries, runs against a live engine. | `tests/e2e/` |
+| e2e | `bun run test:e2e` | Compiles `sk` as needed and runs against a live engine. | `tests/e2e/` |
+| eval | `bun run verify:ai` | Prompting, context assembly, routing, and authoring-contract changes. | `apps/engine/eval/*` |
 
 - Unit tests co-located as `*.test.ts` alongside source.
 - Integration tests use a disposable Postgres database per test file (`createTestDb`) against the running compose instance.
 - E2E tests drive compiled CLIs — they will build them if missing.
-- CI runs lint + typecheck + unit + integration on every PR; e2e on success.
+- CI currently runs lint, typecheck, migrations, `bun test apps/ packages/`, `build:all`, e2e,
+  engine smoke, and compose validation. The local `bun run verify` gate is stricter: it also runs
+  terminology checks, determinism lint, and the AI/eval contract suite.
 
 ## Quality Gate Before Done
 
@@ -168,12 +171,16 @@ Before marking any code task done, run (or have a reason not to):
 
 1. `bun run lint` — biome check, no warnings.
 2. `bun run typecheck` — tsc clean.
-3. `bun run test:unit` — unit tests green.
-4. Integration/e2e where the change touches those layers (`test:integration`, `test:e2e`).
-5. Verify audit log + Zod schemas were updated if the change mutates state or hits a
+3. `bun run check:terminology` — terminology drift clean.
+4. `bun run test:determinism` — determinism lint clean.
+5. `bun run test:unit` — unit tests green.
+6. `bun run verify:ai` — eval fixtures green when the change touches prompting, context,
+   routing, authoring, or verification behavior.
+7. Integration/e2e where the change touches those layers (`test:integration`, `test:e2e`).
+8. Verify audit log + Zod schemas were updated if the change mutates state or hits a
    route.
 
-Or use the `/verify` command, which chains 1–3.
+Or use the `/verify` command, which runs the full local release gate (`bun run verify`).
 
 ## Useful Commands
 
@@ -182,8 +189,9 @@ Day-to-day:
 - `bun run dev` — engine in watch mode.
 - `bun run lint` / `bun run lint:fix` / `bun run format`
 - `bun run typecheck`
+- `bun run verify` / `bun run verify:ai` / `bun run eval`
 - `bun run test:unit` / `bun run test:integration` / `bun run test:e2e`
-- `bun run build:all` — compile all 4 binaries into `dist/`.
+- `bun run build:all` — compile all 3 repo binaries into `dist/`.
 
 Database & infra:
 

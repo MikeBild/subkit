@@ -1,4 +1,5 @@
-# Install sk and subkit CLI binaries from the latest GitHub Release (Windows).
+# Install sk plus the `subkit` compatibility alias from the latest
+# GitHub Release (Windows).
 # Usage: irm https://raw.githubusercontent.com/mikebild/subkit/main/scripts/install.ps1 | iex
 $ErrorActionPreference = "Stop"
 
@@ -70,7 +71,7 @@ try {
 }
 
 Write-Host ""
-Write-Host "Installed sk.exe and subkit.exe to $InstallDir"
+Write-Host "Installed sk.exe and compatibility alias subkit.exe to $InstallDir"
 
 # ── PATH guidance ──
 

@@ -1,5 +1,5 @@
 // User story: As a SOC 2 reviewer, I can distinguish sk-cli-originated
-// logins from subkit-cli logins by querying the audit log for
+// logins from compatibility-alias logins by querying the audit log for
 // `sk_cli.login` rows. The engine tags OIDC exchanges when the
 // `user-agent: sk-cli/*` header is present on the request.
 //

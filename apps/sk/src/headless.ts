@@ -4,7 +4,7 @@
 // single conversation turn end-to-end through the engine's
 // /v1/conversations endpoints, and prints the result.
 //
-// Exit codes (matching apps/cli conventions):
+// Exit codes for `sk -p` and other headless `sk` entry points:
 //   0 — completed cleanly
 //   1 — engine returned an error (validation, bad request)
 //   2 — auth / permission / network failure

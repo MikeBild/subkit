@@ -55,7 +55,7 @@ Your client will discover workflows, prompts, and resources automatically. See [
 
 ## Troubleshooting
 
-Any failed request prints `{code}: {message} [trace=…]`. Send the `trace_id` to your operator — they can look it up in the audit log with `subkit audit-log get <trace_id>`.
+Any failed request prints `{code}: {message} [trace=…]`. Send the `trace_id` to your operator — they can correlate it with `sk diagnostics errors --trace-id <trace_id>`.
 
 ## Next steps
 

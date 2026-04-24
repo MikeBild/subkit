@@ -26,11 +26,11 @@ Terms are grouped by concern. Read the groups in order for a complete mental mod
 
 **Draft** — a workflow under construction within a Conversation. A Draft exists only in the context of the Conversation until a User explicitly commits it. Committing a Draft creates a versioned, immutable Workflow. Drafts are never executed directly; only committed Workflows run in the execution engine.
 
-**Skill** — a reusable, curated piece of context loaded into the AI during Conversations and executions. Skills encode best practices, integration patterns, domain-specific knowledge, and known failure modes. They are authored or promoted by operators with explicit human approval. Skills are never auto-generated or auto-promoted from execution history.
+**Skill** — a reusable, curated piece of context loaded into the AI during Conversations and other AI-assisted authoring flows such as discovery, diagnosis, and bounded repair. Skills encode best practices, integration patterns, domain-specific knowledge, and known failure modes. They are authored or promoted by operators with explicit human approval. Skills are never auto-generated or auto-promoted from execution history, and committed deterministic workflow execution does not load them.
 
 **Skill Candidate** — a pattern detected from execution history that might improve AI context quality. The platform proposes Skill Candidates automatically when it detects recurring patterns in successful or failed executions. A Skill Candidate becomes a Skill only through explicit operator approval — the platform never promotes one automatically.
 
-**Knowledge Source** — a persistent document store attached to a Tenant or Workflow. Operators upload documents (PDFs, runbooks, compliance policies, architecture diagrams) which are chunked and indexed for semantic search. The AI searches Knowledge Sources during Conversations to ground its proposals in tenant-specific context. Knowledge Sources can also be queried at execution time when a Step requires document-level reasoning.
+**Knowledge Source** — a persistent document store attached to a Tenant or Workflow. Operators upload documents (PDFs, runbooks, compliance policies, architecture diagrams) which are chunked and indexed for semantic search. The AI searches Knowledge Sources during Conversations, discovery, and repair-oriented authoring flows to ground its proposals in tenant-specific context. Committed workflow execution does not query Knowledge Sources directly.
 
 **Discovery** — a one-shot analysis where the AI examines uploaded files (API specifications, runbooks, architecture diagrams, OpenAPI docs) and proposes Connectors, Skills, and Knowledge Sources inferred from their content. The result is a set of proposals — called Discovery Artifacts — that operators can approve or reject individually. Discovery does not configure anything automatically.
 
@@ -54,7 +54,7 @@ Terms are grouped by concern. Read the groups in order for a complete mental mod
 
 **Workflow** — a versioned, directed acyclic graph (DAG) of Steps that produces a deterministic outcome. Workflows are authored through Conversations, approved by a human, and then committed as immutable versions. Each version is a complete snapshot of the workflow at the time of approval. Workflows are tenant-scoped and support a lifecycle of draft, active, and archived.
 
-**Step** — a single unit of work within a Workflow DAG. Step types are: request (call a Connector), transform (reshape data), branch (conditional routing), loop (iterate over a collection), parallel (run Steps concurrently), wait (introduce a delay), and call (invoke another Workflow or Skill). Each Step declares retry policy, timeout, error handling behavior, and optional field masking for sensitive data.
+**Step** — a single unit of work within a Workflow DAG. Step types are: request (call a Connector), transform (reshape data), branch (conditional routing), loop (iterate over a collection), parallel (run Steps concurrently), wait (introduce a delay), call (invoke another Workflow), and tool (run a sandboxed container step). Each Step declares retry policy, timeout, error handling behavior, and optional field masking for sensitive data.
 
 **Execution** — a single run of a Workflow. An Execution carries its own state, step-by-step results, logs, and final status. Executions are immutable records — they are never modified after completion. Each Execution records its request source (API, CLI, scheduler, webhook, MCP, or chat) and its environment (dev or prod). Executions are queryable and searchable after the fact.
 
@@ -80,9 +80,7 @@ Terms are grouped by concern. Read the groups in order for a complete mental mod
 
 ## Group 6: Surfaces
 
-**sk CLI** — the conversational command-line interface and primary human-facing surface for sk. Built on Ink, it provides a terminal UI that opens a Conversation for end users describing workflow goals, and a full admin surface for operators managing the platform. The sk CLI supports four authentication modes: API Key, OIDC, Portal Token, and headless (stdin pipe for scripted usage). Persona-aware: the surface adapts based on the authenticated user's role.
-
-**subkit CLI** — the operator-focused command-line tool for administrative tasks. Used for managing Connectors, running diagnostics, querying the Audit Log, managing Schedules, and performing platform maintenance. The subkit CLI is separate from the sk conversational REPL and is oriented toward operators and developers rather than end users.
+**sk CLI** — the unified command-line surface and primary human-facing interface for sk. Built on Ink plus citty commands, it provides a terminal UI that opens a Conversation for end users describing workflow goals, and top-level admin commands for operators managing the platform (`sk connectors`, `sk workflows`, `sk executions`, `sk audit`, and related groups). The sk CLI supports four authentication modes: API Key, OIDC, Portal Token, and headless (stdin pipe for scripted usage). Persona-aware: the surface adapts based on the authenticated user's role.
 
 **MCP Server** — the Model Context Protocol server embedded in the sk engine. It exposes Workflows as callable `wf.<slug>` entries inside the MCP callable surface, Connectors as structured resources, and Skills as curated prompts that can be injected into an AI's context. Any MCP-compatible client — including Claude Code, GitHub Copilot, Codex CLI, and Gemini — can connect to the MCP Server and interact with the platform. All MCP calls are governed by the same RBAC and Audit Log as direct API calls.
 

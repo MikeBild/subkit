@@ -14,7 +14,7 @@ trigger_keywords: [mcp, mcp server, mcp client, model context protocol, codex, c
 Subkit exposes MCP at two transports:
 
 - **Streamable HTTP** — `${engine_url}/mcp`, `Authorization: Bearer <api_key>`. Default for any modern MCP client.
-- **stdio proxy** — `subkit mcp` on the user's machine. Reads `SUBKIT_API_KEY`, `SUBKIT_ENGINE_URL`, and the active profile from `~/.sk/config.json`. Use only when the client cannot speak Streamable HTTP.
+- **stdio proxy** — `sk mcp` on the user's machine. Reads `SUBKIT_API_KEY`, `SUBKIT_ENGINE_URL`, and the active profile from `~/.sk/config.json`. Use only when the client cannot speak Streamable HTTP.
 
 ## How to answer "how do I connect X?"
 

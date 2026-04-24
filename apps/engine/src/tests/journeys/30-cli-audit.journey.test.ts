@@ -1,13 +1,13 @@
 // User story: As a compliance engineer, I want to query and export the
-// audit log via the `subkit audit` CLI so I can collect SOC 2 evidence
+// audit log via the `sk audit` CLI so I can collect SOC 2 evidence
 // without writing HTTP calls by hand.
 // Acceptance criteria:
-//   - AC1: `subkit audit query --action=workflow.created --json` lists
+//   - AC1: `sk audit query --action=workflow.created --json` lists
 //          the workflow.created row.
-//   - AC2: `subkit audit query --json` returns all rows for the tenant.
-//   - AC3: `subkit audit query --limit=5 --json` honours the limit.
-//   - AC4: `subkit audit show <id>` fetches a single row.
-//   - AC5: `subkit audit export` streams ndjson with one row per line.
+//   - AC2: `sk audit query --json` returns all rows for the tenant.
+//   - AC3: `sk audit query --limit=5 --json` honours the limit.
+//   - AC4: `sk audit show <id>` fetches a single row.
+//   - AC5: `sk audit export` streams ndjson with one row per line.
 //   - AC6: Without `--api-key`, the CLI rejects with an auth error.
 // Spec refs: docs/07-security-governance.md, docs/03-input-surfaces.md (Pass-2 Stream D)
 
@@ -214,7 +214,7 @@ afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
 });
 
-describe("journey 30: subkit audit CLI", () => {
+describe("journey 30: sk audit CLI", () => {
   test("AC1: query --action=workflow.created returns the row", async () => {
     const { stdout } = await run(["query"], { action: "workflow.created" });
     const body = JSON.parse(extractLastJson(stdout));

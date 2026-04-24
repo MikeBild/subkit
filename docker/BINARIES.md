@@ -1,11 +1,11 @@
 # Subkit Binaries
 
-`bun build --compile` produces three single-file native binaries.
+`bun build --compile` produces three single-file native binaries in the current repo.
 
 | Binary             | Source entry                       | Build command          |
 | ------------------ | ---------------------------------- | ---------------------- |
 | `dist/engine`      | `apps/engine/src/index.ts`         | `bun run build:engine` |
-| `dist/subkit`      | `apps/cli/src/index.ts`            | `bun run build:cli`    |
+| `dist/sk`          | `apps/sk/src/index.ts`             | `bun run build:sk`     |
 | `dist/tunnel-agent`| `apps/agent/src/index.ts`          | `bun run build:agent`  |
 | all three          | —                                  | `bun run build:all`    |
 
@@ -20,7 +20,7 @@ Run after each build:
 
 ```sh
 codesign --force --sign - --timestamp=none dist/engine
-codesign --force --sign - --timestamp=none dist/subkit
+codesign --force --sign - --timestamp=none dist/sk
 codesign --force --sign - --timestamp=none dist/tunnel-agent
 ```
 

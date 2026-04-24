@@ -8,11 +8,11 @@ Many doors. One platform.
 
 ---
 
-## The sk CLI (Conversational REPL)
+## The sk CLI (Conversations + Admin Commands)
 
-The sk CLI is the primary human-facing authoring tool. It is a terminal interface built on Ink that opens a Conversation when launched — a live session where the user describes what they want and the AI proposes, iterates, and assembles a workflow.
+The sk CLI is the primary human-facing authoring tool and the canonical operator CLI. It is a terminal interface built on Ink that opens a Conversation when launched, and it also exposes top-level admin command groups such as `sk connectors`, `sk workflows`, `sk executions`, and `sk audit`.
 
-**Who uses it.** End users describe workflow goals in natural language and work through the AI-assisted authoring loop. Operators use the same CLI to manage Connectors, review Skill Candidates and Patch Candidates, query the Audit Log, and administer the platform — the surface adapts based on the authenticated user's role.
+**Who uses it.** End users describe workflow goals in natural language and work through the AI-assisted authoring loop. Operators use the same binary to manage Connectors, review Skill Candidates and Patch Candidates, query the Audit Log, inspect executions, and administer the platform — the surface adapts based on the authenticated user's role. There is no separate operator-only CLI surface in the current codebase.
 
 **Authentication.** The sk CLI supports four modes: API Key (for developers and CI), OIDC (for SSO-enabled organizations), Portal Token (for scoped external-user flows), and headless mode where input is piped from stdin for scripted or automated usage. All modes resolve to the same identity and RBAC model.
 
@@ -58,7 +58,7 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 - **Resources** expose Connectors as structured data access. A Stripe Connector might surface as a `stripe://customers` resource that an MCP client can read to understand available data shapes.
 - **Prompts** expose Skills as curated context. When an MCP client requests a prompt, sk injects the relevant Skill content — best practices, integration patterns, known failure modes — directly into the AI's context.
 
-**Transport.** The MCP server supports Streamable HTTP transport, which is the current MCP standard. Stdio transport is also supported for legacy compatibility with tools that expect a subprocess interface.
+**Transport.** The MCP server supports Streamable HTTP transport, which is the current MCP standard. Stdio transport is also supported via `sk mcp` for tools that expect a subprocess interface.
 
 **Governance.** All MCP calls are subject to the same RBAC checks and Audit Log entries as direct API calls. There is no privileged back channel through MCP; identity and permissions are enforced identically regardless of which surface initiated the request.
 

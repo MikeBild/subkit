@@ -37,17 +37,38 @@ describe("planTurnRouting", () => {
     });
     expect(plan.intent).toBe("surface_help");
     expect(plan.action).toContain("/mcp");
-    expect(plan.action).toContain("subkit mcp");
+    expect(plan.action).toContain("sk mcp");
   });
 
-  test("routes schedule questions to partial-support guidance", () => {
+  test("routes schedule questions to the real schedule tool surface", () => {
     const plan = planTurnRouting({
       draft: draft(),
       user_message: "How to run a workflow scheduled?",
     });
     expect(plan.intent).toBe("surface_help");
-    expect(plan.action).toContain("scheduled workflow execution");
-    expect(plan.action).toContain("not exposed");
+    expect(plan.action).toContain("create_schedule");
+    expect(plan.required_grounding).toContain(
+      "apps/engine/src/conversations/tools/generated/writes/schedules.ts",
+    );
+  });
+
+  test("routes schedule mutations to explicit schedule tools", () => {
+    const plan = planTurnRouting({
+      draft: draft(),
+      user_message: "schedule this workflow every hour",
+    });
+    expect(plan.intent).toBe("tenant_write");
+    expect(plan.action).toContain("create_schedule");
+    expect(plan.required_grounding).toContain("list_workflows");
+  });
+
+  test("routes schedule inspection to list_schedules", () => {
+    const plan = planTurnRouting({
+      draft: draft(),
+      user_message: "list schedules",
+    });
+    expect(plan.intent).toBe("tenant_read");
+    expect(plan.action).toContain("list_schedules");
   });
 
   test("stays in workflow authoring when the draft is already in progress", () => {

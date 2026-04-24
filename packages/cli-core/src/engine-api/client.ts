@@ -1,7 +1,8 @@
-// Shared, fully-typed engine HTTP client for the subkit and sk CLIs.
+// Shared, fully-typed engine HTTP client for the `sk` CLI and its
+// compatibility alias.
 //
 // Built on `openapi-fetch` against `openapi.d.ts` regenerated from the
-// engine's own Zod-OpenAPI surface. Both CLIs consume this module
+// engine's own Zod-OpenAPI surface. Both entry points consume this module
 // instead of maintaining their own `engine-client.ts` — types drift is
 // now a CI failure (see `scripts/gen-openapi-client.ts` + the
 // `gen:openapi-client` npm script).

@@ -46,5 +46,5 @@ Specialists under `.claude/agents/`:
 
 Under `.claude/commands/`:
 
-- `/verify` — run the quality gate (lint + typecheck + test:unit).
+- `/verify` — run the full local release gate (`bun run verify`).
 - `/review` — audit the current diff against subkit's non-negotiables.

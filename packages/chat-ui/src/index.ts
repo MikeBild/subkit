@@ -1,9 +1,10 @@
-// @chat-ui — shared Ink component library for the subkit CLIs.
+// @chat-ui — shared Ink component library for the `sk` CLI surfaces.
 //
-// Both `apps/sk` and `apps/cli` mount these components and inject a
-// `Platform` adapter (clipboard, $EDITOR, native image paste) plus an
-// `EngineApi` client. Every interaction pattern (elicit router, slash
-// palette, status line, diff, step tree) lives here and ships once.
+// Interactive conversation views and admin panes in `apps/sk` mount
+// these components and inject a `Platform` adapter (clipboard, $EDITOR,
+// native image paste) plus an `EngineApi` client. Every interaction
+// pattern (elicit router, slash palette, status line, diff, step tree)
+// lives here and ships once.
 
 export {
   ConversationBrowser,

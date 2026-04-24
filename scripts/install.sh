@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install sk and subkit CLI binaries from the latest GitHub Release.
+# Install sk plus the `subkit` compatibility alias from the latest
+# GitHub Release.
 # Usage: curl -fsSL https://raw.githubusercontent.com/mikebild/subkit/main/scripts/install.sh | bash
 #
 # Everything is wrapped in main() so nothing executes if the download
@@ -112,7 +113,7 @@ main() {
   fi
 
   echo ""
-  echo "Installed sk and subkit to $INSTALL_DIR"
+  echo "Installed sk and compatibility alias subkit to $INSTALL_DIR"
 
   # ── PATH guidance ──
 

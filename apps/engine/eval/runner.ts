@@ -2,8 +2,9 @@
 //
 // Loads every fixture under `eval/fixtures/*.json`, dispatches it to
 // the matching validator under `eval/validators/*.ts`, and emits a
-// CSV + JSON report. Used by `/verify` as a gate so skill regressions
-// are caught before they ship.
+// CSV + JSON report. Used by `bun run verify:ai` and the full
+// `bun run verify` gate so authoring-contract regressions are caught
+// before they ship.
 //
 // Usage:
 //   bun run apps/engine/eval/runner.ts

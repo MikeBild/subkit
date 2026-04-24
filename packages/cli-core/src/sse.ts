@@ -1,4 +1,4 @@
-// Minimal SSE reader shared by `apps/cli` and `apps/sk` via
+// Minimal SSE reader shared by the `sk` CLI surfaces via
 // `@cli-core/index.ts`. The engine emits
 // `event: <name>\ndata: <json>\n\n` frames; we parse them into
 // `{ event, data }` objects and surface each through a callback.

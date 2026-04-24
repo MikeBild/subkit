@@ -1,7 +1,6 @@
 // stdio entry point.
 //
-// Launched via `bun run apps/engine/src/mcp/stdio.ts` (or, eventually,
-// `subkit mcp` once the P15 CLI wrapper lands). Reads an API key from
+// Launched via `bun run apps/engine/src/mcp/stdio.ts` or `sk mcp`. Reads an API key from
 // `SUBKIT_API_KEY`, resolves the principal through the api-key provider,
 // then boots an MCP server over a `StdioServerTransport`.
 //

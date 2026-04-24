@@ -1,5 +1,5 @@
-// OIDC device-authorization flow. Lifted from `apps/cli/src/commands/
-// login.ts` so both `subkit login` and `sk login` share one copy.
+// OIDC device-authorization flow shared by `sk login` and any packaged
+// CLI compatibility aliases.
 //
 // The function is pure / testable: a caller can inject a custom fetch,
 // a scope, and a polling-interval override. It never touches process.
@@ -72,7 +72,7 @@ export async function runDeviceFlow(opts: DeviceFlowOptions): Promise<DeviceFlow
     throw new Error("device flow returned no id_token");
   }
 
-  // Exchange id_token for a subkit personal API key.
+  // Exchange id_token for a personal API key minted by the engine.
   const fetchImpl = opts.fetchImpl ?? fetch;
   const exchangeRes = await fetchImpl(
     `${opts.engine_url.replace(/\/$/, "")}/v1/identity/sessions/oidc`,

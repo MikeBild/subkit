@@ -12,7 +12,7 @@ to the right helper quickly. It does not override `AGENTS.md`.
 1. `../AGENTS.md` — the contract.
 2. `../SKILLS.md` — one-line index of project-local skills.
 3. The nearest directory-local `AGENTS.md` for the code you are about to touch:
-   `apps/engine/AGENTS.md`, `apps/cli/AGENTS.md`, `apps/sk/AGENTS.md`,
+   `apps/engine/AGENTS.md`, `apps/sk/AGENTS.md`,
    `apps/agent/AGENTS.md`, `packages/shared/AGENTS.md`.
 4. `.claude/docs/agent-navigation.md` — maps common tasks → docs + subsystem.
 5. The concept doc(s) that own the concern (see the subsystem table in `AGENTS.md`).
@@ -34,7 +34,7 @@ Thin slash-commands under `.claude/commands/`.
 
 | Command | What it does |
 |---|---|
-| `/verify` | Runs the quality gate: lint + typecheck + test:unit. |
+| `/verify` | Runs the local release gate: lint + typecheck + terminology + determinism + unit + eval + integration + build + e2e. |
 | `/review` | Structured code review of the current diff via `domain-architect`. |
 
 ## Skills

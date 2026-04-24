@@ -1,6 +1,6 @@
 # E2E Coverage Matrix
 
-> **Living document.** Every new CLI surface (slash command or `subkit`
+> **Living document.** Every new CLI surface (slash command or `sk`
 > subcommand) MUST land with a corresponding entry in this file AND a
 > covering test. The `pre-push` guard at `scripts/check-e2e-coverage.sh`
 > fails when a slash/subcommand is introduced without an entry below.
@@ -90,9 +90,22 @@ trace-based ("start_connector_from_description was called for vendor X").
 | `/approve` `/reject` | covered by Tier 1.3 / 1.4 / 1.6     | ✅ |
 | `/help` `/clear` `/exit` `/bug` `/profile` `/memory` `/init` `/paste` `/attach` `/queue` `/history` `/debug` `/config` `/login` `/logout` `/model` `/tenant` `/cost` | client-side, covered by `apps/sk/src/tests/` | – |
 
+Additional slash commands tracked for the current surface:
+
+| Slash | Coverage source |
+|-------|-----------------|
+| `/draft` `/connector` `/workflow` `/context` | `apps/sk/src/tests/`, `guided-authoring.e2e.test.ts` |
+| `/templates` | `guided-authoring.e2e.test.ts`, `authoring-regressions.e2e.test.ts` |
+| `/probe` | `authoring-regressions.e2e.test.ts`, `guided-authoring.e2e.test.ts` |
+| `/preview` | `authoring-regressions.e2e.test.ts`, `guided-authoring.e2e.test.ts` |
+| `/versions` | `authoring-regressions.e2e.test.ts` |
+| `/approvals` | `guided-authoring.e2e.test.ts`, `apps/sk/src/tests/` |
+| `/view` `/export` | `apps/sk/src/tests/` |
+| `/install-slack` `/install-teams` `/install-github` `/install-google-workspace` `/install-salesforce` `/install-jira` `/install-hubspot` | `sk-interactive-smoke.e2e.test.ts`, `apps/sk/src/tests/` |
+
 ---
 
-## Tier 3 — `subkit` admin engine surface
+## Tier 3 — `sk` admin engine surface
 
 `tests/e2e/tier3-subkit-matrix.e2e.test.ts`
 
@@ -152,7 +165,7 @@ the canned tool sequence:
 
 ---
 
-## sk top-level subcommands
+## sk top-level and admin subcommands
 
 Coverage map for `sk <subcommand>` invocations. The headless `sk -p
 <prompt>` path is exercised by Tier 1 + `sk-cli.e2e.test.ts`.
@@ -169,6 +182,38 @@ Coverage map for `sk <subcommand>` invocations. The headless `sk -p
 | `sk -p` (headless) | `tier1-conversation-lifecycle.e2e.test.ts` + `sk-cli.e2e.test.ts` ✅ |
 | `sk -r <id>` (resume) | tier1 1.5 ✅              |
 
+Admin command groups exposed from `apps/sk/src/index.ts`:
+
+| Subcommand | Coverage source |
+|------------|-----------------|
+| `sk workflows` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
+| `sk connectors` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
+| `sk connector-templates` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk credentials` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk skills` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
+| `sk skill-candidates` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk knowledge-sources` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk discovery` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk executions` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
+| `sk patch-candidates` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk hooks` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk subscriptions` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk events` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk tunnels` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
+| `sk notifications` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk diagnostics` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk install` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk auth` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk extract` | `subkit-cli.e2e.test.ts` |
+| `sk health` | `subkit-cli.e2e.test.ts`, `remote-health.smoke.ts` |
+| `sk sessions` / `sk ls` / `sk show` / `sk rename` / `sk rm` | `sk-cli.e2e.test.ts`, `apps/sk/src/tests/` |
+| `sk rbac` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
+| `sk audit` | `subkit-cli.e2e.test.ts`, `apps/engine/src/tests/journeys/30-cli-audit.journey.test.ts` |
+| `sk apikeys` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
+| `sk portal-tokens` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk users` | `tier3-subkit-matrix.e2e.test.ts` |
+| `sk system-accounts` | `tier3-subkit-matrix.e2e.test.ts` |
+
 The tunnel-agent binary (`apps/agent`) is a separate concern — not
 covered here, tracked separately.
 
@@ -177,8 +222,8 @@ covered here, tracked separately.
 1. **Every new slash command** added to `apps/sk/src/slash.ts` MUST
    either appear in Tier 2 with an engine probe OR be marked
    "client-side" with a unit test in `apps/sk/src/tests/`.
-2. **Every new `subkit` subcommand-group** added to
-   `apps/cli/src/commands/` MUST land with a Tier 3 entry.
+2. **Every new `sk` subcommand-group** added to
+   `apps/sk/src/index.ts` (`SUB_COMMANDS`) MUST land with a Tier 3 entry.
 3. **Every new HTTP route** added to `apps/engine/src/http/routes/` MUST
    be reachable from at least one test in this matrix (read OR write).
 4. **Every new `code` value** thrown by `apps/engine/src/http/errors.ts`
