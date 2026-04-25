@@ -187,6 +187,29 @@ describe("build_workflow — workflow schema errors", () => {
     expect((result.data as { error: { code: string } }).error.code).toBe("workflow_schema_invalid");
     expect(toolCtx.draft).toBeNull();
   });
+
+  test("missing .data on scope reference → verifier_rejected", async () => {
+    const toolCtx = makeCtx();
+    const result = await buildWorkflowTool.execute(toolCtx, {
+      name: "scope-envelope-miss",
+      slug: "scope-envelope-miss",
+      steps: [
+        { id: "fetch", kind: "request", method: "GET", url: "https://example.test/x" },
+        { id: "shape", kind: "transform", expression: "$scope.fetch.items" },
+      ],
+      environment: "dev",
+    });
+    expect(result.ok).toBe(false);
+    const err = (
+      result.data as {
+        error: { code: string; details: { errors: Array<{ code: string }> } };
+      }
+    ).error;
+    expect(err.code).toBe("verifier_rejected");
+    expect(
+      err.details.errors.some((finding) => finding.code === "scope_envelope_field_missing"),
+    ).toBe(true);
+  });
 });
 
 describe("build_workflow — placeholder integrity", () => {

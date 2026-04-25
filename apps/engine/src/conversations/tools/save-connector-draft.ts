@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";
 import { createConnector } from "../../connectors/service.ts";
+import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { analyzeConversationAttachments } from "../../llm/flows/analyze-conversation-attachments.ts";
 import { logger } from "../../logging/logger.ts";
@@ -25,7 +26,11 @@ export const saveConnectorDraftTool: ConversationTool = {
     inputSchema.parse(rawArgs);
     const draft = ctx.getDraft();
     const connector = draft.connector;
-    const validation = validateConnectorDraft(connector ?? null);
+    const templates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
+    const validation = validateConnectorDraft(
+      connector ?? null,
+      templates.map((entry) => entry.template),
+    );
     if (!connector) {
       return {
         ok: false,

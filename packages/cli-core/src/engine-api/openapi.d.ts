@@ -1095,6 +1095,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate a workflow definition (structural + step schema). Does not persist; returns errors inline. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ValidateWorkflowBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidateWorkflowResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows/{id}": {
         parameters: {
             query?: never;
@@ -1534,6 +1574,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connector-templates/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import a connector draft from a Postman/HAR/OpenAPI/GraphQL/curl spec */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConnectorSpecImportRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorSpecImportResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Upstream spec fetch failed */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connector-templates/match-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Match a URL to connector templates by url_pattern regex */
+        get: {
+            parameters: {
+                query: {
+                    url: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorTemplateUrlMatchResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connector-templates": {
         parameters: {
             query?: never;
@@ -1597,6 +1734,66 @@ export interface paths {
                 };
                 /** @description Forbidden */
                 403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connector-templates/{slug}/oauth-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Store tenant-scoped OAuth client credentials for a connector template */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TemplateOAuthCredentialBody"];
+                };
+            };
+            responses: {
+                /** @description Stored */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TemplateOAuthCredentialResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2310,7 +2507,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Full-text search over ingested documentation */
+        /** Ranked search over ingested documentation */
         get: {
             parameters: {
                 query: {
@@ -6103,6 +6300,28 @@ export interface components {
             }[];
             timeout_ms?: number;
         };
+        ValidateWorkflowResponse: {
+            ok: boolean;
+            errors?: {
+                path: string;
+                message: string;
+            }[];
+        };
+        ValidateWorkflowBody: {
+            name?: string;
+            slug?: string;
+            description?: string;
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            output_schema?: {
+                [key: string]: unknown;
+            };
+            steps: {
+                [key: string]: unknown;
+            }[];
+            timeout_ms?: number;
+        };
         WorkflowVersionListResponse: {
             items: components["schemas"]["WorkflowVersion"][];
         };
@@ -6252,18 +6471,134 @@ export interface components {
             started_at: string | null;
             finished_at: string | null;
         };
+        ConnectorSpecImportResponse: {
+            draft: components["schemas"]["ConnectorSpecImportDraft"];
+            template_match: {
+                slug: string;
+                score: number;
+                matched_segment: string;
+            } | null;
+            recommended_next: string[];
+        };
+        ConnectorSpecImportDraft: {
+            name?: string;
+            slug?: string;
+            driver: string;
+            environment: string;
+            base_url?: string;
+            auth_type: string;
+            config: {
+                [key: string]: unknown;
+            };
+        };
+        ConnectorSpecImportRequest: {
+            /** @enum {string} */
+            source: "postman" | "har" | "openapi" | "graphql" | "graphql_introspection" | "curl";
+            content: string;
+            headers?: {
+                [key: string]: string;
+            };
+            name?: string;
+            /**
+             * @default dev
+             * @enum {string}
+             */
+            environment: "dev" | "prod";
+            base_url_environment?: string;
+        };
+        ConnectorTemplateUrlMatchResponse: {
+            url: string;
+            matched: boolean;
+            matches: components["schemas"]["ConnectorTemplateUrlMatchItem"][];
+        };
+        ConnectorTemplateUrlMatchItem: {
+            slug: string;
+            name: string;
+            driver: string;
+            /** @enum {string} */
+            source: "builtin" | "tenant";
+            version: number;
+            score: number;
+            matched_segment: string;
+            description: string;
+            setup_instructions: string;
+            credential_hints: {
+                field: string;
+                label: string;
+                placeholder: string;
+                doc_url: string | null;
+                secret: boolean;
+            }[];
+            keywords: string[];
+            capabilities: {
+                webhooks: boolean;
+                webhook_events: string[];
+                rate_limits: {
+                    requests_per_second: number;
+                    burst_size: number;
+                    recommended_backoff_ms: number;
+                } | null;
+            };
+        };
         ConnectorTemplateListResponse: {
-            items: (components["schemas"]["ConnectorTemplate"] & {
+            items: {
+                /** @enum {number} */
+                version: 1;
+                slug: string;
+                name: string;
+                /** @enum {string} */
+                driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp" | "sftp" | "smb" | "redis";
+                base_url: string;
+                /** @enum {string} */
+                auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2";
+                oauth: components["schemas"]["ConnectorTemplateOAuth"];
+                default_skill: string | null;
+                /** @enum {string} */
+                ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported";
+                ingestion_url: string | null;
+                icon: string;
+                description: string;
+                category: string;
+                /** @default [] */
+                tags: string[];
+                /** @default [] */
+                aliases: string[];
+                setup_instructions: string;
+                /** @default [] */
+                auth_options: components["schemas"]["ConnectorTemplateAuthOption"][];
+                url_pattern: string;
+                /** @default [] */
+                keywords: string[];
+                inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
+                probe_endpoint: components["schemas"]["ConnectorTemplateProbeEndpoint"];
+                /** @default [] */
+                credential_hints: components["schemas"]["ConnectorTemplateCredentialHint"][];
+                /** @default [] */
+                base_url_options: components["schemas"]["ConnectorTemplateBaseUrlOption"][];
+                pagination_defaults: components["schemas"]["ConnectorTemplatePaginationDefaults"];
+                capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
                 /** @enum {string} */
                 source: "builtin" | "tenant";
                 id: string | null;
-            })[];
+            }[];
         };
         ConnectorTemplateOAuth: {
             issuer_url: string;
             authorization_endpoint?: string;
             token_endpoint?: string;
             scopes?: string;
+            /** @enum {string} */
+            grant_type: "authorization_code" | "client_credentials";
+            /** @enum {string} */
+            token_auth_method: "body" | "basic_auth";
+            /** @enum {string} */
+            token_content_type: "form" | "json";
+            use_pkce: boolean;
+            client_id: string | null;
+            /** @default {} */
+            extra_headers: {
+                [key: string]: string;
+            };
         } | null;
         ConnectorTemplateAuthOption: {
             /** @enum {string} */
@@ -6272,11 +6607,60 @@ export interface components {
             description: string;
             oauth?: components["schemas"]["ConnectorTemplateOAuth"];
         };
-        ConnectorTemplate: {
+        ConnectorTemplateInlineSchema: {
+            /** @enum {string} */
+            format: "openapi" | "graphql";
+            content: string;
+        } | null;
+        ConnectorTemplateProbeEndpoint: {
+            /** @enum {string} */
+            method: "GET" | "HEAD" | "POST";
+            path: string;
+            expected_status: number[];
+            /** @default  */
+            description: string;
+        } | null;
+        ConnectorTemplateCredentialHint: {
+            field: string;
+            label: string;
+            /** @default  */
+            placeholder: string;
+            doc_url: string | null;
+            secret: boolean;
+        };
+        ConnectorTemplateBaseUrlOption: {
+            environment: string;
+            base_url: string;
+            label: string;
+        };
+        ConnectorTemplatePaginationDefaults: {
+            /** @enum {string} */
+            strategy: "offset" | "page" | "cursor" | "none";
+            offset_param?: string;
+            page_param?: string;
+            cursor_request_param?: string;
+            cursor_response_path?: string;
+            page_size: number;
+            stop_condition?: string;
+        } | null;
+        ConnectorTemplateCapabilities: {
+            webhooks: boolean;
+            /** @default [] */
+            webhook_events: string[];
+            rate_limits: components["schemas"]["ConnectorTemplateRateLimits"];
+        };
+        ConnectorTemplateRateLimits: {
+            requests_per_second: number;
+            burst_size: number;
+            recommended_backoff_ms: number;
+        } | null;
+        ConnectorTemplateRow: {
+            /** @enum {number} */
+            version: 1;
             slug: string;
             name: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp";
+            driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp" | "sftp" | "smb" | "redis";
             base_url: string;
             /** @enum {string} */
             auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2";
@@ -6287,23 +6671,36 @@ export interface components {
             ingestion_url: string | null;
             icon: string;
             description: string;
-            category?: string;
+            category: string;
             /** @default [] */
             tags: string[];
-            setup_hint?: string | null;
+            /** @default [] */
+            aliases: string[];
+            setup_instructions: string;
             /** @default [] */
             auth_options: components["schemas"]["ConnectorTemplateAuthOption"][];
-        };
-        ConnectorTemplateRow: components["schemas"]["ConnectorTemplate"] & {
+            url_pattern: string;
+            /** @default [] */
+            keywords: string[];
+            inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
+            probe_endpoint: components["schemas"]["ConnectorTemplateProbeEndpoint"];
+            /** @default [] */
+            credential_hints: components["schemas"]["ConnectorTemplateCredentialHint"][];
+            /** @default [] */
+            base_url_options: components["schemas"]["ConnectorTemplateBaseUrlOption"][];
+            pagination_defaults: components["schemas"]["ConnectorTemplatePaginationDefaults"];
+            capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
             id: string;
             /** @enum {string} */
             source: "tenant";
         };
         ConnectorTemplateCreateBody: {
+            /** @enum {number} */
+            version: 1;
             slug: string;
             name: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp";
+            driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp" | "sftp" | "smb" | "redis";
             base_url: string;
             /** @enum {string} */
             auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2";
@@ -6314,12 +6711,32 @@ export interface components {
             ingestion_url: string | null;
             icon: string;
             description: string;
-            category?: string;
+            category: string;
             /** @default [] */
             tags: string[];
-            setup_hint?: string | null;
+            /** @default [] */
+            aliases: string[];
+            setup_instructions: string;
             /** @default [] */
             auth_options: components["schemas"]["ConnectorTemplateAuthOption"][];
+            url_pattern: string;
+            /** @default [] */
+            keywords: string[];
+            inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
+            probe_endpoint: components["schemas"]["ConnectorTemplateProbeEndpoint"];
+            /** @default [] */
+            credential_hints: components["schemas"]["ConnectorTemplateCredentialHint"][];
+            /** @default [] */
+            base_url_options: components["schemas"]["ConnectorTemplateBaseUrlOption"][];
+            pagination_defaults: components["schemas"]["ConnectorTemplatePaginationDefaults"];
+            capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
+        };
+        TemplateOAuthCredentialResponse: {
+            id: string;
+        };
+        TemplateOAuthCredentialBody: {
+            client_id: string;
+            client_secret: string;
         };
         ConnectorFromTemplateResponse: {
             id: string;
@@ -6334,6 +6751,14 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+            template_slug: string | null;
+            template_name: string | null;
+            /** @enum {string|null} */
+            template_source: "builtin" | "tenant" | null;
+            template_version: number | null;
+            template_snapshot: {
+                [key: string]: unknown;
+            } | null;
             created_at: string;
             updated_at: string;
         };
@@ -6341,6 +6766,7 @@ export interface components {
             name?: string;
             /** @enum {string} */
             environment?: "dev" | "prod";
+            base_url_environment?: string;
             ingest_now?: boolean;
         };
         ConnectorListResponse: {
@@ -6359,6 +6785,14 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+            template_slug: string | null;
+            template_name: string | null;
+            /** @enum {string|null} */
+            template_source: "builtin" | "tenant" | null;
+            template_version: number | null;
+            template_snapshot: {
+                [key: string]: unknown;
+            } | null;
             created_at: string;
             updated_at: string;
         };
@@ -6383,6 +6817,10 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
+            template_slug?: string;
+            /** @enum {string} */
+            template_source?: "builtin" | "tenant";
+            template_base_url_environment?: string;
         };
         UpdateConnectorBody: {
             name?: string;
@@ -6394,6 +6832,11 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
+            template_slug?: string;
+            /** @enum {string} */
+            template_source?: "builtin" | "tenant";
+            template_base_url_environment?: string;
+            clear_template_binding?: boolean;
         };
         ConnectorProbeResult: {
             ok: boolean;
@@ -6462,6 +6905,8 @@ export interface components {
                 path: string | null;
                 snippet: string;
                 rank: number;
+                /** @enum {string} */
+                match_type: "operation" | "auth" | "schema" | "general";
             }[];
         };
         CredentialRow: {
@@ -6992,7 +7437,7 @@ export interface components {
                 /** @enum {string} */
                 classification: "safe" | "unsafe";
                 /** @enum {string} */
-                kind: "update_field_path" | "rename_param" | "change_type" | "add_header" | "other";
+                kind: "update_field_path" | "rename_param" | "change_type" | "add_header" | "rate_limited" | "other";
                 description: string;
                 patch: {
                     [key: string]: unknown;

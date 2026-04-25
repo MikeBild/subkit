@@ -14,7 +14,7 @@
 import { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import type { Db } from "../../db/client.ts";
-import { log } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/logger.ts";
 import { recordConversationToolCall } from "../../observability/instrumentation.ts";
 import { resolveAttachments } from "../attachments.ts";
 import { recordTransition } from "../confirmation.ts";
@@ -72,7 +72,24 @@ export interface TurnSignals {
    */
   toolInvocationCount: Map<string, number>;
   toolLastErrorHash: Map<string, string>;
+  /**
+   * Turn-level loop-warning counter. Incremented by the per-tool
+   * loop-breaker on every short-circuit. Once this exceeds
+   * `MAX_TURN_LOOP_WARNINGS`, the loop's `stopWhen` bails out so the
+   * model does not keep getting re-driven into the same short-circuit
+   * with nothing but `_loop_detected` artefacts to show for it.
+   */
+  totalLoopWarnings: number;
+  /**
+   * Running snapshot of the most recent assistant text surfaced by
+   * `onStepFinish`. Used by the post-run fallback that synthesises a
+   * visible message when the turn ended with no text but tool results.
+   */
+  lastAssistantText: string;
 }
+
+/** Max tolerated `loop_detected` short-circuits per turn before the outer loop stops. */
+export const MAX_TURN_LOOP_WARNINGS = 2;
 
 /**
  * Attach summary fields so `conversation.tool.succeeded/failed` logs
@@ -156,24 +173,48 @@ function wrapOne(
         const MAX_CALLS_PER_TURN = inner.category === "tenant_read" ? 3 : 5;
         const priorCount = signals.toolInvocationCount.get(inner.name) ?? 0;
         if (priorCount >= MAX_CALLS_PER_TURN) {
+          signals.totalLoopWarnings += 1;
+          const turnBudgetReached = signals.totalLoopWarnings >= MAX_TURN_LOOP_WARNINGS;
           log.conversation.tool.called({
             conversation_id: ctx.conversation_id,
             tool: inner.name,
             step: signals.step,
+          });
+          // Structured engine-log warning so the short-circuit is
+          // visible in Docker / stdout without reading the response
+          // tool_log events. Pre-fix: loop_detected only surfaced in
+          // the CLI debug log (session 4e6696e3 fired 18× invisible to
+          // the operator).
+          logger.warn({
+            module: "conversation",
+            action: "tool.loop_detected",
+            msg: turnBudgetReached
+              ? "turn loop budget exhausted — ending turn"
+              : "tool called too many times in one turn — aborting further calls",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            tool_count: priorCount,
+            total_loop_warnings: signals.totalLoopWarnings,
+            max_calls_per_turn: MAX_CALLS_PER_TURN,
+            turn_budget_reached: turnBudgetReached,
           });
           events.push({
             type: "tool_log",
             call_id: "loop-detected",
             tool: inner.name,
             level: "warn",
-            message: `tool.loop_detected: ${inner.name} called ${priorCount} times in one turn — aborting further calls`,
+            message: turnBudgetReached
+              ? `tool.loop_detected: ${inner.name} called ${priorCount} times; turn-level loop budget exhausted (${signals.totalLoopWarnings}) — ending turn`
+              : `tool.loop_detected: ${inner.name} called ${priorCount} times in one turn — aborting further calls`,
             ts: new Date().toISOString(),
           });
           return {
             ok: false,
             data: {
-              error: `this tool has already been invoked ${priorCount} times in the current turn — change approach or ask the user for guidance instead of retrying with the same shape`,
-              reason: "tool_loop_detected",
+              error: turnBudgetReached
+                ? `this tool has been invoked ${priorCount} times and the turn loop budget is exhausted — stop calling tools, summarise what you already know for the user, and end the turn`
+                : `this tool has already been invoked ${priorCount} times in the current turn — change approach or ask the user for guidance instead of retrying with the same shape`,
+              reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
               tool: inner.name,
             },
           };

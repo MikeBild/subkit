@@ -98,6 +98,11 @@ Warnings are a first-class runtime state, not a hidden side channel. A run can r
 `status: "succeeded"` while still carrying structured `warnings[]`; CLI and MCP clients are
 expected to surface that distinction so operators can diagnose partial or suspicious results.
 
+The authoring surfaces are expected to catch the obvious cases before runtime. In particular,
+the static verifier rejects the common scope-envelope mistake of writing `$scope.step.field`
+instead of `$scope.step.data.field`. Runtime warnings still matter for dynamic cases, but the
+baseline contract is to fail fast on structural scope misuse.
+
 Queued (`async: true`) execution is available **only** for `source=saved` runs. In that case the engine inserts the execution row synchronously, enqueues the job on `pg-boss`, and returns `202 Accepted` with `{ execution_id, status: "queued" }`. A worker picks the job up and runs it through the same `runExecution()` core. Scheduler fires, webhook fan-out, and any other detached trigger also land on the queue — but every inline caller gets the run on the request path.
 
 ---

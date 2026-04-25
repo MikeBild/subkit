@@ -73,7 +73,8 @@ async function createToolCtx() {
 
 describe("connector draft tools", () => {
   test("suggest_connector_templates returns optional matches", async () => {
-    const res = await suggestConnectorTemplatesTool.execute({} as never, {
+    const toolCtx = await createToolCtx();
+    const res = await suggestConnectorTemplatesTool.execute(toolCtx.base, {
       query: "github",
       limit: 3,
     });
@@ -115,10 +116,10 @@ describe("connector draft tools", () => {
     });
     expect(started.ok).toBe(true);
     const data = started.data as {
-      connector: { template_id: string | null; template_name: string | null; auth_type: string };
+      connector: { template_slug: string | null; template_name: string | null; auth_type: string };
       matched_template: { slug: string; score: number } | null;
     };
-    expect(data.connector.template_id).toBe("github");
+    expect(data.connector.template_slug).toBe("github");
     expect(data.connector.template_name).toBeTruthy();
     expect(data.connector.auth_type).toBeTruthy();
     expect(data.matched_template?.score).toBeGreaterThan(0);

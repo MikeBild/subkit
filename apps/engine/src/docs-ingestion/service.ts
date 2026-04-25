@@ -17,6 +17,7 @@ import { createHash } from "node:crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { connectorDocumentChunks, connectorDocuments, connectors } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
@@ -30,11 +31,12 @@ import {
 import { cascadeIngest } from "./cascade.ts";
 import { byteLen, fingerprintChunks } from "./chunker.ts";
 import { dedupChunks } from "./dedup.ts";
+import { rerankSearchHits, type SearchHitMatchType } from "./search-ranking.ts";
 import { type FileUploadInput, ingestFileUpload } from "./sources/file-upload.ts";
-import { ingestGraphQLIntrospection } from "./sources/graphql.ts";
+import { chunkGraphQLSchema, ingestGraphQLIntrospection } from "./sources/graphql.ts";
 import { ingestLlmsTxt } from "./sources/llms-txt.ts";
 import { ingestMarkdown } from "./sources/markdown.ts";
-import { ingestOpenAPIUrl } from "./sources/openapi.ts";
+import { chunkOpenAPI, ingestOpenAPIUrl } from "./sources/openapi.ts";
 import { ingestPostgresInformationSchema } from "./sources/postgres.ts";
 import type { DocSourceType, IngestResult, IngestSourceInput, RawChunk } from "./types.ts";
 import { NotImplementedError } from "./types.ts";
@@ -48,6 +50,34 @@ export interface IngestParams {
   actor_id?: string | null;
   /** Injectable fetch for tests. */
   fetchImpl?: typeof fetch;
+}
+
+function parseInlineOpenApiChunks(content: string): RawChunk[] {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(content) as Record<string, unknown>;
+  } catch (err) {
+    throw new Error(
+      `inline openapi parse failed (JSON only): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return chunkOpenAPI(parsed);
+}
+
+function parseInlineGraphQlChunks(content: string): RawChunk[] {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(content) as Record<string, unknown>;
+  } catch (err) {
+    throw new Error(
+      `inline graphql introspection parse failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const envelope = parsed.data as { __schema?: unknown } | undefined;
+  const schema = (envelope?.__schema ?? parsed.__schema ?? parsed) as Parameters<
+    typeof chunkGraphQLSchema
+  >[0];
+  return chunkGraphQLSchema(schema);
 }
 
 export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<IngestResult> {
@@ -76,10 +106,15 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
   try {
     switch (p.input.source_type) {
       case "openapi": {
-        if (!p.input.url) throw new Error("openapi source requires url");
-        const got = await ingestOpenAPIUrl(p.input.url, state, fetchImpl);
-        uri = got.uri;
-        rawChunks = got.chunks;
+        if (p.input.content !== undefined) {
+          uri = p.input.url ?? "inline:openapi";
+          rawChunks = parseInlineOpenApiChunks(p.input.content);
+        } else {
+          if (!p.input.url) throw new Error("openapi source requires url");
+          const got = await ingestOpenAPIUrl(p.input.url, state, fetchImpl);
+          uri = got.uri;
+          rawChunks = got.chunks;
+        }
         break;
       }
       case "markdown": {
@@ -102,10 +137,15 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
         throw new NotImplementedError("html ingestion requires playwright in a later phase");
       }
       case "graphql": {
-        if (!p.input.url) throw new Error("graphql source requires url");
-        const got = await ingestGraphQLIntrospection(p.input.url, state, fetchImpl);
-        uri = got.uri;
-        rawChunks = got.chunks;
+        if (p.input.content !== undefined) {
+          uri = p.input.url ?? "inline:graphql";
+          rawChunks = parseInlineGraphQlChunks(p.input.content);
+        } else {
+          if (!p.input.url) throw new Error("graphql source requires url");
+          const got = await ingestGraphQLIntrospection(p.input.url, state, fetchImpl);
+          uri = got.uri;
+          rawChunks = got.chunks;
+        }
         break;
       }
       case "postgres": {
@@ -306,6 +346,57 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
   return result;
 }
 
+export async function ingestTemplateDocsForConnector(
+  p: {
+    tenant_id: string;
+    connector_id: string;
+    template: ConnectorTemplate;
+    actor_id?: string | null;
+    fetchImpl?: typeof fetch;
+  },
+  exec?: Executor,
+): Promise<IngestResult | null> {
+  const template = p.template;
+  if (template.inline_schema) {
+    const input: IngestParams = {
+      tenant_id: p.tenant_id,
+      connector_id: p.connector_id,
+      actor_id: p.actor_id ?? null,
+      input: {
+        source_type: template.inline_schema.format,
+        content: template.inline_schema.content,
+        url: `template:${template.slug}:inline-${template.inline_schema.format}`,
+      },
+    };
+    if (p.fetchImpl) input.fetchImpl = p.fetchImpl;
+    return await ingestDocs(input, exec);
+  }
+  if (!template.ingestion_url) return null;
+  if (
+    template.ingestion_source !== "openapi" &&
+    template.ingestion_source !== "markdown" &&
+    template.ingestion_source !== "llms_txt" &&
+    template.ingestion_source !== "graphql" &&
+    template.ingestion_source !== "postgres" &&
+    template.ingestion_source !== "html"
+  ) {
+    throw new NotImplementedError(
+      `template ingestion source ${template.ingestion_source} is unsupported`,
+    );
+  }
+  const input: IngestParams = {
+    tenant_id: p.tenant_id,
+    connector_id: p.connector_id,
+    actor_id: p.actor_id ?? null,
+    input: {
+      source_type: template.ingestion_source,
+      url: template.ingestion_url,
+    },
+  };
+  if (p.fetchImpl) input.fetchImpl = p.fetchImpl;
+  return await ingestDocs(input, exec);
+}
+
 export interface ListDocsParams {
   tenant_id: string;
   connector_id: string;
@@ -391,11 +482,13 @@ export interface SearchHit {
   path: string | null;
   snippet: string;
   rank: number;
+  match_type: SearchHitMatchType;
 }
 
 export async function searchDocs(p: SearchParams, exec?: Executor): Promise<SearchHit[]> {
   const db = exec ?? getDb();
   const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
+  const candidateLimit = Math.min(Math.max(limit * 5, limit), 250);
   // Drizzle's `sql` template binds params safely. plainto_tsquery itself
   // normalises the query string so we don't need to escape the content.
   const out = await db.execute(sql`
@@ -404,6 +497,7 @@ export async function searchDocs(p: SearchParams, exec?: Executor): Promise<Sear
       document_id::text AS document_id,
       title,
       path,
+      content,
       ts_headline(
         'english',
         content,
@@ -416,25 +510,31 @@ export async function searchDocs(p: SearchParams, exec?: Executor): Promise<Sear
       AND connector_id = ${p.connector_id}
       AND tsv @@ plainto_tsquery('english', ${p.query})
     ORDER BY rank DESC
-    LIMIT ${limit}
+    LIMIT ${candidateLimit}
   `);
   type Row = {
     id: string;
     document_id: string;
     title: string | null;
     path: string | null;
+    content: string;
     snippet: string;
     rank: number | string;
   };
   const rows = (out as unknown as { rows: Row[] }).rows ?? (out as unknown as Row[]);
-  return (rows as Row[]).map((r) => ({
-    id: r.id,
-    document_id: r.document_id,
-    title: r.title,
-    path: r.path,
-    snippet: r.snippet,
-    rank: Number(r.rank),
-  }));
+  return rerankSearchHits(
+    p.query,
+    (rows as Row[]).map((r) => ({
+      id: r.id,
+      document_id: r.document_id,
+      title: r.title,
+      path: r.path,
+      content: r.content,
+      snippet: r.snippet,
+      rank: Number(r.rank),
+    })),
+    limit,
+  );
 }
 
 // Touch byteLen so the linter doesn't flag an unused import — the

@@ -13,7 +13,8 @@ const inputSchema = z
 
 export const fetchConnectorDocsTool: ConversationTool = {
   name: "fetch_connector_docs",
-  description: "Search the scoped connector docs and return the top chunks.",
+  description:
+    "Search the ingested connector docs (OpenAPI specs, API references, vendor notes) for the connector currently in scope. Call this before drafting a `request` step or answering vendor-API questions — endpoints, required headers, auth shapes, pagination tokens should come from docs, not guesses. Use a short focused query matching the endpoint or concept you need. Requires a connector in scope; returns `no connector in scope` otherwise.",
   inputSchema,
   category: "tenant_read" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {

@@ -72,9 +72,10 @@ Besides the pre-assembled block, the conversation loop exposes four context tool
 LLM can call mid-turn. Use them in this precedence order:
 
 1. `search_knowledge` — tenant Knowledge Sources (semantic search).
-2. `search_docs` — connector-scoped semantic search over ingested documentation chunks
-   (`docs-ingestion/`). Use when `search_knowledge` is empty and the question is about
-   a specific connector's endpoints or fields.
+2. `search_docs` — connector-scoped ranked search over ingested documentation chunks
+   (`docs-ingestion/`). Hits include `match_type` (`operation | auth | schema | general`) so
+   the caller can tell why a chunk ranked highly. Use when `search_knowledge` is empty and the
+   question is about a specific connector's endpoints, auth, or fields.
 3. `fetch_connector_docs` — full doc overview for a connector.
 4. `web_search` — Tavily escalation. Advisory policy in
    `apps/engine/src/conversations/policies/web-search-escalation.ts`; gated by the

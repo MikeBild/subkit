@@ -14,6 +14,15 @@ export interface DetectedIntent {
   /** The tool the user most likely wants the model to call. Empty when
    *  no strong intent was detected. */
   forceTool?: string;
+  /**
+   * When true, the caller should set `toolChoice: "none"` for the
+   * first LLM call of this turn. Matches enumeration phrasing where
+   * the TENANT SNAPSHOT block already has the answer; forcing
+   * no-tools is the only reliable way to stop Sonnet-class models
+   * from reflexively calling `list_workflows` even when the data is
+   * already in the prompt.
+   */
+  forceNoTools?: boolean;
   /** Human-readable reason — useful for logs / telemetry. */
   reason: string;
 }
@@ -24,9 +33,20 @@ const RUN_WORKFLOW_PATTERNS = [
   /\bworkflow\s+.*\b(running|run)\b/i,
 ];
 
-const LIST_WORKFLOWS_PATTERNS = [
-  /\b(welche|which|list|show|zeige?|gib)\b.*\bworkflows?\b/i,
-  /\bworkflows?\b.*\b(habe ich|do i have|listen?|available|vorhanden)/i,
+/**
+ * Enumeration phrases — the TENANT SNAPSHOT already lists workflows,
+ * connectors, and executions. Pre-fix the detector forced
+ * `list_workflows` here, which meant the model had no chance to use
+ * the snapshot and would always spin list_* calls. Now we only signal
+ * "answer from prompt" and let the caller pin toolChoice accordingly.
+ */
+// Enumeration patterns — only for resources covered by the TENANT
+// SNAPSHOT (workflows + connectors + integrations). Executions are
+// intentionally excluded because they are not in the snapshot and the
+// model must call list_executions to answer accurately.
+const ENUMERATION_PATTERNS = [
+  /\b(welche|which|list|show|zeige?|gib|wieviele|how many|anzahl)\b.*\b(workflows?|connectors?|integrations?)\b/i,
+  /\b(workflows?|connectors?|integrations?)\b.*\b(habe ich|do i have|listen?|available|vorhanden|insgesamt)/i,
 ];
 
 const COMMIT_DRAFT_PATTERNS = [
@@ -45,9 +65,9 @@ export function detectUserIntent(latestUserText: string | null | undefined): Det
       return { forceTool: "run_workflow", reason: "explicit_run_intent" };
     }
   }
-  for (const pattern of LIST_WORKFLOWS_PATTERNS) {
+  for (const pattern of ENUMERATION_PATTERNS) {
     if (pattern.test(text)) {
-      return { forceTool: "list_workflows", reason: "explicit_list_intent" };
+      return { forceNoTools: true, reason: "enumeration_answer_from_snapshot" };
     }
   }
   for (const pattern of COMMIT_DRAFT_PATTERNS) {

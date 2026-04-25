@@ -40,6 +40,7 @@ import type {
   UserTurn,
 } from "../types.ts";
 import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
+import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -192,6 +193,7 @@ TURN-ONE DISCIPLINE (hard constraint — overrides every skill):
 - ONE STATE-CHANGING TOOL PER TURN. Never chain two \`tenant_write\` calls in the same turn. If a follow-up write is needed, emit the first, summarize the result, and wait for the user before the next.
 - WHEN A SKILL BODY CONFLICTS WITH THIS BLOCK, THIS BLOCK WINS. If a loaded skill says "call tool X now", treat that as an internal recipe step, not a license to skip the answer-first rule.
 - NO FABRICATION. Never invent an API key, token, tenant id, workflow id, endpoint, placeholder hostname, or any account-specific value. Ground from RUNTIME CONTEXT, tool output, or connector docs — or call \`cannot_help\` and stop.
+- SNAPSHOT BEFORE LIST. When the user asks "show / list / zeige / welche / how many / wieviele" workflows, connectors, skills, or executions, FIRST answer from the TENANT SNAPSHOT block (provided on every converse turn). Only call list_workflows / list_connectors / list_executions when the snapshot is missing the specific filter (e.g. status=draft), exceeds 40 rows (paginate), or the user explicitly asks for a fresh re-query. Calling list_* to "double-check" the snapshot is a banned loop. A simple enumeration answer is one short sentence plus a bullet list, no tool call.
 
 IDEAL USER FLOW:
 1. Start conversation-first. Acknowledge the goal, explain what you are trying to establish next, and ask only the single highest-signal follow-up question when information is missing.
@@ -203,7 +205,7 @@ IDEAL USER FLOW:
 7. Load domain skills on demand. If a task requires specialised knowledge (self-healing classifications, OAuth flows, connector specifics), call \`load_skill(slug)\` first. A skill-gated tool will refuse until its skill is loaded.
 
 USER FLOW RULES:
-- NEVER invent an id. If you need one, list_* first, then pick from the returned data.
+- NEVER invent an id. Use the ids in the TENANT SNAPSHOT first. Only call list_* when the snapshot does not cover the specific filter / pagination / freshness you need — and never to re-verify an id the snapshot already shows.
 - NEVER fabricate an endpoint, parameter, header, or URL — always ground from a skill or connector doc.
 - WHEN YOU CANNOT GROUND a request — the tool you would need does not exist, the recipe is not verified, the tenant has no resource of the kind asked for — call \`cannot_help(reason, missing_capability?, suggest_alternative?)\` and stop. Do NOT emit prose that pretends the action happened ("I've prompted a form…", "I'll create…") and do NOT paste a placeholder template ("your-host.com", "[YOUR_KEY]"). cannot_help ends the turn cleanly and feeds the operator's capability-gap backlog.
 - NEVER re-run a destructive tool_write without a new confirmation.
@@ -212,7 +214,7 @@ USER FLOW RULES:
 - There is no generic Subkit web UI/dashboard for fallback guidance in this product surface. Only mention a surface if it is explicitly available through tools or current context.
 - ALWAYS surface the \`audit_log\` row id to the user after a tenant_write.
 - ALWAYS report partial failures explicitly — don't summarise "done" when some steps errored.
-- When the user asks what they can do or what exists, ground the answer in real tenant state first: prefer \`get_engine_status\`, \`list_workflows\`, \`list_connectors\`, \`list_executions\`, or \`whoami\` over generic onboarding copy.
+- When the user asks what they can do or what exists, answer from the TENANT SNAPSHOT block below FIRST (workflow ids, connector ids, names, lifecycle). The snapshot is authoritative for existence questions; use \`list_workflows\` / \`list_connectors\` only for pagination (more than the snapshot shows), filtered views the snapshot does not expose, or very recent state the snapshot might miss. Never call a list_* tool just to re-verify what is already in the snapshot — that is a loop.
 - \`delete_workflow\` is available in the conversation tool palette. Use it for workflow cleanup; do not claim deletion is unsupported when the tool exists.
 - Workflow archiving is not exposed as a conversation tool today. If asked to archive, say that plainly and only offer delete_workflow when the user actually wants cleanup.
 - Subkit's HTTP API facts: the live OpenAPI contract is at \`/openapi.json\`, the interactive docs are at \`/docs\`, and exact routes must be grounded in the live contract or the actual route definitions. Do not invent endpoints.
@@ -555,26 +557,36 @@ export async function assembleEnhancedPrompt(
 
   const query = buildQuery(p.user_turns);
 
-  // Knowledge chunks: 15% of token budget for enterprise domain knowledge.
-  const knowledgeBudget = Math.floor(cap * 0.15);
-  const rawKnowledgeChunks = await loadKnowledgeChunks(p.tenant_id, p.workflow_id, query, db);
+  // Knowledge + connector-docs embedding is now on-demand for the
+  // `converse` flow. The model fetches them via the `search_knowledge`
+  // and `fetch_connector_docs` tools only when the turn actually needs
+  // them. The one-shot flows (generate / repair / extract / discover /
+  // summarize) still pre-embed because they do not have a tool loop to
+  // pull context at runtime. Without this split, every trivial read in
+  // a conversation paid the full 15 % knowledge + 30 % docs tax
+  // regardless of relevance (observed in session 4e6696e3: 1.1 M tokens
+  // for a four-row list_workflows).
+  const preEmbedCorpus = p.flow !== "converse";
   const knowledgeChunks: IncludedKnowledgeChunk[] = [];
-  let knowledgeBytes = 0;
-  for (const kc of rawKnowledgeChunks) {
-    if (knowledgeBytes + kc.tokens > knowledgeBudget) break;
-    knowledgeChunks.push(kc);
-    knowledgeBytes += kc.tokens;
-  }
-
-  // Connector docs: 30% of token budget.
-  const docsBudget = Math.floor(cap * 0.3);
-  const rawChunks = await loadChunks(p.tenant_id, p.connector_id, query, db);
   const chunks: IncludedChunk[] = [];
-  let docsBytes = 0;
-  for (const ch of rawChunks) {
-    if (docsBytes + ch.tokens > docsBudget) break;
-    chunks.push(ch);
-    docsBytes += ch.tokens;
+  if (preEmbedCorpus) {
+    const knowledgeBudget = Math.floor(cap * 0.15);
+    const rawKnowledgeChunks = await loadKnowledgeChunks(p.tenant_id, p.workflow_id, query, db);
+    let knowledgeBytes = 0;
+    for (const kc of rawKnowledgeChunks) {
+      if (knowledgeBytes + kc.tokens > knowledgeBudget) break;
+      knowledgeChunks.push(kc);
+      knowledgeBytes += kc.tokens;
+    }
+
+    const docsBudget = Math.floor(cap * 0.3);
+    const rawChunks = await loadChunks(p.tenant_id, p.connector_id, query, db);
+    let docsBytes = 0;
+    for (const ch of rawChunks) {
+      if (docsBytes + ch.tokens > docsBudget) break;
+      chunks.push(ch);
+      docsBytes += ch.tokens;
+    }
   }
 
   let failures = p.prior_failures ?? [];
@@ -591,8 +603,26 @@ export async function assembleEnhancedPrompt(
       })
     : null;
 
+  // Tenant snapshot block — concise list of workflows + connectors so
+  // the model can answer "what do I have?" without round-tripping via
+  // list_* tools. Only for the converse flow; one-shot flows do not
+  // need it.
+  const tenantSummaryBlock =
+    p.flow === "converse"
+      ? renderTenantSummaryBlock(await loadTenantSummary(p.tenant_id, db))
+      : null;
+
   const render = () => {
-    const sections: string[] = [baseSystem];
+    const sections: string[] = [];
+    // Tenant snapshot appears at BOTH ends of the stable head:
+    //   1) immediately before the base prompt so the model reads it
+    //      first on the initial pass, and
+    //   2) again at the tail (just before the volatile segment) so it
+    //      is the most recent context before the user turn.
+    // The duplication costs a few hundred tokens but reliably beats
+    // the 85k-of-skills wall where a mid-prompt snapshot gets ignored.
+    if (tenantSummaryBlock) sections.push(tenantSummaryBlock);
+    sections.push(baseSystem);
     if (runtimeBlock) sections.push(runtimeBlock);
     for (const s of globalSkills) sections.push(formatSkill(s, p.runtime_context));
     for (const s of connectorSkills) sections.push(formatSkill(s, p.runtime_context));
@@ -602,9 +632,10 @@ export async function assembleEnhancedPrompt(
     if (userMemory) sections.push(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
     for (const f of failures) sections.push(formatFailure(f));
-    // Authoring context lives at the tail so it stays in the volatile
-    // cache segment — it changes every turn and must not invalidate the
-    // stable prefix above.
+    if (tenantSummaryBlock) sections.push(tenantSummaryBlock);
+    // Authoring context lives at the very tail so it stays in the
+    // volatile cache segment — it changes every turn and must not
+    // invalidate the stable prefix above.
     if (authoringContext) sections.push(authoringContext);
     return sections.join("\n\n");
   };

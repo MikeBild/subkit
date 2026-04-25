@@ -17,8 +17,8 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import * as connectorSvc from "../../connectors/service.ts";
+import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { startAuthorizationCode } from "../../credentials/oauth2/client.ts";
-import type { OAuth2ClientConfig } from "../../credentials/oauth2/types.ts";
 import type { Db } from "../../db/client.ts";
 import { connectorOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -95,8 +95,8 @@ export async function handleAuthenticate(
     return { ok: false, data: { error: "connector not found", reason: "connector_missing" } };
   }
 
-  const cfg = (connector.config ?? {}) as Record<string, unknown>;
-  if (!cfg.issuer_url || !cfg.client_id) {
+  const oauthCfg = await resolveConnectorOAuthConfig(db, principal.tenant_id, connector);
+  if (!oauthCfg) {
     return {
       ok: false,
       data: {
@@ -105,15 +105,6 @@ export async function handleAuthenticate(
       },
     };
   }
-
-  const oauthCfg: OAuth2ClientConfig = {
-    issuer_url: String(cfg.issuer_url),
-    client_id: String(cfg.client_id),
-  };
-  if (cfg.client_secret) oauthCfg.client_secret = String(cfg.client_secret);
-  if (cfg.scope) oauthCfg.scope = String(cfg.scope);
-  if (cfg.redirect_uri) oauthCfg.redirect_uri = String(cfg.redirect_uri);
-  if (cfg.audience) oauthCfg.audience = String(cfg.audience);
 
   if (!oauthCfg.redirect_uri) {
     return {

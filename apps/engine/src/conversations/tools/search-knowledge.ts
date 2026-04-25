@@ -14,7 +14,7 @@ const inputSchema = z
 export const searchKnowledgeTool: ConversationTool = {
   name: "search_knowledge",
   description:
-    "Search the tenant's Knowledge Sources for relevant domain knowledge. Returns matching chunks ranked by relevance.",
+    "Search the tenant's Knowledge Sources for domain-specific notes, runbooks, compliance rules, and reference material. Call this when the user's request needs context beyond the TENANT SNAPSHOT and the loaded skills — e.g. vendor-specific recipes, internal policy, error-code lookups. Results are chunks ranked by FTS relevance. Prefer a short focused query (3–6 words). If the first result does not answer the question, refine the query once and stop — do not spin.",
   inputSchema,
   category: "tenant_read" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {

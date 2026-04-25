@@ -19,7 +19,9 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { probeConnector } from "../../connectors/drivers/index.ts";
 import * as connectorSvc from "../../connectors/service.ts";
+import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import {
+  ConnectorTemplateSourceEnum,
   type ConnectorView,
   CreateConnectorSchema,
   UpdateConnectorSchema,
@@ -32,6 +34,7 @@ import {
 import type { OAuth2ClientConfig } from "../../credentials/oauth2/types.ts";
 import * as credsvc from "../../credentials/service.ts";
 import { encryptSecret } from "../../crypto/aes-gcm.ts";
+import type { Db } from "../../db/client.ts";
 import { connectorOauthStates, credentials, endUserCredentials } from "../../db/schema/index.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -50,6 +53,11 @@ const ConnectorSchema = z
     base_url: z.string().nullable(),
     dsn: z.string().nullable(),
     config: z.record(z.string(), z.unknown()),
+    template_slug: z.string().nullable(),
+    template_name: z.string().nullable(),
+    template_source: ConnectorTemplateSourceEnum.nullable(),
+    template_version: z.number().int().nullable(),
+    template_snapshot: z.record(z.string(), z.unknown()).nullable(),
     created_at: z.string(),
     updated_at: z.string(),
   })
@@ -113,6 +121,11 @@ function serialize(c: ConnectorView) {
     base_url: c.base_url,
     dsn: c.dsn,
     config: c.config,
+    template_slug: c.template_slug,
+    template_name: c.template_name,
+    template_source: c.template_source,
+    template_version: c.template_version,
+    template_snapshot: c.template_snapshot,
     created_at: c.created_at.toISOString(),
     updated_at: c.updated_at.toISOString(),
   };
@@ -272,20 +285,16 @@ const endUserCredentialsRoute = createRoute({
   },
 });
 
-function connectorOauthCfg(c: ConnectorView): OAuth2ClientConfig {
-  const cfg = (c.config ?? {}) as Record<string, unknown>;
-  if (!cfg.issuer_url || !cfg.client_id) {
+async function connectorOauthCfg(
+  db: Db,
+  tenant_id: string,
+  c: ConnectorView,
+): Promise<OAuth2ClientConfig> {
+  const cfg = await resolveConnectorOAuthConfig(db, tenant_id, c);
+  if (!cfg) {
     throw new BadRequestError("connector is missing oauth2 config (issuer_url + client_id)");
   }
-  const out: OAuth2ClientConfig = {
-    issuer_url: String(cfg.issuer_url),
-    client_id: String(cfg.client_id),
-  };
-  if (cfg.client_secret) out.client_secret = String(cfg.client_secret);
-  if (cfg.scope) out.scope = String(cfg.scope);
-  if (cfg.redirect_uri) out.redirect_uri = String(cfg.redirect_uri);
-  if (cfg.audience) out.audience = String(cfg.audience);
-  return out;
+  return cfg;
 }
 
 export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -402,7 +411,7 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const connector = await connectorSvc.getConnector(principal.tenant_id, id, db);
     if (!connector) throw new NotFoundError("connector");
-    const cfg = connectorOauthCfg(connector);
+    const cfg = await connectorOauthCfg(db, principal.tenant_id, connector);
     const cfgCopy: OAuth2ClientConfig = { ...cfg };
     if (!cfgCopy.redirect_uri) {
       throw new BadRequestError("connector config missing redirect_uri");
@@ -439,7 +448,7 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     const stateRow = stateRows[0];
     if (!stateRow) throw new BadRequestError("oauth state not found or expired");
-    const cfg = connectorOauthCfg(connector);
+    const cfg = await connectorOauthCfg(db, principal.tenant_id, connector);
     const current = new URL(stateRow.redirect_uri);
     current.searchParams.set("code", q.code);
     current.searchParams.set("state", q.state);

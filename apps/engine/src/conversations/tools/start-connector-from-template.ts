@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { enrichConnectorFromTemplate } from "../../connectors/template-enrichment.ts";
-import { getBuiltinTemplate } from "../../connectors/templates.ts";
+import { resolveConnectorTemplate } from "../../connectors/template-resolver.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import {
@@ -23,13 +23,17 @@ const inputSchema = z
 export const startConnectorFromTemplateTool: ConversationTool = {
   name: "start_connector_from_template",
   description:
-    "Start a connector draft from a built-in template. Use this only when the user wants the template; templates are optional accelerators.",
+    "Start a connector draft from a connector template. Use this only when the user wants the template; templates are optional accelerators.",
   inputSchema,
   category: "draft_write",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    const template = getBuiltinTemplate(args.template_slug);
-    if (!template) {
+    const resolved = await resolveConnectorTemplate({
+      db: ctx.db,
+      tenant_id: ctx.tenant_id,
+      slug: args.template_slug,
+    });
+    if (!resolved) {
       return {
         ok: false,
         data: buildGateError(ctx.getDraft(), {
@@ -40,6 +44,7 @@ export const startConnectorFromTemplateTool: ConversationTool = {
         }),
       };
     }
+    const template = resolved.template;
     const enriched = enrichConnectorFromTemplate(
       { name: args.name, environment: args.environment },
       template,
@@ -55,13 +60,14 @@ export const startConnectorFromTemplateTool: ConversationTool = {
       auth_type: enriched.auth_type,
       config: enriched.config ?? {},
       description: template.description,
-      template_id: template.slug,
+      template_slug: template.slug,
       template_name: template.name,
+      template_source: resolved.source,
       docs: template.ingestion_url ? [template.ingestion_url] : [],
       latest_probe: null,
       saved_connector_id: null,
     } as const;
-    const validation = validateConnectorDraft(connector);
+    const validation = validateConnectorDraft(connector, [template]);
     const nextDraft = withConnectorDraft(
       ctx.getDraft(),
       { ...connector, validation },
@@ -79,7 +85,8 @@ export const startConnectorFromTemplateTool: ConversationTool = {
             driver: connector.driver,
             environment: connector.environment,
             auth_type: connector.auth_type,
-            template_id: connector.template_id,
+            template_slug: connector.template_slug,
+            template_source: connector.template_source,
             allowed_auth_types: allowedTemplateAuthTypes(template),
             required_fields: inferTemplateRequiredFields(template),
             validation,

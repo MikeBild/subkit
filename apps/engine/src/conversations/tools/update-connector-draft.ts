@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
@@ -15,6 +16,9 @@ const inputSchema = z
     base_url: z.string().optional(),
     dsn: z.string().optional(),
     auth_type: z.enum(["none", "header", "query", "bearer", "basic", "oauth2"]).optional(),
+    template_slug: z.string().min(1).nullable().optional(),
+    template_name: z.string().min(1).nullable().optional(),
+    template_source: z.enum(["builtin", "tenant"]).nullable().optional(),
     config: z.record(z.string(), z.unknown()).optional(),
     docs: z.array(z.string()).optional(),
   })
@@ -40,7 +44,11 @@ export const updateConnectorDraftTool: ConversationTool = {
       latest_probe: current.latest_probe ?? null,
       saved_connector_id: current.saved_connector_id ?? null,
     };
-    const validation = validateConnectorDraft(next);
+    const templates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
+    const validation = validateConnectorDraft(
+      next,
+      templates.map((entry) => entry.template),
+    );
     const nextDraft = withConnectorDraft(
       ctx.getDraft(),
       { ...next, validation },

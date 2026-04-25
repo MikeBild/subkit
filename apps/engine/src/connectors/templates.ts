@@ -167,6 +167,9 @@ export const ConnectorTemplateSchema = z
       "mqtt",
       "imap",
       "ftp",
+      "sftp",
+      "smb",
+      "redis",
     ]),
     base_url: z.string(),
     auth_type: TemplateAuthTypeEnum,
@@ -178,6 +181,7 @@ export const ConnectorTemplateSchema = z
     description: z.string(),
     category: z.string().min(1),
     tags: z.array(z.string()).default([]),
+    aliases: z.array(z.string()).default([]),
     setup_instructions: z.string().min(1),
     auth_options: z.array(TemplateAuthOptionSchema).default([]),
     url_pattern: z.string().min(1),
@@ -231,6 +235,14 @@ export const ConnectorTemplateSchema = z
         code: z.ZodIssueCode.custom,
         path: ["base_url_options"],
         message: `template "${t.slug}" has duplicate base_url_options.environment entries`,
+      });
+    }
+    const aliases = t.aliases.map((alias) => alias.toLowerCase());
+    if (new Set(aliases).size !== aliases.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["aliases"],
+        message: `template "${t.slug}" has duplicate aliases`,
       });
     }
   })

@@ -23,31 +23,19 @@ import { eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import type { Db } from "../../db/client.ts";
 import { connectors, credentials } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { rotateOAuth2Tokens } from "../service.ts";
 import type { DecryptedCredential } from "../types.ts";
 import { runRefreshTokenGrant } from "./client.ts";
-import type { OAuth2ClientConfig } from "./types.ts";
 
 export const REFRESH_LEAD_MS = 60_000;
 
 interface RefreshOAuthJob {
   tenant_id: string;
   credential_id: string;
-}
-
-function clientCfgFromConnector(cfg: Record<string, unknown>): OAuth2ClientConfig | null {
-  if (!cfg.issuer_url || !cfg.client_id) return null;
-  return {
-    issuer_url: String(cfg.issuer_url),
-    client_id: String(cfg.client_id),
-    client_secret: cfg.client_secret ? String(cfg.client_secret) : undefined,
-    scope: cfg.scope ? String(cfg.scope) : undefined,
-    redirect_uri: cfg.redirect_uri ? String(cfg.redirect_uri) : undefined,
-    audience: cfg.audience ? String(cfg.audience) : undefined,
-  };
 }
 
 /**
@@ -75,7 +63,11 @@ export async function refreshIfStale(
     .limit(1);
   const connector = connRows[0];
   if (!connector) return decrypted;
-  const cfg = clientCfgFromConnector((connector.config as Record<string, unknown>) ?? {});
+  const cfg = await resolveConnectorOAuthConfig(db, tenant_id, {
+    config: (connector.config as Record<string, unknown>) ?? {},
+    template_slug: connector.template_slug ?? null,
+    template_snapshot: (connector.template_snapshot as Record<string, unknown> | null) ?? null,
+  });
   if (!cfg) {
     logger.warn({
       module: "oauth2",

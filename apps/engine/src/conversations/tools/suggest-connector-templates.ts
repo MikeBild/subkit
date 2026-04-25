@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import {
   allowedTemplateAuthTypes,
   inferTemplateRequiredFields,
@@ -19,13 +20,21 @@ export const suggestConnectorTemplatesTool: ConversationTool = {
     "Suggest optional connector templates that match the user's system or vendor. Use this when a template might accelerate setup, but do not force the user to pick one.",
   inputSchema,
   category: "tenant_read",
-  async execute(_ctx, rawArgs): Promise<ToolResult> {
+  async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    const templates = suggestConnectorTemplates({ query: args.query, limit: args.limit }).map(
-      ({ template, score }) => ({
+    const resolvedTemplates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
+    const templates = suggestConnectorTemplates({
+      query: args.query,
+      limit: args.limit,
+      templates: resolvedTemplates.map((entry) => entry.template),
+    }).map(({ template, score }) => {
+      const resolved = resolvedTemplates.find((entry) => entry.template.slug === template.slug)!;
+      return {
         slug: template.slug,
         name: template.name,
         driver: template.driver,
+        source: resolved.source,
+        version: template.version,
         auth_type: template.auth_type,
         allowed_auth_types: allowedTemplateAuthTypes(template),
         required_fields: inferTemplateRequiredFields(template),
@@ -36,8 +45,8 @@ export const suggestConnectorTemplatesTool: ConversationTool = {
         capabilities: template.capabilities,
         default_skill: template.default_skill,
         score,
-      }),
-    );
+      };
+    });
     return {
       ok: true,
       data: {

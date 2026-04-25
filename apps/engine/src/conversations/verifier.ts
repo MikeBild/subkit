@@ -77,6 +77,15 @@ function tryJsonata(expression: string, path: string, report: VerifierReport): v
 
 const SCOPE_RE = /\$\{scope\.([A-Za-z0-9_-]+)\./g;
 const JSONATA_SCOPE_RE = /\$scope\.([A-Za-z0-9_-]+)\b/g;
+const SCOPE_SEGMENT_RE = /\$\{scope\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)/g;
+const JSONATA_SCOPE_SEGMENT_RE = /\$scope\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)/g;
+const ALLOWED_SCOPE_ENVELOPE_FIELDS = new Set([
+  "data",
+  "status_code",
+  "headers",
+  "error",
+  "duration_ms",
+]);
 
 function scanScopeRefs(
   value: unknown,
@@ -107,6 +116,34 @@ function scanScopeRefs(
           path,
         });
       }
+    }
+
+    const segmentRefs: Array<{ ref: string; firstField: string }> = [];
+    let seg = SCOPE_SEGMENT_RE.exec(value);
+    while (seg !== null) {
+      segmentRefs.push({ ref: seg[1]!, firstField: seg[2]! });
+      seg = SCOPE_SEGMENT_RE.exec(value);
+    }
+    SCOPE_SEGMENT_RE.lastIndex = 0;
+    seg = JSONATA_SCOPE_SEGMENT_RE.exec(value);
+    while (seg !== null) {
+      segmentRefs.push({ ref: seg[1]!, firstField: seg[2]! });
+      seg = JSONATA_SCOPE_SEGMENT_RE.exec(value);
+    }
+    JSONATA_SCOPE_SEGMENT_RE.lastIndex = 0;
+    for (const { ref, firstField } of segmentRefs) {
+      if (!seenStepIds.has(ref)) continue;
+      if (ALLOWED_SCOPE_ENVELOPE_FIELDS.has(firstField)) continue;
+      addFinding(report, {
+        severity: "error",
+        code: "scope_envelope_field_missing",
+        message: [
+          `$scope.${ref}.${firstField} reads a field directly from the step envelope;`,
+          `use $scope.${ref}.data.${firstField} unless you meant one of`,
+          Array.from(ALLOWED_SCOPE_ENVELOPE_FIELDS).join(", "),
+        ].join(" "),
+        path,
+      });
     }
     return;
   }

@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { matchTemplatesByUrl } from "../../connectors/template-url-match.ts";
 import {
   allowedTemplateAuthTypes,
@@ -22,13 +23,21 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
   example_input: { url: "https://api.stripe.com/v1/charges", limit: 3 },
   inputSchema,
   category: "tenant_read",
-  async execute(_ctx, rawArgs): Promise<ToolResult> {
+  async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    const matches = matchTemplatesByUrl(args.url, args.limit).map(
-      ({ template, score, matched_segment }) => ({
+    const resolvedTemplates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
+    const matches = matchTemplatesByUrl(
+      args.url,
+      args.limit,
+      resolvedTemplates.map((entry) => entry.template),
+    ).map(({ template, score, matched_segment }) => {
+      const resolved = resolvedTemplates.find((entry) => entry.template.slug === template.slug)!;
+      return {
         slug: template.slug,
         name: template.name,
         driver: template.driver,
+        source: resolved.source,
+        version: template.version,
         auth_type: template.auth_type,
         allowed_auth_types: allowedTemplateAuthTypes(template),
         required_fields: inferTemplateRequiredFields(template),
@@ -40,8 +49,8 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
         default_skill: template.default_skill,
         score,
         matched_segment,
-      }),
-    );
+      };
+    });
     return {
       ok: true,
       data: {

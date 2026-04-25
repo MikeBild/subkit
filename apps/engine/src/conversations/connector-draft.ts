@@ -1,3 +1,4 @@
+import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { getBuiltinTemplate } from "../connectors/templates.ts";
 import type { CreateConnectorInput } from "../connectors/types.ts";
 import {
@@ -23,6 +24,7 @@ function pushError(
 
 export function validateConnectorDraft(
   connector: ConnectorDraftDocument | null,
+  templates?: ConnectorTemplate[],
 ): ConnectorDraftValidation {
   const missing_fields: string[] = [];
   const errors: Array<{ path: string; message: string }> = [];
@@ -67,10 +69,12 @@ export function validateConnectorDraft(
   if (connector.slug && !/^[a-z0-9][a-z0-9-]*$/u.test(connector.slug)) {
     pushError(errors, "slug", "slug must match /^[a-z0-9][a-z0-9-]*$/");
   }
-  if (connector.template_id) {
-    const template = getBuiltinTemplate(connector.template_id);
+  if (connector.template_slug) {
+    const template =
+      templates?.find((candidate) => candidate.slug === connector.template_slug) ??
+      getBuiltinTemplate(connector.template_slug);
     if (!template) {
-      pushError(errors, "template_id", "template_id must reference a known built-in template");
+      pushError(errors, "template_slug", "template_slug must reference a known connector template");
     } else if (connector.auth_type) {
       const allowed = allowedTemplateAuthTypes(template);
       if (!allowed.includes(connector.auth_type)) {
@@ -99,5 +103,7 @@ export function toCreateConnectorInput(connector: ConnectorDraftDocument): Creat
     ...(connector.dsn ? { dsn: connector.dsn } : {}),
     auth_type: connector.auth_type ?? "none",
     ...(connector.config ? { config: connector.config } : {}),
+    ...(connector.template_slug ? { template_slug: connector.template_slug } : {}),
+    ...(connector.template_source ? { template_source: connector.template_source } : {}),
   };
 }

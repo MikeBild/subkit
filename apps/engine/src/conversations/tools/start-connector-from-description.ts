@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import {
@@ -45,8 +46,13 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
     const descriptionForMatching = [args.name, args.description]
       .filter((value): value is string => typeof value === "string" && value.length > 0)
       .join(" ");
-    const bestTemplate = pickBestConnectorTemplate(descriptionForMatching, inferredDriver);
-    const template =
+    const resolvedTemplates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
+    const bestTemplate = pickBestConnectorTemplate(
+      descriptionForMatching,
+      inferredDriver,
+      resolvedTemplates.map((entry) => entry.template),
+    );
+    const resolvedTemplate =
       bestTemplate &&
       shouldAutoSelectConnectorTemplate({
         template: bestTemplate.template,
@@ -55,8 +61,10 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
         ...(args.description ? { description: args.description } : {}),
       }) &&
       (!args.auth_type || allowedTemplateAuthTypes(bestTemplate.template).includes(args.auth_type))
-        ? bestTemplate.template
+        ? (resolvedTemplates.find((entry) => entry.template.slug === bestTemplate.template.slug) ??
+          null)
         : null;
+    const template = resolvedTemplate?.template ?? null;
     const auth_type =
       args.auth_type ??
       inferAuthTypeFromDescription(args.description) ??
@@ -80,10 +88,14 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
       docs: template?.ingestion_url ? [template.ingestion_url] : [],
       latest_probe: null,
       saved_connector_id: null,
-      template_id: template?.slug ?? null,
+      template_slug: template?.slug ?? null,
       template_name: template?.name ?? null,
+      template_source: resolvedTemplate?.source ?? null,
     };
-    const validation = validateConnectorDraft(connector);
+    const validation = validateConnectorDraft(
+      connector,
+      template ? [template] : resolvedTemplates.map((entry) => entry.template),
+    );
     const nextDraft = withConnectorDraft(
       ctx.getDraft(),
       { ...connector, validation },
@@ -101,8 +113,9 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
             driver: connector.driver,
             environment: connector.environment,
             auth_type: connector.auth_type,
-            template_id: connector.template_id ?? null,
+            template_slug: connector.template_slug ?? null,
             template_name: connector.template_name ?? null,
+            template_source: connector.template_source ?? null,
             validation,
           },
           validation,

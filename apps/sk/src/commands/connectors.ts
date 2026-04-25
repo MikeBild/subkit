@@ -24,7 +24,11 @@ const listCommand = defineCommand({
     const client = makeClient();
     try {
       const { items } = await client.listConnectors({ limit: Number(args.limit) });
-      emitList(!!args.json, ["id", "name", "slug", "status"], items as Record<string, unknown>[]);
+      emitList(
+        !!args.json,
+        ["id", "name", "slug", "environment", "template_slug"],
+        items as Record<string, unknown>[],
+      );
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));
@@ -245,7 +249,7 @@ const docsListCommand = defineCommand({
 });
 
 const docsSearchCommand = defineCommand({
-  meta: { name: "docs-search", description: "Semantic search over connector docs" },
+  meta: { name: "docs-search", description: "Ranked search over connector docs" },
   args: {
     id: { type: "positional", required: true, description: "Connector id" },
     query: { type: "positional", required: true, description: "Search query" },
@@ -255,7 +259,13 @@ const docsSearchCommand = defineCommand({
     const client = makeClient();
     try {
       const { items } = await client.searchConnectorDocs(args.id, args.query, Number(args.limit));
-      printTable(["id", "title", "score"], items);
+      printTable(
+        ["id", "title", "match_type", "score"],
+        items.map((item) => ({
+          ...item,
+          score: (item as Record<string, unknown>).rank,
+        })),
+      );
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));
