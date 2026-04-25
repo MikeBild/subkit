@@ -36,6 +36,52 @@ For request steps, use the current flattened shape: `connector_id`, `method`,
 `path`, `query`, `headers`, `body`, and `graphql` live directly on the step.
 Do not wrap them in `config`.
 
+## Repair-in-chat: failed run → diagnose → recommit
+
+A persisted workflow that fails on its next run does NOT need a new draft from
+scratch. The conversation enters diagnosis mode and the same six tools repair
+it in place — the operator never leaves chat.
+
+1. **Read the failure** — the `run_workflow` result carries `ok: false` plus a
+   structured error envelope (`error.code`, `error.message`, the failing
+   `step_id`, captured response shape). Do not paraphrase the error away; the
+   user needs to see the actual code so they understand what changed.
+2. **`diagnose_latest_execution`** — pulls the run's full causal trace and
+   surfaces a `latest_diagnosis` block on the draft. This is the source of
+   truth for repair targets; do not guess from the bare error.
+3. **Edit the offending step** — use `update_param` for a single field
+   (connector swap, header rename, response_schema tweak), `propose_step` to
+   replace a step body, or `connect_steps` to retarget references. For a
+   schema drift on a request step, run `probe_connector` first to capture the
+   current shape, then update the step's `response_schema` / `data_selector`.
+4. **`validate_draft`** — re-runs the structural checks. Skipping this is the
+   most common reason a re-commit fails: a fix that compiles but breaks
+   another reference upstream is invisible until validation re-runs.
+5. **`dry_run_workflow`** (or `dry_run_step` for the touched step only) — only
+   needed before the FIRST commit of a brand-new draft; for an in-place
+   re-commit after `validate_draft` is fresh, the palette already exposes
+   `commit_draft` and the engine accepts the update without a fresh preview.
+   Use a dry-run when the change is non-trivial enough that the operator
+   should see the new shape before committing.
+6. **`ask_user_confirm(kind: "commit_draft")` → `commit_draft`** — confirm,
+   then save. `commit_draft` updates the persisted workflow in place when the
+   conversation already targets one (it appends a new version; the slug stays
+   authoritative). There is no separate "commit a repair" tool and there is
+   no CLI fallback — the chat path is the only path.
+
+Hard rules during repair:
+- Do NOT instruct the user to run `sk workflow commit` or any other CLI
+  command. The same `commit_draft` tool that creates new workflows also
+  updates persisted ones.
+- Do NOT re-run the failed workflow before re-validating. The diagnosis is
+  pinned to the prior run; re-running first overwrites it and you lose the
+  cheapest source of repair signal.
+- Do NOT silently skip failing steps with `if: false` or fallback values
+  unless the user explicitly asks for that behaviour. Repair the step.
+
+After three failed repair iterations on the same error code, stop and ask
+the user. You have probably misread the failure mode.
+
 ## `propose_step` vs `build_workflow`
 
 | Question | Use `build_workflow` | Use `propose_step` (one per step) |

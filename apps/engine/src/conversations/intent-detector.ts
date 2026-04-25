@@ -41,9 +41,18 @@ const RUN_WORKFLOW_PATTERNS = [
  * "answer from prompt" and let the caller pin toolChoice accordingly.
  */
 // Enumeration patterns — only for resources covered by the TENANT
-// SNAPSHOT (workflows + connectors + integrations). Executions are
-// intentionally excluded because they are not in the snapshot and the
-// model must call list_executions to answer accurately.
+// SNAPSHOT (workflows + connectors). Executions are intentionally
+// excluded because they are not in the snapshot and the model must
+// call list_executions to answer accurately.
+//
+// `integrations?` is kept here for USER UTTERANCES only: many users
+// still type "show my integrations" when they mean connectors. The
+// regex matches their intent so they hit the snapshot path; it does
+// NOT mean the entity is called "integration" anywhere in the
+// codebase. Do NOT strip this in a rename pass — the engine's
+// terminology gate (scripts/terminology.banned.txt) bans `automation`
+// outright but permits `integration` precisely because of this user-
+// facing case.
 const ENUMERATION_PATTERNS = [
   /\b(welche|which|list|show|zeige?|gib|wieviele|how many|anzahl)\b.*\b(workflows?|connectors?|integrations?)\b/i,
   /\b(workflows?|connectors?|integrations?)\b.*\b(habe ich|do i have|listen?|available|vorhanden|insgesamt)/i,

@@ -258,9 +258,11 @@ describe("ink-app: journey 02 — admin submits a prompt", () => {
     await tick(80);
     expect(received.current).toBe("hi there");
     const frame = instance.lastFrame() ?? "";
-    // Claude-Code-style glyphs replace the verbose "assistant:" prefix:
-    // `◆` for assistant, `▸` for user, `·` for system/tool.
-    expect(frame).toMatch(/◆/);
+    // Speaker labels replace the bare-glyph row: `›  you` for the
+    // operator, `•  sk` for the assistant, `$  tool` for tool calls,
+    // `·` for system rows. Pattern matches the codex-rs reference TUI.
+    expect(frame).toMatch(/•/);
+    expect(frame).toContain("sk");
     expect(frame).toContain("hello back");
     instance.unmount();
   });

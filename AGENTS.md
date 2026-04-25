@@ -80,6 +80,45 @@ High-value references (by task type):
 - **Never bypass the audit log.** If a change mutates tenant-visible state, write an
   `audit_log` entry with request-source, actor, and structured diff.
 
+## Chat-First Authoring Contract
+
+Every conversation-driven authoring flow (Conversation, Discovery, Diagnosis/Repair) follows
+these invariants. Engine prompts, tool palettes, and skills must reinforce them; never weaken
+one to make the model "easier to drive".
+
+- **Chat is the operator surface.** Every action a user can take in the product, the agent
+  can take through a tool call. When asked to do something, the agent calls the matching
+  tool — it does not instruct the user to run `sk` CLI commands, paste shell prompts, or
+  open a separate UI. If the matching tool does not exist, the agent calls `cannot_help`
+  with a chat-actionable `suggest_alternative`, never a CLI suggestion.
+- **Proof before proposal.** Before `propose_step` or `start_workflow_from_goal`, run
+  `probe_connector` to verify the credential resolves and the base URL responds. Skipping
+  the probe is the largest single source of authoring-time errors.
+- **Dry-run before first commit.** A brand-new workflow draft must pass
+  `dry_run_workflow` or step-by-step `dry_run_step` before `commit_draft`. An in-place
+  re-commit on a persisted workflow needs a fresh `validate_draft`; a fresh dry-run is
+  optional once the change is small and validated.
+- **Repair-in-chat is a first-class authoring phase.** When a persisted workflow fails,
+  the conversation enters diagnosis mode (`diagnose_latest_execution` → edit → validate →
+  commit). The same `commit_draft` tool that creates a workflow also updates a persisted
+  one in place. There is no separate repair tool and no CLI fallback.
+- **Approval gates are governance, not UX.** `ask_user_confirm(kind: "commit_draft")`,
+  `ask_user_confirm(kind: "external_write")`, and the patch-candidate approval flow are
+  load-bearing. Do not invent escape hatches, `--skip-checks` flags, or "auto-commit if
+  validated" shortcuts.
+- **Never auto-promote.** Skill Candidates and Patch Candidates surface as proposals; they
+  become active Skills / applied patches only via explicit operator action through their
+  approval tools. This holds even when the candidate is classified `safe`.
+- **Stale checkpoints block state-advancing moves.** A draft mutation invalidates later
+  checkpoints (inspect → validate → probe / preview). The state machine enforces this;
+  prompts and tools must respect it instead of routing around it.
+- **`load_skill` is internal.** The agent loads skills silently and never narrates the
+  load, names the skill in user-facing prose, or tells the user to read documentation.
+- **Tenant snapshot before list_*.** Every converse turn carries a TENANT SNAPSHOT block
+  with workflow + connector ids. Enumeration questions ("show my workflows", "welche
+  connectoren habe ich") answer from the snapshot in zero tool calls. `list_*` tools are
+  for pagination, filtered views, or explicit refresh — not double-checking.
+
 ## Architecture And Domain Safety
 
 Preserve the current responsibility split. If you find yourself adding logic in the wrong

@@ -38,6 +38,7 @@ import { applyTurnEvent, initialSessionState } from "@cli-core/index.ts";
 import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { debugLog, serializeDebugError } from "./debug.ts";
 import type { SetupValidationResponse, StatusSummary } from "./engine-client.ts";
 import { AlternateScreen } from "./repl/alt-screen.tsx";
 import { ResumeSummaryCard, renderAuthoringCard } from "./repl/authoring-cards.tsx";
@@ -356,7 +357,14 @@ const MessageRow: React.FC<{
   parts?: RenderableMessagePart[] | undefined;
 }> = memo(({ role, content, parts }) => {
   const theme = useTheme();
-  const prefix = role === "user" ? "▸" : role === "assistant" ? "◆" : "·";
+  // Speaker label + glyph. Two columns: a 2-char glyph slot, then a
+  // fixed-width label so wrapping body text aligns under itself, not
+  // under the label. Pattern mirrors the codex-rs / reference-agent
+  // chat surface — `›  you` for the operator, `•  sk` for the
+  // assistant, `$  tool` for tool calls, `·` for system rows.
+  const glyph = role === "user" ? "›" : role === "assistant" ? "•" : role === "tool" ? "$" : "·";
+  const label =
+    role === "user" ? "you" : role === "assistant" ? "sk" : role === "tool" ? "tool" : "";
   const color =
     role === "user"
       ? theme.role.user
@@ -365,15 +373,16 @@ const MessageRow: React.FC<{
         : role === "tool"
           ? theme.role.tool
           : theme.role.system;
-  // Ink wraps inside a flex Box automatically. Using `wrap="wrap"` on a
-  // single Text node lets long assistant lines (German prose, JSON,
-  // bulleted lists) reflow on terminal resize instead of being clipped
-  // by the parent flexbox.
   return (
     <Box flexDirection="row" marginBottom={1}>
-      <Box flexShrink={0}>
+      <Box flexShrink={0} width={2}>
         <Text color={color} bold>
-          {prefix}{" "}
+          {glyph}
+        </Text>
+      </Box>
+      <Box flexShrink={0} width={6}>
+        <Text color={color} bold>
+          {label}
         </Text>
       </Box>
       <Box flexDirection="column" flexGrow={1}>
@@ -1401,8 +1410,24 @@ export const InkApp: React.FC<InkAppProps> = ({
           return;
         }
         if (onSlash) {
-          const response = await onSlash(cmd.name, trimmed, setPane, session);
-          if (response) showInfo(response);
+          try {
+            const response = await onSlash(cmd.name, trimmed, setPane, session);
+            if (response) showInfo(response);
+          } catch (err) {
+            // Without this guard a thrown slash handler vanished — no
+            // notice, no log entry. Surface it as a user-visible error
+            // and a debug record so operators can grep the trace id.
+            debugLog(
+              "dialog.error",
+              {
+                stage: "slash_handler",
+                cmd: cmd.name,
+                error: serializeDebugError(err),
+              },
+              {},
+            );
+            showError(`/${cmd.name}: ${humanizeRequestError(err)}`);
+          }
         }
         return;
       }
@@ -1556,9 +1581,11 @@ export const InkApp: React.FC<InkAppProps> = ({
         if (historyRef.current.length > 0) setInlineSearchOpen(true);
         return;
       }
-      // Ctrl-L clears the terminal scroll buffer.
+      // Ctrl-L clears the terminal scroll buffer. Route through Ink's
+      // own stdout handle so the ANSI escape interleaves with the
+      // render tree instead of fighting it.
       if (key.ctrl && char === "l") {
-        process.stdout.write("\x1b[2J\x1b[H");
+        stdout?.write("\x1b[2J\x1b[H");
         return;
       }
       if (
@@ -1786,6 +1813,19 @@ export const InkApp: React.FC<InkAppProps> = ({
           return;
         }
         if (char.length > 1 && looksLikePaste(char)) {
+          // Short single-line pastes (typical "copy a name / id"
+          // workflow) are inlined verbatim — no attachment, no
+          // `[Pasted text #N]` ref. The attachment indirection only
+          // earns its keep when the paste is multi-line OR very long;
+          // forcing it on a 6-character word produced the confusing
+          // `[2] text · 1 line · siemens-stock-price` dialog over the
+          // composer in session 64db7189.
+          const newlineCount = (char.match(/\n/g) ?? []).length;
+          const inlineThreshold = 200; // ~one terminal row
+          if (newlineCount === 0 && char.length <= inlineThreshold) {
+            setInput((prev) => applyInput(prev, { type: "insert", text: char }));
+            return;
+          }
           // Big chunk — stash in the paste store, insert the ref
           // inline. Keeps the buffer compact and cursor math sane.
           const { ref } = pasteStoreRef.current.addText(char);
@@ -2003,8 +2043,16 @@ export const InkApp: React.FC<InkAppProps> = ({
     }
   }
 
-  const content = (
-    <Box flexDirection="column">
+  // Welcome banner + starter actions + resume card are pushed ONCE into
+  // the Static stream as the first scrollback rows. Ink's <Static> flushes
+  // them to stdout and never re-invokes them; as the transcript grows they
+  // scroll up out of the terminal naturally. Rendering them in the live
+  // region (the previous behaviour) made the compact-mode chip float
+  // between the scrolled-out transcript and the composer once the
+  // committed history exceeded one screenful — the cause of the "banner
+  // sitzt falsch" reflow visible in long sessions.
+  const welcomeRow = (
+    <Box key="welcome" flexDirection="column">
       <WelcomeBanner
         persona={persona.label}
         tenant={persona.tenant}
@@ -2018,14 +2066,10 @@ export const InkApp: React.FC<InkAppProps> = ({
         targetKind={resumeSummary?.active_target.kind ?? null}
         targetName={resumeSummary?.active_target.name ?? null}
         environment={resumeSummary?.active_target.environment ?? null}
-        compact={!showBanner}
-        {...(showBanner ? { tip: tip.current } : {})}
+        tip={tip.current}
       />
-      {showWelcomeActions ? <StarterActions actions={starterActions} /> : null}
-
-      {/* Resume banner — single "where were we / what next" card on
-          fresh attach when the engine returned a resume_summary. */}
-      {resumeSummary && session.messages.length === 0 ? (
+      {starterActions.length > 0 ? <StarterActions actions={starterActions} /> : null}
+      {resumeSummary ? (
         <ResumeSummaryCard
           active_target={resumeSummary.active_target}
           stage={resumeSummary.stage}
@@ -2035,7 +2079,16 @@ export const InkApp: React.FC<InkAppProps> = ({
           last_successful_preview={resumeSummary.last_successful_preview}
         />
       ) : null}
+    </Box>
+  );
+  staticRows.unshift(welcomeRow);
+  // Suppress the unused-var warning while the legacy guard is still
+  // referenced below (e.g. starter-actions visibility tests).
+  void showBanner;
+  void showWelcomeActions;
 
+  const content = (
+    <Box flexDirection="column">
       <NoticeStack items={notices} />
 
       {/* Committed scrollback — written once to stdout via Ink Static.

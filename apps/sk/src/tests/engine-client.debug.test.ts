@@ -34,7 +34,7 @@ describe("EngineClient debug tracing", () => {
     process.env.SK_DEBUG = "1";
     process.env.SK_DEBUG_FILE = logPath;
     const dbg = await import("../debug.ts");
-    dbg.setDebugMode(true);
+    dbg.setDebugVerbose(true);
     const { EngineClient } = await import("../engine-client.ts");
     const client = new EngineClient({
       engine_url: "http://engine.local",
@@ -92,7 +92,7 @@ describe("EngineClient debug tracing", () => {
     process.env.SK_DEBUG = "1";
     process.env.SK_DEBUG_FILE = logPath;
     const dbg = await import("../debug.ts");
-    dbg.setDebugMode(true);
+    dbg.setDebugVerbose(true);
     const { EngineClient } = await import("../engine-client.ts");
     const client = new EngineClient({
       engine_url: "http://engine.local",

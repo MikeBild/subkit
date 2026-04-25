@@ -1,5 +1,11 @@
-import { describe, expect, it } from "bun:test";
-import { humanizeValidationError, summarizeToolFailure } from "../repl/error-humanize.ts";
+import { describe, expect, it, test } from "bun:test";
+import { SkEngineError, SkTransportError } from "../engine-client.ts";
+import {
+  findErrorHint,
+  humanizeRequestError,
+  humanizeValidationError,
+  summarizeToolFailure,
+} from "../repl/error-humanize.ts";
 
 describe("humanizeValidationError", () => {
   it("translates a steps.N.kind error into a 1-based step label + valid-kinds hint", () => {
@@ -65,5 +71,72 @@ describe("summarizeToolFailure", () => {
   it("falls back to generic copy when the payload is unrelated", () => {
     const r = summarizeToolFailure("foo", { ok: false });
     expect(r.label).toBe("foo failed");
+  });
+});
+
+describe("findErrorHint pattern table", () => {
+  test("matches the auth/expired-token pattern", () => {
+    expect(findErrorHint("invalid_grant: token has expired")).toMatch(/auth refresh/);
+    expect(findErrorHint("HTTP 401 unauthorized")).toMatch(/auth refresh/);
+  });
+
+  test("matches the rate-limit pattern", () => {
+    expect(findErrorHint("HTTP 429 too many requests")).toMatch(/rate limited/);
+    expect(findErrorHint("rate-limit exceeded")).toMatch(/rate limited/);
+  });
+
+  test("matches the monthly-budget pattern", () => {
+    expect(findErrorHint("monthly_budget exhausted")).toMatch(/budget exhausted/);
+    expect(findErrorHint("quota exceeded")).toMatch(/budget/);
+  });
+
+  test("matches the scope-envelope pattern", () => {
+    expect(findErrorHint("scope_envelope_field_missing: $scope.fetch.items")).toMatch(
+      /\.data` envelope/,
+    );
+  });
+
+  test("matches the network-unreachable pattern", () => {
+    expect(findErrorHint("fetch failed: ECONNREFUSED 127.0.0.1:3000")).toMatch(/unreachable/);
+    expect(findErrorHint("ETIMEDOUT")).toMatch(/unreachable/);
+  });
+
+  test("matches the missing-template pattern", () => {
+    expect(findErrorHint("template hubspot not found")).toMatch(/template_slug/);
+    expect(findErrorHint("template_slug must be present")).toMatch(/template_slug/);
+  });
+
+  test("matches the loop-guard pattern", () => {
+    expect(findErrorHint("turn_loop_budget_exhausted after 2 warnings")).toMatch(/loop guard/);
+  });
+
+  test("returns null for unrecognised messages", () => {
+    expect(findErrorHint("random unrelated error message")).toBeNull();
+  });
+});
+
+describe("humanizeRequestError surfaces hints", () => {
+  test("HTTP 401 SkEngineError carries the auth hint", () => {
+    const err = new SkEngineError(401, { code: "unauthorized", message: "invalid_grant" });
+    const out = humanizeRequestError(err);
+    expect(out).toContain("HTTP 401");
+    expect(out).toContain("auth refresh");
+  });
+
+  test("transport error matching a known pattern uses the matched hint", () => {
+    const err = new SkTransportError(new Error("fetch failed: ECONNREFUSED"));
+    const out = humanizeRequestError(err);
+    expect(out).toContain("cannot reach engine");
+    expect(out).toContain("unreachable");
+  });
+
+  test("generic Error with matching message gets a hint line", () => {
+    const out = humanizeRequestError(new Error("turn_loop_budget_exhausted"));
+    expect(out).toContain("loop guard");
+  });
+
+  test("generic Error without match prints the raw message only", () => {
+    const out = humanizeRequestError(new Error("something opaque"));
+    expect(out).toBe("sk: something opaque");
   });
 });

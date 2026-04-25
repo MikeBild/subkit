@@ -22,6 +22,35 @@ function pushError(
   errors.push({ path, message });
 }
 
+// Refuse base_urls that obviously came from a model hallucination instead
+// of grounded tenant context. Catches the shapes models actually invent:
+// the `example.*` family (RFC 2606 reserved), `placeholder` literals, and
+// `your-host` / `<YOUR_HOST>` style templates. Loopback (`localhost`,
+// `127.0.0.1`) is intentionally NOT in this list — real dev / test setups
+// legitimately point at local stubs, and models rarely hallucinate
+// loopback as a fabricated production target.
+const PLACEHOLDER_HOST_PATTERNS: ReadonlyArray<RegExp> = [
+  /\bexample\.(com|net|org)\b/i,
+  /\bplaceholder\b/i,
+  /\byour[-_]?(host|domain|api|company|tenant|engine|server)/i,
+  /\b(api\.)?your-/i,
+  /<[^>]*>/, // angle-bracket templating like <YOUR_HOST>
+  /\[(YOUR|HOST|API|TOKEN|KEY)[^\]]*]/i,
+];
+
+function looksLikePlaceholderUrl(raw: string): boolean {
+  let host: string;
+  try {
+    host = new URL(raw).hostname;
+  } catch {
+    return false;
+  }
+  for (const pattern of PLACEHOLDER_HOST_PATTERNS) {
+    if (pattern.test(host) || pattern.test(raw)) return true;
+  }
+  return false;
+}
+
 export function validateConnectorDraft(
   connector: ConnectorDraftDocument | null,
   templates?: ConnectorTemplate[],
@@ -53,6 +82,13 @@ export function validateConnectorDraft(
           new URL(connector.base_url);
         } catch {
           pushError(errors, "base_url", "base_url must be a valid URL");
+        }
+        if (looksLikePlaceholderUrl(connector.base_url)) {
+          pushError(
+            errors,
+            "base_url",
+            "base_url looks like a placeholder (example.com / localhost / 127.0.0.1 / your-host). Ground from runtime context, the connector template, or ask the user — never invent a host.",
+          );
         }
       }
     }

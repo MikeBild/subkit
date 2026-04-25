@@ -80,7 +80,7 @@ describe("chat-first parity", () => {
     instance.unmount();
   });
 
-  test("banner disappears after the first assistant turn", async () => {
+  test("banner stays in scrollback (top) and the assistant turn renders below it", async () => {
     const instance = renderApp({
       onPrompt: async () => ({
         events: framesOf(
@@ -95,8 +95,16 @@ describe("chat-first parity", () => {
     await pressEnter(instance);
     await tick(60);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).not.toContain("Resume work, create a connector");
+    // The banner is now part of the static scrollback (it scrolls up
+    // with history rather than re-rendering as a floating chip every
+    // tick). It stays in the frame at the top, but the assistant
+    // message renders strictly AFTER it.
     expect(frame).toContain("ok");
+    const starterIdx = frame.indexOf("Resume work");
+    const assistantIdx = frame.indexOf("ok");
+    if (starterIdx >= 0) {
+      expect(starterIdx).toBeLessThan(assistantIdx);
+    }
     instance.unmount();
   });
 
