@@ -106,7 +106,19 @@ const SpinnerImpl: React.FC<SpinnerProps> = ({
     };
   }, [active, verbMs, verbs.length]);
 
-  if (!active) return null;
+  // Stable layout: always reserve a single row + bottom margin so
+  // composer doesn't jump up/down between busy/idle turns. When idle
+  // we render an empty Text inside the same Box height so the
+  // surrounding stack does not reflow. The user reported "composer
+  // springt" across consecutive turns — that was Spinner returning
+  // null toggling the surrounding flex column's row count.
+  if (!active) {
+    return (
+      <Box marginBottom={1}>
+        <Text> </Text>
+      </Box>
+    );
+  }
 
   const glyph = SPINNER_FRAMES[frame] ?? SPINNER_FRAMES[0];
   const verb = verbs[verbIndex] ?? verbs[0] ?? "thinking";

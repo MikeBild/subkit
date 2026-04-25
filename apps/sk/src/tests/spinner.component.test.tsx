@@ -8,7 +8,10 @@ import { Spinner } from "../repl/spinner.tsx";
 import { renderInk } from "./helpers/ink.tsx";
 
 describe("Spinner (component)", () => {
-  test("inactive renders nothing", () => {
+  test("inactive renders an invisible row placeholder (stable layout)", () => {
+    // Spinner deliberately reserves a row when idle so the composer
+    // doesn't jump up/down between busy/idle turns. Visible text is
+    // empty after trim, but the row is present in the layout.
     const ui = renderInk(<Spinner active={false} />);
     try {
       expect(ui.text().trim()).toBe("");
