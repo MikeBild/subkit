@@ -69,7 +69,19 @@ export function applyAuthMaterial(
       query[k] = v;
     }
   }
-  if (!credential) return;
+  if (!credential) {
+    // Draft-time auth shortcut: when no credential row exists yet
+    // (the connector has not been saved + provisioned), but the
+    // operator has stashed a token directly on `connector.config` via
+    // an `ask_user_form` reply, apply it inline so probe_connector_draft
+    // can verify the endpoint without forcing a save-first round-trip.
+    //
+    // Only honoured for `bearer` / `header` / `basic` shapes — OAuth2
+    // requires the refresh-worker, and `query` shapes are rare enough
+    // that we keep them on the credentials-row path.
+    applyDraftAuthFromConfig(connector, headers);
+    return;
+  }
   switch (credential.mode) {
     case "none":
       return;
@@ -96,6 +108,59 @@ export function applyAuthMaterial(
     case "oauth2":
       headers.Authorization = `${credential.token_type ?? "Bearer"} ${credential.access_token}`;
       return;
+  }
+}
+
+/**
+ * Pull a draft-time credential out of `connector.config` and translate
+ * it to the appropriate `Authorization` (or custom-named) header so a
+ * draft probe can authenticate before the connector has been saved and
+ * provisioned with a `connector_credentials` row.
+ *
+ * Recognised config shapes (in priority order):
+ *   - `{ token: "ghp_..." }`              + auth_type=bearer  → `Authorization: Bearer …`
+ *   - `{ access_token: "..." }`           + auth_type=bearer  → `Authorization: Bearer …`
+ *   - `{ auth_header, auth_value }`       + auth_type=header  → `<auth_header>: <auth_value>`
+ *   - `{ headers: {Authorization: "…"} }` + auth_type=header  → headers spread verbatim
+ *   - `{ username, password }`            + auth_type=basic   → `Authorization: Basic <b64>`
+ *
+ * Once the connector is saved, its real credential lives in the
+ * `connector_credentials` table; this helper is only walked when no
+ * such row exists yet (typical for `probe_connector_draft`).
+ */
+function applyDraftAuthFromConfig(connector: ConnectorView, headers: Record<string, string>): void {
+  const cfg = (connector.config ?? {}) as Record<string, unknown>;
+  if (connector.auth_type === "bearer") {
+    const token =
+      typeof cfg.token === "string" && cfg.token.length > 0
+        ? cfg.token
+        : typeof cfg.access_token === "string" && cfg.access_token.length > 0
+          ? cfg.access_token
+          : typeof cfg.auth_value === "string" && cfg.auth_value.length > 0
+            ? cfg.auth_value
+            : null;
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return;
+  }
+  if (connector.auth_type === "header") {
+    if (typeof cfg.auth_header === "string" && typeof cfg.auth_value === "string") {
+      headers[cfg.auth_header] = cfg.auth_value;
+      return;
+    }
+    if (cfg.headers && typeof cfg.headers === "object" && !Array.isArray(cfg.headers)) {
+      for (const [k, v] of Object.entries(cfg.headers as Record<string, unknown>)) {
+        if (typeof v === "string") headers[k] = v;
+      }
+    }
+    return;
+  }
+  if (connector.auth_type === "basic") {
+    const username = cfg.username;
+    const password = cfg.password;
+    if (typeof username === "string" && typeof password === "string") {
+      const encoded = Buffer.from(`${username}:${password}`, "utf8").toString("base64");
+      headers.Authorization = `Basic ${encoded}`;
+    }
   }
 }
 
