@@ -382,6 +382,13 @@ export type TurnEvent =
        * `tool_name` and read this record to render the right prompt.
        */
       input: unknown;
+      /**
+       * Structured "what will happen" preview produced by the gated
+       * tool's `buildPendingOutput` hook. When set, the client renders
+       * its key fields (target id, environment, diff summary) inside
+       * the confirmation card instead of guessing from raw input.
+       */
+      pending_output?: Record<string, unknown> | null;
       parent_message_id?: string;
     }
   | { type: "committed"; workflow_id: string }

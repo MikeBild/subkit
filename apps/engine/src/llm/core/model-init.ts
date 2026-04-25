@@ -65,6 +65,82 @@ function isDirectProviderKind(value: string): value is DirectProviderKind {
   return DIRECT_PROVIDER_KINDS.includes(value as DirectProviderKind);
 }
 
+export interface ProviderSetupReport {
+  /** Provider the engine would dispatch to with the current env. */
+  detected: ProviderState;
+  /** True when detected !== "unconfigured" AND no required env var is missing. */
+  ok: boolean;
+  /** Human-readable summary for the CLI status line / web setup page. */
+  message: string;
+  /** Each missing env var the detected provider needs, in stable order. */
+  missing: ReadonlyArray<string>;
+}
+
+const PROVIDER_REQUIREMENTS: Record<DirectProviderKind, ReadonlyArray<string>> = {
+  anthropic: ["ANTHROPIC_API_KEY"],
+  openai: ["OPENAI_API_KEY"],
+  gemini: ["GEMINI_API_KEY"],
+  azure: ["AZURE_API_KEY"], // resource_name OR base_url checked separately
+  bedrock: ["AWS_REGION"],
+  vertex: ["GOOGLE_VERTEX_PROJECT", "GOOGLE_VERTEX_LOCATION"],
+};
+
+/**
+ * Probe the current process env for misconfigured providers WITHOUT
+ * resolving a model (no SDK side effects, no auth calls). Surfaced via
+ * `GET /v1/status` so the CLI status line can show
+ * `⚠ bedrock: AWS_REGION missing` before the user fires their first
+ * turn — instead of the failure landing as a 5xx mid-conversation.
+ */
+export function validateProviderSetup(): ProviderSetupReport {
+  const detected = detectConfiguredProvider();
+  if (detected === "unconfigured") {
+    return {
+      detected,
+      ok: false,
+      message: "no LLM provider configured — set LLM_PROVIDER and the matching credentials",
+      missing: ["LLM_PROVIDER"],
+    };
+  }
+  if (detected === "mock" || detected === "gateway") {
+    if (detected === "gateway") {
+      const missing: string[] = [];
+      if (!readEnv("AI_GATEWAY_API_KEY")) missing.push("AI_GATEWAY_API_KEY");
+      if (!readEnv("AI_GATEWAY_MODEL")) missing.push("AI_GATEWAY_MODEL");
+      if (missing.length > 0) {
+        return {
+          detected,
+          ok: false,
+          message: `gateway provider missing: ${missing.join(", ")}`,
+          missing,
+        };
+      }
+    }
+    return { detected, ok: true, message: `provider=${detected} ready`, missing: [] };
+  }
+  const required = PROVIDER_REQUIREMENTS[detected];
+  const missing = required.filter((name) => !readEnv(name));
+  if (detected === "azure" && missing.length === 0) {
+    if (!readEnv("AZURE_RESOURCE_NAME") && !readEnv("AZURE_BASE_URL")) {
+      return {
+        detected,
+        ok: false,
+        message: "azure: either AZURE_RESOURCE_NAME or AZURE_BASE_URL must be set",
+        missing: ["AZURE_RESOURCE_NAME|AZURE_BASE_URL"],
+      };
+    }
+  }
+  if (missing.length > 0) {
+    return {
+      detected,
+      ok: false,
+      message: `${detected}: missing ${missing.join(", ")}`,
+      missing,
+    };
+  }
+  return { detected, ok: true, message: `provider=${detected} ready`, missing: [] };
+}
+
 export function detectConfiguredProvider(options?: {
   providerEnvVar?: string;
   providerOverride?: ProviderKind;

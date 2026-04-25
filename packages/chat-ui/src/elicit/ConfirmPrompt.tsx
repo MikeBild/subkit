@@ -34,6 +34,14 @@ export interface ConfirmPromptProps {
   destructive?: boolean | undefined;
   /** Pre-selected answer if the user just presses Enter. */
   defaultChoice?: "approve" | "reject" | undefined;
+  /**
+   * Structured "what will happen" preview produced by the gated tool's
+   * `buildPendingOutput` policy hook. When present, the prompt renders
+   * each key/value as a labelled row (e.g. `target: wf-abc`,
+   * `environment: prod`) so the user can see WHAT they're approving
+   * without parsing raw JSON in `diff` / `target`.
+   */
+  pendingOutput?: Record<string, unknown> | undefined;
   onResponse: (value: { confirmed: boolean; decision_reason?: string }) => void;
   inputDisabled?: boolean | undefined;
 }
@@ -45,6 +53,17 @@ function isPrintable(input: string, key: { ctrl: boolean; meta: boolean }): bool
   return code >= 0x20 && code !== 0x7f;
 }
 
+function describePendingValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (Array.isArray(value)) return `[${value.length}] ${value.slice(0, 3).join(", ")}`;
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj);
+    return keys.length > 0 ? `{${keys.slice(0, 4).join(", ")}}` : "{}";
+  }
+  return String(value);
+}
+
 export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
   question,
   summary,
@@ -53,6 +72,7 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
   target,
   destructive,
   defaultChoice,
+  pendingOutput,
   onResponse,
   inputDisabled,
 }) => {
@@ -125,6 +145,16 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
       </Text>
       <Text bold>{question}</Text>
       {summary && summary.trim() !== question.trim() ? <Text>{summary}</Text> : null}
+      {pendingOutput && Object.keys(pendingOutput).length > 0 ? (
+        <Box flexDirection="column" marginTop={1}>
+          {Object.entries(pendingOutput).map(([key, value]) => (
+            <Text key={key}>
+              <Text color={theme.severity.dim}>{key}: </Text>
+              {describePendingValue(value)}
+            </Text>
+          ))}
+        </Box>
+      ) : null}
       {kind === "external_write" && target !== undefined ? (
         <Text>
           <Text color={theme.severity.dim}>target: </Text>

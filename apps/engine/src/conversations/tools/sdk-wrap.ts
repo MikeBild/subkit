@@ -20,7 +20,13 @@ import { resolveAttachments } from "../attachments.ts";
 import { recordTransition } from "../confirmation.ts";
 import { createElicitation } from "../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
-import { type PermissionMode, resolveToolMode, type ToolPolicies } from "../tool-policies.ts";
+import {
+  buildPendingOutputForTool,
+  type PermissionMode,
+  prerequisitesForTool,
+  resolveToolMode,
+  type ToolPolicies,
+} from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
 import { filterByAuthoringPalette } from "./authoring-palette.ts";
 import { compileDescription } from "./describe.ts";
@@ -142,6 +148,7 @@ function wrapOne(
   db: Db,
   toolPolicies: ToolPolicies,
   permissionMode: PermissionMode | null,
+  loadedSkills: ReadonlyArray<string>,
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
   // Cast the Zod-openapi schema to the SDK's `z.ZodType` shape — the
   // two packages ship their own Zod re-exports and the variances do not
@@ -167,6 +174,29 @@ function wrapOne(
       });
       await prevChain;
       const executeBody = async (): Promise<WrappedToolOutput> => {
+        // Skill prerequisite gate. Some tools (propose_step,
+        // build_workflow, update_param, connect_steps) declare a
+        // required skill in `tool-policies.ts#prerequisites`. If the
+        // skill is not loaded, return a structured error instead of
+        // running the tool — the model receives a clear "load
+        // workflow-authoring first" hint and can recover in the next
+        // turn. We surface the gate AFTER the model has chosen the
+        // tool (rather than hiding it) so the failure mode teaches
+        // the right next step instead of leaving the model guessing.
+        const needed = prerequisitesForTool(inner.name);
+        const missingSkills = needed.filter((slug) => !loadedSkills.includes(slug));
+        if (missingSkills.length > 0) {
+          return {
+            ok: false,
+            data: {
+              error: `tool ${inner.name} requires skill(s) not yet loaded: ${missingSkills.join(", ")}. Call load_skill for each one before retrying.`,
+              reason: "skill_prerequisites_unmet",
+              tool: inner.name,
+              missing_skills: missingSkills,
+            },
+          };
+        }
+
         // Loop-breaker: short-circuit before doing any side effects
         // when the model has already called this tool too many times
         // in the current turn.
@@ -301,6 +331,10 @@ function wrapOne(
         // interaction_log entry; the model re-issues the same tool call
         // with `__policy_confirmed: true` on a subsequent turn.
         if (needsPreConfirmation) {
+          // Structured pending-output preview so the confirm UI shows
+          // first-class fields (target id, environment, key shape)
+          // instead of a raw arg blob the user has to parse.
+          const pendingOutput = buildPendingOutputForTool(inner.name, rawArgs);
           const elicitation = await createElicitation(
             {
               tenant_id: ctx.tenant_id,
@@ -312,6 +346,7 @@ function wrapOne(
                 kind: "external_write",
                 question: `Policy requires confirmation before running ${inner.name}. Proceed?`,
                 target: { tool: inner.name, args: rawArgs },
+                ...(pendingOutput ? { pending_output: pendingOutput } : {}),
               },
               actor_id: ctx.actor_id,
             },
@@ -336,6 +371,7 @@ function wrapOne(
             tool_name: "ask_user_confirm",
             summary: elicitation.summary,
             input: elicitation.input,
+            ...(pendingOutput ? { pending_output: pendingOutput } : {}),
           });
           signals.pendingElicitation = {
             elicitation_id: elicitation.id,
@@ -537,12 +573,21 @@ function wrapOne(
                   ...(result.pause.target !== undefined ? { target: result.pause.target } : {}),
                 };
           signals.pendingChildElicitationIds.push(result.pause.elicitation_id);
+          // Tool-emitted pause may carry its own pending_output; if
+          // not, derive one from the wrapping tool's policy hook so
+          // the confirm UI gets a structured preview either way.
+          const pausePending =
+            (inputPayload && typeof inputPayload === "object"
+              ? ((inputPayload as { pending_output?: Record<string, unknown> }).pending_output ??
+                null)
+              : null) ?? buildPendingOutputForTool(inner.name, rawArgs);
           events.push({
             type: "elicit_request",
             elicitation_id: result.pause.elicitation_id,
             tool_name: result.pause.tool_name,
             summary: result.pause.summary,
             input: inputPayload,
+            ...(pausePending ? { pending_output: pausePending } : {}),
           });
           log.conversation.approval.requested({
             conversation_id: ctx.conversation_id,
@@ -609,7 +654,7 @@ export function wrapTools(
     ctx.getDraft(),
   );
   for (const t of visibleTools) {
-    out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode);
+    out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode, loadedSkills);
   }
   return out;
 }
