@@ -432,7 +432,11 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     instance.unmount();
   });
 
-  test("AC2: /approve resumes the turn and applies returned events", async () => {
+  test("AC2: pressing `y` resumes the turn and applies returned events", async () => {
+    // Input-focus contract: while pendingElicitation is set, the
+    // composer's useInput goes inactive and the ConfirmPrompt owns the
+    // keyboard. `y` (or `1`, or Enter on the focused choice) submits
+    // approve without a free-text decision_reason.
     const decisions: Array<{ id: string; output: unknown; reason?: string }> = [];
     const instance = renderApp({
       onPrompt: async () => ({
@@ -462,8 +466,7 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     await type(instance, "please commit");
     await pressEnter(instance);
     await tick(100);
-    await type(instance, "/approve");
-    await pressEnter(instance);
+    instance.stdin.write("y");
     await tick(60);
     expect(decisions.length).toBe(1);
     expect(decisions[0]?.id).toBe("a1-abcdefab-0000-0000-0000-000000000000");
@@ -475,7 +478,12 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     instance.unmount();
   });
 
-  test("AC3: /reject with a reason passes the reason through", async () => {
+  test("AC3: Tab-then-type-then-`n` rejects with the typed reason", async () => {
+    // Reject path with a free-text decision_reason: Tab opens the
+    // reason field, the operator types prose, Tab closes the field,
+    // then `n` (or `3`) submits the reject. Architecturally the
+    // ConfirmPrompt's own useInput owns the keyboard for the entire
+    // dance; the composer is inactive throughout.
     const decisions: Array<{ id: string; output: unknown; reason?: string }> = [];
     const instance = renderApp({
       onPrompt: async () => ({
@@ -493,8 +501,15 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     await type(instance, "please commit");
     await pressEnter(instance);
     await tick(100);
-    await type(instance, "/reject step 1 missing connector_id");
-    await pressEnter(instance);
+    instance.stdin.write("\t"); // open reason input
+    await tick(20);
+    for (const ch of "step 1 missing connector_id") {
+      instance.stdin.write(ch);
+      await tick(5);
+    }
+    instance.stdin.write("\t"); // close reason input
+    await tick(20);
+    instance.stdin.write("n"); // submit reject
     await tick(60);
     expect(decisions.length).toBe(1);
     expect((decisions[0]?.output as { confirmed: boolean }).confirmed).toBe(false);

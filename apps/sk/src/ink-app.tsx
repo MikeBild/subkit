@@ -1363,23 +1363,6 @@ export const InkApp: React.FC<InkAppProps> = ({
         onExit?.();
         return;
       }
-      // Bare-word approve / reject while an elicitation is open auto-
-      // resolves it. Without this, "approve" / "ja" / "yes" went out as
-      // plain user prompts and the LLM had to translate them itself —
-      // which it sometimes did twice (the double-approve UX bug from
-      // session 84d06d81). Mirrors the slash-command behaviour below.
-      const lower = trimmed.toLowerCase();
-      const APPROVE_WORDS = new Set(["approve", "yes", "ja", "y", "ok", "okay", "go", "do it"]);
-      const REJECT_WORDS = new Set(["reject", "no", "nein", "n", "cancel", "abort", "stop"]);
-      if (
-        session.pendingElicitation &&
-        onElicitResponse &&
-        (APPROVE_WORDS.has(lower) || REJECT_WORDS.has(lower))
-      ) {
-        const confirmed = APPROVE_WORDS.has(lower);
-        await submitElicitationResponse(session.pendingElicitation.id, { confirmed });
-        return;
-      }
       if (trimmed.startsWith("/")) {
         // Built-in slash commands that ink-app owns (paste, attach,
         // queue, history). Short-circuit so the host's `onSlash`
@@ -1541,7 +1524,17 @@ export const InkApp: React.FC<InkAppProps> = ({
   // would grow a non-slash prompt) are gated off so the elicit's own
   // keybindings stay authoritative.
   const elicitOpen = session.pendingElicitation !== null;
-  const composerActive = pane === null && !historyOpen && !inlineSearchOpen;
+  // Input-focus contract: at most ONE useInput hook is active at any
+  // time. When an elicitation is open, the matching prompt component
+  // (ConfirmPrompt / ChoicePrompt / FormPrompt / TextPrompt /
+  // MultiChoicePrompt) owns the keyboard via its own useInput, and
+  // the composer goes inactive. Without this gate, both the composer
+  // and the prompt's useInput fired on every keystroke — keys leaked
+  // into the input buffer while the user was trying to drive the
+  // approve/reject chooser, producing the "approve / approve / still-
+  // waiting" UX bug from session 84d06d81. Slash commands keep working
+  // because /approve and /reject are dispatched here directly.
+  const composerActive = pane === null && !historyOpen && !inlineSearchOpen && !elicitOpen;
   const slashMode = input.value.startsWith("/");
   // Slash autocomplete is "navigable" only while the user is still
   // typing the command name (no space yet). Once they add an arg
@@ -1619,9 +1612,11 @@ export const InkApp: React.FC<InkAppProps> = ({
         // user can type ahead. Enter enqueues instead of spawning a
         // concurrent turn (see handleSubmit).
       }
-      // Elicitation is open: only accept input that is part of a
-      // slash command so the user can still /approve or /reject.
-      if (elicitOpen && !slashMode && char !== "/") return;
+      // Belt + braces: composerActive already excludes elicitOpen so
+      // this hook never fires while a prompt component owns input.
+      // Keep the guard in case isActive lags one frame behind a
+      // freshly-arrived elicit_request event.
+      if (elicitOpen) return;
       if (showWelcomeActions && char && !key.ctrl && !key.meta) {
         if (char === starterActions[0]?.key) {
           void handleSubmit("/resume");

@@ -91,12 +91,20 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
         return;
       }
 
-      if (input === "1") submit(true);
-      else if (input === "3") submit(false);
+      // Number keys mirror the displayed labels (1=Approve, 3=Reject).
+      // Letter shortcuts (`y`/`a` = approve, `n`/`r` = reject) match
+      // the convention every CLI confirm uses; they are case-insensitive
+      // so a paste-mode user with shift held doesn't lose the binding.
+      // Arrow keys move focus, Enter submits the focused choice, Tab
+      // opens the optional decision_reason input.
+      const lower = input.toLowerCase();
+      if (input === "1" || lower === "y" || lower === "a") submit(true);
+      else if (input === "3" || lower === "n" || lower === "r") submit(false);
       else if (key.leftArrow) setFocused(0);
       else if (key.rightArrow) setFocused(1);
       else if (key.tab) setReasonOpen(true);
       else if (key.return) submit(focused === 0);
+      else if (key.escape) submit(false);
     },
     { isActive: !inputDisabled },
   );
@@ -141,8 +149,8 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
         </Box>
       ) : (
         <Text color={theme.severity.dim}>
-          Tab for reason · Enter to submit
-          {reason.trim() ? ` (reason: "${reason.trim()}")` : ""}
+          y/Enter to approve · n/Esc to reject · ←→ to focus · Tab for reason
+          {reason.trim() ? ` · reason: "${reason.trim()}"` : ""}
         </Text>
       )}
     </Box>
