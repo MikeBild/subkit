@@ -477,9 +477,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 : {}),
               ...(p.runtime_context.actor_role ? { actor_role: p.runtime_context.actor_role } : {}),
               ...(p.surface ? { surface: p.surface } : {}),
+              ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
             },
           }
-        : {}),
+        : p.permission_mode
+          ? { runtime_context: { permission_mode: p.permission_mode } }
+          : {}),
     },
     p.db,
   );

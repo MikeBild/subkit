@@ -37,41 +37,49 @@ export const commitDraftTool: ConversationTool = {
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     inputSchema.parse(rawArgs);
-    // Must have at least one resolved `ask_user_confirm` elicitation
-    // whose input.kind is "commit_draft" and output.confirmed is true.
-    const rows = await ctx.db
-      .select()
-      .from(conversationElicitations)
-      .where(
-        and(
-          eq(conversationElicitations.tenant_id, ctx.tenant_id),
-          eq(conversationElicitations.conversation_id, ctx.conversation_id),
-          eq(conversationElicitations.tool_name, "ask_user_confirm"),
-          sql`(${conversationElicitations.input} ->> 'kind') = 'commit_draft'`,
-        ),
-      )
-      .orderBy(desc(conversationElicitations.created_at))
-      .limit(1);
-    const head = rows[0];
-    const confirmed =
-      head?.status === "resolved" &&
-      typeof head.output === "object" &&
-      head.output !== null &&
-      (head.output as { confirmed?: unknown }).confirmed === true;
-    if (!head || !confirmed) {
-      return {
-        ok: false,
-        data: buildGateError(ctx.getDraft(), {
-          error_code: "no_prior_approval",
-          message:
-            "commit_draft requires a resolved ask_user_confirm { kind: commit_draft, confirmed: true }",
-          recommended_mode: "workflow",
-          next_best_actions: ["ask_user_confirm"],
-          extra: {
-            latest_elicitation_status: head?.status ?? null,
-          },
-        }),
-      };
+    // permission_mode=auto skips the structured ask_user_confirm step
+    // entirely. The user has opted into "do it without asking" at
+    // session level (visible in the bottom-bar `auto · chat …` chip);
+    // forcing a second elicitation for every commit_draft was the
+    // double-approve UX bug seen in session 84d06d81 ("approve" /
+    // "approve" / approval-card-still-up). The mode itself IS the
+    // governance signal — explicit per-action confirmation only fires
+    // in `ask` / `plan`.
+    if (ctx.permission_mode !== "auto") {
+      const rows = await ctx.db
+        .select()
+        .from(conversationElicitations)
+        .where(
+          and(
+            eq(conversationElicitations.tenant_id, ctx.tenant_id),
+            eq(conversationElicitations.conversation_id, ctx.conversation_id),
+            eq(conversationElicitations.tool_name, "ask_user_confirm"),
+            sql`(${conversationElicitations.input} ->> 'kind') = 'commit_draft'`,
+          ),
+        )
+        .orderBy(desc(conversationElicitations.created_at))
+        .limit(1);
+      const head = rows[0];
+      const confirmed =
+        head?.status === "resolved" &&
+        typeof head.output === "object" &&
+        head.output !== null &&
+        (head.output as { confirmed?: unknown }).confirmed === true;
+      if (!head || !confirmed) {
+        return {
+          ok: false,
+          data: buildGateError(ctx.getDraft(), {
+            error_code: "no_prior_approval",
+            message:
+              "commit_draft requires a resolved ask_user_confirm { kind: commit_draft, confirmed: true }",
+            recommended_mode: "workflow",
+            next_best_actions: ["ask_user_confirm"],
+            extra: {
+              latest_elicitation_status: head?.status ?? null,
+            },
+          }),
+        };
+      }
     }
 
     const fullDraft = ctx.getDraft();

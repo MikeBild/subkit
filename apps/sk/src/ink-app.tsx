@@ -1363,6 +1363,23 @@ export const InkApp: React.FC<InkAppProps> = ({
         onExit?.();
         return;
       }
+      // Bare-word approve / reject while an elicitation is open auto-
+      // resolves it. Without this, "approve" / "ja" / "yes" went out as
+      // plain user prompts and the LLM had to translate them itself —
+      // which it sometimes did twice (the double-approve UX bug from
+      // session 84d06d81). Mirrors the slash-command behaviour below.
+      const lower = trimmed.toLowerCase();
+      const APPROVE_WORDS = new Set(["approve", "yes", "ja", "y", "ok", "okay", "go", "do it"]);
+      const REJECT_WORDS = new Set(["reject", "no", "nein", "n", "cancel", "abort", "stop"]);
+      if (
+        session.pendingElicitation &&
+        onElicitResponse &&
+        (APPROVE_WORDS.has(lower) || REJECT_WORDS.has(lower))
+      ) {
+        const confirmed = APPROVE_WORDS.has(lower);
+        await submitElicitationResponse(session.pendingElicitation.id, { confirmed });
+        return;
+      }
       if (trimmed.startsWith("/")) {
         // Built-in slash commands that ink-app owns (paste, attach,
         // queue, history). Short-circuit so the host's `onSlash`
