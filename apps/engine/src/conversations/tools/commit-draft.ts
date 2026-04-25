@@ -17,26 +17,34 @@ import {
 } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
-const inputSchema = z.object({}).openapi("CommitDraftToolInput");
+const inputSchema = z
+  .object({
+    target_workflow_id: z
+      .string()
+      .optional()
+      .describe(
+        "Explicitly pin the save target to an existing workflow id. Only set this AFTER the user has confirmed in chat that they want to overwrite that workflow — e.g. after a slug_conflict_with_live_workflow error where the user said 'yes, update it'. Otherwise leave unset.",
+      ),
+  })
+  .openapi("CommitDraftToolInput");
 
 export const commitDraftTool: ConversationTool = {
   name: "commit_draft",
   description:
     "Persist the draft as a workflow — creates a new one or updates the one the conversation targets.",
   use_case:
-    "Final step when the operator has confirmed via ask_user_confirm(kind='commit_draft') that the draft is ready to save. If the conversation has a target_workflow_id, commits a new workflow_version on that row. If the draft's slug matches an existing live workflow of this tenant, adopts that workflow as the target and updates it in-place. Otherwise creates a new workflow row.",
+    "Final step when the operator has confirmed via ask_user_confirm(kind='commit_draft') that the draft is ready to save. If the conversation has a target_workflow_id (set at conversation creation or by a prior commit_draft), commits a new workflow_version on that row. Otherwise creates a new workflow row. A slug collision with a different live workflow returns slug_conflict_with_live_workflow — never silently overwrites.",
   important_notes: [
     "Refuses with `no_prior_approval` if no matching ask_user_confirm has been answered in this conversation.",
     "Refuses with `workflow_not_ready` until inspect_workflow_draft, validate_draft, and dry_run_step/dry_run_workflow are all fresh and successful.",
-    "Update-in-place semantics: if conversations.target_workflow_id is set, this tool appends a new workflow_version to that workflow. The slug of the existing workflow stays authoritative; changing draft.slug does not rename the workflow.",
-    "Adopt-on-slug-match: if no target is set but draft.slug matches a live workflow, adopts it as the target and updates. Never creates a sibling workflow with a fresh slug — that was the old behavior that produced zombie workflows.",
-    "On duplicate_slug errors, the error payload includes `conflict.workflow_id` so the caller can choose to update (call commit_draft again) or pick a different slug.",
+    "Update-in-place semantics: if the conversation has a target_workflow_id, appends a new workflow_version to that row. The slug of the existing workflow stays authoritative; changing draft.slug does not rename the workflow.",
+    "No silent slug-adoption: a draft.slug colliding with a different live workflow produces slug_conflict_with_live_workflow. To overwrite the existing workflow, ask the user explicitly, then call commit_draft again with target_workflow_id=<conflict.workflow_id>. Otherwise rename the draft slug.",
     "Writes exactly one audit row per save (workflow_created or workflow_updated) and one outbox event.",
   ],
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
-    inputSchema.parse(rawArgs);
+    const args = inputSchema.parse(rawArgs);
     // permission_mode=auto skips the structured ask_user_confirm step
     // entirely. The user has opted into "do it without asking" at
     // session level (visible in the bottom-bar `auto · chat …` chip);
@@ -131,26 +139,30 @@ export const commitDraftTool: ConversationTool = {
       steps: draft.steps,
     };
 
-    // Decide save mode: update an existing workflow, adopt one whose
-    // slug matches the draft, or create a new row. The three branches:
+    // Decide save mode: update an existing workflow or create a new
+    // row. Three branches:
     //
-    //   1. target_workflow_id set on conversation → update that row.
-    //      The slug on the existing row is authoritative; a new slug
-    //      in the draft is ignored so the identifier stays stable
-    //      across edits.
+    //   1. Caller passed `target_workflow_id` arg → user confirmed in
+    //      chat ("yes overwrite that workflow") after seeing a
+    //      slug_conflict_with_live_workflow error. Validate the id is
+    //      live and tenant-owned, then update.
     //
-    //   2. No target set, draft.slug matches a LIVE workflow of this
-    //      tenant → adopt: set target_workflow_id on the conversation,
-    //      then update. This catches the "user re-saves with the same
-    //      slug" case that used to loop on slug-conflict errors.
+    //   2. Conversation has target_workflow_id set (either at creation
+    //      time or by a prior commit_draft) → update that row. The slug
+    //      on the existing row stays authoritative; a new slug in the
+    //      draft is ignored so the identifier stays stable across edits.
     //
-    //   3. Draft.slug matches a SOFT-DELETED workflow → because the
-    //      unique index is now partial (WHERE deleted_at IS NULL), the
-    //      slug is already free and we fall through to createWorkflow.
-    //      No resurrect — the user asked for a new row; the tombstone
-    //      stays in history.
+    //   3. No target set, draft.slug matches a LIVE workflow of a
+    //      DIFFERENT id → return slug_conflict_with_live_workflow.
+    //      We do NOT silently adopt: that produced the
+    //      "Berlin Weather wrote into list-private-github-repos" bug.
     //
-    //   4. Otherwise → create. On success we persist the new id as
+    //   4. Draft.slug matches a SOFT-DELETED workflow → unique index is
+    //      partial (WHERE deleted_at IS NULL), so the slug is already
+    //      free and we fall through to createWorkflow. No resurrect —
+    //      the tombstone stays in history.
+    //
+    //   5. Otherwise → create. On success we persist the new id as
     //      target_workflow_id so the next commit_draft updates in-place.
     const convRows = await ctx.db
       .select({ target_workflow_id: conversations.target_workflow_id })
@@ -159,9 +171,43 @@ export const commitDraftTool: ConversationTool = {
       .limit(1);
     let targetWorkflowId = convRows[0]?.target_workflow_id ?? null;
 
+    if (args.target_workflow_id) {
+      // Explicit override from the LLM after user-confirmed adoption.
+      // Verify the workflow exists, is live, and belongs to this tenant
+      // before pinning. A bad id here would otherwise UPDATE a
+      // potentially-foreign workflow.
+      const explicitRows = await ctx.db
+        .select({ id: workflows.id })
+        .from(workflows)
+        .where(
+          and(
+            eq(workflows.tenant_id, ctx.tenant_id),
+            eq(workflows.id, args.target_workflow_id),
+            isNull(workflows.deleted_at),
+          ),
+        )
+        .limit(1);
+      if (!explicitRows[0]) {
+        return {
+          ok: false,
+          data: buildGateError(fullDraft, {
+            error_code: "target_workflow_not_found",
+            message: `target_workflow_id "${args.target_workflow_id}" does not exist or is not live in this tenant`,
+            recommended_mode: "workflow",
+            extra: { attempted_target_workflow_id: args.target_workflow_id },
+          }),
+        };
+      }
+      targetWorkflowId = explicitRows[0].id;
+      await ctx.db
+        .update(conversations)
+        .set({ target_workflow_id: targetWorkflowId, updated_at: new Date() })
+        .where(eq(conversations.id, ctx.conversation_id));
+    }
+
     if (!targetWorkflowId && def.slug) {
       const slugRows = await ctx.db
-        .select({ id: workflows.id })
+        .select({ id: workflows.id, name: workflows.name, slug: workflows.slug })
         .from(workflows)
         .where(
           and(
@@ -171,12 +217,26 @@ export const commitDraftTool: ConversationTool = {
           ),
         )
         .limit(1);
-      if (slugRows[0]) {
-        targetWorkflowId = slugRows[0].id;
-        await ctx.db
-          .update(conversations)
-          .set({ target_workflow_id: targetWorkflowId, updated_at: new Date() })
-          .where(eq(conversations.id, ctx.conversation_id));
+      const conflict = slugRows[0];
+      if (conflict) {
+        return {
+          ok: false,
+          data: buildGateError(fullDraft, {
+            error_code: "slug_conflict_with_live_workflow",
+            message: `slug "${def.slug}" already belongs to workflow "${conflict.name}" (id=${conflict.id}). Ask the user whether to overwrite that workflow or pick a different slug — never assume.`,
+            recommended_mode: "workflow",
+            extra: {
+              attempted_slug: def.slug,
+              conflict: { workflow_id: conflict.id, slug: conflict.slug, name: conflict.name },
+              recovery: {
+                overwrite:
+                  "After the user confirms in chat, call commit_draft again with target_workflow_id=<conflict.workflow_id>",
+                rename:
+                  "Otherwise rename the draft (update_param / build_workflow with a fresh slug) and re-validate before committing.",
+              },
+            },
+          }),
+        };
       }
     }
 
@@ -234,20 +294,29 @@ export const commitDraftTool: ConversationTool = {
         return {
           ok: false,
           data: buildGateError(fullDraft, {
-            error_code: "duplicate_slug",
-            message: `workflow slug "${attempted}" already exists`,
+            error_code: "slug_conflict_with_live_workflow",
+            message: `slug "${attempted}" already exists${existing ? ` (workflow id ${existing.id})` : ""}. Ask the user whether to overwrite or pick a different slug — never assume.`,
             recommended_mode: "workflow",
             extra: {
               errors: [
                 {
                   path: "slug",
                   message: existing
-                    ? `a workflow with slug "${attempted}" already exists (id=${existing.id}) — to update it, call commit_draft again; the save tool will now update this workflow in place. To create a new workflow, pick a different slug.`
-                    : `a workflow with slug "${attempted}" already exists for this tenant — pick a different slug and call commit_draft again`,
+                    ? `slug "${attempted}" belongs to workflow id=${existing.id}. To overwrite it, ask the user, then call commit_draft with target_workflow_id="${existing.id}". Otherwise rename the draft slug.`
+                    : `slug "${attempted}" already exists for this tenant — pick a different slug and call commit_draft again`,
                 },
               ],
               attempted_slug: attempted,
               ...(existing ? { conflict: { workflow_id: existing.id, slug: existing.slug } } : {}),
+              ...(existing
+                ? {
+                    recovery: {
+                      overwrite: `After the user confirms in chat, call commit_draft again with target_workflow_id="${existing.id}"`,
+                      rename:
+                        "Otherwise rename the draft (update_param / build_workflow with a fresh slug) and re-validate before committing.",
+                    },
+                  }
+                : {}),
             },
           }),
         };
