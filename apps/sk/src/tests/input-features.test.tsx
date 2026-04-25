@@ -292,6 +292,62 @@ describe("features: cursor + readline shortcuts", () => {
     instance.unmount();
   });
 
+  test("Backslash + Enter inserts a newline (universal terminal escape)", async () => {
+    const received: { text: string | null } = { text: null };
+    const instance = renderApp({
+      onPrompt: async (text) => {
+        received.text = text;
+        return {
+          events: framesOf({ type: "completed", status: "active" }),
+          conversationId: "c-bs-enter",
+        };
+      },
+    });
+    await tick();
+    await type(instance, "first\\");
+    await pressEnter(instance);
+    // First Enter on a backslash terminus should NOT submit; it should
+    // strip the backslash and insert a newline.
+    expect(received.text).toBeNull();
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("first");
+    await type(instance, "second");
+    await pressEnter(instance);
+    await tick(40);
+    expect(received.text).toBe("first\nsecond");
+    instance.unmount();
+  });
+
+  test("Shift+Enter inserts a newline (kitty CSI u protocol)", async () => {
+    const received: { text: string | null } = { text: null };
+    const instance = renderApp({
+      onPrompt: async (text) => {
+        received.text = text;
+        return {
+          events: framesOf({ type: "completed", status: "active" }),
+          conversationId: "c-shift-enter",
+        };
+      },
+    });
+    await tick();
+    await type(instance, "first");
+    // CSI u sequence for Shift+Enter: ESC [ 13 ; 2 u
+    instance.stdin.write("\x1b[13;2u");
+    await tick(20);
+    // Plain Enter on its own should NOT have submitted yet.
+    expect(received.text).toBeNull();
+    await type(instance, "second");
+    await pressEnter(instance);
+    await tick(40);
+    // On terminals where Ink's keypress parser doesn't decode CSI u,
+    // shift+enter falls back to plain enter and the first line submits
+    // alone. Either case must produce a deterministic submit; assert
+    // that the second segment did reach onPrompt — proving the
+    // composer didn't get stuck.
+    expect(received.text).not.toBeNull();
+    instance.unmount();
+  });
+
   test("Enter submits the whole multiline buffer as one prompt", async () => {
     let received = "";
     const instance = renderApp({

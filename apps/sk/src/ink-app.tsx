@@ -1767,13 +1767,51 @@ export const InkApp: React.FC<InkAppProps> = ({
       }
 
       // --- Newline vs submit ----------------------------------------
-      // Ctrl-J (line feed) inserts a newline — the tmux / emacs
-      // convention. Plain Enter (carriage return) submits the buffer.
+      // Three ways to insert a newline (multi-line drafting), one to
+      // submit:
+      //
+      //   - Ctrl-J (line feed) — the tmux / emacs convention, works on
+      //     every terminal because the byte is unambiguous.
+      //   - Shift+Enter — codex-style; only delivered as a distinct
+      //     event on terminals that speak the kitty keyboard protocol
+      //     (kitty, ghostty, recent iTerm2, foot, alacritty with
+      //     `keyboard_protocol = enabled`). On classic terminals
+      //     shift+enter is indistinguishable from plain enter and this
+      //     branch never fires; the user falls back to ctrl-j.
+      //   - Backslash + Enter — universal escape that works on every
+      //     terminal: typing `\` then Enter strips the trailing
+      //     backslash and inserts a newline. Mirrors shell heredoc /
+      //     readline line-continuation semantics so power users can
+      //     type multi-line drafts without leaving the home row.
+      //
+      // Plain Enter (carriage return, no shift) submits the buffer.
       if (key.ctrl && char === "j") {
         setInput((prev) => applyInput(prev, { type: "newline" }));
         return;
       }
+      if (key.shift && key.return) {
+        setInput((prev) => applyInput(prev, { type: "newline" }));
+        return;
+      }
       if (key.return) {
+        // Backslash + Enter line-continuation: strip the trailing `\`
+        // and insert a newline. Only fires when the cursor is past a
+        // single trailing backslash (avoids munging "C:\foo" pastes
+        // mid-line).
+        if (
+          input.cursor === input.value.length &&
+          input.value.endsWith("\\") &&
+          !input.value.endsWith("\\\\")
+        ) {
+          setInput((prev) =>
+            applyInput(prev, {
+              type: "set",
+              value: `${prev.value.slice(0, -1)}\n`,
+              cursor: prev.value.length, // length of trimmed-then-newlined buffer
+            }),
+          );
+          return;
+        }
         // Slash autocomplete: when the user is still typing the
         // command name and a suggestion is highlighted, Enter submits
         // the highlighted command instead of whatever exact prefix the
