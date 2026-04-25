@@ -27,6 +27,7 @@ export const connectorTemplates = pgTable(
     description: text("description").notNull().default(""),
     category: text("category"),
     tags: jsonb("tags").default([]),
+    aliases: jsonb("aliases").notNull().default([]),
     setup_instructions: text("setup_instructions").notNull().default(""),
     auth_options: jsonb("auth_options").default([]),
     // Schema version. Bumps when ConnectorTemplateSchema adds breaking fields.

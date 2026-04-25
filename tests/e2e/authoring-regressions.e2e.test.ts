@@ -128,7 +128,7 @@ async function getConversation(conversationId: string): Promise<{
     mode?: string;
     summary?: { next_action?: string | null; missing_fields?: string[] };
     connector?: {
-      template_id?: string | null;
+      template_slug?: string | null;
       template_name?: string | null;
       validation?: { missing_fields?: string[] };
       latest_probe?: { ok: boolean; summary: string; status_code?: number; failure_code?: string };
@@ -211,7 +211,7 @@ describe("authoring regressions", () => {
         },
       },
     ]);
-    expect(detail.draft?.connector?.template_id).toBe("shopify");
+    expect(detail.draft?.connector?.template_slug).toBe("shopify");
     expect(detail.draft?.connector?.validation?.missing_fields ?? []).toContain("base_url.shop");
     expect(detail.draft?.summary?.missing_fields ?? []).toContain("base_url.shop");
   });

@@ -7,7 +7,7 @@ const BACKGROUND_TOOL_NAMES = new Set([
   "load_skill",
   "web_search",
   "search_knowledge",
-  "search_documentation",
+  "search_docs",
   "find_tool",
   "find_system",
   "find_system_templates",
@@ -34,7 +34,7 @@ function compactName(name: string): string {
       return "searched web";
     case "search_knowledge":
       return "searched knowledge";
-    case "search_documentation":
+    case "search_docs":
       return "read documentation";
     case "load_skill":
       return "loaded skills";

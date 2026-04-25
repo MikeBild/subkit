@@ -20,6 +20,7 @@ import {
 } from "../db/schema/index.ts";
 import { checkAndDecrement, checkBudget, monthlyUsage, recordUsage } from "../llm/budgets.ts";
 import { renderAuthoringContextBlock } from "../llm/core/authoring-context-block.ts";
+import { splitPromptIntoBlocks, toSystemMessages } from "../llm/core/cache-blocks.ts";
 import { assembleEnhancedPrompt, detectIntentSkills } from "../llm/core/context-assembler.ts";
 import { resolveModelRoute, resolveLanguageModel as resolveSdkModel } from "../llm/core/invoke.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
@@ -45,6 +46,7 @@ import {
 } from "./persist.ts";
 import type { ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
+import { synthesizeFallbackMessage, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
 import type { DraftDocument, TurnEvent } from "./types.ts";
 
 export interface RunLoopParams {
@@ -543,6 +545,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     pendingChildElicitationIds: [],
     toolInvocationCount: new Map(),
     toolLastErrorHash: new Map(),
+    totalLoopWarnings: 0,
+    lastAssistantText: "",
   };
   const tools = wrapTools(
     ctx,
@@ -563,6 +567,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const detectedIntent = detectUserIntent(p.user_message);
   const preferredTool =
     detectedIntent.forceTool && tools[detectedIntent.forceTool] ? detectedIntent.forceTool : null;
+  const forceNoTools = detectedIntent.forceNoTools === true;
   if (preferredTool) {
     logger.debug({
       module: "conversation",
@@ -570,6 +575,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       msg: "steering toolChoice from user intent",
       conversation_id: p.conversation_id,
       forced_tool: preferredTool,
+      reason: detectedIntent.reason,
+    });
+  }
+  if (forceNoTools) {
+    logger.debug({
+      module: "conversation",
+      action: "loop.intent.no_tools",
+      msg: "pinning toolChoice to none — enumeration answer from snapshot",
+      conversation_id: p.conversation_id,
       reason: detectedIntent.reason,
     });
   }
@@ -601,12 +615,40 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       turnAbortCtrl.signal,
       AbortSignal.timeout(Math.min(10 * 60_000, 30_000 * budget)),
     ]);
+    // Cache-hint wiring: split the assembled prompt into a stable head
+    // (base prompt + skills + tenant snapshot) and a volatile tail
+    // (user memory + prior failures + authoring context) and attach
+    // `cacheControl: { type: "ephemeral", ttl: "1h" }` to the head so
+    // Anthropic / Vertex (Claude) can serve it from cache on
+    // subsequent turns. Providers that don't understand the hint
+    // ignore it. Enabled unconditionally for Claude models — the flag
+    // on ModelRoute gates per-tenant opt-out if needed.
+    const cacheSupported =
+      (route.provider === "anthropic" ||
+        route.provider === "vertex" ||
+        route.provider === "bedrock" ||
+        route.provider === "gateway") &&
+      /claude/i.test(modelId);
+    const cacheBlocks = splitPromptIntoBlocks(prompt, "converse");
+    // The converse flow always opts into caching when the provider
+    // supports it — the per-tenant `enable_prompt_cache` setting still
+    // gates the one-shot flows (generate / repair / extract) via
+    // invoke.ts, but an interactive authoring loop benefits too much
+    // from cache hits to stay off by default.
+    const systemMessages = toSystemMessages(cacheBlocks, {
+      enabled: cacheSupported,
+      ttl: "1h",
+    });
     const result = streamText({
       model: resolvedModel,
-      system: prompt.system,
+      system: systemMessages,
       messages: attemptMessages,
       tools,
-      toolChoice: preferredTool ? { type: "tool" as const, toolName: preferredTool } : "auto",
+      toolChoice: preferredTool
+        ? { type: "tool" as const, toolName: preferredTool }
+        : forceNoTools
+          ? "none"
+          : "auto",
       stopWhen: [
         stepCountIs(budget),
         hasToolCall("ask_user_choice"),
@@ -619,6 +661,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         pausedStopCondition as any,
         // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
         committedStopCondition as any,
+        // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
+        turnLoopBudgetStopCondition as any,
       ],
       maxRetries: 0,
       abortSignal: streamAbortSignal,
@@ -718,6 +762,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           signals.pendingChildToolCallIds = [];
           signals.pendingChildElicitationIds = [];
           if (hasText) {
+            signals.lastAssistantText = guarded.text;
             events.push({
               type: "message",
               role: "assistant",
@@ -828,6 +873,49 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             throw fbErr;
           }
         }
+      }
+    }
+
+    // Empty-text fallback — when the turn finishes without the model
+    // emitting any assistant prose (e.g. after the loop-guard short-
+    // circuited every subsequent tool attempt), synthesise a short
+    // visible message from the collected tool results. Prior behaviour
+    // rendered assistant_text:"" which surfaced as silence in the CLI
+    // (observed in session 4e6696e3). A visible line is always better
+    // than silence.
+    if (
+      !signals.lastAssistantText &&
+      !signals.pendingElicitation &&
+      !signals.committed &&
+      !turnAbortCtrl.signal.aborted
+    ) {
+      const synthetic = synthesizeFallbackMessage({
+        events,
+        loopWarnings: signals.totalLoopWarnings,
+      });
+      if (synthetic) {
+        const fallbackMessageId = await appendMessage(
+          p.db,
+          p.tenant_id,
+          p.conversation_id,
+          "assistant",
+          { text: synthetic, _synthetic: true, _reason: "empty_turn_fallback" },
+        );
+        events.push({
+          type: "message",
+          role: "assistant",
+          content: { text: synthetic },
+          id: fallbackMessageId,
+          parent_message_id: fallbackMessageId,
+        });
+        signals.lastAssistantText = synthetic;
+        log.warn({
+          module: "conversation",
+          action: "loop.empty_text_synthesized",
+          msg: "turn ended with no assistant text — synthesised fallback from tool results",
+          conversation_id: p.conversation_id,
+          loop_warnings: signals.totalLoopWarnings,
+        });
       }
     }
 

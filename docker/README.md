@@ -50,6 +50,12 @@ docker compose logs -f engine
 # check health
 curl http://localhost:3000/v1/health
 
+# run the docker-backed end-to-end acceptance gate
+bun run test:e2e:docker
+
+# reuse an already running stack and leave it up afterwards
+SUBKIT_DOCKER_SKIP_COMPOSE=1 SUBKIT_DOCKER_KEEP_STACK=1 bun run test:e2e:docker
+
 # shell into engine
 docker compose exec engine sh
 
@@ -59,6 +65,12 @@ docker compose down
 # full reset (drops DB + blob volume)
 docker compose down -v
 ```
+
+`test:e2e:docker` also accepts:
+
+- `SUBKIT_DOCKER_BASE_URL` to target a non-default engine URL.
+- `SUBKIT_DOCKER_API_KEY` to reuse an existing admin key instead of issuing one through `docker compose run`.
+- `SUBKIT_DOCKER_TENANT` to mint the admin key for a different tenant slug.
 
 ## Production readiness notes
 

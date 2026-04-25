@@ -230,7 +230,7 @@ describe("connector templates", () => {
         Authorization: `Bearer ${srv.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ ingest_now: false }),
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as {
@@ -238,10 +238,14 @@ describe("connector templates", () => {
       slug: string;
       base_url: string;
       auth_type: string;
+      template_slug: string | null;
+      template_source: "builtin" | "tenant" | null;
     };
     expect(body.slug).toBe("stripe");
     expect(body.base_url).toBe("https://api.stripe.com/v1");
     expect(body.auth_type).toBe("bearer");
+    expect(body.template_slug).toBe("stripe");
+    expect(body.template_source).toBe("builtin");
 
     const cnRows = await srv.db
       .select()

@@ -127,10 +127,18 @@ function normalizeConnectorDraft(raw: unknown): ConnectorDraftDocument | null {
   if (typeof connector.description === "string" && connector.description.length > 0) {
     next.description = connector.description;
   }
-  if (typeof connector.template_id === "string") next.template_id = connector.template_id;
-  if (connector.template_id === null) next.template_id = null;
+  if (typeof connector.template_slug === "string") next.template_slug = connector.template_slug;
+  if (connector.template_slug === null) next.template_slug = null;
+  if (typeof connector.template_id === "string") next.template_slug = connector.template_id;
+  if (connector.template_id === null) next.template_slug = null;
   if (typeof connector.template_name === "string") next.template_name = connector.template_name;
   if (connector.template_name === null) next.template_name = null;
+  if (typeof connector.template_source === "string") {
+    next.template_source = connector.template_source as NonNullable<
+      ConnectorDraftDocument["template_source"]
+    >;
+  }
+  if (connector.template_source === null) next.template_source = null;
   if (Array.isArray(connector.docs)) {
     next.docs = connector.docs.filter((doc: unknown): doc is string => typeof doc === "string");
   }

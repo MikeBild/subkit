@@ -41,6 +41,8 @@ describe("policy confirm_before_execution wiring", () => {
       pendingChildElicitationIds: [],
       toolInvocationCount: new Map(),
       toolLastErrorHash: new Map(),
+      totalLoopWarnings: 0,
+      lastAssistantText: "",
     };
     const engineClient = new EngineClient({
       tenant_id: ctx.tenant_id,
@@ -115,6 +117,8 @@ describe("policy confirm_before_execution wiring", () => {
       pendingChildElicitationIds: [],
       toolInvocationCount: new Map(),
       toolLastErrorHash: new Map(),
+      totalLoopWarnings: 0,
+      lastAssistantText: "",
     };
     const engineClient = new EngineClient({
       tenant_id: ctx.tenant_id,

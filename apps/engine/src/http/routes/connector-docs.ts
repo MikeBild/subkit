@@ -76,6 +76,7 @@ const SearchResponse = z
         path: z.string().nullable(),
         snippet: z.string(),
         rank: z.number(),
+        match_type: z.enum(["operation", "auth", "schema", "general"]),
       }),
     ),
   })
@@ -115,7 +116,7 @@ const searchRoute = createRoute({
   method: "get",
   path: "/v1/connectors/{id}/docs/search",
   tags: ["connectors"],
-  summary: "Full-text search over ingested documentation",
+  summary: "Ranked search over ingested documentation",
   security: [{ bearerAuth: [] }],
   request: { params: IdParam, query: SearchQuery },
   responses: {

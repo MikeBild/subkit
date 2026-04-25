@@ -351,7 +351,7 @@ function formatConnectorLines(draft: Record<string, unknown> | null): string[] {
     `auth: ${recordString(connector.auth_type)}`,
     `base_url: ${recordString(connector.base_url)}`,
     `dsn: ${recordString(connector.dsn)}`,
-    `template: ${recordString(connector.template_name ?? connector.template_id, "scratch")}`,
+    `template: ${recordString(connector.template_name ?? connector.template_slug, "scratch")}`,
     `saved id: ${recordString(connector.saved_connector_id)}`,
     "",
     `validation: ${scalarString(validation?.ok === true ? "ok" : "needs work")}`,
@@ -550,7 +550,7 @@ export async function handleSlash(
             auth_type: recordString(connector.auth_type),
             base_url: recordString(connector.base_url),
             dsn: recordString(connector.dsn),
-            template: recordString(connector.template_name ?? connector.template_id, "scratch"),
+            template: recordString(connector.template_name ?? connector.template_slug, "scratch"),
             saved_id: recordString(connector.saved_connector_id),
           },
           missing_fields: Array.isArray(validation?.missing_fields)
@@ -644,8 +644,8 @@ export async function handleSlash(
       const lines: string[] = [];
       if (connector?.template_name) {
         lines.push(`current template: ${scalarString(connector.template_name)}`);
-        if (connector.template_id) {
-          lines.push(`template id: ${scalarString(connector.template_id)}`);
+        if (connector.template_slug) {
+          lines.push(`template slug: ${scalarString(connector.template_slug)}`);
         }
         lines.push("");
       }
@@ -659,7 +659,7 @@ export async function handleSlash(
         ctx.openPane({
           kind: "template-picker",
           title: "connector templates",
-          current_template: scalarString(connector?.template_name ?? connector?.template_id, ""),
+          current_template: scalarString(connector?.template_name ?? connector?.template_slug, ""),
           connector_name: scalarString(connector?.name, ""),
           lines,
         });

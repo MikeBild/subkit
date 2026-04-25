@@ -14,6 +14,7 @@ import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { tunnelRegistry } from "../../tunnels/registry.ts";
 import type { TunnelResponse } from "../../tunnels/types.ts";
+import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import type { ConnectorView } from "../types.ts";
 
 export interface HttpRequestDescriptor {
@@ -446,7 +447,7 @@ export async function probeHttpConnector(p: {
       };
     }
 
-    const rawProbe = p.connector.config?.probe_endpoint as unknown;
+    const rawProbe = getConnectorProbeEndpoint(p.connector);
     const probeConfig = isProbeEndpointConfig(rawProbe) ? rawProbe : null;
 
     const method = probeConfig?.method ?? "GET";

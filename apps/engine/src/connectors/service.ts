@@ -7,6 +7,8 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
+import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
+import { buildTemplateBindingFields, resolveConnectorTemplate } from "./template-resolver.ts";
 import {
   type ConnectorView,
   type CreateConnectorInput,
@@ -40,6 +42,11 @@ function toView(row: typeof connectors.$inferSelect): ConnectorView {
     base_url: row.base_url ?? null,
     dsn: row.dsn ?? null,
     config: (row.config as Record<string, unknown>) ?? {},
+    template_slug: row.template_slug ?? null,
+    template_name: row.template_name ?? null,
+    template_source: row.template_source ?? null,
+    template_version: row.template_version ?? null,
+    template_snapshot: (row.template_snapshot as Record<string, unknown> | null) ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     circuit_state: (row.circuit_state as ConnectorView["circuit_state"]) ?? "closed",
@@ -47,6 +54,62 @@ function toView(row: typeof connectors.$inferSelect): ConnectorView {
     circuit_failure_count: row.circuit_failure_count ?? 0,
     circuit_threshold: row.circuit_threshold ?? 5,
     circuit_reset_ms: row.circuit_reset_ms ?? 300000,
+  };
+}
+
+function validateHttpConfig(driver: DriverName, config: Record<string, unknown> | undefined): void {
+  if (driver !== "http" || !config) return;
+  const parsed = HttpConnectorConfig.safeParse(config);
+  if (!parsed.success) {
+    throw Object.assign(new Error("invalid http connector config"), {
+      code: "connector_config_invalid",
+      details: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+    });
+  }
+}
+
+async function resolveCreateTemplateBinding(
+  tenant_id: string,
+  input: CreateConnectorInput,
+  exec: Executor,
+): Promise<{
+  effective: CreateConnectorInput;
+  binding: ReturnType<typeof buildTemplateBindingFields> | null;
+}> {
+  if (!input.template_slug) {
+    return { effective: input, binding: null };
+  }
+  const resolved = await resolveConnectorTemplate({
+    db: exec,
+    tenant_id,
+    slug: input.template_slug,
+    preferred_source: input.template_source,
+  });
+  if (!resolved) {
+    throw Object.assign(new Error(`unknown connector template: ${input.template_slug}`), {
+      code: "connector_template_unknown",
+      template_slug: input.template_slug,
+    });
+  }
+  const enriched = enrichConnectorFromTemplate(
+    {
+      name: input.name,
+      slug: input.slug,
+      driver: input.driver,
+      environment: input.environment,
+      base_url: input.base_url,
+      dsn: input.dsn,
+      auth_type: input.auth_type,
+      config: input.config,
+    },
+    resolved.template,
+    input.template_base_url_environment
+      ? { environment: input.template_base_url_environment }
+      : undefined,
+  );
+  return {
+    effective: enriched,
+    binding: buildTemplateBindingFields(resolved),
   };
 }
 
@@ -61,31 +124,32 @@ export async function createConnector(
   exec?: Executor,
 ): Promise<ConnectorView> {
   const db = exec ?? getDb();
-  const slug = p.input.slug ?? slugify(p.input.name);
-  const environment = p.input.environment ?? "dev";
-  const auth_type = p.input.auth_type ?? "none";
-  if (p.input.driver === "http" && p.input.config) {
-    const parsed = HttpConnectorConfig.safeParse(p.input.config);
-    if (!parsed.success) {
-      throw Object.assign(new Error("invalid http connector config"), {
-        code: "connector_config_invalid",
-        details: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
-      });
-    }
-  }
   return await db.transaction(async (tx) => {
+    const resolved = await resolveCreateTemplateBinding(p.tenant_id, p.input, tx);
+    const effective = resolved.effective;
+    const slug = effective.slug ?? slugify(effective.name);
+    const environment = effective.environment ?? "dev";
+    const auth_type = effective.auth_type ?? "none";
+    validateHttpConfig(effective.driver, effective.config);
     const inserted = await tx
       .insert(connectors)
       .values({
         tenant_id: p.tenant_id,
         slug,
-        display_name: p.input.name,
-        driver: p.input.driver,
+        display_name: effective.name,
+        driver: effective.driver,
         environment,
         auth_type,
-        base_url: p.input.base_url ?? null,
-        dsn: p.input.dsn ?? null,
-        config: p.input.config ?? {},
+        base_url: effective.base_url ?? null,
+        dsn: effective.dsn ?? null,
+        config: effective.config ?? {},
+        ...(resolved.binding ?? {
+          template_slug: null,
+          template_name: null,
+          template_source: null,
+          template_version: null,
+          template_snapshot: null,
+        }),
       })
       .returning();
     const row = inserted[0];
@@ -101,9 +165,11 @@ export async function createConnector(
         result: "success",
         metadata: {
           slug,
-          driver: p.input.driver,
+          driver: effective.driver,
           environment,
           auth_type,
+          template_slug: row.template_slug ?? null,
+          template_source: row.template_source ?? null,
         },
       },
       tx,
@@ -206,15 +272,11 @@ export async function updateConnector(
       .limit(1);
     const prior = existing[0];
     if (!prior) return null;
-    const effectiveDriver = prior.driver;
-    if (patch.config && effectiveDriver === "http") {
-      const parsed = HttpConnectorConfig.safeParse(patch.config);
-      if (!parsed.success) {
-        throw Object.assign(new Error("invalid http connector config"), {
-          code: "connector_config_invalid",
-          details: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
-        });
-      }
+    if (patch.clear_template_binding && patch.template_slug) {
+      throw Object.assign(
+        new Error("clear_template_binding cannot be combined with template_slug"),
+        { code: "connector_template_conflict" },
+      );
     }
     const set: Partial<typeof connectors.$inferInsert> = { updated_at: new Date() };
     if (patch.name !== undefined) set.display_name = patch.name;
@@ -222,6 +284,54 @@ export async function updateConnector(
     if (patch.dsn !== undefined) set.dsn = patch.dsn;
     if (patch.auth_type !== undefined) set.auth_type = patch.auth_type;
     if (patch.config !== undefined) set.config = patch.config;
+    if (patch.clear_template_binding) {
+      set.template_slug = null;
+      set.template_name = null;
+      set.template_source = null;
+      set.template_version = null;
+      set.template_snapshot = null;
+    } else if (patch.template_slug) {
+      const resolved = await resolveConnectorTemplate({
+        db: tx,
+        tenant_id,
+        slug: patch.template_slug,
+        preferred_source: patch.template_source,
+      });
+      if (!resolved) {
+        throw Object.assign(new Error(`unknown connector template: ${patch.template_slug}`), {
+          code: "connector_template_unknown",
+          template_slug: patch.template_slug,
+        });
+      }
+      Object.assign(set, buildTemplateBindingFields(resolved));
+      const enriched = enrichConnectorFromTemplate(
+        {
+          name: patch.name ?? prior.display_name,
+          slug: prior.slug,
+          driver: prior.driver as DriverName,
+          environment: prior.environment as Environment,
+          base_url: patch.base_url ?? prior.base_url ?? undefined,
+          dsn: patch.dsn ?? prior.dsn ?? undefined,
+          auth_type: patch.auth_type ?? (prior.auth_type as UpdateConnectorInput["auth_type"]),
+          config: patch.config ?? (prior.config as Record<string, unknown>) ?? {},
+        },
+        resolved.template,
+        patch.template_base_url_environment
+          ? { environment: patch.template_base_url_environment }
+          : undefined,
+      );
+      set.config = enriched.config ?? {};
+      if (patch.base_url === undefined && !prior.base_url && enriched.base_url) {
+        set.base_url = enriched.base_url;
+      }
+      if (patch.auth_type === undefined && prior.auth_type === "none") {
+        set.auth_type = enriched.auth_type;
+      }
+    }
+    validateHttpConfig(
+      (prior.driver as DriverName) ?? "http",
+      set.config as Record<string, unknown>,
+    );
     const [row] = await tx.update(connectors).set(set).where(eq(connectors.id, id)).returning();
     if (!row) return null;
     await auditAwait(

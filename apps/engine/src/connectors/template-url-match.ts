@@ -20,8 +20,30 @@ export interface TemplateUrlMatch {
   matched_segment: string;
 }
 
-function rank(rawUrl: string): TemplateUrlMatch[] {
-  const compiled = loadCompiledTemplates();
+function computeSpecificity(pattern: string): number {
+  const base = pattern.length;
+  const wildcards = (pattern.match(/\[|\.\*|\.\+|\\w|\\d|\\s|\[\^/g) ?? []).length;
+  const literalHost = pattern.match(/^\^?https?:\\\/\\\/([a-z0-9.-]+)/i);
+  const fixedHostSegments = literalHost
+    ? literalHost[1]!.split(/\\\./).filter((s) => s.length > 0).length
+    : 0;
+  return base - 3 * wildcards + 5 * fixedHostSegments;
+}
+
+function compileTemplates(templates: ConnectorTemplate[]) {
+  return templates.map((template) => {
+    const builtin = loadCompiledTemplates().find((entry) => entry.template.slug === template.slug);
+    if (builtin && builtin.template.url_pattern === template.url_pattern) return builtin;
+    return {
+      template,
+      urlRe: new RegExp(template.url_pattern),
+      specificity: computeSpecificity(template.url_pattern),
+    };
+  });
+}
+
+function rank(rawUrl: string, templates?: ConnectorTemplate[]): TemplateUrlMatch[] {
+  const compiled = templates ? compileTemplates(templates) : loadCompiledTemplates();
   const out: TemplateUrlMatch[] = [];
   for (const { template, urlRe, specificity } of compiled) {
     const m = urlRe.exec(rawUrl);
@@ -54,22 +76,29 @@ function looksLikeUrl(s: string): boolean {
  * Return the single best template for a raw URL, or null when no template
  * matches. Invalid URLs return null.
  */
-export function matchTemplateByUrl(rawUrl: string): TemplateUrlMatch | null {
+export function matchTemplateByUrl(
+  rawUrl: string,
+  templates?: ConnectorTemplate[],
+): TemplateUrlMatch | null {
   if (!looksLikeUrl(rawUrl)) {
     // Allow postgres/mysql/redis DSNs too — they are not URL objects, but
     // templates may have url_pattern starting with `^postgres:`.
     if (!/^[a-z][a-z0-9+\-.]*:\/\//.test(rawUrl)) return null;
   }
-  const matches = rank(rawUrl);
+  const matches = rank(rawUrl, templates);
   return matches[0] ?? null;
 }
 
 /**
  * Return up to `limit` best matches for a raw URL, sorted by score desc.
  */
-export function matchTemplatesByUrl(rawUrl: string, limit = 5): TemplateUrlMatch[] {
+export function matchTemplatesByUrl(
+  rawUrl: string,
+  limit = 5,
+  templates?: ConnectorTemplate[],
+): TemplateUrlMatch[] {
   if (!looksLikeUrl(rawUrl) && !/^[a-z][a-z0-9+\-.]*:\/\//.test(rawUrl)) return [];
   if (limit < 1) return [];
-  const matches = rank(rawUrl);
+  const matches = rank(rawUrl, templates);
   return matches.slice(0, limit);
 }

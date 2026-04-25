@@ -23,7 +23,13 @@ describe("validateDiscoverDraft", () => {
     ).toBeNull();
   });
 
-  it("accepts a connector draft with template_id instead of base_url", () => {
+  it("accepts a connector draft with template_slug instead of base_url", () => {
+    expect(
+      validateDiscoverDraft(mk("connector", { name: "X", template_slug: "tpl-123" })),
+    ).toBeNull();
+  });
+
+  it("accepts a connector draft with legacy template_id instead of base_url", () => {
     expect(
       validateDiscoverDraft(mk("connector", { name: "X", template_id: "tpl-123" })),
     ).toBeNull();
@@ -34,7 +40,7 @@ describe("validateDiscoverDraft", () => {
     expect(issues).toContain("connector draft requires `name`");
   });
 
-  it("rejects a connector draft missing both base_url and template_id and driver", () => {
+  it("rejects a connector draft missing base_url, template binding, and driver", () => {
     const issues = validateDiscoverDraft(mk("connector", { name: "X" }));
     expect(issues?.some((i) => i.includes("base_url"))).toBe(true);
   });

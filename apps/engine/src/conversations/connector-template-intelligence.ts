@@ -1,3 +1,4 @@
+import { findTemplateAliasMatches } from "../connectors/template-resolver.ts";
 import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { loadBuiltinTemplates } from "../connectors/templates.ts";
 import type { AuthType, DriverName } from "../connectors/types.ts";
@@ -49,6 +50,7 @@ export function scoreConnectorTemplate(
   if (explicitDriver && template.driver === explicitDriver) score += 6;
   if (template.slug === q) score += 16;
   if (template.name.toLowerCase() === q) score += 16;
+  if (findTemplateAliasMatches(template, q)) score += 14;
   if (template.slug.includes(q)) score += 8;
   if (template.name.toLowerCase().includes(q)) score += 8;
   if (template.description.toLowerCase().includes(q)) score += 4;
@@ -58,6 +60,7 @@ export function scoreConnectorTemplate(
     template.name.toLowerCase(),
     template.description.toLowerCase(),
     template.category?.toLowerCase() ?? "",
+    ...template.aliases.map((alias) => alias.toLowerCase()),
     ...template.tags.map((tag) => tag.toLowerCase()),
   ];
   for (const token of tokenize(q)) {
@@ -90,8 +93,10 @@ export function suggestConnectorTemplates(args: {
   query: string;
   limit: number;
   explicitDriver?: DriverName;
+  templates?: ConnectorTemplate[];
 }): Array<{ template: ConnectorTemplate; score: number }> {
-  return loadBuiltinTemplates()
+  const templates = args.templates ?? loadBuiltinTemplates();
+  return templates
     .map((template) => ({
       template,
       score: scoreConnectorTemplate(template, args.query, args.explicitDriver),
@@ -104,12 +109,14 @@ export function suggestConnectorTemplates(args: {
 export function pickBestConnectorTemplate(
   query: string,
   explicitDriver?: DriverName,
+  templates?: ConnectorTemplate[],
 ): { template: ConnectorTemplate; score: number } | null {
   return (
     suggestConnectorTemplates({
       query,
       limit: 1,
       ...(explicitDriver ? { explicitDriver } : {}),
+      ...(templates ? { templates } : {}),
     })[0] ?? null
   );
 }
@@ -125,6 +132,7 @@ export function shouldAutoSelectConnectorTemplate(args: {
   if (normalizedName.length > 0) {
     if (args.template.slug === normalizedName) return true;
     if (normalizedTemplateName === normalizedName) return true;
+    if (findTemplateAliasMatches(args.template, normalizedName)) return true;
   }
 
   const query = [args.name, args.description]
@@ -133,7 +141,7 @@ export function shouldAutoSelectConnectorTemplate(args: {
   if (!query.trim()) return false;
 
   const templateTokens = new Set(
-    tokenize(`${args.template.slug} ${args.template.name}`)
+    tokenize(`${args.template.slug} ${args.template.name} ${args.template.aliases.join(" ")}`)
       .filter((token) => token.length >= 4)
       .filter((token) => !GENERIC_MATCH_TOKENS.has(token)),
   );

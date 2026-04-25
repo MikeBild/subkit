@@ -95,4 +95,28 @@ describe("connectors/service", () => {
     const gone = await getConnector(tenant_id, created.id, ctx.db);
     expect(gone).toBeNull();
   });
+
+  test("createConnector persists template binding metadata and snapshot", async () => {
+    const tenant_id = await seedTenant();
+    const created = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "Stripe",
+          slug: "stripe",
+          driver: "http",
+          environment: "dev",
+          auth_type: "bearer",
+          template_slug: "stripe",
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    expect(created.template_slug).toBe("stripe");
+    expect(created.template_name).toBeTruthy();
+    expect(created.template_source).toBe("builtin");
+    expect(created.template_version).toBe(1);
+    expect(created.template_snapshot?.slug).toBe("stripe");
+  });
 });

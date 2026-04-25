@@ -868,6 +868,78 @@
           "steps"
         ]
       },
+      "ValidateWorkflowResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "message"
+              ]
+            }
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
+      "ValidateWorkflowBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "nullable": true
+              }
+            }
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          }
+        },
+        "required": [
+          "steps"
+        ]
+      },
       "WorkflowVersionListResponse": {
         "type": "object",
         "properties": {
@@ -1409,36 +1481,464 @@
           "finished_at"
         ]
       },
+      "ConnectorSpecImportResponse": {
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/ConnectorSpecImportDraft"
+          },
+          "template_match": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "slug": {
+                "type": "string"
+              },
+              "score": {
+                "type": "number"
+              },
+              "matched_segment": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "slug",
+              "score",
+              "matched_segment"
+            ]
+          },
+          "recommended_next": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "draft",
+          "template_match",
+          "recommended_next"
+        ]
+      },
+      "ConnectorSpecImportDraft": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "driver": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "auth_type": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "driver",
+          "environment",
+          "auth_type",
+          "config"
+        ]
+      },
+      "ConnectorSpecImportRequest": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "postman",
+              "har",
+              "openapi",
+              "graphql",
+              "graphql_introspection",
+              "curl"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ],
+            "default": "dev"
+          },
+          "base_url_environment": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "content"
+        ]
+      },
+      "ConnectorTemplateUrlMatchResponse": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "matched": {
+            "type": "boolean"
+          },
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateUrlMatchItem"
+            }
+          }
+        },
+        "required": [
+          "url",
+          "matched",
+          "matches"
+        ]
+      },
+      "ConnectorTemplateUrlMatchItem": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "driver": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "tenant"
+            ]
+          },
+          "version": {
+            "type": "integer"
+          },
+          "score": {
+            "type": "number"
+          },
+          "matched_segment": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "setup_instructions": {
+            "type": "string"
+          },
+          "credential_hints": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "placeholder": {
+                  "type": "string"
+                },
+                "doc_url": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "secret": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "field",
+                "label",
+                "placeholder",
+                "doc_url",
+                "secret"
+              ]
+            }
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "webhooks": {
+                "type": "boolean"
+              },
+              "webhook_events": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rate_limits": {
+                "type": "object",
+                "nullable": true,
+                "properties": {
+                  "requests_per_second": {
+                    "type": "number"
+                  },
+                  "burst_size": {
+                    "type": "number"
+                  },
+                  "recommended_backoff_ms": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "requests_per_second",
+                  "burst_size",
+                  "recommended_backoff_ms"
+                ]
+              }
+            },
+            "required": [
+              "webhooks",
+              "webhook_events",
+              "rate_limits"
+            ]
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "driver",
+          "source",
+          "version",
+          "score",
+          "matched_segment",
+          "description",
+          "setup_instructions",
+          "credential_hints",
+          "keywords",
+          "capabilities"
+        ]
+      },
       "ConnectorTemplateListResponse": {
         "type": "object",
         "properties": {
           "items": {
             "type": "array",
             "items": {
-              "allOf": [
-                {
-                  "$ref": "#/components/schemas/ConnectorTemplate"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "source": {
-                      "type": "string",
-                      "enum": [
-                        "builtin",
-                        "tenant"
-                      ]
-                    },
-                    "id": {
-                      "type": "string",
-                      "nullable": true
-                    }
-                  },
-                  "required": [
-                    "source",
-                    "id"
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "number",
+                  "enum": [
+                    1
                   ]
+                },
+                "slug": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9][a-z0-9-]*$"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "driver": {
+                  "type": "string",
+                  "enum": [
+                    "http",
+                    "postgres",
+                    "s3",
+                    "graphql",
+                    "mssql",
+                    "mysql",
+                    "caldav",
+                    "webdav",
+                    "soap",
+                    "grpc",
+                    "mqtt",
+                    "imap",
+                    "ftp",
+                    "sftp",
+                    "smb",
+                    "redis"
+                  ]
+                },
+                "base_url": {
+                  "type": "string"
+                },
+                "auth_type": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "header",
+                    "query",
+                    "bearer",
+                    "basic",
+                    "oauth2"
+                  ]
+                },
+                "oauth": {
+                  "$ref": "#/components/schemas/ConnectorTemplateOAuth"
+                },
+                "default_skill": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "ingestion_source": {
+                  "type": "string",
+                  "enum": [
+                    "openapi",
+                    "markdown",
+                    "llms_txt",
+                    "html",
+                    "graphql",
+                    "postgres",
+                    "wsdl",
+                    "grpc_reflection",
+                    "asyncapi",
+                    "caldav_discovery",
+                    "unsupported"
+                  ]
+                },
+                "ingestion_url": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "icon": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                },
+                "aliases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                },
+                "setup_instructions": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "auth_options": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectorTemplateAuthOption"
+                  },
+                  "default": []
+                },
+                "url_pattern": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "keywords": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                },
+                "inline_schema": {
+                  "$ref": "#/components/schemas/ConnectorTemplateInlineSchema"
+                },
+                "probe_endpoint": {
+                  "$ref": "#/components/schemas/ConnectorTemplateProbeEndpoint"
+                },
+                "credential_hints": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectorTemplateCredentialHint"
+                  },
+                  "default": []
+                },
+                "base_url_options": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectorTemplateBaseUrlOption"
+                  },
+                  "default": []
+                },
+                "pagination_defaults": {
+                  "$ref": "#/components/schemas/ConnectorTemplatePaginationDefaults"
+                },
+                "capabilities": {
+                  "$ref": "#/components/schemas/ConnectorTemplateCapabilities"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "builtin",
+                    "tenant"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "nullable": true
                 }
+              },
+              "required": [
+                "version",
+                "slug",
+                "name",
+                "driver",
+                "base_url",
+                "auth_type",
+                "oauth",
+                "default_skill",
+                "ingestion_source",
+                "ingestion_url",
+                "icon",
+                "description",
+                "category",
+                "setup_instructions",
+                "url_pattern",
+                "inline_schema",
+                "probe_endpoint",
+                "pagination_defaults",
+                "capabilities",
+                "source",
+                "id"
               ]
             }
           }
@@ -1462,10 +1962,50 @@
           },
           "scopes": {
             "type": "string"
+          },
+          "grant_type": {
+            "type": "string",
+            "enum": [
+              "authorization_code",
+              "client_credentials"
+            ]
+          },
+          "token_auth_method": {
+            "type": "string",
+            "enum": [
+              "body",
+              "basic_auth"
+            ]
+          },
+          "token_content_type": {
+            "type": "string",
+            "enum": [
+              "form",
+              "json"
+            ]
+          },
+          "use_pkce": {
+            "type": "boolean"
+          },
+          "client_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "extra_headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {}
           }
         },
         "required": [
-          "issuer_url"
+          "issuer_url",
+          "grant_type",
+          "token_auth_method",
+          "token_content_type",
+          "use_pkce",
+          "client_id"
         ]
       },
       "ConnectorTemplateAuthOption": {
@@ -1498,9 +2038,211 @@
           "description"
         ]
       },
-      "ConnectorTemplate": {
+      "ConnectorTemplateInlineSchema": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "openapi",
+              "graphql"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "format",
+          "content"
+        ]
+      },
+      "ConnectorTemplateProbeEndpoint": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "HEAD",
+              "POST"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "expected_status": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "description": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "method",
+          "path",
+          "expected_status"
+        ]
+      },
+      "ConnectorTemplateCredentialHint": {
         "type": "object",
         "properties": {
+          "field": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "placeholder": {
+            "type": "string",
+            "default": ""
+          },
+          "doc_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "secret": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "field",
+          "label",
+          "doc_url",
+          "secret"
+        ]
+      },
+      "ConnectorTemplateBaseUrlOption": {
+        "type": "object",
+        "properties": {
+          "environment": {
+            "type": "string",
+            "minLength": 1
+          },
+          "base_url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "environment",
+          "base_url",
+          "label"
+        ]
+      },
+      "ConnectorTemplatePaginationDefaults": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "offset",
+              "page",
+              "cursor",
+              "none"
+            ]
+          },
+          "offset_param": {
+            "type": "string"
+          },
+          "page_param": {
+            "type": "string"
+          },
+          "cursor_request_param": {
+            "type": "string"
+          },
+          "cursor_response_path": {
+            "type": "string"
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "stop_condition": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy",
+          "page_size"
+        ]
+      },
+      "ConnectorTemplateCapabilities": {
+        "type": "object",
+        "properties": {
+          "webhooks": {
+            "type": "boolean"
+          },
+          "webhook_events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "rate_limits": {
+            "$ref": "#/components/schemas/ConnectorTemplateRateLimits"
+          }
+        },
+        "required": [
+          "webhooks",
+          "rate_limits"
+        ]
+      },
+      "ConnectorTemplateRateLimits": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "requests_per_second": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "burst_size": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "recommended_backoff_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          }
+        },
+        "required": [
+          "requests_per_second",
+          "burst_size",
+          "recommended_backoff_ms"
+        ]
+      },
+      "ConnectorTemplateRow": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
           "slug": {
             "type": "string",
             "minLength": 1,
@@ -1525,7 +2267,10 @@
               "grpc",
               "mqtt",
               "imap",
-              "ftp"
+              "ftp",
+              "sftp",
+              "smb",
+              "redis"
             ]
           },
           "base_url": {
@@ -1576,7 +2321,8 @@
             "type": "string"
           },
           "category": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "tags": {
             "type": "array",
@@ -1585,9 +2331,16 @@
             },
             "default": []
           },
-          "setup_hint": {
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "setup_instructions": {
             "type": "string",
-            "nullable": true
+            "minLength": 1
           },
           "auth_options": {
             "type": "array",
@@ -1595,9 +2348,56 @@
               "$ref": "#/components/schemas/ConnectorTemplateAuthOption"
             },
             "default": []
+          },
+          "url_pattern": {
+            "type": "string",
+            "minLength": 1
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "inline_schema": {
+            "$ref": "#/components/schemas/ConnectorTemplateInlineSchema"
+          },
+          "probe_endpoint": {
+            "$ref": "#/components/schemas/ConnectorTemplateProbeEndpoint"
+          },
+          "credential_hints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateCredentialHint"
+            },
+            "default": []
+          },
+          "base_url_options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateBaseUrlOption"
+            },
+            "default": []
+          },
+          "pagination_defaults": {
+            "$ref": "#/components/schemas/ConnectorTemplatePaginationDefaults"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/ConnectorTemplateCapabilities"
+          },
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "tenant"
+            ]
           }
         },
         "required": [
+          "version",
           "slug",
           "name",
           "driver",
@@ -1608,37 +2408,27 @@
           "ingestion_source",
           "ingestion_url",
           "icon",
-          "description"
-        ]
-      },
-      "ConnectorTemplateRow": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/ConnectorTemplate"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "source": {
-                "type": "string",
-                "enum": [
-                  "tenant"
-                ]
-              }
-            },
-            "required": [
-              "id",
-              "source"
-            ]
-          }
+          "description",
+          "category",
+          "setup_instructions",
+          "url_pattern",
+          "inline_schema",
+          "probe_endpoint",
+          "pagination_defaults",
+          "capabilities",
+          "id",
+          "source"
         ]
       },
       "ConnectorTemplateCreateBody": {
         "type": "object",
         "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
           "slug": {
             "type": "string",
             "minLength": 1,
@@ -1663,7 +2453,10 @@
               "grpc",
               "mqtt",
               "imap",
-              "ftp"
+              "ftp",
+              "sftp",
+              "smb",
+              "redis"
             ]
           },
           "base_url": {
@@ -1714,7 +2507,8 @@
             "type": "string"
           },
           "category": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "tags": {
             "type": "array",
@@ -1723,9 +2517,16 @@
             },
             "default": []
           },
-          "setup_hint": {
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "setup_instructions": {
             "type": "string",
-            "nullable": true
+            "minLength": 1
           },
           "auth_options": {
             "type": "array",
@@ -1733,9 +2534,47 @@
               "$ref": "#/components/schemas/ConnectorTemplateAuthOption"
             },
             "default": []
+          },
+          "url_pattern": {
+            "type": "string",
+            "minLength": 1
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "inline_schema": {
+            "$ref": "#/components/schemas/ConnectorTemplateInlineSchema"
+          },
+          "probe_endpoint": {
+            "$ref": "#/components/schemas/ConnectorTemplateProbeEndpoint"
+          },
+          "credential_hints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateCredentialHint"
+            },
+            "default": []
+          },
+          "base_url_options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateBaseUrlOption"
+            },
+            "default": []
+          },
+          "pagination_defaults": {
+            "$ref": "#/components/schemas/ConnectorTemplatePaginationDefaults"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/ConnectorTemplateCapabilities"
           }
         },
         "required": [
+          "version",
           "slug",
           "name",
           "driver",
@@ -1746,7 +2585,42 @@
           "ingestion_source",
           "ingestion_url",
           "icon",
-          "description"
+          "description",
+          "category",
+          "setup_instructions",
+          "url_pattern",
+          "inline_schema",
+          "probe_endpoint",
+          "pagination_defaults",
+          "capabilities"
+        ]
+      },
+      "TemplateOAuthCredentialResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "TemplateOAuthCredentialBody": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "client_secret": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "client_id",
+          "client_secret"
         ]
       },
       "ConnectorFromTemplateResponse": {
@@ -1787,6 +2661,34 @@
               "nullable": true
             }
           },
+          "template_slug": {
+            "type": "string",
+            "nullable": true
+          },
+          "template_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "template_source": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "builtin",
+              "tenant",
+              null
+            ]
+          },
+          "template_version": {
+            "type": "integer",
+            "nullable": true
+          },
+          "template_snapshot": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
           "created_at": {
             "type": "string"
           },
@@ -1805,6 +2707,11 @@
           "base_url",
           "dsn",
           "config",
+          "template_slug",
+          "template_name",
+          "template_source",
+          "template_version",
+          "template_snapshot",
           "created_at",
           "updated_at"
         ]
@@ -1822,6 +2729,9 @@
               "dev",
               "prod"
             ]
+          },
+          "base_url_environment": {
+            "type": "string"
           },
           "ingest_now": {
             "type": "boolean"
@@ -1880,6 +2790,34 @@
               "nullable": true
             }
           },
+          "template_slug": {
+            "type": "string",
+            "nullable": true
+          },
+          "template_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "template_source": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "builtin",
+              "tenant",
+              null
+            ]
+          },
+          "template_version": {
+            "type": "integer",
+            "nullable": true
+          },
+          "template_snapshot": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
           "created_at": {
             "type": "string"
           },
@@ -1898,6 +2836,11 @@
           "base_url",
           "dsn",
           "config",
+          "template_slug",
+          "template_name",
+          "template_source",
+          "template_version",
+          "template_snapshot",
           "created_at",
           "updated_at"
         ]
@@ -1966,6 +2909,21 @@
             "additionalProperties": {
               "nullable": true
             }
+          },
+          "template_slug": {
+            "type": "string",
+            "minLength": 1
+          },
+          "template_source": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "tenant"
+            ]
+          },
+          "template_base_url_environment": {
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [
@@ -2003,6 +2961,24 @@
             "additionalProperties": {
               "nullable": true
             }
+          },
+          "template_slug": {
+            "type": "string",
+            "minLength": 1
+          },
+          "template_source": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "tenant"
+            ]
+          },
+          "template_base_url_environment": {
+            "type": "string",
+            "minLength": 1
+          },
+          "clear_template_binding": {
+            "type": "boolean"
           }
         }
       },
@@ -2244,6 +3220,15 @@
                 },
                 "rank": {
                   "type": "number"
+                },
+                "match_type": {
+                  "type": "string",
+                  "enum": [
+                    "operation",
+                    "auth",
+                    "schema",
+                    "general"
+                  ]
                 }
               },
               "required": [
@@ -2252,7 +3237,8 @@
                 "title",
                 "path",
                 "snippet",
-                "rank"
+                "rank",
+                "match_type"
               ]
             }
           }
@@ -4430,6 +5416,7 @@
                   "rename_param",
                   "change_type",
                   "add_header",
+                  "rate_limited",
                   "other"
                 ]
               },
@@ -7051,6 +8038,40 @@
         }
       }
     },
+    "/v1/workflows/validate": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Validate a workflow definition (structural + step schema). Does not persist; returns errors inline.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateWorkflowBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateWorkflowResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workflows/{id}": {
       "get": {
         "tags": [
@@ -7575,6 +8596,107 @@
         }
       }
     },
+    "/v1/connector-templates/import": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Import a connector draft from a Postman/HAR/OpenAPI/GraphQL/curl spec",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectorSpecImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorSpecImportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream spec fetch failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connector-templates/match-url": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Match a URL to connector templates by url_pattern regex",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            },
+            "required": true,
+            "name": "url",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5,
+              "default": 3
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorTemplateUrlMatchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connector-templates": {
       "get": {
         "tags": [
@@ -7641,6 +8763,71 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connector-templates/{slug}/oauth-credentials": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Store tenant-scoped OAuth client credentials for a connector template",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateOAuthCredentialBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateOAuthCredentialResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -8427,7 +9614,7 @@
         "tags": [
           "connectors"
         ],
-        "summary": "Full-text search over ingested documentation",
+        "summary": "Ranked search over ingested documentation",
         "security": [
           {
             "bearerAuth": []

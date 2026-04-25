@@ -35,6 +35,8 @@ export type DriverName = z.infer<typeof DriverEnum>;
 
 export const EnvironmentEnum = z.enum(["dev", "prod"]);
 export type Environment = z.infer<typeof EnvironmentEnum>;
+export const ConnectorTemplateSourceEnum = z.enum(["builtin", "tenant"]);
+export type ConnectorTemplateSource = z.infer<typeof ConnectorTemplateSourceEnum>;
 
 export const AuthTypeEnum = z.enum(["none", "header", "query", "bearer", "basic", "oauth2"]);
 export type AuthType = z.infer<typeof AuthTypeEnum>;
@@ -146,6 +148,9 @@ export const CreateConnectorSchema = z
     dsn: z.string().optional(),
     auth_type: AuthTypeEnum.default("none"),
     config: z.record(z.string(), z.unknown()).optional(),
+    template_slug: z.string().min(1).optional(),
+    template_source: ConnectorTemplateSourceEnum.optional(),
+    template_base_url_environment: z.string().min(1).optional(),
   })
   .openapi("CreateConnectorBody");
 
@@ -158,6 +163,10 @@ export const UpdateConnectorSchema = z
     dsn: z.string().optional(),
     auth_type: AuthTypeEnum.optional(),
     config: z.record(z.string(), z.unknown()).optional(),
+    template_slug: z.string().min(1).optional(),
+    template_source: ConnectorTemplateSourceEnum.optional(),
+    template_base_url_environment: z.string().min(1).optional(),
+    clear_template_binding: z.boolean().optional(),
   })
   .openapi("UpdateConnectorBody");
 
@@ -174,6 +183,11 @@ export interface ConnectorView {
   base_url: string | null;
   dsn: string | null;
   config: Record<string, unknown>;
+  template_slug: string | null;
+  template_name: string | null;
+  template_source: ConnectorTemplateSource | null;
+  template_version: number | null;
+  template_snapshot: Record<string, unknown> | null;
   created_at: Date;
   updated_at: Date;
   circuit_state: "closed" | "open" | "half-open";

@@ -114,6 +114,34 @@ describe("verifyWorkflow — scope reference integrity", () => {
     });
     expect(r.errors.some((e) => e.code === "scope_ref_unresolved")).toBe(true);
   });
+
+  test("missing .data on a scope envelope path → scope_envelope_field_missing", () => {
+    const r = verifyWorkflow({
+      steps: [
+        { id: "fetch", kind: "request", method: "GET", path: "/x" },
+        {
+          id: "shape",
+          kind: "transform",
+          expression: "$scope.fetch.users",
+        },
+      ],
+    });
+    expect(r.errors.some((e) => e.code === "scope_envelope_field_missing")).toBe(true);
+  });
+
+  test("envelope metadata fields stay valid without .data", () => {
+    const r = verifyWorkflow({
+      steps: [
+        { id: "fetch", kind: "request", method: "GET", path: "/x" },
+        {
+          id: "shape",
+          kind: "transform",
+          expression: "{ 'status': $scope.fetch.status_code, 'headers': $scope.fetch.headers }",
+        },
+      ],
+    });
+    expect(r.errors.filter((e) => e.code === "scope_envelope_field_missing")).toEqual([]);
+  });
 });
 
 describe("verifyWorkflow — method safety + idempotency hints", () => {

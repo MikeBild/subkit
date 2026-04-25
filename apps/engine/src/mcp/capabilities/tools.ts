@@ -318,7 +318,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       }
 
       if (name === MATCH_CONNECTOR_TEMPLATE_BY_URL_TOOL_NAME) {
-        const result = handleMatchConnectorTemplateByUrl(
+        const result = await handleMatchConnectorTemplateByUrl(
+          { db, principal },
           args as unknown as MatchConnectorTemplateByUrlArgs,
         );
         logger.info({

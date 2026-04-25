@@ -22,6 +22,10 @@ export const credentialModeEnum = pgEnum("credential_mode", [
   "oauth2",
 ]);
 export const endUserCombineModeEnum = pgEnum("end_user_combine_mode", ["merge", "replace"]);
+export const connectorTemplateSourceEnum = pgEnum("connector_template_source", [
+  "builtin",
+  "tenant",
+]);
 
 // ----- connectors -----------------------------------------------------------
 
@@ -38,6 +42,11 @@ export const connectors = pgTable(
     config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
     base_url: text("base_url"),
     dsn: text("dsn"),
+    template_slug: text("template_slug"),
+    template_name: text("template_name"),
+    template_source: connectorTemplateSourceEnum("template_source"),
+    template_version: integer("template_version"),
+    template_snapshot: jsonb("template_snapshot").$type<Record<string, unknown>>(),
     tunnel_id: uuid("tunnel_id"),
     auto_refresh_cron: text("auto_refresh_cron"),
     last_ingested_at: timestamp("last_ingested_at", { withTimezone: true }),

@@ -734,6 +734,16 @@ export class EngineClient {
   createConnectorTemplate(body: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.request("POST", "/v1/connector-templates", body);
   }
+  setConnectorTemplateOAuthCredentials(
+    slug: string,
+    body: { client_id: string; client_secret: string },
+  ): Promise<{ id: string }> {
+    return this.request(
+      "POST",
+      `/v1/connector-templates/${encodeURIComponent(slug)}/oauth-credentials`,
+      body,
+    );
+  }
   deleteConnectorTemplate(id: string): Promise<void> {
     return this.request("DELETE", `/v1/connector-templates/${encodeURIComponent(id)}`);
   }

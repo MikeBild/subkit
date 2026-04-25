@@ -223,8 +223,9 @@ export interface ConnectorDraftDocument {
   auth_type?: AuthType;
   config?: Record<string, unknown>;
   description?: string;
-  template_id?: string | null;
+  template_slug?: string | null;
   template_name?: string | null;
+  template_source?: "builtin" | "tenant" | null;
   docs?: string[];
   validation?: {
     ok: boolean;

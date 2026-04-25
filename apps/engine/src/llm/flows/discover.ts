@@ -37,8 +37,11 @@ export function validateDiscoverDraft(artifact: DiscoverArtifact): string[] | nu
   switch (artifact.kind) {
     case "connector":
       if (!has("name") && !has("title")) issues.push("connector draft requires `name`");
-      if (!has("base_url") && !has("template_id") && !has("driver"))
-        issues.push("connector draft requires one of `base_url`, `template_id`, `driver`");
+      if (!has("base_url") && !has("template_slug") && !has("template_id") && !has("driver")) {
+        issues.push(
+          "connector draft requires one of `base_url`, `template_slug`, `template_id`, `driver`",
+        );
+      }
       break;
     case "skill":
       if (!has("title")) issues.push("skill draft requires `title`");

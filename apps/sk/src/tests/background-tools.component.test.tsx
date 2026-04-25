@@ -15,6 +15,7 @@ describe("isBackgroundTool", () => {
     expect(isBackgroundTool(call("list_workflows"))).toBe(true);
     expect(isBackgroundTool(call("web_search"))).toBe(true);
     expect(isBackgroundTool(call("load_skill"))).toBe(true);
+    expect(isBackgroundTool(call("search_docs"))).toBe(true);
   });
 
   test("matches prefix families", () => {
@@ -44,7 +45,7 @@ describe("BackgroundToolGroup (component)", () => {
   });
 
   test("all calls complete — renders 'background actions' + total", async () => {
-    const calls = [call("list_workflows"), call("search_knowledge")];
+    const calls = [call("list_workflows"), call("search_docs")];
     const ui = renderInk(<BackgroundToolGroup calls={calls} logs={[]} detailed={false} />);
     try {
       await ui.waitFor((t) => t.includes("background actions"));
@@ -52,6 +53,7 @@ describe("BackgroundToolGroup (component)", () => {
       expect(txt).toContain("background actions");
       expect(txt).not.toContain("running");
       expect(txt).toContain("2 total");
+      expect(txt).toContain("read documentation");
     } finally {
       ui.unmount();
     }

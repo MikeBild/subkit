@@ -130,7 +130,7 @@ Stable context (skills, ingested docs, knowledge chunks) is marked with an Anthr
 The assembler pre-loads Skills + docs + Knowledge chunks before every turn. On-demand retrieval is available through four conversation tools, used in this precedence order:
 
 1. `search_knowledge` — semantic search over tenant Knowledge Sources.
-2. `search_docs` — scoped search over a connector's ingested documentation (OpenAPI, GraphQL, HTML, Markdown chunks). Use when `search_knowledge` is empty and the answer is connector-specific.
+2. `search_docs` — ranked search over a connector's ingested documentation (OpenAPI, GraphQL, HTML, Markdown chunks). Hits carry a `match_type` so the loop can tell whether the result is endpoint-oriented, auth-oriented, schema-oriented, or just a general text match. Use when `search_knowledge` is empty and the answer is connector-specific.
 3. `fetch_connector_docs` — full doc overview for a connector.
 4. `web_search` — Tavily public-web fallback. Advisory policy in `apps/engine/src/conversations/policies/web-search-escalation.ts`; the tool is only available when an operator has flipped `tenant_llm_settings.allow_web_search = true`.
 
@@ -150,7 +150,7 @@ Diagnosis mode keeps the latest execution and its causal context attached to the
 - `diagnosis_available` signals that the latest run should be inspected before editing
 - `latest_diagnosis` captures the structured reason, warning sources, and step-level summaries from the diagnosis pass
 
-This is especially important for expression-heavy workflows. A run may technically succeed while still carrying warnings such as unresolved identifiers in scope paths. In that case the right recovery is not "run it again" but "diagnose, repair the draft, preview again, commit again, then run again."
+This is especially important for expression-heavy workflows. A run may technically succeed while still carrying warnings such as unresolved identifiers in scope paths. The static verifier now blocks the most common version of this mistake — writing `$scope.step.field` instead of `$scope.step.data.field` — before the draft is committed. In the remaining cases, the right recovery is not "run it again" but "diagnose, repair the draft, preview again, commit again, then run again."
 
 Diagnosis is therefore a first-class authoring phase, not an operator-only debugging escape hatch.
 
