@@ -22,6 +22,14 @@ export interface RuntimeContext {
   actor_role?: string;
   /** Conversation surface (sk_headless / sk_interactive / mcp / web). */
   surface?: string;
+  /**
+   * Permission mode for this turn (`auto` / `ask` / `plan`). The
+   * PERMISSION-MODE-AWARE CONFIRMATION rule in the base prompt branches
+   * on this value: in `auto`, the model skips ask_user_confirm for
+   * non-dangerous tenant_writes; in `ask`/`plan`, every tenant_write
+   * still flows through ask_user_confirm.
+   */
+  permission_mode?: "auto" | "ask" | "plan";
 }
 
 /**
@@ -37,6 +45,7 @@ export function renderRuntimeContextBlock(ctx: RuntimeContext): string | null {
   if (ctx.actor_email) lines.push(`- actor_email: ${ctx.actor_email}`);
   if (ctx.actor_role) lines.push(`- actor_role: ${ctx.actor_role}`);
   if (ctx.surface) lines.push(`- surface: ${ctx.surface}`);
+  if (ctx.permission_mode) lines.push(`- permission_mode: ${ctx.permission_mode}`);
   if (lines.length === 0) return null;
   return [
     "RUNTIME CONTEXT (real values for this turn — quote verbatim, never paraphrase):",
