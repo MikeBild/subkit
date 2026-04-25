@@ -261,11 +261,11 @@ export interface UpdateWorkflowMetadataInput {
    * (non-deleted) workflows in the tenant. Reject when omitted AND
    * every other patch field is also omitted (no-op).
    */
-  new_slug?: string;
+  slug?: string;
   /** New display name. Independently optional. */
-  new_name?: string;
+  name?: string;
   /** New lifecycle state ("active" / "archived"). "draft" cannot be set explicitly. */
-  new_lifecycle?: "active" | "archived";
+  lifecycle?: "active" | "archived";
   actor_id: string | null;
 }
 
@@ -305,23 +305,17 @@ export async function updateWorkflowMetadata(
 ): Promise<UpdateWorkflowMetadataResult> {
   const db = exec ?? getDb();
   const desiredSlug =
-    typeof input.new_slug === "string" && input.new_slug.length > 0
-      ? slugify(input.new_slug)
-      : null;
+    typeof input.slug === "string" && input.slug.length > 0 ? slugify(input.slug) : null;
   const desiredName =
-    typeof input.new_name === "string" && input.new_name.trim().length > 0
-      ? input.new_name.trim()
-      : null;
-  const desiredLifecycle = input.new_lifecycle ?? null;
+    typeof input.name === "string" && input.name.trim().length > 0 ? input.name.trim() : null;
+  const desiredLifecycle = input.lifecycle ?? null;
   if (!desiredSlug && !desiredName && !desiredLifecycle) {
     return {
-      errors: [
-        "updateWorkflowMetadata requires at least one of new_slug, new_name, or new_lifecycle",
-      ],
+      errors: ["updateWorkflowMetadata requires at least one of slug, name, or lifecycle"],
     };
   }
   if (desiredSlug && !/^[a-z0-9][a-z0-9-]*$/.test(desiredSlug)) {
-    return { errors: ["new_slug must be lowercase alphanumeric with hyphens"] };
+    return { errors: ["slug must be lowercase alphanumeric with hyphens"] };
   }
   try {
     const result = await db.transaction(async (tx) => {

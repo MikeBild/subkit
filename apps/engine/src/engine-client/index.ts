@@ -9,7 +9,13 @@
 
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getAuditRowById, queryAuditLog } from "../audit/query.ts";
-import { deleteConnector, getConnector, listConnectors } from "../connectors/service.ts";
+import {
+  deleteConnector,
+  getConnector,
+  listConnectors,
+  updateConnector,
+} from "../connectors/service.ts";
+import type { UpdateConnectorInput } from "../connectors/types.ts";
 import type { Db } from "../db/client.ts";
 import { getDb } from "../db/client.ts";
 import {
@@ -23,6 +29,7 @@ import {
 } from "../db/schema/index.ts";
 import * as identitySvc from "../identity/service.ts";
 import * as knowledgeSvc from "../knowledge/service.ts";
+import type { UpdateKnowledgeSourceInput } from "../knowledge/types.ts";
 import { currentMonthBucket, monthlyUsage } from "../llm/budgets.ts";
 import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import * as rbacRoles from "../rbac/roles.ts";
@@ -83,16 +90,14 @@ export class EngineClient {
     get: (id: string) => getWorkflow(this.tenant_id, id, this.db),
     getBySlug: (slug: string) => getWorkflowBySlug(this.tenant_id, slug, this.db),
     delete: (id: string) => deleteWorkflow(this.tenant_id, id, this.actor_id, this.db),
-    update: (
-      params: Pick<UpdateWorkflowMetadataInput, "id" | "new_slug" | "new_name" | "new_lifecycle">,
-    ) =>
+    update: (params: Pick<UpdateWorkflowMetadataInput, "id" | "slug" | "name" | "lifecycle">) =>
       updateWorkflowMetadata(
         {
           tenant_id: this.tenant_id,
           id: params.id,
-          ...(params.new_slug !== undefined ? { new_slug: params.new_slug } : {}),
-          ...(params.new_name !== undefined ? { new_name: params.new_name } : {}),
-          ...(params.new_lifecycle !== undefined ? { new_lifecycle: params.new_lifecycle } : {}),
+          ...(params.slug !== undefined ? { slug: params.slug } : {}),
+          ...(params.name !== undefined ? { name: params.name } : {}),
+          ...(params.lifecycle !== undefined ? { lifecycle: params.lifecycle } : {}),
           actor_id: this.actor_id,
         },
         this.db,
@@ -110,6 +115,8 @@ export class EngineClient {
     list: () => listConnectors(this.tenant_id, {}, this.db),
     get: (id: string) => getConnector(this.tenant_id, id, this.db),
     delete: (id: string) => deleteConnector(this.tenant_id, id, this.actor_id, this.db),
+    update: (id: string, patch: UpdateConnectorInput) =>
+      updateConnector(this.tenant_id, id, patch, this.actor_id, this.db),
     count: async () => {
       const [row] = await this.db
         .select({ c: sql<number>`count(*)::int` })
@@ -192,6 +199,11 @@ export class EngineClient {
     get: (id: string) => knowledgeSvc.getKnowledgeSource(this.tenant_id, id, this.db),
     delete: (id: string) =>
       knowledgeSvc.deleteKnowledgeSource(this.tenant_id, id, this.actor_id, this.db),
+    update: (id: string, patch: UpdateKnowledgeSourceInput) =>
+      knowledgeSvc.updateKnowledgeSource(
+        { tenant_id: this.tenant_id, id, patch, actor_id: this.actor_id },
+        this.db,
+      ),
     search: (query: string, opts?: { workflow_id?: string; limit?: number }) =>
       knowledgeSvc.searchKnowledge(
         {
@@ -295,6 +307,28 @@ export class EngineClient {
     get: (id: string) => subscriptionsSvc.getSubscription(this.tenant_id, id, this.db),
     delete: (id: string) =>
       subscriptionsSvc.deleteSubscription(this.tenant_id, id, this.actor_id, this.db),
+    update: (
+      id: string,
+      patch: Pick<
+        subscriptionsSvc.UpdateSubscriptionInput,
+        "event_pattern" | "target_url" | "active" | "secret" | "rotating_secret"
+      >,
+    ) =>
+      subscriptionsSvc.updateSubscription(
+        {
+          tenant_id: this.tenant_id,
+          id,
+          actor_id: this.actor_id,
+          ...(patch.event_pattern !== undefined ? { event_pattern: patch.event_pattern } : {}),
+          ...(patch.target_url !== undefined ? { target_url: patch.target_url } : {}),
+          ...(patch.active !== undefined ? { active: patch.active } : {}),
+          ...(patch.secret !== undefined ? { secret: patch.secret } : {}),
+          ...(patch.rotating_secret !== undefined
+            ? { rotating_secret: patch.rotating_secret }
+            : {}),
+        },
+        this.db,
+      ),
   };
 
   tunnels = {
