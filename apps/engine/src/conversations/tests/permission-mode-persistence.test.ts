@@ -30,13 +30,19 @@ describe("conversation permission mode persistence", () => {
     );
     expect(created.result.status).toBe("active");
 
+    // Under the new auto-mode contract, ask_user_confirm with
+    // kind=commit_draft auto-resolves; only `destructive=true`
+    // signals fall through to a real pause. Drive the persistence
+    // assertion through the destructive carve-out so we exercise the
+    // resume path after a real pause.
     getMockProvider().setConversePlan(created.conversation.id, [
       {
         tool: "ask_user_confirm",
         args: {
-          question: "Persist the current draft?",
-          kind: "commit_draft",
-          summary: "Persist the current draft",
+          question: "Really wipe the draft?",
+          kind: "generic",
+          summary: "Really wipe the draft?",
+          destructive: true,
         },
       },
       {

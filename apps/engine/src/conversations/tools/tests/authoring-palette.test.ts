@@ -65,6 +65,57 @@ const FRESH_VALIDATED: AuthoringSummary["checkpoints"][number] = {
 import type { DraftDocument } from "../../types.ts";
 import { filterByAuthoringPalette } from "../authoring-palette.ts";
 
+describe("filterByAuthoringPalette — cleanup tools always reachable", () => {
+  // Locks the chat-first delete contract. Without this, the palette
+  // filter hid every delete_*/revoke_* tool from the focused authoring
+  // states (anything except idle), so a user typing "lösche dummy-http"
+  // mid-conversation got `cannot_help: "Löschen nicht verfügbar"` even
+  // though the tool exists and is protected by the dangerous-tools
+  // confirm gate. Session 9b9ea73b regression test.
+  test("delete_connector / delete_workflow visible in workflow-persisted state", () => {
+    const persisted: AuthoringSummary = {
+      readiness: "saved",
+      next_action: null,
+      next_required_action: null,
+      missing_fields: [],
+      last_action: null,
+      progress_label: null,
+      mode: "workflow",
+      stage: "workflow_persisted",
+      lifecycle_state: "persisted",
+      active_target: {
+        kind: "workflow",
+        name: "demo",
+        slug: "demo",
+        id: "wf-1",
+        environment: "dev",
+        lifecycle_state: "persisted",
+      },
+      blocked_by: [],
+      checkpoints: [],
+      persisted_resources: [],
+      latest_execution: null,
+      latest_diagnosis: null,
+    };
+    const draft: DraftDocument = {
+      workflow: { name: "demo", steps: [{ id: "s1", kind: "request" }] } as never,
+      summary: persisted,
+    };
+    const tools = [
+      { name: "delete_connector" },
+      { name: "delete_workflow" },
+      { name: "revoke_api_key" },
+      { name: "delete_knowledge_source" },
+    ] as const;
+    const filtered = filterByAuthoringPalette(tools, draft);
+    const names = filtered.map((t) => t.name);
+    expect(names).toContain("delete_connector");
+    expect(names).toContain("delete_workflow");
+    expect(names).toContain("revoke_api_key");
+    expect(names).toContain("delete_knowledge_source");
+  });
+});
+
 describe("filterByAuthoringPalette — fresh-start state after delete_*", () => {
   // Locks the post-delete idle path (session 64db7189): when
   // active_target.kind drops to "none", the palette MUST still surface
