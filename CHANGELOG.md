@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.0](https://github.com/MikeBild/subkit/compare/subkit-v2.4.0...subkit-v2.5.0) (2026-04-25)
+
+
+### Features
+
+* **conversations,llm:** tenant-snapshot converse pipeline + connector-template binding ([5beeeaa](https://github.com/MikeBild/subkit/commit/5beeeaab8ceea6543de7210cb27e5d26672a5385))
+
 ## [2.4.0](https://github.com/MikeBild/subkit/compare/subkit-v2.3.1...subkit-v2.4.0) (2026-04-24)
 
 
