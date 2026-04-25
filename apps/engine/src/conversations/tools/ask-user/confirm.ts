@@ -36,24 +36,24 @@ export const askUserConfirmTool: ConversationTool = {
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    // Auto-resolve when the client is in `permission_mode=auto` and
-    // the confirmation is not for something the operator must keep
-    // gated (commit_draft = persistent workflow change,
-    // destructive=true = user flagged as dangerous). This stops the
-    // LLM from pausing every run_workflow / save_connector behind a
-    // confirm prompt even though the user already opted into auto.
-    // "ask" and "plan" fall through to the normal pause path.
-    if (
-      ctx.permission_mode === "auto" &&
-      args.kind !== "commit_draft" &&
-      args.destructive !== true
-    ) {
+    // Auto-resolve when the client is in `permission_mode=auto`. The
+    // mode itself IS the governance signal — commit_draft, external
+    // writes, run_workflow, save_connector_draft were all visible in
+    // the chat as concrete next-step proposals before the model
+    // emitted ask_user_confirm, so the user has already authored
+    // implicit approval at session level (the bottom-bar `auto` chip).
+    // The single carve-out: `destructive=true` keeps the explicit
+    // gate because that's the model's own signal that the action is
+    // dangerous (delete_*, revoke_*, irreversible writes). That carve-
+    // out plus DANGEROUS_TOOLS in tool-policies.ts is the safety net.
+    // "ask" and "plan" modes fall through to the normal pause path.
+    if (ctx.permission_mode === "auto" && args.destructive !== true) {
       return {
         ok: true,
         data: {
           confirmed: true,
           auto_resolved: true,
-          reason: "permission_mode=auto skipped confirmation",
+          reason: `permission_mode=auto skipped ${args.kind} confirmation`,
         },
       };
     }

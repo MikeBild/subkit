@@ -29,6 +29,26 @@ const RELEVANT_READS = new Set([
   "probe_connector",
 ]);
 
+// Cleanup operations on tenant resources. The palette filter would
+// otherwise hide them from every authoring state because no per-state
+// set lists them, leaving the model to call cannot_help with "delete
+// not available in this conversation" — exactly the bug user mike
+// reported in session 9b9ea73b ("lösche dummy-http").
+//
+// These tools are protected by the DANGEROUS_TOOLS confirm gate in
+// tool-policies.ts which fires regardless of permission_mode, so it
+// is safe to keep them visible in every authoring state. The user
+// always sees a structured ask_user_confirm before any deletion.
+const ALWAYS_AVAILABLE_CLEANUP = new Set([
+  "delete_connector",
+  "delete_knowledge_source",
+  "delete_subscription",
+  "delete_tunnel",
+  "delete_workflow",
+  "revoke_api_key",
+  "revoke_portal_token",
+]);
+
 const CONNECTOR_AUTHORING = new Set([
   "inspect_connector_draft",
   "probe_connector_draft",
@@ -199,7 +219,11 @@ export function filterByAuthoringPalette<T extends { name: string }>(
   const normalized = normalizeDraftDocument(draft);
   const summary = normalized.summary;
   if (!summary) return [...tools];
-  const allowed = new Set<string>([...ALWAYS_VISIBLE, ...RELEVANT_READS]);
+  const allowed = new Set<string>([
+    ...ALWAYS_VISIBLE,
+    ...RELEVANT_READS,
+    ...ALWAYS_AVAILABLE_CLEANUP,
+  ]);
 
   if (summary.mode === "connector") {
     if (

@@ -63,7 +63,12 @@ describe("authoring tool palette", () => {
     expect(visible).not.toContain("save_connector_draft");
     expect(visible).not.toContain("build_workflow");
     expect(visible).not.toContain("create_api_key");
-    expect(visible).not.toContain("delete_workflow");
+    // delete_workflow / delete_connector / revoke_* are intentionally
+    // ALWAYS visible now — they're tenant cleanup operations the user
+    // can request mid-authoring ("lösche dummy-http"). The
+    // dangerous-tools confirm gate (tool-policies.ts DANGEROUS_TOOLS)
+    // is the safety net, not the palette filter.
+    expect(visible).toContain("delete_workflow");
     expect(visible).not.toContain("list_users");
   });
 
