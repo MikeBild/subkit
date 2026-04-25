@@ -18,6 +18,7 @@ import {
   recordLlmOutputViolation,
 } from "../../observability/instrumentation.ts";
 import { LlmOutputViolation } from "../errors.ts";
+import { chatFirstScanner } from "./scanners/chat-first.ts";
 import { cliScanner } from "./scanners/cli.ts";
 import { placeholderScanner } from "./scanners/placeholder.ts";
 import { toolScanner } from "./scanners/tool.ts";
@@ -40,6 +41,7 @@ export const DEFAULT_SCANNERS: ReadonlyArray<Scanner> = [
   vendorRecipeScanner,
   cliScanner,
   toolScanner,
+  chatFirstScanner,
 ];
 
 function effectiveMode(override?: GuardMode): GuardMode {
