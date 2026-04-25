@@ -36,6 +36,8 @@ import {
   getWorkflow,
   getWorkflowBySlug,
   listWorkflows,
+  type UpdateWorkflowMetadataInput,
+  updateWorkflowMetadata,
 } from "../workflows/service.ts";
 
 export type EngineClientActorType = "user" | "system_account" | "system";
@@ -81,6 +83,20 @@ export class EngineClient {
     get: (id: string) => getWorkflow(this.tenant_id, id, this.db),
     getBySlug: (slug: string) => getWorkflowBySlug(this.tenant_id, slug, this.db),
     delete: (id: string) => deleteWorkflow(this.tenant_id, id, this.actor_id, this.db),
+    update: (
+      params: Pick<UpdateWorkflowMetadataInput, "id" | "new_slug" | "new_name" | "new_lifecycle">,
+    ) =>
+      updateWorkflowMetadata(
+        {
+          tenant_id: this.tenant_id,
+          id: params.id,
+          ...(params.new_slug !== undefined ? { new_slug: params.new_slug } : {}),
+          ...(params.new_name !== undefined ? { new_name: params.new_name } : {}),
+          ...(params.new_lifecycle !== undefined ? { new_lifecycle: params.new_lifecycle } : {}),
+          actor_id: this.actor_id,
+        },
+        this.db,
+      ),
     count: async () => {
       const [row] = await this.db
         .select({ c: sql<number>`count(*)::int` })

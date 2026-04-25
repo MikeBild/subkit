@@ -1,0 +1,207 @@
+// update_workflow — patch a persisted workflow's metadata (slug,
+// display name, lifecycle) without rewriting the dag or version
+// history. Generic on purpose: the LLM picks which subset of fields
+// to send, the same tool covers rename, archive, and reactivate.
+//
+// Reference parity: the reference codebase exposes rename + lifecycle
+// only as HTTP datastore ops (`POST /tools/:toolId/rename`,
+// /lifecycle endpoints). Subkit's chat-first contract requires the
+// same op be reachable as a chat tool — collapsing rename and
+// lifecycle into one generic patch matches the reference's
+// `edit_tool` shape (one tool, several fields).
+//
+// Audit shape uses the existing WORKFLOW_UPDATED action with
+// `metadata.kind: "metadata"` plus before/after snapshots — never a
+// new action enum entry, since it's still a workflow.updated event.
+
+import { z } from "@hono/zod-openapi";
+import { and, eq } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../../../../auth/types.ts";
+import { roles, systemAccounts, users } from "../../../../db/schema/index.ts";
+import { can } from "../../../../rbac/evaluator.ts";
+import type { ConversationTool, ToolContext } from "../../index.ts";
+
+const UpdateWorkflowInput = z
+  .object({
+    id: z.string().uuid("workflow id must be a UUID"),
+    new_slug: z
+      .string()
+      .min(1)
+      .regex(/^[a-z0-9][a-z0-9-]*$/, "slug must be lowercase alphanumeric with hyphens")
+      .optional(),
+    new_name: z.string().min(1).optional(),
+    new_lifecycle: z.enum(["active", "archived"]).optional(),
+  })
+  .refine((v) => Boolean(v.new_slug || v.new_name || v.new_lifecycle), {
+    message: "At least one of new_slug, new_name, or new_lifecycle is required",
+  })
+  .openapi("UpdateWorkflowToolInput");
+
+type PermissionResult = { allow: true } | { allow: false; reason: string };
+
+async function resolveConversationPrincipal(ctx: ToolContext): Promise<ResolvedPrincipal | null> {
+  const actorId = ctx.engineClient.context.actor_id;
+  const actorType = ctx.engineClient.context.actor_type;
+  if (!actorId || actorType === "system") return null;
+
+  if (actorType === "user") {
+    const rows = await ctx.db
+      .select({ role: users.role, role_id: users.role_id })
+      .from(users)
+      .where(and(eq(users.id, actorId), eq(users.tenant_id, ctx.tenant_id)))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    let roleNames: string[] = [row.role];
+    if (row.role_id) {
+      const named = await ctx.db
+        .select({ name: roles.name })
+        .from(roles)
+        .where(eq(roles.id, row.role_id))
+        .limit(1);
+      if (named[0]?.name) roleNames = [named[0].name];
+    }
+    return {
+      provider: "conversation_tool",
+      kind: "user",
+      id: actorId,
+      tenant_id: ctx.tenant_id,
+      roles: roleNames,
+    };
+  }
+  if (actorType === "system_account") {
+    const rows = await ctx.db
+      .select({ role_id: systemAccounts.role_id })
+      .from(systemAccounts)
+      .where(and(eq(systemAccounts.id, actorId), eq(systemAccounts.tenant_id, ctx.tenant_id)))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    let roleNames: string[] = ["member"];
+    if (row.role_id) {
+      const named = await ctx.db
+        .select({ name: roles.name })
+        .from(roles)
+        .where(eq(roles.id, row.role_id))
+        .limit(1);
+      if (named[0]?.name) roleNames = [named[0].name];
+    }
+    return {
+      provider: "conversation_tool",
+      kind: "system_account",
+      id: actorId,
+      tenant_id: ctx.tenant_id,
+      roles: roleNames,
+    };
+  }
+  return null;
+}
+
+async function requirePermission(
+  ctx: ToolContext,
+  permission: string,
+  resource: { type: string; id: string },
+): Promise<PermissionResult> {
+  const principal = await resolveConversationPrincipal(ctx);
+  if (!principal) return { allow: true };
+  const decision = await can(ctx.db, {
+    tenant_id: ctx.tenant_id,
+    principal,
+    permission,
+    resource,
+  });
+  if (decision.allow) return { allow: true };
+  return { allow: false, reason: decision.reason ?? `permission_denied:${permission}` };
+}
+
+function permissionDenied(permission: string, reason: string) {
+  return {
+    ok: false as const,
+    data: { error: "permission_denied", permission, reason },
+  };
+}
+
+export const updateWorkflowTool: ConversationTool = {
+  name: "update_workflow",
+  description:
+    "Patch a persisted workflow's metadata (slug, display name, lifecycle) without rewriting the dag or version history.",
+  use_case:
+    "Use when the user asks to rename a workflow, change its display name, archive it, or reactivate it. Send only the fields that should change. Does NOT alter steps, input/output schema, or version count — for those, edit the draft and use commit_draft.",
+  important_notes: [
+    "At least one of new_slug, new_name, or new_lifecycle is required.",
+    "new_slug must be lowercase alphanumeric with hyphens; the service slugifies it again before the write.",
+    "Slug uniqueness is enforced; collisions return slug_conflict_with_live_workflow with conflict.workflow_id.",
+    "Audits as workflow.updated with metadata.kind='metadata' plus from/to snapshots — never overrides version history.",
+    "new_lifecycle accepts 'active' or 'archived'. 'draft' cannot be set explicitly; that is a status the create flow assigns.",
+  ],
+  inputSchema: UpdateWorkflowInput,
+  category: "tenant_write",
+  async execute(ctx, rawArgs) {
+    const args = UpdateWorkflowInput.parse(rawArgs);
+    const auth = await requirePermission(ctx, "workflow:write", {
+      type: "workflow",
+      id: args.id,
+    });
+    if (!auth.allow) return permissionDenied("workflow:write", auth.reason);
+
+    const result = await ctx.engineClient.workflows.update({
+      id: args.id,
+      ...(args.new_slug !== undefined ? { new_slug: args.new_slug } : {}),
+      ...(args.new_name !== undefined ? { new_name: args.new_name } : {}),
+      ...(args.new_lifecycle !== undefined ? { new_lifecycle: args.new_lifecycle } : {}),
+    });
+
+    if (result.errors) {
+      if (result.conflict) {
+        return {
+          ok: false,
+          data: {
+            error: "slug_conflict_with_live_workflow",
+            attempted_slug: args.new_slug,
+            conflict: result.conflict,
+            recovery: {
+              pick_different_slug:
+                "Call update_workflow again with a different new_slug, or update the colliding workflow first.",
+            },
+            errors: result.errors,
+          },
+        };
+      }
+      const isNotFound = result.errors.some((e) => /not found/i.test(e));
+      return {
+        ok: false,
+        data: {
+          error: isNotFound ? "workflow_not_found" : "update_failed",
+          errors: result.errors,
+        },
+      };
+    }
+
+    const audit_log_id = await ctx.engineClient.audit_write({
+      resource_type: "workflow",
+      resource_id: result.workflow.id,
+      action: "conversation.update_workflow",
+      result: "success",
+      metadata: {
+        conversation_id: ctx.conversation_id,
+        new_slug: args.new_slug,
+        new_name: args.new_name,
+        new_lifecycle: args.new_lifecycle,
+      },
+    });
+
+    return {
+      ok: true,
+      data: {
+        updated: true,
+        workflow: {
+          id: result.workflow.id,
+          slug: result.workflow.slug,
+          name: result.workflow.name,
+          lifecycle: result.workflow.lifecycle,
+        },
+        audit_log_id,
+      },
+    };
+  },
+};
