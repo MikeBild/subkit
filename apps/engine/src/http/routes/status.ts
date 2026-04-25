@@ -4,6 +4,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { connectors, llmUsage, skills, tenants } from "../../db/schema/index.ts";
 import { monthlyUsage, resolveMonthlyBudget } from "../../llm/budgets.ts";
+import { validateProviderSetup } from "../../llm/core/model-init.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 
@@ -37,6 +38,20 @@ const StatusSchema = z
     remaining_monthly_budget_tokens: z.number().int().nullable(),
     /** Engine version, for quick diagnosis of skew. */
     version: z.string(),
+    /**
+     * LLM provider configuration health. Surfaced so the CLI status
+     * line can show a leading warning chip ("⚠ bedrock: AWS_REGION
+     * missing") before the user fires their first turn instead of
+     * eating a 5xx mid-conversation.
+     */
+    llm_provider: z
+      .object({
+        detected: z.string(),
+        ok: z.boolean(),
+        message: z.string(),
+        missing: z.array(z.string()),
+      })
+      .openapi("StatusLlmProvider"),
   })
   .openapi("StatusSummary");
 
@@ -110,6 +125,12 @@ export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
         // `process.env.npm_package_version` is not set in the compiled
         // Bun binary, so that path returned "dev" in production.
         version: OPENAPI_INFO.version,
+        llm_provider: ((report) => ({
+          detected: report.detected,
+          ok: report.ok,
+          message: report.message,
+          missing: [...report.missing],
+        }))(validateProviderSetup()),
       },
       200,
     );

@@ -66,6 +66,8 @@ export type TurnEvent =
       summary: string;
       /** Full tool input payload (question, options, fields, diff, target, etc). */
       input: unknown;
+      /** Structured pending-output preview from the gated tool, for rich confirm UIs. */
+      pending_output?: Record<string, unknown> | null;
       parent_message_id?: string;
     }
   | { type: "committed"; workflow_id: string }

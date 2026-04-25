@@ -102,6 +102,15 @@ export const ElicitRouter: React.FC<ElicitRouterProps> = ({
       const destructive = input.destructive === true;
       const defaultChoice =
         input.default === "approve" || input.default === "reject" ? input.default : undefined;
+      // pending_output may live either on the elicitation input
+      // (when the gated tool emitted it directly) or on a sibling
+      // field of the elicit_request event (when sdk-wrap derived it
+      // from the policy). Prefer the input-level value because the
+      // tool itself owns the canonical preview shape.
+      const pendingOutput =
+        input.pending_output && typeof input.pending_output === "object"
+          ? (input.pending_output as Record<string, unknown>)
+          : undefined;
       return (
         <ConfirmPrompt
           question={question}
@@ -111,6 +120,7 @@ export const ElicitRouter: React.FC<ElicitRouterProps> = ({
           target={input.target}
           destructive={destructive}
           defaultChoice={defaultChoice}
+          pendingOutput={pendingOutput}
           onResponse={onResponse}
           inputDisabled={inputDisabled}
         />

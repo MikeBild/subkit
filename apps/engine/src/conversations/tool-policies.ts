@@ -113,13 +113,93 @@ export function defaultModeForCategory(
 //   3. category default
 // ---------------------------------------------------------------------------
 
+/**
+ * Per-tool policy. Beyond the static `defaultMode`, three optional
+ * hooks let the tool teach the loop how to render and gate it:
+ *
+ * - `computeModeFromInput` — promote the mode based on the actual call
+ *   payload (prod env, mutating verb, sensitive credential present).
+ *   Returning null falls through to defaultMode.
+ * - `credentialFields` — top-level dotted paths in the input that, if
+ *   non-empty, force `confirm_before_execution` regardless of the
+ *   user's permission_mode. Catches the "auto-mode silently persists
+ *   a connector with an inline api_key" hazard.
+ * - `prerequisites` — slugs of skills that must be loaded before this
+ *   tool may dispatch. Mirrors the reference repo's load_skill gate.
+ *   Resolved against `conversation.metadata.loaded_skills`.
+ * - `buildPendingOutput` — when a confirm step fires, this hook turns
+ *   the raw input into a structured "what will happen" preview that
+ *   the elicit_request event carries on `pending_output`. Renders in
+ *   the sk CLI's ConfirmPrompt as first-class fields rather than a
+ *   raw JSON blob.
+ */
 interface ToolPolicyDefinition {
   defaultMode?: ToolPolicyMode;
   computeModeFromInput?: (input: unknown) => ToolPolicyMode | null;
+  credentialFields?: ReadonlyArray<string>;
+  prerequisites?: ReadonlyArray<string>;
+  buildPendingOutput?: (input: unknown) => Record<string, unknown> | null;
 }
 
 function asObj(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function readPath(input: unknown, path: string): unknown {
+  let cursor: unknown = input;
+  for (const segment of path.split(".")) {
+    if (!cursor || typeof cursor !== "object") return undefined;
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  return cursor;
+}
+
+function isNonEmptyString(v: unknown): boolean {
+  return typeof v === "string" && v.trim().length > 0;
+}
+
+/**
+ * True when any declared credential-field path on the input carries a
+ * non-empty string. Used by resolveToolMode to upgrade the mode.
+ */
+export function hasInlineCredential(input: unknown, paths: ReadonlyArray<string>): boolean {
+  for (const path of paths) {
+    if (isNonEmptyString(readPath(input, path))) return true;
+  }
+  return false;
+}
+
+/**
+ * Build a structured pending-output preview for a tool call. Returns
+ * null when the tool either has no `buildPendingOutput` hook or the
+ * hook chose to skip preview for this input.
+ */
+export function buildPendingOutputForTool(
+  tool: string,
+  input: unknown,
+): Record<string, unknown> | null {
+  const def = TOOL_POLICIES[tool];
+  if (!def?.buildPendingOutput) return null;
+  return def.buildPendingOutput(input) ?? null;
+}
+
+/**
+ * Skill prerequisites declared by a tool. Returns an empty array for
+ * tools without a `prerequisites` entry. Consumers compare this list
+ * against the conversation's `loaded_skills` set to decide whether to
+ * dispatch or to surface a structured "load skill first" error.
+ */
+export function prerequisitesForTool(tool: string): ReadonlyArray<string> {
+  return TOOL_POLICIES[tool]?.prerequisites ?? [];
+}
+
+function pickFields(input: unknown, fields: ReadonlyArray<string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const obj = asObj(input);
+  for (const f of fields) {
+    if (obj[f] !== undefined) out[f] = obj[f];
+  }
+  return out;
 }
 
 export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
@@ -140,28 +220,85 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
       if (auto) return "no_confirm";
       return "confirm_before_execution";
     },
+    buildPendingOutput: (input) => {
+      const obj = asObj(input);
+      return {
+        workflow_id: obj.workflow_id ?? null,
+        version_id: obj.version_id ?? null,
+        environment: obj.environment ?? null,
+        ...(obj.input !== undefined ? { input_keys: Object.keys(asObj(obj.input)) } : {}),
+      };
+    },
   },
-  approve_patch_candidate: { defaultMode: "confirm_before_execution" },
-  approve_skill_candidate: { defaultMode: "confirm_before_execution" },
-  approve_discovery_artifact: { defaultMode: "confirm_before_execution" },
-  delete_workflow: { defaultMode: "confirm_before_execution" },
-  delete_connector: { defaultMode: "confirm_before_execution" },
-  delete_knowledge_source: { defaultMode: "confirm_before_execution" },
-  delete_subscription: { defaultMode: "confirm_before_execution" },
-  delete_tunnel: { defaultMode: "confirm_before_execution" },
-  revoke_api_key: { defaultMode: "confirm_before_execution" },
-  revoke_portal_token: { defaultMode: "confirm_before_execution" },
+  approve_patch_candidate: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["candidate_id", "kind", "scope"]),
+  },
+  approve_skill_candidate: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["candidate_id", "title"]),
+  },
+  approve_discovery_artifact: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["artifact_id", "kind", "title"]),
+  },
+  delete_workflow: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["workflow_id", "slug"]),
+  },
+  delete_connector: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["connector_id", "slug"]),
+  },
+  delete_knowledge_source: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["knowledge_source_id"]),
+  },
+  delete_subscription: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["subscription_id"]),
+  },
+  delete_tunnel: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["tunnel_id", "name"]),
+  },
+  revoke_api_key: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["api_key_id", "prefix"]),
+  },
+  revoke_portal_token: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => pickFields(input, ["portal_token_id", "prefix"]),
+  },
   // Reads: auto. test_rbac_expression is a read-only probe.
   test_rbac_expression: { defaultMode: "no_confirm" },
   // Draft mutations auto-execute — they stage changes that commit_draft
-  // later explicitly confirms via ask_user_confirm.
+  // later explicitly confirms via ask_user_confirm. The `prerequisites`
+  // infrastructure exists on every tool entry, but specific tool
+  // declarations are added per-tool only after the auto-load skill
+  // flow ships, so that legacy fixtures don't have to manually preload
+  // skills before driving the loop.
   propose_step: { defaultMode: "no_confirm" },
   propose_skill: { defaultMode: "no_confirm" },
   suggest_connector_templates: { defaultMode: "no_confirm" },
   start_connector_from_template: { defaultMode: "no_confirm" },
   start_connector_from_description: { defaultMode: "no_confirm" },
   inspect_connector_draft: { defaultMode: "no_confirm" },
-  update_connector_draft: { defaultMode: "no_confirm" },
+  update_connector_draft: {
+    defaultMode: "no_confirm",
+    // Inline credentials (api_key, token, password, …) on a draft
+    // mutation force a confirm step regardless of permission_mode —
+    // the user must see what secret is being staged before it lands
+    // even in the draft document.
+    credentialFields: [
+      "config.api_key",
+      "config.token",
+      "config.access_token",
+      "config.auth_value",
+      "config.password",
+      "config.client_secret",
+    ],
+  },
   validate_connector_draft: { defaultMode: "no_confirm" },
   inspect_workflow_draft: { defaultMode: "no_confirm" },
   inspect_authoring_context: { defaultMode: "no_confirm" },
@@ -178,10 +315,31 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     },
   },
   validate_draft: { defaultMode: "no_confirm" },
-  commit_draft: { defaultMode: "confirm_before_execution" },
+  commit_draft: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => {
+      const obj = asObj(input);
+      return {
+        kind: "commit_draft",
+        ...(obj.workflow_slug !== undefined ? { workflow_slug: obj.workflow_slug } : {}),
+        ...(obj.connector_slug !== undefined ? { connector_slug: obj.connector_slug } : {}),
+      };
+    },
+  },
   build_workflow: { defaultMode: "no_confirm" },
   start_workflow_from_goal: { defaultMode: "no_confirm" },
-  save_connector_draft: { defaultMode: "confirm_before_execution" },
+  save_connector_draft: {
+    defaultMode: "confirm_before_execution",
+    credentialFields: [
+      "config.api_key",
+      "config.token",
+      "config.access_token",
+      "config.auth_value",
+      "config.password",
+      "config.client_secret",
+    ],
+    buildPendingOutput: () => ({ kind: "save_connector_draft" }),
+  },
   // web_search leaves the tenant perimeter — confirm by default.
   web_search: { defaultMode: "confirm_before_execution" },
   // probe_connector does an external HTTP call but produces no side
@@ -235,6 +393,16 @@ export function resolveToolMode(args: {
   const { tool, category, input, overrides, permission_mode } = args;
 
   const isDangerous = DANGEROUS_TOOLS.has(tool);
+  const def = TOOL_POLICIES[tool];
+
+  // Inline-credential safeguard — fires before the permission_mode
+  // short-circuit so `auto` cannot silently persist a secret the user
+  // pasted inline. The user still sees one confirm step that surfaces
+  // exactly which credential field is being staged.
+  if (def?.credentialFields && hasInlineCredential(input, def.credentialFields)) {
+    return "confirm_before_execution";
+  }
+
   if (permission_mode === "auto" && !isDangerous) {
     return "no_confirm";
   }
@@ -246,7 +414,6 @@ export function resolveToolMode(args: {
   }
 
   if (overrides[tool]) return overrides[tool];
-  const def = TOOL_POLICIES[tool];
   if (def?.computeModeFromInput) {
     const computed = def.computeModeFromInput(input);
     if (computed) return computed;
