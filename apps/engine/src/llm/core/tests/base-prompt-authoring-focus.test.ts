@@ -21,8 +21,8 @@ function hint(overrides: Partial<AuthoringPromptHint>): AuthoringPromptHint {
 }
 
 describe("converse base prompt — authoring focus blocks", () => {
-  it("renders the connector focus block when connector authoring is active", () => {
-    const prompt = basePromptFor(
+  it("renders the connector focus block when connector authoring is active", async () => {
+    const prompt = await basePromptFor(
       "converse",
       "sk_interactive",
       hint({
@@ -37,8 +37,8 @@ describe("converse base prompt — authoring focus blocks", () => {
     expect(prompt).toContain("Relevant checkpoints: connector_inspected=missing");
   });
 
-  it("renders the workflow focus block when workflow drafting is active", () => {
-    const prompt = basePromptFor(
+  it("renders the workflow focus block when workflow drafting is active", async () => {
+    const prompt = await basePromptFor(
       "converse",
       "sk_interactive",
       hint({
@@ -59,8 +59,8 @@ describe("converse base prompt — authoring focus blocks", () => {
     expect(prompt).toContain("Do not run a draft-only workflow.");
   });
 
-  it("renders the diagnosis focus block when a diagnosis is active", () => {
-    const prompt = basePromptFor(
+  it("renders the diagnosis focus block when a diagnosis is active", async () => {
+    const prompt = await basePromptFor(
       "converse",
       "sk_interactive",
       hint({
