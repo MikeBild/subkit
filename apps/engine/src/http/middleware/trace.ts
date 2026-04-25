@@ -13,9 +13,22 @@ function detectSource(path: string): AppEnv["Variables"]["request_source"] {
   return "api";
 }
 
+// Accept a CLI-provided trace id so the user's local debug log
+// records and the engine's structured logs share the same id. Pattern
+// kept tight — `[A-Za-z0-9_-]{8,128}` — to refuse log-injection.
+const INBOUND_TRACE_ID = /^[A-Za-z0-9_-]{8,128}$/;
+
+function inboundTraceId(c: { req: { header: (n: string) => string | undefined } }): string | null {
+  const candidates = [c.req.header("x-sk-trace-id"), c.req.header("x-trace-id")];
+  for (const raw of candidates) {
+    if (raw && INBOUND_TRACE_ID.test(raw)) return raw;
+  }
+  return null;
+}
+
 export function traceMiddleware(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    const trace_id = newTraceId();
+    const trace_id = inboundTraceId(c) ?? newTraceId();
     const source = detectSource(new URL(c.req.url).pathname);
     c.set("trace_id", trace_id);
     c.set("request_source", source);

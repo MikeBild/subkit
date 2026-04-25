@@ -14,7 +14,7 @@ import { join } from "node:path";
 import type { ConversationItem } from "@chat-ui/index.ts";
 import type { SkSessionState } from "@cli-core/index.ts";
 import { loadConfig, type ResolvedProfile, saveConfig } from "../config.ts";
-import { debugLogPath, debugLogTail, isDebugMode, setDebugMode } from "../debug.ts";
+import { debugLogPath, debugLogTail, isDebugVerbose, setDebugVerbose } from "../debug.ts";
 import type {
   ConversationContextSnapshot,
   ConversationDetail,
@@ -1104,18 +1104,18 @@ export async function handleSlash(
       );
     }
     case "debug": {
-      // /debug         → status (on/off + path + line count)
-      // /debug on/off  → toggle the in-process flag (env stays the source of truth on next launch)
+      // /debug         → status (verbose on/off + path + tail count)
+      // /debug on/off  → toggle verbose body capture (HTTP bodies + raw SSE frames)
       // /debug tail    → render the last 40 lines of the debug log
       // /debug path    → just the file path (handy for `tail -f` outside the REPL)
       const sub = (rawArgs[0] ?? "").toLowerCase();
       if (sub === "on" || sub === "off") {
-        setDebugMode(sub === "on");
+        setDebugVerbose(sub === "on");
         const path = debugLogPath();
         return panify(ctx, `debug ${sub}`, [
           sub === "on"
-            ? `full trace logging enabled — appending to ${path}`
-            : "request logging disabled (env SK_DEBUG / --debug still works on next launch)",
+            ? `verbose mode on — HTTP bodies and raw SSE frames now persisted to ${path}`
+            : "verbose mode off — metadata still logged; bodies omitted (env SK_DEBUG / --debug re-enables on next launch)",
         ]);
       }
       if (sub === "path") {
@@ -1126,17 +1126,17 @@ export async function handleSlash(
         if (lines.length === 0) {
           return panify(ctx, "debug log empty", [
             `path: ${debugLogPath()}`,
-            "no records yet — set SK_DEBUG=1 (or run `/debug on`) and reproduce the request",
+            "no records yet — make a request and try again",
           ]);
         }
         return panify(ctx, "debug log (tail)", lines, debugLogPath());
       }
-      const active = isDebugMode();
-      return panify(ctx, `debug ${active ? "on" : "off"}`, [
-        `path: ${debugLogPath()}`,
-        active
-          ? "every dialog turn, request/response, and streamed event is logged as JSONL"
-          : "logging is OFF — turn on with `/debug on`, env `SK_DEBUG=1`, or `--debug` flag",
+      const verbose = isDebugVerbose();
+      return panify(ctx, `debug ${verbose ? "verbose" : "normal"}`, [
+        `path: ${debugLogPath()} (rotates at 2 MB, keeps debug.log.1, debug.log.2)`,
+        verbose
+          ? "verbose: HTTP bodies + raw SSE frames are persisted on every request"
+          : "normal: metadata only — turn verbose on with `/debug on`, env `SK_DEBUG=1`, or `--debug`",
         "subcommands: `/debug on` · `/debug off` · `/debug tail` · `/debug path`",
       ]);
     }

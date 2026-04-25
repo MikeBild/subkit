@@ -110,6 +110,30 @@ function workflowDraftAllowsCommit(summary: AuthoringSummary): boolean {
   );
 }
 
+// In-place re-commit on a persisted workflow (the repair-and-save path).
+// commit_draft itself supports update-in-place when target_workflow_id is
+// set; the palette must surface the tool so the agent can take that path
+// instead of abstaining via cannot_help. We require the same gates the
+// commit tool checks (inspected + validated), but DO NOT require the
+// workflow_previewed checkpoint here — that's commit_draft's job to
+// enforce, with a structured `next_best_actions: ["dry_run_workflow"]`
+// if missing. Hiding the tool produces a dead end where the model has
+// no in-chat path to persist its repair and falls back to suggesting a
+// CLI command, which breaks the chat-first contract.
+export function workflowPersistedAllowsRecommit(summary: AuthoringSummary): boolean {
+  if (summary.active_target.kind !== "workflow") return false;
+  if (summary.active_target.lifecycle_state !== "persisted") return false;
+  if (hasMissingFields(summary)) return false;
+  if (
+    summary.blocked_by.some(
+      (item) => item === "inspect_workflow_draft" || item === "validate_draft",
+    )
+  ) {
+    return false;
+  }
+  return hasCheckpoint(summary, "workflow_validated");
+}
+
 function workflowAllowsRun(summary: AuthoringSummary): boolean {
   if (summary.active_target.kind !== "workflow") return false;
   if (summary.active_target.lifecycle_state !== "persisted") return false;
@@ -161,6 +185,10 @@ function allowWorkflowPersistedPalette(allowed: Set<string>, summary: AuthoringS
   addNames(allowed, WORKFLOW_PREVIEW);
   if (workflowAllowsRun(summary)) addNames(allowed, EXECUTION_TOOLS);
   if (diagnosisAvailable(summary)) addNames(allowed, DIAGNOSIS_TOOLS);
+  // Repair-and-save: a persisted workflow that has been edited and
+  // validated must be commit-able through the conversation, otherwise
+  // the agent has no in-chat path to apply its repair.
+  if (workflowPersistedAllowsRecommit(summary)) addNames(allowed, WORKFLOW_PERSISTENCE);
 }
 
 export function filterByAuthoringPalette<T extends { name: string }>(
@@ -193,6 +221,14 @@ export function filterByAuthoringPalette<T extends { name: string }>(
   } else if (summary.mode === "execution") {
     allowWorkflowPersistedPalette(allowed, summary);
   } else {
+    // Idle / fresh-start state (e.g. immediately after a delete_*).
+    // Must include the entry tools for BOTH connector and workflow
+    // authoring, otherwise the user cannot start a new resource — the
+    // model is forced into cannot_help with "tool not available", which
+    // is the bug surfaced in session 64db7189 after delete_connector
+    // dropped active_target.kind to "none" and the palette hid
+    // start_connector_from_description.
+    addNames(allowed, CONNECTOR_AUTHORING);
     addNames(allowed, WORKFLOW_AUTHORING);
     addNames(allowed, WORKFLOW_PREVIEW);
   }

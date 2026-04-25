@@ -9,7 +9,7 @@ import {
   type DebugMode,
   debugLog,
   extractTraceId,
-  isDebugMode,
+  isDebugVerbose,
   serializeDebugError,
 } from "./debug.ts";
 
@@ -154,7 +154,10 @@ export class EngineClient {
     this.debugMode = opts.debug_mode ?? "command";
   }
 
-  private headers(extra?: Record<string, string>): Record<string, string> {
+  private headers(
+    extra?: Record<string, string>,
+    opts?: { traceId?: string },
+  ): Record<string, string> {
     const h: Record<string, string> = {
       "content-type": "application/json",
       accept: "application/json",
@@ -163,7 +166,20 @@ export class EngineClient {
     };
     if (this.apiKey) h.authorization = `Bearer ${this.apiKey}`;
     if (this.tenant) h["x-subkit-tenant"] = this.tenant;
+    if (opts?.traceId) h["x-sk-trace-id"] = opts.traceId;
     return h;
+  }
+
+  private newClientTraceId(): string {
+    // Per-request trace id, sent outbound as `x-sk-trace-id`. The
+    // engine's traceMiddleware accepts it (validated) and reuses it as
+    // the request's trace_id, so the CLI's debug.log records and the
+    // engine's structured logs share one id.
+    const rand =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID().replace(/-/g, "")
+        : Math.random().toString(36).slice(2).padEnd(16, "0");
+    return `cli-${rand.slice(0, 16)}`;
   }
 
   async request<T = unknown>(
@@ -175,47 +191,48 @@ export class EngineClient {
   ): Promise<T> {
     const qs = buildQuery(query);
     const url = `${this.base}${path}${qs}`;
-    const init: RequestInit = { method, headers: this.headers() };
+    const traceId = debugContext?.trace_id ?? this.newClientTraceId();
+    const init: RequestInit = { method, headers: this.headers(undefined, { traceId }) };
     if (body !== undefined) init.body = typeof body === "string" ? body : JSON.stringify(body);
     const startedAt = Date.now();
-    const debugActive = isDebugMode();
-    const ctx = this.debugContext(debugContext);
-    if (debugActive) {
+    const verbose = isDebugVerbose();
+    const ctx = { ...this.debugContext(debugContext), trace_id: traceId };
+    debugLog(
+      "http.request",
+      {
+        method,
+        path,
+        url,
+        tenant: this.tenant,
+        query: query ?? null,
+        request_kind: "json",
+        ...(verbose
+          ? {
+              request_headers: normalizeHeaders(init.headers),
+              request_body: body ?? null,
+            }
+          : {}),
+      },
+      ctx,
+    );
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, init);
+    } catch (cause) {
+      const duration_ms = Date.now() - startedAt;
       debugLog(
-        "http.request",
+        "http.transport_error",
         {
           method,
           path,
           url,
           tenant: this.tenant,
           query: query ?? null,
-          request_headers: normalizeHeaders(init.headers),
-          request_body: body ?? null,
-          request_kind: "json",
+          duration_ms,
+          error: serializeDebugError(cause),
         },
         ctx,
       );
-    }
-    let res: Response;
-    try {
-      res = await this.fetchImpl(url, init);
-    } catch (cause) {
-      const duration_ms = Date.now() - startedAt;
-      if (debugActive) {
-        debugLog(
-          "http.transport_error",
-          {
-            method,
-            path,
-            url,
-            tenant: this.tenant,
-            query: query ?? null,
-            duration_ms,
-            error: serializeDebugError(cause),
-          },
-          ctx,
-        );
-      }
       throw new SkTransportError(cause);
     }
     const text = await res.text();
@@ -223,28 +240,6 @@ export class EngineClient {
     const parsed = parseResponseBody(text);
     const trace_id = extractTraceId(res.headers);
     if (!res.ok) {
-      if (debugActive) {
-        debugLog(
-          "http.response",
-          {
-            method,
-            path,
-            url,
-            tenant: this.tenant,
-            query: query ?? null,
-            status: res.status,
-            ok: res.ok,
-            duration_ms,
-            trace_id,
-            response_headers: normalizeHeaders(res.headers),
-            response_body: parsed,
-          },
-          { ...ctx, trace_id: ctx.trace_id ?? trace_id },
-        );
-      }
-      throw new SkEngineError(res.status, parsed);
-    }
-    if (debugActive) {
       debugLog(
         "http.response",
         {
@@ -257,12 +252,38 @@ export class EngineClient {
           ok: res.ok,
           duration_ms,
           trace_id,
-          response_headers: normalizeHeaders(res.headers),
-          response_body: parsed,
+          ...(verbose
+            ? {
+                response_headers: normalizeHeaders(res.headers),
+                response_body: parsed,
+              }
+            : {}),
         },
         { ...ctx, trace_id: ctx.trace_id ?? trace_id },
       );
+      throw new SkEngineError(res.status, parsed);
     }
+    debugLog(
+      "http.response",
+      {
+        method,
+        path,
+        url,
+        tenant: this.tenant,
+        query: query ?? null,
+        status: res.status,
+        ok: res.ok,
+        duration_ms,
+        trace_id,
+        ...(verbose
+          ? {
+              response_headers: normalizeHeaders(res.headers),
+              response_body: parsed,
+            }
+          : {}),
+      },
+      { ...ctx, trace_id: ctx.trace_id ?? trace_id },
+    );
     if (!text || res.status === 204) return undefined as T;
     return parsed as T;
   }
@@ -274,69 +295,68 @@ export class EngineClient {
   ): Promise<Response> {
     const qs = buildQuery(query);
     const url = `${this.base}${path}${qs}`;
-    const headers = this.headers({ accept: "text/event-stream" });
-    const debugActive = isDebugMode();
-    const ctx = this.debugContext(debugContext);
-    if (debugActive) {
-      debugLog(
-        "http.request",
-        {
-          method: "GET",
-          path,
-          url,
-          tenant: this.tenant,
-          query: query ?? null,
-          request_headers: normalizeHeaders(headers),
-          request_body: null,
-          request_kind: "sse",
-        },
-        ctx,
-      );
-    }
+    const traceId = debugContext?.trace_id ?? this.newClientTraceId();
+    const headers = this.headers({ accept: "text/event-stream" }, { traceId });
+    const verbose = isDebugVerbose();
+    const ctx = { ...this.debugContext(debugContext), trace_id: traceId };
+    debugLog(
+      "http.request",
+      {
+        method: "GET",
+        path,
+        url,
+        tenant: this.tenant,
+        query: query ?? null,
+        request_kind: "sse",
+        ...(verbose ? { request_headers: normalizeHeaders(headers), request_body: null } : {}),
+      },
+      ctx,
+    );
     try {
       const res = await this.fetchImpl(url, {
         method: "GET",
         headers,
       });
-      if (debugActive) {
-        const trace_id = extractTraceId(res.headers);
-        const error_body = !res.ok
+      const trace_id = extractTraceId(res.headers);
+      const error_body =
+        verbose && !res.ok
           ? await res
               .clone()
               .text()
               .catch(() => null)
           : null;
-        debugLog(
-          "sse.open",
-          {
-            path,
-            url,
-            tenant: this.tenant,
-            query: query ?? null,
-            status: res.status,
-            ok: res.ok,
-            trace_id,
-            response_headers: normalizeHeaders(res.headers),
-            response_body: error_body ? parseResponseBody(error_body) : null,
-          },
-          { ...ctx, trace_id: ctx.trace_id ?? trace_id },
-        );
-      }
+      debugLog(
+        "sse.open",
+        {
+          path,
+          url,
+          tenant: this.tenant,
+          query: query ?? null,
+          status: res.status,
+          ok: res.ok,
+          trace_id,
+          ...(verbose
+            ? {
+                response_headers: normalizeHeaders(res.headers),
+                response_body: error_body ? parseResponseBody(error_body) : null,
+              }
+            : {}),
+        },
+        { ...ctx, trace_id: ctx.trace_id ?? trace_id },
+      );
       return res;
     } catch (cause) {
-      if (debugActive) {
-        debugLog(
-          "sse.transport_error",
-          {
-            path,
-            url,
-            tenant: this.tenant,
-            query: query ?? null,
-            error: serializeDebugError(cause),
-          },
-          ctx,
-        );
-      }
+      debugLog(
+        "sse.transport_error",
+        {
+          path,
+          url,
+          tenant: this.tenant,
+          query: query ?? null,
+          error: serializeDebugError(cause),
+        },
+        ctx,
+      );
       throw new SkTransportError(cause);
     }
   }
@@ -537,69 +557,50 @@ export class EngineClient {
     };
     if (this.apiKey) h.authorization = `Bearer ${this.apiKey}`;
     if (this.tenant) h["x-subkit-tenant"] = this.tenant;
-    const debugActive = isDebugMode();
-    const ctx = this.debugContext(debugContext);
-    if (debugActive) {
+    const traceId = debugContext?.trace_id ?? this.newClientTraceId();
+    h["x-sk-trace-id"] = traceId;
+    const verbose = isDebugVerbose();
+    const ctx = { ...this.debugContext(debugContext), trace_id: traceId };
+    debugLog(
+      "http.request",
+      {
+        method,
+        path,
+        url,
+        tenant: this.tenant,
+        query: null,
+        request_kind: "form",
+        ...(verbose
+          ? {
+              request_headers: normalizeHeaders(h),
+              request_body: await serializeFormData(form),
+            }
+          : {}),
+      },
+      ctx,
+    );
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, { method, headers: h, body: form });
+    } catch (cause) {
       debugLog(
-        "http.request",
+        "http.transport_error",
         {
           method,
           path,
           url,
           tenant: this.tenant,
           query: null,
-          request_headers: normalizeHeaders(h),
-          request_body: await serializeFormData(form),
-          request_kind: "form",
+          error: serializeDebugError(cause),
         },
         ctx,
       );
-    }
-    let res: Response;
-    try {
-      res = await this.fetchImpl(url, { method, headers: h, body: form });
-    } catch (cause) {
-      if (debugActive) {
-        debugLog(
-          "http.transport_error",
-          {
-            method,
-            path,
-            url,
-            tenant: this.tenant,
-            query: null,
-            error: serializeDebugError(cause),
-          },
-          ctx,
-        );
-      }
       throw new SkTransportError(cause);
     }
     const text = await res.text();
     const parsed = parseResponseBody(text);
     const trace_id = extractTraceId(res.headers);
     if (!res.ok) {
-      if (debugActive) {
-        debugLog(
-          "http.response",
-          {
-            method,
-            path,
-            url,
-            tenant: this.tenant,
-            query: null,
-            status: res.status,
-            ok: res.ok,
-            trace_id,
-            response_headers: normalizeHeaders(res.headers),
-            response_body: parsed,
-          },
-          { ...ctx, trace_id: ctx.trace_id ?? trace_id },
-        );
-      }
-      throw new SkEngineError(res.status, parsed);
-    }
-    if (debugActive) {
       debugLog(
         "http.response",
         {
@@ -611,12 +612,37 @@ export class EngineClient {
           status: res.status,
           ok: res.ok,
           trace_id,
-          response_headers: normalizeHeaders(res.headers),
-          response_body: parsed,
+          ...(verbose
+            ? {
+                response_headers: normalizeHeaders(res.headers),
+                response_body: parsed,
+              }
+            : {}),
         },
         { ...ctx, trace_id: ctx.trace_id ?? trace_id },
       );
+      throw new SkEngineError(res.status, parsed);
     }
+    debugLog(
+      "http.response",
+      {
+        method,
+        path,
+        url,
+        tenant: this.tenant,
+        query: null,
+        status: res.status,
+        ok: res.ok,
+        trace_id,
+        ...(verbose
+          ? {
+              response_headers: normalizeHeaders(res.headers),
+              response_body: parsed,
+            }
+          : {}),
+      },
+      { ...ctx, trace_id: ctx.trace_id ?? trace_id },
+    );
     if (!text || res.status === 204) return undefined as T;
     return parsed as T;
   }

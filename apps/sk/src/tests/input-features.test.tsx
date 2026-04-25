@@ -321,14 +321,26 @@ describe("features: paste heuristic", () => {
   test("a long pasted chunk is replaced by a [Pasted text #N] ref", async () => {
     const instance = renderApp();
     await tick();
-    // Single stdin write simulating a paste — 40 chars crosses the
-    // looksLikePaste threshold.
-    instance.stdin.write("x".repeat(40));
+    // Multi-line paste forces the attachment path. Single-line pastes
+    // up to ~200 chars now inline directly (session 64db7189 fix).
+    instance.stdin.write(`${"x".repeat(40)}\nsecond line of paste`);
     await tick(30);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toMatch(/\[Pasted text #\d+\]/);
+    expect(frame).toMatch(/\[Pasted text #\d+(?: \+\d+ lines)?\]/);
     expect(frame).toContain("attachments · 1 pending");
     expect(frame).toContain("xxxxxxxx");
+    instance.unmount();
+  });
+
+  test("a short single-line paste is inserted inline (no attachment)", async () => {
+    const instance = renderApp();
+    await tick();
+    instance.stdin.write("siemens-stock-price");
+    await tick(30);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("siemens-stock-price");
+    expect(frame).not.toMatch(/\[Pasted text #\d+\]/);
+    expect(frame).not.toContain("attachments · 1 pending");
     instance.unmount();
   });
 

@@ -21,6 +21,7 @@ import type { ResolvedProfile } from "./config.ts";
 import {
   type DebugCorrelationFields,
   debugLog,
+  isDebugVerbose,
   newDebugTurnId,
   serializeDebugError,
 } from "./debug.ts";
@@ -292,8 +293,14 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     return { exitCode: e.exit, session, conversation_id: conversationId };
   }
 
+  const verbose = isDebugVerbose();
+  let ssseParseErrorReported = false;
   await readSse(streamResponse, (frame) => {
-    debugLog("sse.frame", { event: frame.event, raw_data: frame.data }, traceContext());
+    debugLog(
+      "sse.frame",
+      { event: frame.event, ...(verbose ? { raw_data: frame.data } : {}) },
+      traceContext(),
+    );
     let ev: TurnEvent;
     try {
       ev = JSON.parse(frame.data) as TurnEvent;
@@ -303,15 +310,23 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
         {
           input_kind: "prompt",
           stage: "sse_frame_parse",
-          raw_frame: frame.data,
+          ...(verbose ? { raw_frame: frame.data } : {}),
           error: serializeDebugError(err),
         },
         traceContext(),
       );
+      if (!ssseParseErrorReported) {
+        ssseParseErrorReported = true;
+        stderr.write("sk: malformed SSE frame — see ~/.sk/debug.log for details\n");
+      }
       return;
     }
     if (typeof ev.type !== "string") return;
-    debugLog("dialog.turn_event", { event: ev }, traceContext());
+    debugLog(
+      "dialog.turn_event",
+      verbose ? { event: ev } : { event_type: ev.type },
+      traceContext(),
+    );
     // stream-json: one JSON object per frame on stdout, unbuffered.
     if (opts.output === "stream-json") {
       writeLine(stdout, JSON.stringify(ev));

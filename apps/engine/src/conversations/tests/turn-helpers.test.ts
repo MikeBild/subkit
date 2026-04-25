@@ -93,8 +93,8 @@ describe("synthesizeFallbackMessage", () => {
 
   test("no tool results but loop fired → generic loop-apology", () => {
     const msg = synthesizeFallbackMessage({ events: [], loopWarnings: 2 });
-    expect(msg).toContain("mehrfach auf denselben Aufruf");
-    expect(msg).toContain("Tokens weiter verbrannt");
+    expect(msg).toContain("kept hitting the same call");
+    expect(msg).toContain("Try rephrasing");
   });
 
   test("summarises the latest tool_result per tool when no text was produced", () => {
@@ -113,10 +113,9 @@ describe("synthesizeFallbackMessage", () => {
       },
     ];
     const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
-    expect(msg).toContain("list_workflows: 3 Einträge");
-    expect(msg).toContain("list_connectors: 1 Einträge");
-    // Header framing differs by loop state.
-    expect(msg).toContain("Zusammenfassung");
+    expect(msg).toContain("list_workflows: 3 entries");
+    expect(msg).toContain("list_connectors: 1 entries");
+    expect(msg).toContain("Summary of the latest tool results:");
   });
 
   test("loop-aware header when loopWarnings > 0", () => {
@@ -129,8 +128,8 @@ describe("synthesizeFallbackMessage", () => {
       },
     ];
     const msg = synthesizeFallbackMessage({ events, loopWarnings: 2 });
-    expect(msg).toContain("Turn wurde automatisch beendet");
-    expect(msg).toContain("list_workflows: 0 Einträge");
+    expect(msg).toContain("stopped this turn early");
+    expect(msg).toContain("list_workflows: 0 entries");
   });
 
   test("falls back to reason / error / field list when no array summary fits", () => {
@@ -155,9 +154,9 @@ describe("synthesizeFallbackMessage", () => {
       },
     ];
     const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
-    expect(msg).toContain("save_connector_draft: Hinweis: validation_failed");
-    expect(msg).toContain("probe_connector: Fehler: http_401");
-    expect(msg).toContain("whoami: Felder: user_id, tenant_id, role");
+    expect(msg).toContain("save_connector_draft: note: validation_failed");
+    expect(msg).toContain("probe_connector: error: http_401");
+    expect(msg).toContain("whoami: fields: user_id, tenant_id, role");
   });
 
   test("keeps only the latest output per tool name", () => {
@@ -176,8 +175,8 @@ describe("synthesizeFallbackMessage", () => {
       },
     ];
     const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
-    expect(msg).toContain("list_workflows: 2 Einträge");
+    expect(msg).toContain("list_workflows: 2 entries");
     // Earlier single-entry line must not leak in.
-    expect(msg).not.toContain("1 Einträge");
+    expect(msg).not.toContain("1 entries");
   });
 });

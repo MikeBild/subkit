@@ -7,7 +7,7 @@
 // validation panel, the ToolCard failure block, and the prompt-error
 // banner stay consistent.
 
-import { debugLogPath, isDebugMode } from "../debug.ts";
+import { debugLogPath, isDebugVerbose } from "../debug.ts";
 import { SkEngineError, SkTransportError } from "../engine-client.ts";
 
 const VALID_KINDS = [
@@ -116,25 +116,78 @@ export function summarizeToolFailure(
 }
 
 /**
+ * Pattern-driven hint table. Adds a one-line "what to do next"
+ * suggestion when an error message matches a known signature. Order
+ * matters — the first match wins. New patterns go at the top so
+ * specific cases override generic ones.
+ */
+const HINT_PATTERNS: ReadonlyArray<{ match: RegExp; hint: string }> = [
+  {
+    match: /\b(invalid_grant|token expired|token_expired|401|403)\b/i,
+    hint: "/auth refresh to re-authenticate, or /connectors probe <id> to verify credentials",
+  },
+  {
+    match: /\b(429|rate.?limit)/i,
+    hint: "rate limited; back off and retry — /status shows the tenant's budget",
+  },
+  {
+    match: /\b(402|quota|monthly.?budget|budget.?exceeded|budget.?exhausted)\b/i,
+    hint: "monthly budget exhausted — raise it via /admin set-budget",
+  },
+  {
+    match: /\bscope_envelope_field_missing\b/i,
+    hint: "step output requires a `.data` envelope; /workflows inspect <id> shows the expected shape",
+  },
+  {
+    match: /\b(ENOTFOUND|ECONNREFUSED|ETIMEDOUT)\b/i,
+    hint: "engine unreachable — check /status or sk login --engine-url ...",
+  },
+  {
+    match: /\btemplate .* not found\b|\btemplate_slug\b/i,
+    hint: "list templates with /connectors templates; the field is `template_slug`",
+  },
+  {
+    match: /\bturn_loop_budget_exhausted\b/i,
+    hint: "turn aborted by the loop guard; the engine emits a fallback message — see /audit",
+  },
+];
+
+export function findErrorHint(message: string): string | null {
+  for (const pattern of HINT_PATTERNS) {
+    if (pattern.match.test(message)) return pattern.hint;
+  }
+  return null;
+}
+
+/**
  * Format any thrown error from the prompt / slash pipeline into a
  * banner the user can act on. Backend `SkEngineError`s become a single
  * line with the HTTP status, error code, and trace_id; transport
  * errors are flagged as connectivity issues; everything else falls
- * back to the raw message. When debug mode is off, we tell the user
- * how to turn it on so the next failure leaves a paper trail.
+ * back to the raw message. Pattern-matched hints are preferred when
+ * the error message matches a known signature.
  */
 export function humanizeRequestError(err: unknown): string {
   if (err instanceof SkEngineError) {
     const head = `sk: HTTP ${err.status} ${err.code} — ${err.message || "(no detail)"}`;
     const trace = err.trace_id ? ` · trace_id ${err.trace_id}` : "";
-    const hint = !isDebugMode()
-      ? "\n  ↳ run with SK_DEBUG=1 to log the full local trace to ~/.sk/debug.log, or /logs to tail engine logs"
-      : `\n  ↳ details in ${debugLogPath()}`;
+    const matched = findErrorHint(`${err.code} ${err.message}`);
+    const hint = matched
+      ? `\n  ↳ ${matched}`
+      : isDebugVerbose()
+        ? `\n  ↳ details in ${debugLogPath()}`
+        : `\n  ↳ ${debugLogPath()} has the request — \`/debug on\` adds bodies, \`/logs\` tails the engine`;
     return `${head}${trace}${hint}`;
   }
   if (err instanceof SkTransportError) {
-    return `sk: cannot reach engine — ${err.message}\n  ↳ check the engine URL with /status, or switch profile via /profile <name>`;
+    const matched = findErrorHint(err.message);
+    const hint =
+      matched ?? "check the engine URL with /status, or switch profile via /profile <name>";
+    return `sk: cannot reach engine — ${err.message}\n  ↳ ${hint}`;
   }
-  if (err instanceof Error) return `sk: ${err.message}`;
+  if (err instanceof Error) {
+    const matched = findErrorHint(err.message);
+    return matched ? `sk: ${err.message}\n  ↳ ${matched}` : `sk: ${err.message}`;
+  }
   return `sk: ${String(err)}`;
 }

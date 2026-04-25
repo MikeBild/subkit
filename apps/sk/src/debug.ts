@@ -1,13 +1,19 @@
 // Full-trace debug logger for the `sk` CLI.
 //
-// Activation (any of):
-//   - `SK_DEBUG=1` env var (or `DEBUG=sk` / `DEBUG=sk:*`)
-//   - `--debug` / `-d` argv flag
+// File logging is ALWAYS on. Records are appended as JSON-Lines to
+// `~/.sk/debug.log` (or `$SK_DEBUG_FILE`) so an operator can grep a
+// failure without asking the user to set an env var first. The log
+// rotates at 2 MB; the previous two generations are kept as
+// `debug.log.1` and `debug.log.2`.
 //
-// When active, `sk` appends JSON-Lines records to `~/.sk/debug.log`.
-// The records are structured, correlated per turn, and redacted before
-// they hit disk so operators can inspect failures without leaking
-// secrets into local debug artifacts.
+// Verbose mode (env `SK_DEBUG=1` / `DEBUG=sk[:*]` / argv `--debug` /
+// `setDebugVerbose(true)`) only controls whether HTTP bodies and raw
+// SSE frame payloads are persisted — those are expensive to write and
+// remain sensitive even after `redact()`. Default-off keeps the log
+// usable; flip it on when you need full traces.
+//
+// Records are redacted before they hit disk so secrets do not leak
+// into local artifacts.
 
 import fs from "node:fs";
 import { homedir } from "node:os";
@@ -15,6 +21,8 @@ import { dirname, join } from "node:path";
 import { redact } from "@cli-core/index.ts";
 
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
+const ROTATION_BYTES = 2 * 1024 * 1024;
+const ROTATION_KEEP = 2; // keep debug.log.1 and debug.log.2
 
 export type DebugMode = "ink" | "repl" | "headless" | "command" | "unknown";
 
@@ -52,7 +60,7 @@ export interface DebugRecord extends DebugCorrelationFields {
   [key: string]: unknown;
 }
 
-function envEnabled(): boolean {
+function envVerbose(): boolean {
   const sk = process.env.SK_DEBUG?.toLowerCase().trim();
   if (sk && TRUTHY.has(sk)) return true;
   const generic = process.env.DEBUG?.toLowerCase().trim();
@@ -60,7 +68,7 @@ function envEnabled(): boolean {
   return false;
 }
 
-function argvEnabled(): boolean {
+function argvVerbose(): boolean {
   for (const arg of process.argv) {
     if (arg === "--debug" || arg === "-d") return true;
     if (arg.startsWith("--debug=")) return true;
@@ -68,23 +76,27 @@ function argvEnabled(): boolean {
   return false;
 }
 
-let cachedActive: boolean | null = null;
+let cachedVerbose: boolean | null = null;
 let writeFailed = false;
 let nextRecordSeq = 0;
 let nextTurnSeq = 0;
 
-export function isDebugMode(): boolean {
-  if (cachedActive !== null) return cachedActive;
-  cachedActive = envEnabled() || argvEnabled();
-  return cachedActive;
+/**
+ * Verbose mode controls whether HTTP/SSE bodies are persisted.
+ * File logging itself is always on regardless.
+ */
+export function isDebugVerbose(): boolean {
+  if (cachedVerbose !== null) return cachedVerbose;
+  cachedVerbose = envVerbose() || argvVerbose();
+  return cachedVerbose;
 }
 
 /**
- * Programmatic toggle — used by `/debug on|off` to flip mode without
- * a restart. Returns the new state.
+ * Programmatic toggle for verbose mode — used by `/debug on|off` to
+ * flip body capture without a restart. Returns the new state.
  */
-export function setDebugMode(next: boolean): boolean {
-  cachedActive = next;
+export function setDebugVerbose(next: boolean): boolean {
+  cachedVerbose = next;
   return next;
 }
 
@@ -135,11 +147,37 @@ export function serializeDebugError(err: unknown): Record<string, unknown> {
   return { message: String(err) };
 }
 
+function rotateIfNeeded(path: string): void {
+  let size: number;
+  try {
+    size = fs.statSync(path).size;
+  } catch {
+    return; // file does not exist yet — nothing to rotate
+  }
+  if (size < ROTATION_BYTES) return;
+  // Rotate: debug.log.2 -> unlink, debug.log.1 -> debug.log.2, debug.log -> debug.log.1
+  for (let i = ROTATION_KEEP; i >= 1; i--) {
+    const src = i === 1 ? path : `${path}.${i - 1}`;
+    const dst = `${path}.${i}`;
+    try {
+      if (fs.existsSync(dst)) fs.rmSync(dst, { force: true });
+    } catch {
+      /* best effort */
+    }
+    try {
+      if (fs.existsSync(src)) fs.renameSync(src, dst);
+    } catch {
+      /* best effort */
+    }
+  }
+}
+
 function appendRecord(rec: DebugRecord): void {
   const path = debugLogPath();
   const line = `${JSON.stringify(rec)}\n`;
   try {
     fs.mkdirSync(dirname(path), { recursive: true });
+    rotateIfNeeded(path);
     fs.appendFileSync(path, line, { encoding: "utf8" });
   } catch (err) {
     // Avoid noisy fallbacks every request when the file system is
@@ -159,7 +197,6 @@ export function debugLog(
   fields: Record<string, unknown> = {},
   context: DebugCorrelationFields = {},
 ): void {
-  if (!isDebugMode()) return;
   const raw: DebugRecord = {
     ts: new Date().toISOString(),
     seq: ++nextRecordSeq,

@@ -37,6 +37,11 @@ export const turnLoopBudgetStopCondition = ({
  * the events, picks the last output per tool name, and renders a
  * one-line summary per tool.
  *
+ * Output is English. The model is responsible for any locale-aware
+ * surface text in the regular path; the fallback is a backstop and
+ * stays in one canonical language so observability + test-snapshot
+ * matchers don't drift across tenants.
+ *
  * Returns null when there is no meaningful signal — callers then
  * decide between a generic apology line and silence. An empty
  * assistant text is always worse than a synthesised paragraph, so the
@@ -55,7 +60,7 @@ export function synthesizeFallbackMessage(params: {
   }
   if (latestPerTool.size === 0) {
     return params.loopWarnings > 0
-      ? "Ich bin mehrfach auf denselben Aufruf gelaufen und habe den Turn gestoppt, bevor Tokens weiter verbrannt werden. Formuliere die Frage bitte anders oder sag mir, was du als Nächstes willst."
+      ? "I kept hitting the same call and stopped the turn before burning more tokens. Try rephrasing or tell me what to do next."
       : null;
   }
   const lines: string[] = [];
@@ -64,8 +69,8 @@ export function synthesizeFallbackMessage(params: {
   }
   const header =
     params.loopWarnings > 0
-      ? "Der Turn wurde automatisch beendet, weil ich dasselbe Tool wiederholt aufgerufen habe. Hier ist, was ich bereits gesammelt habe:"
-      : "Zusammenfassung der letzten Tool-Ergebnisse:";
+      ? "I stopped this turn early because the model kept repeating the same call. Here is what I already gathered:"
+      : "Summary of the latest tool results:";
   return `${header}\n${lines.join("\n")}`;
 }
 
@@ -81,11 +86,11 @@ function describeToolOutput(output: Record<string, unknown>): string {
   ];
   for (const key of candidateKeys) {
     const value = output[key];
-    if (Array.isArray(value)) return `${value.length} Einträge`;
+    if (Array.isArray(value)) return `${value.length} entries`;
   }
   if (output._truncated && typeof output._note === "string") return String(output._note);
-  if (typeof output.error === "string") return `Fehler: ${output.error.slice(0, 160)}`;
-  if (typeof output.reason === "string") return `Hinweis: ${String(output.reason)}`;
+  if (typeof output.error === "string") return `error: ${output.error.slice(0, 160)}`;
+  if (typeof output.reason === "string") return `note: ${String(output.reason)}`;
   const keys = Object.keys(output).filter((k) => !k.startsWith("_"));
-  return keys.length > 0 ? `Felder: ${keys.slice(0, 5).join(", ")}` : "kein strukturierter Output";
+  return keys.length > 0 ? `fields: ${keys.slice(0, 5).join(", ")}` : "no structured output";
 }

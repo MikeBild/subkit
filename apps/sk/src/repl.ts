@@ -28,6 +28,7 @@ import type { ResolvedProfile } from "./config.ts";
 import {
   type DebugCorrelationFields,
   debugLog,
+  isDebugVerbose,
   newDebugTurnId,
   serializeDebugError,
 } from "./debug.ts";
@@ -351,11 +352,21 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         return;
       }
       const stream = await client.streamConversation(session.conversationId, traceContext());
+      const verbose = isDebugVerbose();
+      let parseErrorReported = false;
       await readSse(stream, (frame) => {
-        debugLog("sse.frame", { event: frame.event, raw_data: frame.data }, traceContext());
+        debugLog(
+          "sse.frame",
+          { event: frame.event, ...(verbose ? { raw_data: frame.data } : {}) },
+          traceContext(),
+        );
         try {
           const ev = JSON.parse(frame.data) as TurnEvent;
-          debugLog("dialog.turn_event", { event: ev }, traceContext());
+          debugLog(
+            "dialog.turn_event",
+            verbose ? { event: ev } : { event_type: ev.type },
+            traceContext(),
+          );
           session = applyTurnEvent(session, ev);
           renderFrame(ev);
         } catch (err) {
@@ -364,11 +375,15 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
             {
               input_kind,
               stage: "sse_frame_parse",
-              raw_frame: frame.data,
+              ...(verbose ? { raw_frame: frame.data } : {}),
               error: serializeDebugError(err),
             },
             traceContext(),
           );
+          if (!parseErrorReported) {
+            parseErrorReported = true;
+            writeErr("sk: malformed SSE frame — see ~/.sk/debug.log for details\n");
+          }
         }
       });
       debugLog("sse.close", { final_status: session.status }, traceContext());

@@ -12,6 +12,15 @@
 #  - self-healing/policy.ts explanatory comment about automation breadth
 #  - this script itself (mentions the banned words by necessity)
 #  - scripts/terminology.banned.txt (the policy itself)
+#
+# Carve-outs (intentionally NOT banned):
+#  - "integration" / "integrations": kept permitted because users still
+#    say "show my integrations" when they mean connectors. The
+#    converse-pipeline intent-detector matches on the user utterance
+#    (apps/engine/src/conversations/intent-detector.ts:43-58) so the
+#    snapshot answer kicks in. Do not add `integration` to the banned
+#    list without first updating the intent-detector to keep the user-
+#    facing alias working.
 
 set -euo pipefail
 

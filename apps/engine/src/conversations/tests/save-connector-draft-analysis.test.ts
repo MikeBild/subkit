@@ -117,7 +117,7 @@ describe("saveConnectorDraftTool — auto document analysis on attachment", () =
         driver: "http",
         environment: "dev",
         auth_type: "none",
-        base_url: "https://api.example.com",
+        base_url: "https://api.acme-demo.test",
       },
       workflow: { name: "", steps: [] },
     };

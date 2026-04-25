@@ -50,8 +50,7 @@ export const ApprovalRouter: React.FC<ApprovalRouterProps> = ({ approval }) => {
         <GenericApproval diff={diff} target={target} />
       )}
       <Text dimColor>
-        type `/respond &lt;value&gt;` to answer (id: <Text dimColor>{approval.id.slice(0, 8)}</Text>
-        )
+        type `/respond {"<value>"}` to answer (id: <Text dimColor>{approval.id.slice(0, 8)}</Text>)
       </Text>
     </Box>
   );
