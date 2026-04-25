@@ -331,6 +331,39 @@ function wrapOne(
         // interaction_log entry; the model re-issues the same tool call
         // with `__policy_confirmed: true` on a subsequent turn.
         if (needsPreConfirmation) {
+          // Same-turn dedupe — defense in depth against parallel tool
+          // calls. Anthropic's `disableParallelToolUse` (loop.ts) keeps
+          // this to a single tool_use per turn at the provider layer;
+          // if a future provider or model variant slips a parallel call
+          // through anyway, the second call refuses with a structured
+          // error that points to the first elicitation. Without this,
+          // a single user turn could stage N pending elicitations and
+          // exhaust the loop-warning budget (session d34e5858 regression
+          // — "starte mit übermorgen" produced 5 parallel run_workflow
+          // pre-confirmations and surfaced the synthesised "I stopped
+          // this turn early" fallback).
+          if (signals.pendingElicitation) {
+            const dupOutput = {
+              error: "duplicate_pending_elicitation_in_turn",
+              note: "Another tool call in this turn already staged an ask_user_confirm. Wait for the user to resolve that one, then re-issue this call after the user confirms.",
+              existing_elicitation_id: signals.pendingElicitation.elicitation_id,
+              existing_tool: signals.pendingElicitation.tool_name,
+            };
+            await updateToolCallOutput(db, toolCallId, dupOutput);
+            events.push({
+              type: "tool_result",
+              call_id: toolCallId,
+              tool: inner.name,
+              output: dupOutput,
+            });
+            recordConversationToolCall({
+              category: inner.category,
+              tool: inner.name,
+              outcome: "denied",
+              duration_ms: Date.now() - startedAt,
+            });
+            return { ok: false, data: dupOutput };
+          }
           // Structured pending-output preview so the confirm UI shows
           // first-class fields (target id, environment, key shape)
           // instead of a raw arg blob the user has to parse.

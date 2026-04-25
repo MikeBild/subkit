@@ -562,11 +562,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   );
 
   // Steer toolChoice from explicit user intent. Without this, the model
-  // sees "auto" and can decide to just narrate ("Der Workflow filtert
-  // bereits korrekt") without actually calling the tool — exactly the
+  // sees "auto" and can decide to just narrate ("the workflow already
+  // filters correctly") without actually calling the tool — exactly the
   // hallucination reported in session f44bf9b4. We only force a tool when
-  // (a) the detector sees a strong verb like "ausführen" / "run" and
-  // (b) that tool actually exists in the palette this turn.
+  // (a) the detector sees a strong run-intent verb in any supported
+  // language and (b) that tool actually exists in the palette this turn.
   const detectedIntent = detectUserIntent(p.user_message);
   const preferredTool =
     detectedIntent.forceTool && tools[detectedIntent.forceTool] ? detectedIntent.forceTool : null;
@@ -652,6 +652,19 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         : forceNoTools
           ? "none"
           : "auto",
+      // Disable parallel tool calls on Anthropic. The model used to
+      // emit 5+ run_workflow calls in one turn ("starte mit übermorgen"
+      // → 5 parallel run_workflow tool_use blocks, each producing its
+      // own confirm_before_execution elicitation, each contributing a
+      // loop-warning, all stopping with the synthesised "I stopped this
+      // turn early" fallback). The skill body says "ONE STATE-CHANGING
+      // TOOL PER TURN" but the model violated it because the AI SDK
+      // happily ran every tool_use block the model emitted in a single
+      // step. Disabling at the provider layer enforces it cleanly:
+      // Anthropic returns a single tool_use per assistant turn.
+      ...(cacheSupported
+        ? { providerOptions: { anthropic: { disableParallelToolUse: true } } }
+        : {}),
       stopWhen: [
         stepCountIs(budget),
         hasToolCall("ask_user_choice"),

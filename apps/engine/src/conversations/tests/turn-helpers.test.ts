@@ -159,6 +159,30 @@ describe("synthesizeFallbackMessage", () => {
     expect(msg).toContain("whoami: fields: user_id, tenant_id, role");
   });
 
+  test("ran-the-same-tool-N-times header when the loop fired but every call succeeded", () => {
+    // Session d34e5858 regression: "starte mit übermorgen" → 5 parallel
+    // run_workflow calls, all succeeded, the loop guard fired, the old
+    // fallback claimed "I stopped this turn early" — misleading,
+    // because every call actually completed. The fan-out branch should
+    // surface the real shape instead.
+    const events: TurnEvent[] = Array.from({ length: 5 }).map((_, i) => ({
+      type: "tool_result" as const,
+      call_id: `c${i}`,
+      tool: "run_workflow",
+      output: {
+        status: "succeeded",
+        execution_id: `exec-${i}`,
+        workflow_version: 4,
+      },
+    }));
+    const msg = synthesizeFallbackMessage({ events, loopWarnings: 2 });
+    expect(msg).toContain("ran the same tool 5 times");
+    expect(msg).toContain("all succeeded");
+    expect(msg).toContain("run_workflow");
+    expect(msg).toContain("(called 5×)");
+    expect(msg).not.toContain("stopped this turn early");
+  });
+
   test("keeps only the latest output per tool name", () => {
     const events: TurnEvent[] = [
       {

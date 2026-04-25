@@ -47,6 +47,14 @@ const ALWAYS_AVAILABLE_CLEANUP = new Set([
   "delete_workflow",
   "revoke_api_key",
   "revoke_portal_token",
+  // update_workflow is the chat-native rename / lifecycle op. Like
+  // the delete_* and revoke_* tools it must be reachable in every
+  // authoring state — the user types "rename to X" in the middle of
+  // any conversation and the LLM needs the tool in its palette.
+  // Slug uniqueness + the dangerous-tools confirm gate are the safety
+  // net (the tool itself does not auto-confirm in auto mode for slug
+  // changes — see tool-policies.ts).
+  "update_workflow",
 ]);
 
 const CONNECTOR_AUTHORING = new Set([

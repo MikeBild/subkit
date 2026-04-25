@@ -51,12 +51,32 @@ export function synthesizeFallbackMessage(params: {
   events: ReadonlyArray<TurnEvent>;
   loopWarnings: number;
 }): string | null {
+  // Walk every `tool_result` to collect (a) the most recent output per
+  // tool and (b) per-tool counts + success/error tallies. The header
+  // varies based on whether the loop guard fired AND whether the
+  // calls actually succeeded — a turn where 5 run_workflow calls all
+  // succeeded should not say "I stopped this turn early" (session
+  // d34e5858 regression: misleading fallback after a parallel-tool
+  // fan-out where every execution actually succeeded).
   const latestPerTool = new Map<string, Record<string, unknown>>();
+  const callsPerTool = new Map<string, number>();
+  let totalCalls = 0;
+  let successCalls = 0;
+  let errorCalls = 0;
   for (const ev of params.events) {
     if (ev.type !== "tool_result") continue;
     const output = ev.output;
     if (!output || typeof output !== "object") continue;
     latestPerTool.set(ev.tool, output as Record<string, unknown>);
+    callsPerTool.set(ev.tool, (callsPerTool.get(ev.tool) ?? 0) + 1);
+    totalCalls += 1;
+    const out = output as { error?: unknown; status?: unknown };
+    const looksError =
+      typeof out.error === "string" ||
+      out.status === "failed" ||
+      (out as { ok?: unknown }).ok === false;
+    if (looksError) errorCalls += 1;
+    else successCalls += 1;
   }
   if (latestPerTool.size === 0) {
     return params.loopWarnings > 0
@@ -65,12 +85,36 @@ export function synthesizeFallbackMessage(params: {
   }
   const lines: string[] = [];
   for (const [tool, output] of latestPerTool) {
-    lines.push(`- ${tool}: ${describeToolOutput(output)}`);
+    const callCount = callsPerTool.get(tool) ?? 1;
+    // Only annotate the call count when the loop guard fired — that is
+    // when the operator needs to see "this tool ran N times". In normal
+    // multi-tool summaries the per-line shape stays `- tool: descr`.
+    const suffix = params.loopWarnings > 0 && callCount > 1 ? ` (called ${callCount}×)` : "";
+    lines.push(`- ${tool}: ${describeToolOutput(output)}${suffix}`);
   }
-  const header =
-    params.loopWarnings > 0
-      ? "I stopped this turn early because the model kept repeating the same call. Here is what I already gathered:"
-      : "Summary of the latest tool results:";
+  // Pick the header that matches the actual turn shape:
+  //   - loop fired AND every call succeeded AND there were multiple
+  //     calls of the same tool → "ran the same tool N×". This is the
+  //     parallel-fan-out case (session d34e5858: five succeeding
+  //     run_workflow calls in one turn) — saying "I stopped early" is
+  //     misleading because every call actually completed.
+  //   - loop fired in any other shape → the original "stopped early"
+  //     message. Single-call short-circuits, error retries, etc.
+  //   - loop did not fire → plain summary header.
+  const sameToolFanOut =
+    params.loopWarnings > 0 &&
+    successCalls === totalCalls &&
+    totalCalls > 1 &&
+    [...callsPerTool.values()].some((n) => n > 1);
+  let header: string;
+  if (sameToolFanOut) {
+    header = `I ran the same tool ${totalCalls} times in this turn (all succeeded). Here is what came back:`;
+  } else if (params.loopWarnings > 0) {
+    header =
+      "I stopped this turn early because the model kept repeating the same call. Here is what I already gathered:";
+  } else {
+    header = "Summary of the latest tool results:";
+  }
   return `${header}\n${lines.join("\n")}`;
 }
 

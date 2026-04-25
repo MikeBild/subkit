@@ -1,0 +1,255 @@
+// Locks the chat-native workflow metadata patch contract:
+//
+//   - update_workflow with new_name only changes the display name
+//   - update_workflow with new_slug renames in place; slug uniqueness
+//     is enforced; collisions return slug_conflict_with_live_workflow
+//   - update_workflow with new_lifecycle archives in place
+//   - audit emits WORKFLOW_UPDATED with metadata.kind="metadata"
+//     plus from/to snapshots — no new audit-action enum entry.
+//
+// Reference parity: the reference codebase exposes rename + lifecycle
+// only as HTTP datastore ops; subkit's chat-first contract requires
+// the same op be reachable as a chat tool. See
+// `apps/engine/src/conversations/tools/generated/writes/update-workflow.ts`.
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { auditLog, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { updateWorkflowTool } from "../tools/generated/writes/update-workflow.ts";
+import type { ToolContext } from "../tools/index.ts";
+import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
+
+let ctx: ConversationTestCtx;
+
+beforeAll(async () => {
+  ctx = await createConversationTestCtx("update_workflow_tool");
+});
+
+afterAll(async () => {
+  await ctx.cleanup();
+});
+
+async function seedLiveWorkflow(slug: string, name: string): Promise<{ id: string }> {
+  const [wf] = await ctx.testDb.db
+    .insert(workflows)
+    .values({
+      tenant_id: ctx.tenant_id,
+      slug,
+      name,
+      lifecycle: "active",
+    })
+    .returning();
+  if (!wf) throw new Error("seed workflow failed");
+  const [version] = await ctx.testDb.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: ctx.tenant_id,
+      workflow_id: wf.id,
+      version: 1,
+      dag: {
+        name,
+        slug,
+        steps: [{ id: "p1", kind: "transform", expression: "$input", language: "jsonata" }],
+      },
+    })
+    .returning();
+  if (!version) throw new Error("seed workflow version failed");
+  await ctx.testDb.db
+    .update(workflows)
+    .set({ current_version_id: version.id })
+    .where(eq(workflows.id, wf.id));
+  return { id: wf.id };
+}
+
+function toolCtx(): ToolContext {
+  // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext
+  const engineClientStub: any = {
+    context: {
+      actor_id: ctx.user_id,
+      actor_type: "user",
+    },
+    workflows: {
+      update: async (params: {
+        id: string;
+        new_slug?: string;
+        new_name?: string;
+        new_lifecycle?: "active" | "archived";
+      }) => {
+        const { updateWorkflowMetadata } = await import("../../workflows/service.ts");
+        return updateWorkflowMetadata(
+          {
+            tenant_id: ctx.tenant_id,
+            id: params.id,
+            ...(params.new_slug !== undefined ? { new_slug: params.new_slug } : {}),
+            ...(params.new_name !== undefined ? { new_name: params.new_name } : {}),
+            ...(params.new_lifecycle !== undefined ? { new_lifecycle: params.new_lifecycle } : {}),
+            actor_id: ctx.user_id,
+          },
+          ctx.testDb.db,
+        );
+      },
+    },
+    audit_write: async (entry: Record<string, unknown>) => {
+      const { auditAwait } = await import("../../audit/audit.ts");
+      const { AuditAction } = await import("../../audit/types.ts");
+      return auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: "user",
+          actor_id: ctx.user_id,
+          // Funnel the test stub's free-form action into the existing
+          // WORKFLOW_UPDATED action — the production audit_write helper
+          // does the same mapping; we keep tests within the typed enum.
+          action: AuditAction.WORKFLOW_UPDATED,
+          resource_type: String(entry.resource_type),
+          resource_id: String(entry.resource_id),
+          result: (entry.result as "success" | "error" | "denied") ?? "success",
+          metadata: {
+            via_action: String(entry.action),
+            ...((entry.metadata as Record<string, unknown>) ?? {}),
+          },
+        },
+        ctx.testDb.db,
+      );
+    },
+  };
+  return {
+    db: ctx.testDb.db,
+    tenant_id: ctx.tenant_id,
+    conversation_id: "00000000-0000-0000-0000-000000000000",
+    actor_id: ctx.user_id,
+    connector_id: null,
+    workflow_id: null,
+    permission_mode: "auto",
+    engineClient: engineClientStub,
+    getDraft: () => ({ workflow: { name: "", steps: [] } }) as never,
+    setDraft: async () => {},
+  };
+}
+
+describe("update_workflow tool — chat-native metadata patch", () => {
+  test("renames a workflow (slug + name) in place", async () => {
+    const wf = await seedLiveWorkflow("legacy-slug-rn", "Legacy Name");
+
+    const result = await updateWorkflowTool.execute(toolCtx(), {
+      id: wf.id,
+      new_slug: "fresh-slug-rn",
+      new_name: "Fresh Name",
+    });
+
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      updated: boolean;
+      workflow: { id: string; slug: string; name: string };
+    };
+    expect(data.updated).toBe(true);
+    expect(data.workflow.slug).toBe("fresh-slug-rn");
+    expect(data.workflow.name).toBe("Fresh Name");
+
+    // The workflow row was patched in place — id unchanged.
+    const refetched = await ctx.testDb.db
+      .select({ slug: workflows.slug, name: workflows.name })
+      .from(workflows)
+      .where(eq(workflows.id, wf.id))
+      .limit(1);
+    expect(refetched[0]?.slug).toBe("fresh-slug-rn");
+    expect(refetched[0]?.name).toBe("Fresh Name");
+
+    // No new workflow_versions row was added (metadata-only patch).
+    const vrows = await ctx.testDb.db
+      .select({ version: workflowVersions.version })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.workflow_id, wf.id));
+    expect(vrows.length).toBe(1);
+
+    // Audit emits WORKFLOW_UPDATED with metadata.kind="metadata".
+    const auditRows = await ctx.testDb.db
+      .select({ action: auditLog.action, metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(eq(auditLog.resource_id, wf.id));
+    const updateRow = auditRows.find((r) => r.action === "workflow.updated");
+    expect(updateRow).toBeDefined();
+    const meta = (updateRow?.metadata ?? {}) as {
+      kind?: string;
+      from?: { slug: string; name: string };
+      to?: { slug: string; name: string };
+    };
+    expect(meta.kind).toBe("metadata");
+    expect(meta.from?.slug).toBe("legacy-slug-rn");
+    expect(meta.to?.slug).toBe("fresh-slug-rn");
+    expect(meta.from?.name).toBe("Legacy Name");
+    expect(meta.to?.name).toBe("Fresh Name");
+  });
+
+  test("refuses on slug collision against a different live workflow", async () => {
+    const taken = await seedLiveWorkflow("taken-slug-uw", "Already Here");
+    const target = await seedLiveWorkflow("target-slug-uw", "To Rename");
+
+    const result = await updateWorkflowTool.execute(toolCtx(), {
+      id: target.id,
+      new_slug: "taken-slug-uw",
+    });
+
+    expect(result.ok).toBe(false);
+    const data = result.data as {
+      error: string;
+      conflict?: { workflow_id: string };
+    };
+    expect(data.error).toBe("slug_conflict_with_live_workflow");
+    expect(data.conflict?.workflow_id).toBe(taken.id);
+
+    // The target workflow was NOT mutated.
+    const refetched = await ctx.testDb.db
+      .select({ slug: workflows.slug })
+      .from(workflows)
+      .where(eq(workflows.id, target.id))
+      .limit(1);
+    expect(refetched[0]?.slug).toBe("target-slug-uw");
+  });
+
+  test("archives a workflow via new_lifecycle without touching slug or version history", async () => {
+    const wf = await seedLiveWorkflow("to-archive-uw", "To Archive");
+
+    const result = await updateWorkflowTool.execute(toolCtx(), {
+      id: wf.id,
+      new_lifecycle: "archived",
+    });
+
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      workflow: { lifecycle: string; slug: string };
+    };
+    expect(data.workflow.lifecycle).toBe("archived");
+    expect(data.workflow.slug).toBe("to-archive-uw");
+
+    const auditRows = await ctx.testDb.db
+      .select({ action: auditLog.action, metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(eq(auditLog.resource_id, wf.id));
+    const meta = (auditRows.find((r) => r.action === "workflow.updated")?.metadata ?? {}) as {
+      kind?: string;
+      from?: { lifecycle?: string };
+      to?: { lifecycle?: string };
+    };
+    expect(meta.kind).toBe("metadata");
+    expect(meta.from?.lifecycle).toBe("active");
+    expect(meta.to?.lifecycle).toBe("archived");
+  });
+
+  test("rejects an empty patch (no new_slug, new_name, or new_lifecycle)", async () => {
+    const wf = await seedLiveWorkflow("empty-patch-uw", "Untouched");
+
+    const result = await updateWorkflowTool
+      .execute(toolCtx(), { id: wf.id })
+      .catch((err) => ({ ok: false as const, threw: err }));
+
+    // The Zod refinement throws — caller surfaces it as a parse error,
+    // which is the expected shape (Zod errors propagate without being
+    // wrapped in a structured tool result for invalid input).
+    if ("threw" in result) {
+      expect(String(result.threw)).toMatch(/at least one of new_slug, new_name, or new_lifecycle/i);
+    } else {
+      expect(result.ok).toBe(false);
+    }
+  });
+});
