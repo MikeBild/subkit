@@ -24,16 +24,16 @@ import type { ConversationTool, ToolContext } from "../../index.ts";
 const UpdateWorkflowInput = z
   .object({
     id: z.string().uuid("workflow id must be a UUID"),
-    new_slug: z
+    slug: z
       .string()
       .min(1)
       .regex(/^[a-z0-9][a-z0-9-]*$/, "slug must be lowercase alphanumeric with hyphens")
       .optional(),
-    new_name: z.string().min(1).optional(),
-    new_lifecycle: z.enum(["active", "archived"]).optional(),
+    name: z.string().min(1).optional(),
+    lifecycle: z.enum(["active", "archived"]).optional(),
   })
-  .refine((v) => Boolean(v.new_slug || v.new_name || v.new_lifecycle), {
-    message: "At least one of new_slug, new_name, or new_lifecycle is required",
+  .refine((v) => Boolean(v.slug || v.name || v.lifecycle), {
+    message: "At least one of slug, name, or lifecycle is required",
   })
   .openapi("UpdateWorkflowToolInput");
 
@@ -128,11 +128,11 @@ export const updateWorkflowTool: ConversationTool = {
   use_case:
     "Use when the user asks to rename a workflow, change its display name, archive it, or reactivate it. Send only the fields that should change. Does NOT alter steps, input/output schema, or version count — for those, edit the draft and use commit_draft.",
   important_notes: [
-    "At least one of new_slug, new_name, or new_lifecycle is required.",
-    "new_slug must be lowercase alphanumeric with hyphens; the service slugifies it again before the write.",
+    "At least one of slug, name, or lifecycle is required.",
+    "slug must be lowercase alphanumeric with hyphens; the service slugifies it again before the write.",
     "Slug uniqueness is enforced; collisions return slug_conflict_with_live_workflow with conflict.workflow_id.",
     "Audits as workflow.updated with metadata.kind='metadata' plus from/to snapshots — never overrides version history.",
-    "new_lifecycle accepts 'active' or 'archived'. 'draft' cannot be set explicitly; that is a status the create flow assigns.",
+    "lifecycle accepts 'active' or 'archived'. 'draft' cannot be set explicitly; that is a status the create flow assigns.",
   ],
   inputSchema: UpdateWorkflowInput,
   category: "tenant_write",
@@ -146,9 +146,9 @@ export const updateWorkflowTool: ConversationTool = {
 
     const result = await ctx.engineClient.workflows.update({
       id: args.id,
-      ...(args.new_slug !== undefined ? { new_slug: args.new_slug } : {}),
-      ...(args.new_name !== undefined ? { new_name: args.new_name } : {}),
-      ...(args.new_lifecycle !== undefined ? { new_lifecycle: args.new_lifecycle } : {}),
+      ...(args.slug !== undefined ? { slug: args.slug } : {}),
+      ...(args.name !== undefined ? { name: args.name } : {}),
+      ...(args.lifecycle !== undefined ? { lifecycle: args.lifecycle } : {}),
     });
 
     if (result.errors) {
@@ -157,11 +157,11 @@ export const updateWorkflowTool: ConversationTool = {
           ok: false,
           data: {
             error: "slug_conflict_with_live_workflow",
-            attempted_slug: args.new_slug,
+            attempted_slug: args.slug,
             conflict: result.conflict,
             recovery: {
               pick_different_slug:
-                "Call update_workflow again with a different new_slug, or update the colliding workflow first.",
+                "Call update_workflow again with a different slug, or update the colliding workflow first.",
             },
             errors: result.errors,
           },
@@ -184,9 +184,9 @@ export const updateWorkflowTool: ConversationTool = {
       result: "success",
       metadata: {
         conversation_id: ctx.conversation_id,
-        new_slug: args.new_slug,
-        new_name: args.new_name,
-        new_lifecycle: args.new_lifecycle,
+        slug: args.slug,
+        name: args.name,
+        lifecycle: args.lifecycle,
       },
     });
 

@@ -9,6 +9,9 @@ import { cleanupWriteTools } from "./cleanup.ts";
 import { createApiKeyTool } from "./create-api-key.ts";
 import { runWorkflowTool } from "./run-workflow.ts";
 import { scheduleTools } from "./schedules.ts";
+import { updateConnectorTool } from "./update-connector.ts";
+import { updateKnowledgeSourceTool } from "./update-knowledge-source.ts";
+import { updateSubscriptionTool } from "./update-subscription.ts";
 import { updateWorkflowTool } from "./update-workflow.ts";
 
 export { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidates.ts";
@@ -29,6 +32,9 @@ export {
   listSchedulesTool,
   updateScheduleTool,
 } from "./schedules.ts";
+export { updateConnectorTool } from "./update-connector.ts";
+export { updateKnowledgeSourceTool } from "./update-knowledge-source.ts";
+export { updateSubscriptionTool } from "./update-subscription.ts";
 export { updateWorkflowTool } from "./update-workflow.ts";
 
 export const ALL_GENERATED_WRITE_TOOLS: ConversationTool[] = [
@@ -37,6 +43,9 @@ export const ALL_GENERATED_WRITE_TOOLS: ConversationTool[] = [
   approvePatchCandidateTool,
   createApiKeyTool,
   updateWorkflowTool,
+  updateConnectorTool,
+  updateKnowledgeSourceTool,
+  updateSubscriptionTool,
   ...scheduleTools,
   ...cleanupWriteTools,
 ];

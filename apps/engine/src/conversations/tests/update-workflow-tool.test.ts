@@ -1,9 +1,9 @@
 // Locks the chat-native workflow metadata patch contract:
 //
-//   - update_workflow with new_name only changes the display name
-//   - update_workflow with new_slug renames in place; slug uniqueness
+//   - update_workflow with name only changes the display name
+//   - update_workflow with slug renames in place; slug uniqueness
 //     is enforced; collisions return slug_conflict_with_live_workflow
-//   - update_workflow with new_lifecycle archives in place
+//   - update_workflow with lifecycle archives in place
 //   - audit emits WORKFLOW_UPDATED with metadata.kind="metadata"
 //     plus from/to snapshots — no new audit-action enum entry.
 //
@@ -71,18 +71,18 @@ function toolCtx(): ToolContext {
     workflows: {
       update: async (params: {
         id: string;
-        new_slug?: string;
-        new_name?: string;
-        new_lifecycle?: "active" | "archived";
+        slug?: string;
+        name?: string;
+        lifecycle?: "active" | "archived";
       }) => {
         const { updateWorkflowMetadata } = await import("../../workflows/service.ts");
         return updateWorkflowMetadata(
           {
             tenant_id: ctx.tenant_id,
             id: params.id,
-            ...(params.new_slug !== undefined ? { new_slug: params.new_slug } : {}),
-            ...(params.new_name !== undefined ? { new_name: params.new_name } : {}),
-            ...(params.new_lifecycle !== undefined ? { new_lifecycle: params.new_lifecycle } : {}),
+            ...(params.slug !== undefined ? { slug: params.slug } : {}),
+            ...(params.name !== undefined ? { name: params.name } : {}),
+            ...(params.lifecycle !== undefined ? { lifecycle: params.lifecycle } : {}),
             actor_id: ctx.user_id,
           },
           ctx.testDb.db,
@@ -133,8 +133,8 @@ describe("update_workflow tool — chat-native metadata patch", () => {
 
     const result = await updateWorkflowTool.execute(toolCtx(), {
       id: wf.id,
-      new_slug: "fresh-slug-rn",
-      new_name: "Fresh Name",
+      slug: "fresh-slug-rn",
+      name: "Fresh Name",
     });
 
     expect(result.ok).toBe(true);
@@ -187,7 +187,7 @@ describe("update_workflow tool — chat-native metadata patch", () => {
 
     const result = await updateWorkflowTool.execute(toolCtx(), {
       id: target.id,
-      new_slug: "taken-slug-uw",
+      slug: "taken-slug-uw",
     });
 
     expect(result.ok).toBe(false);
@@ -207,12 +207,12 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     expect(refetched[0]?.slug).toBe("target-slug-uw");
   });
 
-  test("archives a workflow via new_lifecycle without touching slug or version history", async () => {
+  test("archives a workflow via lifecycle without touching slug or version history", async () => {
     const wf = await seedLiveWorkflow("to-archive-uw", "To Archive");
 
     const result = await updateWorkflowTool.execute(toolCtx(), {
       id: wf.id,
-      new_lifecycle: "archived",
+      lifecycle: "archived",
     });
 
     expect(result.ok).toBe(true);
@@ -236,7 +236,7 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     expect(meta.to?.lifecycle).toBe("archived");
   });
 
-  test("rejects an empty patch (no new_slug, new_name, or new_lifecycle)", async () => {
+  test("rejects an empty patch (no slug, name, or lifecycle)", async () => {
     const wf = await seedLiveWorkflow("empty-patch-uw", "Untouched");
 
     const result = await updateWorkflowTool
@@ -247,7 +247,7 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     // which is the expected shape (Zod errors propagate without being
     // wrapped in a structured tool result for invalid input).
     if ("threw" in result) {
-      expect(String(result.threw)).toMatch(/at least one of new_slug, new_name, or new_lifecycle/i);
+      expect(String(result.threw)).toMatch(/at least one of slug, name, or lifecycle/i);
     } else {
       expect(result.ok).toBe(false);
     }

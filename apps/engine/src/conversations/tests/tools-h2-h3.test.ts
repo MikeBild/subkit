@@ -115,6 +115,9 @@ describe("conversation tools — registration", () => {
     "update_schedule",
     "delete_schedule",
     "update_workflow",
+    "update_connector",
+    "update_knowledge_source",
+    "update_subscription",
   ] as const;
 
   test("the expected tool palette is registered", () => {
