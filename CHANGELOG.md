@@ -1,5 +1,39 @@
 # Changelog
 
+## [2.6.0](https://github.com/MikeBild/subkit/compare/subkit-v2.5.0...subkit-v2.6.0) (2026-04-26)
+
+
+### Features
+
+* **conversations,connectors,security:** conversational creation rebuild — skill-gated palette, harness auto-persist, secret hygiene, live API discovery ([629bb82](https://github.com/MikeBild/subkit/commit/629bb828058f3f48f90e27cbe140448455fb02b1))
+* **conversations,sk:** tool-policy hooks (credentialFields, prerequisites, buildPendingOutput) + setup-validation in /v1/status ([984aeb0](https://github.com/MikeBild/subkit/commit/984aeb04efb6fb6dabebd535f3620d8e01f86779))
+* **conversations:** generic update_&lt;resource&gt; tools across all CRUD-shaped resources ([d5cc559](https://github.com/MikeBild/subkit/commit/d5cc559657e027837c574a09eef52846e1b28cd4))
+* **output-guard:** chat-first scanner — runtime gate for curl/shell suggestions ([5b9abfd](https://github.com/MikeBild/subkit/commit/5b9abfdc4dc9018131a5df8b59f8dd02a576c442))
+* **sk:** shift+enter and backslash-enter for newline (codex parity) ([3413aed](https://github.com/MikeBild/subkit/commit/3413aedc41efd82670e1b7170fbba2c9b6ccd586))
+
+
+### Bug Fixes
+
+* **connectors:** apply draft-time bearer/header/basic auth from config ([c686133](https://github.com/MikeBild/subkit/commit/c686133fad89b9a69296fd924ab22e846645921d))
+* **conversations,sk:** chat-first repair palette, single-confirmation, speaker labels, paste UX ([5ddd22e](https://github.com/MikeBild/subkit/commit/5ddd22e4acf0241c3ad35a988cc8a09455416d3b))
+* **conversations,sk:** permission_mode=auto skips ask_user_confirm; bare 'approve' resolves open elicits ([f0e9116](https://github.com/MikeBild/subkit/commit/f0e9116429e56256ae8c4eba61f3f83afb83ef13))
+* **conversations,workflows:** kill the parallel-run_workflow loop + add update_workflow ([e4f342c](https://github.com/MikeBild/subkit/commit/e4f342c27027728f3d1bfac73f87c47e4a1498b5))
+* **conversations:** cleanup tools always reachable + auto-mode skips commit_draft confirm ([71fe903](https://github.com/MikeBild/subkit/commit/71fe903cbcd82f94deddba17a65eef12be767a99))
+* **conversations:** drop silent slug-adopt; require explicit target_workflow_id ([1a518d6](https://github.com/MikeBild/subkit/commit/1a518d632159778e72b493bea80405847a5df955))
+* **sk:** elicitation owns input focus while open; revert keyword-match hack ([729247d](https://github.com/MikeBild/subkit/commit/729247d38ba800c2a9c064ca9eb65d10dfa2517a))
+* **sk:** reserve spinner row when idle so the composer stops jumping ([f395fe0](https://github.com/MikeBild/subkit/commit/f395fe028732fc9e0e73a2b927d020c04d5f7f15))
+* **test:** AC2 reads pending elicitation from resume_summary.pending_approval ([9a46130](https://github.com/MikeBild/subkit/commit/9a46130a3a68caa13d1bf2bcbb47d2685d1be6a3))
+* **test:** poll AC2 elicit-resume frame instead of fixed-tick wait ([cbb0166](https://github.com/MikeBild/subkit/commit/cbb01666cfb88c888c7ba498801f8f91dfe152dd))
+* **tests:** drop pre-rebuild ask_user_confirm in cannedListUsersPlan, harden audit-provenance beforeAll ([7008603](https://github.com/MikeBild/subkit/commit/7008603e82acf4e4a9b6c54d0655c5c6b5f24e81))
+* **tests:** land fixture follow-ups for the conversational creation rebuild ([9878342](https://github.com/MikeBild/subkit/commit/98783427bc4f8bb47db394b994c60fcc24082689))
+* **tests:** pass the determinism lint gate ([90168ca](https://github.com/MikeBild/subkit/commit/90168ca0ac2236ee609a95cbb1e8c98554873f17))
+* **tests:** use skipIf+env flag instead of test.skip (determinism gate) ([4b0ff08](https://github.com/MikeBild/subkit/commit/4b0ff0875cd577c68e1ac23011fc98641c348ad8))
+
+
+### Refactoring
+
+* **conversations,llm:** agent-registry + skill-driven prompts ([5446d43](https://github.com/MikeBild/subkit/commit/5446d43b6f78c69f8542a6ed2ef1ac7f5f3d1109))
+
 ## [2.5.0](https://github.com/MikeBild/subkit/compare/subkit-v2.4.0...subkit-v2.5.0) (2026-04-25)
 
 
