@@ -356,8 +356,9 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
         summary: "commit 2-step workflow",
       },
     },
-    // Resume after the user answers:
-    { tool: "commit_draft", args: {} },
+    // Resume after the user answers — `__policy_confirmed:true` so the
+    // post-rebuild tool-policy gate doesn't pause a second time.
+    { tool: "commit_draft", args: { __policy_confirmed: true } },
   ];
 }
 
@@ -421,12 +422,18 @@ export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
     // Preview the transform output over the forecast scope so commit_draft
     // clears the preview-before-commit gate.
     { tool: "dry_run_step", args: { step_id: "tomorrow-only" } },
-    // Direct commit. We removed the standalone `ask_user_confirm` step
-    // that used to precede commit_draft because under the post-rebuild
-    // contract the conversation harness auto-pauses on tool-policy
-    // confirmation gates and resolves them via `__policy_confirmed: true`.
-    // Leaving an unresolved `ask_user_confirm` here parked the
-    // conversation in `awaiting_input` and broke turn-2 resume tests.
+    {
+      tool: "ask_user_confirm",
+      args: {
+        question: "Commit the Berlin tomorrow-weather workflow?",
+        kind: "commit_draft",
+        summary: "commit weather workflow",
+      },
+    },
+    // After the operator confirms (test-side or canned), commit_draft
+    // runs with __policy_confirmed:true so the post-rebuild tool-policy
+    // gate does NOT pause again — otherwise turn-2 resume tests sit
+    // in awaiting_input forever waiting on a phantom second confirm.
     { tool: "commit_draft", args: { __policy_confirmed: true } },
   ];
 }

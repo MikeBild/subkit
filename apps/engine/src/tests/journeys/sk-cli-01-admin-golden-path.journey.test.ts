@@ -85,6 +85,30 @@ describe("journey: sk-cli admin golden path", () => {
   });
 
   test("AC2: memory injection emits CONVERSATION_MEMORY_INJECTED", async () => {
+    // Under the post-rebuild contract the canned list-users plan ends
+    // with `ask_user_confirm` before `commit_draft`, parking the
+    // conversation in `awaiting_input`. Resolve that elicitation
+    // (operator confirms) before posting a follow-up message;
+    // `POST /v1/conversations/{id}/messages` returns 409
+    // `pending_elicitation_blocked` while one is still open.
+    const detail = (await (
+      await journeyFetch(ctx, `/v1/conversations/${conversationId}`)
+    ).json()) as {
+      elicitations?: Array<{ id: string; status: string; tool_name: string }>;
+    };
+    const pending = (detail.elicitations ?? []).find((e) => e.status === "pending");
+    if (pending) {
+      const resp = await journeyFetch(
+        ctx,
+        `/v1/conversations/${conversationId}/elicitations/${pending.id}/respond`,
+        {
+          method: "POST",
+          body: JSON.stringify({ output: { confirmed: true } }),
+        },
+      );
+      expect(resp.status).toBe(200);
+    }
+
     const res = await journeyFetch(ctx, `/v1/conversations/${conversationId}/messages`, {
       method: "POST",
       body: JSON.stringify({
