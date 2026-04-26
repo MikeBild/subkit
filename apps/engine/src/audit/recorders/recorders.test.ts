@@ -175,9 +175,13 @@ describe("recorder catalog — connector", () => {
       conversation_id: "conv-credreject",
       matched_key_path: "config.headers.Authorization",
     });
-    // Fire-and-forget: the row may not have landed yet — wait briefly.
-    await new Promise((r) => setTimeout(r, 50));
-    const row = await fetchRow(entry.id);
+    // Fire-and-forget: poll the row until it lands instead of a fixed
+    // sleep — the determinism gate forbids setTimeout in tests.
+    let row = await fetchRow(entry.id);
+    for (let i = 0; i < 20 && !row; i += 1) {
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      row = await fetchRow(entry.id);
+    }
     expect(row?.action).toBe(AuditAction.CONNECTOR_DRAFT_CREDENTIAL_REJECTED);
     expect(row?.result).toBe("denied");
     expect(row?.reason).toBe("credential_must_use_form");
