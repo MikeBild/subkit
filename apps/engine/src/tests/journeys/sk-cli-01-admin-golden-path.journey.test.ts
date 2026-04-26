@@ -90,13 +90,18 @@ describe("journey: sk-cli admin golden path", () => {
     // conversation in `awaiting_input`. Resolve that elicitation
     // (operator confirms) before posting a follow-up message;
     // `POST /v1/conversations/{id}/messages` returns 409
-    // `pending_elicitation_blocked` while one is still open.
+    // `pending_elicitation_blocked` while one is still open. The
+    // pending elicitation surfaces under
+    // `resume_summary.pending_approval` on the conversation detail
+    // endpoint.
     const detail = (await (
       await journeyFetch(ctx, `/v1/conversations/${conversationId}`)
     ).json()) as {
-      elicitations?: Array<{ id: string; status: string; tool_name: string }>;
+      resume_summary?: {
+        pending_approval?: { id: string; tool_name: string } | null;
+      } | null;
     };
-    const pending = (detail.elicitations ?? []).find((e) => e.status === "pending");
+    const pending = detail.resume_summary?.pending_approval ?? null;
     if (pending) {
       const resp = await journeyFetch(
         ctx,
