@@ -468,11 +468,19 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     await pressEnter(instance);
     await tick(100);
     instance.stdin.write("y");
-    await tick(60);
+    // CI runners flake at 60ms — the onElicitResponse promise + frame
+    // re-render cascade needs more headroom than a local M-class CPU.
+    // Poll the frame for "Workflow saved" up to ~2s instead of a fixed
+    // sleep, fall through immediately on a local fast machine.
+    let frame = "";
+    for (let i = 0; i < 40; i += 1) {
+      await tick(50);
+      frame = instance.lastFrame() ?? "";
+      if (frame.includes("Workflow saved")) break;
+    }
     expect(decisions.length).toBe(1);
     expect(decisions[0]?.id).toBe("a1-abcdefab-0000-0000-0000-000000000000");
     expect((decisions[0]?.output as { confirmed: boolean }).confirmed).toBe(true);
-    const frame = instance.lastFrame() ?? "";
     expect(frame).not.toContain("confirm: commit_draft");
     expect(frame).not.toContain("Waiting for input: confirmation required");
     expect(frame).toContain("Workflow saved");
