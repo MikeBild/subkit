@@ -21,7 +21,7 @@
 //          pair is tenant-scoped by construction.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -36,16 +36,26 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import {
+  createDeterministicHexFactory,
+  createDeterministicUuidFactory,
+} from "../../test-helpers/determinism/ids.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
 
 let ctx: JourneyCtx;
+
+// Deterministic ID factories — replace crypto.randomBytes / randomUUID
+// per the determinism gate. Distinct seeds keep the produced values
+// from colliding with each other across the test.
+const hex = createDeterministicHexFactory(0xc1055_7e51);
+const uuid = createDeterministicUuidFactory(0xc1055_7e52);
 
 function sha256Hex(v: string): string {
   return createHash("sha256").update(v).digest("hex");
 }
 
 function generateApiKey(): { plaintext: string; prefix: string; hash: string } {
-  const rand = randomBytes(24).toString("base64url").slice(0, 32);
+  const rand = hex(24).slice(0, 32);
   const plaintext = `wf_live_${rand}`;
   return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
 }
@@ -60,7 +70,7 @@ interface TenantBundle {
  *  cross-tenant calls from the same engine. Mirrors the bootstrap
  *  `createJourneyCtx` does for ctx's primary tenant. */
 async function seedTenant(ctx: JourneyCtx, label: string): Promise<TenantBundle> {
-  const slug = `b-${label}-${randomBytes(3).toString("hex")}`.slice(0, 32);
+  const slug = `b-${label}-${hex(3)}`.slice(0, 32);
   const [tenant] = await ctx.db
     .insert(tenants)
     .values({ slug, display_name: `Cross-tenant ${label}` })
@@ -227,8 +237,8 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
 
   test("AC6: same slug across tenants — signatures do not cross over", async () => {
     const SHARED_SLUG = "shared-cross-tenant";
-    const SECRET_A = `whsec_a_${randomBytes(8).toString("hex")}`;
-    const SECRET_B = `whsec_b_${randomBytes(8).toString("hex")}`;
+    const SECRET_A = `whsec_a_${hex(8)}`;
+    const SECRET_B = `whsec_b_${hex(8)}`;
 
     // Tenant A: register the shared-slug binding via the public API.
     const bindA = await journeyFetch(ctx, "/v1/webhooks/inbound", {
@@ -293,7 +303,7 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     // binding; we verify A's signature is rejected when used against
     // any binding bound to SECRET_B by re-issuing it under both secrets.
     const body = JSON.stringify({ ts: Date.now() });
-    const webhookId = randomUUID();
+    const webhookId = uuid();
     const ts = Math.floor(Date.now() / 1000);
     const baseStr = `${webhookId}.${ts}.${body}`;
     const sigA = `v1,${createHmac("sha256", SECRET_A).update(baseStr, "utf8").digest("base64")}`;
@@ -332,7 +342,7 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     }
 
     // Re-issue with sigB — must *not* land in tenant A.
-    const webhookIdB = randomUUID();
+    const webhookIdB = uuid();
     const baseStrB = `${webhookIdB}.${ts}.${body}`;
     const sigBOnly = `v1,${createHmac("sha256", SECRET_B).update(baseStrB, "utf8").digest("base64")}`;
     void sigB;
