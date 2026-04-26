@@ -37,6 +37,8 @@ async function auditRowsByAction(
 describe("journey: sk-cli audit provenance", () => {
   let jwksJson = "";
 
+  // 30s — RSA keypair generation + journey ctx + IDP server can blow
+  // past the 5s default on slower CI runners.
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-06-audit");
 
@@ -99,11 +101,15 @@ describe("journey: sk-cli audit provenance", () => {
       .setExpirationTime("5m")
       .setIssuedAt()
       .sign(kp.privateKey);
-  });
+  }, 30_000);
 
   afterAll(async () => {
-    await new Promise<void>((resolve) => idpServer.close(() => resolve()));
-    await ctx.cleanup();
+    if (idpServer) {
+      await new Promise<void>((resolve) => idpServer.close(() => resolve()));
+    }
+    if (ctx) {
+      await ctx.cleanup();
+    }
   });
 
   test("POST /v1/identity/sessions/oidc with sk-cli user-agent emits SK_CLI_LOGIN", async () => {
