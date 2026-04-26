@@ -74,7 +74,9 @@ describe("validateConnectorDraft — placeholder host gate", () => {
     // `${field}` placeholders are already caught earlier as missing_fields,
     // not as placeholder URLs. Confirm we don't accidentally mark them as
     // placeholder errors too.
-    const result = validateConnectorDraft(draft({ base_url: "https://${region}.api.real.com" }));
+    const result = validateConnectorDraft(
+      draft({ base_url: "https://$" + "{region}.api.real.com" }),
+    );
     expect(result.errors.some((e) => e.message.includes("placeholder"))).toBe(false);
   });
 });

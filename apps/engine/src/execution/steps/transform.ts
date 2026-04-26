@@ -19,9 +19,8 @@ import {
 } from "../../sandboxes/quickjs/types.ts";
 import type { TransformStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
+import { TRANSFORM_TIMEOUT_DEFAULT_MS } from "../timeouts.ts";
 import type { StepResult, StepRunContext, StepWarning } from "../types.ts";
-
-export const TRANSFORM_TIMEOUT_DEFAULT_MS = 10 * 60_000;
 
 export interface RunTransformParams {
   ctx: StepRunContext;

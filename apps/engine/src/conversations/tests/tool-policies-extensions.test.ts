@@ -110,6 +110,20 @@ describe("buildPendingOutputForTool", () => {
     });
   });
 
+  test("run_workflow preview derives input_keys from a stringified object payload", () => {
+    const preview = buildPendingOutputForTool("run_workflow", {
+      workflow_id: "wf-1",
+      environment: "dev",
+      input: '{"date":"tomorrow +1","city":"Berlin"}',
+    });
+    expect(preview).toEqual({
+      workflow_id: "wf-1",
+      version_id: null,
+      environment: "dev",
+      input_keys: ["date", "city"],
+    });
+  });
+
   test("returns null for tools without a buildPendingOutput hook", () => {
     expect(buildPendingOutputForTool("inspect_connector_draft", {})).toBeNull();
   });

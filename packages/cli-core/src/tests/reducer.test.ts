@@ -244,6 +244,33 @@ describe("applyTurnEvent — streaming frames", () => {
     expect(s.pendingElicitation?.parent_message_id).toBe("asst-42");
   });
 
+  test("a later assistant message backfills anchors for pending tool calls and elicitations", () => {
+    let s = initialSessionState("conv-live");
+    s = applyTurnEvent(s, {
+      type: "tool_call_start",
+      call_id: "call-1",
+      tool: "ask_user_form",
+    });
+    s = applyTurnEvent(s, {
+      type: "elicit_request",
+      elicitation_id: "elicit-1",
+      tool_name: "ask_user_form",
+      summary: "Provide the API token",
+      input: { fields: [{ key: "token" }] },
+    });
+    expect(s.toolCalls[0]?.parent_message_id).toBeUndefined();
+    expect(s.pendingElicitation?.parent_message_id).toBeUndefined();
+
+    s = applyTurnEvent(s, {
+      type: "message",
+      role: "assistant",
+      content: { text: "Here's the secure form." },
+      id: "asst-live-1",
+    });
+    expect(s.toolCalls[0]?.parent_message_id).toBe("asst-live-1");
+    expect(s.pendingElicitation?.parent_message_id).toBe("asst-live-1");
+  });
+
   test("message events with id are stored on the MessageState", () => {
     const s = applyTurnEvent(initialSessionState("c"), {
       type: "message",

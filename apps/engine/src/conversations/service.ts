@@ -111,6 +111,32 @@ export interface ConversationTurnOutcome {
   result: RunLoopResult;
 }
 
+export interface PendingElicitationSummary {
+  id: string;
+  tool_name: string;
+  summary: string;
+}
+
+export class PendingElicitationBlockedError extends Error {
+  readonly pending_elicitation: PendingElicitationSummary;
+
+  constructor(pending: PendingElicitationSummary) {
+    super("resolve the pending dialog before sending another prompt");
+    this.name = "PendingElicitationBlockedError";
+    this.pending_elicitation = pending;
+  }
+}
+
+function isAskUserToolName(value: string | null | undefined): boolean {
+  return (
+    value === "ask_user_choice" ||
+    value === "ask_user_multi" ||
+    value === "ask_user_text" ||
+    value === "ask_user_form" ||
+    value === "ask_user_confirm"
+  );
+}
+
 export async function createConversation(
   p: CreateConversationParams,
   exec: Db,
@@ -266,6 +292,19 @@ export async function appendUserMessage(
       permission_mode: explicitPermissionMode,
     });
   }
+  {
+    const { listElicitationsForConversation } = await import("./elicitations.ts");
+    const pending = (await listElicitationsForConversation(p.tenant_id, p.conversation_id, exec))
+      .filter((elicitation) => elicitation.status === "pending")
+      .at(0);
+    if (pending) {
+      throw new PendingElicitationBlockedError({
+        id: pending.id,
+        tool_name: pending.tool_name,
+        summary: pending.summary,
+      });
+    }
+  }
   log.conversation.appended({
     conversation_id: p.conversation_id,
     tenant_id: p.tenant_id,
@@ -312,45 +351,6 @@ export async function appendUserMessage(
   }
   void memory;
 
-  // A brand-new user message implicitly supersedes any unresolved
-  // elicitation from the previous turn. We mark those pending rows as
-  // cancelled AND write a `user_auto_declined` entry on the matching
-  // tool call's interaction_log so the LLM sees the supersede on the
-  // next turn. Doing this BEFORE runLoop prevents the pre-LLM-call
-  // scanner from treating a stale confirmation as still live.
-  {
-    const { listElicitationsForConversation, resolveElicitation } = await import(
-      "./elicitations.ts"
-    );
-    const { recordTransition } = await import("./confirmation.ts");
-    const pending = (
-      await listElicitationsForConversation(p.tenant_id, p.conversation_id, exec)
-    ).filter((e) => e.status === "pending");
-    for (const e of pending) {
-      await resolveElicitation(
-        {
-          tenant_id: p.tenant_id,
-          id: e.id,
-          output: { auto_declined: true },
-          decided_by: null,
-          reason: "auto_declined_by_new_user_message",
-          status: "cancelled",
-        },
-        exec,
-      );
-      if (e.tool_call_id) {
-        await recordTransition(exec, {
-          tool_call_id: e.tool_call_id,
-          tenant_id: p.tenant_id,
-          conversation_id: p.conversation_id,
-          to_state: "auto_declined",
-          tool: e.tool_name,
-          data: { elicitation_id: e.id },
-        });
-      }
-    }
-  }
-
   const result = await runLoop({
     db: exec,
     tenant_id: p.tenant_id,
@@ -391,9 +391,7 @@ export async function respondElicitation(
   p: RespondElicitationParams,
   exec: Db,
 ): Promise<ConversationTurnOutcome> {
-  const { resolveElicitation, getElicitation } = await import("./elicitations.ts");
-  const elicitation = await getElicitation(p.tenant_id, p.elicitation_id, exec);
-  if (!elicitation) throw new Error("elicitation not found");
+  const { resolveElicitation } = await import("./elicitations.ts");
   const resolved = await resolveElicitation(
     {
       tenant_id: p.tenant_id,
@@ -406,12 +404,53 @@ export async function respondElicitation(
   );
   if (!resolved) throw new Error("elicitation not found");
 
+  let originatingToolCall: {
+    id: string;
+    tool: string;
+  } | null = null;
+  if (resolved.tool_call_id) {
+    const [toolCall] = await exec
+      .select({
+        id: conversationToolCalls.id,
+        tool: conversationToolCalls.tool,
+      })
+      .from(conversationToolCalls)
+      .where(
+        and(
+          eq(conversationToolCalls.id, resolved.tool_call_id),
+          eq(conversationToolCalls.tenant_id, p.tenant_id),
+        ),
+      )
+      .limit(1);
+    originatingToolCall = toolCall ?? null;
+  } else if (isAskUserToolName(resolved.tool_name)) {
+    // Legacy ask_user_* rows were created without a tool_call_id. We
+    // infer the latest matching call so already-open dialogs can still
+    // resume correctly after the fix ships.
+    const [toolCall] = await exec
+      .select({
+        id: conversationToolCalls.id,
+        tool: conversationToolCalls.tool,
+      })
+      .from(conversationToolCalls)
+      .where(
+        and(
+          eq(conversationToolCalls.tenant_id, p.tenant_id),
+          eq(conversationToolCalls.conversation_id, p.conversation_id),
+          eq(conversationToolCalls.tool, resolved.tool_name),
+        ),
+      )
+      .orderBy(desc(conversationToolCalls.created_at))
+      .limit(1);
+    originatingToolCall = toolCall ?? null;
+  }
+
   // Mirror the response to the interaction_log on the originating tool
   // call. The confirmation state machine (see conversations/confirmation.ts)
   // tracks user_confirmed / user_declined / user_partial / user_tested so
   // the LLM can reason about what the operator actually said in the next
   // turn instead of reading only the raw output payload.
-  if (resolved.tool_call_id) {
+  if (originatingToolCall) {
     const { recordTransition } = await import("./confirmation.ts");
     const out = (p.output ?? {}) as Record<string, unknown>;
     let to_state: "confirmed" | "declined" | "partial" | "tested" = "confirmed";
@@ -420,12 +459,14 @@ export async function respondElicitation(
     else if (out.confirmed === false || out.declined === true) to_state = "declined";
     else if (out.confirmed === true) to_state = "confirmed";
     await recordTransition(exec, {
-      tool_call_id: resolved.tool_call_id,
+      tool_call_id: originatingToolCall.id,
       tenant_id: p.tenant_id,
-      conversation_id: p.conversation_id,
       to_state,
-      tool: resolved.tool_name,
+      tool: originatingToolCall.tool,
       ...(p.actor_id ? { actor_id: p.actor_id } : {}),
+      ...(isAskUserToolName(originatingToolCall.tool)
+        ? {}
+        : { conversation_id: p.conversation_id }),
       data: { elicitation_id: p.elicitation_id },
     });
   }
@@ -441,15 +482,26 @@ export async function respondElicitation(
     .set({ status: "active", updated_at: new Date() })
     .where(eq(conversations.id, p.conversation_id));
 
-  await exec.insert(conversationMessages).values({
+  // Auto-persist hook (PR11/PR12) — when the resolved elicitation
+  // carries a `commit_intent`, the harness applies the intended write
+  // atomically BEFORE the next LLM turn. The dispatcher emits a
+  // synthetic tool-call + tool-result the runLoop's
+  // buildModelMessages will replay so the LLM sees the persistence as
+  // a normal tool result with `source: "harness_auto_persist"`.
+  // Decline path injects a synthetic decline result so the next turn
+  // carries the signal without firing the actual write.
+  const { maybeAutoPersistFromElicitation } = await import("./persistence/auto-persist.ts");
+  await maybeAutoPersistFromElicitation({
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
-    role: "tool",
-    content: {
-      tool: elicitation.tool_name,
-      output: p.output,
-      reason: p.reason ?? null,
-    } as Record<string, unknown>,
+    actor_id: p.actor_id,
+    elicitation_output: p.output,
+    elicitation: {
+      id: resolved.id,
+      tool_name: resolved.tool_name,
+      input: resolved.input,
+    },
+    db: exec,
   });
 
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
@@ -508,6 +560,7 @@ export interface ContextSnapshot {
     readiness: string;
     next_action: string | null;
     next_required_action: string | null;
+    next_suggested_tool: string | null;
     missing_fields: string[];
     progress_label: string | null;
     lifecycle_state: string;
@@ -729,6 +782,7 @@ export async function getContextSnapshot(
           readiness: draftSummary.readiness,
           next_action: draftSummary.next_action,
           next_required_action: draftSummary.next_required_action,
+          next_suggested_tool: draftSummary.next_suggested_tool,
           missing_fields: draftSummary.missing_fields,
           progress_label: draftSummary.progress_label,
           lifecycle_state: draftSummary.lifecycle_state,

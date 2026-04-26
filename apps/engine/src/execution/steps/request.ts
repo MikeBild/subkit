@@ -15,6 +15,7 @@ import { evaluateHook } from "../../auth/hooks.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
 import { buildRequestPlan, executePlannedHttpRequest } from "../../connectors/drivers/http.ts";
 import { executeS3Request, type S3Method } from "../../connectors/drivers/s3.ts";
+import { withEgressAudit } from "../../connectors/egress.ts";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { connectorEndpointSchemas, connectors } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -326,6 +327,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // Holds the resolved HTTP connector so circuit state can be updated on
   // success / failure in the outer try/catch block.
   let activeConnector: Awaited<ReturnType<typeof getConnectorForEnvironment>> = null;
+  // Credential row id from the resolved HTTP plan, threaded into the
+  // egress audit so the trail names which secret was used.
+  let activeCredentialId: string | null = null;
   let connectorResolution: {
     connector_id: string;
     connector_slug: string;
@@ -396,7 +400,30 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           if (p.step.graphql.operation !== undefined) {
             args.operation = p.step.graphql.operation;
           }
-          const res = await graphqlQuery(args);
+          const cfg = (connector.config ?? {}) as { endpoint?: unknown };
+          const endpointUrl =
+            typeof cfg.endpoint === "string" && cfg.endpoint.length > 0
+              ? cfg.endpoint
+              : (connector.base_url ?? null);
+          const res = await withEgressAudit(
+            {
+              tenant_id: p.ctx.tenant_id,
+              actor_id: p.ctx.principal?.id ?? null,
+              actor_type: p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
+              connector_id: connector.id,
+              connector_slug: connector.slug,
+              driver: "graphql",
+              credential_id: null, // populated post-call from response.credential_id
+              operation: p.step.graphql.operation ?? "query",
+              url: endpointUrl,
+              source: "execution",
+              execution_id: p.ctx.execution_id,
+              workflow_id: p.ctx.workflow_id,
+              step_id: p.step.id,
+            },
+            () => graphqlQuery(args),
+            (out) => ({ status: out.status, bytes_in: out.bytes_in }),
+          );
           return {
             status: res.status >= 200 && res.status < 300 ? "succeeded" : "failed",
             output: res.body,
@@ -446,7 +473,25 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             params.body =
               typeof p.step.body === "string" ? p.step.body : JSON.stringify(p.step.body);
           }
-          const res = await executeS3Request(params);
+          const res = await withEgressAudit(
+            {
+              tenant_id: p.ctx.tenant_id,
+              actor_id: p.ctx.principal?.id ?? null,
+              actor_type: p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
+              connector_id: connector.id,
+              connector_slug: connector.slug,
+              driver: "s3",
+              credential_id: null, // populated post-call from response.credential_id
+              operation: p.step.method ?? "GET",
+              url: null,
+              source: "execution",
+              execution_id: p.ctx.execution_id,
+              workflow_id: p.ctx.workflow_id,
+              step_id: p.step.id,
+            },
+            () => executeS3Request(params),
+            (out) => ({ status: out.status }),
+          );
           return {
             status: res.status >= 200 && res.status < 300 ? "succeeded" : "failed",
             output: res.body,
@@ -518,6 +563,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         query,
       });
       baseUrl = plan.url;
+      activeCredentialId = plan.credential_id;
       for (const [k, v] of Object.entries(plan.headers)) {
         headers[k] = v;
       }
@@ -673,19 +719,45 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           };
         }
       }
-      const res = await doOnePage({
-        url: baseUrl.toString(),
-        method: p.step.method,
-        headers,
-        body: p.step.body ?? null,
-        max_attempts,
-        signal,
-        retry_total_ms: retryTotal,
-        retry_counter: retryCounter,
-        connector_id: p.step.connector_id ?? null,
-        retry_policy,
-        ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
-      });
+      const httpEgressInput = activeConnector
+        ? {
+            tenant_id: p.ctx.tenant_id,
+            actor_id: p.ctx.principal?.id ?? null,
+            actor_type: (p.ctx.principal?.kind === "system_account" ? "system_account" : "user") as
+              | "user"
+              | "system_account",
+            connector_id: activeConnector.id,
+            connector_slug: activeConnector.slug,
+            driver: "http" as const,
+            credential_id: activeCredentialId,
+            operation: p.step.method,
+            url: baseUrl,
+            source: "execution" as const,
+            execution_id: p.ctx.execution_id,
+            workflow_id: p.ctx.workflow_id,
+            step_id: p.step.id,
+          }
+        : null;
+      const callDoOnePage = () =>
+        doOnePage({
+          url: baseUrl.toString(),
+          method: p.step.method,
+          headers,
+          body: p.step.body ?? null,
+          max_attempts,
+          signal,
+          retry_total_ms: retryTotal,
+          retry_counter: retryCounter,
+          connector_id: p.step.connector_id ?? null,
+          retry_policy,
+          ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
+        });
+      const res = httpEgressInput
+        ? await withEgressAudit(httpEgressInput, callDoOnePage, (out) => ({
+            status: out.status,
+            bytes_in: out.bytes_in,
+          }))
+        : await callDoOnePage();
       // Apply response filters
       let body = res.body;
       try {
@@ -761,19 +833,45 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     while (pageIdx < MAX_PAGES) {
       const next = strat.next(prev, pageIdx);
       if (next.done) break;
-      const res = await doOnePage({
-        url: next.url,
-        method: p.step.method,
-        headers,
-        body: p.step.body ?? null,
-        max_attempts,
-        signal,
-        retry_total_ms: retryTotal,
-        retry_counter: retryCounter,
-        connector_id: p.step.connector_id ?? null,
-        retry_policy,
-        ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
-      });
+      const callPage = () =>
+        doOnePage({
+          url: next.url,
+          method: p.step.method,
+          headers,
+          body: p.step.body ?? null,
+          max_attempts,
+          signal,
+          retry_total_ms: retryTotal,
+          retry_counter: retryCounter,
+          connector_id: p.step.connector_id ?? null,
+          retry_policy,
+          ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
+        });
+      const pageEgressInput = activeConnector
+        ? {
+            tenant_id: p.ctx.tenant_id,
+            actor_id: p.ctx.principal?.id ?? null,
+            actor_type: (p.ctx.principal?.kind === "system_account" ? "system_account" : "user") as
+              | "user"
+              | "system_account",
+            connector_id: activeConnector.id,
+            connector_slug: activeConnector.slug,
+            driver: "http" as const,
+            credential_id: activeCredentialId,
+            operation: p.step.method,
+            url: next.url,
+            source: "execution" as const,
+            execution_id: p.ctx.execution_id,
+            workflow_id: p.ctx.workflow_id,
+            step_id: p.step.id,
+          }
+        : null;
+      const res = pageEgressInput
+        ? await withEgressAudit(pageEgressInput, callPage, (out) => ({
+            status: out.status,
+            bytes_in: out.bytes_in,
+          }))
+        : await callPage();
       let body = res.body;
       try {
         body = applyResponseFilters(p.step.response_filters, res.body);

@@ -1,0 +1,316 @@
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { openApiDirectStrategy } from "./openapi-direct.ts";
+import { DiscoveryError } from "./types.ts";
+
+const STRIPE_LIKE_OPENAPI_3 = {
+  openapi: "3.0.3",
+  info: { title: "Stripe-shaped API", version: "1.0" },
+  servers: [{ url: "https://api.stripe.example.com/v1" }],
+  components: {
+    securitySchemes: {
+      bearerAuth: { type: "http", scheme: "bearer" },
+      oauthFlow: {
+        type: "oauth2",
+        flows: {
+          authorizationCode: {
+            authorizationUrl: "https://login.example.com/authorize",
+            tokenUrl: "https://login.example.com/token",
+            scopes: { "read:customers": "Read customers", "write:customers": "Write customers" },
+          },
+        },
+      },
+    },
+  },
+  paths: {
+    "/customers": {
+      get: {
+        operationId: "listCustomers",
+        summary: "List customers",
+        description: "Cursor-paginated list",
+        deprecated: false,
+        parameters: [
+          { name: "limit", in: "query", required: false, schema: { type: "integer" } },
+          { name: "starting_after", in: "query", required: false, schema: { type: "string" } },
+        ],
+        security: [{ oauthFlow: ["read:customers"] }],
+        responses: {
+          "200": {
+            description: "ok",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    data: { type: "array", items: { type: "object" } },
+                    has_more: { type: "boolean" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        operationId: "createCustomer",
+        summary: "Create a customer",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { type: "object", properties: { email: { type: "string" } } },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "ok",
+            content: { "application/json": { schema: { type: "object" } } },
+          },
+        },
+      },
+    },
+    "/customers/{id}": {
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      get: {
+        operationId: "retrieveCustomer",
+        responses: { "200": { description: "ok" } },
+      },
+    },
+  },
+};
+
+const SWAGGER_2_FIXTURE = {
+  swagger: "2.0",
+  info: { title: "Legacy API", version: "1.0" },
+  host: "legacy.example.com",
+  basePath: "/v1",
+  schemes: ["https"],
+  securityDefinitions: {
+    apiKey: { type: "apiKey", in: "header", name: "X-API-Key" },
+    basic: { type: "basic" },
+  },
+  paths: {
+    "/things": {
+      get: {
+        operationId: "listThings",
+        parameters: [
+          { name: "page", in: "query", type: "integer", required: false },
+          { name: "per_page", in: "query", type: "integer", required: false },
+        ],
+        responses: {
+          "200": {
+            description: "ok",
+            schema: { type: "object", properties: { items: { type: "array" } } },
+          },
+        },
+      },
+    },
+  },
+};
+
+describe("openApiDirectStrategy — OpenAPI 3", () => {
+  let fetchSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    fetchSpy = spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  test("parses endpoints, auth schemes, scopes, pagination", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify(STRIPE_LIKE_OPENAPI_3), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const result = await openApiDirectStrategy.fetch("https://api.example.com/openapi.json", {});
+
+    expect(result.strategy).toBe("openapi-direct");
+    expect(result.spec_version).toBe("openapi-3");
+    expect(result.title).toBe("Stripe-shaped API");
+    expect(result.servers).toEqual(["https://api.stripe.example.com/v1"]);
+    expect(result.endpoints.length).toBe(3);
+
+    const listCustomers = result.endpoints.find((e) => e.operation_id === "listCustomers");
+    expect(listCustomers).toBeDefined();
+    expect(listCustomers?.method).toBe("GET");
+    expect(listCustomers?.path).toBe("/customers");
+    expect(listCustomers?.scopes).toEqual(["read:customers"]);
+    expect(listCustomers?.pagination_hint?.kind).toBe("cursor");
+    expect(listCustomers?.pagination_hint?.param_names).toContain("starting_after");
+
+    const createCustomer = result.endpoints.find((e) => e.operation_id === "createCustomer");
+    expect(createCustomer?.request_body_schema).toBeDefined();
+
+    // Path-level parameter is inherited by operations in the path.
+    const retrieveCustomer = result.endpoints.find((e) => e.operation_id === "retrieveCustomer");
+    expect(retrieveCustomer?.params.some((p) => p.name === "id" && p.in === "path")).toBe(true);
+
+    // Auth schemes
+    const bearer = result.auth_schemes.find((s) => s.name === "bearerAuth");
+    expect(bearer?.type).toBe("http");
+    expect(bearer?.scheme).toBe("bearer");
+    const oauth = result.auth_schemes.find((s) => s.name === "oauthFlow");
+    expect(oauth?.type).toBe("oauth2");
+    expect(oauth?.flows?.authorizationCode?.token_url).toBe("https://login.example.com/token");
+  });
+
+  test("detects link_header pagination on a GET response", async () => {
+    const SPEC = {
+      openapi: "3.0.0",
+      info: { title: "x", version: "1" },
+      paths: {
+        "/items": {
+          get: {
+            operationId: "listItems",
+            responses: {
+              "200": {
+                description: "ok",
+                content: { "application/json": { schema: { type: "object" } } },
+              },
+            },
+          },
+        },
+      },
+    };
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify(SPEC), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          link: '<https://api.example.com/items?page=2>; rel="next"',
+        },
+      }),
+    );
+    const result = await openApiDirectStrategy.fetch("https://api.example.com/openapi.json", {});
+    expect(result.endpoints[0]?.pagination_hint?.kind).toBe("link_header");
+  });
+
+  test("DigitalOcean-style links.pages response triggers cursor hint", async () => {
+    const SPEC = {
+      openapi: "3.0.0",
+      info: { title: "x", version: "1" },
+      paths: {
+        "/account": {
+          get: {
+            operationId: "getAccount",
+            responses: {
+              "200": {
+                description: "ok",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      properties: {
+                        account: { type: "object" },
+                        links: {
+                          type: "object",
+                          properties: {
+                            pages: { type: "object" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify(SPEC), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await openApiDirectStrategy.fetch("https://api.example.com/openapi.json", {});
+    expect(result.endpoints[0]?.pagination_hint?.kind).toBe("cursor");
+  });
+
+  test("throws DiscoveryError on non-2xx", async () => {
+    fetchSpy.mockResolvedValue(new Response(null, { status: 404 }));
+    await expect(
+      openApiDirectStrategy.fetch("https://api.example.com/openapi.json", {}),
+    ).rejects.toBeInstanceOf(DiscoveryError);
+  });
+
+  test("throws unknown_spec_version when spec lacks openapi/swagger fields", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify({ info: { title: "x" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    let caught: DiscoveryError | null = null;
+    try {
+      await openApiDirectStrategy.fetch("https://api.example.com/openapi.json", {});
+    } catch (e) {
+      if (e instanceof DiscoveryError) caught = e;
+    }
+    expect(caught?.code).toBe("unknown_spec_version");
+  });
+
+  test("parses YAML by extension", async () => {
+    const yaml = `openapi: 3.0.0
+info:
+  title: yaml-spec
+  version: '1.0'
+paths:
+  /ping:
+    get:
+      operationId: ping
+      responses:
+        '200':
+          description: ok
+`;
+    fetchSpy.mockResolvedValue(
+      new Response(yaml, {
+        status: 200,
+        headers: { "content-type": "text/yaml" },
+      }),
+    );
+    const result = await openApiDirectStrategy.fetch("https://api.example.com/openapi.yaml", {});
+    expect(result.title).toBe("yaml-spec");
+    expect(result.endpoints[0]?.operation_id).toBe("ping");
+  });
+});
+
+describe("openApiDirectStrategy — Swagger 2", () => {
+  let fetchSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    fetchSpy = spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  test("parses Swagger 2 spec into the same shape", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify(SWAGGER_2_FIXTURE), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await openApiDirectStrategy.fetch("https://api.example.com/swagger.json", {});
+    expect(result.spec_version).toBe("swagger-2");
+    expect(result.servers).toEqual(["https://legacy.example.com/v1"]);
+    expect(result.endpoints).toHaveLength(1);
+    const listThings = result.endpoints[0];
+    expect(listThings?.path).toBe("/things");
+    expect(listThings?.method).toBe("GET");
+    expect(listThings?.pagination_hint?.kind).toBe("page");
+    const apiKey = result.auth_schemes.find((s) => s.name === "apiKey");
+    expect(apiKey?.type).toBe("apiKey");
+    expect(apiKey?.location).toBe("header");
+    const basic = result.auth_schemes.find((s) => s.name === "basic");
+    expect(basic?.scheme).toBe("basic");
+  });
+});

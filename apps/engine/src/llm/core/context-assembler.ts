@@ -20,6 +20,7 @@ import { getDb } from "../../db/client.ts";
 import { searchDocs } from "../../docs-ingestion/service.ts";
 import { searchKnowledge } from "../../knowledge/service.ts";
 import { logger } from "../../logging/logger.ts";
+import { recordLlmContextAssembled } from "../../observability/instrumentation.ts";
 import {
   getSkill,
   listAutoLoadSkills,
@@ -699,22 +700,41 @@ export async function assembleContext(
 
   const { dropped_sections, ...promptWithoutDropped } = prompt;
 
+  const budget_report = {
+    cap_tokens: effectiveCap,
+    total_tokens: prompt.token_counts.total,
+    stable_tokens: blocks.token_counts.stable,
+    volatile_tokens: blocks.token_counts.volatile,
+    messages_tokens: prompt.token_counts.messages,
+    included: {
+      skills: prompt.included_skill_ids.length,
+      knowledge: prompt.included_knowledge_chunk_ids.length,
+      docs: prompt.included_chunk_ids.length,
+      failures: includedFailureCount,
+    },
+    dropped_sections,
+  };
+
+  // Surface every assembly as a structured event. The metric and the
+  // log line let operators see at a glance which flows are running
+  // hot, which sections are getting trimmed, and how much of the
+  // available cap is being spent.
+  recordLlmContextAssembled({
+    tenant_id: params.tenant_id,
+    flow: params.flow,
+    model: params.model ?? "default",
+    cap_tokens: budget_report.cap_tokens,
+    total_tokens: budget_report.total_tokens,
+    stable_tokens: budget_report.stable_tokens,
+    volatile_tokens: budget_report.volatile_tokens,
+    messages_tokens: budget_report.messages_tokens,
+    included: budget_report.included,
+    dropped_sections: budget_report.dropped_sections,
+  });
+
   return {
     prompt: promptWithoutDropped,
     blocks,
-    budget_report: {
-      cap_tokens: effectiveCap,
-      total_tokens: prompt.token_counts.total,
-      stable_tokens: blocks.token_counts.stable,
-      volatile_tokens: blocks.token_counts.volatile,
-      messages_tokens: prompt.token_counts.messages,
-      included: {
-        skills: prompt.included_skill_ids.length,
-        knowledge: prompt.included_knowledge_chunk_ids.length,
-        docs: prompt.included_chunk_ids.length,
-        failures: includedFailureCount,
-      },
-      dropped_sections,
-    },
+    budget_report,
   };
 }

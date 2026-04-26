@@ -1,13 +1,44 @@
-import { normalizeDraftDocument } from "../authoring-state.ts";
-import type { AuthoringSummary, DraftDocument } from "../types.ts";
+// Skill-gated tool palette.
+//
+// Replaces the old state-gated palette (PR10/PR15). The new design:
+//
+//   1. Tools never silently disappear once a skill has been loaded.
+//   2. Loading the right skill exposes a fixed tool set; calling a
+//      tool against the wrong state returns a structured
+//      `tool_unavailable_in_state` envelope from `state-gate.ts`.
+//   3. The palette resolution is purely additive — the union of
+//      always-visible tools, the cleanup set, and whatever sets the
+//      currently-loaded skills unlock.
+//
+// Background — session 00b93a52 ended with the agent saying
+// "save_connector_draft is not available in the current tool palette"
+// and asking the user to restart. The dead-end was caused by the old
+// `connectorDraftAllowsSave()` predicate hiding `save_connector_draft`
+// whenever the probe checkpoint was stale. The new contract: expose
+// the tool, let the tool's input contract return a structured
+// `probe_failed` envelope with `next_best_actions`, and let the LLM
+// recover within the same turn.
 
-const ALWAYS_VISIBLE = new Set([
+import type { DraftDocument } from "../types.ts";
+import type { ConversationTool } from "./index.ts";
+
+export const CONNECTOR_AUTHORING_SKILL = "connector-creation-guidance";
+export const WORKFLOW_AUTHORING_SKILL = "workflow-authoring";
+
+/**
+ * Tools that are always visible regardless of skill-load state.
+ * Cover meta-tools (ask_user_*, cannot_help, list_skills, load_skill),
+ * passive reads, and the connector-template / docs surfaces the model
+ * needs at any point in a conversation.
+ */
+const ALWAYS_VISIBLE: ReadonlySet<string> = new Set([
   "ask_user_choice",
   "ask_user_confirm",
   "ask_user_form",
   "ask_user_multi",
   "ask_user_text",
   "cannot_help",
+  "discover_connector_endpoints",
   "fetch_connector_docs",
   "get_raw_result",
   "inspect_authoring_context",
@@ -19,7 +50,13 @@ const ALWAYS_VISIBLE = new Set([
   "suggest_connector_templates",
 ]);
 
-const RELEVANT_READS = new Set([
+/**
+ * Read-only tools that surface tenant resources and probes — always
+ * available so the model can introspect state at any time without
+ * needing to load a skill first.
+ */
+const RELEVANT_READS: ReadonlySet<string> = new Set([
+  "call_connector",
   "get_connector",
   "get_execution",
   "get_workflow",
@@ -29,17 +66,13 @@ const RELEVANT_READS = new Set([
   "probe_connector",
 ]);
 
-// Cleanup operations on tenant resources. The palette filter would
-// otherwise hide them from every authoring state because no per-state
-// set lists them, leaving the model to call cannot_help with "delete
-// not available in this conversation" — exactly the bug user mike
-// reported in session 9b9ea73b ("lösche dummy-http").
-//
-// These tools are protected by the DANGEROUS_TOOLS confirm gate in
-// tool-policies.ts which fires regardless of permission_mode, so it
-// is safe to keep them visible in every authoring state. The user
-// always sees a structured ask_user_confirm before any deletion.
-const ALWAYS_AVAILABLE_CLEANUP = new Set([
+/**
+ * Cleanup + generic-update operations. Execution mode is decided by
+ * `tool-policies.ts`; visibility is unconditional so the user can
+ * always say "lösche dummy-http" mid-conversation regardless of the
+ * authoring stage.
+ */
+const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
   "delete_connector",
   "delete_knowledge_source",
   "delete_subscription",
@@ -47,20 +80,14 @@ const ALWAYS_AVAILABLE_CLEANUP = new Set([
   "delete_workflow",
   "revoke_api_key",
   "revoke_portal_token",
-  // update_<resource> tools are the chat-native generic patch ops
-  // (rename, repoint, change lifecycle, rotate secrets). Like the
-  // delete_* and revoke_* tools they must be reachable in every
-  // authoring state — the user types "rename to X" or "pause that
-  // webhook" in the middle of any conversation and the LLM needs the
-  // tool in its palette. Slug/uniqueness + the dangerous-tools
-  // confirm gate are the safety net (see tool-policies.ts).
   "update_workflow",
   "update_connector",
   "update_knowledge_source",
   "update_subscription",
 ]);
 
-const CONNECTOR_AUTHORING = new Set([
+/** Connector authoring tools — exposed once `connector-creation-guidance` is loaded. */
+const CONNECTOR_AUTHORING: ReadonlySet<string> = new Set([
   "inspect_connector_draft",
   "probe_connector_draft",
   "start_connector_from_description",
@@ -69,11 +96,18 @@ const CONNECTOR_AUTHORING = new Set([
   "validate_connector_draft",
 ]);
 
-const CONNECTOR_PERSISTENCE = new Set(["save_connector_draft"]);
+/** Persistence tool — paired with the connector-authoring skill. The
+ *  tool itself enforces credential + probe preconditions via
+ *  `state-gate.ts` and the in-tool `force_save` escape hatch. */
+const CONNECTOR_PERSISTENCE: ReadonlySet<string> = new Set(["save_connector_draft"]);
 
-const CONNECTOR_POST_SAVE = new Set(["submit_connector_credential"]);
+/** OAuth dance — exposed alongside connector authoring; the tool gates
+ *  with `oauth_not_configured` when called against a non-OAuth
+ *  connector. */
+const CONNECTOR_OAUTH: ReadonlySet<string> = new Set(["authenticate_oauth"]);
 
-const WORKFLOW_AUTHORING = new Set([
+/** Workflow authoring tools — exposed once `workflow-authoring` is loaded. */
+const WORKFLOW_AUTHORING: ReadonlySet<string> = new Set([
   "build_workflow",
   "connect_steps",
   "inspect_workflow_draft",
@@ -83,193 +117,75 @@ const WORKFLOW_AUTHORING = new Set([
   "validate_draft",
 ]);
 
-const WORKFLOW_PREVIEW = new Set(["dry_run_step", "dry_run_transform", "dry_run_workflow"]);
+/** Dry-run tools — paired with workflow authoring. */
+const WORKFLOW_PREVIEW: ReadonlySet<string> = new Set([
+  "dry_run_step",
+  "dry_run_transform",
+  "dry_run_workflow",
+]);
 
-const WORKFLOW_PERSISTENCE = new Set(["commit_draft"]);
+/** Workflow commit — paired with workflow authoring. The tool itself
+ *  enforces preview + validation via `state-gate.ts` and the in-tool
+ *  `force_commit` escape hatch. */
+const WORKFLOW_PERSISTENCE: ReadonlySet<string> = new Set(["commit_draft"]);
 
-const EXECUTION_TOOLS = new Set(["run_workflow"]);
+/** Execution + diagnosis — paired with workflow authoring. The tools
+ *  themselves emit a `tool_unavailable_in_state` envelope when no
+ *  workflow is yet persisted / no execution exists. */
+const EXECUTION_TOOLS: ReadonlySet<string> = new Set(["run_workflow"]);
+const DIAGNOSIS_TOOLS: ReadonlySet<string> = new Set(["diagnose_latest_execution"]);
 
-const DIAGNOSIS_TOOLS = new Set(["diagnose_latest_execution"]);
-
-function hasFocusedAuthoringState(draft: DraftDocument): boolean {
-  const normalized = normalizeDraftDocument(draft);
-  const summary = normalized.summary;
-  if (!summary) return false;
-  if (summary.active_target.kind !== "none") return true;
-  return Boolean(summary.latest_execution || summary.latest_diagnosis);
-}
-
-function addNames(target: Set<string>, names: Iterable<string>): void {
+function addNames(target: Set<string>, names: ReadonlySet<string>): void {
   for (const name of names) target.add(name);
 }
 
-function hasMissingFields(summary: AuthoringSummary): boolean {
-  return summary.blocked_by.some((item) => item.startsWith("missing:"));
-}
+/**
+ * Resolve the visible tool palette for one turn.
+ *
+ * The palette is purely a function of:
+ *   - the always-visible base set (meta-tools, reads, cleanup),
+ *   - which authoring skills are currently loaded.
+ *
+ * Authoring tools come into scope when their owning skill is loaded
+ * and STAY in scope for the rest of the conversation. The draft state
+ * is irrelevant to visibility — wrong-state calls return a structured
+ * envelope from `state-gate.ts` rather than disappearing from the
+ * palette. See `state-gate.ts` for the recovery contract.
+ *
+ * @param tools         — the registered tool list (`listTools()`).
+ * @param _draft        — the conversation's draft (unused; kept on the
+ *                        signature for symmetry with the old API and to
+ *                        leave room for future per-resource gating).
+ * @param loadedSkills  — slugs of skills currently loaded. Pass an
+ *                        empty set on a fresh conversation; the loop
+ *                        seeds the canonical authoring slugs so a
+ *                        first-message "create a connector" intent
+ *                        already sees the connector palette.
+ */
+export function filterByAuthoringPalette<
+  T extends { name: string; category?: ConversationTool["category"] },
+>(tools: readonly T[], _draft: DraftDocument, loadedSkills: ReadonlySet<string>): T[] {
+  const allowed = new Set<string>();
+  addNames(allowed, ALWAYS_VISIBLE);
+  addNames(allowed, RELEVANT_READS);
+  addNames(allowed, ALWAYS_AVAILABLE_CLEANUP);
 
-function hasCheckpoint(
-  summary: AuthoringSummary,
-  key: AuthoringSummary["checkpoints"][number]["key"],
-  status: AuthoringSummary["checkpoints"][number]["status"] = "fresh",
-): boolean {
-  return summary.checkpoints.some(
-    (checkpoint) => checkpoint.key === key && checkpoint.status === status,
-  );
-}
-
-function connectorDraftAllowsSave(summary: AuthoringSummary): boolean {
-  if (summary.active_target.kind !== "connector") return false;
-  if (summary.active_target.lifecycle_state !== "draft_only") return false;
-  if (summary.stage !== "connector_probed") return false;
-  if (hasMissingFields(summary)) return false;
-  return !summary.blocked_by.some(
-    (item) =>
-      item === "inspect_connector_draft" ||
-      item === "validate_connector_draft" ||
-      item === "probe_connector_draft",
-  );
-}
-
-function workflowDraftAllowsCommit(summary: AuthoringSummary): boolean {
-  if (summary.active_target.kind !== "workflow") return false;
-  if (summary.active_target.lifecycle_state !== "draft_only") return false;
-  if (summary.stage !== "workflow_previewed") return false;
-  if (hasMissingFields(summary)) return false;
-  return !summary.blocked_by.some(
-    (item) =>
-      item === "inspect_workflow_draft" || item === "validate_draft" || item === "dry_run_workflow",
-  );
-}
-
-// In-place re-commit on a persisted workflow (the repair-and-save path).
-// commit_draft itself supports update-in-place when target_workflow_id is
-// set; the palette must surface the tool so the agent can take that path
-// instead of abstaining via cannot_help. We require the same gates the
-// commit tool checks (inspected + validated), but DO NOT require the
-// workflow_previewed checkpoint here — that's commit_draft's job to
-// enforce, with a structured `next_best_actions: ["dry_run_workflow"]`
-// if missing. Hiding the tool produces a dead end where the model has
-// no in-chat path to persist its repair and falls back to suggesting a
-// CLI command, which breaks the chat-first contract.
-export function workflowPersistedAllowsRecommit(summary: AuthoringSummary): boolean {
-  if (summary.active_target.kind !== "workflow") return false;
-  if (summary.active_target.lifecycle_state !== "persisted") return false;
-  if (hasMissingFields(summary)) return false;
-  if (
-    summary.blocked_by.some(
-      (item) => item === "inspect_workflow_draft" || item === "validate_draft",
-    )
-  ) {
-    return false;
-  }
-  return hasCheckpoint(summary, "workflow_validated");
-}
-
-function workflowAllowsRun(summary: AuthoringSummary): boolean {
-  if (summary.active_target.kind !== "workflow") return false;
-  if (summary.active_target.lifecycle_state !== "persisted") return false;
-  return (
-    summary.stage === "workflow_persisted" ||
-    summary.stage === "workflow_executed" ||
-    summary.stage === "diagnosing"
-  );
-}
-
-function hasPersistedConnector(summary: AuthoringSummary): boolean {
-  if (
-    summary.active_target.kind === "connector" &&
-    summary.active_target.lifecycle_state === "persisted"
-  ) {
-    return true;
-  }
-  return summary.persisted_resources.some((resource) => resource.kind === "connector");
-}
-
-function diagnosisAvailable(summary: AuthoringSummary): boolean {
-  return summary.latest_execution?.diagnosis_available === true && !summary.latest_diagnosis;
-}
-
-function allowConnectorDraftPalette(allowed: Set<string>, summary: AuthoringSummary): void {
-  addNames(allowed, CONNECTOR_AUTHORING);
-  if (connectorDraftAllowsSave(summary)) {
-    addNames(allowed, CONNECTOR_PERSISTENCE);
-    addNames(allowed, WORKFLOW_AUTHORING);
-    addNames(allowed, WORKFLOW_PREVIEW);
-  }
-}
-
-function allowConnectorPersistedPalette(allowed: Set<string>): void {
-  addNames(allowed, CONNECTOR_AUTHORING);
-  addNames(allowed, CONNECTOR_POST_SAVE);
-  addNames(allowed, WORKFLOW_AUTHORING);
-  addNames(allowed, WORKFLOW_PREVIEW);
-}
-
-function allowWorkflowDraftPalette(allowed: Set<string>, summary: AuthoringSummary): void {
-  addNames(allowed, WORKFLOW_AUTHORING);
-  addNames(allowed, WORKFLOW_PREVIEW);
-  if (workflowDraftAllowsCommit(summary)) addNames(allowed, WORKFLOW_PERSISTENCE);
-}
-
-function allowWorkflowPersistedPalette(allowed: Set<string>, summary: AuthoringSummary): void {
-  addNames(allowed, WORKFLOW_AUTHORING);
-  addNames(allowed, WORKFLOW_PREVIEW);
-  if (workflowAllowsRun(summary)) addNames(allowed, EXECUTION_TOOLS);
-  if (diagnosisAvailable(summary)) addNames(allowed, DIAGNOSIS_TOOLS);
-  // Repair-and-save: a persisted workflow that has been edited and
-  // validated must be commit-able through the conversation, otherwise
-  // the agent has no in-chat path to apply its repair.
-  if (workflowPersistedAllowsRecommit(summary)) addNames(allowed, WORKFLOW_PERSISTENCE);
-}
-
-export function filterByAuthoringPalette<T extends { name: string }>(
-  tools: readonly T[],
-  draft: DraftDocument,
-): T[] {
-  if (!hasFocusedAuthoringState(draft)) return [...tools];
-  const normalized = normalizeDraftDocument(draft);
-  const summary = normalized.summary;
-  if (!summary) return [...tools];
-  const allowed = new Set<string>([
-    ...ALWAYS_VISIBLE,
-    ...RELEVANT_READS,
-    ...ALWAYS_AVAILABLE_CLEANUP,
-  ]);
-
-  if (summary.mode === "connector") {
-    if (
-      summary.active_target.kind === "connector" &&
-      summary.active_target.lifecycle_state === "draft_only"
-    ) {
-      allowConnectorDraftPalette(allowed, summary);
-    } else if (hasPersistedConnector(summary)) {
-      allowConnectorPersistedPalette(allowed);
-    } else {
-      addNames(allowed, CONNECTOR_AUTHORING);
-    }
-  } else if (summary.mode === "workflow") {
-    if (summary.active_target.lifecycle_state === "draft_only") {
-      allowWorkflowDraftPalette(allowed, summary);
-    } else {
-      allowWorkflowPersistedPalette(allowed, summary);
-    }
-  } else if (summary.mode === "execution") {
-    allowWorkflowPersistedPalette(allowed, summary);
-  } else {
-    // Idle / fresh-start state (e.g. immediately after a delete_*).
-    // Must include the entry tools for BOTH connector and workflow
-    // authoring, otherwise the user cannot start a new resource — the
-    // model is forced into cannot_help with "tool not available", which
-    // is the bug surfaced in session 64db7189 after delete_connector
-    // dropped active_target.kind to "none" and the palette hid
-    // start_connector_from_description.
+  if (loadedSkills.has(CONNECTOR_AUTHORING_SKILL)) {
     addNames(allowed, CONNECTOR_AUTHORING);
+    addNames(allowed, CONNECTOR_PERSISTENCE);
+    addNames(allowed, CONNECTOR_OAUTH);
+  }
+  if (loadedSkills.has(WORKFLOW_AUTHORING_SKILL)) {
     addNames(allowed, WORKFLOW_AUTHORING);
     addNames(allowed, WORKFLOW_PREVIEW);
+    addNames(allowed, WORKFLOW_PERSISTENCE);
+    addNames(allowed, EXECUTION_TOOLS);
+    addNames(allowed, DIAGNOSIS_TOOLS);
   }
-  if (diagnosisAvailable(summary)) addNames(allowed, DIAGNOSIS_TOOLS);
-  if (hasPersistedConnector(summary) && hasCheckpoint(summary, "connector_persisted")) {
-    addNames(allowed, CONNECTOR_POST_SAVE);
-  }
-  return tools.filter((tool) => allowed.has(tool.name));
+  // tenant_read tools are tenant-scoped, side-effect-free, and parallelisable.
+  // They should always be reachable so the LLM can introspect tenant state at
+  // any point — listing workflows, fetching audit entries, checking engine
+  // status, browsing knowledge sources. Filtering them by skill would create
+  // dead-ends for ordinary "what's there?" turns.
+  return tools.filter((tool) => allowed.has(tool.name) || tool.category === "tenant_read");
 }

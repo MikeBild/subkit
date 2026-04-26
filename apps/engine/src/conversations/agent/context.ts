@@ -36,6 +36,11 @@ function summarizeNextRequiredAction(hint: AuthoringPromptHint): string {
   return `- Next required action: ${hint.next_required_action}`;
 }
 
+function summarizeNextSuggestedTool(hint: AuthoringPromptHint): string {
+  if (!hint.next_suggested_tool) return "- Next suggested tool: none.";
+  return `- Next suggested tool: ${hint.next_suggested_tool}`;
+}
+
 function connectorFocusPrompt(hint: AuthoringPromptHint): string {
   return [
     "AUTHORING FOCUS: CONNECTOR",
@@ -52,6 +57,7 @@ function connectorFocusPrompt(hint: AuthoringPromptHint): string {
     ]),
     summarizeBlockedBy(hint),
     summarizeNextRequiredAction(hint),
+    summarizeNextSuggestedTool(hint),
   ].join("\n");
 }
 
@@ -71,6 +77,7 @@ function workflowFocusPrompt(hint: AuthoringPromptHint): string {
     ]),
     summarizeBlockedBy(hint),
     summarizeNextRequiredAction(hint),
+    summarizeNextSuggestedTool(hint),
   ].join("\n");
 }
 
@@ -87,6 +94,7 @@ function executionFocusPrompt(hint: AuthoringPromptHint): string {
     `Current execution stage: ${hint.stage}.`,
     summarizeBlockedBy(hint),
     summarizeNextRequiredAction(hint),
+    summarizeNextSuggestedTool(hint),
   ].join("\n");
 }
 
@@ -103,6 +111,7 @@ function diagnosisFocusPrompt(hint: AuthoringPromptHint): string {
     `Current diagnosis stage: ${hint.stage}.`,
     summarizeBlockedBy(hint),
     summarizeNextRequiredAction(hint),
+    summarizeNextSuggestedTool(hint),
   ].join("\n");
 }
 

@@ -14,6 +14,7 @@ import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
+import { injectTraceContext, scrubUrl } from "../egress.ts";
 import type { ConnectorView } from "../types.ts";
 import { applyAuthMaterial } from "./http.ts";
 
@@ -35,6 +36,10 @@ export interface GraphQLResponse<T = unknown> {
   bytes_in: number;
   duration_ms: number;
   operation_name: string;
+  /** Credential row id resolved for this call, or null when the
+   *  connector is `auth_type=none`. Surfaces through to the egress
+   *  audit (`CREDENTIAL_ACCESSED`). */
+  credential_id: string | null;
 }
 
 export interface GraphQLNotImplementedError {
@@ -44,6 +49,7 @@ export interface GraphQLNotImplementedError {
   bytes_in: number;
   duration_ms: number;
   operation_name: string;
+  credential_id: null;
 }
 
 function parseConfig(connector: ConnectorView): GraphQLConnectorConfig {
@@ -66,10 +72,10 @@ async function resolveCredential(
   db: Db,
   tenant_id: string,
   connector: ConnectorView,
-): Promise<DecryptedCredential | null> {
-  if (connector.auth_type === "none") return null;
+): Promise<{ value: DecryptedCredential | null; credential_id: string | null }> {
+  if (connector.auth_type === "none") return { value: null, credential_id: null };
   const row = await getCredentialForConnector(tenant_id, connector.id, connector.environment, db);
-  return row?.value ?? null;
+  return { value: row?.value ?? null, credential_id: row?.row.id ?? null };
 }
 
 /**
@@ -107,10 +113,15 @@ export async function executeGraphQLRequest(p: {
       bytes_in: 0,
       duration_ms: Date.now() - start,
       operation_name: operationName,
+      credential_id: null,
     };
   }
   const cfg = parseConfig(p.connector);
-  const credential = await resolveCredential(p.db, p.tenant_id, p.connector);
+  const { value: credential, credential_id } = await resolveCredential(
+    p.db,
+    p.tenant_id,
+    p.connector,
+  );
   const headers: Record<string, string> = {
     "content-type": "application/json",
     accept: "application/json",
@@ -132,9 +143,11 @@ export async function executeGraphQLRequest(p: {
     operation: p.op.operation,
     operation_name: operationName,
     url_host: new URL(cfg.endpoint).host,
+    url: scrubUrl(url),
     has_credential: credential !== null,
   });
   const fetchImpl = p.fetchImpl ?? fetch;
+  injectTraceContext(headers);
   const res = await fetchImpl(url.toString(), {
     method: "POST",
     headers,
@@ -170,6 +183,7 @@ export async function executeGraphQLRequest(p: {
     bytes_in: Buffer.byteLength(text, "utf8"),
     duration_ms: Date.now() - start,
     operation_name: operationName,
+    credential_id,
   };
 }
 
@@ -215,6 +229,20 @@ export async function probeGraphQLConnector(p: {
 }): Promise<{ ok: boolean; latency_ms: number; status?: number; detail?: string }> {
   const start = Date.now();
   try {
+    // Guard: auth-required connectors must have a persisted credential row.
+    // Without one the request would go out unauthenticated and surface a
+    // misleading error indistinguishable from a real connectivity failure.
+    if (p.connector.auth_type !== "none") {
+      const { value: credValue } = await resolveCredential(p.db, p.tenant_id, p.connector);
+      if (!credValue) {
+        return {
+          ok: false,
+          latency_ms: 0,
+          detail: "credential_required",
+        };
+      }
+    }
+
     const args: Parameters<typeof executeGraphQLRequest>[0] = {
       db: p.db,
       tenant_id: p.tenant_id,

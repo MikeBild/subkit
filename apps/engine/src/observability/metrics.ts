@@ -325,6 +325,9 @@ export const METRIC_NAMES = {
   LLM_CACHE_CREATION_TOTAL: "llm_cache_creation_tokens_total",
   LLM_PROMPT_TOKENS_TOTAL: "llm_prompt_tokens_total",
   CONVERSATION_TURN_DURATION_MS: "conversation_turn_duration_ms",
+  LLM_CONTEXT_ASSEMBLED_TOTAL: "llm_context_assembled_total",
+  LLM_CONTEXT_DROPPED_SECTIONS_TOTAL: "llm_context_dropped_sections_total",
+  LLM_CONTEXT_TOTAL_TOKENS: "llm_context_total_tokens",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -483,6 +486,22 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.CONVERSATION_TURN_DURATION_MS,
     help: "Conversation-turn wall-clock duration in milliseconds.",
     labels: ["tenant_id"],
+    buckets: HISTOGRAM_DURATION_BUCKETS_MS,
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.LLM_CONTEXT_ASSEMBLED_TOTAL,
+    help: "Context-assembly invocations partitioned by flow and the surface that triggered them.",
+    labels: ["flow", "request_source"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.LLM_CONTEXT_DROPPED_SECTIONS_TOTAL,
+    help: "Context sections dropped by the budget trimmer, partitioned by flow and section name.",
+    labels: ["flow", "section"],
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.LLM_CONTEXT_TOTAL_TOKENS,
+    help: "Total prompt tokens emitted from context-assembly per call (pre-completion).",
+    labels: ["flow"],
     buckets: HISTOGRAM_DURATION_BUCKETS_MS,
   });
 

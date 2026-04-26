@@ -50,6 +50,14 @@ This state is persisted in the conversation draft summary and exposed as:
 
 The authoring loop is designed so that the model does not have to infer progress from transcript history. The current stage, active target, and checkpoint freshness are part of the runtime contract, not just prompt advice.
 
+The same grounding rule applies to explanatory follow-up questions. When a user asks why a connector, workflow, or field was named or configured a certain way, the assistant must answer from recorded state, audit history, ingested docs, or a fresh grounding tool call. If that reason is not recorded, the assistant says so plainly and does not speculate.
+
+### New draft versus saved workflow
+
+A conversation can stay bound to a saved workflow after rename, commit, and execution so follow-up runs and repairs stay grounded. That binding is intentional, but it is not sticky against explicit new-workflow intent.
+
+When the user says they want to create a new workflow after inspecting or running an existing saved workflow, the engine clears the saved workflow binding before the next authoring move. The next `build_workflow` or `start_workflow_from_goal` call therefore targets a fresh draft, not an in-place update of the earlier saved workflow. Updating a saved workflow remains an explicit path: keep the bound target and commit back into it.
+
 ---
 
 ## The Human-in-the-Loop Approval Gate
@@ -68,6 +76,8 @@ The approval gate sits on top of additional hard quality gates:
 - A workflow cannot be committed from the guided conversation flow until inspection, validation, and preview checkpoints are fresh.
 - A workflow run always targets a persisted workflow version, never an ambiguous draft.
 - The normal conversation surface no longer exposes force-style bypasses for save or commit. Operators can still use explicit admin or development paths where appropriate, but the guided flow itself is strict.
+- In `permission_mode=auto`, the engine skips non-dangerous confirmation prompts and continues directly to the underlying state-changing action. The user should never have to confirm the same save twice in different forms.
+- Ready save states carry a structured next tool in the draft summary (`save_connector_draft` or `commit_draft`). A short follow-up approval like "yes" in `permission_mode=auto` reuses that state instead of depending on transcript guesswork.
 
 This matters because the approval is not meant to compensate for missing technical checks. It is the final human sign-off after the state machine has already established that the draft is internally coherent.
 
@@ -96,7 +106,7 @@ For workflows, the canonical path is:
 
 The engine tracks these as fresh or stale checkpoints. Any draft mutation invalidates later checkpoints automatically. For example, editing a workflow after a successful preview makes the preview checkpoint stale, so the workflow must be previewed again before it can be committed.
 
-The result is a much more deterministic authoring loop: the assistant does not "think" a connector is ready or a workflow is runnable; it reads that from checkpoint state.
+The result is a much more deterministic authoring loop: the assistant does not "think" a connector is ready or a workflow is runnable; it reads that from checkpoint state. The draft summary also carries the concrete next suggested tool so prompt assembly, follow-up confirmations, and surface-specific evaluations all reason from the same state contract.
 
 ### CLI parity
 
@@ -220,6 +230,8 @@ This order is part of the contract, not just an implementation detail. When the 
 large for the active model budget, the engine trims in a fixed order as well: failures →
 connector docs → knowledge → user memory → authoring context → explicitly loaded Skills →
 workflow Skills → connector Skills → global Skills. User turns are not trimmed away. This is why
+
+Conversation replay is still bounded. Tool results are truncated before they are fed back into later turns, explicit compaction markers suppress older replay, and oversized message histories are collapsed into a deterministic summary plus the recent tail. The model keeps the current task context without dragging every historical tool payload back through the prompt window.
 operator-curated connector and workflow guidance survives longer than incidental historical
 context under tight budgets.
 

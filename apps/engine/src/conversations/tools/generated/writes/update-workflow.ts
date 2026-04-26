@@ -17,8 +17,9 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../../auth/types.ts";
-import { roles, systemAccounts, users } from "../../../../db/schema/index.ts";
+import { conversations, roles, systemAccounts, users } from "../../../../db/schema/index.ts";
 import { can } from "../../../../rbac/evaluator.ts";
+import { bindPersistedWorkflow } from "../../../authoring-state.ts";
 import type { ConversationTool, ToolContext } from "../../index.ts";
 
 const UpdateWorkflowInput = z
@@ -189,6 +190,27 @@ export const updateWorkflowTool: ConversationTool = {
         lifecycle: args.lifecycle,
       },
     });
+    await ctx.db
+      .update(conversations)
+      .set({
+        target_workflow_id: result.workflow.id,
+        updated_at: new Date(),
+      })
+      .where(
+        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
+      );
+    await ctx.setDraft(
+      bindPersistedWorkflow(ctx.getDraft(), {
+        kind: "workflow",
+        id: result.workflow.id,
+        slug: result.workflow.slug,
+        name: result.workflow.name,
+        version_id: result.workflow.current_version_id,
+        version: result.workflow.current_version,
+        environment: null,
+        saved_at: result.workflow.updated_at.toISOString(),
+      }),
+    );
 
     return {
       ok: true,

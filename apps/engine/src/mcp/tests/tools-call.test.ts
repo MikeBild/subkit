@@ -51,4 +51,37 @@ describe("mcp tools/call", () => {
       .where(eq(executions.workflow_id, wf.id));
     expect(rows[0]?.c).toBeGreaterThanOrEqual(1);
   });
+
+  test("maps structured workflow parameters through the workflow tool surface", async () => {
+    await suite.seedWorkflow({
+      name: "call input probe",
+      slug: "call-input-probe",
+      input_schema: {
+        type: "object",
+        required: ["date"],
+        properties: {
+          date: { type: "string" },
+        },
+      },
+      steps: [
+        {
+          kind: "transform",
+          id: "shape",
+          expression: "$input.date",
+          language: "jsonata",
+        },
+      ],
+    });
+    const client = await suite.connect();
+    const result = await client.callTool({
+      name: "wf.call-input-probe",
+      arguments: {
+        date: "tomorrow +1",
+      },
+    });
+    expect(result.isError).toBeFalsy();
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content.length).toBe(1);
+    expect(JSON.parse(content[0]!.text)).toBe("tomorrow +1");
+  });
 });

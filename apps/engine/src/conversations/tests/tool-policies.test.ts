@@ -96,6 +96,38 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     ).toBe("confirm_before_execution");
   });
 
+  it("save_connector_draft requires confirm whether or not credential is present", () => {
+    // No credential: still confirm by default (defaultMode).
+    expect(
+      resolveToolMode({
+        tool: "save_connector_draft",
+        category: "tenant_write",
+        input: {},
+        overrides: {},
+      }),
+    ).toBe("confirm_before_execution");
+    // With credential: computeModeFromInput holds the line at confirm.
+    expect(
+      resolveToolMode({
+        tool: "save_connector_draft",
+        category: "tenant_write",
+        input: { credential: { mode: "bearer", token: "secret" } },
+        overrides: {},
+      }),
+    ).toBe("confirm_before_execution");
+  });
+
+  it("authenticate_oauth requires confirm by default", () => {
+    expect(
+      resolveToolMode({
+        tool: "authenticate_oauth",
+        category: "tenant_write",
+        input: { connector_id: "00000000-0000-0000-0000-000000000000" },
+        overrides: {},
+      }),
+    ).toBe("confirm_before_execution");
+  });
+
   it("cleanup write tools require confirm by default", () => {
     const cleanupTools = [
       "delete_workflow",

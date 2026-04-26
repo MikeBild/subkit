@@ -7,6 +7,7 @@
 
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool, ToolResult } from "../index.ts";
+import { commitIntentSchema } from "./commit-intent.ts";
 import { pauseForUserInput } from "./common.ts";
 
 const inputSchema = z
@@ -25,13 +26,20 @@ const inputSchema = z
     destructive: z.boolean().optional(),
     /** Default choice if the user just presses Enter. */
     default: z.enum(["approve", "reject"]).optional(),
+    /**
+     * Optional commit intent. When set and the operator approves, the
+     * harness applies the intended write atomically — the LLM does
+     * NOT need to call save_connector_draft / commit_draft / delete_*
+     * afterwards. See `./commit-intent.ts` for the schema.
+     */
+    commit_intent: commitIntentSchema.optional(),
   })
   .openapi("AskUserConfirmInput");
 
 export const askUserConfirmTool: ConversationTool = {
   name: "ask_user_confirm",
   description:
-    "Ask the user to approve or reject a specific action. The client renders a styled confirm prompt with an optional feedback reason; the resolved boolean resumes the loop.",
+    'Ask the user to approve or reject a specific action. The client renders a styled confirm prompt with an optional feedback reason; the resolved boolean resumes the loop. If you pass `commit_intent`, the harness applies the intended write atomically when the operator approves — you DO NOT need to call the underlying tool afterwards (the next turn will already see a synthetic tool result with source="harness_auto_persist").',
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
@@ -47,7 +55,16 @@ export const askUserConfirmTool: ConversationTool = {
     // dangerous (delete_*, revoke_*, irreversible writes). That carve-
     // out plus DANGEROUS_TOOLS in tool-policies.ts is the safety net.
     // "ask" and "plan" modes fall through to the normal pause path.
-    if (ctx.permission_mode === "auto" && args.destructive !== true) {
+    //
+    // Note: when `commit_intent` is set, we still pause even in `auto`
+    // mode — the harness needs the explicit submit signal so the
+    // auto-persist dispatcher fires deterministically. The auto-mode
+    // shortcut is only valid for confirmations the LLM owns end-to-end.
+    if (
+      ctx.permission_mode === "auto" &&
+      args.destructive !== true &&
+      args.commit_intent === undefined
+    ) {
       return {
         ok: true,
         data: {

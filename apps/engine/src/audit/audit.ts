@@ -6,6 +6,7 @@ import { writeAudit } from "../db/audit.ts";
 import type { Db } from "../db/client.ts";
 import { getContext } from "../logging/context.ts";
 import { logger } from "../logging/logger.ts";
+import { scrubSecrets } from "../logging/scrub-secrets.ts";
 import type { AuditEntry } from "./types.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -33,6 +34,21 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
   }
   const traceId = entry.trace_id ?? ctx.trace_id ?? "";
 
+  // Audit rows are append-only and immutable. A leaked secret in
+  // `metadata` / `before` / `after` / `reason` survives forever, so
+  // every payload field that can carry user-provided data is scrubbed
+  // BEFORE the row is built. The scrubbed copy is what flows to both
+  // the structured logger (mirror) and the `audit_log` insert.
+  const scrubbedReason =
+    typeof entry.reason === "string"
+      ? (scrubSecrets(entry.reason) as string)
+      : (entry.reason ?? null);
+  const scrubbedBefore =
+    entry.before !== undefined && entry.before !== null ? scrubSecrets(entry.before) : null;
+  const scrubbedAfter =
+    entry.after !== undefined && entry.after !== null ? scrubSecrets(entry.after) : null;
+  const scrubbedMetadata = scrubSecrets(entry.metadata ?? {}) as Record<string, unknown>;
+
   return {
     id: entry.id ?? crypto.randomUUID(),
     ts: entry.ts ?? new Date(),
@@ -46,10 +62,10 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
     trace_id: traceId,
     ip: entry.ip ?? null,
     user_agent: entry.user_agent ?? null,
-    before: entry.before ?? null,
-    after: entry.after ?? null,
-    reason: entry.reason ?? null,
-    metadata: entry.metadata ?? {},
+    before: scrubbedBefore as AuditEntry["before"],
+    after: scrubbedAfter as AuditEntry["after"],
+    reason: scrubbedReason,
+    metadata: scrubbedMetadata,
   };
 }
 

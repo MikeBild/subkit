@@ -35,9 +35,10 @@ import {
 import { checkAndDecrement, checkBudget, recordUsage } from "../budgets.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../errors.ts";
 import { getMockProvider, type MockResult } from "../mock-provider.ts";
+import { classifyProviderError, isFallbackEligible } from "../provider-errors.ts";
 import { contextCapFor } from "../tokens.ts";
 import type { LlmFlow, LlmProviderKind, ModelRoute, UserTurn } from "../types.ts";
-import { AiSdkModel, classifyProviderError, isFallbackEligible } from "./ai-sdk-model.ts";
+import { AiSdkModel } from "./ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "./base-types.ts";
 import { toSystemMessages } from "./cache-blocks.ts";
 import { type AssembledContext, assembleContext } from "./context-assembler.ts";
@@ -262,11 +263,13 @@ function mapProviderError(err: unknown): LlmProviderError {
   const mappedKind =
     kind === "rate_limit"
       ? "rate_limit"
-      : kind === "overloaded"
-        ? "overloaded"
-        : kind === "context_length_exceeded"
-          ? "context_length_exceeded"
-          : "other";
+      : kind === "quota_exhausted"
+        ? "quota_exhausted"
+        : kind === "overloaded"
+          ? "overloaded"
+          : kind === "context_length_exceeded"
+            ? "context_length_exceeded"
+            : "other";
   return new LlmProviderError(mappedKind, msg);
 }
 

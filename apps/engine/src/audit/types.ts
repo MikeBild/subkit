@@ -111,6 +111,7 @@ export const AuditAction = {
   NOTIFICATION_RULE_CREATED: "notification_rule.created",
   NOTIFICATION_RULE_UPDATED: "notification_rule.updated",
   NOTIFICATION_RULE_DELETED: "notification_rule.deleted",
+  NOTIFICATION_RULE_TESTED: "notification_rule.tested",
 
   TUNNEL_REGISTERED: "tunnel.registered",
   TUNNEL_UNREGISTERED: "tunnel.unregistered",
@@ -212,6 +213,21 @@ export const AuditAction = {
   DOCUMENT_ANALYZED: "document.analyzed",
   CONTENT_PART_SENT: "content_part.sent",
   CAPABILITY_FALLBACK: "capability.fallback",
+
+  // Wave 4: hardened audit surface for the conversation pipeline.
+  //
+  // - `connector.draft.credential_rejected` — the LLM tried to splice a
+  //   credential into the connector draft via `update_connector_draft`.
+  //   Wave 2 emitted only a `log.connector.draft.credential_rejected`
+  //   structured log; the audit row makes the rejection visible to
+  //   compliance tooling that scans `audit_log`.
+  // - `tool_policy.confirmation_required` — the per-turn policy
+  //   resolver decided a tool call must pause for human confirmation
+  //   (env=prod, dangerous tool, inline credential present, etc.).
+  //   Operators query this kind to audit policy decisions across
+  //   tenants without scraping debug logs.
+  CONNECTOR_DRAFT_CREDENTIAL_REJECTED: "connector.draft.credential_rejected",
+  TOOL_POLICY_CONFIRMATION_REQUIRED: "tool_policy.confirmation_required",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

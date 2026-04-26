@@ -12,6 +12,10 @@ Execution in sk is deterministic. A Workflow is a DAG of Steps; the execution en
 
 There is a single runtime entry point for manual execution: `POST /v1/executions`. Persisted workflows, inline draft definitions, and single-step previews all flow through this same route and the same execution engine. Inline runs complete synchronously by default. Queued background execution is explicit and reserved for persisted workflows, scheduler fires, webhook fan-out, and other detached cases.
 
+All execution surfaces normalize workflow input through the same boundary before dispatch. Conversation `run_workflow`, MCP callable entries, REST workflow-run routes, webhook-bound executions, queue resumes, and scheduler-triggered runs all end up at the same execution contract with the same effective input payload. Surface adapters may differ in how they collect input, but they do not get to define different runtime semantics.
+
+Provider failures on the authoring side do not leak through as generic internal errors anymore. Usage-limit and rate-limit failures are surfaced as typed provider-limited responses, context-window failures are surfaced as context-too-large responses, and temporary provider outages are surfaced as typed provider-unavailable responses. The execution engine remains deterministic; these envelopes only describe authoring-time model failures.
+
 This is a deliberate architectural decision, not a limitation. AI is for authoring — exploring, proposing, and revising. Once a Workflow is approved and committed, the enterprise needs to know it will run the same way every time. Reproducibility and auditability require determinism. The moment execution involves inference, the audit trail becomes "the AI decided" rather than "the workflow ran as specified."
 
 An Execution is an immutable record. It captures the specific Workflow version that ran, who or what triggered it, the inputs and outputs of every Step, timing at every boundary, and the final status. It cannot be modified after it completes. If something goes wrong, the complete record of what happened is preserved exactly as it occurred.
@@ -124,13 +128,63 @@ The `RunResult` also rolls the per-step connector info up into `connector_resolu
 
 ---
 
+## Determinism, Timeouts and Limits
+
+Numeric budgets — step timeouts, recursion limits, payload thresholds,
+LLM tool-result truncation, repair attempts — live in
+[`apps/engine/src/execution/timeouts.ts`](../apps/engine/src/execution/timeouts.ts)
+so operators have one place to look and reviewers have one place to
+gate. The current values:
+
+| Constant | Default | What bites first |
+|---|---|---|
+| `WORKFLOW_TIMEOUT_DEFAULT_MS` | 6 h | Workflow status flips to `timed_out`; in-flight steps abort. |
+| `STEP_TIMEOUT_DEFAULT_MS` | 1 h | Per-step safety net when the step does not declare its own. |
+| `TRANSFORM_TIMEOUT_DEFAULT_MS` | 10 min | QuickJS wall-clock and abort signal. |
+| `MAX_CALL_DEPTH` | 5 | `call` step refuses to recurse further. |
+| `MAX_CALL_RETRIES` | 5 | Transient `request` retries. pg-boss handles backoff. |
+| `MAX_PAGINATION_REQUESTS` | 1 000 | Safeguard against missing termination conditions. |
+| `MAX_REPAIR_ATTEMPTS` | 2 | Self-healing LLM revision budget per drift signal. |
+| `STEP_RESULT_DB_BYTES` | 10 KB | Payload spillover threshold (see below). |
+| `STEP_RESULT_PREVIEW_BYTES` | 512 | Inline operator-facing preview when spilled. |
+| `LLM_TOOL_RESULT_SUCCESS_BYTES` | 80 KB | Tool-result truncation budget for successful results. |
+| `LLM_TOOL_RESULT_ERROR_BYTES` | 50 KB | Same for error results. |
+| `SANDBOX_MEMORY_LIMIT_BYTES` | 128 MB | QuickJS heap cap. |
+| `SANDBOX_WALL_MS_DEFAULT` | 30 s | Default sandbox wall-clock. |
+
+These constants are not env-overridable except where explicitly noted.
+The intent is that an operator should be able to read this table once
+and know what the engine will and will not do.
+
+### Result Persistence
+
+Step results are written inline when serialized payload size is
+≤ `STEP_RESULT_DB_BYTES`. Larger payloads are spilled to either S3
+(when `S3_OFFLOAD_BUCKET` and credentials are set) or the
+`execution_fixtures` table, and the original row records a
+`storage_uri` of the form `s3://...` or `fixture://<uuid>`. A 512-byte
+text preview always lands inline so an operator can see at a glance
+what the payload looked like without resolving it.
+
+The `GET /v1/executions/:id` route hydrates from the storage URI when
+present; consumers never read the URI directly.
+
+### Self-Healing Mode
+
+`RunOptions.self_healing.enabled` lets a caller opt out of the
+post-execution drift-detection hook. Default behaviour preserves the
+existing path (the tenant policy decides whether to record the
+outcome). The eval runner uses the toggle to compare a fixture's
+`one_shot` outcome against its `self_healing` outcome — a regression
+in either is a gate failure.
+
 ## Observability
 
 The execution layer is designed to be fully transparent to operators.
 
-Each Execution emits structured events at every Step boundary. Operators can tail execution logs in real time from the CLI or via SSE streams. Log entries are structured — machine-readable and queryable — not free-form text.
+Each Execution emits structured events at every Step boundary. Operators can tail execution logs in real time from the CLI or via SSE streams. Log entries are structured — machine-readable and queryable — not free-form text. Every record carries the same identity envelope (`tenant_id`, `trace_id`, `request_source`, `actor_id`) so an operator can correlate a slow request, an audit row, and a failing step by a single id — see [`apps/engine/src/observability/service-metadata.ts`](../apps/engine/src/observability/service-metadata.ts).
 
-Prometheus metrics cover the dimensions operators need to monitor platform health: execution duration, Step latency, error rates, retry counts, and queue depth, all scoped per tenant. These metrics are the basis for dashboards, alerts, and capacity planning. Connection pools export their own counters (`pg_pool_*`, `mssql_pool_*`, `redis_clients_open`) so operators can spot saturation before it shows up as step failures.
+Prometheus metrics cover the dimensions operators need to monitor platform health: execution duration, Step latency, error rates, retry counts, and queue depth, all scoped per tenant. These metrics are the basis for dashboards, alerts, and capacity planning. Connection pools export their own counters (`pg_pool_*`, `mssql_pool_*`, `redis_clients_open`) so operators can spot saturation before it shows up as step failures. The LLM context-assembly path additionally emits `llm_context_assembled_total{flow,request_source}`, `llm_context_dropped_sections_total{flow,section}`, and a histogram `llm_context_total_tokens` so trimmer pressure surfaces alongside model cost.
 
 The Audit Log records every execution trigger, every Step completion, every error, and every approval decision — with full context for forensic investigation. The audit trail is immutable: it cannot be modified or deleted, and it persists independently of execution records.
 

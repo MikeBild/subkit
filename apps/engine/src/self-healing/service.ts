@@ -34,6 +34,7 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
+import { MAX_REPAIR_ATTEMPTS } from "../execution/timeouts.ts";
 import { LlmQuotaExhausted } from "../llm/errors.ts";
 import {
   type PatchProposal,
@@ -51,15 +52,6 @@ import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from ".
 import { runFixtureDryRun } from "./fixture-runner.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import type { DriftSignal, DryRunStep, WorkflowRepairJob } from "./types.ts";
-
-/**
- * Max LLM repair attempts per drift signal. The first attempt gets a clean
- * prior_failures block; every subsequent attempt folds in the previous
- * rejected proposal so the model can revise instead of re-emitting the same
- * shape. 2 is enough to catch the common "LLM proposed unsafe patch first"
- * case without burning budget on pathological drift.
- */
-export const REPAIR_MAX_ATTEMPTS = 2;
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -280,7 +272,7 @@ export async function runSelfHealingLoop(
   });
 
   // 4–6. Bounded repair loop. We let the LLM revise up to
-  // REPAIR_MAX_ATTEMPTS times when the classifier marks the proposal
+  // MAX_REPAIR_ATTEMPTS times when the classifier marks the proposal
   // unsafe OR the fixture dry-run rejects it. Rejection context is
   // folded into `prior_failures` so each attempt starts with the
   // structured reasons the previous attempt was rejected.
@@ -300,7 +292,7 @@ export async function runSelfHealingLoop(
   let dryRunOk = false;
   let dryRunError: string | undefined;
 
-  for (let attempt = 1; attempt <= REPAIR_MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= MAX_REPAIR_ATTEMPTS; attempt++) {
     let repair: Awaited<ReturnType<typeof runRepairFlow>>;
     try {
       repair = await runRepairFlow(

@@ -31,7 +31,13 @@ import type { TurnEvent } from "../types.ts";
 import { filterByAuthoringPalette } from "./authoring-palette.ts";
 import { compileDescription } from "./describe.ts";
 import { filterBySkillGate } from "./gated.ts";
-import { type ConversationTool, listTools, type ToolContext, type ToolResult } from "./index.ts";
+import {
+  type ConversationTool,
+  listTools,
+  type ToolContext,
+  type ToolResult,
+  type ToolResultPause,
+} from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
 
 export interface TurnSignals {
@@ -136,7 +142,7 @@ function summarizeToolData(data: unknown): Record<string, number | string | bool
 interface WrappedToolOutput {
   ok: boolean;
   data: unknown;
-  pause?: ToolResult["pause"];
+  pause?: ToolResultPause;
   committed_workflow_id?: string;
 }
 
@@ -280,6 +286,7 @@ function wrapOne(
         // `tool_log` TurnEvent the client can render live.
         const perCallCtx: ToolContext = {
           ...ctx,
+          tool_call_id: toolCallId,
           onLog: (level, message) => {
             events.push({
               type: "tool_log",
@@ -519,8 +526,25 @@ function wrapOne(
         // the model so a 200-row list doesn't blow subsequent context
         // budgets. `raw_ref` carries a handle the model can fetch via
         // `get_raw_result` when it actually needs the rest.
-        await updateToolCallOutput(db, toolCallId, result.data);
-        const truncated = truncateForLlm(result.data);
+        //
+        // For structured `ok: false` results that carry `error_code` +
+        // `message` instead of `data`, build a normalised output object
+        // so the model always sees a consistent envelope.
+        const resultPayload: unknown = result.ok
+          ? result.data
+          : result.data !== undefined
+            ? result.data
+            : {
+                ok: false,
+                ...(result.error_code !== undefined ? { error_code: result.error_code } : {}),
+                ...(result.message !== undefined ? { message: result.message } : {}),
+                ...(result.details !== undefined ? { details: result.details } : {}),
+                ...(result.next_best_actions !== undefined
+                  ? { next_best_actions: result.next_best_actions }
+                  : {}),
+              };
+        await updateToolCallOutput(db, toolCallId, resultPayload);
+        const truncated = truncateForLlm(resultPayload);
         events.push({
           type: "tool_result",
           call_id: toolCallId,
@@ -532,10 +556,10 @@ function wrapOne(
                 _raw_ref: truncated.raw_ref,
                 _note: truncated.note,
               }
-            : result.data,
+            : resultPayload,
         });
 
-        const dataSummary = summarizeToolData(result.data);
+        const dataSummary = summarizeToolData(resultPayload);
         const logCtx = {
           conversation_id: ctx.conversation_id,
           tool: inner.name,
@@ -561,14 +585,21 @@ function wrapOne(
         if (result.ok) {
           signals.toolLastErrorHash.delete(inner.name);
         } else {
-          const errObj = (result.data ?? {}) as Record<string, unknown>;
-          const reason = typeof errObj.reason === "string" ? errObj.reason : "";
+          const errObj = (resultPayload ?? {}) as Record<string, unknown>;
+          const reason =
+            typeof errObj.reason === "string"
+              ? errObj.reason
+              : typeof errObj.error_code === "string"
+                ? errObj.error_code
+                : "";
           const err =
             typeof errObj.error === "string"
               ? errObj.error
-              : Array.isArray(errObj.errors)
-                ? JSON.stringify(errObj.errors).slice(0, 120)
-                : "";
+              : typeof errObj.message === "string"
+                ? errObj.message
+                : Array.isArray(errObj.errors)
+                  ? JSON.stringify(errObj.errors).slice(0, 120)
+                  : "";
           const shape = `${reason}|${err.slice(0, 120)}`;
           signals.toolLastErrorHash.set(inner.name, shape);
         }
@@ -579,18 +610,18 @@ function wrapOne(
         // for faithful replay.
         await appendMessage(db, ctx.tenant_id, ctx.conversation_id, "tool", {
           tool: inner.name,
-          output: result.data,
+          output: resultPayload,
         });
 
         if (
           !result.ok &&
-          typeof result.data === "object" &&
-          result.data !== null &&
-          Array.isArray((result.data as { errors?: unknown }).errors)
+          typeof resultPayload === "object" &&
+          resultPayload !== null &&
+          Array.isArray((resultPayload as { errors?: unknown }).errors)
         ) {
           events.push({
             type: "validation_error",
-            errors: (result.data as { errors: Array<{ path: string; message: string }> }).errors,
+            errors: (resultPayload as { errors: Array<{ path: string; message: string }> }).errors,
           });
         }
 
@@ -648,7 +679,7 @@ function wrapOne(
 
         return {
           ok: result.ok,
-          data: result.data,
+          data: resultPayload,
           ...(result.pause ? { pause: result.pause } : {}),
           ...(result.committed_workflow_id
             ? { committed_workflow_id: result.committed_workflow_id }
@@ -682,9 +713,11 @@ export function wrapTools(
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   // Apply skill-gate: tools whose `requires_skill` isn't in loadedSkills
   // are hidden from the model until the matching `load_skill` call.
+  const loadedSkillSet = new Set(loadedSkills);
   const visibleTools = filterByAuthoringPalette(
     filterBySkillGate(listTools(), loadedSkills),
     ctx.getDraft(),
+    loadedSkillSet,
   );
   for (const t of visibleTools) {
     out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode, loadedSkills);

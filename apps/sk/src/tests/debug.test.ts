@@ -77,6 +77,22 @@ describe("debug logger", () => {
     expect(obj.request_body.nested.password).toBe("***redacted***");
   });
 
+  it("scrubs secret-shape tokens (DigitalOcean PAT, JWT) in free-form payloads", async () => {
+    process.env.SK_DEBUG_FILE = logPath;
+    const dbg = await import("../debug.ts");
+    const pat = "dop_v1_a9053683abcdefabcdefabcdefabcdefabcdef";
+    const jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefSignature";
+    dbg.debugLog("dialog.turn_event", {
+      event: { kind: "tool-output", text: `paste ${pat} into the form` },
+      cookie_header: `Cookie: session=${jwt}`,
+    });
+    const raw = fs.readFileSync(logPath, "utf8");
+    expect(raw).not.toContain(pat);
+    expect(raw).not.toContain(jwt);
+    expect(raw).toContain("***REDACTED:pat***");
+    expect(raw).toContain("***REDACTED:jwt***");
+  });
+
   it("rotates the log file when it exceeds 2 MB", async () => {
     process.env.SK_DEBUG_FILE = logPath;
     const dbg = await import("../debug.ts");

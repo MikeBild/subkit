@@ -16,9 +16,7 @@ import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import type { Db } from "../db/client.ts";
 import { executionFixtures } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
-
-export const OFFLOAD_THRESHOLD_BYTES = 10 * 1024;
-export const PREVIEW_BYTES = 512;
+import { STEP_RESULT_DB_BYTES, STEP_RESULT_PREVIEW_BYTES } from "./timeouts.ts";
 
 export interface OffloadResult {
   // 'fixture://<uuid>' or 's3://<bucket>/<key>' or null if inline.
@@ -29,7 +27,7 @@ export interface OffloadResult {
 
 export function previewOf(value: unknown): string {
   const s = JSON.stringify(value) ?? "null";
-  return s.length > PREVIEW_BYTES ? s.slice(0, PREVIEW_BYTES) : s;
+  return s.length > STEP_RESULT_PREVIEW_BYTES ? s.slice(0, STEP_RESULT_PREVIEW_BYTES) : s;
 }
 
 export interface MaybeOffloadParams {
@@ -98,7 +96,7 @@ async function writeToS3(
 export async function maybeOffload(db: Db, params: MaybeOffloadParams): Promise<OffloadResult> {
   const serialized = JSON.stringify(params.result) ?? "null";
   const size = Buffer.byteLength(serialized, "utf8");
-  if (size <= OFFLOAD_THRESHOLD_BYTES) {
+  if (size <= STEP_RESULT_DB_BYTES) {
     return { storage_uri: null, preview: null, size_bytes: size };
   }
 
@@ -111,7 +109,7 @@ export async function maybeOffload(db: Db, params: MaybeOffloadParams): Promise<
       const uri = await writeToS3(s3cfg, params, serialized);
       return {
         storage_uri: uri,
-        preview: serialized.slice(0, PREVIEW_BYTES),
+        preview: serialized.slice(0, STEP_RESULT_PREVIEW_BYTES),
         size_bytes: size,
       };
     } catch (err) {
@@ -139,7 +137,7 @@ export async function maybeOffload(db: Db, params: MaybeOffloadParams): Promise<
   if (!row) throw new Error("offload insert returned no row");
   return {
     storage_uri: `fixture://${row.id}`,
-    preview: serialized.slice(0, PREVIEW_BYTES),
+    preview: serialized.slice(0, STEP_RESULT_PREVIEW_BYTES),
     size_bytes: size,
   };
 }

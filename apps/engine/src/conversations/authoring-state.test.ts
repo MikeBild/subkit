@@ -1,8 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
+  bindPersistedWorkflow,
   createEmptyDraftDocument,
   normalizeDraftDocument,
+  startNewWorkflowDraft,
+  withConnectorDraft,
+  withConnectorInspection,
+  withConnectorProbe,
+  withConnectorValidation,
+  withLatestPreview,
   withWorkflowDraft,
+  withWorkflowInspection,
+  withWorkflowValidation,
 } from "./authoring-state.ts";
 
 describe("authoring-state", () => {
@@ -35,5 +44,128 @@ describe("authoring-state", () => {
     });
     expect(draft.workflow.slug).toBe("daily-sync");
     expect("slug" in (draft as unknown as Record<string, unknown>)).toBe(false);
+  });
+
+  test("bindPersistedWorkflow keeps a saved workflow active without local steps", () => {
+    const draft = bindPersistedWorkflow(createEmptyDraftDocument(), {
+      kind: "workflow",
+      id: "wf_123",
+      slug: "berlin-weather",
+      name: "Berlin Weather",
+      version_id: "wfv_123",
+      version: 1,
+      environment: null,
+      saved_at: "2026-04-25T08:00:00.000Z",
+    });
+    expect(draft.summary?.active_target).toEqual({
+      kind: "workflow",
+      id: "wf_123",
+      slug: "berlin-weather",
+      name: "Berlin Weather",
+      environment: null,
+      lifecycle_state: "persisted",
+    });
+    expect(draft.summary?.missing_fields).not.toContain("workflow.steps");
+  });
+
+  test("startNewWorkflowDraft clears the saved workflow binding and resets workflow state", () => {
+    const persisted = bindPersistedWorkflow(
+      withWorkflowDraft(createEmptyDraftDocument(), {
+        name: "berlin-weather",
+        slug: "berlin-weather",
+        steps: [{ id: "fetch", kind: "wait", duration_ms: 1 }],
+      }),
+      {
+        kind: "workflow",
+        id: "wf_123",
+        slug: "berlin-weather",
+        name: "Berlin Weather",
+        version_id: "wfv_123",
+        version: 4,
+        environment: null,
+        saved_at: "2026-04-25T08:00:00.000Z",
+      },
+    );
+
+    const draft = startNewWorkflowDraft(persisted);
+    expect(draft.workflow).toEqual({
+      name: "new-workflow",
+      steps: [],
+    });
+    expect(draft.summary?.active_target).toEqual({
+      kind: "none",
+      id: null,
+      slug: null,
+      name: null,
+      environment: null,
+      lifecycle_state: "none",
+    });
+    expect(draft.summary?.persisted_resources).toEqual([]);
+    expect(draft.summary?.missing_fields).toContain("workflow.steps");
+  });
+
+  test("ready connector drafts surface save_connector_draft as the next suggested tool", () => {
+    let draft = withConnectorDraft(createEmptyDraftDocument(), {
+      name: "Acme API",
+      slug: "acme-api",
+      driver: "http",
+      environment: "dev",
+      base_url: "https://api.example.com",
+      auth_type: "none",
+      config: {},
+      docs: [],
+      latest_probe: null,
+      saved_connector_id: null,
+      validation: { ok: true, missing_fields: [], errors: [] },
+    });
+    draft = withConnectorInspection(draft);
+    const connector = draft.connector;
+    if (!connector) throw new Error("connector draft missing");
+    draft = withConnectorValidation(
+      draft,
+      {
+        ...connector,
+        validation: { ok: true, missing_fields: [], errors: [] },
+      },
+      true,
+      "Connector draft valid.",
+    );
+    draft = withConnectorProbe(
+      draft,
+      {
+        ...connector,
+        latest_probe: {
+          ok: true,
+          method: "GET",
+          path: "/health",
+          environment: "dev",
+          status_code: 200,
+          summary: "Probe ok.",
+        },
+      },
+      true,
+      "Probe ok.",
+    );
+
+    expect(draft.summary?.next_action).toContain("Save the connector");
+    expect(draft.summary?.next_suggested_tool).toBe("save_connector_draft");
+  });
+
+  test("ready workflow drafts surface commit_draft as the next suggested tool", () => {
+    let draft = withWorkflowDraft(createEmptyDraftDocument(), {
+      name: "daily-sync",
+      slug: "daily-sync",
+      steps: [{ id: "shape", kind: "transform", expression: "$input", language: "jsonata" }],
+    });
+    draft = withWorkflowInspection(draft);
+    draft = withWorkflowValidation(draft, true, "Workflow draft valid.");
+    draft = withLatestPreview(draft, {
+      ok: true,
+      step_id: "shape",
+      summary: "Preview ok.",
+    });
+
+    expect(draft.summary?.next_action).toContain("Commit the workflow");
+    expect(draft.summary?.next_suggested_tool).toBe("commit_draft");
   });
 });

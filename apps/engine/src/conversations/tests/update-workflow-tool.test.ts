@@ -14,9 +14,11 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { auditLog, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { auditLog, conversations, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { updateWorkflowTool } from "../tools/generated/writes/update-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
+import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 let ctx: ConversationTestCtx;
@@ -62,6 +64,14 @@ async function seedLiveWorkflow(slug: string, name: string): Promise<{ id: strin
 }
 
 function toolCtx(): ToolContext {
+  return buildToolCtx();
+}
+
+function buildToolCtx(params?: {
+  conversation_id?: string;
+  draft?: DraftDocument;
+  setDraft?: (next: DraftDocument) => Promise<void>;
+}): ToolContext {
   // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext
   const engineClientStub: any = {
     context: {
@@ -116,14 +126,14 @@ function toolCtx(): ToolContext {
   return {
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
-    conversation_id: "00000000-0000-0000-0000-000000000000",
+    conversation_id: params?.conversation_id ?? "00000000-0000-0000-0000-000000000000",
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
     permission_mode: "auto",
     engineClient: engineClientStub,
-    getDraft: () => ({ workflow: { name: "", steps: [] } }) as never,
-    setDraft: async () => {},
+    getDraft: () => params?.draft ?? createEmptyDraftDocument(),
+    setDraft: params?.setDraft ?? (async () => {}),
   };
 }
 
@@ -234,6 +244,52 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     expect(meta.kind).toBe("metadata");
     expect(meta.from?.lifecycle).toBe("active");
     expect(meta.to?.lifecycle).toBe("archived");
+  });
+
+  test("binds the renamed workflow back into the conversation state", async () => {
+    const wf = await seedLiveWorkflow("bind-after-rename", "Bind After Rename");
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        draft: createEmptyDraftDocument() as unknown as Record<string, unknown>,
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+
+    let nextDraft: unknown = null;
+    const result = await updateWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft: createEmptyDraftDocument(),
+        setDraft: async (draft) => {
+          nextDraft = draft;
+        },
+      }),
+      {
+        id: wf.id,
+        slug: "berlin-weather",
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    const conversationRows = await ctx.testDb.db
+      .select({ target_workflow_id: conversations.target_workflow_id })
+      .from(conversations)
+      .where(eq(conversations.id, conversation.id))
+      .limit(1);
+    expect(conversationRows[0]?.target_workflow_id).toBe(wf.id);
+    if (!nextDraft) throw new Error("next draft was not captured");
+    const capturedDraft = nextDraft as DraftDocument;
+    expect(capturedDraft.summary?.active_target).toEqual({
+      kind: "workflow",
+      id: wf.id,
+      slug: "berlin-weather",
+      name: "Bind After Rename",
+      environment: null,
+      lifecycle_state: "persisted",
+    });
   });
 
   test("rejects an empty patch (no slug, name, or lifecycle)", async () => {

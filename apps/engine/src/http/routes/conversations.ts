@@ -20,7 +20,7 @@ import { monthlyUsage } from "../../llm/budgets.ts";
 import { resolveModelRoute } from "../../llm/core/invoke.ts";
 import { resolveEngineUrl } from "../../llm/runtime-context.ts";
 import { logger } from "../../logging/logger.ts";
-import { NotFoundError } from "../errors.ts";
+import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -267,6 +267,7 @@ const appendRoute = createRoute({
   },
   responses: {
     200: { description: "OK", content: { "application/json": { schema: RunOutcomeSchema } } },
+    409: { description: "Pending input", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -284,6 +285,7 @@ const ContextSnapshotSchema = z
         readiness: z.string(),
         next_action: z.string().nullable(),
         next_required_action: z.string().nullable(),
+        next_suggested_tool: z.string().nullable(),
         missing_fields: z.array(z.string()),
         progress_label: z.string().nullable(),
         lifecycle_state: z.string(),
@@ -612,18 +614,29 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const outcome = await svc.appendUserMessage(
-      {
-        tenant_id: principal.tenant_id,
-        conversation_id: id,
-        actor_id: principal.id,
-        message: body.message,
-        ...(body.memory !== undefined ? { memory: body.memory } : {}),
-        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-        runtime_context: buildRuntimeContextFromRequest(c, principal),
-      },
-      db,
-    );
+    let outcome: svc.ConversationTurnOutcome;
+    try {
+      outcome = await svc.appendUserMessage(
+        {
+          tenant_id: principal.tenant_id,
+          conversation_id: id,
+          actor_id: principal.id,
+          message: body.message,
+          ...(body.memory !== undefined ? { memory: body.memory } : {}),
+          ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+          runtime_context: buildRuntimeContextFromRequest(c, principal),
+        },
+        db,
+      );
+    } catch (error) {
+      if (error instanceof svc.PendingElicitationBlockedError) {
+        throw new HttpError(409, "pending_elicitation_blocked", error.message, {
+          conversation_status: "awaiting_input",
+          pending_elicitation: error.pending_elicitation,
+        });
+      }
+      throw error;
+    }
     return c.json(serializeConversation(outcome), 200);
   });
 

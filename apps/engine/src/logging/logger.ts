@@ -314,6 +314,10 @@ export const log = {
       completed: (ctx: Ctx) =>
         logger.debug({ module: "connector", action: "probe.completed", ...ctx }),
     },
+    draft: {
+      credential_rejected: (ctx: Ctx) =>
+        logger.warn({ module: "connector", action: "draft.credential_rejected", ...ctx }),
+    },
   },
   scheduler: {
     fired: (ctx: Ctx) => logger.info({ module: "scheduler", action: "job.fired", ...ctx }),

@@ -87,7 +87,11 @@ export const loadSkillTool: ConversationTool = {
       .where(eq(conversations.id, ctx.conversation_id))
       .limit(1);
     const current = (rows[0]?.loaded_skills ?? []) as string[];
-    const key = match.id;
+    // Persist the SLUG (not the UUID id) so downstream palette gating
+    // and prompt-context lookup can both rely on the stable cross-tenant
+    // identifier. The context-assembler already accepts id-or-slug for
+    // backwards compat with any rows that still hold UUIDs.
+    const key = match.slug ?? match.id;
     if (current.includes(key)) {
       return {
         ok: true,

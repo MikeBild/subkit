@@ -141,6 +141,12 @@ export function createMockLanguageModel(modelId = "mock-converse"): MockLanguage
         if (primed === "rate_limit") {
           throw new LlmProviderError("rate_limit", `mock: rate limit on ${modelId}`);
         }
+        if (primed === "quota_exhausted") {
+          throw new LlmProviderError(
+            "quota_exhausted",
+            `mock: you have reached your specified api usage limits on ${modelId}. You will regain access on 2026-05-01 at 00:00 UTC.`,
+          );
+        }
         if (primed === "overloaded") {
           throw new LlmProviderError("overloaded", `mock: overloaded on ${modelId}`);
         }

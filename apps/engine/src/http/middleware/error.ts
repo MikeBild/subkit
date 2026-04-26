@@ -4,7 +4,8 @@
 
 import { APICallError, NoObjectGeneratedError } from "ai";
 import type { Context, MiddlewareHandler } from "hono";
-import { LlmQuotaExhausted } from "../../llm/errors.ts";
+import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
+import { toLlmProviderError } from "../../llm/provider-errors.ts";
 import { logger } from "../../logging/logger.ts";
 import type { CapturedError } from "../../observability/error-ring.ts";
 import { errorRing } from "../../observability/error-ring.ts";
@@ -56,15 +57,36 @@ function captureToRing(
  * in one place so routes don't each reinvent it.
  *
  *  - `LlmQuotaExhausted`            → 429 llm_quota_exhausted
+ *  - `LlmProviderError`             → typed 4xx/5xx provider envelope
  *  - `NoObjectGeneratedError` (ai)  → 502 llm_no_object (provider output
  *                                     didn't validate against the schema)
- *  - `APICallError` (ai, status>=500) → 502 llm_provider_error
+ *  - `APICallError` (ai)            → typed provider envelope
  *  - Abort/timeout                  → 504 llm_timeout
  */
 function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
   if (err instanceof LlmQuotaExhausted) {
     captureToRing(c, err, 429, "llm_quota_exhausted", "llm_quota");
     return envelope(c, 429, "llm_quota_exhausted", err.message, err.details);
+  }
+  const providerErr =
+    err instanceof LlmProviderError
+      ? err
+      : APICallError.isInstance(err)
+        ? toLlmProviderError(err)
+        : null;
+  if (providerErr) {
+    if (providerErr.kind === "context_length_exceeded") {
+      captureToRing(c, providerErr, 413, "llm_context_too_large", "llm_provider");
+      return envelope(c, 413, "llm_context_too_large", providerErr.message, providerErr.details);
+    }
+    if (providerErr.kind === "rate_limit" || providerErr.kind === "quota_exhausted") {
+      captureToRing(c, providerErr, 429, "llm_provider_limited", "llm_provider");
+      return envelope(c, 429, "llm_provider_limited", providerErr.message, providerErr.details);
+    }
+    if (providerErr.kind === "overloaded" || providerErr.kind === "other") {
+      captureToRing(c, providerErr, 503, "llm_provider_unavailable", "llm_provider");
+      return envelope(c, 503, "llm_provider_unavailable", providerErr.message, providerErr.details);
+    }
   }
   if (NoObjectGeneratedError.isInstance(err)) {
     captureToRing(c, err, 502, "llm_no_object", "llm_no_object");
@@ -73,15 +95,6 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
       finishReason: err.finishReason,
       usage: err.usage,
     });
-  }
-  if (APICallError.isInstance(err)) {
-    const status = err.statusCode ?? 0;
-    if (status >= 500 || err.isRetryable === false) {
-      captureToRing(c, err, 502, "llm_provider_error", "llm_provider");
-      return envelope(c, 502, "llm_provider_error", err.message, {
-        upstream_status: status,
-      });
-    }
   }
   // AbortError from AbortSignal.timeout fires as a DOMException with
   // name "TimeoutError" on Node and "AbortError" on some runtimes.
@@ -92,20 +105,21 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
   return null;
 }
 
+export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Response | null {
+  if (err instanceof HttpError) {
+    if (err.status >= 500) captureToRing(c, err, err.status, err.code, "http");
+    return envelope(c, err.status, err.code, err.message, err.details);
+  }
+  return mapLlmError(c, err);
+}
+
 export function errorMiddleware(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     try {
       await next();
     } catch (err) {
-      if (err instanceof HttpError) {
-        // Capture 5xx HttpErrors too — they're typed but still
-        // operator-relevant. 4xx are client mistakes; skip them so the
-        // ring stays signal-rich.
-        if (err.status >= 500) captureToRing(c, err, err.status, err.code, "http");
-        return envelope(c, err.status, err.code, err.message, err.details);
-      }
-      const llmResponse = mapLlmError(c, err);
-      if (llmResponse) return llmResponse;
+      const knownResponse = mapKnownErrorResponse(c, err);
+      if (knownResponse) return knownResponse;
       const message = err instanceof Error ? err.message : String(err);
       logger.error({ msg: "unhandled error", error: message, trace_id: c.get("trace_id") });
       captureToRing(c, err, 500, "internal_error", "unhandled");

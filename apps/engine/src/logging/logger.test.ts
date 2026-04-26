@@ -29,4 +29,20 @@ describe("redact", () => {
     const out = redact(input) as Record<string, unknown>;
     expect(out.hint).not.toContain("wf_live_abc123def456");
   });
+
+  test("scrubs DigitalOcean PATs (dop_v1_…) in free-form strings", () => {
+    const token = "dop_v1_a9053683abcdefabcdefabcdefabcdefabcdef";
+    const input = { note: `paste ${token} into the form` };
+    const out = redact(input) as Record<string, unknown>;
+    expect(out.note).not.toContain(token);
+    expect(out.note).toContain("***REDACTED:pat***");
+  });
+
+  test("scrubs JWTs in free-form strings", () => {
+    const jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefSignature";
+    const input = { note: `cookie=${jwt}` };
+    const out = redact(input) as Record<string, unknown>;
+    expect(out.note).not.toContain(jwt);
+    expect(out.note).toContain("***REDACTED:jwt***");
+  });
 });

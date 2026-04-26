@@ -8,7 +8,7 @@ These documents are the single source of truth for the sk enterprise AI platform
 
 ## Concept Docs
 
-Eight architecture-level documents, read in order or by concern.
+Nine architecture-level documents, read in order or by concern.
 
 | Doc | What it covers |
 |---|---|
@@ -20,6 +20,7 @@ Eight architecture-level documents, read in order or by concern.
 | [06-execution.md](06-execution.md) | The deterministic execution engine: Workflow DAGs, Step types, Execution records, Schedules, and how self-healing keeps workflows healthy. |
 | [07-security-governance.md](07-security-governance.md) | Multi-tenancy, authentication (OIDC, API keys, portal tokens), RBAC, Before-Request Hooks, the credential vault, and the immutable audit trail. |
 | [08-operations.md](08-operations.md) | Deployment topology, configuration, metrics, structured logging, execution inspection, resource limits, self-healing, and backup. |
+| [09-notifications.md](09-notifications.md) | Notification rules, channels (Slack / Teams / Google Chat / webhook), rate limits, circuit breaker, RBAC, and the synthetic-test endpoint. |
 
 ---
 

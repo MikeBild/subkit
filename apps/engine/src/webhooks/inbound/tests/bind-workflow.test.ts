@@ -5,7 +5,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { executions } from "../../../db/schema/index.ts";
+import {
+  executionSteps,
+  executions,
+  workflows,
+  workflowVersions,
+} from "../../../db/schema/index.ts";
+import { registerExecutionRunHandler } from "../../../queue/handlers/execution-run.ts";
+import { waitFor } from "../../../test-helpers/determinism/wait.ts";
 import { handleInbound } from "../service.ts";
 import { createInboundCtx, type InboundTestCtx } from "./setup.ts";
 
@@ -15,6 +22,31 @@ let ctx: InboundTestCtx;
 
 beforeAll(async () => {
   ctx = await createInboundCtx("bind");
+  const workflowRows = await ctx.db
+    .select({ current_version_id: workflows.current_version_id })
+    .from(workflows)
+    .where(eq(workflows.id, ctx.workflowId))
+    .limit(1);
+  const currentVersionId = workflowRows[0]?.current_version_id;
+  if (!currentVersionId) throw new Error("expected current workflow version");
+  await ctx.db
+    .update(workflowVersions)
+    .set({
+      dag: {
+        name: "wf-bind",
+        version: 1,
+        steps: [
+          {
+            id: "extract",
+            kind: "transform",
+            expression: "$input.body.invoice_id",
+            language: "jsonata",
+          },
+        ],
+      },
+    })
+    .where(eq(workflowVersions.id, currentVersionId));
+  await registerExecutionRunHandler({ boss: ctx.boss, db: ctx.db });
   await ctx.createBinding({
     slug: "bind-trigger",
     verifier: "standard",
@@ -57,5 +89,29 @@ describe("inbound: workflow binding", () => {
     const row = rows[0];
     expect(row?.request_source).toBe("webhook");
     expect(row?.workflow_id).toBe(ctx.workflowId);
+
+    const finished = await waitFor(
+      async () => {
+        const latest = await ctx.db
+          .select({ status: executions.status })
+          .from(executions)
+          .where(eq(executions.id, outcome.execution_id))
+          .limit(1);
+        const status = latest[0]?.status;
+        return status === "succeeded" ? status : undefined;
+      },
+      { label: "webhook execution completion", tries: 120, sleepMs: 50 },
+    );
+    expect(finished).toBe("succeeded");
+
+    const stepRows = await ctx.db
+      .select({ output_preview: executionSteps.output_preview })
+      .from(executionSteps)
+      .where(eq(executionSteps.execution_id, outcome.execution_id));
+    expect(stepRows).toEqual([
+      expect.objectContaining({
+        output_preview: "inv_123",
+      }),
+    ]);
   });
 });

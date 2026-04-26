@@ -159,6 +159,31 @@ export function findErrorHint(message: string): string | null {
   return null;
 }
 
+function readRetryAt(details: unknown): string | null {
+  if (!details || typeof details !== "object") return null;
+  const retryAt = (details as { retry_at?: unknown }).retry_at;
+  return typeof retryAt === "string" && retryAt.length > 0 ? retryAt : null;
+}
+
+function providerHint(err: SkEngineError): string | null {
+  if (err.code === "pending_elicitation_blocked") {
+    return "resolve the open dialog first — the conversation is paused and waiting for your input";
+  }
+  if (err.code === "llm_provider_limited") {
+    const retryAt = readRetryAt(err.details);
+    return retryAt
+      ? `provider usage limit reached — retry after ${retryAt}`
+      : "provider usage limit reached — retry later or switch the engine's configured model route";
+  }
+  if (err.code === "llm_provider_unavailable") {
+    return "provider temporarily unavailable — retry later or switch the engine's configured model route";
+  }
+  if (err.code === "llm_context_too_large") {
+    return "prompt context exceeded the model window — compact the conversation or split the request";
+  }
+  return null;
+}
+
 /**
  * Format any thrown error from the prompt / slash pipeline into a
  * banner the user can act on. Backend `SkEngineError`s become a single
@@ -171,7 +196,7 @@ export function humanizeRequestError(err: unknown): string {
   if (err instanceof SkEngineError) {
     const head = `sk: HTTP ${err.status} ${err.code} — ${err.message || "(no detail)"}`;
     const trace = err.trace_id ? ` · trace_id ${err.trace_id}` : "";
-    const matched = findErrorHint(`${err.code} ${err.message}`);
+    const matched = providerHint(err) ?? findErrorHint(`${err.code} ${err.message}`);
     const hint = matched
       ? `\n  ↳ ${matched}`
       : isDebugVerbose()

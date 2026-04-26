@@ -425,6 +425,7 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     // ConfirmPrompt renders `confirm: <kind>` as the title line; the
     // full diff body follows. Lines up with the ElicitRouter dispatch
     // in @chat-ui.
+    expect(frame).toContain("Waiting for input: confirmation required");
     expect(frame).toContain("confirm: commit_draft");
     expect(frame).toContain("commit 2-step workflow");
     expect(frame).toContain("invoice-digest");
@@ -473,6 +474,7 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     expect((decisions[0]?.output as { confirmed: boolean }).confirmed).toBe(true);
     const frame = instance.lastFrame() ?? "";
     expect(frame).not.toContain("confirm: commit_draft");
+    expect(frame).not.toContain("Waiting for input: confirmation required");
     expect(frame).toContain("Workflow saved");
     expect(frame).toContain("invoice-digest");
     instance.unmount();
@@ -970,6 +972,7 @@ describe("ink-app: journey 12 — modal panes", () => {
               readiness: "ready_to_probe",
               next_action: "Preview before commit.",
               next_required_action: "Preview before commit.",
+              next_suggested_tool: "dry_run_workflow",
               missing_fields: [],
               progress_label: "1 workflow step",
               lifecycle_state: "draft_only",

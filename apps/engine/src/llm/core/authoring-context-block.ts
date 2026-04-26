@@ -204,6 +204,9 @@ function renderSummaryEnvelope(summary: AuthoringSummary): string[] {
   if (summary.next_required_action && summary.next_required_action !== summary.next_action) {
     lines.push(`- Next required action: ${summary.next_required_action}`);
   }
+  if (summary.next_suggested_tool) {
+    lines.push(`- Next suggested tool: ${summary.next_suggested_tool}`);
+  }
   if (summary.missing_fields.length > 0) {
     lines.push(`- Missing: ${summary.missing_fields.join(", ")}`);
   }

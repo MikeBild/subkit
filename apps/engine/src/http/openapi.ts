@@ -5,6 +5,7 @@ import { VERSION } from "@cli-core/version.ts";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
+import type { ServiceMetadata } from "../observability/service-metadata.ts";
 
 export type AppEnv = {
   Variables: {
@@ -13,6 +14,14 @@ export type AppEnv = {
     request_started_at: number;
     db: Db;
     principal?: ResolvedPrincipal;
+    /**
+     * Bound by the auth middleware once a principal resolves. Downstream
+     * handlers use `c.get("service_metadata")` to thread a single
+     * identity envelope through audit, telemetry, execution, and
+     * notification dispatch instead of pulling fields ad-hoc.
+     * Absent for unauthenticated routes (health probe, login).
+     */
+    service_metadata?: ServiceMetadata;
   };
 };
 

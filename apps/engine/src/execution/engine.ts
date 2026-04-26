@@ -21,6 +21,7 @@ import type { Db } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
+import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import {
   type BranchStep,
   type CallStep,
@@ -41,17 +42,17 @@ import {
   markExecutionRunning,
 } from "./state.ts";
 import { runStep } from "./step-runner.ts";
-import {
-  type AppliedAuthMethod,
-  type ConnectorResolutionSummary,
-  type ExecutionMode,
-  type ExecutionStatus,
-  MAX_CALL_DEPTH,
-  type RequestSource,
-  type RunOptions,
-  type RunResult,
-  type StepResult,
-  type StepRunContext,
+import { MAX_CALL_DEPTH, WORKFLOW_TIMEOUT_DEFAULT_MS } from "./timeouts.ts";
+import type {
+  AppliedAuthMethod,
+  ConnectorResolutionSummary,
+  ExecutionMode,
+  ExecutionStatus,
+  RequestSource,
+  RunOptions,
+  RunResult,
+  StepResult,
+  StepRunContext,
 } from "./types.ts";
 
 function validateAgainstJsonSchema(
@@ -71,8 +72,6 @@ function validateAgainstJsonSchema(
   }
   return { valid: errors.length === 0, errors };
 }
-
-const WORKFLOW_TIMEOUT_DEFAULT_MS = 6 * 60 * 60_000;
 
 /** Envelope shape exposed on `scope[step.id]`. Transform expressions
  *  read `$scope.<id>.data` for the payload and `$scope.<id>.status_code`
@@ -130,6 +129,7 @@ export interface RunExecutionParams {
 export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   const { db, tenant_id } = p;
   const opts: RunOptions = p.options ?? {};
+  const normalizedInput = normalizeWorkflowRunInput(p.input);
   const depth = opts.depth ?? 0;
   if (depth > MAX_CALL_DEPTH) {
     throw new Error(`call chain depth exceeded ${MAX_CALL_DEPTH}`);
@@ -199,10 +199,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
 
   await markExecutionRunning(db, tenant_id, execution_id);
 
-  const scope: Record<string, unknown> = { $input: p.input };
+  const scope: Record<string, unknown> = { $input: normalizedInput };
 
-  if (def.input_schema && p.input !== undefined && p.input !== null) {
-    const check = validateAgainstJsonSchema(p.input, def.input_schema, "$input");
+  if (def.input_schema && normalizedInput !== undefined && normalizedInput !== null) {
+    const check = validateAgainstJsonSchema(normalizedInput, def.input_schema, "$input");
     if (!check.valid) {
       throw Object.assign(new Error(check.errors.join("; ")), {
         code: "input_schema_violation",
@@ -274,7 +274,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     };
     let outcome: import("./step-runner.ts").RunStepOutcome;
     try {
-      outcome = await runStep(ctx, scope, p.input, async ({ ctx: cctx, step: cstep }) =>
+      outcome = await runStep(ctx, scope, normalizedInput, async ({ ctx: cctx, step: cstep }) =>
         runCallStep(db, cctx, cstep as CallStep),
       );
     } catch (err) {
@@ -371,7 +371,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             const bodyOutcome = await runStep(
               bodyCtx,
               childScope,
-              p.input,
+              normalizedInput,
               async ({ ctx: cctx, step: cstep }) => runCallStep(db, cctx, cstep as CallStep),
             );
             childScope[bodyStep.id] = envelopeFor(bodyOutcome);
@@ -434,7 +434,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             const branchOutcome = await runStep(
               branchCtx,
               branchScope,
-              p.input,
+              normalizedInput,
               async ({ ctx: cctx, step: cstep }) => runCallStep(db, cctx, cstep as CallStep),
             );
             branchScope[branchStepId] = envelopeFor(branchOutcome);
@@ -524,14 +524,21 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   // execution updates any open outcome window for this workflow so
   // operators can see whether a recently-applied patch actually
   // prevented recurrence. Best-effort — tracker swallows errors.
-  await recordExecutionOutcome(
-    {
-      tenant_id,
-      workflow_id,
-      outcome: finalStatus === "succeeded" ? "success" : "failure",
-    },
-    db,
-  );
+  //
+  // The optional `self_healing.enabled = false` opt-out lets the eval
+  // runner compare `mode=one_shot` against `mode=self_healing` against
+  // the same fixture. When unset the engine falls back to the tenant
+  // policy resolved by the self-healing service itself.
+  if (opts.self_healing?.enabled !== false) {
+    await recordExecutionOutcome(
+      {
+        tenant_id,
+        workflow_id,
+        outcome: finalStatus === "succeeded" ? "success" : "failure",
+      },
+      db,
+    );
+  }
   await auditAwait(
     {
       tenant_id,
