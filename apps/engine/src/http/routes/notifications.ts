@@ -24,6 +24,8 @@ import {
   notificationDeliveries,
   notificationRules,
 } from "../../db/schema/notifications.ts";
+import { dispatchEvent } from "../../notifications/service.ts";
+import { serviceMetadataFromHono } from "../../observability/service-metadata.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -329,6 +331,55 @@ const listDeliveriesRoute = createRoute({
   },
 });
 
+const TestRuleBody = z
+  .object({
+    event_type: z.string().min(1).default("notifications.test"),
+    workflow_id: z.string().nullable().optional(),
+    workflow_slug: z.string().nullable().optional(),
+    severity: SeverityEnum.optional(),
+    payload: z.record(z.string(), z.unknown()).nullable().optional(),
+  })
+  .openapi("TestNotificationRuleBody");
+
+const TestRuleResponse = z
+  .object({
+    matched: z.number().int().nonnegative(),
+    delivered: z.number().int().nonnegative(),
+    outcomes: z.array(
+      z.object({
+        rule_id: z.string(),
+        channel_id: z.string(),
+        status: z.string(),
+        reason: z.string().nullable().optional(),
+        error: z.string().nullable().optional(),
+      }),
+    ),
+  })
+  .openapi("TestNotificationRuleResponse");
+
+const testRuleRoute = createRoute({
+  method: "post",
+  path: "/v1/notifications/rules/:id/test",
+  tags: ["notifications"],
+  summary:
+    "Synthesise a notification event and dispatch it through the rule pipeline. Returns the rule-matching, rate-limit, and channel-dispatch outcome so operators can verify a rule end-to-end without waiting for a real workflow run.",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: IdParam,
+    body: { content: { "application/json": { schema: TestRuleBody } } },
+  },
+  responses: {
+    200: {
+      description: "Dispatch outcome",
+      content: { "application/json": { schema: TestRuleResponse } },
+    },
+    404: {
+      description: "Rule not found",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
 export function registerNotificationRoutes(app: OpenAPIHono<AppEnv>): void {
   // RBAC gating: channels + rules + deliveries all live under
   // notification:read / notification:write.
@@ -355,6 +406,20 @@ export function registerNotificationRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/notifications/rules/:id", async (c, next) => {
     const id = c.req.param("id");
     if (c.req.method === "PATCH" || c.req.method === "DELETE") {
+      return requirePermission("notification:write", () => ({ type: "notification_rule", id }))(
+        c,
+        next,
+      );
+    }
+    return next();
+  });
+  app.use("/v1/notifications/rules/:id/test", async (c, next) => {
+    const id = c.req.param("id");
+    if (c.req.method === "POST") {
+      // `:write` rather than `:read` because dispatching a synthetic
+      // event causes a real outbound delivery (and a real audit row);
+      // operators that only have read access should not be able to
+      // trigger external messages.
       return requirePermission("notification:write", () => ({ type: "notification_rule", id }))(
         c,
         next,
@@ -627,6 +692,77 @@ export function registerNotificationRoutes(app: OpenAPIHono<AppEnv>): void {
           reason: r.reason,
           error: r.error,
           created_at: r.created_at.toISOString(),
+        })),
+      },
+      200,
+    );
+  });
+
+  app.openapi(testRuleRoute, async (c) => {
+    const meta = serviceMetadataFromHono(c);
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const [rule] = await db
+      .select()
+      .from(notificationRules)
+      .where(and(eq(notificationRules.tenant_id, meta.tenant_id), eq(notificationRules.id, id)))
+      .limit(1);
+    if (!rule) throw new NotFoundError("notification_rule");
+    const event = {
+      tenant_id: meta.tenant_id,
+      type: body.event_type,
+      workflow_id: body.workflow_id ?? null,
+      workflow_slug: body.workflow_slug ?? null,
+      severity: (body.severity ?? rule.severity) as
+        | "debug"
+        | "info"
+        | "warn"
+        | "error"
+        | "critical",
+      payload: body.payload ?? null,
+    };
+    const result = await dispatchEvent(
+      {
+        db,
+        // No adapter resolver: tests must not send real platform
+        // messages by default. Operators that wire a registry-backed
+        // resolver into the router can pass it through here in a
+        // follow-up. The dispatch still records the would-be delivery
+        // row and audit entry, so the test result is meaningful.
+      },
+      event,
+    );
+    await auditAwait(
+      {
+        tenant_id: meta.tenant_id,
+        actor_type: principal.kind,
+        actor_id: meta.actor_id ?? principal.id,
+        action: AuditAction.NOTIFICATION_RULE_TESTED,
+        resource_type: "notification_rule",
+        resource_id: rule.id,
+        result: "success",
+        metadata: {
+          matched: result.matched,
+          delivered: result.delivered,
+          event_type: event.type,
+          trace_id: meta.trace_id,
+          request_source: meta.request_source,
+        },
+      },
+      db,
+    );
+    return c.json(
+      {
+        matched: result.matched,
+        delivered: result.delivered,
+        outcomes: result.outcomes.map((o) => ({
+          rule_id: o.rule_id,
+          channel_id: o.channel_id,
+          status: o.status,
+          reason: o.reason ?? null,
+          error: o.error ?? null,
         })),
       },
       200,

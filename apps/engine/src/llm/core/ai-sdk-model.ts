@@ -13,6 +13,7 @@
 
 import { generateText, jsonSchema, NoSuchToolError, type Tool, tool } from "ai";
 import { logger } from "../../logging/logger.ts";
+import { classifyProviderError, isFallbackEligible } from "../provider-errors.ts";
 import type {
   SubkitLlm,
   SubkitLlmMessage,
@@ -22,7 +23,6 @@ import type {
   SubkitLlmTelemetryMetadata,
   SubkitLlmToolDefinition,
   SubkitLlmToolWithContext,
-  SubkitProviderErrorKind,
 } from "./base-types.ts";
 import {
   initializeModel,
@@ -31,51 +31,6 @@ import {
   type ResolvedModel,
 } from "./model-init.ts";
 import { normalizeSchema, unwrapResult } from "./schema-normalizer.ts";
-
-const PROVIDER_ERROR_PATTERNS = [
-  "overloaded",
-  "service unavailable",
-  "timeout",
-  "econnrefused",
-  "etimedout",
-  "rate limit",
-  "temporarily unavailable",
-  "internal server error",
-  "503",
-  "500",
-  "502",
-  "504",
-  "529",
-  "context_length",
-  "too many tokens",
-];
-
-export function classifyProviderError(err: unknown): SubkitProviderErrorKind {
-  const anyErr = err as { statusCode?: number; status?: number; message?: string } | undefined;
-  const statusCode = anyErr?.statusCode ?? anyErr?.status;
-  const msg = (anyErr?.message ?? String(err ?? "")).toLowerCase();
-
-  if (msg.includes("context_length") || msg.includes("too many tokens")) {
-    return "context_length_exceeded";
-  }
-  if (statusCode === 429 || msg.includes("rate limit")) return "rate_limit";
-  if (msg.includes("overloaded") || statusCode === 529) return "overloaded";
-  if (msg.includes("timeout") || msg.includes("etimedout")) return "timeout";
-  if (statusCode && (statusCode >= 500 || statusCode === 503)) return "network_5xx";
-  if (PROVIDER_ERROR_PATTERNS.some((p) => msg.includes(p))) return "network_5xx";
-  return "other";
-}
-
-export function isFallbackEligible(err: unknown): boolean {
-  const kind = classifyProviderError(err);
-  return (
-    kind === "rate_limit" ||
-    kind === "overloaded" ||
-    kind === "context_length_exceeded" ||
-    kind === "network_5xx" ||
-    kind === "timeout"
-  );
-}
 
 const DEFAULT_MODEL_ID = "claude-sonnet-4-5";
 
@@ -250,10 +205,14 @@ export class AiSdkModel implements SubkitLlm {
       return await this.gt(callOpts);
     } catch (err) {
       if (!this.fallbackResolved || !isFallbackEligible(err)) throw err;
+      const kind = classifyProviderError(err);
+      if (kind === "quota_exhausted" && this.fallbackResolved.provider === primary.provider) {
+        throw err;
+      }
       logger.warn({
         module: "llm",
         action: "fallback.triggered",
-        kind: classifyProviderError(err),
+        kind,
         primary: primary.modelId,
         fallback: this.fallbackResolved.modelId,
       });

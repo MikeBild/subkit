@@ -1,20 +1,28 @@
-// commit_draft — persist the draft as a real workflow.
+// commit_draft — diagnostic re-issue path for workflow drafts.
 //
-// Requires a prior `ask_user_confirm { kind: "commit_draft" }`
-// elicitation resolved with `{ confirmed: true }` plus fresh inspect /
-// validate / preview checkpoints. On success the workflow id is
-// recorded on the conversation and the loop ends.
+// The normal commit path is the harness auto-persist on
+// `ask_user_confirm` of the dry-run preview (driven by
+// `elicitations.ts` → `commitWorkflowAtomic` with
+// `reason: "auto_persist_on_confirmation"`). This tool stays
+// available for legitimate re-issue cases:
+//   - re-committing after an aborted save,
+//   - reverting + re-applying an edit,
+//   - force-committing after a failed dry-run by passing
+//     `force_commit: true`.
+//
+// The audit row emitted from this tool path carries
+// `reason: "manual_re_issue"`. That distinction lets operators tell
+// the two writes apart in the audit trail.
 
+import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { conversationElicitations, conversations, workflows } from "../../db/schema/index.ts";
-import { createWorkflow, updateWorkflow } from "../../workflows/service.ts";
-import { getWorkflowDraft, withWorkflowPersisted } from "../authoring-state.ts";
-import {
-  buildGateError,
-  buildPersistencePayload,
-  missingFreshCheckpoints,
-} from "./authoring-contract.ts";
+import { eq } from "drizzle-orm";
+import { recordWorkflowCommitted, recordWorkflowUpdated } from "../../audit/recorders/index.ts";
+import { conversations } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
+import { getWorkflow } from "../../workflows/service.ts";
+import { getWorkflowDraft } from "../authoring-state.ts";
+import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -25,365 +33,217 @@ const inputSchema = z
       .describe(
         "Explicitly pin the save target to an existing workflow id. Only set this AFTER the user has confirmed in chat that they want to overwrite that workflow — e.g. after a slug_conflict_with_live_workflow error where the user said 'yes, update it'. Otherwise leave unset.",
       ),
+    force_commit: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Persist the draft even if the most recent dry-run preview was unsuccessful. Surfaces a warning in the response and tags the audit row with `kind: preview_override`. Use only when the operator explicitly confirms.",
+      ),
   })
   .openapi("CommitDraftToolInput");
 
 export const commitDraftTool: ConversationTool = {
   name: "commit_draft",
   description:
-    "Persist the draft as a workflow — creates a new one or updates the one the conversation targets.",
+    "Diagnostic re-issue for workflow drafts. The normal commit path is the harness auto-persist on `ask_user_confirm` of the dry-run preview. Only call this tool to re-commit (revert + re-apply, force-commit after a failed dry_run, etc.).",
   use_case:
-    "Final step when the operator has confirmed via ask_user_confirm(kind='commit_draft') that the draft is ready to save. If the conversation has a target_workflow_id (set at conversation creation or by a prior commit_draft), commits a new workflow_version on that row. Otherwise creates a new workflow row. A slug collision with a different live workflow returns slug_conflict_with_live_workflow — never silently overwrites.",
+    "Diagnostic re-issue when the operator wants to re-apply a draft (revert + re-commit, slug-conflict adoption, force-commit after a failed dry-run). The harness auto-persist on `ask_user_confirm` is the normal commit path; this tool is for the recovery cases the harness can't cover.",
   important_notes: [
     "Refuses with `no_prior_approval` if no matching ask_user_confirm has been answered in this conversation.",
-    "Refuses with `workflow_not_ready` until inspect_workflow_draft, validate_draft, and dry_run_step/dry_run_workflow are all fresh and successful.",
+    "Refuses with `workflow_not_ready` until inspect_workflow_draft and validate_draft are fresh; with `preview_failed` if the most recent dry-run failed (pass `force_commit: true` after the operator confirms to override).",
+    "Idempotent: if the conversation's target workflow already has a version with the same content hash, returns `already_persisted: true` without writing.",
     "Update-in-place semantics: if the conversation has a target_workflow_id, appends a new workflow_version to that row. The slug of the existing workflow stays authoritative; changing draft.slug does not rename the workflow.",
-    "No silent slug-adoption: a draft.slug colliding with a different live workflow produces slug_conflict_with_live_workflow. To overwrite the existing workflow, ask the user explicitly, then call commit_draft again with target_workflow_id=<conflict.workflow_id>. Otherwise rename the draft slug.",
-    "Writes exactly one audit row per save (workflow_created or workflow_updated) and one outbox event.",
+    "No silent slug-adoption: a draft.slug colliding with a different live workflow produces slug_conflict_with_live_workflow. To overwrite, ask the user explicitly, then call commit_draft again with target_workflow_id=<conflict.workflow_id>.",
+    "Writes one `manual_re_issue`-tagged audit row in addition to the workflow_created/updated row emitted by the workflow service.",
   ],
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    // permission_mode=auto skips the structured ask_user_confirm step
-    // entirely. The user has opted into "do it without asking" at
-    // session level (visible in the bottom-bar `auto · chat …` chip);
-    // forcing a second elicitation for every commit_draft was the
-    // double-approve UX bug seen in session 84d06d81 ("approve" /
-    // "approve" / approval-card-still-up). The mode itself IS the
-    // governance signal — explicit per-action confirmation only fires
-    // in `ask` / `plan`.
-    if (ctx.permission_mode !== "auto") {
-      const rows = await ctx.db
-        .select()
-        .from(conversationElicitations)
-        .where(
-          and(
-            eq(conversationElicitations.tenant_id, ctx.tenant_id),
-            eq(conversationElicitations.conversation_id, ctx.conversation_id),
-            eq(conversationElicitations.tool_name, "ask_user_confirm"),
-            sql`(${conversationElicitations.input} ->> 'kind') = 'commit_draft'`,
-          ),
-        )
-        .orderBy(desc(conversationElicitations.created_at))
-        .limit(1);
-      const head = rows[0];
-      const confirmed =
-        head?.status === "resolved" &&
-        typeof head.output === "object" &&
-        head.output !== null &&
-        (head.output as { confirmed?: unknown }).confirmed === true;
-      if (!head || !confirmed) {
-        return {
-          ok: false,
-          data: buildGateError(ctx.getDraft(), {
-            error_code: "no_prior_approval",
-            message:
-              "commit_draft requires a resolved ask_user_confirm { kind: commit_draft, confirmed: true }",
-            recommended_mode: "workflow",
-            next_best_actions: ["ask_user_confirm"],
-            extra: {
-              latest_elicitation_status: head?.status ?? null,
-            },
-          }),
-        };
-      }
-    }
+    logger.info({
+      module: "conversation_tool",
+      action: "commit_draft.started",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      target_workflow_id: args.target_workflow_id ?? null,
+      force_commit: args.force_commit === true,
+    });
 
+    // Idempotency: if the conversation's target workflow already
+    // exists and its current_version dag hashes to the same value as
+    // the draft, the auto-persist (or a prior re-issue) already
+    // applied this exact write. Return `already_persisted: true`
+    // instead of appending a redundant workflow_version. We do this
+    // BEFORE the prior-approval gate so a redundant approve+commit
+    // cycle can also short-circuit cleanly.
     const fullDraft = ctx.getDraft();
-    const latestPreview = fullDraft.latest_preview;
-    const staleCheckpoints = missingFreshCheckpoints(fullDraft, [
-      "workflow_inspected",
-      "workflow_validated",
-      "workflow_previewed",
-    ]);
-    const blocking_reasons = [
-      ...(fullDraft.summary?.blocked_by ?? []).filter(
-        (reason) =>
-          reason === "inspect_workflow_draft" ||
-          reason === "validate_draft" ||
-          reason === "dry_run_workflow" ||
-          reason.startsWith("missing:"),
-      ),
-    ];
-    if (
-      staleCheckpoints.length > 0 ||
-      !latestPreview ||
-      latestPreview.ok !== true ||
-      blocking_reasons.length > 0
-    ) {
-      return {
-        ok: false,
-        data: buildGateError(fullDraft, {
-          error_code: "workflow_not_ready",
-          message: "workflow commit is blocked until inspection, validation, and preview are fresh",
-          stale_checkpoints: staleCheckpoints,
-          blocking_reasons,
-          recommended_mode: "workflow",
-          extra: {
-            latest_preview: latestPreview ?? null,
-          },
-        }),
-      };
-    }
-
-    const draft = getWorkflowDraft(fullDraft);
-    // Drop any non-workflow helper fields (e.g. edges hint) before
-    // the validator sees them.
-    const def = {
-      name: draft.name,
-      ...(draft.slug ? { slug: draft.slug } : {}),
-      ...(draft.description ? { description: draft.description } : {}),
-      ...(draft.input_schema ? { input_schema: draft.input_schema } : {}),
-      ...(draft.output_schema ? { output_schema: draft.output_schema } : {}),
-      steps: draft.steps,
+    const draftSnapshot = getWorkflowDraft(fullDraft);
+    const draftDef = {
+      name: draftSnapshot.name,
+      ...(draftSnapshot.slug ? { slug: draftSnapshot.slug } : {}),
+      ...(draftSnapshot.description ? { description: draftSnapshot.description } : {}),
+      ...(draftSnapshot.input_schema ? { input_schema: draftSnapshot.input_schema } : {}),
+      ...(draftSnapshot.output_schema ? { output_schema: draftSnapshot.output_schema } : {}),
+      steps: draftSnapshot.steps,
     };
-
-    // Decide save mode: update an existing workflow or create a new
-    // row. Three branches:
-    //
-    //   1. Caller passed `target_workflow_id` arg → user confirmed in
-    //      chat ("yes overwrite that workflow") after seeing a
-    //      slug_conflict_with_live_workflow error. Validate the id is
-    //      live and tenant-owned, then update.
-    //
-    //   2. Conversation has target_workflow_id set (either at creation
-    //      time or by a prior commit_draft) → update that row. The slug
-    //      on the existing row stays authoritative; a new slug in the
-    //      draft is ignored so the identifier stays stable across edits.
-    //
-    //   3. No target set, draft.slug matches a LIVE workflow of a
-    //      DIFFERENT id → return slug_conflict_with_live_workflow.
-    //      We do NOT silently adopt: that produced the
-    //      "Berlin Weather wrote into list-private-github-repos" bug.
-    //
-    //   4. Draft.slug matches a SOFT-DELETED workflow → unique index is
-    //      partial (WHERE deleted_at IS NULL), so the slug is already
-    //      free and we fall through to createWorkflow. No resurrect —
-    //      the tombstone stays in history.
-    //
-    //   5. Otherwise → create. On success we persist the new id as
-    //      target_workflow_id so the next commit_draft updates in-place.
-    const convRows = await ctx.db
-      .select({ target_workflow_id: conversations.target_workflow_id })
-      .from(conversations)
-      .where(eq(conversations.id, ctx.conversation_id))
-      .limit(1);
-    let targetWorkflowId = convRows[0]?.target_workflow_id ?? null;
-
-    if (args.target_workflow_id) {
-      // Explicit override from the LLM after user-confirmed adoption.
-      // Verify the workflow exists, is live, and belongs to this tenant
-      // before pinning. A bad id here would otherwise UPDATE a
-      // potentially-foreign workflow.
-      const explicitRows = await ctx.db
-        .select({ id: workflows.id })
-        .from(workflows)
-        .where(
-          and(
-            eq(workflows.tenant_id, ctx.tenant_id),
-            eq(workflows.id, args.target_workflow_id),
-            isNull(workflows.deleted_at),
-          ),
-        )
+    const draftHash = hashWorkflowDef(draftDef);
+    let targetForIdempotency: string | null = args.target_workflow_id ?? null;
+    if (!targetForIdempotency) {
+      const convRows = await ctx.db
+        .select({ target_workflow_id: conversations.target_workflow_id })
+        .from(conversations)
+        .where(eq(conversations.id, ctx.conversation_id))
         .limit(1);
-      if (!explicitRows[0]) {
-        return {
-          ok: false,
-          data: buildGateError(fullDraft, {
-            error_code: "target_workflow_not_found",
-            message: `target_workflow_id "${args.target_workflow_id}" does not exist or is not live in this tenant`,
-            recommended_mode: "workflow",
-            extra: { attempted_target_workflow_id: args.target_workflow_id },
-          }),
-        };
-      }
-      targetWorkflowId = explicitRows[0].id;
-      await ctx.db
-        .update(conversations)
-        .set({ target_workflow_id: targetWorkflowId, updated_at: new Date() })
-        .where(eq(conversations.id, ctx.conversation_id));
+      targetForIdempotency = convRows[0]?.target_workflow_id ?? null;
     }
-
-    if (!targetWorkflowId && def.slug) {
-      const slugRows = await ctx.db
-        .select({ id: workflows.id, name: workflows.name, slug: workflows.slug })
-        .from(workflows)
-        .where(
-          and(
-            eq(workflows.tenant_id, ctx.tenant_id),
-            eq(workflows.slug, def.slug),
-            isNull(workflows.deleted_at),
-          ),
-        )
-        .limit(1);
-      const conflict = slugRows[0];
-      if (conflict) {
-        return {
-          ok: false,
-          data: buildGateError(fullDraft, {
-            error_code: "slug_conflict_with_live_workflow",
-            message: `slug "${def.slug}" already belongs to workflow "${conflict.name}" (id=${conflict.id}). Ask the user whether to overwrite that workflow or pick a different slug — never assume.`,
-            recommended_mode: "workflow",
-            extra: {
-              attempted_slug: def.slug,
-              conflict: { workflow_id: conflict.id, slug: conflict.slug, name: conflict.name },
-              recovery: {
-                overwrite:
-                  "After the user confirms in chat, call commit_draft again with target_workflow_id=<conflict.workflow_id>",
-                rename:
-                  "Otherwise rename the draft (update_param / build_workflow with a fresh slug) and re-validate before committing.",
-              },
+    if (targetForIdempotency) {
+      const existing = await getWorkflow(ctx.tenant_id, targetForIdempotency, ctx.db);
+      if (existing && existing.current_version_id) {
+        const existingDef = existing.definition;
+        const existingHash = hashWorkflowDef({
+          name: existingDef.name,
+          ...(existingDef.slug ? { slug: existingDef.slug } : {}),
+          ...(existingDef.description ? { description: existingDef.description } : {}),
+          ...(existingDef.input_schema ? { input_schema: existingDef.input_schema } : {}),
+          ...(existingDef.output_schema ? { output_schema: existingDef.output_schema } : {}),
+          steps: existingDef.steps,
+        });
+        if (existingHash === draftHash) {
+          logger.info({
+            module: "conversation_tool",
+            action: "commit_draft.already_persisted",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            workflow_id: existing.id,
+            version: existing.current_version,
+          });
+          return {
+            ok: true,
+            data: {
+              already_persisted: true,
+              workflow_id: existing.id,
+              workflow_version_id: existing.current_version_id,
+              version: existing.current_version,
+              slug: existing.slug,
+              name: existing.name,
+              next_best_actions: ["inspect_workflow", "list_workflows"],
             },
-          }),
-        };
+            committed_workflow_id: existing.id,
+          };
+        }
       }
     }
 
-    let result: Awaited<ReturnType<typeof createWorkflow>>;
-    try {
-      if (targetWorkflowId) {
-        // Update path: keep the existing row's slug authoritative. A
-        // changed draft.slug would re-trigger the unique-index on
-        // another row if it collided, which is the right behavior.
-        result = await updateWorkflow(
-          { tenant_id: ctx.tenant_id, id: targetWorkflowId, def, actor_id: ctx.actor_id },
-          ctx.db,
-        );
+    const result = await commitWorkflowAtomic({
+      ctx,
+      forceCommit: args.force_commit,
+      reason: "manual_re_issue",
+      ...(args.target_workflow_id ? { target_workflow_id: args.target_workflow_id } : {}),
+    });
+    if (!result.ok) {
+      return result;
+    }
+    // commitWorkflowAtomic emits an audit row only when
+    // emitAutoPersistAudit=true (harness path). The tool path adds its
+    // own `manual_re_issue` row here so operators triaging the audit
+    // log can tell the two paths apart.
+    const data =
+      typeof result.data === "object" && result.data !== null
+        ? (result.data as Record<string, unknown>)
+        : {};
+    const workflow_id =
+      typeof data.workflow_id === "string"
+        ? data.workflow_id
+        : typeof result.committed_workflow_id === "string"
+          ? result.committed_workflow_id
+          : null;
+    const workflow_version_id =
+      typeof data.workflow_version_id === "string" ? data.workflow_version_id : null;
+    const version = typeof data.version === "number" ? data.version : null;
+    const previewOverride =
+      args.force_commit === true &&
+      (!fullDraft.latest_preview || fullDraft.latest_preview.ok !== true);
+    if (workflow_id) {
+      if (previewOverride) {
+        await recordWorkflowCommitted({
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.actor_id,
+          executor: ctx.db,
+          workflow_id,
+          workflow_version_id,
+          version,
+          reason: "force_commit_override",
+          source: "tool_call",
+          tool: "commit_draft",
+          latest_preview_summary: fullDraft.latest_preview?.summary ?? null,
+          latest_preview_warnings: fullDraft.latest_preview?.warnings ?? [],
+        });
       } else {
-        result = await createWorkflow(
-          { tenant_id: ctx.tenant_id, def, actor_id: ctx.actor_id },
-          ctx.db,
-        );
+        await recordWorkflowUpdated({
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.actor_id,
+          executor: ctx.db,
+          workflow_id,
+          slug: typeof data.slug === "string" ? data.slug : "",
+          version,
+          workflow_version_id,
+          reason: "manual_re_issue",
+          source: "tool_call",
+          kind: "commit_via_tool",
+          tool: "commit_draft",
+        });
       }
-    } catch (err) {
-      // Postgres raises 23505 on a unique-constraint violation —
-      // shouldn't happen on the update path (same-row writes), but the
-      // create path can still collide with a concurrent insert. Drizzle
-      // wraps the error and the surface message can be
-      // `Failed query: ...` with no "duplicate" substring, so check
-      // multiple signals.
-      const msg = err instanceof Error ? err.message : String(err);
-      const cause = (err as { cause?: { code?: string; constraint?: string } }).cause;
-      const code = (err as { code?: string }).code ?? cause?.code;
-      const constraint = (err as { constraint?: string }).constraint ?? cause?.constraint ?? "";
-      const looksLikeSlugConflict =
-        code === "23505" ||
-        msg.includes("23505") ||
-        msg.toLowerCase().includes("duplicate key") ||
-        constraint.includes("workflows_tenant_slug") ||
-        constraint.includes("workflows_slug") ||
-        msg.includes('insert into "workflows"');
-      if (looksLikeSlugConflict) {
-        const attempted = def.slug ?? def.name;
-        // Look up the offending workflow so the LLM can choose between
-        // updating it (call commit_draft again — the adopt path will
-        // pick it up) or picking a different slug.
-        const conflictRows = await ctx.db
-          .select({ id: workflows.id, slug: workflows.slug })
-          .from(workflows)
-          .where(
-            and(
-              eq(workflows.tenant_id, ctx.tenant_id),
-              eq(workflows.slug, attempted),
-              isNull(workflows.deleted_at),
-            ),
-          )
-          .limit(1);
-        const existing = conflictRows[0];
-        return {
-          ok: false,
-          data: buildGateError(fullDraft, {
-            error_code: "slug_conflict_with_live_workflow",
-            message: `slug "${attempted}" already exists${existing ? ` (workflow id ${existing.id})` : ""}. Ask the user whether to overwrite or pick a different slug — never assume.`,
-            recommended_mode: "workflow",
-            extra: {
-              errors: [
-                {
-                  path: "slug",
-                  message: existing
-                    ? `slug "${attempted}" belongs to workflow id=${existing.id}. To overwrite it, ask the user, then call commit_draft with target_workflow_id="${existing.id}". Otherwise rename the draft slug.`
-                    : `slug "${attempted}" already exists for this tenant — pick a different slug and call commit_draft again`,
-                },
-              ],
-              attempted_slug: attempted,
-              ...(existing ? { conflict: { workflow_id: existing.id, slug: existing.slug } } : {}),
-              ...(existing
-                ? {
-                    recovery: {
-                      overwrite: `After the user confirms in chat, call commit_draft again with target_workflow_id="${existing.id}"`,
-                      rename:
-                        "Otherwise rename the draft (update_param / build_workflow with a fresh slug) and re-validate before committing.",
-                    },
-                  }
-                : {}),
-            },
-          }),
-        };
-      }
-      return {
-        ok: false,
-        data: buildGateError(fullDraft, {
-          error_code: "commit_failed",
-          message: msg,
-          recommended_mode: "workflow",
-        }),
-      };
     }
-    if ("errors" in result) {
-      return {
-        ok: false,
-        data: buildGateError(fullDraft, {
-          error_code: "invalid_final_draft",
-          message: "workflow draft is still invalid at commit time",
-          stale_checkpoints: ["workflow_validated"],
-          recommended_mode: "workflow",
-          extra: {
-            errors: result.errors,
-            step_count: def.steps.length,
-          },
-        }),
-      };
+    logger.info({
+      module: "conversation_tool",
+      action: "commit_draft.re_issued",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      workflow_id,
+      version,
+      kind: previewOverride ? "preview_override" : "commit_via_tool",
+    });
+    const warnings: string[] = [];
+    if (previewOverride) {
+      const failureCode = fullDraft.latest_preview?.warnings?.[0]?.code ?? "preview_failed";
+      warnings.push(
+        `force_commit: workflow committed with a failed preview (${failureCode}). Audit reason: manual_re_issue, kind: preview_override.`,
+      );
     }
-    const workflow = result.workflow;
-    await ctx.db
-      .update(conversations)
-      .set({
-        target_workflow_id: workflow.id,
-        status: "committed",
-        updated_at: new Date(),
-      })
-      .where(eq(conversations.id, ctx.conversation_id));
-    const nextDraft = withWorkflowPersisted(
-      fullDraft,
-      {
-        kind: "workflow",
-        id: workflow.id,
-        slug: workflow.slug,
-        name: workflow.name,
-        version_id: workflow.current_version_id,
-        version: workflow.current_version,
-        environment: null,
-        saved_at: new Date().toISOString(),
-      },
-      "workflow_persisted",
-    );
-    await ctx.setDraft(nextDraft);
     return {
       ok: true,
       data: {
-        ...buildPersistencePayload(nextDraft, {
-          resource_kind: "workflow",
-          resource_id: workflow.id,
-          version_id: workflow.current_version_id,
-        }),
-        workflow_id: workflow.id,
-        workflow_version_id: workflow.current_version_id,
-        version: workflow.current_version,
-        slug: workflow.slug,
-        name: workflow.name,
+        ...data,
+        re_issued: true,
+        audit_reason: "manual_re_issue",
+        ...(warnings.length > 0 ? { warnings } : {}),
       },
-      committed_workflow_id: workflow.id,
+      ...(typeof result.committed_workflow_id === "string"
+        ? { committed_workflow_id: result.committed_workflow_id }
+        : {}),
     };
   },
 };
+
+/**
+ * Stable hash of a workflow definition. Used by the idempotency check
+ * so a re-issue against an unchanged draft is a no-op.
+ *
+ * Sorted-key JSON so {"a":1,"b":2} and {"b":2,"a":1} hash equal — the
+ * workflow service produces canonical orderings, but a draft authored
+ * field-by-field by the LLM may interleave keys differently.
+ */
+function hashWorkflowDef(def: unknown): string {
+  return createHash("sha256").update(stableStringify(def)).digest("hex");
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  const entries = keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`);
+  return `{${entries.join(",")}}`;
+}

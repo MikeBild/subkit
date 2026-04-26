@@ -86,6 +86,16 @@ Terms are grouped by concern. Read the groups in order for a complete mental mod
 
 **Chat Adapter** — the integration layer for enterprise chat platforms (Slack, Microsoft Teams, Google Chat). Each adapter normalizes platform-specific events — mentions, slash commands, interaction callbacks — into sk's Conversation model, and renders responses back as native platform messages. Approval flows surface as interactive cards with approve and reject buttons. Identity linking connects a chat user's platform identity to their sk Tenant account.
 
+**Notification Rule** — a tenant-scoped row that selects which engine events fan out to which channel. Carries an event-type pattern, an optional workflow pattern, a severity, an optional `request_source_filter`, and the target `(workspace_id, channel_id)` tuple. Backed by the dispatcher in `apps/engine/src/notifications/service.ts` with a leaky-bucket rate limiter and a three-state circuit breaker. See [docs/09-notifications.md](09-notifications.md).
+
+**Notification Delivery** — the per-attempt outcome of dispatching a Notification Rule against an event. Possible statuses: `sent`, `rate_limited`, `breaker_open`, `failed`, `skipped`. Each row is the audit-grade record of what was (or was not) delivered, mirrored in the audit log via `chat.message.sent`, `chat.message.denied`, or `webhook.outbound.failed`.
+
+**Service Metadata** — the identity envelope every engine code path carries: `{ trace_id, tenant_id, actor_id, actor_email, request_source }`. Constructed at every entry point (HTTP middleware, MCP server, scheduler, CLI bin, conversation tool-chain recursion) and threaded through every log line, audit row, and telemetry event. Defined in `apps/engine/src/observability/service-metadata.ts`. The trace_id is what an operator follows across surfaces during incident triage.
+
+**Result Storage URI** — the pointer in `executions.result_storage_uri` (and per-step rows) that resolves a spilled payload back to its full content. Inline payloads up to `STEP_RESULT_DB_BYTES` (10 KB) live in the row; larger payloads spill to S3 (`s3://<bucket>/<key>`) or the `execution_fixtures` table (`fixture://<uuid>`). A 512-byte text preview always lands inline.
+
+**LLM Judge** — an opt-in scoring layer invoked by the eval runner only when (a) `SUBKIT_EVAL_LLM_JUDGE=1` is set AND (b) the deterministic validator returns `pass=false` with `function_passed=true` (structurally fine, semantically dubious). The judge emits a `passes`/`partial`/`failed` verdict that enriches the report; it never overrides the deterministic gate.
+
 ---
 
 ## What to Read Next

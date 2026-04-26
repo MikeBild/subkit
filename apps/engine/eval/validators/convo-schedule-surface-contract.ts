@@ -8,9 +8,9 @@ interface Input {
   list_message: string;
 }
 
-export function validate(fixture: FixtureRecord): ValidationResult {
+export async function validate(fixture: FixtureRecord): Promise<ValidationResult> {
   const input = fixture.input as Input;
-  const prompt = basePromptFor("converse", "sk_interactive");
+  const prompt = await basePromptFor("converse", "sk_interactive");
   const failures: string[] = [];
 
   if (!prompt.includes("tenant.create_schedule")) {

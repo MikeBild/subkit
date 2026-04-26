@@ -9,7 +9,42 @@
 // pure classifier so failures are easy to pinpoint.
 
 import { describe, expect, test } from "bun:test";
-import { detectEnvelopeResolution, detectUserIntent } from "./intent-detector.ts";
+import {
+  detectEnvelopeResolution,
+  detectUserIntent,
+  inferStateDrivenFollowUpTool,
+} from "./intent-detector.ts";
+import type { AuthoringSummary } from "./types.ts";
+
+function summary(overrides: Partial<AuthoringSummary> = {}): AuthoringSummary {
+  return {
+    readiness: "ready_to_save",
+    next_action: "Commit the workflow now that inspection, validation, and preview are fresh.",
+    next_required_action:
+      "Commit the workflow now that inspection, validation, and preview are fresh.",
+    next_suggested_tool: "commit_draft",
+    missing_fields: [],
+    last_action: null,
+    progress_label: "1 workflow step",
+    mode: "workflow",
+    stage: "workflow_previewed",
+    lifecycle_state: "draft_only",
+    active_target: {
+      kind: "workflow",
+      name: "ready-flow",
+      slug: "ready-flow",
+      id: null,
+      environment: null,
+      lifecycle_state: "draft_only",
+    },
+    blocked_by: [],
+    checkpoints: [],
+    persisted_resources: [],
+    latest_execution: null,
+    latest_diagnosis: null,
+    ...overrides,
+  };
+}
 
 describe("detectUserIntent", () => {
   test("recognizes German 'führe ... aus' as run intent", () => {
@@ -55,6 +90,12 @@ describe("detectUserIntent", () => {
   test("recognizes 'speichere den workflow' as commit intent", () => {
     const res = detectUserIntent("speichere den aktualisierten workflow");
     expect(res.forceTool).toBe("commit_draft");
+  });
+
+  test("recognizes explicit new-workflow phrasing", () => {
+    const res = detectUserIntent("create a workflow that gives me my private repos");
+    expect(res.startNewWorkflow).toBe(true);
+    expect(res.reason).toBe("explicit_new_workflow_intent");
   });
 
   test("returns no_strong_intent for ambiguous narrative", () => {
@@ -104,5 +145,76 @@ describe("detectEnvelopeResolution", () => {
     expect(detectEnvelopeResolution(null)).toBeNull();
     expect(detectEnvelopeResolution("")).toBeNull();
     expect(detectEnvelopeResolution("   ")).toBeNull();
+  });
+});
+
+describe("inferStateDrivenFollowUpTool", () => {
+  test("maps a short approval onto commit_draft for a ready workflow draft in auto mode", () => {
+    expect(
+      inferStateDrivenFollowUpTool({
+        latestUserText: "yes",
+        permission_mode: "auto",
+        summary: summary(),
+      }),
+    ).toBe("commit_draft");
+  });
+
+  test("maps a short approval onto save_connector_draft for a ready connector draft in auto mode", () => {
+    expect(
+      inferStateDrivenFollowUpTool({
+        latestUserText: "ja",
+        permission_mode: "auto",
+        summary: summary({
+          mode: "connector",
+          stage: "connector_probed",
+          next_action: "Save the connector now that inspection, validation, and probe are fresh.",
+          next_required_action:
+            "Save the connector now that inspection, validation, and probe are fresh.",
+          next_suggested_tool: "save_connector_draft",
+          active_target: {
+            kind: "connector",
+            name: "Acme API",
+            slug: "acme-api",
+            id: null,
+            environment: "dev",
+            lifecycle_state: "draft_only",
+          },
+        }),
+      }),
+    ).toBe("save_connector_draft");
+  });
+
+  test("does not force a follow-up tool outside auto mode", () => {
+    expect(
+      inferStateDrivenFollowUpTool({
+        latestUserText: "yes",
+        permission_mode: "ask",
+        summary: summary(),
+      }),
+    ).toBeNull();
+  });
+
+  test("does not force a follow-up tool for non-save suggestions", () => {
+    expect(
+      inferStateDrivenFollowUpTool({
+        latestUserText: "yes",
+        permission_mode: "auto",
+        summary: summary({
+          lifecycle_state: "persisted",
+          stage: "workflow_persisted",
+          next_action: "Run the saved workflow to verify the persisted version.",
+          next_required_action: "Run the saved workflow to verify the persisted version.",
+          next_suggested_tool: "run_workflow",
+          active_target: {
+            kind: "workflow",
+            name: "ready-flow",
+            slug: "ready-flow",
+            id: "wf_123",
+            environment: null,
+            lifecycle_state: "persisted",
+          },
+        }),
+      }),
+    ).toBeNull();
   });
 });

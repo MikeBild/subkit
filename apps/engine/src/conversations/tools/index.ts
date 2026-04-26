@@ -16,11 +16,14 @@ import {
   askUserMultiTool,
   askUserTextTool,
 } from "./ask-user/index.ts";
+import { authenticateOAuthTool } from "./authenticate-oauth.ts";
 import { buildWorkflowTool } from "./build-workflow.ts";
+import { callConnectorTool } from "./call-connector.ts";
 import { cannotHelpTool } from "./cannot-help.ts";
 import { commitDraftTool } from "./commit-draft.ts";
 import { connectStepsTool } from "./connect-steps.ts";
 import { diagnoseLatestExecutionTool } from "./diagnose-latest-execution.ts";
+import { discoverConnectorEndpointsTool } from "./discover-connector-endpoints.ts";
 import { dryRunStepTool } from "./dry-run-step.ts";
 import { dryRunTransformTool } from "./dry-run-transform.ts";
 import { dryRunWorkflowTool } from "./dry-run-workflow.ts";
@@ -44,7 +47,6 @@ import { searchKnowledgeTool } from "./search-knowledge.ts";
 import { startConnectorFromDescriptionTool } from "./start-connector-from-description.ts";
 import { startConnectorFromTemplateTool } from "./start-connector-from-template.ts";
 import { startWorkflowFromGoalTool } from "./start-workflow-from-goal.ts";
-import { submitConnectorCredentialTool } from "./submit-connector-credential.ts";
 import { suggestConnectorTemplatesTool } from "./suggest-connector-templates.ts";
 import { updateConnectorDraftTool } from "./update-connector-draft.ts";
 import { updateParamTool } from "./update-param.ts";
@@ -61,6 +63,8 @@ export interface ToolContext {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
+  /** Current conversation_tool_calls.id for this tool execution. */
+  tool_call_id?: string;
   connector_id: string | null;
   workflow_id: string | null;
   engineClient: EngineClient;
@@ -84,44 +88,79 @@ export interface ToolContext {
   permission_mode?: "auto" | "ask" | "plan" | null;
 }
 
-export interface ToolResult {
-  ok: boolean;
-  /** Data echoed back to the loop and fed to the model as a tool-result message. */
-  data: unknown;
-  /** When set, the driver pauses the loop on a pending elicitation. */
-  pause?: {
-    /** Which `ask_user_*` tool paused the loop. */
-    tool_name:
-      | "ask_user_choice"
-      | "ask_user_multi"
-      | "ask_user_text"
-      | "ask_user_form"
-      | "ask_user_confirm";
-    /**
-     * Optional `kind` hint for `ask_user_confirm` — lets the client
-     * pick the right sub-renderer (structured diff for
-     * `commit_draft`, target URL + payload for `external_write`,
-     * generic JSON otherwise).
-     */
-    kind?: "commit_draft" | "external_write" | "generic";
-    summary: string;
-    /** Row id in `conversation_elicitations`. */
-    elicitation_id: string;
-    /**
-     * Full tool input payload — options/fields/question/diff/target.
-     * Surfaced verbatim on the `elicit_request` SSE frame so the CLI
-     * has everything needed to render the right prompt without a
-     * second fetch.
-     */
-    input?: unknown;
-    /** Structured payload surfaced to the client. */
-    diff?: unknown;
-    /** Free-form target descriptor (url, workflow path, etc). */
-    target?: unknown;
-  };
-  /** When set, a successful commit bound its new workflow id. */
-  committed_workflow_id?: string;
+/** Elicitation pause descriptor shared by both ToolResult branches. */
+export interface ToolResultPause {
+  /** Which `ask_user_*` tool paused the loop. */
+  tool_name:
+    | "ask_user_choice"
+    | "ask_user_multi"
+    | "ask_user_text"
+    | "ask_user_form"
+    | "ask_user_confirm";
+  /**
+   * Optional `kind` hint for `ask_user_confirm` — lets the client
+   * pick the right sub-renderer (structured diff for
+   * `commit_draft`, target URL + payload for `external_write`,
+   * generic JSON otherwise).
+   */
+  kind?: "commit_draft" | "external_write" | "generic";
+  summary: string;
+  /** Row id in `conversation_elicitations`. */
+  elicitation_id: string;
+  /**
+   * Full tool input payload — options/fields/question/diff/target.
+   * Surfaced verbatim on the `elicit_request` SSE frame so the CLI
+   * has everything needed to render the right prompt without a
+   * second fetch.
+   */
+  input?: unknown;
+  /** Structured payload surfaced to the client. */
+  diff?: unknown;
+  /** Free-form target descriptor (url, workflow path, etc). */
+  target?: unknown;
 }
+
+/**
+ * Discriminated union returned by every conversation tool.
+ *
+ * `ok: true`  — tool succeeded; `data` carries the payload.
+ * `ok: false` — tool failed; callers may use the legacy `data` field
+ *   OR the structured error fields (`error_code`, `message`, `details`,
+ *   `next_best_actions`). Prefer the structured form for new rejections
+ *   so the loop can fold `next_best_actions` into the next turn's
+ *   `prior_failures`.
+ */
+export type ToolResult =
+  | {
+      ok: true;
+      /** Data echoed back to the loop and fed to the model as a tool-result message. */
+      data: unknown;
+      /** When set, the driver pauses the loop on a pending elicitation. */
+      pause?: ToolResultPause;
+      /** When set, a successful commit bound its new workflow id. */
+      committed_workflow_id?: string;
+    }
+  | {
+      ok: false;
+      /** Legacy payload field — present on most existing `ok: false` results. */
+      data?: unknown;
+      /** Machine-readable rejection code. */
+      error_code?: string;
+      /** Human-readable rejection message surfaced to the model and operator. */
+      message?: string;
+      /** Additional structured context for the rejection. */
+      details?: unknown;
+      /**
+       * Ordered list of tool names the model should consider next.
+       * Wave 3 concern: the loop will fold these into the next turn's
+       * `prior_failures` automatically.
+       */
+      next_best_actions?: string[];
+      /** When set, the driver pauses the loop on a pending elicitation. */
+      pause?: ToolResultPause;
+      /** When set, a successful commit bound its new workflow id. */
+      committed_workflow_id?: string;
+    };
 
 /**
  * Tool category — controls parallel-read mutex and surfaces filtering.
@@ -183,14 +222,15 @@ register(listAttachmentsTool);
 register(previewAttachmentTool);
 register(probeConnectorTool);
 register(probeConnectorDraftTool);
+register(callConnectorTool);
 register(buildWorkflowTool);
 register(proposeStepTool);
 register(proposeSkillTool);
 register(saveConnectorDraftTool);
+register(authenticateOAuthTool);
 register(startConnectorFromDescriptionTool);
 register(startConnectorFromTemplateTool);
 register(startWorkflowFromGoalTool);
-register(submitConnectorCredentialTool);
 register(suggestConnectorTemplatesTool);
 register(matchConnectorTemplateByUrlTool);
 register(importConnectorFromSpecTool);
@@ -198,6 +238,7 @@ register(updateParamTool);
 register(updateConnectorDraftTool);
 register(connectStepsTool);
 register(diagnoseLatestExecutionTool);
+register(discoverConnectorEndpointsTool);
 register(dryRunStepTool);
 register(dryRunTransformTool);
 register(dryRunWorkflowTool);

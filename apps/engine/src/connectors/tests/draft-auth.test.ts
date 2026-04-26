@@ -1,11 +1,11 @@
-// Locks the draft-time auth shortcut: when an operator pastes a token
-// into `ask_user_form` for a NOT-yet-saved connector, the form value
-// lands in `connector.config.{token,auth_value,…}`. Without this
-// shortcut, `probe_connector_draft` would always see HTTP 401 because
-// applyAuthMaterial exits early when no `connector_credentials` row
-// exists yet — exactly the bug observed in session 84d06d81 where the
-// LLM had to invent workarounds (manual `Authorization` headers on
-// probe) before it could verify the endpoint.
+// Tests for the credential_required contract that replaced the old
+// draft-time auth shortcut. When auth_type !== "none" and no credential
+// row exists, the probe returns a structured error instead of sending an
+// unauthenticated request that would silently 404 or 401.
+//
+// applyAuthMaterial now does nothing for the no-credential case — it only
+// applies static_headers / static_query from config. Auth injection
+// requires a real DecryptedCredential from the store.
 
 import { describe, expect, test } from "bun:test";
 import { applyAuthMaterial } from "../drivers/http.ts";
@@ -39,41 +39,20 @@ function connector(over: Partial<ConnectorView>): ConnectorView {
   } as ConnectorView;
 }
 
-describe("applyAuthMaterial — draft-time auth shortcut (no credential row yet)", () => {
-  test("auth_type=bearer + config.token sets Authorization: Bearer ...", () => {
+describe("applyAuthMaterial — no credential row (credential_required contract)", () => {
+  test("auth_type=bearer + null credential does NOT inject Authorization header", () => {
     const headers: Record<string, string> = {};
     applyAuthMaterial(
-      connector({ auth_type: "bearer", config: { token: "ghp_paste" } }),
+      connector({ auth_type: "bearer", config: { token: "ghp_should_not_apply" } }),
       null,
       headers,
       {},
     );
-    expect(headers.Authorization).toBe("Bearer ghp_paste");
+    // The shortcut has been removed; no auth material is injected without a credential row.
+    expect(headers.Authorization).toBeUndefined();
   });
 
-  test("auth_type=bearer also accepts config.access_token (oauth-shaped form)", () => {
-    const headers: Record<string, string> = {};
-    applyAuthMaterial(
-      connector({ auth_type: "bearer", config: { access_token: "ya29.AB" } }),
-      null,
-      headers,
-      {},
-    );
-    expect(headers.Authorization).toBe("Bearer ya29.AB");
-  });
-
-  test("auth_type=bearer falls back to config.auth_value (LLM workaround shape)", () => {
-    const headers: Record<string, string> = {};
-    applyAuthMaterial(
-      connector({ auth_type: "bearer", config: { auth_value: "ghp_alt" } }),
-      null,
-      headers,
-      {},
-    );
-    expect(headers.Authorization).toBe("Bearer ghp_alt");
-  });
-
-  test("auth_type=header + auth_header/auth_value sets the named header", () => {
+  test("auth_type=header + null credential does NOT inject custom header", () => {
     const headers: Record<string, string> = {};
     applyAuthMaterial(
       connector({
@@ -84,27 +63,10 @@ describe("applyAuthMaterial — draft-time auth shortcut (no credential row yet)
       headers,
       {},
     );
-    expect(headers["X-Api-Key"]).toBe("k_123");
+    expect(headers["X-Api-Key"]).toBeUndefined();
   });
 
-  test("auth_type=header + config.headers spreads verbatim", () => {
-    const headers: Record<string, string> = {};
-    applyAuthMaterial(
-      connector({
-        auth_type: "header",
-        config: {
-          headers: { Authorization: "token ghp_xyz", "X-GitHub-Api-Version": "2022-11-28" },
-        },
-      }),
-      null,
-      headers,
-      {},
-    );
-    expect(headers.Authorization).toBe("token ghp_xyz");
-    expect(headers["X-GitHub-Api-Version"]).toBe("2022-11-28");
-  });
-
-  test("auth_type=basic + username/password sets Authorization: Basic <b64>", () => {
+  test("auth_type=basic + null credential does NOT inject Authorization header", () => {
     const headers: Record<string, string> = {};
     applyAuthMaterial(
       connector({
@@ -115,17 +77,10 @@ describe("applyAuthMaterial — draft-time auth shortcut (no credential row yet)
       headers,
       {},
     );
-    const expected = `Basic ${Buffer.from("alice:s3cret", "utf8").toString("base64")}`;
-    expect(headers.Authorization).toBe(expected);
-  });
-
-  test("missing token leaves Authorization unset (no fabricated header)", () => {
-    const headers: Record<string, string> = {};
-    applyAuthMaterial(connector({ auth_type: "bearer", config: {} }), null, headers, {});
     expect(headers.Authorization).toBeUndefined();
   });
 
-  test("auth_type=none never injects auth even if config.token is present", () => {
+  test("auth_type=none + null credential does NOT inject auth", () => {
     const headers: Record<string, string> = {};
     applyAuthMaterial(
       connector({ auth_type: "none", config: { token: "should-not-leak" } }),
@@ -134,5 +89,37 @@ describe("applyAuthMaterial — draft-time auth shortcut (no credential row yet)
       {},
     );
     expect(headers.Authorization).toBeUndefined();
+  });
+
+  test("static_headers from config still apply even with null credential", () => {
+    const headers: Record<string, string> = {};
+    applyAuthMaterial(
+      connector({
+        auth_type: "bearer",
+        config: { static_headers: { "x-static": "v1" } },
+      }),
+      null,
+      headers,
+      {},
+    );
+    // static_headers always apply; auth material does not.
+    expect(headers["x-static"]).toBe("v1");
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  test("static_query from config still applies even with null credential", () => {
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      connector({
+        auth_type: "header",
+        config: { static_query: { format: "json" } },
+      }),
+      null,
+      headers,
+      query,
+    );
+    expect(query.format).toBe("json");
+    expect(headers["X-Api-Key"]).toBeUndefined();
   });
 });

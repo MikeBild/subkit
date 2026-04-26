@@ -11,7 +11,11 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
-import { conversationElicitations, conversations } from "../db/schema/index.ts";
+import {
+  conversationElicitations,
+  conversations,
+  conversationToolCalls,
+} from "../db/schema/index.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -66,6 +70,49 @@ export async function createElicitation(
   },
   exec: Executor,
 ): Promise<ElicitationRecord> {
+  // Single-pending-elicitation invariant. The LLM must never see two
+  // open `ask_user_*` forms in the same conversation — that's how
+  // session 64861a59 ended up with an orphan `tool_use_id` and a 503.
+  // Any prior pending row is cancelled here and its tool_call output
+  // back-filled so the persist-replay layer can pair every tool_use
+  // with a tool_result.
+  const stale = await exec
+    .select()
+    .from(conversationElicitations)
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, p.tenant_id),
+        eq(conversationElicitations.conversation_id, p.conversation_id),
+        eq(conversationElicitations.status, "pending"),
+      ),
+    );
+  if (stale.length > 0) {
+    const staleIds = stale.map((row) => row.id);
+    await exec
+      .update(conversationElicitations)
+      .set({
+        status: "cancelled",
+        decision_reason: "superseded_by_new_elicitation",
+        decided_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where(inArray(conversationElicitations.id, staleIds));
+    const staleToolCallIds = stale
+      .map((row) => row.tool_call_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (staleToolCallIds.length > 0) {
+      await exec
+        .update(conversationToolCalls)
+        .set({
+          output: {
+            ok: false,
+            abandoned: true,
+            reason: "elicitation_superseded",
+          } as Record<string, unknown>,
+        })
+        .where(inArray(conversationToolCalls.id, staleToolCallIds));
+    }
+  }
   const [inserted] = await exec
     .insert(conversationElicitations)
     .values({

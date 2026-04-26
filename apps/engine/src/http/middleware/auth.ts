@@ -8,6 +8,7 @@ import { recordAuthFailure } from "../../auth/failed-auth-tracker.ts";
 import type { AuthProviderRegistry } from "../../auth/registry.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { withContext } from "../../logging/context.ts";
+import { buildServiceMetadata } from "../../observability/service-metadata.ts";
 import { UnauthorizedError } from "../errors.ts";
 import type { AppEnv } from "../openapi.ts";
 
@@ -16,6 +17,20 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
     const principal = await registry.resolve(c.req.raw);
     if (principal) {
       c.set("principal", principal);
+      // Compose the identity envelope once per request. Downstream code
+      // pulls `service_metadata` instead of re-deriving from individual
+      // ctx fields, so audit / telemetry / execution / notifications all
+      // see the same trace_id + tenant_id + actor.
+      c.set(
+        "service_metadata",
+        buildServiceMetadata({
+          trace_id: c.get("trace_id"),
+          tenant_id: principal.tenant_id,
+          actor_id: principal.id,
+          actor_email: principal.email ?? null,
+          request_source: c.get("request_source") ?? "api",
+        }),
+      );
       // Layer tenant + actor onto the async context for downstream logs.
       await withContext(
         {

@@ -6,6 +6,11 @@
 // retry, timeout, pagination, or filter logic from the P3 request step.
 // Instead, the request step imports `applyAuthToRequest` below to mix
 // connector auth into its existing HTTP pipeline.
+//
+// Auth contract: when auth_type !== "none" and no credential row exists,
+// the driver surfaces a structured credential_required error rather than
+// sending an unauthenticated request. Callers must persist a credential
+// via save_connector_draft({credential}) before probing.
 
 import { refreshIfStale } from "../../credentials/oauth2/refresh-worker.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
@@ -14,6 +19,7 @@ import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { tunnelRegistry } from "../../tunnels/registry.ts";
 import type { TunnelResponse } from "../../tunnels/types.ts";
+import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import type { ConnectorView } from "../types.ts";
 
@@ -70,16 +76,9 @@ export function applyAuthMaterial(
     }
   }
   if (!credential) {
-    // Draft-time auth shortcut: when no credential row exists yet
-    // (the connector has not been saved + provisioned), but the
-    // operator has stashed a token directly on `connector.config` via
-    // an `ask_user_form` reply, apply it inline so probe_connector_draft
-    // can verify the endpoint without forcing a save-first round-trip.
-    //
-    // Only honoured for `bearer` / `header` / `basic` shapes — OAuth2
-    // requires the refresh-worker, and `query` shapes are rare enough
-    // that we keep them on the credentials-row path.
-    applyDraftAuthFromConfig(connector, headers);
+    // No credential row — static headers/query still apply, but auth
+    // material cannot be injected. Callers that require auth must gate
+    // on credential_required before reaching here (see probeHttpConnector).
     return;
   }
   switch (credential.mode) {
@@ -111,59 +110,6 @@ export function applyAuthMaterial(
   }
 }
 
-/**
- * Pull a draft-time credential out of `connector.config` and translate
- * it to the appropriate `Authorization` (or custom-named) header so a
- * draft probe can authenticate before the connector has been saved and
- * provisioned with a `connector_credentials` row.
- *
- * Recognised config shapes (in priority order):
- *   - `{ token: "ghp_..." }`              + auth_type=bearer  → `Authorization: Bearer …`
- *   - `{ access_token: "..." }`           + auth_type=bearer  → `Authorization: Bearer …`
- *   - `{ auth_header, auth_value }`       + auth_type=header  → `<auth_header>: <auth_value>`
- *   - `{ headers: {Authorization: "…"} }` + auth_type=header  → headers spread verbatim
- *   - `{ username, password }`            + auth_type=basic   → `Authorization: Basic <b64>`
- *
- * Once the connector is saved, its real credential lives in the
- * `connector_credentials` table; this helper is only walked when no
- * such row exists yet (typical for `probe_connector_draft`).
- */
-function applyDraftAuthFromConfig(connector: ConnectorView, headers: Record<string, string>): void {
-  const cfg = (connector.config ?? {}) as Record<string, unknown>;
-  if (connector.auth_type === "bearer") {
-    const token =
-      typeof cfg.token === "string" && cfg.token.length > 0
-        ? cfg.token
-        : typeof cfg.access_token === "string" && cfg.access_token.length > 0
-          ? cfg.access_token
-          : typeof cfg.auth_value === "string" && cfg.auth_value.length > 0
-            ? cfg.auth_value
-            : null;
-    if (token) headers.Authorization = `Bearer ${token}`;
-    return;
-  }
-  if (connector.auth_type === "header") {
-    if (typeof cfg.auth_header === "string" && typeof cfg.auth_value === "string") {
-      headers[cfg.auth_header] = cfg.auth_value;
-      return;
-    }
-    if (cfg.headers && typeof cfg.headers === "object" && !Array.isArray(cfg.headers)) {
-      for (const [k, v] of Object.entries(cfg.headers as Record<string, unknown>)) {
-        if (typeof v === "string") headers[k] = v;
-      }
-    }
-    return;
-  }
-  if (connector.auth_type === "basic") {
-    const username = cfg.username;
-    const password = cfg.password;
-    if (typeof username === "string" && typeof password === "string") {
-      const encoded = Buffer.from(`${username}:${password}`, "utf8").toString("base64");
-      headers.Authorization = `Basic ${encoded}`;
-    }
-  }
-}
-
 export interface ResolveConnectorRequestParams {
   db: Db;
   tenant_id: string;
@@ -191,6 +137,11 @@ export interface ResolvedRequestPlan {
   headers: Record<string, string>;
   query: Record<string, string | number | boolean>;
   credential: DecryptedCredential | null;
+  /** The credential row id, when a stored credential was used. Surfaces
+   *  through to the egress audit (`CREDENTIAL_ACCESSED`) so an operator
+   *  can answer "which credential was used for this request?" without
+   *  re-running the lookup. */
+  credential_id: string | null;
   auth_method: AppliedAuthMethod;
   // When set, the request step should forward this request through the
   // named tunnel target instead of doing a direct `fetch`. The value is
@@ -230,6 +181,7 @@ export async function buildRequestPlan(
   const headers = { ...(p.headers ?? {}) };
   const query = { ...(p.query ?? {}) };
   let credential: DecryptedCredential | null = null;
+  let credentialId: string | null = null;
   let oauth2Refreshed = false;
   if (p.connector.auth_type !== "none") {
     const row = await getCredentialForConnector(
@@ -240,6 +192,7 @@ export async function buildRequestPlan(
     );
     if (row) {
       credential = row.value;
+      credentialId = row.row.id;
       if (credential.mode === "oauth2") {
         // Synchronous refresh path — if the token is stale, refresh
         // inline so the caller gets a fresh token on the request. The
@@ -263,6 +216,7 @@ export async function buildRequestPlan(
     headers,
     query,
     credential,
+    credential_id: credentialId,
     auth_method: deriveAuthMethod(credential, oauth2Refreshed),
   };
   if (typeof cfg.tunnel_target === "string" && cfg.tunnel_target.length > 0) {
@@ -272,6 +226,7 @@ export async function buildRequestPlan(
     connector_id: p.connector.id,
     auth_type: p.connector.auth_type,
     url_host: url.host,
+    url: scrubUrl(url),
     has_credential: credential !== null,
     oauth2_refreshed: oauth2Refreshed,
     tunnel_target: plan.tunnel_target ?? null,
@@ -331,6 +286,7 @@ export async function executePlannedHttpRequest(params: {
     if (effectiveBody !== null && !headers["content-type"] && !headers["Content-Type"]) {
       headers["content-type"] = "application/json";
     }
+    injectTraceContext(headers);
     const tunnelRes = await fetchViaTunnel({
       tenant_id: params.tenant_id,
       tunnel_target: params.tunnel_target,
@@ -369,6 +325,7 @@ export async function executePlannedHttpRequest(params: {
       headers["content-type"] = "application/json";
     }
   }
+  injectTraceContext(headers);
   const res = await fetch(params.url, init);
   const text = await res.text();
   const headerObj: Record<string, string> = {};
@@ -510,6 +467,33 @@ export async function probeHttpConnector(p: {
         warning_only: false,
         warnings: [],
       };
+    }
+
+    // Guard: auth-required connectors must have a persisted credential row.
+    // Without one the request would go out unauthenticated and 401/404 in a
+    // way that is indistinguishable from a genuine connectivity failure.
+    if (p.connector.auth_type !== "none") {
+      const credRow = await getCredentialForConnector(
+        p.tenant_id,
+        p.connector.id,
+        p.connector.environment,
+        p.db,
+      );
+      if (!credRow) {
+        return {
+          ok: false,
+          latency_ms: 0,
+          detail:
+            "credential_required: probe requires a saved credential — collect one via ask_user_form and persist via save_connector_draft({credential})",
+          warning_only: false,
+          warnings: [
+            {
+              code: "CREDENTIAL_REQUIRED",
+              message: "draft has no attached credential; cannot probe",
+            },
+          ],
+        };
+      }
     }
 
     const rawProbe = getConnectorProbeEndpoint(p.connector);

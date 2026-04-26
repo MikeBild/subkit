@@ -72,6 +72,7 @@ export interface SubkitLlmTelemetryMetadata {
 /** Provider-error kinds the fallback layer recognizes. */
 export type SubkitProviderErrorKind =
   | "rate_limit"
+  | "quota_exhausted"
   | "overloaded"
   | "context_length_exceeded"
   | "network_5xx"

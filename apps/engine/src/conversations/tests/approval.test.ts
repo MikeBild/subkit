@@ -10,8 +10,18 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, conversationElicitations } from "../../db/schema/index.ts";
-import { createConversation, getConversation, respondElicitation } from "../service.ts";
+import {
+  auditLog,
+  conversationElicitations,
+  conversationToolCalls,
+} from "../../db/schema/index.ts";
+import { buildModelMessages } from "../persist.ts";
+import {
+  appendUserMessage,
+  createConversation,
+  getConversation,
+  respondElicitation,
+} from "../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 let ctx: ConversationTestCtx;
@@ -79,8 +89,75 @@ describe("conversations/elicitation", () => {
       .where(and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.action, "approval.approved")));
     expect(auditRows.length).toBeGreaterThanOrEqual(1);
 
+    const toolCalls = await ctx.testDb.db
+      .select()
+      .from(conversationToolCalls)
+      .where(eq(conversationToolCalls.conversation_id, outcome.conversation.id));
+    const resolvedAsk = toolCalls.find((row) => row.tool === "ask_user_confirm");
+    expect(resolvedAsk).toBeDefined();
+    expect(resolvedAsk?.output).toMatchObject({
+      status: "awaiting_input",
+      elicitation_id: elicitationId,
+    });
+    expect(JSON.stringify(resolvedAsk?.output ?? {})).not.toContain("not ready");
+
+    const replay = await buildModelMessages(ctx.testDb.db, ctx.tenant_id, outcome.conversation.id);
+    const resolvedReplay = replay.find((message) => {
+      if (message.role !== "tool" || !Array.isArray(message.content)) return false;
+      const part = message.content[0];
+      return part?.type === "tool-result" && part.toolName === "ask_user_confirm";
+    });
+    expect(resolvedReplay).toBeDefined();
+    const resolvedPayload = ((
+      resolvedReplay as {
+        content: Array<{ output: { value: Record<string, unknown> } }>;
+      }
+    ).content[0]?.output.value ?? {}) as Record<string, unknown>;
+    expect(resolvedPayload.status).toBe("resolved");
+    expect(resolvedPayload.reason).toBe("not ready");
+    expect((resolvedPayload.response as { confirmed?: boolean }).confirmed).toBe(false);
+
     // No committed workflow — the draft was never committed.
     const detail = await getConversation(ctx.tenant_id, outcome.conversation.id, ctx.testDb.db);
     expect(detail?.conversation.target_workflow_id).toBeNull();
+  });
+
+  test("a fresh user prompt is blocked while an elicitation is still pending", async () => {
+    const outcome = await createConversation(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.user_id,
+        connector_id: ctx.connector_id,
+        initial_message: "list users",
+      },
+      ctx.testDb.db,
+    );
+    const elicitationId = outcome.result.pending_elicitation_id;
+    if (!elicitationId) throw new Error("no elicitation id");
+
+    await expect(
+      appendUserMessage(
+        {
+          tenant_id: ctx.tenant_id,
+          conversation_id: outcome.conversation.id,
+          actor_id: ctx.user_id,
+          message: "now nothing happens",
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toMatchObject({
+      name: "PendingElicitationBlockedError",
+      pending_elicitation: {
+        id: elicitationId,
+        tool_name: "ask_user_confirm",
+      },
+    });
+
+    const pendingRow = await ctx.testDb.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, elicitationId))
+      .limit(1);
+    expect(pendingRow[0]?.status).toBe("pending");
   });
 });

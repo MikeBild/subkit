@@ -45,6 +45,14 @@ export {
   makeInterruptController,
 } from "./interrupt.ts";
 export { redact } from "./redact.ts";
+export {
+  SECRET_PATTERNS,
+  SENSITIVE_KEY_PATTERN,
+  type SecretKind,
+  type SecretPattern,
+  scrubSecrets,
+  scrubString,
+} from "./scrub-secrets.ts";
 export { readSse, type SseFrame } from "./sse.ts";
 export {
   type AssistantCell,

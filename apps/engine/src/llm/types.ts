@@ -81,6 +81,7 @@ export interface AuthoringPromptHint {
   active_target: Pick<AuthoringActiveTarget, "kind" | "lifecycle_state">;
   blocked_by: string[];
   next_required_action: string | null;
+  next_suggested_tool: string | null;
   checkpoints: AuthoringCheckpointView[];
   latest_execution: {
     diagnosis_available: boolean;

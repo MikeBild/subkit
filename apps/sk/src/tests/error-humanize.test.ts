@@ -123,6 +123,39 @@ describe("humanizeRequestError surfaces hints", () => {
     expect(out).toContain("auth refresh");
   });
 
+  test("provider-limited errors prefer the provider hint over the budget hint", () => {
+    const err = new SkEngineError(429, {
+      code: "llm_provider_limited",
+      message:
+        "You have reached your specified API usage limits. You will regain access on 2026-05-01 at 00:00 UTC.",
+      details: { retry_at: "2026-05-01T00:00:00.000Z" },
+    });
+    const out = humanizeRequestError(err);
+    expect(out).toContain("llm_provider_limited");
+    expect(out).toContain("provider usage limit reached");
+    expect(out).toContain("2026-05-01T00:00:00.000Z");
+    expect(out).not.toContain("monthly budget exhausted");
+  });
+
+  test("provider-unavailable errors get a provider-specific hint", () => {
+    const err = new SkEngineError(503, {
+      code: "llm_provider_unavailable",
+      message: "upstream overloaded",
+    });
+    const out = humanizeRequestError(err);
+    expect(out).toContain("provider temporarily unavailable");
+  });
+
+  test("pending elicitation conflicts explain that the open dialog must be resolved", () => {
+    const err = new SkEngineError(409, {
+      code: "pending_elicitation_blocked",
+      message: "resolve the pending dialog before sending another prompt",
+    });
+    const out = humanizeRequestError(err);
+    expect(out).toContain("pending_elicitation_blocked");
+    expect(out).toContain("resolve the open dialog first");
+  });
+
   test("transport error matching a known pattern uses the matched hint", () => {
     const err = new SkTransportError(new Error("fetch failed: ECONNREFUSED"));
     const out = humanizeRequestError(err);

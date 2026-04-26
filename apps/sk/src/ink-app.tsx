@@ -29,6 +29,7 @@ import {
   useTheme,
 } from "@chat-ui/index.ts";
 import type {
+  PendingElicitation,
   RenderableMessagePart,
   SkSessionState,
   ToolCallState,
@@ -40,6 +41,11 @@ import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { debugLog, serializeDebugError } from "./debug.ts";
 import type { SetupValidationResponse, StatusSummary } from "./engine-client.ts";
+import {
+  detectSecretShape,
+  REQUEST_CREDENTIAL_FORM_FALLBACK,
+  secretRedirectHint,
+} from "./lib/secret-shape.ts";
 import { AlternateScreen } from "./repl/alt-screen.tsx";
 import { ResumeSummaryCard, renderAuthoringCard } from "./repl/authoring-cards.tsx";
 import { BackgroundToolGroup, isBackgroundTool } from "./repl/background-tools.tsx";
@@ -189,6 +195,7 @@ export interface InkAppProps {
 // expands (Ctrl+E in a future iteration — for now always compact).
 
 const SPINNER_FRAMES = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"] as const;
+const PENDING_NOTICE_PREFIX = "Waiting for input:";
 
 // Render an elicitation's `output` payload as a short, human-readable
 // string for the transcript. Keeps the assistant turn auditable —
@@ -220,6 +227,23 @@ function renderElicitAnswer(output: unknown, reason?: string): string {
     if (parts.length > 0) return `${parts.join(", ")}${suffix}`;
   }
   return `(answered)${suffix}`;
+}
+
+function pendingNoticeMessage(elicitation: PendingElicitation): string {
+  const summary = elicitation.summary.trim();
+  switch (elicitation.tool_name) {
+    case "ask_user_form":
+      return `${PENDING_NOTICE_PREFIX} secure form required: ${summary}. Fill the form below and press Enter to submit.`;
+    case "ask_user_confirm":
+      return `${PENDING_NOTICE_PREFIX} confirmation required: ${summary}. Use the prompt below or /approve and /reject.`;
+    case "ask_user_choice":
+    case "ask_user_multi":
+      return `${PENDING_NOTICE_PREFIX} selection required: ${summary}. Choose from the prompt below to continue.`;
+    case "ask_user_text":
+      return `${PENDING_NOTICE_PREFIX} text input required: ${summary}. Answer in the prompt below and press Enter.`;
+    default:
+      return `${PENDING_NOTICE_PREFIX} ${summary}.`;
+  }
 }
 
 function summarizeSuccessData(data: unknown): string | null {
@@ -956,6 +980,19 @@ export const InkApp: React.FC<InkAppProps> = ({
 
   const [input, setInput] = useState<InputBuffer>(EMPTY_BUFFER);
   const [busy, setBusy] = useState(false);
+  // Input-side credential filter (PR5). When the user pastes a
+  // token-shaped string, the composer suppresses the send, replaces
+  // the input field with a redirect hint, and arms this state. The
+  // next Enter sends a structured nudge (REQUEST_CREDENTIAL_FORM_FALLBACK)
+  // to the engine instead of the raw paste so the agent re-collects
+  // through `ask_user_form(type: password, sensitive: true)`. Esc
+  // clears it without sending anything. Only the kind name + 6-char
+  // prefix sample ever surface in the UI; the matched secret is
+  // dropped on the floor and never leaves this process.
+  const [pendingSecretRedirect, setPendingSecretRedirect] = useState<{
+    kind: string;
+    sample: string;
+  } | null>(null);
   // Slash-suggestion selection. Only meaningful when the buffer starts
   // with `/` and has no whitespace yet; ↑/↓ cycle the highlighted match,
   // Tab completes it, Enter on an empty-arg slash submits the selected
@@ -1060,6 +1097,33 @@ export const InkApp: React.FC<InkAppProps> = ({
     }, 500);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    const message = session.pendingElicitation
+      ? pendingNoticeMessage(session.pendingElicitation)
+      : null;
+    setNotices((current) => {
+      const withoutPending = current.filter(
+        (item) => !item.message.startsWith(PENDING_NOTICE_PREFIX),
+      );
+      if (!message) {
+        return withoutPending.length === current.length ? current : withoutPending;
+      }
+      const existing = current.find((item) => item.persistent && item.message === message);
+      if (existing && withoutPending.length === current.length - 1) {
+        return current;
+      }
+      return [
+        {
+          id: `pending-${session.pendingElicitation?.id ?? "unknown"}`,
+          tone: "warning" as const,
+          message,
+          persistent: true,
+        },
+        ...withoutPending,
+      ].slice(0, 4);
+    });
+  }, [session.pendingElicitation]);
 
   useEffect(() => {
     if (setupBannerShownRef.current) return;
@@ -1354,10 +1418,70 @@ export const InkApp: React.FC<InkAppProps> = ({
   // -------- Input handling (printable chars, enter, backspace, Ctrl-C, Ctrl-T) --------
   const handleSubmit = useCallback(
     async (raw: string): Promise<void> => {
+      // PR5 input-side credential filter, branch 1 — confirmation step.
+      // The previous submit detected a secret-shape and armed
+      // `pendingSecretRedirect`. The `raw` we got is the redirect hint
+      // text we put back into the buffer; the user pressing Enter again
+      // is consent to forward the masked nudge to the agent. We
+      // override `raw` with the fallback message so the engine never
+      // sees the original token. Esc-clear is handled in the useInput
+      // hook below; that path nulls `pendingSecretRedirect` and never
+      // calls handleSubmit.
+      if (pendingSecretRedirect !== null) {
+        setPendingSecretRedirect(null);
+        // Fall through with the masked nudge instead of the literal
+        // hint. The agent's connector-creation skill already routes
+        // any credential request through `ask_user_form(type: password,
+        // sensitive: true)`, so a plain re-prompt is enough — see
+        // apps/engine/src/conversations/seed/skills/connector-creation-guidance.md.
+        // Engine-route decision: we kept the fallback path instead of
+        // adding a `request_credential_form` event type to the engine
+        // HTTP route. The engine has no schema for that event yet, and
+        // the agent's existing skill set already does the right thing
+        // when re-asked in plain language. Future PR can promote this
+        // to a typed event without changing the CLI.
+        showInfo("forwarding masked credential request to the agent");
+        raw = REQUEST_CREDENTIAL_FORM_FALLBACK;
+      }
       const trimmed = raw.trim();
       setInput(EMPTY_BUFFER);
       historyDraftRef.current = null;
       if (!trimmed) return;
+      // PR5 input-side credential filter, branch 2 — initial detection.
+      // Run after we've cleared the field but before the slash /
+      // network branches so a pasted secret never reaches the engine
+      // even if the user prefixed it with whitespace or a stray slash.
+      // Slash commands themselves are unlikely to contain a secret, so
+      // we only scan plain-prompt submissions. Scan both the literal
+      // buffer AND the paste-expanded form so a long paste that got
+      // stashed under `[Pasted text #N]` is still caught — the paste
+      // store is what actually goes on the wire.
+      if (!trimmed.startsWith("/")) {
+        let shape = detectSecretShape(trimmed);
+        if (!shape.matched) {
+          const { prompt: probeExpanded } = expandRefs(trimmed, pasteStoreRef.current);
+          if (probeExpanded !== trimmed) {
+            shape = detectSecretShape(probeExpanded);
+          }
+        }
+        if (shape.matched) {
+          // Stash kind + 6-char sample only — the matched secret is
+          // dropped here and never logged. Replace the buffer with a
+          // human-readable hint the user can confirm or cancel. The
+          // hint contains the sample (6 chars) but not the full token.
+          // We also drop any paste-store entries that contained the
+          // secret so they can't leak via a later @-mention or queue.
+          for (const item of pasteStoreRef.current.all()) {
+            if (item.kind === "text" && detectSecretShape(item.text).matched) {
+              pasteStoreRef.current.delete(item.id);
+            }
+          }
+          syncPendingAttachments();
+          setPendingSecretRedirect({ kind: shape.kind, sample: shape.sample });
+          setInput(buffer(secretRedirectHint(shape)));
+          return;
+        }
+      }
       if (trimmed === "/exit" || trimmed === "/quit") {
         exit();
         onExit?.();
@@ -1499,6 +1623,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       onExit,
       onPrompt,
       onSlash,
+      pendingSecretRedirect,
       persona.probe,
       persona.tenant,
       session,
@@ -1596,6 +1721,15 @@ export const InkApp: React.FC<InkAppProps> = ({
       // render tree instead of fighting it.
       if (key.ctrl && char === "l") {
         stdout?.write("\x1b[2J\x1b[H");
+        return;
+      }
+      // PR5 input-side credential filter: Esc clears an armed redirect
+      // without sending anything. Highest-priority Esc handler so the
+      // user can always bail out of a paste-was-detected prompt.
+      if (key.escape && pendingSecretRedirect !== null) {
+        setPendingSecretRedirect(null);
+        setInput(EMPTY_BUFFER);
+        showInfo("credential paste cancelled");
         return;
       }
       if (

@@ -7,6 +7,7 @@
 //
 // The encoding instance is lazily constructed and cached per-process.
 
+import type { ModelMessage } from "ai";
 import { getEncoding, type Tiktoken } from "js-tiktoken";
 import type { LlmFlow, UserTurn } from "./types.ts";
 
@@ -30,6 +31,23 @@ export function countMessagesTokens(messages: UserTurn[]): number {
   let total = 2;
   for (const m of messages) {
     total += 4 + countTokens(m.content);
+  }
+  return total;
+}
+
+function modelMessageContentToText(message: ModelMessage): string {
+  if (typeof message.content === "string") return message.content;
+  try {
+    return JSON.stringify(message.content);
+  } catch {
+    return String(message.content);
+  }
+}
+
+export function countModelMessagesTokens(messages: ModelMessage[]): number {
+  let total = 2;
+  for (const message of messages) {
+    total += 4 + countTokens(modelMessageContentToText(message));
   }
   return total;
 }

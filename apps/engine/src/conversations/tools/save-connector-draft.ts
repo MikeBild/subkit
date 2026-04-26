@@ -1,202 +1,356 @@
+// save_connector_draft — diagnostic re-issue path.
+//
+// The normal commit happens in the harness auto-persist on
+// `ask_user_form` submit (one transactional connector + credential
+// write driven by `elicitations.ts` → `saveConnectorAtomic` with
+// `reason: "auto_persist_on_confirmation"`). This tool stays
+// available for legitimate re-issue cases:
+//   - rotating the credential after an initial save,
+//   - recovering from a half-applied write,
+//   - persisting after a probe failed by passing `force_save: true`.
+//
+// The audit row emitted from this tool path carries
+// `reason: "manual_re_issue"`. The harness auto-persist path emits
+// `reason: "auto_persist_on_confirmation"`. That distinction lets
+// operators tell the two writes apart in the audit trail when
+// triaging a "why are there two writes against the same connector"
+// question.
+
 import { z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";
-import { createConnector } from "../../connectors/service.ts";
-import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
-import { conversations } from "../../db/schema/index.ts";
-import { analyzeConversationAttachments } from "../../llm/flows/analyze-conversation-attachments.ts";
-import { logger } from "../../logging/logger.ts";
-import { withConnectorPersisted, withConnectorValidation } from "../authoring-state.ts";
-import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
 import {
-  buildGateError,
-  buildPersistencePayload,
-  missingFreshCheckpoints,
-} from "./authoring-contract.ts";
+  recordConnectorCreated,
+  recordConnectorSavedOverride,
+  recordConnectorUpdated,
+} from "../../audit/recorders/index.ts";
+import { getConnector } from "../../connectors/service.ts";
+import { getCredentialForConnector } from "../../credentials/service.ts";
+import type { Db } from "../../db/client.ts";
+import { conversations } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
+import { type AtomicCredentialInput, saveConnectorAtomic } from "../persistence/save-connector.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
-const inputSchema = z.object({}).openapi("SaveConnectorDraftToolInput");
+const bearerCredentialInput = z.object({
+  mode: z.literal("bearer"),
+  token: z.string().min(1),
+});
+const basicCredentialInput = z.object({
+  mode: z.literal("basic"),
+  username: z.string().min(1),
+  password: z.string().min(1),
+});
+const headerCredentialInput = z.object({
+  mode: z.literal("header"),
+  header_name: z.string().min(1),
+  header_value: z.string().min(1),
+});
+const queryCredentialInput = z.object({
+  mode: z.literal("query"),
+  param: z.string().min(1),
+  value: z.string().min(1),
+});
+
+const credentialInput = z
+  .discriminatedUnion("mode", [
+    bearerCredentialInput,
+    basicCredentialInput,
+    headerCredentialInput,
+    queryCredentialInput,
+  ])
+  .describe(
+    "Optional credential to (re-)attach. Sourced verbatim from a masked `ask_user_form(type: password, sensitive: true)` submission — never typed in chat.",
+  );
+
+const inputSchema = z
+  .object({
+    credential: credentialInput.optional(),
+    environment: z.enum(["dev", "prod"]).default("dev"),
+    force_save: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Persist the draft even if the most recent probe failed. Surfaces a warning in the response and tags the audit row with `kind: probe_override`. Use only when the operator explicitly confirms.",
+      ),
+  })
+  .openapi("SaveConnectorDraftToolInput");
+
+type Credential = z.infer<typeof credentialInput>;
 
 export const saveConnectorDraftTool: ConversationTool = {
   name: "save_connector_draft",
   description:
-    "Persist the current connector draft as a real connector after validation and probing. Use this only when the draft is ready to save.",
+    "Diagnostic re-issue: persist the draft atomically with an optionally-rotated credential. The normal commit path is the harness auto-persist on `ask_user_form` submit — only call this tool when the operator wants to re-save (rotate credential, recover from a partial write, or save with `force_save: true` after a failed probe).",
   inputSchema,
   category: "tenant_write",
   async execute(ctx, rawArgs): Promise<ToolResult> {
-    inputSchema.parse(rawArgs);
+    const args = inputSchema.parse(rawArgs);
+    logger.info({
+      module: "conversation_tool",
+      action: "save_connector_draft.started",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      has_credential: Boolean(args.credential),
+      force_save: args.force_save === true,
+    });
+
     const draft = ctx.getDraft();
     const connector = draft.connector;
-    const templates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
-    const validation = validateConnectorDraft(
-      connector ?? null,
-      templates.map((entry) => entry.template),
-    );
-    if (!connector) {
-      return {
-        ok: false,
-        data: buildGateError(draft, {
-          error_code: "connector_missing",
-          message: "start a connector draft before saving it",
-          recommended_mode: "connector",
-        }),
-      };
-    }
-    if (!validation.ok) {
-      const nextDraft = withConnectorValidation(
-        draft,
-        { ...connector, validation },
-        false,
-        "Connector draft is invalid and cannot be persisted yet.",
-        "connector_save_blocked",
-      );
-      await ctx.setDraft(nextDraft);
-      return {
-        ok: false,
-        data: buildGateError(nextDraft, {
-          error_code: "validation_failed",
-          message: "connector draft is invalid",
-          stale_checkpoints: ["connector_validated"],
-          recommended_mode: "connector",
-          extra: {
-            validation,
-          },
-        }),
-      };
-    }
-    const staleCheckpoints = missingFreshCheckpoints(draft, [
-      "connector_inspected",
-      "connector_validated",
-      "connector_probed",
-    ]);
-    const requiresProbe =
-      connector.driver === "http" ||
-      connector.driver === "graphql" ||
-      connector.driver === "postgres" ||
-      connector.driver === "s3";
-    const blocking_reasons = [
-      ...(draft.summary?.blocked_by ?? []).filter(
-        (reason) =>
-          reason === "inspect_connector_draft" ||
-          reason === "validate_connector_draft" ||
-          reason === "probe_connector_draft" ||
-          reason.startsWith("missing:"),
-      ),
-    ];
-    if (
-      staleCheckpoints.length > 0 ||
-      (requiresProbe && connector.latest_probe?.ok !== true) ||
-      blocking_reasons.some((reason) => reason.startsWith("missing:"))
-    ) {
-      return {
-        ok: false,
-        data: buildGateError(draft, {
-          error_code: "connector_not_ready",
-          message: "connector save is blocked until inspection, validation, and probe are fresh",
-          stale_checkpoints: staleCheckpoints,
-          blocking_reasons,
-          recommended_mode: "connector",
-          extra: {
-            validation,
-            latest_probe: connector.latest_probe ?? null,
-          },
-        }),
-      };
-    }
-    if (requiresProbe && connector.latest_probe?.ok !== true) {
-      return {
-        ok: false,
-        data: buildGateError(draft, {
-          error_code: "connector_not_ready",
-          message: "probe the connector draft successfully before saving it",
-          stale_checkpoints: ["connector_probed"],
-          recommended_mode: "connector",
-          extra: {
-            latest_probe: connector.latest_probe ?? null,
-          },
-        }),
-      };
-    }
-    const saved = await createConnector(
-      {
-        tenant_id: ctx.tenant_id,
-        actor_id: ctx.actor_id,
-        input: toCreateConnectorInput(connector),
-      },
-      ctx.db,
-    );
-    await ctx.db
-      .update(conversations)
-      .set({
-        target_connector_id: saved.id,
-        updated_at: new Date(),
-      })
-      .where(eq(conversations.id, ctx.conversation_id));
+    const supplied: Credential | undefined = args.credential;
 
-    // Attachment-driven endpoint extraction. Best-effort: failures here
-    // never block the save — the connector is already persisted, and a
-    // missing endpoint registry is recoverable from a later analyse step.
-    let analysis: { source_format: string; confidence: number; endpoint_count: number } | null =
-      null;
-    try {
-      const result = await analyzeConversationAttachments({
-        tenant_id: ctx.tenant_id,
-        conversation_id: ctx.conversation_id,
-        db: ctx.db,
-        connector_id: saved.id,
-      });
-      if (result) {
-        analysis = {
-          source_format: result.source_format,
-          confidence: result.confidence,
-          endpoint_count: result.endpoints.length,
-        };
+    // Idempotency: if the auto-persist already applied the same write,
+    // this re-issue must be a no-op. Look up the saved connector (if
+    // any) and compare the supplied credential's identifying shape
+    // against the stored credential. A match short-circuits with
+    // `already_persisted: true` and never touches the DB.
+    const existingSavedId = connector?.saved_connector_id ?? null;
+    if (existingSavedId) {
+      const existing = await getConnector(ctx.tenant_id, existingSavedId, ctx.db);
+      if (existing) {
+        const credentialMatches = await existingCredentialMatches({
+          tenant_id: ctx.tenant_id,
+          connector_id: existing.id,
+          environment: args.environment,
+          supplied,
+          db: ctx.db as Db,
+        });
+        if (credentialMatches) {
+          logger.info({
+            module: "conversation_tool",
+            action: "save_connector_draft.already_persisted",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            connector_id: existing.id,
+          });
+          return {
+            ok: true,
+            data: {
+              already_persisted: true,
+              connector_id: existing.id,
+              connector: {
+                id: existing.id,
+                slug: existing.slug,
+                display_name: existing.display_name,
+                environment: existing.environment,
+                driver: existing.driver,
+              },
+              next_best_actions: ["inspect_connector", "list_connectors"],
+            },
+          };
+        }
+        // Operator is rotating the credential. Forward the new value
+        // through `saveConnectorAtomic` (which short-circuits on
+        // `saved_connector_id` and runs `upsertCredential` against the
+        // already-saved row), then emit the `manual_re_issue` audit
+        // entry that distinguishes this from auto_persist_on_confirmation.
+        const result = await saveConnectorAtomic({
+          ctx,
+          environment: args.environment,
+          forceSave: args.force_save,
+          reason: "manual_re_issue",
+          ...(supplied ? { credential: supplied as AtomicCredentialInput } : {}),
+        });
+        await recordConnectorUpdated({
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.actor_id,
+          executor: ctx.db,
+          connector_id: existing.id,
+          kind: "credential_rotated",
+          reason: "manual_re_issue",
+          source: "tool_call",
+          tool: "save_connector_draft",
+          environment: args.environment,
+          ...(supplied ? { credential_mode: supplied.mode } : {}),
+        });
+        logger.info({
+          module: "conversation_tool",
+          action: "save_connector_draft.re_issued",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          connector_id: existing.id,
+          kind: "credential_rotated",
+        });
+        if (result.ok) {
+          const data =
+            typeof result.data === "object" && result.data !== null
+              ? (result.data as Record<string, unknown>)
+              : {};
+          return {
+            ok: true,
+            data: {
+              ...data,
+              re_issued: true,
+              audit_reason: "manual_re_issue",
+            },
+          };
+        }
+        return result;
       }
-    } catch (err) {
-      logger.warn({
-        module: "save-connector-draft",
-        action: "document_analysis_failed",
-        tenant_id: ctx.tenant_id,
-        connector_id: saved.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
     }
 
-    const nextDraft = withConnectorPersisted(
-      draft,
-      {
-        ...connector,
-        validation,
-        saved_connector_id: saved.id,
-      },
-      {
-        kind: "connector",
-        id: saved.id,
-        slug: saved.slug,
-        name: saved.display_name,
-        version_id: null,
-        version: null,
-        environment: saved.environment,
-        saved_at: new Date().toISOString(),
-      },
-      "connector_saved",
-    );
-    await ctx.setDraft(nextDraft);
+    // First-save path on this draft. The atomic helper enforces the
+    // probe gate (and surfaces a `probe_failed` envelope when force_save
+    // is false). We track `probeFailed` here so we can attach the
+    // `manual_re_issue` audit row + warning on the way out.
+    const requiresProbe =
+      connector?.driver === "http" ||
+      connector?.driver === "graphql" ||
+      connector?.driver === "postgres" ||
+      connector?.driver === "s3";
+    const probeFailed = Boolean(connector) && requiresProbe && connector?.latest_probe?.ok !== true;
+
+    const atomicResult = await saveConnectorAtomic({
+      ctx,
+      environment: args.environment,
+      forceSave: args.force_save,
+      reason: "manual_re_issue",
+      ...(supplied ? { credential: supplied as AtomicCredentialInput } : {}),
+    });
+    if (!atomicResult.ok) {
+      // probe_failed / connector_not_ready etc — the helper already
+      // populated next_best_actions and force_save_available.
+      if (atomicResult.error_code === "probe_failed") {
+        logger.info({
+          module: "conversation_tool",
+          action: "save_connector_draft.probe_failed",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          failure_code: connector?.latest_probe?.failure_code ?? null,
+        });
+      }
+      return atomicResult;
+    }
+
+    // Resolve the new connector id from the result envelope, falling
+    // back to the conversation row that saveConnectorAtomic just
+    // refreshed. Without an id we'd skip the audit row, which would
+    // make this re-issue indistinguishable from the auto-persist path.
+    const data =
+      typeof atomicResult.data === "object" && atomicResult.data !== null
+        ? (atomicResult.data as Record<string, unknown>)
+        : {};
+    const dataConnector =
+      data.connector && typeof data.connector === "object"
+        ? (data.connector as { id?: unknown })
+        : null;
+    let connector_id = typeof dataConnector?.id === "string" ? dataConnector.id : null;
+    if (!connector_id) {
+      const rows = await ctx.db
+        .select({ id: conversations.target_connector_id })
+        .from(conversations)
+        .where(eq(conversations.id, ctx.conversation_id))
+        .limit(1);
+      connector_id = rows[0]?.id ?? null;
+    }
+    if (connector_id) {
+      // The atomic helper already emits a `CONNECTOR_SAVED_OVERRIDE`
+      // audit row (with our `reason: "manual_re_issue"`) when force_save
+      // overrode a failed probe. We add a second `manual_re_issue` row
+      // tagged `tool: save_connector_draft` so non-override saves are
+      // still distinguishable from the harness auto-persist path.
+      if (probeFailed) {
+        await recordConnectorSavedOverride({
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.actor_id,
+          executor: ctx.db,
+          connector_id,
+          slug: connector?.slug ?? "",
+          driver: connector?.driver ?? "",
+          environment: args.environment,
+          reason: "manual_re_issue",
+          source: "tool_call",
+          tool: "save_connector_draft",
+          // Tool-side row is tagged `probe_override` so operators can
+          // tell the two override audits apart (the atomic helper's
+          // row is tagged `force_save_override`).
+          kind: "probe_override",
+          latest_probe: connector?.latest_probe ?? null,
+          probe_failure_code: connector?.latest_probe?.failure_code ?? null,
+        });
+      } else {
+        await recordConnectorCreated({
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.actor_id,
+          executor: ctx.db,
+          connector_id,
+          slug: connector?.slug ?? "",
+          driver: connector?.driver ?? "",
+          environment: args.environment,
+          reason: "manual_re_issue",
+          source: "tool_call",
+          ...(supplied ? { credential_persisted: true } : {}),
+        });
+      }
+    }
+    logger.info({
+      module: "conversation_tool",
+      action: "save_connector_draft.re_issued",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      connector_id,
+      kind: probeFailed ? "probe_override" : "create_via_tool",
+    });
+    const warnings: string[] = [];
+    if (probeFailed) {
+      warnings.push(
+        `force_save: connector persisted with a failed probe (${connector?.latest_probe?.failure_code ?? "unknown"}). Audit reason: manual_re_issue, kind: probe_override.`,
+      );
+    }
     return {
       ok: true,
       data: {
-        ...buildPersistencePayload(nextDraft, {
-          resource_kind: "connector",
-          resource_id: saved.id,
-        }),
-        connector: {
-          id: saved.id,
-          slug: saved.slug,
-          display_name: saved.display_name,
-          environment: saved.environment,
-          driver: saved.driver,
-        },
-        ...(analysis ? { document_analysis: analysis } : {}),
+        ...data,
+        re_issued: true,
+        audit_reason: "manual_re_issue",
+        ...(warnings.length > 0 ? { warnings } : {}),
       },
     };
   },
 };
+
+/**
+ * Idempotency check for the diagnostic re-issue path. Returns true
+ * when no write is needed:
+ *   - no credential supplied (operator is just confirming the
+ *     connector row is in place), OR
+ *   - the existing credential row matches the supplied one
+ *     byte-for-byte in its identifying shape (token, username +
+ *     password, header name + value, query param + value).
+ *
+ * Returns false when a real rotation is happening — the caller forwards
+ * the credential to `saveConnectorAtomic` so it lands.
+ */
+async function existingCredentialMatches(p: {
+  tenant_id: string;
+  connector_id: string;
+  environment: "dev" | "prod";
+  supplied: Credential | undefined;
+  db: Db;
+}): Promise<boolean> {
+  if (!p.supplied) return true;
+  const existing = await getCredentialForConnector(
+    p.tenant_id,
+    p.connector_id,
+    p.environment,
+    p.db,
+  );
+  if (!existing) return false;
+  if (existing.value.mode !== p.supplied.mode) return false;
+  const supplied = p.supplied;
+  const stored = existing.value as { mode: string } & Record<string, unknown>;
+  if (supplied.mode === "bearer" && stored.mode === "bearer") {
+    return stored.token === supplied.token;
+  }
+  if (supplied.mode === "basic" && stored.mode === "basic") {
+    return stored.username === supplied.username && stored.password === supplied.password;
+  }
+  if (supplied.mode === "header" && stored.mode === "header") {
+    const headers = (stored.headers as Record<string, string> | undefined) ?? {};
+    return headers[supplied.header_name] === supplied.header_value;
+  }
+  if (supplied.mode === "query" && stored.mode === "query") {
+    const query = (stored.query as Record<string, string> | undefined) ?? {};
+    return query[supplied.param] === supplied.value;
+  }
+  return false;
+}

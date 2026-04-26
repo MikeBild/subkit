@@ -1,3 +1,5 @@
+import { scrubSecrets } from "./scrub-secrets.ts";
+
 /**
  * Shallow deny-list of field names that must never appear in log output.
  * Matching is case-insensitive; keys are compared lowercased.
@@ -64,7 +66,7 @@ function scrubString(value: string): string {
   return out;
 }
 
-export function redact(input: unknown, depth = 0): unknown {
+function redactInner(input: unknown, depth = 0): unknown {
   if (input == null) return input;
   if (depth >= MAX_DEPTH) return "[depth-exceeded]";
 
@@ -72,7 +74,7 @@ export function redact(input: unknown, depth = 0): unknown {
   if (typeof input !== "object") return input;
 
   if (Array.isArray(input)) {
-    return input.map((item) => redact(item, depth + 1));
+    return input.map((item) => redactInner(item, depth + 1));
   }
 
   const out: Record<string, unknown> = {};
@@ -80,8 +82,23 @@ export function redact(input: unknown, depth = 0): unknown {
     if (SENSITIVE_KEYS.has(key.toLowerCase())) {
       out[key] = REDACTED;
     } else {
-      out[key] = redact(value, depth + 1);
+      out[key] = redactInner(value, depth + 1);
     }
   }
   return out;
+}
+
+/**
+ * Public redactor. Runs the legacy denylist + Bearer/Slack/wf_/postgres
+ * scrubbers, then layers the secret-shape scrubber on top so PATs
+ * (`dop_v1_…`, `ghp_…`, …), JWTs, and AWS access keys are caught even
+ * when they appear in free-form text outside a sensitive key.
+ *
+ * The two passes are complementary: the legacy pass redacts whole
+ * values at sensitive keys and short well-known patterns; the
+ * shape-scrubber catches long opaque tokens that the operator pasted
+ * into a message body / URL / error string.
+ */
+export function redact(input: unknown, depth = 0): unknown {
+  return scrubSecrets(redactInner(input, depth));
 }

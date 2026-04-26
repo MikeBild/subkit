@@ -62,7 +62,6 @@ export function synthesizeFallbackMessage(params: {
   const callsPerTool = new Map<string, number>();
   let totalCalls = 0;
   let successCalls = 0;
-  let errorCalls = 0;
   for (const ev of params.events) {
     if (ev.type !== "tool_result") continue;
     const output = ev.output;
@@ -75,8 +74,7 @@ export function synthesizeFallbackMessage(params: {
       typeof out.error === "string" ||
       out.status === "failed" ||
       (out as { ok?: unknown }).ok === false;
-    if (looksError) errorCalls += 1;
-    else successCalls += 1;
+    if (!looksError) successCalls += 1;
   }
   if (latestPerTool.size === 0) {
     return params.loopWarnings > 0

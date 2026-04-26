@@ -481,6 +481,8 @@ function normalizeSummary(raw: unknown): AuthoringSummary | undefined {
         : typeof summary.next_action === "string"
           ? summary.next_action
           : null,
+    next_suggested_tool:
+      typeof summary.next_suggested_tool === "string" ? summary.next_suggested_tool : null,
     missing_fields: Array.isArray(summary.missing_fields)
       ? summary.missing_fields.filter(
           (field: unknown): field is string => typeof field === "string",
@@ -589,10 +591,41 @@ function computeConnectorMissingFields(connector: ConnectorDraftDocument | null)
   return missing;
 }
 
-function computeWorkflowMissingFields(workflow: WorkflowDraftDocument): string[] {
+function persistedResourceForKind(
+  state: AuthoringState,
+  kind: PersistedResourceRef["kind"],
+): PersistedResourceRef | null {
+  return state.persisted_resources.find((item) => item.kind === kind) ?? null;
+}
+
+function persistedWorkflowResource(state: AuthoringState): PersistedResourceRef | null {
+  const persisted = persistedResourceForKind(state, "workflow");
+  if (persisted) return persisted;
+  const latestExecution = state.latest_execution;
+  if (!latestExecution?.workflow_id) return null;
+  return {
+    kind: "workflow",
+    id: latestExecution.workflow_id,
+    slug: null,
+    name: null,
+    version_id: latestExecution.workflow_version_id,
+    version: null,
+    environment: latestExecution.environment,
+    saved_at: latestExecution.recorded_at,
+  };
+}
+
+function computeWorkflowMissingFields(
+  workflow: WorkflowDraftDocument,
+  active?: AuthoringSummary["active_target"] | null,
+): string[] {
   const missing: string[] = [];
-  if (!workflow.name) missing.push("workflow.name");
-  if (workflow.steps.length === 0) missing.push("workflow.steps");
+  if (!workflow.name && !(active?.kind === "workflow" && active.name)) {
+    missing.push("workflow.name");
+  }
+  if (workflow.steps.length === 0 && active?.lifecycle_state !== "persisted") {
+    missing.push("workflow.steps");
+  }
   return missing;
 }
 
@@ -764,6 +797,7 @@ function emptySummary(): AuthoringSummary {
     readiness: "drafting",
     next_action: null,
     next_required_action: null,
+    next_suggested_tool: null,
     missing_fields: [],
     last_action: null,
     progress_label: null,
@@ -801,7 +835,14 @@ function workflowTargetLifecycle(
   state: AuthoringState,
   workflow: WorkflowDraftDocument,
 ): AuthoringLifecycleState {
-  if (workflow.steps.length === 0) return "none";
+  const persistedWorkflow = persistedWorkflowResource(state);
+  if (workflow.steps.length === 0) {
+    if (!persistedWorkflow) return "none";
+    return state.workflow_mutation_seq > 0 &&
+      checkpointStatus(state, "workflow_persisted") !== "fresh"
+      ? "draft_only"
+      : "persisted";
+  }
   return checkpointStatus(state, "workflow_persisted") === "fresh" ? "persisted" : "draft_only";
 }
 
@@ -812,9 +853,8 @@ function computeActiveTarget(
 ): AuthoringSummary["active_target"] {
   const connectorLifecycle = connectorTargetLifecycle(state, connector);
   const workflowLifecycle = workflowTargetLifecycle(state, workflow);
+  const persistedWorkflow = persistedWorkflowResource(state);
   if (workflow.steps.length > 0) {
-    const persistedWorkflow =
-      state.persisted_resources.find((item) => item.kind === "workflow") ?? null;
     return {
       kind: "workflow",
       name: workflow.name || (persistedWorkflow?.name ?? null),
@@ -824,9 +864,18 @@ function computeActiveTarget(
       lifecycle_state: workflowLifecycle,
     };
   }
+  if (persistedWorkflow) {
+    return {
+      kind: "workflow",
+      name: persistedWorkflow.name ?? null,
+      slug: persistedWorkflow.slug ?? null,
+      id: persistedWorkflow.id,
+      environment: persistedWorkflow.environment ?? connector?.environment ?? null,
+      lifecycle_state: workflowLifecycle,
+    };
+  }
   if (connector) {
-    const persistedConnector =
-      state.persisted_resources.find((item) => item.kind === "connector") ?? null;
+    const persistedConnector = persistedResourceForKind(state, "connector");
     return {
       kind: "connector",
       name: connector.name ?? persistedConnector?.name ?? null,
@@ -851,9 +900,9 @@ function computeBlockedBy(
   connector: ConnectorDraftDocument | null,
   workflow: WorkflowDraftDocument,
   latest_preview: DraftDocument["latest_preview"],
+  active: AuthoringSummary["active_target"],
 ): string[] {
   const blocked: string[] = [];
-  const active = computeActiveTarget(state, connector, workflow);
   if (active.kind === "connector" && active.lifecycle_state === "draft_only") {
     for (const field of computeConnectorMissingFields(connector)) blocked.push(`missing:${field}`);
     if (checkpointStatus(state, "connector_inspected") !== "fresh")
@@ -873,12 +922,22 @@ function computeBlockedBy(
     return uniqueStrings(blocked);
   }
   if (active.kind === "workflow") {
-    for (const field of computeWorkflowMissingFields(workflow)) blocked.push(`missing:${field}`);
-    if (checkpointStatus(state, "workflow_inspected") !== "fresh")
-      blocked.push("inspect_workflow_draft");
-    if (checkpointStatus(state, "workflow_validated") !== "fresh") blocked.push("validate_draft");
-    if (checkpointStatus(state, "workflow_previewed") !== "fresh" || latest_preview?.ok !== true) {
-      blocked.push("dry_run_workflow");
+    for (const field of computeWorkflowMissingFields(workflow, active)) {
+      blocked.push(`missing:${field}`);
+    }
+    if (active.lifecycle_state === "draft_only") {
+      if (checkpointStatus(state, "workflow_inspected") !== "fresh") {
+        blocked.push("inspect_workflow_draft");
+      }
+      if (checkpointStatus(state, "workflow_validated") !== "fresh") {
+        blocked.push("validate_draft");
+      }
+      if (
+        checkpointStatus(state, "workflow_previewed") !== "fresh" ||
+        latest_preview?.ok !== true
+      ) {
+        blocked.push("dry_run_workflow");
+      }
     }
     if (
       state.latest_execution?.diagnosis_available &&
@@ -922,7 +981,9 @@ function computeProgressLabel(
   if (active.kind === "workflow") {
     return workflow.steps.length > 0
       ? `${workflow.steps.length} workflow step${workflow.steps.length === 1 ? "" : "s"}`
-      : "Workflow draft";
+      : active.lifecycle_state === "persisted"
+        ? "Saved workflow"
+        : "Workflow draft";
   }
   return null;
 }
@@ -994,6 +1055,23 @@ function nextActionForBlocked(
   }
 }
 
+function nextSuggestedToolForBlocked(blocked: string[]): string | null {
+  const first = blocked[0];
+  if (!first || first.startsWith("missing:")) return null;
+  switch (first) {
+    case "inspect_connector_draft":
+    case "validate_connector_draft":
+    case "probe_connector_draft":
+    case "inspect_workflow_draft":
+    case "validate_draft":
+    case "dry_run_workflow":
+    case "diagnose_latest_execution":
+      return first;
+    default:
+      return null;
+  }
+}
+
 function computeNextAction(
   state: AuthoringState,
   active: AuthoringSummary["active_target"],
@@ -1002,6 +1080,9 @@ function computeNextAction(
 ): string | null {
   const blockedAction = nextActionForBlocked(blocked_by, active);
   if (blockedAction) return blockedAction;
+  if (active.kind === "connector" && active.lifecycle_state === "draft_only") {
+    return "Save the connector now that inspection, validation, and probe are fresh.";
+  }
   if (
     active.kind === "connector" &&
     active.lifecycle_state === "persisted" &&
@@ -1031,6 +1112,43 @@ function computeNextAction(
   return "Continue the conversation.";
 }
 
+function computeNextSuggestedTool(
+  state: AuthoringState,
+  active: AuthoringSummary["active_target"],
+  blocked_by: string[],
+  workflow: WorkflowDraftDocument,
+): string | null {
+  const blockedTool = nextSuggestedToolForBlocked(blocked_by);
+  if (blockedTool) return blockedTool;
+  if (active.kind === "connector" && active.lifecycle_state === "draft_only") {
+    return "save_connector_draft";
+  }
+  if (
+    active.kind === "connector" &&
+    active.lifecycle_state === "persisted" &&
+    workflow.steps.length === 0
+  ) {
+    return "start_workflow_from_goal";
+  }
+  if (active.kind === "workflow" && active.lifecycle_state === "draft_only") {
+    return "commit_draft";
+  }
+  if (
+    active.kind === "workflow" &&
+    active.lifecycle_state === "persisted" &&
+    !state.latest_execution
+  ) {
+    return "run_workflow";
+  }
+  if (state.latest_execution?.diagnosis_available && !state.latest_diagnosis) {
+    return "diagnose_latest_execution";
+  }
+  if (state.latest_execution && active.kind === "workflow") {
+    return "run_workflow";
+  }
+  return null;
+}
+
 export function refreshDraftSummary(draft: DraftDocument): DraftDocument {
   const workflow = normalizeWorkflowDraft(draft);
   const connector = draft.connector ?? null;
@@ -1038,18 +1156,26 @@ export function refreshDraftSummary(draft: DraftDocument): DraftDocument {
   const existingSummary = normalizeSummary(draft) ?? undefined;
   const state = normalizeState(draft, mode, connector, workflow, draft.latest_preview ?? null);
   const active_target = computeActiveTarget(state, connector, workflow);
-  const blocked_by = computeBlockedBy(state, connector, workflow, draft.latest_preview ?? null);
+  const blocked_by = computeBlockedBy(
+    state,
+    connector,
+    workflow,
+    draft.latest_preview ?? null,
+    active_target,
+  );
   const next_action = computeNextAction(state, active_target, blocked_by, workflow);
+  const next_suggested_tool = computeNextSuggestedTool(state, active_target, blocked_by, workflow);
   const missing_fields =
     active_target.kind === "connector"
       ? computeConnectorMissingFields(connector)
-      : computeWorkflowMissingFields(workflow);
+      : computeWorkflowMissingFields(workflow, active_target);
   state.mode = computeSurfaceMode(state, active_target);
   state.stage = computeStage(state, active_target);
   const summary: AuthoringSummary = {
     readiness: computeReadiness(active_target, blocked_by),
     next_action,
     next_required_action: next_action,
+    next_suggested_tool,
     missing_fields,
     last_action: existingSummary?.last_action ?? draft.summary?.last_action ?? null,
     progress_label: computeProgressLabel(active_target, connector, workflow),
@@ -1138,6 +1264,37 @@ export function withWorkflowDraft(
   last_action: string | null = draft.summary?.last_action ?? null,
 ): DraftDocument {
   return applyWorkflowMutation(draft, workflow, last_action);
+}
+
+export function startNewWorkflowDraft(
+  draft: DraftDocument,
+  last_action: string | null = "workflow_target_reset",
+): DraftDocument {
+  const normalized = normalizeDraftDocument(draft);
+  const state = cloneState(normalized.state ?? createEmptyState("workflow"));
+  state.mode = "workflow";
+  state.stage = "idle";
+  state.workflow_mutation_seq += 1;
+  state.latest_execution = null;
+  state.latest_diagnosis = null;
+  state.persisted_resources = state.persisted_resources.filter((item) => item.kind !== "workflow");
+  delete state.checkpoints.workflow_inspected;
+  delete state.checkpoints.workflow_validated;
+  delete state.checkpoints.workflow_previewed;
+  delete state.checkpoints.workflow_persisted;
+  delete state.checkpoints.workflow_executed;
+  delete state.checkpoints.workflow_diagnosed;
+  return refreshDraftSummary({
+    ...normalized,
+    mode: "workflow_authoring",
+    workflow: createEmptyWorkflowDraft(),
+    latest_preview: null,
+    state,
+    summary: {
+      ...(normalized.summary ?? emptySummary()),
+      last_action,
+    },
+  });
 }
 
 export function withConnectorDraft(
@@ -1308,16 +1465,36 @@ export function withWorkflowPersisted(
   resource: PersistedResourceRef,
   last_action: string | null = "workflow_persisted",
 ): DraftDocument {
+  return bindPersistedWorkflow(draft, resource, {
+    tool_name: "commit_draft",
+    summary: `Workflow ${resource.name ?? resource.id} persisted.`,
+    last_action,
+  });
+}
+
+export function bindPersistedWorkflow(
+  draft: DraftDocument,
+  resource: PersistedResourceRef,
+  options?: {
+    tool_name?: string;
+    summary?: string | null;
+    last_action?: string | null;
+  },
+): DraftDocument {
   const normalized = normalizeDraftDocument(draft);
   let state = cloneState(normalized.state ?? createEmptyState("workflow"));
-  state.mode = "workflow";
+  state.mode = state.latest_diagnosis
+    ? "diagnosis"
+    : state.latest_execution
+      ? "execution"
+      : "workflow";
   state = addPersistedResource(state, resource);
   state = recordCheckpoint(
     state,
     "workflow_persisted",
-    "commit_draft",
+    options?.tool_name ?? "workflow_binding",
     true,
-    `Workflow ${resource.name ?? resource.id} persisted.`,
+    options?.summary ?? `Saved workflow ${resource.name ?? resource.id} is active.`,
     {
       kind: "workflow",
       id: resource.id,
@@ -1327,7 +1504,10 @@ export function withWorkflowPersisted(
   return refreshDraftSummary({
     ...normalized,
     state,
-    summary: { ...(normalized.summary ?? emptySummary()), last_action },
+    summary: {
+      ...(normalized.summary ?? emptySummary()),
+      last_action: options?.last_action ?? normalized.summary?.last_action ?? null,
+    },
   });
 }
 

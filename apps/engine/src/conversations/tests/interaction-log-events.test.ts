@@ -134,7 +134,7 @@ describe("recordTransition — one entry per user_* state", () => {
     expect(meta.actor_id).toBe("00000000-0000-0000-0000-000000000001");
   });
 
-  test("user_auto_declined (used by appendUserMessage supersede path)", async () => {
+  test("user_auto_declined keeps the legacy transition available for explicit cancellations", async () => {
     const id = await seedToolCall("ask_user_confirm");
     await recordTransition(ctx.db, {
       tool_call_id: id,
@@ -294,8 +294,11 @@ describe("service-layer wiring — code review", () => {
     // Must import recordTransition:
     expect(src.includes('import("./confirmation.ts")')).toBe(true);
     expect(src.includes("recordTransition")).toBe(true);
-    // Must handle the four primary outcomes:
-    for (const state of ["confirmed", "declined", "partial", "tested", "auto_declined"]) {
+    // Must handle the four primary outcomes. (`auto_declined` was a
+    // pre-auto-persist transient state — the harness now applies the
+    // commit_intent or marks the elicitation declined directly, so the
+    // intermediate `auto_declined` label is gone.)
+    for (const state of ["confirmed", "declined", "partial", "tested"]) {
       expect(src.includes(state)).toBe(true);
     }
   });

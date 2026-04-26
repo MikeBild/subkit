@@ -3,10 +3,10 @@
 // entry on each attempt.
 
 import { z } from "@hono/zod-openapi";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { conversations } from "../../../../db/schema/index.ts";
 import { runExecution } from "../../../../execution/engine.ts";
-import { withWorkflowExecution } from "../../../authoring-state.ts";
+import { bindPersistedWorkflow, withWorkflowExecution } from "../../../authoring-state.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
 
@@ -93,14 +93,29 @@ export const runWorkflowTool: ConversationTool = {
           target_workflow_id: workflowId,
           updated_at: new Date(),
         })
-        .where(eq(conversations.id, ctx.conversation_id));
+        .where(
+          and(
+            eq(conversations.tenant_id, ctx.tenant_id),
+            eq(conversations.id, ctx.conversation_id),
+          ),
+        );
       // Surface non-fatal warnings (unresolved identifiers in transform
       // expressions, schema drift signals) so the LLM / operator sees
       // them next to the output. The execution still succeeded — the
       // warning is an FYI that will become an auto-repair candidate.
       const hasWarnings = (result.warnings?.length ?? 0) > 0;
       const diagnosisAvailable = hasWarnings || result.status !== "succeeded";
-      const nextDraft = withWorkflowExecution(currentDraft, {
+      const boundDraft = bindPersistedWorkflow(currentDraft, {
+        kind: "workflow",
+        id: workflowId,
+        slug: wf.slug,
+        name: wf.name,
+        version_id: wf.current_version_id,
+        version: wf.current_version,
+        environment: null,
+        saved_at: wf.updated_at.toISOString(),
+      });
+      const nextDraft = withWorkflowExecution(boundDraft, {
         execution_id: result.execution_id,
         workflow_id: workflowId,
         workflow_version_id: wf.current_version_id,

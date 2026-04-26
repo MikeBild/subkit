@@ -14,6 +14,8 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
+import { workflowInputObjectKeys } from "../workflows/run-input.ts";
+import { DANGEROUS_TOOLS_SET } from "./dangerous-tools.ts";
 
 export type ToolPolicyMode = "no_confirm" | "confirm_before_execution" | "confirm_after_execution";
 
@@ -35,19 +37,6 @@ export interface ToolPolicies {
  * even in "auto" so a sloppy prompt cannot nuke data silently.
  */
 export type PermissionMode = "auto" | "ask" | "plan";
-
-const DANGEROUS_TOOLS: ReadonlySet<string> = new Set([
-  "delete_workflow",
-  "delete_connector",
-  "delete_knowledge_source",
-  "delete_subscription",
-  "delete_tunnel",
-  "revoke_api_key",
-  "revoke_portal_token",
-  "approve_patch_candidate",
-  "approve_skill_candidate",
-  "approve_discovery_artifact",
-]);
 
 export async function getToolPolicies(db: Db, conversation_id: string): Promise<ToolPolicies> {
   const rows = await db
@@ -226,7 +215,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
         workflow_id: obj.workflow_id ?? null,
         version_id: obj.version_id ?? null,
         environment: obj.environment ?? null,
-        ...(obj.input !== undefined ? { input_keys: Object.keys(asObj(obj.input)) } : {}),
+        ...(obj.input !== undefined ? { input_keys: workflowInputObjectKeys(obj.input) } : {}),
       };
     },
   },
@@ -329,16 +318,44 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   build_workflow: { defaultMode: "no_confirm" },
   start_workflow_from_goal: { defaultMode: "no_confirm" },
   save_connector_draft: {
+    // Confirm by default. When the input also carries an inline
+    // `credential` (the masked `ask_user_form` answer), keep
+    // `confirm_before_execution` — but the confirmation surfaces the
+    // credential mode in plain text only, never the secret. The
+    // CLI/UI inspects `pending.credential.mode` and shows the user
+    // "save Acme + bearer credential" as one combined approval.
     defaultMode: "confirm_before_execution",
-    credentialFields: [
-      "config.api_key",
-      "config.token",
-      "config.access_token",
-      "config.auth_value",
-      "config.password",
-      "config.client_secret",
-    ],
-    buildPendingOutput: () => ({ kind: "save_connector_draft" }),
+    computeModeFromInput: (input) => {
+      const credential = asObj(input).credential;
+      if (credential && typeof credential === "object") {
+        return "confirm_before_execution";
+      }
+      return null;
+    },
+    buildPendingOutput: (input) => {
+      const credential = asObj(input).credential;
+      if (credential && typeof credential === "object") {
+        const mode = (credential as { mode?: unknown }).mode;
+        if (typeof mode === "string") {
+          return { kind: "save_connector_draft", credential_mode: mode };
+        }
+      }
+      return { kind: "save_connector_draft" };
+    },
+  },
+  // OAuth2 authorization-code start. Always confirm before execution
+  // because the side-effect is "open the user's browser to a third-party
+  // identity provider". Pending output surfaces the connector_id; the
+  // authorization_url is only visible after confirmation lands.
+  authenticate_oauth: {
+    defaultMode: "confirm_before_execution",
+    buildPendingOutput: (input) => {
+      const connectorId = asObj(input).connector_id;
+      return {
+        kind: "authenticate_oauth",
+        ...(typeof connectorId === "string" ? { connector_id: connectorId } : {}),
+      };
+    },
   },
   // web_search leaves the tenant perimeter — confirm by default.
   web_search: { defaultMode: "confirm_before_execution" },
@@ -392,7 +409,7 @@ export function resolveToolMode(args: {
 }): ToolPolicyMode {
   const { tool, category, input, overrides, permission_mode } = args;
 
-  const isDangerous = DANGEROUS_TOOLS.has(tool);
+  const isDangerous = DANGEROUS_TOOLS_SET.has(tool);
   const def = TOOL_POLICIES[tool];
 
   // Inline-credential safeguard — fires before the permission_mode

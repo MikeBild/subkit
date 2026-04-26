@@ -1,34 +1,66 @@
+// Skill-gated palette regression tests.
+//
+// PR10/PR15 replaced state-gated visibility with a skill-gated palette.
+// Loading the canonical authoring skills (`connector-creation-guidance`,
+// `workflow-authoring`) exposes a fixed tool set; tools never silently
+// disappear once loaded. Wrong-state calls return a structured
+// `tool_unavailable_in_state` envelope from `state-gate.ts` rather than
+// a phantom "tool not in palette" message.
+
 import { describe, expect, test } from "bun:test";
 import {
   createEmptyDraftDocument,
   withConnectorDraft,
-  withConnectorInspection,
   withConnectorPersisted,
-  withConnectorProbe,
-  withConnectorValidation,
-  withLatestPreview,
-  withWorkflowDiagnosis,
   withWorkflowDraft,
   withWorkflowExecution,
-  withWorkflowInspection,
   withWorkflowPersisted,
-  withWorkflowValidation,
 } from "../authoring-state.ts";
-import { validateConnectorDraft } from "../connector-draft.ts";
-import { filterByAuthoringPalette } from "../tools/authoring-palette.ts";
+import {
+  CONNECTOR_AUTHORING_SKILL,
+  filterByAuthoringPalette,
+  WORKFLOW_AUTHORING_SKILL,
+} from "../tools/authoring-palette.ts";
 import { listTools } from "../tools/index.ts";
 
-describe("authoring tool palette", () => {
-  test("keeps the broad palette outside focused authoring", () => {
-    const visible = filterByAuthoringPalette(listTools(), createEmptyDraftDocument()).map(
-      (tool) => tool.name,
-    );
-    expect(visible).toContain("create_api_key");
-    expect(visible).toContain("list_users");
+const ALL_AUTHORING_SKILLS = new Set<string>([CONNECTOR_AUTHORING_SKILL, WORKFLOW_AUTHORING_SKILL]);
+const ONLY_CONNECTOR_SKILL = new Set<string>([CONNECTOR_AUTHORING_SKILL]);
+const ONLY_WORKFLOW_SKILL = new Set<string>([WORKFLOW_AUTHORING_SKILL]);
+const NO_SKILLS = new Set<string>();
+
+describe("authoring tool palette — skill-gated visibility", () => {
+  test("with both authoring skills loaded, the canonical authoring + read tools are visible on a fresh draft", () => {
+    const visible = filterByAuthoringPalette(
+      listTools(),
+      createEmptyDraftDocument(),
+      ALL_AUTHORING_SKILLS,
+    ).map((tool) => tool.name);
     expect(visible).toContain("start_connector_from_description");
+    expect(visible).toContain("start_workflow_from_goal");
+    expect(visible).toContain("save_connector_draft");
+    expect(visible).toContain("commit_draft");
+    expect(visible).toContain("list_connectors");
+    expect(visible).toContain("list_workflows");
   });
 
-  test("hides unrelated admin tools during focused connector authoring", () => {
+  test("with no skills loaded, authoring tools are NOT visible (palette must be loaded explicitly)", () => {
+    const visible = filterByAuthoringPalette(
+      listTools(),
+      createEmptyDraftDocument(),
+      NO_SKILLS,
+    ).map((tool) => tool.name);
+    expect(visible).toContain("ask_user_text");
+    expect(visible).toContain("list_skills");
+    expect(visible).toContain("load_skill");
+    expect(visible).toContain("list_connectors"); // always-visible reads
+    expect(visible).toContain("delete_connector"); // always-visible cleanup
+    expect(visible).not.toContain("save_connector_draft");
+    expect(visible).not.toContain("commit_draft");
+    expect(visible).not.toContain("build_workflow");
+    expect(visible).not.toContain("start_connector_from_description");
+  });
+
+  test("save_connector_draft stays visible mid-authoring even when no inspections / validations / probes have run", () => {
     const draft = withConnectorDraft(
       createEmptyDraftDocument(),
       {
@@ -42,98 +74,45 @@ describe("authoring tool palette", () => {
         docs: [],
         latest_probe: null,
         saved_connector_id: null,
-        validation: validateConnectorDraft({
-          name: "Focused API",
-          slug: "focused-api",
-          driver: "http",
-          environment: "dev",
-          base_url: "https://api.example.com",
-          auth_type: "none",
-          config: {},
-          docs: [],
-          latest_probe: null,
-          saved_connector_id: null,
-        }),
+        validation: { ok: false, missing_fields: [], errors: [] },
       },
       "connector_started_from_description",
     );
-    const visible = filterByAuthoringPalette(listTools(), draft).map((tool) => tool.name);
+    const visible = filterByAuthoringPalette(listTools(), draft, ONLY_CONNECTOR_SKILL).map(
+      (tool) => tool.name,
+    );
     expect(visible).toContain("inspect_connector_draft");
     expect(visible).toContain("probe_connector_draft");
-    expect(visible).not.toContain("save_connector_draft");
-    expect(visible).not.toContain("build_workflow");
+    expect(visible).toContain("validate_connector_draft");
+    // The session 00b93a52 fix: save_connector_draft must NOT disappear
+    // just because the draft is incomplete. Calling it surfaces the
+    // structured envelope from state-gate.ts.
+    expect(visible).toContain("save_connector_draft");
+    expect(visible).not.toContain("build_workflow"); // workflow-skill not loaded
     expect(visible).not.toContain("create_api_key");
-    // delete_workflow / delete_connector / revoke_* are intentionally
-    // ALWAYS visible now — they're tenant cleanup operations the user
-    // can request mid-authoring ("lösche dummy-http"). The
-    // dangerous-tools confirm gate (tool-policies.ts DANGEROUS_TOOLS)
-    // is the safety net, not the palette filter.
-    expect(visible).toContain("delete_workflow");
-    expect(visible).not.toContain("list_users");
   });
 
-  test("shows save only after connector checkpoints are fresh", () => {
-    let draft = withConnectorDraft(
+  test("commit_draft stays visible during workflow authoring even before any preview ran", () => {
+    const draft = withWorkflowDraft(
       createEmptyDraftDocument(),
       {
-        name: "Focused API",
-        slug: "focused-api",
-        driver: "http",
-        environment: "dev",
-        base_url: "https://api.example.com",
-        auth_type: "none",
-        config: {},
-        docs: [],
-        latest_probe: null,
-        saved_connector_id: null,
-        validation: validateConnectorDraft({
-          name: "Focused API",
-          slug: "focused-api",
-          driver: "http",
-          environment: "dev",
-          base_url: "https://api.example.com",
-          auth_type: "none",
-          config: {},
-          docs: [],
-          latest_probe: null,
-          saved_connector_id: null,
-        }),
+        name: "Focused Workflow",
+        slug: "focused-workflow",
+        steps: [{ id: "shape", kind: "transform", expression: "$input", language: "jsonata" }],
       },
-      "connector_started_from_description",
+      "workflow_seeded_from_goal",
     );
-    draft = withConnectorInspection(draft);
-    draft = withConnectorValidation(
-      draft,
-      {
-        ...draft.connector,
-        validation: { ok: true, missing_fields: [], errors: [] },
-      },
-      true,
-      "Connector draft valid.",
+    const visible = filterByAuthoringPalette(listTools(), draft, ONLY_WORKFLOW_SKILL).map(
+      (tool) => tool.name,
     );
-    draft = withConnectorProbe(
-      draft,
-      {
-        ...draft.connector,
-        latest_probe: {
-          ok: true,
-          method: "GET",
-          path: "/ping",
-          environment: "dev",
-          status_code: 200,
-          summary: "Probe ok.",
-        },
-      },
-      true,
-      "Probe ok.",
-    );
-    const visible = filterByAuthoringPalette(listTools(), draft).map((tool) => tool.name);
-    expect(visible).toContain("save_connector_draft");
-    expect(visible).toContain("build_workflow");
-    expect(visible).toContain("dry_run_step");
+    expect(visible).toContain("commit_draft");
+    expect(visible).toContain("run_workflow");
+    expect(visible).toContain("diagnose_latest_execution");
+    expect(visible).toContain("dry_run_workflow");
+    expect(visible).not.toContain("save_connector_draft"); // connector-skill not loaded
   });
 
-  test("opens workflow start tools after connector persistence", () => {
+  test("persisted connector keeps connector authoring + workflow palette visible (when both loaded)", () => {
     let draft = withConnectorDraft(
       createEmptyDraftDocument(),
       {
@@ -161,40 +140,18 @@ describe("authoring tool palette", () => {
       environment: "dev",
       saved_at: "2026-04-23T10:00:00.000Z",
     });
-    const visible = filterByAuthoringPalette(listTools(), draft).map((tool) => tool.name);
+    const visible = filterByAuthoringPalette(listTools(), draft, ALL_AUTHORING_SKILLS).map(
+      (tool) => tool.name,
+    );
     expect(visible).toContain("start_workflow_from_goal");
     expect(visible).toContain("build_workflow");
     expect(visible).toContain("inspect_workflow_draft");
-    expect(visible).toContain("submit_connector_credential");
-    expect(visible).not.toContain("save_connector_draft");
+    expect(visible).toContain("authenticate_oauth");
+    // Tools never disappear once a skill is loaded.
+    expect(visible).toContain("save_connector_draft");
   });
 
-  test("shows commit only after workflow preview is fresh", () => {
-    let draft = withWorkflowDraft(
-      createEmptyDraftDocument(),
-      {
-        name: "Focused Workflow",
-        slug: "focused-workflow",
-        steps: [{ id: "shape", kind: "transform", expression: "$input", language: "jsonata" }],
-      },
-      "workflow_seeded_from_goal",
-    );
-    let visible = filterByAuthoringPalette(listTools(), draft).map((tool) => tool.name);
-    expect(visible).not.toContain("commit_draft");
-
-    draft = withWorkflowInspection(draft);
-    draft = withWorkflowValidation(draft, true, "Workflow valid.");
-    draft = withLatestPreview(draft, {
-      ok: true,
-      step_id: "shape",
-      summary: "Preview ok.",
-    });
-    visible = filterByAuthoringPalette(listTools(), draft).map((tool) => tool.name);
-    expect(visible).toContain("commit_draft");
-    expect(visible).not.toContain("run_workflow");
-  });
-
-  test("shows execution and diagnosis tools only when the persisted workflow state allows them", () => {
+  test("persisted workflow keeps every authoring tool visible (no state-gate hides them)", () => {
     let draft = withWorkflowDraft(
       createEmptyDraftDocument(),
       {
@@ -214,40 +171,30 @@ describe("authoring tool palette", () => {
       environment: "dev",
       saved_at: "2026-04-23T10:00:00.000Z",
     });
-    const visible = filterByAuthoringPalette(listTools(), draft).map((tool) => tool.name);
+    const visible = filterByAuthoringPalette(listTools(), draft, ALL_AUTHORING_SKILLS).map(
+      (tool) => tool.name,
+    );
     expect(visible).toContain("run_workflow");
-    expect(visible).not.toContain("diagnose_latest_execution");
-    expect(visible).toContain("list_connectors");
+    expect(visible).toContain("commit_draft");
     expect(visible).toContain("build_workflow");
-    expect(visible).not.toContain("commit_draft");
-    expect(visible).not.toContain("start_connector_from_description");
-    expect(visible).not.toContain("create_api_key");
-    expect(visible).not.toContain("list_users");
+    expect(visible).toContain("diagnose_latest_execution");
+    expect(visible).toContain("list_connectors");
+  });
 
-    draft = withWorkflowExecution(draft, {
-      execution_id: "exec_123",
-      workflow_id: "workflow_123",
-      workflow_version_id: "version_1",
+  test("execution-only state keeps run_workflow visible when workflow-authoring is loaded", () => {
+    const draft = withWorkflowExecution(createEmptyDraftDocument(), {
+      execution_id: "exec_456",
+      workflow_id: "workflow_456",
+      workflow_version_id: "version_456",
       status: "succeeded",
       environment: "dev",
-      warnings_count: 1,
-      recorded_at: "2026-04-23T10:05:00.000Z",
-      diagnosis_available: true,
+      warnings_count: 0,
+      recorded_at: "2026-04-25T10:05:00.000Z",
+      diagnosis_available: false,
     });
-    const executionVisible = filterByAuthoringPalette(listTools(), draft).map((tool) => tool.name);
-    expect(executionVisible).toContain("run_workflow");
-    expect(executionVisible).toContain("diagnose_latest_execution");
-
-    draft = withWorkflowDiagnosis(draft, {
-      execution_id: "exec_123",
-      recorded_at: "2026-04-23T10:06:00.000Z",
-      reason: "Missing .data in transform scope path.",
-      warning_sources: [],
-      steps: [],
-    });
-    const diagnosisVisible = filterByAuthoringPalette(listTools(), draft).map((tool) => tool.name);
-    expect(diagnosisVisible).not.toContain("run_workflow");
-    expect(diagnosisVisible).not.toContain("diagnose_latest_execution");
-    expect(diagnosisVisible).toContain("build_workflow");
+    const visible = filterByAuthoringPalette(listTools(), draft, ONLY_WORKFLOW_SKILL).map(
+      (tool) => tool.name,
+    );
+    expect(visible).toContain("run_workflow");
   });
 });

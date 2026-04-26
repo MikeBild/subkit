@@ -38,7 +38,12 @@ export class LlmContextTooLarge extends LlmError {
 }
 
 export class LlmProviderError extends LlmError {
-  readonly kind: "rate_limit" | "overloaded" | "context_length_exceeded" | "other";
+  readonly kind:
+    | "rate_limit"
+    | "quota_exhausted"
+    | "overloaded"
+    | "context_length_exceeded"
+    | "other";
   constructor(kind: LlmProviderError["kind"], message: string, details?: Record<string, unknown>) {
     super("llm_provider_error", message, details);
     this.name = "LlmProviderError";

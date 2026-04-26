@@ -334,6 +334,30 @@ function lastAssistantMessageId(state: SkSessionState): string | undefined {
   return undefined;
 }
 
+function backfillAssistantAnchor(
+  state: SkSessionState,
+  assistantMessageId: string | undefined,
+): Pick<SkSessionState, "pendingElicitation" | "toolCalls"> {
+  if (!assistantMessageId) {
+    return {
+      pendingElicitation: state.pendingElicitation,
+      toolCalls: state.toolCalls,
+    };
+  }
+  return {
+    pendingElicitation:
+      state.pendingElicitation && !state.pendingElicitation.parent_message_id
+        ? {
+            ...state.pendingElicitation,
+            parent_message_id: assistantMessageId,
+          }
+        : state.pendingElicitation,
+    toolCalls: state.toolCalls.map((call) =>
+      call.parent_message_id ? call : { ...call, parent_message_id: assistantMessageId },
+    ),
+  };
+}
+
 /**
  * Pure reducer that folds a TurnEvent into the existing SessionState.
  * Kept as a free function so tests can drive it synchronously.
@@ -350,9 +374,18 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
         ...(parsed.parts.length > 0 ? { parts: parsed.parts } : {}),
         ...(ev.id ? { id: ev.id } : {}),
       };
+      const anchors =
+        ev.role === "assistant"
+          ? backfillAssistantAnchor(state, ev.id)
+          : {
+              pendingElicitation: state.pendingElicitation,
+              toolCalls: state.toolCalls,
+            };
       return {
         ...state,
         messages: [...state.messages, next],
+        pendingElicitation: anchors.pendingElicitation,
+        toolCalls: anchors.toolCalls,
         streamingAssistantText: ev.role === "assistant" ? "" : state.streamingAssistantText,
       };
     }

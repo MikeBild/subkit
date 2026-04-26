@@ -302,3 +302,63 @@ export function recordConversationTurnDuration(args: {
     });
   });
 }
+
+/** Record one context-assembly invocation. The metric ladder gives operators
+ *  visibility into how often each LLM flow runs and which sections the
+ *  trimmer is dropping; the structured log line carries the full breakdown
+ *  (token counts per section, included ids, dropped section names) so the
+ *  same record can be searched in log storage. */
+export function recordLlmContextAssembled(args: {
+  tenant_id: string;
+  flow: string;
+  model: string;
+  request_source?: string;
+  trace_id?: string;
+  cap_tokens: number;
+  total_tokens: number;
+  stable_tokens: number;
+  volatile_tokens: number;
+  messages_tokens: number;
+  included: { skills: number; knowledge: number; docs: number; failures: number };
+  dropped_sections: string[];
+}): void {
+  safe(() => {
+    const reg = getMetrics();
+    const requestSource = args.request_source ?? "unknown";
+    reg.inc(METRIC_NAMES.LLM_CONTEXT_ASSEMBLED_TOTAL, {
+      flow: args.flow,
+      request_source: requestSource,
+    });
+    if (Number.isFinite(args.total_tokens)) {
+      reg.observe(METRIC_NAMES.LLM_CONTEXT_TOTAL_TOKENS, args.total_tokens, {
+        flow: args.flow,
+      });
+    }
+    for (const section of args.dropped_sections) {
+      reg.inc(METRIC_NAMES.LLM_CONTEXT_DROPPED_SECTIONS_TOTAL, {
+        flow: args.flow,
+        section,
+      });
+    }
+    logger.info({
+      module: "llm",
+      action: "context.assembled",
+      msg: "context assembled",
+      tenant_id: args.tenant_id,
+      flow: args.flow,
+      model: args.model,
+      request_source: requestSource,
+      trace_id: args.trace_id ?? null,
+      cap_tokens: args.cap_tokens,
+      total_tokens: args.total_tokens,
+      stable_tokens: args.stable_tokens,
+      volatile_tokens: args.volatile_tokens,
+      messages_tokens: args.messages_tokens,
+      included_skills: args.included.skills,
+      included_knowledge: args.included.knowledge,
+      included_docs: args.included.docs,
+      included_failures: args.included.failures,
+      dropped_sections: args.dropped_sections,
+    });
+  });
+}

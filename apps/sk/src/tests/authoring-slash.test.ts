@@ -80,6 +80,7 @@ describe("authoring slash panes", () => {
         readiness: "ready_to_probe",
         next_action: "Preview a step or the whole workflow before committing.",
         next_required_action: "Preview a step or the whole workflow before committing.",
+        next_suggested_tool: "dry_run_workflow",
         missing_fields: [],
         progress_label: "1 workflow step",
         lifecycle_state: "draft_only",

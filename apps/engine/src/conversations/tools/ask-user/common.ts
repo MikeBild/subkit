@@ -19,7 +19,7 @@ export async function pauseForUserInput(
     {
       tenant_id: ctx.tenant_id,
       conversation_id: ctx.conversation_id,
-      tool_call_id: null,
+      tool_call_id: ctx.tool_call_id ?? null,
       tool_name: p.tool_name,
       summary: p.summary,
       input: p.input,

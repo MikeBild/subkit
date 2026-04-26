@@ -48,6 +48,39 @@ The engine validates its configuration at boot and exits with a descriptive erro
 
 **Event Streaming.** A tenant-wide Server-Sent Events stream delivers real-time execution events. External monitoring systems, dashboards, and alerting integrations can subscribe to this stream for custom logic. The SSE stream carries the same events that drive the CLI's live-tail mode.
 
+### Telemetry Surface
+
+Every code path that an operator may need to debug emits at least one
+structured event with a stable `action` field. The full surface:
+
+| Action | Module | When | Key fields |
+|---|---|---|---|
+| `request.telemetry` | `http` | Every HTTP response (2xx/3xx/4xx) | `method`, `path`, `status_code`, `duration_ms`, `tenant_id`, `trace_id`, `request_source` |
+| `request.error` | `http` | 5xx responses | as above + `error` |
+| `context.assembled` | `llm` | Every LLM context assembly | `flow`, `model`, `cap_tokens`, `total_tokens`, per-section token counts, `dropped_sections[]` |
+| `fallback.triggered` | `llm` | Primary provider error → fallback | `flow`, `primary`, `fallback`, `kind` |
+| `tool.loop_detected` | `conversation` | Per-tool loop-breaker fires | `conversation_id`, `tool`, `tool_count` |
+| `execution.<status>` | `execution` | Every workflow terminal transition | `execution_id`, `status` |
+| `webhook.send_failed` | `notifications` | Webhook adapter exhausted retries | `url`, `last_error` |
+| `notification.dispatch_failed` | `notifications` | Per-rule dispatch threw | `rule_id`, `channel_id`, `event_type` |
+| `metrics.label_dropped` | `observability` | Metric write used an unknown label | `metric`, `label` (logged once per pair) |
+| `metrics.write_failed` | `observability` | Metric write threw | `error` |
+
+Identity envelope: every record above carries `tenant_id` (where
+applicable), `trace_id`, and `request_source`. Operators correlate
+across surfaces (HTTP → execution → notification) by `trace_id`.
+
+The full Prometheus metric registry is built in
+[`apps/engine/src/observability/metrics.ts`](../apps/engine/src/observability/metrics.ts).
+New metrics added in this revision:
+
+- `llm_context_assembled_total{flow,request_source}` — assemblies per
+  flow.
+- `llm_context_dropped_sections_total{flow,section}` — which sections
+  the trimmer is dropping per flow.
+- `llm_context_total_tokens{flow}` — histogram of total prompt tokens
+  per call.
+
 ---
 
 ## Resource Limits and Operational Safety

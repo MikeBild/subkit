@@ -1421,6 +1421,7 @@ export interface ConversationContextSnapshot {
     readiness: string;
     next_action: string | null;
     next_required_action: string | null;
+    next_suggested_tool: string | null;
     missing_fields: string[];
     progress_label: string | null;
     lifecycle_state: string;

@@ -162,10 +162,21 @@ describe("conversations/audit-trail", () => {
         ),
       )
       .orderBy(asc(auditLog.ts));
-    expect(auditConv.map((a) => a.action)).toEqual([
-      "conversation.created",
-      "conversation.committed",
-    ]);
+    // Wave 4: every confirm_before_execution decision (e.g. commit_draft)
+    // lands a `tool_policy.confirmation_required` row tagged with the
+    // conversation_id, so operators can audit policy decisions without
+    // scraping debug logs. Filter that row out for the canonical
+    // resource lifecycle assertion below — the policy row carries the
+    // conversation as resource_id but the test cares about the
+    // resource-level audit shape.
+    const lifecycleActions = auditConv
+      .map((a) => a.action)
+      .filter((a) => a !== "tool_policy.confirmation_required");
+    expect(lifecycleActions).toEqual(["conversation.created", "conversation.committed"]);
+    // The Wave 4 policy row(s) must still be present — at least one
+    // commit_draft confirmation gate fires during the flow.
+    const policyRows = auditConv.filter((a) => a.action === "tool_policy.confirmation_required");
+    expect(policyRows.length).toBeGreaterThan(0);
 
     const auditApproval = await ctx.testDb.db
       .select()

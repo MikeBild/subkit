@@ -19,9 +19,8 @@ import { logger } from "../logging/logger.ts";
 import { registerMcpHttpRoutes } from "../mcp/transports/streamable-http.ts";
 import { errorRing } from "../observability/error-ring.ts";
 import { metricsMiddleware } from "../observability/middleware.ts";
-import { HttpError } from "./errors.ts";
 import { authMiddleware } from "./middleware/auth.ts";
-import { errorMiddleware } from "./middleware/error.ts";
+import { errorMiddleware, mapKnownErrorResponse } from "./middleware/error.ts";
 import { loggingMiddleware } from "./middleware/logging.ts";
 import { rateLimitMiddleware } from "./middleware/rate-limit.ts";
 import { traceMiddleware } from "./middleware/trace.ts";
@@ -110,41 +109,15 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   app.use("*", metricsMiddleware());
   app.use("*", errorMiddleware());
 
-  // Hono's default onError swallows exceptions before middleware catch
-  // blocks see them, so we install an onError that rethrows so
-  // errorMiddleware can map cleanly. Note: onError MUST return a Response.
+  // Hono's default onError resolves before middleware catch blocks see
+  // the exception, so map known envelopes here too. Note: onError MUST
+  // return a Response.
   app.onError((err, c) => {
     const traceId = c.get("trace_id") ?? null;
     const principal = c.get("principal") as { tenant_id?: string } | undefined;
     const path = new URL(c.req.url).pathname;
-    // Re-route through the same envelope shape used by errorMiddleware.
-    if (err instanceof HttpError) {
-      // 5xx HttpErrors are still operator-relevant — mirror them into
-      // the error ring so /v1/diagnostics/errors can surface them.
-      if (err.status >= 500) {
-        errorRing.record({
-          trace_id: traceId,
-          ts: new Date().toISOString(),
-          tenant_id: principal?.tenant_id ?? null,
-          method: c.req.method,
-          path,
-          status: err.status,
-          code: err.code,
-          message: err.message,
-          stack: err.stack ?? null,
-          bucket: "http",
-        });
-      }
-      return c.json(
-        {
-          code: err.code,
-          message: err.message,
-          trace_id: traceId,
-          ...(err.details ? { details: err.details } : {}),
-        },
-        err.status as 400 | 401 | 403 | 404 | 409 | 413 | 415 | 500,
-      );
-    }
+    const knownResponse = mapKnownErrorResponse(c, err);
+    if (knownResponse) return knownResponse;
     // Unhandled / non-HttpError. Log the full diagnostic AND write the
     // error ring — the middleware's catch never sees this path because
     // Hono's router resolves the onError handler first. Without the

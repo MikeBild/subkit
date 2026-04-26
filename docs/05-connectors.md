@@ -94,6 +94,46 @@ Every Connector can be tested independently of any workflow. The engine validate
 
 Connector validation is available on demand and during authoring. Operators do not need to wait for a full workflow failure before checking whether a Connector is reachable, authenticated, and returning the expected shape.
 
+A draft connector that does not yet have a saved credential cannot be probed. The probe path returns a structured `credential_required` envelope rather than silently sending an unauthenticated request. The conversational layer treats this as a signal to collect the credential through a masked form before the next probe.
+
+---
+
+## Live API Discovery
+
+Connectors that ship with an `ingestion_url` (the OpenAPI or Swagger spec) can be inspected without authoring a single workflow step. The conversational tool `discover_connector_endpoints` and the matching HTTP route fetch and parse the spec server-side, returning a curated index of endpoints with auth schemes, parameters, and pagination hints.
+
+Three fetch strategies run in order — direct fetch of the declared spec URL, a regex extraction from a Swagger UI page, and a last-resort scan of well-known paths under the connector's base URL. The first strategy that produces a valid spec wins. Each attempt is logged so operators can see where a discovery succeeded or failed.
+
+Discovery results cache for 24 hours per tenant in `knowledge_sources` of kind `connector_endpoint_index`. Pass `force_refresh: true` to bypass the cache. Refreshes write an audit row of kind `knowledge_source.refreshed` with `reason: "discovery_cache_refresh"`.
+
+The conversational agent is expected to call `discover_connector_endpoints` BEFORE proposing endpoints to a workflow. Endpoint guesses against an unfamiliar API are an anti-pattern.
+
+---
+
+## Ad-hoc Invocation
+
+Once a connector is persisted, the agent can invoke any endpoint against it for sampling, pagination validation, or response-shape inspection. The conversational tool `call_connector` accepts `{ connector_id, method, path, query?, headers?, body?, timeout_ms? }` and returns the response status, headers, body, latency, and a truncation flag.
+
+`call_connector` is RBAC-checked (`connector:read`), audited (`connector.invoked`), and always confirm-before-execution per the conversational tool policies. Response bodies above ~8 KB are truncated in the tool result with `truncated: true` and `body_byte_count` so the prompt budget stays bounded; the full response is available via the egress telemetry.
+
+Driver coverage: HTTP and GraphQL. For Postgres / S3 / SQL Server / file-transfer drivers, `call_connector` returns a structured `driver_not_supported_for_call_connector` envelope and points at `start_workflow_from_goal` as the path to author a single-step workflow that invokes the driver.
+
+---
+
+## Conversational Creation Contract
+
+Connector creation through the conversational surface follows a single, observable contract:
+
+1. The agent calls `discover_connector_endpoints` to ground its endpoint choices in real spec data.
+2. The agent calls `start_connector_from_template` (or `start_connector_from_description`) to create a draft.
+3. The agent calls `ask_user_form(type: password, sensitive: true)` to collect credentials. The form payload carries an optional `commit_intent: { kind: "save_connector_draft", payload, description }`.
+4. When the operator submits the form, the conversation harness applies the connector + credential write atomically — DB row, encrypted credential, audit entry — BEFORE the agent's next turn. The agent does NOT need to call `save_connector_draft` for the normal commit path.
+5. The agent calls `probe_connector_draft` (or `call_connector` for richer iteration) to verify the persisted connector.
+
+The diagnostic tools `save_connector_draft` and `commit_draft` remain available for credential rotation, recovery from a partial write, or a force-save after a failed probe (`force_save: true`). They are idempotent — a re-issue against an already-persisted connector returns `{ ok: true, data: { already_persisted: true } }` without a double-write. Audit rows distinguish the two paths via `reason: "auto_persist_on_confirmation"` vs `reason: "manual_re_issue"`.
+
+Credentials only flow through the masked form path. The `update_connector_draft` tool rejects any credential-shaped key in `config` with a structured `credential_must_use_form` envelope. Drivers no longer accept inline credentials from `connector.config` at probe time. There is no shortcut.
+
 ---
 
 ## What to Read Next

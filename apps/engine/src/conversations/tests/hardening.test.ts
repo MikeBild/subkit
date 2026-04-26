@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
+import type { LlmProviderError } from "../../llm/errors.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createConversation } from "../service.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../tools/index.ts";
@@ -192,5 +193,64 @@ describe("conversations/hardening", () => {
     // After fallback takes over, the full list-users plan completes
     // through ask_user_confirm = 6 steps.
     expect(fallbackSuccess.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("quota-exhausted on the same provider does not waste a fallback attempt", async () => {
+    resetMockProvider();
+    const [settings] = await ctx.testDb.db
+      .select()
+      .from(tenantLlmSettings)
+      .where(eq(tenantLlmSettings.tenant_id, ctx.tenant_id));
+    if (settings) {
+      await ctx.testDb.db
+        .update(tenantLlmSettings)
+        .set({
+          llm_provider: "mock",
+          llm_primary_model: "quota-primary",
+          llm_fallback_model: "quota-fallback",
+        })
+        .where(eq(tenantLlmSettings.tenant_id, ctx.tenant_id));
+    } else {
+      await ctx.testDb.db.insert(tenantLlmSettings).values({
+        tenant_id: ctx.tenant_id,
+        llm_provider: "mock",
+        llm_primary_model: "quota-primary",
+        llm_fallback_model: "quota-fallback",
+      });
+    }
+
+    getMockProvider().setFailure("quota-primary", "quota_exhausted");
+
+    await expect(
+      createConversation(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.user_id,
+          connector_id: ctx.connector_id,
+          initial_message: "please list users from the api",
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toMatchObject({
+      kind: "quota_exhausted",
+    } satisfies Partial<LlmProviderError>);
+
+    const primaryErr = await ctx.testDb.db
+      .select()
+      .from(llmUsage)
+      .where(
+        and(
+          eq(llmUsage.tenant_id, ctx.tenant_id),
+          eq(llmUsage.model, "quota-primary"),
+          eq(llmUsage.result, "error"),
+        ),
+      );
+    expect(primaryErr.length).toBe(1);
+
+    const fallbackRows = await ctx.testDb.db
+      .select()
+      .from(llmUsage)
+      .where(and(eq(llmUsage.tenant_id, ctx.tenant_id), eq(llmUsage.model, "quota-fallback")));
+    expect(fallbackRows.length).toBe(0);
   });
 });

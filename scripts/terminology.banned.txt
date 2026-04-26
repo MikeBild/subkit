@@ -9,3 +9,9 @@
 # Seed entry: the legacy name the platform replaced. Keep it here so
 # refactors don't silently reintroduce it.
 automation
+
+# Reference-engine codename. Patterns adopted from the reference engine
+# at /Users/mikebild/Projects/AI/superglue must be translated into
+# subkit's domain language before landing — the upstream name is not
+# allowed in source files or generated artefacts.
+superglue

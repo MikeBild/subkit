@@ -1,4 +1,4 @@
-import { classifyProviderError } from "../../src/llm/core/ai-sdk-model.ts";
+import { classifyProviderError } from "../../src/llm/provider-errors.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 
 export function validate(fixture: FixtureRecord): ValidationResult {

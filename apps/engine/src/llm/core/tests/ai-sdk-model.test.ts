@@ -2,7 +2,8 @@
 // via the constructor `generateTextFn` option (no SDK module mocking).
 
 import { describe, expect, it } from "bun:test";
-import { AiSdkModel, classifyProviderError, isFallbackEligible } from "../ai-sdk-model.ts";
+import { classifyProviderError, isFallbackEligible } from "../../provider-errors.ts";
+import { AiSdkModel } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
 
 interface GenerateTextStubResult {
@@ -246,6 +247,13 @@ describe("classifyProviderError", () => {
   it("classifies rate_limit on keyword", () => {
     expect(classifyProviderError({ message: "rate limit exceeded" })).toBe("rate_limit");
   });
+  it("classifies usage-limit wording as quota_exhausted", () => {
+    expect(
+      classifyProviderError({
+        message: "You have reached your specified API usage limits. Try again later.",
+      }),
+    ).toBe("quota_exhausted");
+  });
   it("classifies overloaded on 529", () => {
     expect(classifyProviderError({ statusCode: 529 })).toBe("overloaded");
   });
@@ -272,6 +280,7 @@ describe("isFallbackEligible", () => {
   it("returns true for retryable kinds", () => {
     expect(isFallbackEligible({ statusCode: 429 })).toBe(true);
     expect(isFallbackEligible({ statusCode: 500 })).toBe(true);
+    expect(isFallbackEligible({ message: "usage limits reached" })).toBe(true);
     expect(isFallbackEligible({ message: "rate limit" })).toBe(true);
     expect(isFallbackEligible({ message: "overloaded" })).toBe(true);
     expect(isFallbackEligible({ message: "context_length" })).toBe(true);

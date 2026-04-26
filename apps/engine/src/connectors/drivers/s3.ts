@@ -36,6 +36,9 @@ export interface S3Response {
   status: number;
   headers: Record<string, string>;
   body: string | Buffer | unknown;
+  /** Credential row id used for this call, or null when none. Surfaces
+   *  through to the egress audit (`CREDENTIAL_ACCESSED`). */
+  credential_id: string | null;
 }
 
 export type S3Method = "GET" | "PUT" | "HEAD" | "LIST" | "DELETE";
@@ -55,41 +58,48 @@ function parseConfig(connector: ConnectorView): S3ConnectorConfig {
  * Pull S3 credentials from the credentials store. The connector layer
  * stores them as a `header` mode credential whose headers contain the
  * canonical `x-access-key-id`/`x-secret-access-key`/`x-session-token`
- * keys, OR they can be carried directly on `connector.config.access_key_id`
- * for unauthenticated test buckets.
+ * keys. For `auth_type=none` (anonymous / public buckets), inline config
+ * keys are still accepted so test fixtures keep working.
+ *
+ * When `auth_type !== "none"` the inline config branch is bypassed — credentials
+ * must come from the encrypted credential row to close the draft-auth shortcut.
  */
 async function resolveS3Credentials(
   db: Db,
   tenant_id: string,
   connector: ConnectorView,
-): Promise<S3Credentials | null> {
-  // Inline config path — for "none" auth, allow the keys on config.
+): Promise<{ creds: S3Credentials | null; credential_id: string | null }> {
   const cfg = (connector.config ?? {}) as Record<string, unknown>;
-  if (
-    typeof cfg.access_key_id === "string" &&
-    typeof cfg.secret_access_key === "string" &&
-    cfg.access_key_id.length > 0
-  ) {
-    const out: S3Credentials = {
-      access_key_id: cfg.access_key_id,
-      secret_access_key: cfg.secret_access_key,
-    };
-    if (typeof cfg.session_token === "string") out.session_token = cfg.session_token;
-    return out;
+  if (connector.auth_type === "none") {
+    // Anonymous / public-bucket path: accept inline keys on config only when
+    // auth_type is explicitly none. This covers test fixtures and public S3 buckets.
+    if (
+      typeof cfg.access_key_id === "string" &&
+      typeof cfg.secret_access_key === "string" &&
+      cfg.access_key_id.length > 0
+    ) {
+      const out: S3Credentials = {
+        access_key_id: cfg.access_key_id,
+        secret_access_key: cfg.secret_access_key,
+      };
+      if (typeof cfg.session_token === "string") out.session_token = cfg.session_token;
+      return { creds: out, credential_id: null };
+    }
+    return { creds: null, credential_id: null };
   }
-  if (connector.auth_type === "none") return null;
+  // auth_type !== "none": credentials must come from the encrypted store.
   const row = await getCredentialForConnector(tenant_id, connector.id, connector.environment, db);
-  if (!row) return null;
+  if (!row) return { creds: null, credential_id: null };
   const v = row.value;
-  if (v.mode !== "header") return null;
+  if (v.mode !== "header") return { creds: null, credential_id: row.row.id };
   const headers = v.headers;
   const id = headers["x-access-key-id"] ?? headers["X-Access-Key-Id"] ?? "";
   const secret = headers["x-secret-access-key"] ?? headers["X-Secret-Access-Key"] ?? "";
-  if (!id || !secret) return null;
+  if (!id || !secret) return { creds: null, credential_id: row.row.id };
   const out: S3Credentials = { access_key_id: id, secret_access_key: secret };
   const sess = headers["x-session-token"] ?? headers["X-Session-Token"];
   if (sess) out.session_token = sess;
-  return out;
+  return { creds: out, credential_id: row.row.id };
 }
 
 /**
@@ -142,7 +152,11 @@ export async function executeS3Request(p: {
   path: string;
   body?: string | Uint8Array | Buffer | null;
 }): Promise<S3Response> {
-  const credentials = await resolveS3Credentials(p.db, p.tenant_id, p.connector);
+  const { creds: credentials, credential_id } = await resolveS3Credentials(
+    p.db,
+    p.tenant_id,
+    p.connector,
+  );
   const client = buildS3Client({ connector: p.connector, credentials });
   const key = trimKey(p.path);
   const method = p.method.toUpperCase() as S3Method;
@@ -158,7 +172,12 @@ export async function executeS3Request(p: {
     case "GET": {
       const res = await client.getObject(key);
       const text = await res.text();
-      return { status: res.status, headers: headersFromResponse(res), body: text };
+      return {
+        status: res.status,
+        headers: headersFromResponse(res),
+        body: text,
+        credential_id,
+      };
     }
     case "PUT": {
       if (p.body === undefined || p.body === null) {
@@ -175,12 +194,13 @@ export async function executeS3Request(p: {
         status: 200,
         headers: { etag: info.etag, "x-amz-version-id": info.versionId ?? "" },
         body: { etag: info.etag, version_id: info.versionId },
+        credential_id,
       };
     }
     case "HEAD": {
       const exists = await client.exists(key);
       if (!exists) {
-        return { status: 404, headers: {}, body: null };
+        return { status: 404, headers: {}, body: null, credential_id };
       }
       const stat = await client.statObject(key);
       return {
@@ -190,6 +210,7 @@ export async function executeS3Request(p: {
           etag: stat.etag,
         },
         body: { key: stat.key, size: stat.size, etag: stat.etag },
+        credential_id,
       };
     }
     case "LIST": {
@@ -208,11 +229,12 @@ export async function executeS3Request(p: {
         status: 200,
         headers: {},
         body: { items, count: items.length },
+        credential_id,
       };
     }
     case "DELETE": {
       await client.deleteObject(key);
-      return { status: 204, headers: {}, body: null };
+      return { status: 204, headers: {}, body: null, credential_id };
     }
     default: {
       throw new Error(`s3 driver: unsupported method ${method}`);
@@ -233,6 +255,23 @@ export async function probeS3Connector(p: {
 }): Promise<{ ok: boolean; latency_ms: number; status?: number; detail?: string }> {
   const start = Date.now();
   try {
+    // Guard: auth-required connectors must have a persisted credential row.
+    if (p.connector.auth_type !== "none") {
+      const row = await getCredentialForConnector(
+        p.tenant_id,
+        p.connector.id,
+        p.connector.environment,
+        p.db,
+      );
+      if (!row) {
+        return {
+          ok: false,
+          latency_ms: 0,
+          detail: "credential_required",
+        };
+      }
+    }
+
     const res = await executeS3Request({
       db: p.db,
       tenant_id: p.tenant_id,

@@ -259,6 +259,7 @@ export interface AuthoringSummary {
   readiness: "drafting" | "needs_input" | "ready_to_probe" | "ready_to_save" | "saved";
   next_action: string | null;
   next_required_action: string | null;
+  next_suggested_tool: string | null;
   missing_fields: string[];
   last_action: string | null;
   progress_label: string | null;

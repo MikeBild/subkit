@@ -10,12 +10,14 @@
 // resolving the final per-turn status.
 
 import { hasToolCall, stepCountIs, streamText } from "ai";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
+import { recordToolPolicyConfirmationRequired } from "../audit/recorders/index.ts";
 import type { Db } from "../db/client.ts";
 import {
   connectorEndpointSchemas,
   conversationAttachments,
   conversations,
+  conversationToolCalls,
   executions,
 } from "../db/schema/index.ts";
 import { checkAndDecrement, checkBudget, monthlyUsage, recordUsage } from "../llm/budgets.ts";
@@ -23,9 +25,15 @@ import { renderAuthoringContextBlock } from "../llm/core/authoring-context-block
 import { splitPromptIntoBlocks, toSystemMessages } from "../llm/core/cache-blocks.ts";
 import { assembleEnhancedPrompt, detectIntentSkills } from "../llm/core/context-assembler.ts";
 import { resolveModelRoute, resolveLanguageModel as resolveSdkModel } from "../llm/core/invoke.ts";
-import { LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
+import { LlmQuotaExhausted } from "../llm/errors.ts";
 import { createMockLanguageModel } from "../llm/mock-stream.ts";
 import { runOutputGuard } from "../llm/output-guard/index.ts";
+import {
+  classifyProviderError,
+  isFallbackEligible,
+  toLlmProviderError,
+} from "../llm/provider-errors.ts";
+import { countModelMessagesTokens } from "../llm/tokens.ts";
 import { log, logger } from "../logging/logger.ts";
 import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instrumentation.ts";
 import {
@@ -34,10 +42,11 @@ import {
   registerConversationAbort,
   unregisterConversationAbort,
 } from "./abort.ts";
-import { loadDraft } from "./draft.ts";
+import { startNewWorkflowDraft } from "./authoring-state.ts";
+import { appendSnapshot, loadDraft } from "./draft.ts";
 import { setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
-import { detectUserIntent } from "./intent-detector.ts";
+import { detectUserIntent, inferStateDrivenFollowUpTool } from "./intent-detector.ts";
 import {
   appendMessage,
   buildModelMessages,
@@ -46,6 +55,7 @@ import {
 } from "./persist.ts";
 import type { ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
+import { resolveExecutionMode } from "./tools/tool-policies.ts";
 import { synthesizeFallbackMessage, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
 import type { DraftDocument, TurnEvent } from "./types.ts";
 
@@ -178,34 +188,6 @@ interface StepUsage {
   cacheCreationTokens: number;
 }
 
-/**
- * Classify an error thrown from `streamText` into our provider-kind
- * taxonomy so the fallback policy can decide whether to retry. Mirrors
- * the classifier in `llm/provider.ts:306-316` that runs for non-stream
- * flows. Anthropic's AI SDK provider surfaces rate limits and
- * overload as messages like "rate_limit" / "overloaded" / 429 / 529.
- */
-function classifyStreamError(err: unknown): LlmProviderError | null {
-  if (err instanceof LlmProviderError) return err;
-  const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes("rate_limit") || msg.includes("429")) {
-    return new LlmProviderError("rate_limit", msg);
-  }
-  if (msg.includes("overloaded") || msg.includes("529")) {
-    return new LlmProviderError("overloaded", msg);
-  }
-  if (msg.includes("context_length") || msg.includes("too many tokens")) {
-    return new LlmProviderError("context_length_exceeded", msg);
-  }
-  return null;
-}
-
-function shouldFallback(err: LlmProviderError): boolean {
-  return (
-    err.kind === "rate_limit" || err.kind === "overloaded" || err.kind === "context_length_exceeded"
-  );
-}
-
 function isAbortError(err: unknown): boolean {
   if (err instanceof DOMException) {
     return err.name === "AbortError" || err.name === "TimeoutError";
@@ -274,9 +256,30 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     events.push({ type: "message", role: "user", content: { text: p.user_message } });
   }
 
+  const detectedIntent = detectUserIntent(p.user_message);
+  let workflowIdForTurn = p.workflow_id;
+
   // Draft state for the turn — tools mutate via ctx.setDraft, which
   // snapshots to conversation_drafts for audit/undo.
   let draft: DraftDocument = await loadDraft(p.tenant_id, p.conversation_id, p.db);
+  const hasBoundSavedWorkflow =
+    workflowIdForTurn !== null ||
+    draft.summary?.active_target.kind === "workflow" ||
+    draft.summary?.persisted_resources.some((resource) => resource.kind === "workflow") === true;
+  if (detectedIntent.startNewWorkflow === true && hasBoundSavedWorkflow) {
+    // An explicit "create a workflow" request starts a fresh draft.
+    // Keeping the previous saved workflow target here would turn the
+    // next commit into an in-place update of the old workflow.
+    draft = startNewWorkflowDraft(draft);
+    workflowIdForTurn = null;
+    await p.db
+      .update(conversations)
+      .set({ target_workflow_id: null, updated_at: new Date() })
+      .where(
+        and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+      );
+    await appendSnapshot(p.tenant_id, p.conversation_id, draft, p.db);
+  }
   const { EngineClient } = await import("../engine-client/index.ts");
   const ctx: ToolContext = {
     db: p.db,
@@ -284,7 +287,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
     connector_id: p.connector_id,
-    workflow_id: p.workflow_id,
+    workflow_id: workflowIdForTurn,
     permission_mode: p.permission_mode ?? null,
     engineClient: new EngineClient({
       tenant_id: p.tenant_id,
@@ -302,7 +305,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     getDraft: () => draft,
     setDraft: async (next) => {
       draft = next;
-      const { appendSnapshot } = await import("./draft.ts");
       await appendSnapshot(p.tenant_id, p.conversation_id, next, p.db);
     },
     abortSignal: turnAbortCtrl.signal,
@@ -336,11 +338,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     .map((r) => r.content_type)
     .filter((m): m is string => typeof m === "string" && m.length > 0);
   let hasFailedExecution = false;
-  if (p.workflow_id) {
+  if (workflowIdForTurn) {
     const failed = await p.db
       .select({ id: executions.id })
       .from(executions)
-      .where(eq(executions.workflow_id, p.workflow_id))
+      .where(eq(executions.workflow_id, workflowIdForTurn))
       .limit(5);
     hasFailedExecution = failed.length > 0; // any prior execution counts as feedback context
   }
@@ -412,6 +414,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         },
         blocked_by: [...draft.summary.blocked_by],
         next_required_action: draft.summary.next_required_action,
+        next_suggested_tool: draft.summary.next_suggested_tool,
         checkpoints: [...draft.summary.checkpoints],
         latest_execution: draft.summary.latest_execution
           ? {
@@ -438,12 +441,55 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         }))
       : [];
 
+  // Fold `next_best_actions` from the most recent failing tool calls
+  // into prior_failures so the agent's prompt carries explicit
+  // guidance on what to do next. Without this, a tool that returned
+  // `{ ok:false, error_code: "credential_required",
+  //    next_best_actions: ["ask_user_form"] }` only reaches the LLM
+  // via the truncated tool-result message — putting the action list
+  // in prior_failures keeps it in the high-priority section.
+  const recentToolCalls = await p.db
+    .select({
+      tool: conversationToolCalls.tool,
+      output: conversationToolCalls.output,
+      created_at: conversationToolCalls.created_at,
+    })
+    .from(conversationToolCalls)
+    .where(eq(conversationToolCalls.conversation_id, p.conversation_id))
+    .orderBy(desc(conversationToolCalls.created_at))
+    .limit(8);
+  const priorFailuresFromTools: Array<{ step_id: string; error: string }> = [];
+  for (const row of recentToolCalls) {
+    const output = row.output as Record<string, unknown> | null;
+    if (!output || typeof output !== "object") continue;
+    if (output.ok === false || typeof output.error_code === "string") {
+      const nbaRaw = output.next_best_actions;
+      const nba = Array.isArray(nbaRaw)
+        ? nbaRaw.filter((x): x is string => typeof x === "string")
+        : [];
+      const code = typeof output.error_code === "string" ? output.error_code : "tool_failed";
+      const message =
+        typeof output.message === "string"
+          ? output.message
+          : typeof (output as { error?: unknown }).error === "string"
+            ? (output as { error: string }).error
+            : "";
+      const nbaSuffix = nba.length > 0 ? ` — try next: ${nba.join(", ")}` : "";
+      priorFailuresFromTools.push({
+        step_id: row.tool,
+        error: `${row.tool} failed (${code}): ${message}${nbaSuffix}`,
+      });
+      if (priorFailuresFromTools.length >= 5) break;
+    }
+  }
+  const combinedPriorFailures = [...priorFailuresFromPreview, ...priorFailuresFromTools];
+
   const prompt = await assembleEnhancedPrompt(
     {
       tenant_id: p.tenant_id,
       flow: "converse",
       ...(p.connector_id ? { connector_id: p.connector_id } : {}),
-      ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
+      ...(workflowIdForTurn ? { workflow_id: workflowIdForTurn } : {}),
       user_turns: await (async () => {
         const parts = await buildUserContentParts(
           p.db,
@@ -464,7 +510,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ...(p.surface ? { surface: p.surface } : {}),
       ...(authoringContext ? { authoring_context: authoringContext } : {}),
       ...(authoringHint ? { authoring_hint: authoringHint } : {}),
-      ...(priorFailuresFromPreview.length > 0 ? { prior_failures: priorFailuresFromPreview } : {}),
+      ...(combinedPriorFailures.length > 0 ? { prior_failures: combinedPriorFailures } : {}),
       ...(p.runtime_context
         ? {
             runtime_context: {
@@ -486,7 +532,13 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     },
     p.db,
   );
-  const estimated = prompt.token_counts.total + budget * 1024;
+  const messages = await buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
+    conversationEnvelope: true,
+    conversation_id: p.conversation_id,
+  });
+  const messageTokens = countModelMessagesTokens(messages);
+  const estimatedPromptTokens = prompt.token_counts.total + messageTokens;
+  const estimated = estimatedPromptTokens + budget * 1024;
   try {
     await checkBudget(p.tenant_id, estimated, route.monthly_budget, p.db);
     const verdict = await checkAndDecrement(p.tenant_id, estimated, p.db);
@@ -505,7 +557,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           tenant_id: p.tenant_id,
           flow: "converse",
           model: effectiveModel,
-          prompt_tokens: prompt.token_counts.total,
+          prompt_tokens: estimatedPromptTokens,
           completion_tokens: 0,
           latency_ms: 0,
           result: "quota_exhausted",
@@ -517,11 +569,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     }
     throw err;
   }
-
-  const messages = await buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
-    conversationEnvelope: true,
-    conversation_id: p.conversation_id,
-  });
 
   // Load the conversation's `loaded_skills` + `tool_policies` so
   // skill-gated tools are filtered out until the matching
@@ -535,11 +582,35 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     .from(conversations)
     .where(eq(conversations.id, p.conversation_id))
     .limit(1);
-  const loadedSkills = (skillAndPolicyRow[0]?.loaded_skills ?? []) as string[];
+  const persistedLoadedSkills = (skillAndPolicyRow[0]?.loaded_skills ?? []) as string[];
+  // Auto-load the canonical authoring skills so the palette exposes
+  // both the connector and workflow tool sets from turn one. The user's
+  // first message could go either way ("create a connector for foo" /
+  // "build a workflow that bars"); exposing both sets up front avoids
+  // the dead-end where the LLM has to call `load_skill` twice before
+  // it can do anything (and avoids the 00b93a52 failure where the
+  // model said "tool not in palette" and asked the user to restart).
+  // The skill BODIES are still pulled into the prompt only when needed
+  // (via `detectIntentSkills`) — this auto-load only shapes the
+  // PALETTE, not the prompt budget.
+  const AUTO_LOADED_AUTHORING_SKILLS: ReadonlyArray<string> = [
+    "connector-creation-guidance",
+    "workflow-authoring",
+  ];
+  const loadedSkills = [...new Set([...persistedLoadedSkills, ...AUTO_LOADED_AUTHORING_SKILLS])];
   const loopToolPolicies = (skillAndPolicyRow[0]?.tool_policies ?? {}) as Record<
     string,
     "no_confirm" | "confirm_before_execution" | "confirm_after_execution"
   >;
+  logger.debug({
+    module: "conversation_palette",
+    action: "palette.resolved",
+    msg: "resolved authoring palette",
+    conversation_id: p.conversation_id,
+    tenant_id: p.tenant_id,
+    loaded_skills: loadedSkills,
+    persisted_skills_count: persistedLoadedSkills.length,
+  });
 
   const signals: TurnSignals = {
     step: 0,
@@ -551,7 +622,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     totalLoopWarnings: 0,
     lastAssistantText: "",
   };
-  const tools = wrapTools(
+  const wrappedTools = wrapTools(
     ctx,
     signals,
     events,
@@ -560,6 +631,83 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     loopToolPolicies,
     p.permission_mode ?? null,
   );
+  logger.debug({
+    module: "conversation_palette",
+    action: "palette.tools_resolved",
+    msg: "wrapped tool count",
+    conversation_id: p.conversation_id,
+    tenant_id: p.tenant_id,
+    loaded_skills: loadedSkills,
+    tools_count: Object.keys(wrappedTools).length,
+  });
+
+  // Pre-dispatch policy resolver — consults `tool-policies.ts` for
+  // every LLM-emitted tool call BEFORE we hand it to the wrapped
+  // execute. The resolver decides whether the call needs to pause
+  // for human confirmation; the resolution is logged as a structured
+  // event so operators / observability see the decision per-call.
+  // The wrapped tool's own confirmation gate (sdk-wrap.ts) is the
+  // mechanism that actually pauses the loop — this hook is the single
+  // canonical resolver the loop owns.
+  const tools: typeof wrappedTools = {};
+  for (const [name, wrapped] of Object.entries(wrappedTools)) {
+    // biome-ignore lint/suspicious/noExplicitAny: SDK Tool generic doesn't reconcile with our pre-flight wrapper.
+    const innerExecute = (wrapped as unknown as { execute: (...args: any[]) => any }).execute;
+    tools[name] = {
+      ...wrapped,
+      // biome-ignore lint/suspicious/noExplicitAny: pre-flight wrapper preserves the SDK's execute signature.
+      execute: async (rawArgs: Record<string, unknown>, options: any) => {
+        const resolvedEnv =
+          typeof (rawArgs as { environment?: unknown }).environment === "string"
+            ? (rawArgs as { environment: string }).environment
+            : undefined;
+        const resolved = resolveExecutionMode(name, rawArgs, {
+          tenant_id: p.tenant_id,
+          ...(resolvedEnv ? { environment: resolvedEnv } : {}),
+        });
+        logger.debug({
+          module: "conversation_loop",
+          action: "tool_policy.resolved",
+          msg: "resolved tool execution mode",
+          conversation_id: p.conversation_id,
+          tenant_id: p.tenant_id,
+          tool: name,
+          mode: resolved.mode,
+          confirmation_kind: resolved.confirmationKind,
+          reason: resolved.reason,
+        });
+        // Wave 4: every confirmation pause lands an audit row so
+        // operators can see policy decisions without scraping debug
+        // logs. Best-effort — a failed audit write must not block tool
+        // dispatch (`recordToolPolicyConfirmationRequired` is async,
+        // but we don't await on the hot path beyond the helper's own
+        // resilience to insert errors).
+        if (resolved.mode === "confirm_before_execution") {
+          await recordToolPolicyConfirmationRequired({
+            tenant_id: p.tenant_id,
+            actor_id: p.actor_id,
+            executor: p.db,
+            conversation_id: p.conversation_id,
+            tool: name,
+            mode: resolved.mode,
+            confirmation_kind: resolved.confirmationKind,
+            resolver_reason: resolved.reason,
+            ...(resolvedEnv !== undefined ? { environment: resolvedEnv } : {}),
+          }).catch((err: unknown) => {
+            logger.warn({
+              module: "conversation_loop",
+              action: "tool_policy.audit_failed",
+              msg: "failed to record tool_policy.confirmation_required audit",
+              conversation_id: p.conversation_id,
+              tool: name,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        }
+        return innerExecute(rawArgs, options);
+      },
+    } as typeof wrapped;
+  }
 
   // Steer toolChoice from explicit user intent. Without this, the model
   // sees "auto" and can decide to just narrate ("the workflow already
@@ -567,9 +715,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // hallucination reported in session f44bf9b4. We only force a tool when
   // (a) the detector sees a strong run-intent verb in any supported
   // language and (b) that tool actually exists in the palette this turn.
-  const detectedIntent = detectUserIntent(p.user_message);
+  const stateDrivenTool = inferStateDrivenFollowUpTool({
+    latestUserText: p.user_message,
+    permission_mode: p.permission_mode ?? null,
+    summary: draft.summary,
+  });
   const preferredTool =
-    detectedIntent.forceTool && tools[detectedIntent.forceTool] ? detectedIntent.forceTool : null;
+    detectedIntent.forceTool && tools[detectedIntent.forceTool]
+      ? detectedIntent.forceTool
+      : stateDrivenTool && tools[stateDrivenTool]
+        ? stateDrivenTool
+        : null;
   const forceNoTools = detectedIntent.forceNoTools === true;
   if (preferredTool) {
     logger.debug({
@@ -578,7 +734,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       msg: "steering toolChoice from user intent",
       conversation_id: p.conversation_id,
       forced_tool: preferredTool,
-      reason: detectedIntent.reason,
+      reason:
+        preferredTool === stateDrivenTool && !detectedIntent.forceTool
+          ? "state_driven_follow_up_tool"
+          : detectedIntent.reason,
     });
   }
   if (forceNoTools) {
@@ -671,7 +830,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         hasToolCall("ask_user_multi"),
         hasToolCall("ask_user_text"),
         hasToolCall("ask_user_form"),
-        hasToolCall("ask_user_confirm"),
         hasToolCall("cannot_help"),
         // biome-ignore lint/suspicious/noExplicitAny: SDK StopCondition generic over variadic ToolSet; runtime contract matches.
         pausedStopCondition as any,
@@ -821,7 +979,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       if (turnAbortCtrl.signal.aborted && isAbortError(primaryErr)) {
         cancelled = true;
       } else {
-        const providerErr = classifyStreamError(primaryErr);
+        const providerKind = classifyProviderError(primaryErr);
+        const providerErr = providerKind === "other" ? null : toLlmProviderError(primaryErr);
         const msg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
         logger.warn({
           module: "llm",
@@ -829,7 +988,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           msg: "streamText primary error",
           conversation_id: p.conversation_id,
           model: effectiveModel,
-          kind: providerErr?.kind ?? "other",
+          kind: providerErr?.kind ?? providerKind,
           error: msg,
         });
         await recordUsage(
@@ -837,7 +996,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             tenant_id: p.tenant_id,
             flow: "converse",
             model: effectiveModel,
-            prompt_tokens: prompt.token_counts.total,
+            prompt_tokens: estimatedPromptTokens,
             completion_tokens: 0,
             latency_ms: 0,
             result: "error",
@@ -845,8 +1004,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           },
           p.db,
         );
-        if (!providerErr || !shouldFallback(providerErr) || route.fallback === effectiveModel) {
-          throw primaryErr;
+        const sameProviderQuota =
+          providerErr?.kind === "quota_exhausted" && route.fallback_provider === route.provider;
+        if (
+          !providerErr ||
+          !isFallbackEligible(primaryErr) ||
+          route.fallback === effectiveModel ||
+          sameProviderQuota
+        ) {
+          throw providerErr ?? primaryErr;
         }
         logger.warn({
           module: "llm",
@@ -878,7 +1044,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 tenant_id: p.tenant_id,
                 flow: "converse",
                 model: route.fallback,
-                prompt_tokens: prompt.token_counts.total,
+                prompt_tokens: estimatedPromptTokens,
                 completion_tokens: 0,
                 latency_ms: 0,
                 result: "error",
@@ -886,7 +1052,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               },
               p.db,
             );
-            throw fbErr;
+            const typedFallbackErr =
+              classifyProviderError(fbErr) === "other" ? null : toLlmProviderError(fbErr);
+            throw typedFallbackErr ?? fbErr;
           }
         }
       }

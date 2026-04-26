@@ -62,7 +62,14 @@ describe("policy confirm_before_execution wiring", () => {
       setDraft: async () => {},
     };
 
-    const wrapped = wrapTools(toolCtx, signals, events, ctx.testDb.db as unknown as Db, [], {});
+    const wrapped = wrapTools(
+      toolCtx,
+      signals,
+      events,
+      ctx.testDb.db as unknown as Db,
+      ["workflow-authoring"],
+      {},
+    );
 
     // run_workflow is registered and gated by run_workflow policy.
     // Invoking with environment=prod triggers confirm_before_execution.
@@ -138,7 +145,14 @@ describe("policy confirm_before_execution wiring", () => {
       setDraft: async () => {},
     };
 
-    const wrapped = wrapTools(toolCtx, signals, events, ctx.testDb.db as unknown as Db, [], {});
+    const wrapped = wrapTools(
+      toolCtx,
+      signals,
+      events,
+      ctx.testDb.db as unknown as Db,
+      ["workflow-authoring"],
+      {},
+    );
 
     // dev-mode run — policy resolves to no_confirm, tool executes
     // (and returns workflow_not_found because the id is fake — that's

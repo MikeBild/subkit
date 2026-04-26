@@ -41,7 +41,11 @@ export interface MockResult<T = unknown> {
   cache_creation_tokens?: number;
 }
 
-export type MockFailure = "rate_limit" | "overloaded" | "context_length_exceeded";
+export type MockFailure =
+  | "rate_limit"
+  | "quota_exhausted"
+  | "overloaded"
+  | "context_length_exceeded";
 
 /**
  * One item in the canned conversation tool-call plan. The loop reads
@@ -212,6 +216,12 @@ class MockProvider {
     this.failureByModel.delete(model);
     if (fail === "rate_limit") {
       throw new LlmProviderError("rate_limit", `mock: rate limit on ${model}`);
+    }
+    if (fail === "quota_exhausted") {
+      throw new LlmProviderError(
+        "quota_exhausted",
+        `mock: you have reached your specified api usage limits on ${model}. You will regain access on 2026-05-01 at 00:00 UTC.`,
+      );
     }
     if (fail === "overloaded") {
       throw new LlmProviderError("overloaded", `mock: overloaded on ${model}`);

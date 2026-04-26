@@ -94,6 +94,14 @@ export interface RunOptions {
    * new one.
    */
   existing_execution_id?: string;
+  /**
+   * Per-call override for self-healing. When unset the engine uses the
+   * tenant policy (`resolvePolicy()`); set explicitly when the eval
+   * runner needs to compare `mode=one_shot` against `mode=self_healing`,
+   * or when an operator wants to dry-run a workflow without triggering
+   * drift detection.
+   */
+  self_healing?: { enabled: boolean };
 }
 
 /** Auth method actually applied at request time. Distinguishes a static
@@ -159,5 +167,3 @@ export interface RunInput {
   input: unknown;
   options: RunOptions;
 }
-
-export const MAX_CALL_DEPTH = 5;

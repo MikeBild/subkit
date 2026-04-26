@@ -10,10 +10,19 @@
 // false-positives don't hijack benign messages. When no strong signal
 // is present, the caller falls back to `toolChoice="auto"`.
 
+import type { AuthoringSummary, ConversationPermissionMode } from "./types.ts";
+
 export interface DetectedIntent {
   /** The tool the user most likely wants the model to call. Empty when
    *  no strong intent was detected. */
   forceTool?: string;
+  /**
+   * When true, the caller should detach the conversation from the
+   * currently selected saved workflow before authoring. This covers
+   * explicit "create a workflow" / "another workflow" phrasing so a
+   * fresh workflow draft does not inherit an old save target.
+   */
+  startNewWorkflow?: boolean;
   /**
    * When true, the caller should set `toolChoice: "none"` for the
    * first LLM call of this turn. Matches enumeration phrasing where
@@ -33,6 +42,12 @@ const RUN_WORKFLOW_PATTERNS = [
   /\bworkflow\s+.*\b(running|run)\b/i,
 ];
 
+const NEW_WORKFLOW_PATTERNS = [
+  /\b(create|build|make|author|start)\b.{0,40}\b(a|an|another|new)?\s*\b(workflow|pipeline)\b/i,
+  /\b(erstelle|baue|mache|starte)\b.{0,40}\b(workflow)\b/i,
+  /\b(neu(?:en|es|e)?|another|new)\b.{0,24}\b(workflow|pipeline)\b/i,
+];
+
 /**
  * Enumeration phrases — the TENANT SNAPSHOT already lists workflows,
  * connectors, and executions. Pre-fix the detector forced
@@ -50,7 +65,8 @@ const RUN_WORKFLOW_PATTERNS = [
 // regex matches their intent so they hit the snapshot path; it does
 // NOT mean the entity is called "integration" anywhere in the
 // codebase. Do NOT strip this in a rename pass — the engine's
-// terminology gate (scripts/terminology.banned.txt) bans `automation`
+// terminology gate (scripts/terminology.banned.txt) bans generic
+// workflow-execution umbrella terms
 // outright but permits `integration` precisely because of this user-
 // facing case.
 const ENUMERATION_PATTERNS = [
@@ -72,6 +88,11 @@ export function detectUserIntent(latestUserText: string | null | undefined): Det
   for (const pattern of RUN_WORKFLOW_PATTERNS) {
     if (pattern.test(text)) {
       return { forceTool: "run_workflow", reason: "explicit_run_intent" };
+    }
+  }
+  for (const pattern of NEW_WORKFLOW_PATTERNS) {
+    if (pattern.test(text)) {
+      return { startNewWorkflow: true, reason: "explicit_new_workflow_intent" };
     }
   }
   for (const pattern of ENUMERATION_PATTERNS) {
@@ -110,5 +131,25 @@ export function detectEnvelopeResolution(userText: string | null | undefined): E
   if (text.length > 60) return null; // a long message is not a one-word ack
   for (const p of APPROVE_PATTERNS) if (p.test(text)) return "approve";
   for (const p of REJECT_PATTERNS) if (p.test(text)) return "reject";
+  return null;
+}
+
+/**
+ * State-driven follow-up intent for ready save paths. In auto mode a
+ * short approval like "yes" should reuse the draft's structured next
+ * tool instead of relying on the model to remember which save action
+ * it just offered.
+ */
+export function inferStateDrivenFollowUpTool(params: {
+  latestUserText: string | null | undefined;
+  permission_mode: ConversationPermissionMode | null;
+  summary: AuthoringSummary | null | undefined;
+}): string | null {
+  if (params.permission_mode !== "auto") return null;
+  if (detectEnvelopeResolution(params.latestUserText) !== "approve") return null;
+  const suggested = params.summary?.next_suggested_tool ?? null;
+  if (suggested === "commit_draft" || suggested === "save_connector_draft") {
+    return suggested;
+  }
   return null;
 }
