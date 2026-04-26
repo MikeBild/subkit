@@ -71,70 +71,76 @@ describe("sk CLI user story — real backend", () => {
     expect(toolNames).toContain("start_connector_from_description");
   }, 120_000);
 
-  // SKIP: under the post-rebuild contract the canned plan parks the
+  // Under the post-rebuild contract the canned plan parks the
   // conversation in `awaiting_input` at its terminal `ask_user_confirm`.
-  // Resolving the elicitation (approve OR decline) advances the
-  // conversation past the state where `-r conversationId` can resume,
-  // and resolving early causes the harness's commit_intent dispatcher
-  // to interact with the next turn in ways the existing fixture does
-  // not anticipate. The scheduled follow-up routine
+  // Resolving the elicitation advances the conversation past the
+  // state where `-r conversationId` can resume, and resolving early
+  // causes the harness's commit_intent dispatcher to interact with
+  // the next turn in ways the existing fixture does not anticipate.
+  // The scheduled follow-up routine
   // `subkit-conversational-rebuild-fixture-followups` will land a
   // proper repair (rewrite the canned plan or rework `-r` semantics).
-  test.skip("turn 2 — resuming the same conversation sees the prior tool chain", async () => {
-    // First turn to establish the session.
-    const turn1 = await cli(["--p", "open-meteo again please", "--output", "json"], {
-      env,
-      persona: "admin",
-      timeout: 60_000,
-    });
-    const conversationId = parseJson<{ session_id: string }>(turn1).session_id;
+  // Set RUN_PRE_REBUILD_RESUME_TEST=1 to force-run while iterating.
+  const SKIP_TURN2 = process.env.RUN_PRE_REBUILD_RESUME_TEST !== "1";
+  test.skipIf(SKIP_TURN2)(
+    "turn 2 — resuming the same conversation sees the prior tool chain",
+    async () => {
+      // First turn to establish the session.
+      const turn1 = await cli(["--p", "open-meteo again please", "--output", "json"], {
+        env,
+        persona: "admin",
+        timeout: 60_000,
+      });
+      const conversationId = parseJson<{ session_id: string }>(turn1).session_id;
 
-    // The canned plan parks the conversation in `awaiting_input` at
-    // its terminal `ask_user_confirm` before `commit_draft`. Resolve
-    // that elicitation before resuming so the second turn isn't
-    // blocked by the 409 `pending_elicitation_blocked` guard.
-    const turn1Detail = (await (
-      await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
-        headers: bearer(env),
-      })
-    ).json()) as {
-      elicitations?: Array<{ id: string; status: string }>;
-    };
-    const pending = (turn1Detail.elicitations ?? []).find((e) => e.status === "pending");
-    if (pending) {
-      // Decline the commit — leaves the conversation in `active`
-      // (no commit) so the resume turn has somewhere to continue.
-      // Approving would advance the conversation to `committed`,
-      // and `-r conversationId` would have nothing to resume.
-      await fetch(
-        `${env.baseUrl}/v1/conversations/${conversationId}/elicitations/${pending.id}/respond`,
-        {
-          method: "POST",
-          headers: { ...bearer(env), "content-type": "application/json" },
-          body: JSON.stringify({ output: { confirmed: false } }),
-        },
-      );
-    }
+      // The canned plan parks the conversation in `awaiting_input` at
+      // its terminal `ask_user_confirm` before `commit_draft`. Resolve
+      // that elicitation before resuming so the second turn isn't
+      // blocked by the 409 `pending_elicitation_blocked` guard.
+      const turn1Detail = (await (
+        await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
+          headers: bearer(env),
+        })
+      ).json()) as {
+        elicitations?: Array<{ id: string; status: string }>;
+      };
+      const pending = (turn1Detail.elicitations ?? []).find((e) => e.status === "pending");
+      if (pending) {
+        // Decline the commit — leaves the conversation in `active`
+        // (no commit) so the resume turn has somewhere to continue.
+        // Approving would advance the conversation to `committed`,
+        // and `-r conversationId` would have nothing to resume.
+        await fetch(
+          `${env.baseUrl}/v1/conversations/${conversationId}/elicitations/${pending.id}/respond`,
+          {
+            method: "POST",
+            headers: { ...bearer(env), "content-type": "application/json" },
+            body: JSON.stringify({ output: { confirmed: false } }),
+          },
+        );
+      }
 
-    // Second turn, resuming the session via `-r <id>`.
-    const turn2 = await cli(["--p", "status check", "-r", conversationId, "--output", "json"], {
-      env,
-      persona: "admin",
-      timeout: 60_000,
-    });
-    expect(turn2.exitCode).toBe(0);
-    const body2 = parseJson<{ session_id: string }>(turn2);
-    expect(body2.session_id).toBe(conversationId);
+      // Second turn, resuming the session via `-r <id>`.
+      const turn2 = await cli(["--p", "status check", "-r", conversationId, "--output", "json"], {
+        env,
+        persona: "admin",
+        timeout: 60_000,
+      });
+      expect(turn2.exitCode).toBe(0);
+      const body2 = parseJson<{ session_id: string }>(turn2);
+      expect(body2.session_id).toBe(conversationId);
 
-    // The detail endpoint must still find the conversation and its
-    // original tool_calls; adding a second turn does not delete them.
-    const detail = (await (
-      await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
-        headers: bearer(env),
-      })
-    ).json()) as { tool_calls: unknown[] };
-    expect(detail.tool_calls.length).toBeGreaterThan(0);
-  }, 150_000);
+      // The detail endpoint must still find the conversation and its
+      // original tool_calls; adding a second turn does not delete them.
+      const detail = (await (
+        await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
+          headers: bearer(env),
+        })
+      ).json()) as { tool_calls: unknown[] };
+      expect(detail.tool_calls.length).toBeGreaterThan(0);
+    },
+    150_000,
+  );
 
   test("stream-json output emits ordered TurnEvent frames", async () => {
     const r = await cli(["--p", "hello engine", "--output", "stream-json"], {
