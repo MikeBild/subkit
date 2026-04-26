@@ -421,16 +421,13 @@ export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
     // Preview the transform output over the forecast scope so commit_draft
     // clears the preview-before-commit gate.
     { tool: "dry_run_step", args: { step_id: "tomorrow-only" } },
-    {
-      tool: "ask_user_confirm",
-      args: {
-        question: "Commit the Berlin tomorrow-weather workflow?",
-        kind: "commit_draft",
-        summary: "commit weather workflow",
-      },
-    },
-    // Transform previews are pure, so normal commit (no force) works here.
-    { tool: "commit_draft", args: {} },
+    // Direct commit. We removed the standalone `ask_user_confirm` step
+    // that used to precede commit_draft because under the post-rebuild
+    // contract the conversation harness auto-pauses on tool-policy
+    // confirmation gates and resolves them via `__policy_confirmed: true`.
+    // Leaving an unresolved `ask_user_confirm` here parked the
+    // conversation in `awaiting_input` and broke turn-2 resume tests.
+    { tool: "commit_draft", args: { __policy_confirmed: true } },
   ];
 }
 
