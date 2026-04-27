@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.7.0](https://github.com/MikeBild/subkit/compare/subkit-v2.6.0...subkit-v2.7.0) (2026-04-27)
+
+
+### Features
+
+* **security,execution,discovery,sk:** conversational creation rebuild round 2 — SSRF guard, pagination resume, GraphQL+llms.txt+playwright discovery, multi-driver call_connector, sk CLI ergonomics ([d9125c7](https://github.com/MikeBild/subkit/commit/d9125c7ae214ec02fccf9f96c2288fcb6e8e0459))
+
+
+### Miscellaneous
+
+* **deps:** sync bun.lock with package.json (graphql, playwright) ([980dcce](https://github.com/MikeBild/subkit/commit/980dcced97ba58be3705c3b6ee4f365985e705f3))
+
 ## [2.6.0](https://github.com/MikeBild/subkit/compare/subkit-v2.5.0...subkit-v2.6.0) (2026-04-26)
 
 
