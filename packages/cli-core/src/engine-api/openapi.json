@@ -7563,6 +7563,27 @@
         }
       }
     },
+    "/install": {
+      "get": {
+        "tags": [
+          "install"
+        ],
+        "summary": "Public sk install script",
+        "description": "Returns a POSIX shell script that detects platform/arch, fetches the matching `sk` binary from the GitHub Release for the engine's current version, verifies SHA256, and installs to ~/.subkit/bin/sk.",
+        "responses": {
+          "200": {
+            "description": "Shell script (text/x-shellscript)",
+            "content": {
+              "text/x-shellscript": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/status": {
       "get": {
         "tags": [

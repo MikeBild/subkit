@@ -53,6 +53,7 @@ import { registerSystemAccountRoutes } from "./routes/identity/system-accounts.t
 import { registerTenantRoutes } from "./routes/identity/tenants.ts";
 import { registerUserRoutes } from "./routes/identity/users.ts";
 import { registerWhoamiRoute } from "./routes/identity/whoami.ts";
+import { registerInstallRoute } from "./routes/install.ts";
 import { registerKnowledgeSourceRoutes } from "./routes/knowledge-sources.ts";
 import { registerMcpCatalogRoutes } from "./routes/mcp-catalog.ts";
 import { registerMetricsRoute } from "./routes/metrics.ts";
@@ -174,6 +175,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   app.use("*", authMiddleware(registry));
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
+  registerInstallRoute(app);
   registerStatusRoute(app);
   registerMetricsRoute(app);
   registerTenantRoutes(app);
