@@ -142,6 +142,17 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "status", help: "Print session + persona status", category: "util" },
   { name: "cost", help: "Show token usage + remaining budget", category: "util" },
   {
+    name: "exec",
+    help: "Show per-step trace for the latest execution (or `/exec <execution_id>`)",
+    category: "util",
+    requires: "execution:read",
+  },
+  {
+    name: "verbose",
+    help: "Toggle verbose tool-log streaming inline in chat",
+    category: "util",
+  },
+  {
     name: "model",
     help: "Switch the conversation's model",
     category: "session",
@@ -151,10 +162,10 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "login", help: "Authenticate against the engine", category: "auth" },
   { name: "logout", help: "Drop the active profile", category: "auth" },
   { name: "tenant", help: "List or switch tenants", category: "auth", requires: "identity:read" },
-  { name: "memory", help: "Open SUBKIT.md in $EDITOR", category: "context" },
+  { name: "memory", help: "Open SK.md in $EDITOR", category: "context" },
   {
     name: "init",
-    help: "Generate a starter SUBKIT.md",
+    help: "Generate a starter SK.md",
     category: "context",
     requires: "conversation:write",
   },

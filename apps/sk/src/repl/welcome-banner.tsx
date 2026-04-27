@@ -133,7 +133,7 @@ export const WelcomeBanner = memo(WelcomeBannerImpl);
 export const BANNER_TIPS: readonly string[] = [
   "Use /resume to reopen a prior session without replaying the full transcript.",
   "`@path/to/file` inlines a file; `@workflow:<slug>` fetches a committed workflow.",
-  "Drop a `SUBKIT.md` next to your project and sk injects it as memory each turn.",
+  "Drop an `SK.md` next to your project and sk injects it as memory each turn.",
   'Run `sk -p "your prompt"` for headless output in scripts or CI.',
   "Use /permissions when you need the fastest grounded view of your current access.",
   "Use /status for tenant state before asking the assistant to summarize what exists.",
@@ -141,7 +141,7 @@ export const BANNER_TIPS: readonly string[] = [
   "Shift-Tab cycles ask / auto / plan; the footer always shows the active mode.",
   "`/approve` or `/reject` resolves the current confirmation request inline.",
   "Use /compact when a long conversation needs a smaller working context.",
-  "Ask about MCP, the HTTP API, or chat adapters in plain language; the assistant should ground on real Subkit surfaces.",
+  "Ask about MCP, the HTTP API, or chat adapters in plain language; the assistant grounds on real sk surfaces.",
   "If the engine errors repeatedly, turn on `SK_DEBUG=1` or use `/debug on`.",
 ] as const;
 

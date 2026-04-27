@@ -13,7 +13,9 @@
 
 import { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
+import { conversationElicitations } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { recordConversationToolCall } from "../../observability/instrumentation.ts";
 import { resolveAttachments } from "../attachments.ts";
@@ -103,6 +105,32 @@ export interface TurnSignals {
 
 /** Max tolerated `loop_detected` short-circuits per turn before the outer loop stops. */
 export const MAX_TURN_LOOP_WARNINGS = 2;
+
+/**
+ * Map tenant_write tools to the `commit_intent.kind` value the LLM
+ * uses when it surfaces an `ask_user_confirm` for that intent. When a
+ * recently-resolved elicitation matches this kind, the policy-gate
+ * skips its own confirmation so the operator only sees one prompt
+ * per intent (instead of "yes / approve / yes / approve").
+ *
+ * Kept in sync with `apps/engine/src/conversations/tools/ask-user/commit-intent.ts`.
+ */
+function mapToolToCommitIntentKind(tool: string): string | null {
+  switch (tool) {
+    case "commit_draft":
+      return "commit_workflow_draft";
+    case "save_connector_draft":
+      return "save_connector_draft";
+    case "run_workflow":
+      return "run_workflow";
+    case "update_connector":
+      return "update_connector";
+    case "update_workflow":
+      return "update_workflow";
+    default:
+      return null;
+  }
+}
 
 /**
  * Attach summary fields so `conversation.tool.succeeded/failed` logs
@@ -314,10 +342,68 @@ function wrapOne(
           permission_mode: permissionMode,
         });
         const policyMarker = (rawArgs as { __policy_confirmed?: boolean }).__policy_confirmed;
+        // Cross-prompt dedup: if the LLM has *already* surfaced an
+        // `ask_user_confirm` for this same tool intent in the recent
+        // conversation history (and the user said yes), skip the
+        // policy-gate elicitation — that would otherwise produce the
+        // back-to-back "yes / approve" double-prompt the operator sees
+        // when committing a workflow draft. Maps the current tool to
+        // the elicitation `commit_intent.kind` the LLM uses; resolves
+        // the most recent matching elicitation; skips the gate when
+        // that elicitation was confirmed within the last 5 minutes.
+        const intentKindForCurrentTool = mapToolToCommitIntentKind(inner.name);
+        let recentlyConfirmedByLLM = false;
+        if (intentKindForCurrentTool) {
+          try {
+            const recent = await db
+              .select({
+                id: conversationElicitations.id,
+                status: conversationElicitations.status,
+                output: conversationElicitations.output,
+                created_at: conversationElicitations.created_at,
+              })
+              .from(conversationElicitations)
+              .where(
+                and(
+                  eq(conversationElicitations.tenant_id, ctx.tenant_id),
+                  eq(conversationElicitations.conversation_id, ctx.conversation_id),
+                  eq(conversationElicitations.tool_name, "ask_user_confirm"),
+                  sql`(${conversationElicitations.input} ->> 'kind') = ${intentKindForCurrentTool}`,
+                ),
+              )
+              .orderBy(desc(conversationElicitations.created_at))
+              .limit(1);
+            const head = recent[0];
+            if (
+              head?.status === "resolved" &&
+              typeof head.output === "object" &&
+              head.output !== null &&
+              (head.output as { confirmed?: unknown }).confirmed === true &&
+              Date.now() - (head.created_at?.getTime() ?? 0) < 5 * 60 * 1000
+            ) {
+              recentlyConfirmedByLLM = true;
+            }
+          } catch {
+            // DB blip: fall back to gating. Better to ask twice than
+            // silently elide a security-critical confirm.
+          }
+        }
         const needsPreConfirmation =
           resolvedMode === "confirm_before_execution" &&
           inner.category === "tenant_write" &&
-          !policyMarker;
+          !policyMarker &&
+          !recentlyConfirmedByLLM;
+        if (recentlyConfirmedByLLM && resolvedMode === "confirm_before_execution") {
+          logger.info({
+            module: "conversation_tool",
+            action: "tool_policy.confirmation_deduped",
+            msg: "skipping policy-gate confirm — LLM already elicited and user approved",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            intent_kind: intentKindForCurrentTool,
+          });
+        }
 
         // yolo audit: when the resolver short-circuits a dangerous
         // tool because the operator armed yolo, emit a forensic-grade

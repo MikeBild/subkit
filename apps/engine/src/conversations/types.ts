@@ -44,6 +44,18 @@ export interface TurnUsage {
    * when the tenant is unlimited.
    */
   remaining_monthly_budget_tokens: number | null;
+  /** Per-section breakdown of the prompt assembled for this turn —
+   *  surfaced to the CLI so the operator can see why a turn cost N
+   *  tokens (skills vs transcript vs draft). Optional. */
+  breakdown?: {
+    system: number;
+    skills: number;
+    knowledge: number;
+    docs: number;
+    failures: number;
+    messages: number;
+    total: number;
+  };
 }
 
 export interface ConversationMessageRecord {
@@ -159,11 +171,22 @@ export interface LatestExecutionSummary {
   execution_id: string;
   workflow_id: string | null;
   workflow_version_id: string | null;
+  /** May be a DB-enum status (`succeeded`, `failed`, …) or a CLI-only
+   *  classifier (`partial_success`) when the run technically succeeded
+   *  but produced suspicious output. The DB row stores the enum value;
+   *  this field carries the more granular classification for the LLM
+   *  and CLI surfaces. */
   status: string;
   environment: Environment;
   warnings_count: number;
   recorded_at: string;
   diagnosis_available: boolean;
+  /** Set when the execution had `unresolved_identifier` warnings or
+   *  ran a `loop` step body that produced no output. The
+   *  `commit_workflow_draft` tool refuses to advance until this flag
+   *  is cleared (by repair) or explicitly suppressed via
+   *  `acknowledge_warning`. */
+  requires_repair?: boolean;
 }
 
 export interface DiagnosisStepSummary {

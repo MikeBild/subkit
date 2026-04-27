@@ -6,6 +6,21 @@
 export interface TurnUsage {
   turn_tokens: number;
   remaining_monthly_budget_tokens: number | null;
+  /** Per-section breakdown of the prompt that drove this turn — what
+   *  the engine actually fed the LLM. When present, the spinner /
+   *  status line render `skills 4.2k · transcript 6.1k · draft 1.3k`
+   *  so the operator can see WHERE the tokens went, not just how
+   *  many. Optional: omit when the engine has no breakdown to share
+   *  (e.g. a non-LLM tool turn). */
+  breakdown?: {
+    system: number;
+    skills: number;
+    knowledge: number;
+    docs: number;
+    failures: number;
+    messages: number;
+    total: number;
+  };
 }
 
 export type TurnEvent =

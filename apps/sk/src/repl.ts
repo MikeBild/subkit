@@ -45,7 +45,7 @@ export interface ReplRunOptions {
   initialPrompt?: string;
   /** Attach to an existing conversation (from `-c`, `-r`, or `--session-id`). */
   resumeConversationId?: string;
-  /** Force-disable SUBKIT.md injection for this session. */
+  /** Force-disable SK.md injection for this session. */
   noMemory?: boolean;
   /** Optional sinks — tests pass buffers. */
   stdout?: NodeJS.WritableStream;
@@ -653,13 +653,13 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         return;
       }
       case "memory": {
-        const path = join(homedir(), ".sk", "SUBKIT.md");
+        const path = join(homedir(), ".sk", "SK.md");
         line(`open ${path} in your editor to edit memory (reloads on next turn)`);
         return;
       }
       case "init": {
-        // Write a starter SUBKIT.md in cwd if none exists.
-        const path = join(process.cwd(), "SUBKIT.md");
+        // Write a starter SK.md in cwd if none exists.
+        const path = join(process.cwd(), "SK.md");
         try {
           const fs = await import("node:fs");
           if (fs.existsSync(path)) {

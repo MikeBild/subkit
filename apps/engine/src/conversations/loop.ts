@@ -1143,17 +1143,35 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     }
 
     // Attach turn usage to every `completed` frame (sk status-line
-    // reads `turn_tokens` + `remaining_monthly_budget_tokens`).
+    // reads `turn_tokens` + `remaining_monthly_budget_tokens`). The
+    // optional `breakdown` carries the per-section token shape from
+    // the assembled prompt so the spinner / `/cost` view can show
+    // skills 4.2k · transcript 6.1k · docs 2.0k · total 14.5k.
     const usageAfter = await monthlyUsage(p.tenant_id, p.db).catch(() => usageBefore);
     const turnTokens = Math.max(0, usageAfter - usageBefore);
     const remaining =
       route.monthly_budget != null ? Math.max(0, route.monthly_budget - usageAfter) : null;
+    const breakdown = prompt?.token_counts
+      ? {
+          system: prompt.token_counts.system,
+          skills: prompt.token_counts.skills,
+          knowledge: prompt.token_counts.knowledge,
+          docs: prompt.token_counts.docs,
+          failures: prompt.token_counts.failures,
+          messages: prompt.token_counts.messages,
+          total: prompt.token_counts.total,
+        }
+      : undefined;
     for (let i = events.length - 1; i >= 0; i--) {
       const ev = events[i];
       if (ev && ev.type === "completed") {
         events[i] = {
           ...ev,
-          usage: { turn_tokens: turnTokens, remaining_monthly_budget_tokens: remaining },
+          usage: {
+            turn_tokens: turnTokens,
+            remaining_monthly_budget_tokens: remaining,
+            ...(breakdown ? { breakdown } : {}),
+          },
         };
       }
     }

@@ -438,7 +438,7 @@ const mainCommand = defineCommand({
     "session-id": { type: "string", description: "Attach to a specific conversation id" },
     "no-memory": {
       type: "boolean",
-      description: "Skip SUBKIT.md injection for this invocation",
+      description: "Skip SK.md injection for this invocation",
       default: false,
     },
     connector: { type: "string", description: "Bind the new conversation to a connector slug" },

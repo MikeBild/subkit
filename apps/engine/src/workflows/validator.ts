@@ -4,10 +4,18 @@
 // - data_selector must parse as a JSONPath-lite expression
 // - request urls must be syntactically valid
 // - jsonata expressions must parse
+// - loop bodies must reference the parent loop's item_var (otherwise
+//   the loop is N copies of the same call — typically a bug)
+//
+// Static JSONata identifier-scope checking lives at runtime in
+// `apps/engine/src/execution/steps/transform.ts` so the engine has the
+// actual scope/bindings shape — the warnings it emits are forwarded
+// onto `RunResult.warnings` and trigger the `partial_success` gate in
+// `run-workflow.ts` that refuses the commit.
 
 import jsonata from "jsonata";
 import { compileSelector } from "../execution/selectors.ts";
-import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
 export interface ValidationError {
   path: string;
@@ -115,7 +123,39 @@ export function validateWorkflowDef(input: unknown): {
           });
         }
       }
+      // The body must reference the loop's item_var somewhere. A loop
+      // whose body never reads the iteration item is N copies of the
+      // same call — almost always a bug. The transcript that triggered
+      // this rule had `body: [get_resources]` where `get_resources`
+      // hard-coded the URL with no `${project.id}` interpolation, so
+      // the loop ran but never fanned out.
+      const itemVar = step.item_var ?? "item";
+      const bodySteps = step.body
+        .map((bid) => wf.steps.find((s) => s.id === bid))
+        .filter((s): s is StepDef => s !== undefined);
+      const referencesItemVar = bodySteps.some((bs) => stepReferencesIdentifier(bs, itemVar));
+      if (bodySteps.length > 0 && !referencesItemVar) {
+        errors.push({
+          path: `steps.${step.id}`,
+          message: `loop body never references the iteration variable \`${itemVar}\` — use \`\${${itemVar}.field}\` in URLs/strings or \`${itemVar}.field\` in JSONata. Without it the loop runs N copies of the same call.`,
+        });
+      }
     }
   }
   return errors.length > 0 ? { ok: false, errors } : { ok: true, workflow: wf, errors: [] };
+}
+
+function stepReferencesIdentifier(step: StepDef, identifier: string): boolean {
+  // Conservative substring check. Catches `${item.foo}`, `$item`,
+  // bare `item.foo`, and `item` in JSONata. We err on the side of
+  // false-positives (allows the loop to validate) rather than
+  // false-rejections.
+  const haystack = JSON.stringify(step);
+  return (
+    haystack.includes(`\${${identifier}`) ||
+    haystack.includes(`{{ ${identifier}`) ||
+    haystack.includes(`{{${identifier}`) ||
+    haystack.includes(`$${identifier}`) ||
+    new RegExp(`\\b${identifier}\\b`).test(haystack)
+  );
 }

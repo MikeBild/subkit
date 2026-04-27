@@ -758,8 +758,8 @@ const MANAGE_STARTER_PROMPT = [
 ].join("\n");
 
 const SURFACE_HELP_STARTER_PROMPT = [
-  "I want help using Subkit surfaces such as sk, MCP, the HTTP API, schedules, or Google Chat.",
-  "Answer from actual Subkit behavior and exposed routes only.",
+  "I want help using sk surfaces — the CLI, MCP, the HTTP API, schedules, or Google Chat.",
+  "Answer from actual engine behavior and exposed routes only.",
   "If something is not exposed in this conversation surface, say that plainly.",
 ].join("\n");
 
@@ -1891,6 +1891,42 @@ export const InkApp: React.FC<InkAppProps> = ({
         return;
       }
 
+      // Pending-elicitation shortcut: when the engine is waiting on an
+      // ask_user_confirm and the user types a short affirmative /
+      // negative ("yes", "no", "approve", "reject", "ok", "y", "n"),
+      // route it to the elicitation instead of starting a new turn.
+      // Without this the operator types "yes" → the LLM treats it as
+      // a new user message → emits another ask_user_confirm → ad
+      // infinitum. This is the dominant cause of the user's
+      // "yes / approve / yes / approve" double-confirm spam.
+      if (session.pendingElicitation && onElicitResponse) {
+        const lower = trimmed.toLowerCase();
+        const yes =
+          lower === "yes" ||
+          lower === "y" ||
+          lower === "approve" ||
+          lower === "ok" ||
+          lower === "okay" ||
+          lower === "confirm" ||
+          lower === "go" ||
+          lower === "do it";
+        const no =
+          lower === "no" ||
+          lower === "n" ||
+          lower === "reject" ||
+          lower === "cancel" ||
+          lower === "abort" ||
+          lower === "stop";
+        if (yes || no) {
+          await submitElicitationResponse(
+            session.pendingElicitation.id,
+            { confirmed: yes },
+            no ? "user replied with a short negative" : undefined,
+          );
+          return;
+        }
+      }
+
       // Plain prompt → drive a turn. Busy-guard first: if a turn is
       // already in flight, enqueue the prompt and let the draining
       // loop pick it up after the current turn completes.
@@ -2488,7 +2524,20 @@ export const InkApp: React.FC<InkAppProps> = ({
       const authoringCard = inspectView ? null : renderAuthoringCard(call, transcriptMode);
       if (authoringCard) {
         transcriptRows.push(authoringCard);
-        if (inspectView || call.status === "failed") pushForegroundLogs(call.id);
+        // Render `tool_log` entries inline under: (a) anything in
+        // inspect view, (b) any failed tool so the diagnosis is
+        // visible, (c) any RUNNING tool so the user sees per-step
+        // progress as it streams (the run_workflow / dry_run_workflow
+        // tools emit one tool_log per step → that lets the user watch
+        // the loop iterate live), or (d) when SK_VERBOSE=1 forces
+        // every successful tool to render its full log.
+        const showLogs =
+          inspectView ||
+          call.status === "failed" ||
+          call.status === "running" ||
+          call.status === "pending" ||
+          process.env.SK_VERBOSE === "1";
+        if (showLogs) pushForegroundLogs(call.id);
         if (chips.length > 0) {
           transcriptRows.push(<NextBestActionsChips key={`chips-${call.id}`} actions={chips} />);
         }

@@ -4,9 +4,12 @@
 // row's workflow_id column NULL so it's clearly separable from saved runs.
 
 import { z } from "@hono/zod-openapi";
+import { and, desc, eq } from "drizzle-orm";
+import { conversationToolCalls } from "../../db/schema/index.ts";
 import type { PreviewStepSummary } from "../../execution/classify.ts";
 import { classifyRunResult } from "../../execution/classify.ts";
 import { runExecution } from "../../execution/engine.ts";
+import { logger } from "../../logging/logger.ts";
 import {
   recordExecutionDryRun,
   recordExecutionWarningsEmitted,
@@ -14,7 +17,7 @@ import {
 import type { StepDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
-import { buildLifecyclePayload } from "./authoring-contract.ts";
+import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -76,8 +79,61 @@ export const dryRunWorkflowTool: ConversationTool = {
       };
     }
 
+    // Circuit-breaker — same as run-workflow. Three consecutive
+    // dry-runs producing `unresolved_identifier` warnings means the
+    // LLM's strategy isn't converging. Halt and force the LLM to ask
+    // or re-strategize instead of running again.
+    try {
+      const rows = await ctx.db
+        .select({ tool: conversationToolCalls.tool, output: conversationToolCalls.output })
+        .from(conversationToolCalls)
+        .where(
+          and(
+            eq(conversationToolCalls.tenant_id, ctx.tenant_id),
+            eq(conversationToolCalls.conversation_id, ctx.conversation_id),
+          ),
+        )
+        .orderBy(desc(conversationToolCalls.created_at))
+        .limit(8);
+      let unresolved = 0;
+      for (const r of rows) {
+        if (r.tool !== "dry_run_workflow" && r.tool !== "run_workflow") continue;
+        const data = r.output as { data?: { warnings?: Array<{ code?: unknown }> } } | null;
+        const ws = data?.data?.warnings;
+        if (!Array.isArray(ws)) continue;
+        for (const w of ws) {
+          if (w && typeof w.code === "string" && w.code === "unresolved_identifier") unresolved++;
+        }
+      }
+      if (unresolved >= 3) {
+        logger.warn({
+          module: "conversation_tool",
+          action: "dry_run_workflow.repair_loop_detected",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          unresolved_count: unresolved,
+        });
+        return {
+          ok: false,
+          data: buildGateError(ctx.getDraft(), {
+            error_code: "repair_loop_detected",
+            message:
+              "stop — three previews in a row produced the same `unresolved_identifier` warning. Re-reading the data-handling skill, asking the user for a clarification, or proposing a structurally different draft is the right move. Another preview will produce the same warning.",
+            recommended_mode: "workflow",
+            next_best_actions: ["ask_user_text", "load_skill", "search_knowledge", "propose_step"],
+          }),
+        };
+      }
+    } catch {
+      // DB blip: don't trip the breaker on a query failure.
+    }
+
     const definition = { name: draft.name ?? "draft", steps };
     const signal = ctx.abortSignal;
+    ctx.onLog?.(
+      "info",
+      `dry-running ${steps.length} step${steps.length === 1 ? "" : "s"} (env=${args.environment ?? "dev"})`,
+    );
     let run: Awaited<ReturnType<typeof runExecution>>;
     try {
       run = await runExecution({
@@ -104,6 +160,28 @@ export const dryRunWorkflowTool: ConversationTool = {
           reason: (err as { code?: string }).code ?? "draft_run_failed",
         },
       };
+    }
+
+    // Per-step progress feed — same as run_workflow. Lets the user see
+    // each step's status, kind, and duration in real time instead of a
+    // single end-of-preview badge.
+    for (const step of run.steps) {
+      const errMsg =
+        step.error && typeof step.error === "object" && step.error !== null
+          ? (step.error as { message?: unknown }).message
+          : null;
+      const level: "info" | "warn" | "error" =
+        step.status === "succeeded"
+          ? "info"
+          : step.status === "failed" || step.status === "timed_out"
+            ? "error"
+            : "warn";
+      ctx.onLog?.(
+        level,
+        `step ${step.step_key} (${step.kind}) ${step.status}${
+          step.duration_ms != null ? ` · ${step.duration_ms}ms` : ""
+        }${typeof errMsg === "string" ? ` · ${errMsg}` : ""}`,
+      );
     }
 
     const lastStepSummary = run.steps[run.steps.length - 1];
