@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { openApiDirectStrategy } from "./openapi-direct.ts";
+import { normalizeKnownHosts, openApiDirectStrategy } from "./openapi-direct.ts";
 import { DiscoveryError } from "./types.ts";
 
 const STRIPE_LIKE_OPENAPI_3 = {
@@ -278,6 +278,69 @@ paths:
     const result = await openApiDirectStrategy.fetch("https://api.example.com/openapi.yaml", {});
     expect(result.title).toBe("yaml-spec");
     expect(result.endpoints[0]?.operation_id).toBe("ping");
+  });
+});
+
+describe("normalizeKnownHosts", () => {
+  test("rewrites SwaggerHub UI host to API host", () => {
+    expect(normalizeKnownHosts("https://app.swaggerhub.com/apis/acme/widgets/1.0.0")).toBe(
+      "https://api.swaggerhub.com/apis/acme/widgets/1.0.0",
+    );
+  });
+
+  test("preserves path, query, and fragment when rewriting SwaggerHub", () => {
+    expect(normalizeKnownHosts("https://app.swaggerhub.com/apis/acme/widgets/1.0.0?foo=bar")).toBe(
+      "https://api.swaggerhub.com/apis/acme/widgets/1.0.0?foo=bar",
+    );
+  });
+
+  test("is idempotent when called twice", () => {
+    const once = normalizeKnownHosts("https://app.swaggerhub.com/apis/acme/widgets/1.0.0");
+    expect(normalizeKnownHosts(once)).toBe(once);
+  });
+
+  test("leaves api.swaggerhub.com unchanged", () => {
+    const url = "https://api.swaggerhub.com/apis/acme/widgets/1.0.0";
+    expect(normalizeKnownHosts(url)).toBe(url);
+  });
+
+  test("leaves unrelated hosts unchanged", () => {
+    const url = "https://api.example.com/openapi.json";
+    expect(normalizeKnownHosts(url)).toBe(url);
+  });
+
+  test("returns input unchanged when not a parseable URL", () => {
+    expect(normalizeKnownHosts("not-a-url")).toBe("not-a-url");
+  });
+
+  test("does not rewrite SwaggerHub paths outside /apis/", () => {
+    const url = "https://app.swaggerhub.com/login";
+    expect(normalizeKnownHosts(url)).toBe(url);
+  });
+});
+
+describe("openApiDirectStrategy — host normalization", () => {
+  let fetchSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    fetchSpy = spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  test("fetches the rewritten URL when given a SwaggerHub UI host", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify(STRIPE_LIKE_OPENAPI_3), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await openApiDirectStrategy.fetch("https://app.swaggerhub.com/apis/acme/widgets/1.0.0", {});
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const calledUrl = fetchSpy.mock.calls[0]?.[0];
+    expect(calledUrl).toBe("https://api.swaggerhub.com/apis/acme/widgets/1.0.0");
   });
 });
 

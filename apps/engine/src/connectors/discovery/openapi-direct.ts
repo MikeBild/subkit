@@ -24,6 +24,32 @@ import {
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_SIZE_BYTES = 16 * 1024 * 1024; // discovery specs can be larger than runtime fetches
 
+/**
+ * Rewrite well-known doc-hosting URLs to their raw-spec equivalents so the
+ * fetcher gets JSON/YAML instead of a Swagger-UI HTML shell. Returns the
+ * original URL when no rule matches. Idempotent — already-rewritten URLs
+ * pass through unchanged.
+ *
+ * Currently handles:
+ *   - SwaggerHub UI host (`app.swaggerhub.com`) → API host (`api.swaggerhub.com`),
+ *     same `/apis/{owner}/{api}/{version}` path. The API host returns JSON by
+ *     default; the UI host returns the rendered Swagger-UI page that would
+ *     trip `unknown_spec_version`.
+ */
+export function normalizeKnownHosts(rawUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+  if (url.hostname === "app.swaggerhub.com" && url.pathname.startsWith("/apis/")) {
+    url.hostname = "api.swaggerhub.com";
+    return url.toString();
+  }
+  return rawUrl;
+}
+
 const HTTP_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 const PAGINATION_PARAM_NAMES: Record<string, "page" | "cursor" | "offset"> = {
@@ -117,6 +143,7 @@ async function fetchSpec(
   url: string,
   opts: DiscoveryStrategyOptions,
 ): Promise<{ text: string; contentType: string | null; linkHeader: string | null }> {
+  const effectiveUrl = normalizeKnownHosts(url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
   // If the caller supplied a signal, abort our internal controller when
@@ -130,7 +157,7 @@ async function fetchSpec(
       accept: "application/json, application/yaml, text/yaml, */*",
       ...(opts.headers ?? {}),
     };
-    const res = await fetch(url, { method: "GET", headers, signal: controller.signal });
+    const res = await fetch(effectiveUrl, { method: "GET", headers, signal: controller.signal });
     if (!res.ok) {
       throw new DiscoveryError(`http_${res.status}`, `GET ${scrubUrl(url)} returned ${res.status}`);
     }

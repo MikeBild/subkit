@@ -129,6 +129,26 @@ describe("scoreCandidate", () => {
     expect(scoreCandidate("https://x.com/blog/launch")).toBeLessThan(0);
     expect(scoreCandidate("https://x.com/legal/terms")).toBeLessThan(0);
   });
+
+  test("penalises localized paths (de/zh/pt-br) but keeps en + plain api", () => {
+    // Translated docs paths get the locale penalty.
+    expect(scoreCandidate("https://docs.x.com/de/api/widgets")).toBeLessThan(
+      scoreCandidate("https://docs.x.com/api/widgets"),
+    );
+    expect(scoreCandidate("https://docs.x.com/zh/reference")).toBeLessThan(
+      scoreCandidate("https://docs.x.com/reference"),
+    );
+    // BCP-47-shaped locale (pt-br, zh-cn) also penalised.
+    expect(scoreCandidate("https://docs.x.com/pt-br/api/widgets")).toBeLessThan(
+      scoreCandidate("https://docs.x.com/api/widgets"),
+    );
+    // English and the api allowlist must not be penalised.
+    expect(scoreCandidate("https://docs.x.com/en/api/widgets")).toBeGreaterThanOrEqual(
+      scoreCandidate("https://docs.x.com/api/widgets"),
+    );
+    // A bare `/api/...` (no leading 2-letter segment) stays positive.
+    expect(scoreCandidate("https://docs.x.com/api/widgets")).toBeGreaterThan(0);
+  });
 });
 
 describe("parseSitemap", () => {

@@ -162,13 +162,20 @@ function formatSkill(s: Skill, runtime_context?: AssembleContextParams["runtime_
   return `# Skill: ${s.title} (${s.scope})\n${body}${bp}${pit}${refs}${ex}`;
 }
 
+function fetchedAtSuffix(fetched_at: string | null): string {
+  if (!fetched_at) return "";
+  // Trim to YYYY-MM-DD so the prompt header is compact and stable.
+  const date = fetched_at.slice(0, 10);
+  return ` (fetched ${date})`;
+}
+
 function formatChunk(chunk: IncludedChunk): string {
   const heading = chunk.title
     ? `## Doc: ${chunk.title}${chunk.path ? ` — ${chunk.path}` : ""}`
     : chunk.path
       ? `## Doc: ${chunk.path}`
       : "## Doc";
-  return `${heading}\n${chunk.snippet}`;
+  return `${heading}${fetchedAtSuffix(chunk.fetched_at)}\n${chunk.snippet}`;
 }
 
 function formatKnowledgeChunk(chunk: IncludedKnowledgeChunk): string {
@@ -177,7 +184,7 @@ function formatKnowledgeChunk(chunk: IncludedKnowledgeChunk): string {
     : chunk.path
       ? `## Knowledge: ${chunk.path}`
       : "## Knowledge";
-  return `${heading}\n${chunk.snippet}`;
+  return `${heading}${fetchedAtSuffix(chunk.fetched_at)}\n${chunk.snippet}`;
 }
 
 function formatFailure(f: PriorFailure): string {
@@ -213,6 +220,7 @@ async function loadChunks(
       snippet: h.snippet,
       rank: h.rank,
       tokens: countTokens(h.snippet),
+      fetched_at: h.fetched_at,
     }));
   } catch (err) {
     logger.debug({
@@ -247,6 +255,7 @@ async function loadKnowledgeChunks(
       snippet: h.snippet,
       rank: h.rank,
       tokens: countTokens(h.snippet),
+      fetched_at: h.fetched_at,
     }));
   } catch (err) {
     logger.debug({

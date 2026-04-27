@@ -12,13 +12,19 @@
 // guards — the orchestrator inspects `state.budget_exceeded` and stops
 // cleanly so partial writes are preserved.
 
+import { envIntOr } from "../utils/env-config.ts";
 import type { BudgetState } from "./types.ts";
 
-export const TOTAL_BUDGET_BYTES = 10 * 1024 * 1024; // 10 MB
-export const PER_PAGE_BYTES = 3 * 1024 * 1024; // 3 MB
-export const MAX_LINKS = 20;
-export const MAX_CONCURRENT_OPENAPI = 25;
-export const MAX_SPECS = 100;
+// Operator-tunable via env vars. Defaults match the canonical caps in
+// docs/04-authoring.md; ops can raise them per deployment without a rebuild.
+export const TOTAL_BUDGET_BYTES = envIntOr(
+  "DOCS_INGESTION_MAX_BYTES_PER_CONNECTOR",
+  10 * 1024 * 1024,
+);
+export const PER_PAGE_BYTES = envIntOr("DOCS_INGESTION_MAX_BYTES_PER_DOC", 3 * 1024 * 1024);
+export const MAX_LINKS = envIntOr("DOCS_INGESTION_MAX_LINKS", 20);
+export const MAX_CONCURRENT_OPENAPI = envIntOr("DOCS_INGESTION_MAX_CONCURRENT", 25);
+export const MAX_SPECS = envIntOr("DOCS_INGESTION_MAX_SPECS", 100);
 export const DEDUP_THRESHOLD = 0.9;
 
 export function createBudgetState(): BudgetState {

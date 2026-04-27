@@ -12,6 +12,7 @@ import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_source
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
 import { log } from "../logging/logger.ts";
+import { TtlCache } from "../utils/ttl-cache.ts";
 import {
   KNOWLEDGE_SOURCE_MAX_BYTES,
   KNOWLEDGE_TENANT_MAX_BYTES,
@@ -183,6 +184,7 @@ export async function createKnowledgeSource(
       tx,
     );
 
+    invalidateKnowledgeCache(p.tenant_id);
     return toView(row);
   });
 }
@@ -340,6 +342,7 @@ export async function deleteKnowledgeSource(
       tx,
     );
 
+    invalidateKnowledgeCache(tenant_id);
     return true;
   });
 }
@@ -442,6 +445,8 @@ export async function ingestKnowledgeSource(
     bytes_total: totalBytes,
   });
 
+  invalidateKnowledgeCache(p.tenant_id);
+
   return {
     knowledge_source_id: p.knowledge_source_id,
     ingested_count: accepted.length,
@@ -455,12 +460,41 @@ export async function ingestKnowledgeSource(
 // Search
 // ---------------------------------------------------------------------------
 
+// In-memory cache for repeated FTS lookups within a conversation turn.
+// Scopes to (tenant, scope, workflow, ids?, normalized query, limit) so
+// cache poisoning across tenants is impossible. TTL 60s, cap 256 keys.
+const knowledgeSearchCache = new TtlCache<KnowledgeSearchHit[]>({
+  maxEntries: 256,
+  ttlMs: 60_000,
+});
+
+function knowledgeSearchCacheKey(p: SearchKnowledgeParams): string {
+  const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
+  const normQuery = p.query.trim().toLowerCase();
+  const ids = (p.knowledge_source_ids ?? []).slice().sort().join(",");
+  return [p.tenant_id, p.scope ?? "", p.workflow_id ?? "", ids, String(limit), normQuery].join(":");
+}
+
+export function invalidateKnowledgeCache(tenant_id: string): void {
+  knowledgeSearchCache.invalidatePrefix(`${tenant_id}:`);
+}
+
+export function getKnowledgeSearchCacheStats(): { hits: number; misses: number; size: number } {
+  return knowledgeSearchCache.stats();
+}
+
 export async function searchKnowledge(
   p: SearchKnowledgeParams,
   exec?: Executor,
 ): Promise<KnowledgeSearchHit[]> {
   const db = exec ?? getDb();
   const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
+
+  // Always cache; HTTP routes and tools pass a request-scoped executor
+  // but the underlying reads are stable for a 60s TTL.
+  const cacheKey = knowledgeSearchCacheKey(p);
+  const cached = knowledgeSearchCache.get(cacheKey);
+  if (cached) return cached;
 
   if (!p.query || p.query.trim().length === 0) return [];
 
@@ -486,6 +520,7 @@ export async function searchKnowledge(
       kc.knowledge_source_id::text AS knowledge_source_id,
       kc.title,
       kc.path,
+      COALESCE(ks.last_refreshed_at, ks.updated_at) AS fetched_at,
       ts_headline(
         'english',
         kc.content,
@@ -509,15 +544,22 @@ export async function searchKnowledge(
     path: string | null;
     snippet: string;
     rank: number | string;
+    fetched_at: Date | string | null;
   };
 
-  const hits = (out.rows as Row[]).map((r) => ({
+  const hits: KnowledgeSearchHit[] = (out.rows as Row[]).map((r) => ({
     id: r.id,
     knowledge_source_id: r.knowledge_source_id,
     title: r.title,
     path: r.path,
     snippet: r.snippet,
     rank: typeof r.rank === "string" ? parseFloat(r.rank) : r.rank,
+    fetched_at:
+      r.fetched_at instanceof Date
+        ? r.fetched_at.toISOString()
+        : typeof r.fetched_at === "string"
+          ? r.fetched_at
+          : null,
   }));
 
   log.knowledge.searched({
@@ -529,5 +571,6 @@ export async function searchKnowledge(
     limit,
   });
 
+  knowledgeSearchCache.set(cacheKey, hits);
   return hits;
 }

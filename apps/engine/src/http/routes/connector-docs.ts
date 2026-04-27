@@ -77,6 +77,7 @@ const SearchResponse = z
         snippet: z.string(),
         rank: z.number(),
         match_type: z.enum(["operation", "auth", "schema", "general"]),
+        fetched_at: z.string().nullable(),
       }),
     ),
   })

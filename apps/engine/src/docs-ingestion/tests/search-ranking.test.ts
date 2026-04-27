@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { rerankSearchHits } from "../search-ranking.ts";
 
 describe("rerankSearchHits", () => {
+  const FETCHED_AT = "2026-01-15T12:00:00.000Z";
   const candidates = [
     {
       id: "op",
@@ -11,6 +12,7 @@ describe("rerankSearchHits", () => {
       content: "Create a customer. Returns the created customer resource.",
       snippet: "Create a customer",
       rank: 0.4,
+      fetched_at: FETCHED_AT,
     },
     {
       id: "auth",
@@ -20,6 +22,7 @@ describe("rerankSearchHits", () => {
       content: "Use a bearer token in the Authorization header for every request.",
       snippet: "Use a bearer token",
       rank: 0.45,
+      fetched_at: FETCHED_AT,
     },
     {
       id: "schema",
@@ -29,6 +32,7 @@ describe("rerankSearchHits", () => {
       content: "Fields: id, email, status, created_at. Response schema details.",
       snippet: "Fields: id, email",
       rank: 0.35,
+      fetched_at: null,
     },
   ];
 
@@ -48,5 +52,14 @@ describe("rerankSearchHits", () => {
     const hits = rerankSearchHits("customer fields response schema", candidates, 3);
     expect(hits[0]?.id).toBe("schema");
     expect(hits[0]?.match_type).toBe("schema");
+  });
+
+  test("propagates fetched_at from the candidate to the ranked hit", () => {
+    const hits = rerankSearchHits("create customer", candidates, 3);
+    const top = hits[0];
+    expect(top?.fetched_at).toBe(FETCHED_AT);
+    // null fetched_at on the schema candidate must round-trip as null.
+    const schemaHit = hits.find((h) => h.id === "schema");
+    expect(schemaHit?.fetched_at).toBeNull();
   });
 });

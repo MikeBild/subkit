@@ -25,6 +25,7 @@
 // closes its own Chromium so leaks don't cascade.
 
 import { log } from "../../logging/logger.ts";
+import { envCsvOr } from "../../utils/env-config.ts";
 import { scrubUrl } from "../egress.ts";
 import {
   DiscoveryError,
@@ -42,9 +43,17 @@ const MAX_CORPUS_BYTES = 200 * 1024;
 const JACCARD_THRESHOLD = 0.7;
 const SHINGLE_SIZE = 5;
 
-const POSITIVE_KEYWORDS_HIGH = ["api", "apis", "endpoints", "reference", "docs"];
-const POSITIVE_KEYWORDS_LOW = ["swagger", "openapi"];
-const NEGATIVE_KEYWORDS = [
+// Operator-tunable via DOCS_CRAWL_POSITIVE_HIGH / _LOW / _NEGATIVE env
+// (CSV). Defaults are the conservative shipping list.
+const POSITIVE_KEYWORDS_HIGH = envCsvOr("DOCS_CRAWL_POSITIVE_HIGH", [
+  "api",
+  "apis",
+  "endpoints",
+  "reference",
+  "docs",
+]);
+const POSITIVE_KEYWORDS_LOW = envCsvOr("DOCS_CRAWL_POSITIVE_LOW", ["swagger", "openapi"]);
+const NEGATIVE_KEYWORDS = envCsvOr("DOCS_CRAWL_NEGATIVE", [
   "pricing",
   "login",
   "signin",
@@ -56,7 +65,15 @@ const NEGATIVE_KEYWORDS = [
   "/privacy/",
   "/terms/",
   "/contact/",
-];
+]);
+
+// Path segments that are 2-letter (or 2-2 BCP-47) language codes — e.g.
+// `/de/`, `/zh/`, `/zh-cn/`, `/pt-br/` — should be suppressed so the
+// corpus isn't dominated by translated duplicates of the same docs.
+// English and tokens that overlap with positive keywords (`api`) are
+// allow-listed so we don't penalise legitimate paths.
+const LOCALE_PATH_RE = /\/([a-z]{2}(?:-[a-z]{2,4})?)\//i;
+const LOCALE_ALLOW = new Set(["en", "api"]);
 
 interface ScoredUrl {
   url: string;
@@ -170,6 +187,8 @@ export function scoreCandidate(url: string): number {
   for (const kw of NEGATIVE_KEYWORDS) {
     if (pathLower.includes(kw)) score -= 10;
   }
+  const localeMatch = LOCALE_PATH_RE.exec(pathLower);
+  if (localeMatch?.[1] && !LOCALE_ALLOW.has(localeMatch[1])) score -= 10;
   return score;
 }
 

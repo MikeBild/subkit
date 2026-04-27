@@ -31,6 +31,7 @@ const SearchResultSchema = z
         path: z.string().nullable(),
         snippet: z.string(),
         rank: z.number(),
+        fetched_at: z.string().nullable(),
       }),
     ),
   })

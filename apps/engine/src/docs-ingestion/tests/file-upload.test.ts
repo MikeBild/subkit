@@ -117,4 +117,65 @@ describe("docs-ingestion/file-upload", () => {
       UnsupportedFileUploadError,
     );
   });
+
+  test("parses a Markdown README into heading-split chunks", async () => {
+    const md = [
+      "# Acme API",
+      "",
+      "Acme is a sample API for testing.",
+      "",
+      "## Authentication",
+      "",
+      "Use a Bearer token in the Authorization header.",
+      "",
+      "## Endpoints",
+      "",
+      "- GET /widgets — list widgets",
+      "- POST /widgets — create a widget",
+    ].join("\n");
+    const result = await ingestDocs(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: ctx.connectorId,
+        input: {
+          source_type: "file_upload",
+          upload: { buffer: md, filename: "README.md" },
+        },
+      },
+      ctx.testDb.db,
+    );
+    expect(result.ingested_count).toBeGreaterThanOrEqual(2);
+  });
+
+  test("parses a plaintext upload into paragraph chunks", async () => {
+    const text = "First paragraph about the API.\n\nSecond paragraph describing endpoints.";
+    const result = await ingestDocs(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: ctx.connectorId,
+        input: {
+          source_type: "file_upload",
+          upload: { buffer: text, filename: "notes.txt", mime: "text/plain" },
+        },
+      },
+      ctx.testDb.db,
+    );
+    expect(result.ingested_count).toBeGreaterThanOrEqual(1);
+  });
+
+  test("treats an HTML upload as text and produces at least one chunk", async () => {
+    const html = "<html><body><h1>Hello</h1><p>World.</p></body></html>";
+    const result = await ingestDocs(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: ctx.connectorId,
+        input: {
+          source_type: "file_upload",
+          upload: { buffer: html, filename: "index.html", mime: "text/html" },
+        },
+      },
+      ctx.testDb.db,
+    );
+    expect(result.ingested_count).toBeGreaterThanOrEqual(1);
+  });
 });
