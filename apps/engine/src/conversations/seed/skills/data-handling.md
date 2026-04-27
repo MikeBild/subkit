@@ -228,6 +228,39 @@ Walk-through:
 3. `totals_by_lifecycle` groups + sums in one JSONata expression.
 4. `outputTransform` builds the public payload with a row count sibling.
 
+## Loop iteration variables
+
+A `loop` step exposes its current item as a **top-level scope key** named
+after `item_var` (or `item` if `item_var` is omitted). Inside the loop body,
+reference it WITHOUT the `$scope.` prefix and WITHOUT `.data` — the item is
+not envelope-wrapped.
+
+Correct:
+
+```json
+{ "id": "list_projects",     "kind": "request", "path": "/v2/projects" }
+{ "id": "for_each_project",  "kind": "loop",
+  "over": "$scope.list_projects.data.projects",
+  "item_var": "project",
+  "body": ["fetch_resources"] }
+{ "id": "fetch_resources",   "kind": "request",
+  "path": "/v2/projects/${project.id}/resources" }
+```
+
+`$loop_index` (zero-based) is also available inside the loop body.
+
+Wrong — the validator (or the engine at run time) will reject each of these:
+
+```
+"/v2/projects/${scope.project.id}/resources"          # extra `scope.` prefix
+"/v2/projects/$scope.for_each_project.data.id/..."   # loop step has no envelope
+"/v2/projects/${project.data.id}/resources"           # item is not envelope-wrapped
+"/v2/projects/${item.id}/resources"                   # only valid when item_var was omitted
+```
+
+The same rules apply in JSONata expressions (`$item_var.field`, no `$scope.`)
+and in `data_selector` / `transform` configs inside loop bodies.
+
 ## Common pitfalls
 
 - **`$scope.foo.bar` without `.data`.** The envelope has no `bar`. Use `$scope.foo.data.bar`.
@@ -244,7 +277,7 @@ Walk-through:
   another `emailAddress`. Normalize in `data_selector` at each step's boundary.
 - **Forgetting `${...}` resolves once at step-start.** Placeholders are not
   re-evaluated per iteration inside a `loop` unless the placeholder references
-  the loop's `as` binding.
+  the loop's `item_var` binding (see "Loop iteration variables" above).
 
 ## See also
 

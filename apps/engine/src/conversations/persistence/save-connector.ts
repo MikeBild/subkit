@@ -29,7 +29,7 @@ import {
   missingFreshCheckpoints,
 } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
-import { clearDraftCredential } from "./draft-credential-cache.ts";
+import { clearDraftCredential, getDraftCredential } from "./draft-credential-cache.ts";
 
 /** Shape of the optional credential collected via `ask_user_form(type:password)`. */
 export type AtomicCredentialInput =
@@ -239,7 +239,19 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   // supplied one, surface the structured `credential_required`
   // envelope so the LLM can re-issue with `ask_user_form` instead of
   // silently failing.
-  if (requiresCredential && !p.credential) {
+  //
+  // Cache fallback: an LLM-issued `save_connector_draft` retry has no
+  // secret to inline (the secret only ever flows through the masked
+  // form). Honour the same in-memory draft credential cache that
+  // `probe_connector_draft` reads so the operator does not get bounced
+  // through `ask_user_form` a second time. Only accept a cached
+  // credential whose mode matches the connector's `auth_type`.
+  let credential = p.credential;
+  if (requiresCredential && !credential) {
+    const cached = getDraftCredential(ctx.conversation_id);
+    if (cached && cached.mode === connector.auth_type) credential = cached;
+  }
+  if (requiresCredential && !credential) {
     return {
       ok: false,
       error_code: "credential_required",
@@ -337,13 +349,13 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   }
 
   let credential_persisted = false;
-  if (p.credential) {
+  if (credential) {
     await persistCredential({
       tenant_id: ctx.tenant_id,
       connector_id: saved.id,
       environment: p.environment,
       actor_id: ctx.actor_id,
-      credential: p.credential,
+      credential,
       db: ctx.db as Db,
     });
     credential_persisted = true;

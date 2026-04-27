@@ -7,8 +7,20 @@
 
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool, ToolResult } from "../index.ts";
-import { commitIntentSchema } from "./commit-intent.ts";
+import { type CommitIntent, commitIntentSchema } from "./commit-intent.ts";
 import { pauseForUserInput } from "./common.ts";
+
+function buildOverrideWarning(intent: CommitIntent | undefined): string | null {
+  if (!intent) return null;
+  const payload = intent.payload;
+  if (intent.kind === "commit_workflow_draft" && payload.force_commit === true) {
+    return "⚠ Override: this will commit the workflow despite a failed preview.";
+  }
+  if (intent.kind === "save_connector_draft" && payload.force_save === true) {
+    return "⚠ Override: this will save the connector despite a failed probe.";
+  }
+  return null;
+}
 
 const inputSchema = z
   .object({
@@ -74,9 +86,18 @@ export const askUserConfirmTool: ConversationTool = {
         },
       };
     }
+    // When the commit_intent declares an override (force_commit /
+    // force_save), prepend an explicit warning line so the operator
+    // knows their single confirmation will commit despite a failed
+    // gate. Without this, the LLM ended up narrating a confused
+    // two-step retry ("blocked … now using force_commit") that
+    // required a second "approve" from the user.
+    const overrideWarning = buildOverrideWarning(args.commit_intent);
+    const baseSummary = args.summary ?? args.question;
+    const summary = overrideWarning ? `${overrideWarning}\n\n${baseSummary}` : baseSummary;
     return pauseForUserInput(ctx, {
       tool_name: "ask_user_confirm",
-      summary: args.summary ?? args.question,
+      summary,
       input: args,
     });
   },
