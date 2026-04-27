@@ -96,6 +96,45 @@ describe("connectors/service", () => {
     expect(gone).toBeNull();
   });
 
+  test("operator_notes round-trips through create + patch + null clear", async () => {
+    const tenant_id = await seedTenant();
+    const created = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "Notes API",
+          driver: "http",
+          environment: "dev",
+          base_url: "https://notes.example.test",
+          auth_type: "none",
+          operator_notes: "treat 422 as success on /upsert",
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    expect(created.operator_notes).toBe("treat 422 as success on /upsert");
+
+    const patched = await updateConnector(
+      tenant_id,
+      created.id,
+      { operator_notes: "always send ?api-version=2025-01-01" },
+      null,
+      ctx.db,
+    );
+    expect(patched?.operator_notes).toBe("always send ?api-version=2025-01-01");
+
+    // Explicit null clears the field; undefined would leave it untouched.
+    const cleared = await updateConnector(
+      tenant_id,
+      created.id,
+      { operator_notes: null },
+      null,
+      ctx.db,
+    );
+    expect(cleared?.operator_notes).toBeNull();
+  });
+
   test("createConnector persists template binding metadata and snapshot", async () => {
     const tenant_id = await seedTenant();
     const created = await createConnector(

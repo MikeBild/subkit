@@ -49,6 +49,7 @@ import { startConnectorFromDescriptionTool } from "./start-connector-from-descri
 import { startConnectorFromTemplateTool } from "./start-connector-from-template.ts";
 import { startWorkflowFromGoalTool } from "./start-workflow-from-goal.ts";
 import { suggestConnectorTemplatesTool } from "./suggest-connector-templates.ts";
+import { testConnectorTool } from "./test-connector.ts";
 import { updateConnectorDraftTool } from "./update-connector-draft.ts";
 import { updateParamTool } from "./update-param.ts";
 import { validateConnectorDraftTool } from "./validate-connector-draft.ts";
@@ -232,6 +233,7 @@ register(listAttachmentsTool);
 register(previewAttachmentTool);
 register(probeConnectorTool);
 register(probeConnectorDraftTool);
+register(testConnectorTool);
 register(callConnectorTool);
 register(buildWorkflowTool);
 register(proposeStepTool);

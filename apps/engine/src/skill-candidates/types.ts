@@ -13,6 +13,7 @@ export const SkillCandidatePatternSchema = z.enum([
   "repair_pattern",
   "failure_pattern",
   "success_pattern",
+  "chained_workflow_pattern",
 ]);
 
 export type SkillCandidateStatus = z.infer<typeof SkillCandidateStatusSchema>;

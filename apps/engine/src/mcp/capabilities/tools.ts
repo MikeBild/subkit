@@ -60,6 +60,12 @@ import {
   type MatchConnectorTemplateByUrlArgs,
   matchConnectorTemplateByUrlMcpTool,
 } from "../tools/match-connector-template-by-url.ts";
+import {
+  handleTestConnector,
+  TEST_CONNECTOR_TOOL_NAME,
+  type TestConnectorArgs,
+  testConnectorMcpTool,
+} from "../tools/test-connector.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import {
   CONVERSATION_TOOL_PREFIX,
@@ -264,6 +270,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     tools.push(authenticateTool);
     tools.push(matchConnectorTemplateByUrlMcpTool);
     tools.push(importConnectorFromSpecMcpTool);
+    tools.push(testConnectorMcpTool);
     if (flags.showConversationTools) tools.push(...listConversationTools());
     if (flags.showTenantReads || flags.showTenantWrites) {
       tools.push(...listTenantTools({ allowWrites: flags.showTenantWrites }));
@@ -344,6 +351,25 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           module: "mcp",
           action: "mcp.tool.result",
           msg: "mcp import_connector_from_spec completed",
+          tool: name,
+          duration_ms: Date.now() - started,
+          is_error: !result.ok,
+        });
+        return {
+          isError: !result.ok,
+          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
+        };
+      }
+
+      if (name === TEST_CONNECTOR_TOOL_NAME) {
+        const result = await handleTestConnector(
+          { db, principal },
+          args as unknown as TestConnectorArgs,
+        );
+        logger.info({
+          module: "mcp",
+          action: "mcp.tool.result",
+          msg: "mcp test_connector completed",
           tool: name,
           duration_ms: Date.now() - started,
           is_error: !result.ok,

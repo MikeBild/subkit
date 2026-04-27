@@ -42,6 +42,7 @@ export const connectors = pgTable(
     config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
     base_url: text("base_url"),
     dsn: text("dsn"),
+    operator_notes: text("operator_notes"),
     template_slug: text("template_slug"),
     template_name: text("template_name"),
     template_source: connectorTemplateSourceEnum("template_source"),

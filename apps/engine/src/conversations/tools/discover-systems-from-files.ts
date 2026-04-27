@@ -54,6 +54,34 @@ const inputSchema = z
 
 type DiscoverSystemsFromFilesArgs = z.infer<typeof inputSchema>;
 
+/**
+ * What the candidate system *does* — used for chained-workflow proposals.
+ *
+ *   - source         — emits records, the subkit tenant reads them.
+ *   - destination    — accepts records, the tenant writes to it.
+ *   - bidirectional  — read + write are both expected.
+ *   - processing     — neutral compute (transform, enrichment), no
+ *                      durable state of its own.
+ */
+const DataFlowRoleEnum = z.enum(["source", "destination", "bidirectional", "processing"]);
+
+/**
+ * Capability fingerprint — a compact set of verbs the candidate
+ * supports. Drives the chained-workflow detector: a `source` with
+ * `read` chained to a `destination` with `write` is a textbook
+ * automation seed. The set is deliberately small so the LLM emits
+ * stable, comparable values across files.
+ */
+const CapabilityEnum = z.enum([
+  "read",
+  "write",
+  "search",
+  "stream",
+  "webhook",
+  "subscribe",
+  "transform",
+]);
+
 const CandidateSchema = z.object({
   name: z.string(),
   kind: z.enum(["http", "graphql", "postgres", "s3", "ftp", "sftp", "smb", "mssql", "redis"]),
@@ -66,18 +94,48 @@ const CandidateSchema = z.object({
     }),
   ),
   auth_kind: z.enum(["none", "header", "query", "bearer", "basic", "oauth2", "unknown"]),
-  data_flow: z.string(),
+  /** One short sentence describing how the operator's tenant exchanges
+   *  data with this system. Operators read this verbatim — keep prose. */
+  data_flow_summary: z.string(),
+  /** Structured complement to the prose: source / destination / both. */
+  data_flow_role: DataFlowRoleEnum,
+  /** Verbs the candidate supports. May be empty when unstated. */
+  capabilities: z.array(CapabilityEnum).default([]),
+});
+
+/**
+ * Edge between two candidates extracted from the same file set —
+ * "Stripe charges flow into HubSpot deals", "Salesforce contacts feed
+ * into Mailchimp lists". The downstream `chained-workflow-pattern`
+ * skill-candidate detector reads this graph to seed automation
+ * proposals without a second LLM round-trip.
+ */
+const PotentialConnectionSchema = z.object({
+  from_system: z.string(),
+  to_system: z.string(),
+  /** Free-form noun for the payload (e.g. "charges", "deals", "user
+   *  events"). Operators read it; the detector just hashes it. */
+  data_type: z.string(),
+  direction: z.enum(["one_way", "bidirectional"]).default("one_way"),
+  /** Optional rationale excerpted from the source. */
+  evidence: z.string().nullable().default(null),
 });
 
 const CandidateEnvelopeSchema = z.object({
   candidates: z.array(CandidateSchema),
+  /** Inferred connections between the candidates above. May be empty. */
+  potential_connections: z.array(PotentialConnectionSchema).default([]),
 });
 
 export type ConnectorEndpointCandidate = z.infer<typeof CandidateSchema>;
 export type ConnectorEndpointCandidateEnvelope = z.infer<typeof CandidateEnvelopeSchema>;
+export type DataFlowRole = z.infer<typeof DataFlowRoleEnum>;
+export type CandidateCapability = z.infer<typeof CapabilityEnum>;
+export type PotentialConnection = z.infer<typeof PotentialConnectionSchema>;
 
 interface CachedCandidates {
   candidates: ConnectorEndpointCandidate[];
+  potential_connections: PotentialConnection[];
   cached_at: string;
   cache_row_id: string;
 }
@@ -96,7 +154,7 @@ function deriveSlug(source_id: string): string {
 export const discoverSystemsFromFilesTool: ConversationTool = {
   name: "discover_systems_from_files",
   description:
-    "When the connector's API has no OpenAPI spec, fall back to analyzing an uploaded knowledge source (README, code, PDF, architecture doc) to synthesize provisional endpoints. Returns connector_endpoint_candidates: a list of {name, kind, base_url_guess, endpoints, auth_kind, data_flow}.",
+    "When the connector's API has no OpenAPI spec, fall back to analyzing an uploaded knowledge source (README, code, PDF, architecture doc) to synthesize provisional endpoints. Returns connector_endpoint_candidates: a list of {name, kind, base_url_guess, endpoints, auth_kind, data_flow_summary, data_flow_role, capabilities[]} plus a potential_connections[] graph between candidates so the agent can propose chained workflows without a second round-trip.",
   inputSchema,
   category: "tenant_read",
   use_case:
@@ -163,6 +221,7 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
         data: {
           source: "cache",
           candidates: cached.candidates,
+          potential_connections: cached.potential_connections,
           cached_at: cached.cached_at,
         },
       };
@@ -208,7 +267,10 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
       };
     }
 
-    // 4) Ask Claude to enumerate the systems described in the file.
+    // 4) Ask Claude to enumerate the systems described in the file
+    //    plus the data-flow graph between them. The structured
+    //    `data_flow_role` + `capabilities` complement the prose
+    //    `data_flow_summary` and feed the chained-workflow detector.
     const userContent = [
       "Analyze the following document and enumerate every third-party system or API it describes.",
       "For each system, return:",
@@ -217,8 +279,21 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
       "  - base_url_guess: the most plausible base URL or null if unstated.",
       "  - endpoints: list of { method, path, summary } the document mentions or implies.",
       "  - auth_kind: one of none | header | query | bearer | basic | oauth2 | unknown.",
-      "  - data_flow: one short sentence describing how the operator's tenant exchanges data with this system.",
-      "Be conservative — do NOT invent endpoints the document does not mention. If unsure, leave endpoints empty.",
+      "  - data_flow_summary: one short sentence describing how the operator's tenant exchanges data with this system.",
+      "  - data_flow_role: one of source | destination | bidirectional | processing.",
+      "      • source: the system emits records the tenant reads.",
+      "      • destination: the system accepts records the tenant writes.",
+      "      • bidirectional: both read and write are expected.",
+      "      • processing: neutral compute / transform with no durable state.",
+      "  - capabilities: array drawn from [read, write, search, stream, webhook, subscribe, transform]; may be empty when unstated.",
+      "",
+      "Then return potential_connections: an array of edges between systems",
+      "the document implies. Each edge is {from_system, to_system, data_type, direction, evidence?}.",
+      "Only emit an edge when the document literally describes data moving",
+      "between the two systems — do NOT speculate. `direction` is 'one_way' unless a round-trip is explicit.",
+      "",
+      "Be conservative — do NOT invent endpoints, capabilities, or connections the document does not mention.",
+      "If unsure, leave endpoints, capabilities, or potential_connections empty.",
       "",
       `## Source: ${sourceRow.source_uri}`,
       "```",
@@ -241,14 +316,17 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
     );
 
     const candidates = llm.object?.candidates ?? [];
+    const potentialConnections = llm.object?.potential_connections ?? [];
     const endpointCount = candidates.reduce((sum, c) => sum + c.endpoints.length, 0);
 
-    // 5) Persist the candidates as a knowledge_sources row keyed off the
-    //    source's id so subsequent calls within 24h hit the cache.
+    // 5) Persist the candidates + connection graph as a knowledge_sources
+    //    row keyed off the source's id so subsequent calls within 24h
+    //    hit the cache.
     const persisted = await persistCandidates(ctx, {
       slug,
       source_knowledge_source_id: args.knowledge_source_id,
       candidates,
+      potential_connections: potentialConnections,
       source_uri: sourceRow.source_uri,
     });
 
@@ -281,6 +359,7 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
       data: {
         source: "fresh",
         candidates,
+        potential_connections: potentialConnections,
         cached_at: persisted.cached_at,
       },
     };
@@ -317,6 +396,7 @@ async function readCachedCandidates(
     const parsed = JSON.parse(chunk.content) as ConnectorEndpointCandidateEnvelope;
     return {
       candidates: parsed.candidates ?? [],
+      potential_connections: parsed.potential_connections ?? [],
       cached_at: row.last_refreshed_at?.toISOString() ?? new Date().toISOString(),
       cache_row_id: row.id,
     };
@@ -331,10 +411,14 @@ async function persistCandidates(
     slug: string;
     source_knowledge_source_id: string;
     candidates: ConnectorEndpointCandidate[];
+    potential_connections: PotentialConnection[];
     source_uri: string;
   },
 ): Promise<{ row_id: string; cached_at: string; created: boolean }> {
-  const envelope: ConnectorEndpointCandidateEnvelope = { candidates: p.candidates };
+  const envelope: ConnectorEndpointCandidateEnvelope = {
+    candidates: p.candidates,
+    potential_connections: p.potential_connections,
+  };
   const json = JSON.stringify(envelope);
   const version = createHash("sha256").update(json).digest("hex").slice(0, 32);
   const bytes = Buffer.byteLength(json, "utf8");

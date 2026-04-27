@@ -9,7 +9,7 @@
 //                       channel and/or type.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema, paginatedResponse } from "../../api/common-schemas.ts";
 import { audit } from "../../audit/audit.ts";
@@ -212,6 +212,34 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const lastEventId = lastHeader ? Number.parseInt(lastHeader, 10) : null;
     const replayLimit = 50;
 
+    // Optional narrowing filters. `execution_id` extracts
+    // `payload->>'execution_id'` from the JSONB column — every event
+    // emitted by `apps/engine/src/execution/state.ts` carries that key,
+    // so the filter mirrors what `sk executions tail <id>` asks for
+    // without the CLI having to poll the executions row. `channel` and
+    // `type` parity with the `GET /v1/events` route so a client tailing
+    // a single execution can also filter to "only the started/completed
+    // events" or "only the workflow.chain channel".
+    const rawExecutionId = c.req.query("execution_id") ?? null;
+    if (rawExecutionId !== null) {
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRe.test(rawExecutionId)) {
+        throw new BadRequestError("execution_id must be a UUID");
+      }
+    }
+    const channelFilter = c.req.query("channel") ?? null;
+    const typeFilter = c.req.query("type") ?? null;
+
+    const filterConds = () => {
+      const conds = [eq(events.tenant_id, tenantId)];
+      if (rawExecutionId) {
+        conds.push(sql`${events.payload}->>'execution_id' = ${rawExecutionId}`);
+      }
+      if (channelFilter) conds.push(eq(events.channel, channelFilter));
+      if (typeFilter) conds.push(eq(events.type, typeFilter));
+      return conds;
+    };
+
     return streamSSE(c, async (stream) => {
       // Compose a serialisable frame from an outbox row.
       const write = async (row: { id: number; type: string; payload: unknown }) => {
@@ -230,7 +258,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
         const replay = await db
           .select()
           .from(events)
-          .where(and(eq(events.tenant_id, tenantId), gt(events.id, lastEventId)))
+          .where(and(...filterConds(), gt(events.id, lastEventId)))
           .orderBy(asc(events.id))
           .limit(1_000);
         for (const row of replay) {
@@ -242,7 +270,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
         const recent = await db
           .select()
           .from(events)
-          .where(eq(events.tenant_id, tenantId))
+          .where(and(...filterConds()))
           .orderBy(desc(events.id))
           .limit(replayLimit);
         const ordered = recent.slice().reverse();
@@ -266,7 +294,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
         const newRows = await db
           .select()
           .from(events)
-          .where(and(eq(events.tenant_id, tenantId), gt(events.id, cursor)))
+          .where(and(...filterConds(), gt(events.id, cursor)))
           .orderBy(asc(events.id))
           .limit(200);
         for (const row of newRows) {

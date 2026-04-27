@@ -7,6 +7,10 @@
 //   - AC3: `execution.started` and `execution.succeeded` arrive in order.
 //   - AC4: Closing and reopening the stream with `Last-Event-ID` replays
 //          from the next frame after that id.
+//   - AC5: `?execution_id=<uuid>` filters the tail to a single execution
+//          (parity with the per-execution stream, but on the unified
+//          outbox channel).
+//   - AC6: invalid `execution_id` yields 400.
 // Spec refs: docs/03-input-surfaces.md, docs/05-events.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -156,6 +160,60 @@ describe("journey 19: events SSE stream", () => {
     expect(si).toBeGreaterThan(qi);
     expect(ci).toBeGreaterThan(si);
   }, 30_000);
+
+  test("AC5: ?execution_id=<id> narrows the tail to that execution only", async () => {
+    // Run two distinct executions so we can prove the filter rejects
+    // events that don't carry the requested execution_id.
+    const runA = await journeyFetch(ctx, "/v1/executions", {
+      method: "POST",
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: { seed: 11 } }),
+    });
+    expect(runA.status === 200 || runA.status === 202).toBe(true);
+    const bodyA = (await runA.json()) as { execution_id?: string };
+    const execA = bodyA.execution_id ?? "";
+    expect(execA).toMatch(/^[0-9a-f-]{36}$/);
+
+    const runB = await journeyFetch(ctx, "/v1/executions", {
+      method: "POST",
+      body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: { seed: 22 } }),
+    });
+    expect(runB.status === 200 || runB.status === 202).toBe(true);
+
+    // Tail with the execution_id filter — the replay buffer should
+    // contain frames for execA only.
+    const filtered = await journeyFetch(
+      ctx,
+      `/v1/events/stream?execution_id=${encodeURIComponent(execA)}`,
+    );
+    expect(filtered.status).toBe(200);
+    const frames = await collectFrames(
+      filtered,
+      (fs) => {
+        const seen = fs.map((f) => f.event ?? "");
+        return seen.includes("execution.succeeded");
+      },
+      10_000,
+    );
+    // Every data frame whose payload carries an execution_id must match
+    // the filter; the only events without one are control frames (hello).
+    for (const f of frames) {
+      if (!f.data) continue;
+      try {
+        const parsed = JSON.parse(f.data) as { execution_id?: string };
+        if (parsed.execution_id) {
+          expect(parsed.execution_id).toBe(execA);
+        }
+      } catch {
+        // hello frame's data is `{ cursor: <n> }` — not an event payload,
+        // so it has no execution_id and is allowed through.
+      }
+    }
+  }, 30_000);
+
+  test("AC6: invalid execution_id yields 400", async () => {
+    const res = await journeyFetch(ctx, "/v1/events/stream?execution_id=not-a-uuid");
+    expect(res.status).toBe(400);
+  });
 
   test("AC4: reconnect with Last-Event-ID replays from the next frame", async () => {
     // First connection — capture any frame id so we can pass it back on

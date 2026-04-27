@@ -108,6 +108,7 @@ export const skillCandidatePatternEnum = pgEnum("skill_candidate_pattern", [
   "repair_pattern",
   "failure_pattern",
   "success_pattern",
+  "chained_workflow_pattern",
 ]);
 
 export const skillCandidates = pgTable(

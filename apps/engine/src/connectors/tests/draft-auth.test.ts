@@ -23,6 +23,7 @@ function connector(over: Partial<ConnectorView>): ConnectorView {
     base_url: "https://api.example.tld",
     dsn: null,
     config: {},
+    operator_notes: null,
     template_slug: null,
     template_name: null,
     template_source: null,

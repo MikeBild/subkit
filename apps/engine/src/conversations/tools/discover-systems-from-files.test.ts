@@ -117,15 +117,52 @@ const CANDIDATES_RESPONSE = {
         { method: "POST", path: "/v2/droplets", summary: "Create droplet" },
       ],
       auth_kind: "bearer" as const,
-      data_flow: "Tenant manages droplets via DigitalOcean's REST API.",
+      data_flow_summary: "Tenant manages droplets via DigitalOcean's REST API.",
+      data_flow_role: "bidirectional" as const,
+      capabilities: ["read", "write"] as const,
+    },
+  ],
+  potential_connections: [],
+};
+
+const TWO_SYSTEM_RESPONSE = {
+  candidates: [
+    {
+      name: "Stripe",
+      kind: "http" as const,
+      base_url_guess: "https://api.stripe.com",
+      endpoints: [{ method: "GET", path: "/v1/charges", summary: "List charges" }],
+      auth_kind: "bearer" as const,
+      data_flow_summary: "Tenant reads billing events from Stripe.",
+      data_flow_role: "source" as const,
+      capabilities: ["read", "webhook"] as const,
+    },
+    {
+      name: "HubSpot",
+      kind: "http" as const,
+      base_url_guess: "https://api.hubapi.com",
+      endpoints: [{ method: "POST", path: "/crm/v3/objects/deals", summary: "Create deal" }],
+      auth_kind: "oauth2" as const,
+      data_flow_summary: "Tenant pushes new deals into HubSpot CRM.",
+      data_flow_role: "destination" as const,
+      capabilities: ["write"] as const,
+    },
+  ],
+  potential_connections: [
+    {
+      from_system: "Stripe",
+      to_system: "HubSpot",
+      data_type: "charges → deals",
+      direction: "one_way" as const,
+      evidence: "Each successful Stripe charge becomes a deal in HubSpot CRM.",
     },
   ],
 };
 
-function mockedInvokeOk() {
+function mockedInvokeOk(payload: unknown = CANDIDATES_RESPONSE) {
   return spyOn(invokeModule, "invoke").mockResolvedValue({
-    object: CANDIDATES_RESPONSE,
-    text: JSON.stringify(CANDIDATES_RESPONSE),
+    object: payload,
+    text: JSON.stringify(payload),
     model_used: "mock-model",
     fell_back: false,
     // biome-ignore lint/suspicious/noExplicitAny: route + assembled fields are not asserted by the tool
@@ -249,6 +286,75 @@ describe("discover_systems_from_files — cache hit", () => {
           ),
         );
       expect(after).toHaveLength(1); // unchanged
+    } finally {
+      blocked.mockRestore();
+    }
+  });
+});
+
+describe("discover_systems_from_files — connection graph", () => {
+  test("returns potential_connections graph and round-trips it through cache", async () => {
+    const sourceId = await seedSourceWithContent(
+      tenant_id,
+      "Stripe charges flow into HubSpot deals.",
+    );
+    const seed = mockedInvokeOk(TWO_SYSTEM_RESPONSE);
+    try {
+      const fresh = await discoverSystemsFromFilesTool.execute(makeCtx(), {
+        knowledge_source_id: sourceId,
+      });
+      expect(fresh.ok).toBe(true);
+      const freshData = (
+        fresh as {
+          ok: true;
+          data: {
+            source: string;
+            candidates: Array<{
+              name: string;
+              data_flow_role: string;
+              capabilities: string[];
+            }>;
+            potential_connections: Array<{
+              from_system: string;
+              to_system: string;
+              data_type: string;
+            }>;
+          };
+        }
+      ).data;
+      expect(freshData.source).toBe("fresh");
+      expect(freshData.candidates).toHaveLength(2);
+      expect(freshData.candidates[0]?.data_flow_role).toBe("source");
+      expect(freshData.candidates[0]?.capabilities).toContain("read");
+      expect(freshData.candidates[1]?.data_flow_role).toBe("destination");
+      expect(freshData.potential_connections).toHaveLength(1);
+      expect(freshData.potential_connections[0]?.from_system).toBe("Stripe");
+      expect(freshData.potential_connections[0]?.to_system).toBe("HubSpot");
+    } finally {
+      seed.mockRestore();
+    }
+
+    // Cache hit must surface the same graph.
+    const blocked = spyOn(invokeModule, "invoke").mockRejectedValue(
+      new Error("must not be called"),
+    );
+    try {
+      const cached = await discoverSystemsFromFilesTool.execute(makeCtx(), {
+        knowledge_source_id: sourceId,
+      });
+      expect(cached.ok).toBe(true);
+      const cachedData = (
+        cached as {
+          ok: true;
+          data: {
+            source: string;
+            potential_connections: Array<{ from_system: string; to_system: string }>;
+          };
+        }
+      ).data;
+      expect(cachedData.source).toBe("cache");
+      expect(cachedData.potential_connections).toHaveLength(1);
+      expect(cachedData.potential_connections[0]?.from_system).toBe("Stripe");
     } finally {
       blocked.mockRestore();
     }
