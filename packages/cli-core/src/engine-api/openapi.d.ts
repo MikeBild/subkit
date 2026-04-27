@@ -38,6 +38,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public sk install script
+         * @description Returns a POSIX shell script that detects platform/arch, fetches the matching `sk` binary from the GitHub Release for the engine's current version, verifies SHA256, and installs to ~/.subkit/bin/sk.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Shell script (text/x-shellscript) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/x-shellscript": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/status": {
         parameters: {
             query?: never;
