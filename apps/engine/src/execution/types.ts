@@ -52,13 +52,19 @@ export interface StepRunContext extends ExecutionContext {
   step_row_id: string;
 }
 
-export type StepWarningCode = "unresolved_identifier";
+export type StepWarningCode = "unresolved_identifier" | "loop_body_empty";
 
 export interface StepWarning {
   code: StepWarningCode;
   /** Concrete identifier / placeholder path that could not be resolved. */
   identifier?: string;
   message: string;
+  /**
+   * Optional structured payload carrying the actual scope shape and a
+   * suggestion. The run_workflow tool surfaces this to the LLM so it
+   * can converge in 1 retry instead of guessing JSONata variants.
+   */
+  details?: Record<string, unknown>;
 }
 
 export interface StepResult {

@@ -23,9 +23,9 @@ export interface TemplateUrlMatch {
 function computeSpecificity(pattern: string): number {
   const base = pattern.length;
   const wildcards = (pattern.match(/\[|\.\*|\.\+|\\w|\\d|\\s|\[\^/g) ?? []).length;
-  const literalHost = pattern.match(/^\^?https?:\\\/\\\/([a-z0-9.-]+)/i);
+  const literalHost = pattern.match(/^\^?https?:\\\/\\\/([a-z0-9.-]+)/i)?.[1];
   const fixedHostSegments = literalHost
-    ? literalHost[1]!.split(/\\\./).filter((s) => s.length > 0).length
+    ? literalHost.split(/\\\./).filter((s) => s.length > 0).length
     : 0;
   return base - 3 * wildcards + 5 * fixedHostSegments;
 }

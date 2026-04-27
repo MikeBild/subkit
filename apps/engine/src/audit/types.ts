@@ -239,6 +239,11 @@ export const AuditAction = {
   //   tenants without scraping debug logs.
   CONNECTOR_DRAFT_CREDENTIAL_REJECTED: "connector.draft.credential_rejected",
   TOOL_POLICY_CONFIRMATION_REQUIRED: "tool_policy.confirmation_required",
+
+  // Settings subsystem (apps/engine/src/settings/) — every set writes
+  // an audit row with the redacted before/after diff. Secret values
+  // are masked (***) so audit consumers never see the live material.
+  SETTINGS_CHANGED: "settings.changed",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

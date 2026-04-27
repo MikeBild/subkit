@@ -188,12 +188,12 @@ export const dryRunWorkflowTool: ConversationTool = {
     const stoppedStep = run.steps.find((s) => s.status !== "succeeded") ?? null;
     const stoppedId = stoppedStep?.step_key ?? null;
 
-    const lastStep: PreviewStepSummary | undefined = lastStepSummary
-      ? classifyRunResult(
-          steps.find((s) => s.id === lastStepSummary.step_key) ?? steps[steps.length - 1]!,
-          run,
-        )
+    const fallbackStep = steps[steps.length - 1];
+    const matchedStep = lastStepSummary
+      ? (steps.find((s) => s.id === lastStepSummary.step_key) ?? fallbackStep)
       : undefined;
+    const lastStep: PreviewStepSummary | undefined =
+      lastStepSummary && matchedStep ? classifyRunResult(matchedStep, run) : undefined;
 
     const stoppedForDraft = stoppedId ?? lastStep?.step_id ?? "(end)";
     const runWarnings = (run.warnings ?? []).map((w) => ({

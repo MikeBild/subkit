@@ -139,6 +139,37 @@ Workflow versioning provides application-level recovery. Every workflow change c
 
 ---
 
+## Upgrading an existing database to the v3 baseline
+
+The 2.x line shipped 41 incremental Drizzle migrations. The first official v3 release replaces them with a single `0000_v3_baseline.sql` covering the full schema. Existing deployments must mark the baseline as already applied; a fresh deployment just runs `bun run db:migrate` and gets the baseline.
+
+The path is one short script per database, run before deploying the v3 engine binaries.
+
+```bash
+# 1. Take a verified backup. Mandatory — the upgrade script refuses
+#    without it, so this isn't optional.
+DUMP=/backups/subkit-pre-v3-$(date +%Y%m%d-%H%M%S).sql
+pg_dump "$DATABASE_URL" --no-owner --no-privileges > "$DUMP"
+
+# 2. Diagnose the current state.
+#    Outputs JSON: { state: FRESH | PRE_UPGRADE | BASELINED | UNEXPECTED, rows, ... }
+DATABASE_URL=... bun run scripts/db/verify-baseline.ts
+
+# 3. Run the upgrade. Exits zero on success or no-op (already baselined).
+DATABASE_URL=... scripts/db/upgrade-to-v3-baseline.sh "$DUMP"
+
+# 4. Re-verify. State must be BASELINED.
+DATABASE_URL=... bun run scripts/db/verify-baseline.ts
+
+# 5. Deploy the v3 engine binary. `bun run db:migrate` is now a no-op.
+```
+
+The upgrade script wraps everything in a single transaction. If anything inside fails, the bookkeeping table is left untouched — the operator can investigate and retry. The script refuses to proceed if the bookkeeping table contains an unexpected row count (anything other than 41, 42 from a pre-upgrade DB, or 1 from an already-baselined DB).
+
+`scripts/db/upgrade-to-v3-baseline.sh` requires a working `psql` on the host and `jq` for reading the journal `when` value.
+
+---
+
 ## What to Read Next
 
 - [AGENTS.md](../AGENTS.md) — the canonical repo-wide contract for contributors: subsystem map, quality gates, and non-negotiables.

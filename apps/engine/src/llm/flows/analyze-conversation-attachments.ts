@@ -40,7 +40,8 @@ export async function analyzeConversationAttachments(
     .from(conversationAttachments)
     .where(eq(conversationAttachments.conversation_id, p.conversation_id));
 
-  const candidates = p.slugs ? rows.filter((r) => p.slugs!.includes(r.slug)) : rows;
+  const slugs = p.slugs;
+  const candidates = slugs ? rows.filter((r) => slugs.includes(r.slug)) : rows;
   if (candidates.length === 0) return null;
 
   const reader = p.read ?? defaultContentReader;

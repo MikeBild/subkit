@@ -47,10 +47,9 @@ export async function buildUserContentParts(
   // Quick exit: no attachment references → plain string (unchanged behaviour)
   const ATTACHMENT_RE = /@attachment:([a-z0-9][a-z0-9_-]{0,62})\b/g;
   const slugs: string[] = [];
-  let m = ATTACHMENT_RE.exec(text);
-  while (m) {
-    slugs.push(m[1]!);
-    m = ATTACHMENT_RE.exec(text);
+  for (let m = ATTACHMENT_RE.exec(text); m !== null; m = ATTACHMENT_RE.exec(text)) {
+    const slug = m[1];
+    if (slug) slugs.push(slug);
   }
   ATTACHMENT_RE.lastIndex = 0;
 

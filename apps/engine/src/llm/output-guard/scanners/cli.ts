@@ -61,15 +61,17 @@ function parseInvocations(block: string): Invocation[] {
     const path: string[] = [];
     let cursor = manifest.subcommands;
     let unknownAttempt: string | null = null;
-    if (i < tokens.length && !tokens[i]!.startsWith("-")) {
-      const tok = tokens[i]!;
-      const next = cursor?.[tok];
-      if (next) {
-        path.push(tok);
-        i += 1;
-        cursor = next.subcommands ?? {};
-      } else {
-        unknownAttempt = tok;
+    {
+      const tok = tokens[i];
+      if (tok && !tok.startsWith("-")) {
+        const next = cursor?.[tok];
+        if (next) {
+          path.push(tok);
+          i += 1;
+          cursor = next.subcommands ?? {};
+        } else {
+          unknownAttempt = tok;
+        }
       }
     }
     while (i < tokens.length) {
@@ -88,17 +90,20 @@ function parseInvocations(block: string): Invocation[] {
     // Remaining tokens — collect flags only.
     const flags: string[] = [];
     while (i < tokens.length) {
-      const tok = tokens[i]!;
+      const tok = tokens[i];
+      if (!tok) break;
       if (tok.startsWith("--")) {
         const eq = tok.indexOf("=");
         flags.push(eq >= 0 ? tok.slice(2, eq) : tok.slice(2));
         if (eq < 0) {
           // Skip the flag value (next token) when not in --k=v form.
-          if (i + 1 < tokens.length && !tokens[i + 1]!.startsWith("-")) i += 1;
+          const peek = tokens[i + 1];
+          if (peek && !peek.startsWith("-")) i += 1;
         }
       } else if (tok.startsWith("-") && tok.length > 1) {
         flags.push(tok.slice(1));
-        if (i + 1 < tokens.length && !tokens[i + 1]!.startsWith("-")) i += 1;
+        const peek = tokens[i + 1];
+        if (peek && !peek.startsWith("-")) i += 1;
       }
       i += 1;
     }

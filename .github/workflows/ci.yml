@@ -67,6 +67,12 @@ jobs:
       - name: Terminology gate
         run: bun run check:terminology
 
+      - name: OpenAPI client drift
+        # Regenerates the typed cli-core client from the live OpenAPI surface
+        # and fails if `packages/cli-core/src/engine-api` would change. Catches
+        # routes that ship without their generated client being committed.
+        run: bun run check:openapi-drift
+
       - name: Determinism lint
         run: bun run test:determinism
 
@@ -109,3 +115,34 @@ jobs:
       - name: Validate docker compose
         if: matrix.os == 'ubuntu-latest'
         run: docker compose config > /dev/null
+
+  secret-scan:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        # Pinned to a major; works on private repos under the default
+        # GITHUB_TOKEN. License var is unset on purpose — required only
+        # for Organization-level enterprise features we do not use.
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    name: dependency review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure

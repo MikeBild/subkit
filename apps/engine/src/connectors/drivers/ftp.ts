@@ -120,7 +120,10 @@ function mapFileType(t: ftp.FileType): FtpFileInfo["type"] {
 }
 
 export async function executeFtpCommand(p: FtpExecuteParams): Promise<FtpExecuteResult> {
-  const parts = parseDsn(p.connector.dsn!);
+  if (!p.connector.dsn) {
+    throw new Error(`FTP connector ${p.connector.id} has no DSN configured`);
+  }
+  const parts = parseDsn(p.connector.dsn);
   const full = resolvePath(parts, p.path);
   return await withClient(p.connector, async (client) => {
     switch (p.command) {

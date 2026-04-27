@@ -123,6 +123,14 @@ export function summarizeToolFailure(
  */
 const HINT_PATTERNS: ReadonlyArray<{ match: RegExp; hint: string }> = [
   {
+    // Specific case: the engine returned 401 missing_or_invalid_credentials
+    // and the active profile has no api_key set yet. The catch-all 401
+    // hint below is for token-refresh; this one is for a fresh install
+    // where the operator hasn't run `sk profile login` yet.
+    match: /\b401\b.*missing_or_invalid_credentials\b/i,
+    hint: "no api_key configured — run `sk profile login` (or pass `--api-key <key>`); on a fresh engine, mint one with `bun run db:issue-admin-key`",
+  },
+  {
     match: /\b(invalid_grant|token expired|token_expired|401|403)\b/i,
     hint: "/auth refresh to re-authenticate, or /connectors probe <id> to verify credentials",
   },

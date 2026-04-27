@@ -388,12 +388,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       .from(connectorEndpointSchemas)
       .where(eq(connectorEndpointSchemas.connector_id, activeConnectorId))
       .limit(50);
-    if (epRows.length > 0) {
-      const source = epRows[0]!.source;
-      const confidence = epRows[0]!.confidence;
+    const head = epRows[0];
+    if (head) {
       documentAnalysisSummary = {
-        source,
-        confidence,
+        source: head.source,
+        confidence: head.confidence,
         endpoint_count: epRows.length,
         sample_endpoints: epRows.map((r) => ({ method: r.method, path: r.path })),
       };
@@ -1175,6 +1174,32 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         };
       }
     }
+
+    // P6: emit a per-turn token-usage log line so the operator can grep
+    // engine logs alone (without enabling client-side debug output) to
+    // see which validation/preview cycles burned how many tokens. The
+    // CLI already gets the same breakdown via the `completed` event;
+    // this is the symmetric server-side record.
+    logger.info({
+      module: "conversation",
+      action: "dialog.turn_end",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      final_status: status,
+      turn_tokens: turnTokens,
+      remaining_monthly_budget_tokens: remaining,
+      ...(breakdown
+        ? {
+            breakdown_system: breakdown.system,
+            breakdown_skills: breakdown.skills,
+            breakdown_knowledge: breakdown.knowledge,
+            breakdown_docs: breakdown.docs,
+            breakdown_failures: breakdown.failures,
+            breakdown_messages: breakdown.messages,
+            breakdown_total: breakdown.total,
+          }
+        : {}),
+    });
 
     const out: RunLoopResult = { events, status };
     if (committedWorkflowId) out.committed_workflow_id = committedWorkflowId;

@@ -81,17 +81,17 @@ export interface AttachmentRef {
 
 export function parseAttachmentRefs(value: string): AttachmentRef[] {
   const out: AttachmentRef[] = [];
-  let m = ATTACHMENT_RE.exec(value);
-  while (m !== null) {
+  for (let m = ATTACHMENT_RE.exec(value); m !== null; m = ATTACHMENT_RE.exec(value)) {
+    const slug = m[1];
+    if (!slug) continue;
     const start = m.index;
     const end = start + m[0].length;
     out.push({
-      slug: m[1]!,
+      slug,
       span: { start, end },
       raw: m[0],
       isStandalone: value.trim() === m[0],
     });
-    m = ATTACHMENT_RE.exec(value);
   }
   ATTACHMENT_RE.lastIndex = 0;
   return out;
@@ -231,10 +231,11 @@ export async function resolveAttachments<T>(
     // Single standalone reference — return the parsed JSON form if
     // available (the LLM usually wants the structured payload, not
     // the YAML/JSON text).
-    if (refs.length === 1 && refs[0]!.isStandalone) {
-      const row = rows.get(refs[0]!.slug);
+    const single = refs.length === 1 ? refs[0] : undefined;
+    if (single?.isStandalone) {
+      const row = rows.get(single.slug);
       if (!row) return s; // unresolved — keep the literal ref
-      slugs_used.push(refs[0]!.slug);
+      slugs_used.push(single.slug);
       return row.parsed ?? row.raw;
     }
     // Multiple or embedded refs — splice the raw text.

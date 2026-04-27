@@ -663,18 +663,31 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id, elicitation_id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const outcome = await svc.respondElicitation(
-      {
-        tenant_id: principal.tenant_id,
-        conversation_id: id,
-        elicitation_id,
-        actor_id: principal.id,
-        output: body.output,
-        ...(body.reason ? { reason: body.reason } : {}),
-        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-      },
-      db,
-    );
+    let outcome: Awaited<ReturnType<typeof svc.respondElicitation>>;
+    try {
+      outcome = await svc.respondElicitation(
+        {
+          tenant_id: principal.tenant_id,
+          conversation_id: id,
+          elicitation_id,
+          actor_id: principal.id,
+          output: body.output,
+          ...(body.reason ? { reason: body.reason } : {}),
+          ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+        },
+        db,
+      );
+    } catch (error) {
+      if (error instanceof svc.ElicitationAlreadyResolvedError) {
+        throw new HttpError(409, "elicitation_already_resolved", error.message, {
+          elicitation_id: error.elicitation_id,
+          previous_status: error.status,
+          previous_output: error.previous_output,
+          previous_decision_reason: error.previous_decision_reason,
+        });
+      }
+      throw error;
+    }
     return c.json(serializeConversation(outcome), 200);
   });
 

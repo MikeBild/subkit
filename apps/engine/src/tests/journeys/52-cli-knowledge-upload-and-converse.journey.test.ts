@@ -34,7 +34,6 @@ import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let tmpFile: string;
-let knowledgeSourceId = "";
 let connectorId = "";
 
 const MARKDOWN_FIXTURE = [
@@ -226,7 +225,6 @@ describe("journey 52: sk CLI knowledge upload → search → converse", () => {
     expect(body.name).toBe("Acme Charges API Docs");
     // Markdown with H1+H2+H3 headings should produce more than one chunk.
     expect(body.chunk_count).toBeGreaterThanOrEqual(2);
-    knowledgeSourceId = body.id;
   });
 
   // ---------- Gap 7: fetched_at on search hits ----------

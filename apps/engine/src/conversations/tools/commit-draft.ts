@@ -98,7 +98,7 @@ export const commitDraftTool: ConversationTool = {
     }
     if (targetForIdempotency) {
       const existing = await getWorkflow(ctx.tenant_id, targetForIdempotency, ctx.db);
-      if (existing && existing.current_version_id) {
+      if (existing?.current_version_id) {
         const existingDef = existing.definition;
         const existingHash = hashWorkflowDef({
           name: existingDef.name,

@@ -234,6 +234,49 @@ const JSONATA_BUILTINS = new Set([
   "$decodeUrl",
 ]);
 
+/** Damerau-Levenshtein-style distance, capped to a short threshold so
+ *  the "did you mean" suggestion only fires for near-misses (single typo,
+ *  case difference, missing prefix). Anything farther than the cap is
+ *  rejected — random unrelated names should not produce a suggestion. */
+function shortDistance(a: string, b: string, cap: number): number {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  const m = a.length;
+  const n = b.length;
+  const dp: number[] = new Array(n + 1).fill(0);
+  for (let j = 0; j <= n; j++) dp[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let prev = i - 1;
+    dp[0] = i;
+    let rowMin = i;
+    for (let j = 1; j <= n; j++) {
+      const tmp = dp[j];
+      dp[j] =
+        a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[j - 1] ?? Infinity, dp[j] ?? Infinity);
+      prev = tmp ?? 0;
+      if ((dp[j] ?? Infinity) < rowMin) rowMin = dp[j] ?? Infinity;
+    }
+    if (rowMin > cap) return cap + 1;
+  }
+  return dp[n] ?? cap + 1;
+}
+
+/** Best-match suggestion for an unresolved identifier given the actual
+ *  in-scope keys. Returns null when no in-scope key is close enough —
+ *  better to say nothing than mislead the LLM with a bogus path. */
+function bestSuggestion(unresolved: string, available: string[]): string | null {
+  let best: { id: string; dist: number } | null = null;
+  for (const candidate of available) {
+    // Skip $-prefixed builtins as suggestions for plain identifiers and
+    // vice versa; they're not interchangeable.
+    if (unresolved.startsWith("$") !== candidate.startsWith("$")) continue;
+    const dist = shortDistance(unresolved, candidate, 3);
+    if (dist > 3) continue;
+    if (!best || dist < best.dist) best = { id: candidate, dist };
+  }
+  return best?.id ?? null;
+}
+
 function detectUnresolvedIdentifiers(
   expression: string,
   scope: Record<string, unknown>,
@@ -261,11 +304,34 @@ function detectUnresolvedIdentifiers(
     if (known.has(id)) return;
     unresolved.add(id);
   });
-  return [...unresolved].map((identifier) => ({
-    code: "unresolved_identifier" as const,
-    identifier,
-    message: `jsonata expression referenced "${identifier}" but no matching key was in scope or bindings`,
-  }));
+  // Build available_paths for the warning details. For each scope entry
+  // we expose two canonical access shapes the LLM commonly needs:
+  //   1. `<key>` — the envelope itself
+  //   2. `<key>.data` — the payload (the most-frequently-referenced path)
+  // Plus all `$name` bindings. Listed once so the LLM can cite them
+  // directly instead of guessing which JSONata path is in scope.
+  const availablePaths: string[] = [];
+  for (const k of Object.keys(scope)) {
+    availablePaths.push(k);
+    const env = scope[k] as { data?: unknown } | null | undefined;
+    if (env && typeof env === "object" && "data" in env) {
+      availablePaths.push(`${k}.data`);
+    }
+  }
+  for (const k of Object.keys(bindings)) availablePaths.push(`$${k}`);
+  return [...unresolved].map((identifier) => {
+    const suggestion = bestSuggestion(identifier, [...known]);
+    return {
+      code: "unresolved_identifier" as const,
+      identifier,
+      message: `jsonata expression referenced "${identifier}" but no matching key was in scope or bindings`,
+      details: {
+        // Sorted so the warning is byte-stable across runs (determinism).
+        available_paths: availablePaths.slice().sort(),
+        ...(suggestion ? { suggestion } : {}),
+      },
+    };
+  });
 }
 
 export async function runTransformStep(p: RunTransformParams): Promise<StepResult> {

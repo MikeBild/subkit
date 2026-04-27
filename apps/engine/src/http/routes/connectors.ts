@@ -684,6 +684,12 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
         },
       })
       .returning();
+    const insertedRow = inserted[0];
+    if (!insertedRow) {
+      // .onConflictDoUpdate guarantees a row in either branch — defensive
+      // throw so the route returns a clear 5xx instead of an opaque crash.
+      throw new Error("end_user_credential insert returned no rows");
+    }
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
@@ -691,7 +697,7 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
         actor_id: principal.id,
         action: AuditAction.CREDENTIAL_CREATED,
         resource_type: "end_user_credential",
-        resource_id: inserted[0]?.id ?? null,
+        resource_id: insertedRow.id,
         result: "success",
         metadata: { connector_id: id, enduser_ref: body.enduser_ref },
       },
@@ -699,7 +705,7 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
     );
     // Touch `credentials` import so biome/unused-vars doesn't flag.
     void credentials;
-    return c.json({ id: inserted[0]!.id }, 201);
+    return c.json({ id: insertedRow.id }, 201);
   });
 
   // Touch imports used only via closure in routes above — so biome

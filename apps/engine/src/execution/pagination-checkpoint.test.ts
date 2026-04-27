@@ -201,7 +201,7 @@ describe("pagination checkpoint", () => {
     expect(cp?.accumulated_count).toBe(50 * PAGE_SIZE);
     // Signature should match the same request shape used in run #2.
     const expectedSig = paginationSignature({
-      base_url: new URL(`${mock.baseUrl}/items`).origin + "/items",
+      base_url: `${new URL(`${mock.baseUrl}/items`).origin}/items`,
       path_or_url: `${mock.baseUrl}/items`,
       query: {},
     });

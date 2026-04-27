@@ -131,6 +131,33 @@ export class PendingElicitationBlockedError extends Error {
   }
 }
 
+/**
+ * Raised when a duplicate `/respond` POST lands for an elicitation that
+ * is already terminal. Without this guard a second response re-runs the
+ * conversation loop, double-charges the LLM, and produces the silent
+ * "approve approve …" UI seen in session 79bf2cca.
+ */
+export class ElicitationAlreadyResolvedError extends Error {
+  readonly elicitation_id: string;
+  readonly status: "resolved" | "cancelled" | "timeout";
+  readonly previous_output: unknown;
+  readonly previous_decision_reason: string | null;
+
+  constructor(p: {
+    elicitation_id: string;
+    status: "resolved" | "cancelled" | "timeout";
+    previous_output: unknown;
+    previous_decision_reason: string | null;
+  }) {
+    super(`elicitation ${p.elicitation_id} is already ${p.status}`);
+    this.name = "ElicitationAlreadyResolvedError";
+    this.elicitation_id = p.elicitation_id;
+    this.status = p.status;
+    this.previous_output = p.previous_output;
+    this.previous_decision_reason = p.previous_decision_reason;
+  }
+}
+
 function isAskUserToolName(value: string | null | undefined): boolean {
   return (
     value === "ask_user_choice" ||
@@ -396,7 +423,7 @@ export async function respondElicitation(
   exec: Db,
 ): Promise<ConversationTurnOutcome> {
   const { resolveElicitation } = await import("./elicitations.ts");
-  const resolved = await resolveElicitation(
+  const resolveOutcome = await resolveElicitation(
     {
       tenant_id: p.tenant_id,
       id: p.elicitation_id,
@@ -406,7 +433,18 @@ export async function respondElicitation(
     },
     exec,
   );
-  if (!resolved) throw new Error("elicitation not found");
+  if (resolveOutcome.kind === "not_found") throw new Error("elicitation not found");
+  if (resolveOutcome.kind === "already_resolved") {
+    const status =
+      resolveOutcome.existing.status === "pending" ? "resolved" : resolveOutcome.existing.status;
+    throw new ElicitationAlreadyResolvedError({
+      elicitation_id: p.elicitation_id,
+      status: status as "resolved" | "cancelled" | "timeout",
+      previous_output: resolveOutcome.existing.output,
+      previous_decision_reason: resolveOutcome.existing.decision_reason,
+    });
+  }
+  const resolved = resolveOutcome.record;
 
   let originatingToolCall: {
     id: string;

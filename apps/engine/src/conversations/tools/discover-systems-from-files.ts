@@ -69,7 +69,7 @@ const DataFlowRoleEnum = z.enum(["source", "destination", "bidirectional", "proc
  * Capability fingerprint — a compact set of verbs the candidate
  * supports. Drives the chained-workflow detector: a `source` with
  * `read` chained to a `destination` with `write` is a textbook
- * automation seed. The set is deliberately small so the LLM emits
+ * workflow seed. The set is deliberately small so the LLM emits
  * stable, comparable values across files.
  */
 const CapabilityEnum = z.enum([
@@ -107,7 +107,7 @@ const CandidateSchema = z.object({
  * Edge between two candidates extracted from the same file set —
  * "Stripe charges flow into HubSpot deals", "Salesforce contacts feed
  * into Mailchimp lists". The downstream `chained-workflow-pattern`
- * skill-candidate detector reads this graph to seed automation
+ * skill-candidate detector reads this graph to seed workflow
  * proposals without a second LLM round-trip.
  */
 const PotentialConnectionSchema = z.object({

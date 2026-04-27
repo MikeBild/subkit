@@ -82,6 +82,9 @@
           },
           "version": {
             "type": "string"
+          },
+          "llm_provider": {
+            "$ref": "#/components/schemas/StatusLlmProvider"
           }
         },
         "required": [
@@ -93,7 +96,8 @@
           "tokens_month",
           "monthly_budget_tokens",
           "remaining_monthly_budget_tokens",
-          "version"
+          "version",
+          "llm_provider"
         ]
       },
       "StatusUser": {
@@ -134,6 +138,32 @@
         "required": [
           "id",
           "slug"
+        ]
+      },
+      "StatusLlmProvider": {
+        "type": "object",
+        "properties": {
+          "detected": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "detected",
+          "ok",
+          "message",
+          "missing"
         ]
       },
       "TenantListResponse": {
@@ -2790,6 +2820,10 @@
               "nullable": true
             }
           },
+          "operator_notes": {
+            "type": "string",
+            "nullable": true
+          },
           "template_slug": {
             "type": "string",
             "nullable": true
@@ -2836,6 +2870,7 @@
           "base_url",
           "dsn",
           "config",
+          "operator_notes",
           "template_slug",
           "template_name",
           "template_source",
@@ -2910,6 +2945,11 @@
               "nullable": true
             }
           },
+          "operator_notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
           "template_slug": {
             "type": "string",
             "minLength": 1
@@ -2962,6 +3002,11 @@
               "nullable": true
             }
           },
+          "operator_notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
           "template_slug": {
             "type": "string",
             "minLength": 1
@@ -3001,6 +3046,136 @@
         "required": [
           "ok",
           "latency_ms"
+        ]
+      },
+      "ConnectorCallResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "integer"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "nullable": true
+          },
+          "latency_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "body_byte_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "raw_ref": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ConnectorCallMetadata"
+          }
+        },
+        "required": [
+          "status",
+          "headers",
+          "latency_ms",
+          "truncated",
+          "body_byte_count",
+          "metadata"
+        ]
+      },
+      "ConnectorCallMetadata": {
+        "type": "object",
+        "properties": {
+          "connector_id": {
+            "type": "string"
+          },
+          "connector_slug": {
+            "type": "string"
+          },
+          "driver": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "url_host": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "connector_id",
+          "connector_slug",
+          "driver",
+          "environment",
+          "method",
+          "path",
+          "url_host"
+        ]
+      },
+      "ConnectorCallRequest": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "$ref": "#/components/schemas/ConnectorCallMethod"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "nullable": true
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 60000
+          }
+        }
+      },
+      "ConnectorCallMethod": {
+        "type": "string",
+        "enum": [
+          "GET",
+          "POST",
+          "PUT",
+          "PATCH",
+          "DELETE",
+          "HEAD"
         ]
       },
       "OAuthStartResponse": {
@@ -3082,6 +3257,325 @@
           "combine_mode",
           "payload"
         ]
+      },
+      "ConnectorDiscoverResponse": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "cache",
+              "fresh"
+            ]
+          },
+          "cache_key": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/DiscoveryResult"
+          }
+        },
+        "required": [
+          "source",
+          "cache_key",
+          "result"
+        ]
+      },
+      "DiscoveryResult": {
+        "type": "object",
+        "properties": {
+          "source_url": {
+            "type": "string"
+          },
+          "fetched_at": {
+            "type": "string"
+          },
+          "strategy": {
+            "$ref": "#/components/schemas/DiscoveryStrategyName"
+          },
+          "spec_version": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "openapi-3",
+              "swagger-2",
+              null
+            ]
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "servers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "auth_schemes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscoveredAuthScheme"
+            }
+          },
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscoveredEndpoint"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscoveryWarning"
+            }
+          },
+          "text_corpus": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "source_url",
+          "fetched_at",
+          "strategy",
+          "spec_version",
+          "title",
+          "servers",
+          "auth_schemes",
+          "endpoints",
+          "warnings"
+        ]
+      },
+      "DiscoveryStrategyName": {
+        "type": "string",
+        "enum": [
+          "openapi-direct",
+          "graphql-introspect",
+          "swagger-ui-scrape",
+          "llms-txt",
+          "html-scrape",
+          "playwright-crawl"
+        ]
+      },
+      "DiscoveredAuthScheme": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "apiKey",
+              "http",
+              "oauth2",
+              "openIdConnect"
+            ]
+          },
+          "location": {
+            "type": "string",
+            "enum": [
+              "header",
+              "query",
+              "cookie"
+            ]
+          },
+          "scheme": {
+            "type": "string"
+          },
+          "flows": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DiscoveredAuthSchemeOAuth2Flow"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ]
+      },
+      "DiscoveredAuthSchemeOAuth2Flow": {
+        "type": "object",
+        "properties": {
+          "authorization_url": {
+            "type": "string"
+          },
+          "token_url": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "DiscoveredEndpoint": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "HEAD",
+              "OPTIONS"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "operation_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "params": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscoveredEndpointParam"
+            }
+          },
+          "request_body_schema": {
+            "nullable": true
+          },
+          "response_schemas": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "pagination_hint": {
+            "$ref": "#/components/schemas/DiscoveredEndpointPaginationHint"
+          },
+          "deprecated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "method",
+          "path",
+          "summary",
+          "description",
+          "operation_id",
+          "scopes",
+          "params",
+          "response_schemas",
+          "pagination_hint",
+          "deprecated"
+        ]
+      },
+      "DiscoveredEndpointParam": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "in": {
+            "type": "string",
+            "enum": [
+              "path",
+              "query",
+              "header",
+              "cookie",
+              "body"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name",
+          "in",
+          "required",
+          "type"
+        ]
+      },
+      "DiscoveredEndpointPaginationHint": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "page",
+              "cursor",
+              "offset",
+              "link_header",
+              null
+            ]
+          },
+          "param_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "param_names"
+        ]
+      },
+      "DiscoveryWarning": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "ConnectorDiscoverRequest": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "base_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "ingestion_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "force_refresh": {
+            "type": "boolean"
+          }
+        }
       },
       "ConnectorDocsIngestResponse": {
         "type": "object",
@@ -3229,6 +3723,10 @@
                     "schema",
                     "general"
                   ]
+                },
+                "fetched_at": {
+                  "type": "string",
+                  "nullable": true
                 }
               },
               "required": [
@@ -3238,7 +3736,8 @@
                 "path",
                 "snippet",
                 "rank",
-                "match_type"
+                "match_type",
+                "fetched_at"
               ]
             }
           }
@@ -3676,6 +4175,10 @@
                 },
                 "rank": {
                   "type": "number"
+                },
+                "fetched_at": {
+                  "type": "string",
+                  "nullable": true
                 }
               },
               "required": [
@@ -3684,7 +4187,8 @@
                 "title",
                 "path",
                 "snippet",
-                "rank"
+                "rank",
+                "fetched_at"
               ]
             }
           }
@@ -3781,7 +4285,8 @@
             "enum": [
               "repair_pattern",
               "failure_pattern",
-              "success_pattern"
+              "success_pattern",
+              "chained_workflow_pattern"
             ]
           },
           "title": {
@@ -4308,7 +4813,8 @@
             "enum": [
               "auto",
               "ask",
-              "plan"
+              "plan",
+              "yolo"
             ]
           }
         }
@@ -4474,7 +4980,8 @@
             "enum": [
               "auto",
               "ask",
-              "plan"
+              "plan",
+              "yolo"
             ]
           }
         },
@@ -4522,6 +5029,10 @@
                 "type": "string",
                 "nullable": true
               },
+              "next_suggested_tool": {
+                "type": "string",
+                "nullable": true
+              },
               "missing_fields": {
                 "type": "array",
                 "items": {
@@ -4546,6 +5057,7 @@
               "readiness",
               "next_action",
               "next_required_action",
+              "next_suggested_tool",
               "missing_fields",
               "progress_label",
               "lifecycle_state",
@@ -5038,7 +5550,8 @@
             "enum": [
               "auto",
               "ask",
-              "plan"
+              "plan",
+              "yolo"
             ]
           }
         }
@@ -6294,6 +6807,89 @@
           "error",
           "created_at"
         ]
+      },
+      "TestNotificationRuleResponse": {
+        "type": "object",
+        "properties": {
+          "matched": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "delivered": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "outcomes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rule_id": {
+                  "type": "string"
+                },
+                "channel_id": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "error": {
+                  "type": "string",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "rule_id",
+                "channel_id",
+                "status"
+              ]
+            }
+          }
+        },
+        "required": [
+          "matched",
+          "delivered",
+          "outcomes"
+        ]
+      },
+      "TestNotificationRuleBody": {
+        "type": "object",
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "minLength": 1,
+            "default": "notifications.test"
+          },
+          "workflow_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "workflow_slug": {
+            "type": "string",
+            "nullable": true
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "debug",
+              "info",
+              "warn",
+              "error",
+              "critical"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        }
       },
       "OutboxEventListResponse": {
         "type": "object",
@@ -9226,6 +9822,82 @@
         }
       }
     },
+    "/v1/connectors/{id}/call": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Invoke an HTTP/GraphQL endpoint against a persisted connector",
+        "description": "Programmatic surface for ad-hoc connector invocation. Mirrors the call_connector conversation tool: applies the saved credential, audits as connector.invoked, and returns {status, headers, body, latency_ms} with truncation flags for response bodies > 8KB. Driver coverage at this surface is HTTP and GraphQL only — Postgres / SFTP / S3 connectors return a 422 envelope pointing at workflow-step authoring.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectorCallRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorCallResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable entity (driver mismatch, missing credential, …)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connectors/{id}/oauth/start": {
       "post": {
         "tags": [
@@ -9487,6 +10159,71 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connectors/discover": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Discover endpoints for a connector template or URL",
+        "description": "Runs the multi-strategy discovery pipeline (OpenAPI direct → GraphQL introspection → Swagger UI scrape → llms.txt → HTML scrape → Playwright crawl) for the given template_id, ingestion_url, or base_url. Cached per-tenant for 24h in knowledge_sources; pass force_refresh:true to bypass.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectorDiscoverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorDiscoverResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Discovery failed (all strategies bailed)",
             "content": {
               "application/json": {
                 "schema": {
@@ -11341,6 +12078,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Pending input",
             "content": {
               "application/json": {
                 "schema": {
@@ -13289,6 +14036,61 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotificationDeliveryListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/notifications/rules/:id/test": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Synthesise a notification event and dispatch it through the rule pipeline. Returns the rule-matching, rate-limit, and channel-dispatch outcome so operators can verify a rule end-to-end without waiting for a real workflow run.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestNotificationRuleBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dispatch outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestNotificationRuleResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rule not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

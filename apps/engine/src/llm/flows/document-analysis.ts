@@ -237,14 +237,15 @@ export async function runDocumentAnalysisFlow(
   });
 
   // Persist endpoints to registry if connector_id is provided
-  if (p.connector_id && merged.length > 0) {
+  const connectorId = p.connector_id;
+  if (connectorId && merged.length > 0) {
     const db = p.db ?? getDb();
     await db
       .insert(connectorEndpointSchemas)
       .values(
         merged.map((ep) => ({
           tenant_id: p.tenant_id,
-          connector_id: p.connector_id!,
+          connector_id: connectorId,
           path: ep.path,
           method: ep.method,
           ...(ep.request_schema !== undefined
