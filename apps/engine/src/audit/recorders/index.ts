@@ -29,8 +29,14 @@ export {
   recordCredentialRotated,
 } from "./credential.ts";
 export {
+  type RecordExecutionCrashRecoveredParams,
+  recordExecutionCrashRecovered,
+} from "./execution.ts";
+export {
+  type RecordKnowledgeSourceCandidatesSynthesizedParams,
   type RecordKnowledgeSourceCreatedParams,
   type RecordKnowledgeSourceRefreshedParams,
+  recordKnowledgeSourceCandidatesSynthesized,
   recordKnowledgeSourceCreated,
   recordKnowledgeSourceRefreshed,
 } from "./knowledge.ts";

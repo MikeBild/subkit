@@ -36,7 +36,7 @@ export interface ToolPolicies {
  * approve_patch_candidate). These stay on confirm_before_execution
  * even in "auto" so a sloppy prompt cannot nuke data silently.
  */
-export type PermissionMode = "auto" | "ask" | "plan";
+export type PermissionMode = "auto" | "ask" | "plan" | "yolo";
 
 export async function getToolPolicies(db: Db, conversation_id: string): Promise<ToolPolicies> {
   const rows = await db
@@ -388,17 +388,21 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
 
 /**
  * Full mode-resolution stack:
- *   1. client permission_mode ("auto" / "ask" / "plan") — outer gate
+ *   1. client permission_mode ("auto" / "ask" / "plan" / "yolo") — outer gate
  *   2. per-conversation override (`conversations.tool_policies` jsonb)
  *   3. dynamic compute-from-input hook
  *   4. per-tool default mode
  *   5. category default
  *
- * The permission_mode gate fires first and **short-circuits** when
- * the tool is not in the dangerous set. Dangerous tools (delete_*,
- * revoke_*, approve_*) always go through the normal policy matrix so
- * `auto` cannot silently wipe tenant data. Called from `sdk-wrap.ts`
- * before every tool dispatch.
+ * The permission_mode gate fires first and **short-circuits**:
+ *   - `auto` short-circuits non-dangerous tools.
+ *   - `yolo` short-circuits everything except inline-credential
+ *     safeguards (those run before the mode check). yolo is gated at
+ *     a higher layer by tenant policy + non-stickiness + expiry; by
+ *     the time it reaches this resolver, the user has explicitly armed
+ *     a destructive override and we honour it.
+ *
+ * Called from `sdk-wrap.ts` before every tool dispatch.
  */
 export function resolveToolMode(args: {
   tool: string;
@@ -420,6 +424,14 @@ export function resolveToolMode(args: {
     return "confirm_before_execution";
   }
 
+  if (permission_mode === "yolo") {
+    // Hard-armed escape hatch. Tenant policy + client-side typed
+    // confirmation + 10-turn / 10-min expiry already gated this; the
+    // resolver honours the override unconditionally. Inline-credential
+    // safeguard above still fires — yolo never auto-persists a secret
+    // the user pasted into chat.
+    return "no_confirm";
+  }
   if (permission_mode === "auto" && !isDangerous) {
     return "no_confirm";
   }

@@ -352,6 +352,7 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
 
   // ---- Discovery / read: auto --------------------------------------------
   { name: "discover_connector_endpoints", defaultMode: "auto" },
+  { name: "discover_systems_from_files", defaultMode: "auto" },
   { name: "fetch_connector_docs", defaultMode: "auto" },
   { name: "search_knowledge", defaultMode: "auto" },
   { name: "search_docs", defaultMode: "auto" },

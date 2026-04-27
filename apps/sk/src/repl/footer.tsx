@@ -50,6 +50,7 @@ export const MODE_LABELS: Record<PermissionMode, string> = {
   ask: "ask",
   auto: "auto",
   plan: "plan",
+  yolo: "yolo",
 };
 
 /** Turn an engine URL into a `host:port` string; falls back to the raw value. */

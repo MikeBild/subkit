@@ -19,6 +19,7 @@ describe("conversation tools — registration", () => {
     "commit_draft",
     "connect_steps",
     "discover_connector_endpoints",
+    "discover_systems_from_files",
     "dry_run_step",
     "dry_run_transform",
     "dry_run_workflow",

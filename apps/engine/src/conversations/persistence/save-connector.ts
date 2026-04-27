@@ -29,6 +29,7 @@ import {
   missingFreshCheckpoints,
 } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
+import { clearDraftCredential } from "./draft-credential-cache.ts";
 
 /** Shape of the optional credential collected via `ask_user_form(type:password)`. */
 export type AtomicCredentialInput =
@@ -108,6 +109,10 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
         });
         credential_persisted = true;
       }
+      // Idempotent save still graduates the credential to the encrypted
+      // table — drop any leftover in-memory draft credential so a
+      // subsequent probe doesn't keep using the cached value.
+      clearDraftCredential(ctx.conversation_id);
       if (p.emitAutoPersistAudit) {
         await recordConnectorUpdated({
           tenant_id: ctx.tenant_id,
@@ -343,6 +348,10 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     });
     credential_persisted = true;
   }
+  // The connector now has a real UUID and (if applicable) an encrypted
+  // credential row. Drop the in-memory draft credential so subsequent
+  // probes go through the canonical `getCredentialForConnector` path.
+  clearDraftCredential(ctx.conversation_id);
 
   if (p.emitAutoPersistAudit) {
     await recordConnectorCreated({

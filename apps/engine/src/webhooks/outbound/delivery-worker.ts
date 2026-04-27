@@ -21,6 +21,7 @@ import { eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { audit, auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { assertEgressAllowed, EgressBlockedError } from "../../connectors/egress-guard.ts";
 import type { Db } from "../../db/client.ts";
 import { deliveries, subscriptions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -215,6 +216,70 @@ export async function registerDeliveryWorker(
     };
 
     const hash = createHash("sha256").update(data.body).digest("hex");
+
+    // SSRF guard: refuse to fan out to private/loopback/link-local
+    // targets. Subscriptions carry tenant-controlled URLs, so this is
+    // the SSRF chokepoint. Egress-blocked deliveries terminate
+    // immediately as dead_letter — retrying a private-IP target won't
+    // suddenly make it public, so the retry ladder is skipped.
+    try {
+      assertEgressAllowed(new URL(loaded.row.target_url), {
+        tenant_id: data.tenant_id,
+        tunnel_target: null,
+      });
+    } catch (err) {
+      if (err instanceof EgressBlockedError) {
+        logger.warn({
+          module: "webhooks.outbound",
+          action: "delivery.egress_blocked",
+          msg: "outbound webhook delivery blocked by egress guard",
+          subscription_id: data.subscription_id,
+          event_id: data.event_id,
+          host: err.host,
+          reason: err.reason,
+        });
+        await db.insert(deliveries).values({
+          tenant_id: data.tenant_id,
+          subscription_id: data.subscription_id,
+          event_id: data.event_id,
+          outbox_event_id: data.outbox_event_id ?? null,
+          attempt: data.attempt_number,
+          attempt_number: data.attempt_number,
+          status: "dead_letter",
+          response_code: null,
+          error: "egress_blocked",
+          classification: null,
+          terminal_reason: "egress_blocked",
+          request_hash: hash,
+          event_type: data.event_type,
+          target_url: loaded.row.target_url,
+          response_body: null,
+          duration_ms: null,
+          next_retry_at: null,
+        });
+        audit({
+          tenant_id: data.tenant_id,
+          action: AuditAction.WEBHOOK_OUTBOUND_FAILED,
+          resource_type: "subscription",
+          resource_id: data.subscription_id,
+          result: "error",
+          reason: "egress_blocked",
+          metadata: {
+            event_id: data.event_id,
+            event_type: data.event_type,
+            attempt: data.attempt_number,
+            terminal_reason: "egress_blocked",
+            host: err.host,
+          },
+        });
+        recordWebhookDelivery({
+          subscription_id: data.subscription_id,
+          status: "dead_letter",
+        });
+        return;
+      }
+      throw err;
+    }
     const outcome = await sendDelivery(loaded.row.target_url, headers, data.body, fetchImpl);
 
     // 4) Success path.

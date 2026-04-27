@@ -38,6 +38,7 @@ import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.
 import { COMMIT_INTENT_KINDS, type CommitIntent } from "../tools/ask-user/commit-intent.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { commitWorkflowAtomic } from "./commit-workflow.ts";
+import { setDraftCredential } from "./draft-credential-cache.ts";
 import { type AtomicCredentialInput, saveConnectorAtomic } from "./save-connector.ts";
 
 /**
@@ -376,6 +377,27 @@ function mergeFormIntoCredential(
   const credentialSeed = (intent.payload.credential ?? {}) as Record<string, unknown>;
   const seedMode = typeof credentialSeed.mode === "string" ? credentialSeed.mode : null;
   if (!seedMode) return null;
+  return extractCredentialFromFormOutput(seedMode, credentialSeed, output);
+}
+
+/**
+ * Pure extraction: given a target credential mode and a form output,
+ * return an `AtomicCredentialInput` if the form contains values that
+ * match the mode's required fields. `seedOverrides` lets the caller
+ * pre-supply values (e.g. the LLM-declared `header_name` for a
+ * `header`-auth connector) so only the secret has to come from the
+ * form.
+ *
+ * Exported so the elicitation-resume path can populate the draft
+ * credential cache without going through `commit_intent` — see
+ * `cacheDraftCredentialFromFormOutput` and
+ * `apps/engine/src/conversations/service.ts:respondElicitation`.
+ */
+export function extractCredentialFromFormOutput(
+  seedMode: string,
+  seedOverrides: Record<string, unknown>,
+  output: unknown,
+): AtomicCredentialInput | null {
   const out = (output ?? {}) as Record<string, unknown>;
   const values =
     typeof out.values === "object" && out.values !== null
@@ -401,50 +423,110 @@ function mergeFormIntoCredential(
   switch (seedMode) {
     case "bearer": {
       const token =
-        (typeof credentialSeed.token === "string" && credentialSeed.token.length > 0
-          ? credentialSeed.token
+        (typeof seedOverrides.token === "string" && seedOverrides.token.length > 0
+          ? seedOverrides.token
           : null) ?? pick(["token", "api_key", "apikey", "secret", "key"]);
       if (!token) return null;
       return { mode: "bearer", token };
     }
     case "basic": {
       const username =
-        (typeof credentialSeed.username === "string" && credentialSeed.username.length > 0
-          ? credentialSeed.username
+        (typeof seedOverrides.username === "string" && seedOverrides.username.length > 0
+          ? seedOverrides.username
           : null) ?? pick(["username", "user", "login"]);
       const password =
-        (typeof credentialSeed.password === "string" && credentialSeed.password.length > 0
-          ? credentialSeed.password
+        (typeof seedOverrides.password === "string" && seedOverrides.password.length > 0
+          ? seedOverrides.password
           : null) ?? pick(["password", "pass", "secret"]);
       if (!username || !password) return null;
       return { mode: "basic", username, password };
     }
     case "header": {
       const header_name =
-        (typeof credentialSeed.header_name === "string" && credentialSeed.header_name.length > 0
-          ? credentialSeed.header_name
+        (typeof seedOverrides.header_name === "string" && seedOverrides.header_name.length > 0
+          ? seedOverrides.header_name
           : null) ?? pick(["header_name", "header", "name"]);
       const header_value =
-        (typeof credentialSeed.header_value === "string" && credentialSeed.header_value.length > 0
-          ? credentialSeed.header_value
+        (typeof seedOverrides.header_value === "string" && seedOverrides.header_value.length > 0
+          ? seedOverrides.header_value
           : null) ?? pick(["header_value", "value", "token"]);
       if (!header_name || !header_value) return null;
       return { mode: "header", header_name, header_value };
     }
     case "query": {
       const param =
-        (typeof credentialSeed.param === "string" && credentialSeed.param.length > 0
-          ? credentialSeed.param
+        (typeof seedOverrides.param === "string" && seedOverrides.param.length > 0
+          ? seedOverrides.param
           : null) ?? pick(["param", "name"]);
       const value =
-        (typeof credentialSeed.value === "string" && credentialSeed.value.length > 0
-          ? credentialSeed.value
+        (typeof seedOverrides.value === "string" && seedOverrides.value.length > 0
+          ? seedOverrides.value
           : null) ?? pick(["value", "token"]);
       if (!param || !value) return null;
       return { mode: "query", param, value };
     }
     default:
       return null;
+  }
+}
+
+/**
+ * Populate the draft-credential cache from a resolved `ask_user_form`
+ * submission, regardless of whether a `commit_intent` fired.
+ *
+ * The probe-before-save authoring flow needs the credential available
+ * to `probe_connector_draft` (which uses a synthetic `draft-<id>`
+ * connector_id and so cannot read from `connector_credentials`). We
+ * extract the secret from the form output using the live draft's
+ * `auth_type` as the seed mode, and cache it in process memory until
+ * the connector saves (`saveConnectorAtomic` clears it) or the TTL
+ * expires.
+ *
+ * No-op for non-`ask_user_form` tools, for drafts without an
+ * auth-required connector, or when the form output doesn't carry a
+ * complete credential. Failures are swallowed — the worst case is a
+ * subsequent probe falls back to "credential_required" with a clear
+ * message instead of silently bypassing auth.
+ */
+export async function maybeCacheDraftCredentialFromElicitation(p: {
+  tenant_id: string;
+  conversation_id: string;
+  elicitation: { tool_name: string };
+  elicitation_output: unknown;
+  db: Db;
+}): Promise<void> {
+  if (p.elicitation.tool_name !== "ask_user_form") return;
+  try {
+    const draft = await loadDraft(p.tenant_id, p.conversation_id, p.db);
+    const authType = draft.connector?.auth_type ?? null;
+    if (
+      authType !== "bearer" &&
+      authType !== "basic" &&
+      authType !== "header" &&
+      authType !== "query"
+    ) {
+      return;
+    }
+    const credential = extractCredentialFromFormOutput(authType, {}, p.elicitation_output);
+    if (!credential) return;
+    setDraftCredential(p.conversation_id, credential);
+    logger.info({
+      module: "auto-persist",
+      action: "draft_credential.cached",
+      msg: "cached draft credential from ask_user_form",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      mode: credential.mode,
+    });
+  } catch (err) {
+    logger.warn({
+      module: "auto-persist",
+      action: "draft_credential.cache_failed",
+      msg: "failed to cache draft credential — probe will use credential_required path",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 

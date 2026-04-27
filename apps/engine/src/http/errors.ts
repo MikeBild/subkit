@@ -70,3 +70,16 @@ export class UnsupportedMediaTypeError extends HttpError {
     super(415, "unsupported_file_format", message, details);
   }
 }
+
+/**
+ * 422 — the request was syntactically valid (Zod-level fields parsed
+ * fine) but the application-level state makes it unprocessable. Used
+ * for things like "the connector exists but its driver is unsupported
+ * for this surface", "the connector exists but has no credential", or
+ * "this GraphQL connector requires body.query".
+ */
+export class UnprocessableEntityError extends HttpError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(422, "unprocessable_entity", message, details);
+  }
+}

@@ -24,6 +24,7 @@
 // channel row at resolution time.
 
 import type { ChatDelivery } from "../../chat/types.ts";
+import { assertEgressAllowed, EgressBlockedError } from "../../connectors/egress-guard.ts";
 import { logger } from "../../logging/logger.ts";
 import type { NotificationAdapter } from "../service.ts";
 
@@ -58,6 +59,28 @@ export class WebhookNotificationAdapter implements NotificationAdapter {
   }
 
   async send(delivery: ChatDelivery): Promise<{ platform_message_id: string }> {
+    // SSRF guard: refuse to deliver to private/loopback/link-local
+    // targets. Webhook adapters have no tunnel concept today, so the
+    // guard always fires in strict mode.
+    try {
+      assertEgressAllowed(new URL(this.opts.url), {
+        tenant_id: delivery.tenant_id,
+        tunnel_target: null,
+      });
+    } catch (err) {
+      if (err instanceof EgressBlockedError) {
+        logger.warn({
+          module: "notifications",
+          action: "webhook.send_failed",
+          msg: "webhook delivery blocked by egress guard",
+          url: this.opts.url,
+          last_error: "egress_blocked",
+          reason: err.reason,
+          host: err.host,
+        });
+      }
+      throw err;
+    }
     const body = JSON.stringify({
       tenant_id: delivery.tenant_id,
       workspace_id: delivery.workspace_id,

@@ -53,6 +53,12 @@ export {
   scrubSecrets,
   scrubString,
 } from "./scrub-secrets.ts";
+export {
+  type FetchSetupStatusOptions,
+  fetchSetupStatus,
+  type SetupOverallStatus,
+  type SetupStatusSnapshot,
+} from "./setup-banner.ts";
 export { readSse, type SseFrame } from "./sse.ts";
 export {
   type AssistantCell,

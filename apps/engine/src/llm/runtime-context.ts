@@ -23,13 +23,16 @@ export interface RuntimeContext {
   /** Conversation surface (sk_headless / sk_interactive / mcp / web). */
   surface?: string;
   /**
-   * Permission mode for this turn (`auto` / `ask` / `plan`). The
-   * PERMISSION-MODE-AWARE CONFIRMATION rule in the base prompt branches
-   * on this value: in `auto`, the model skips ask_user_confirm for
-   * non-dangerous tenant_writes; in `ask`/`plan`, every tenant_write
-   * still flows through ask_user_confirm.
+   * Permission mode for this turn (`auto` / `ask` / `plan` / `yolo`).
+   * The PERMISSION-MODE-AWARE CONFIRMATION rule in the base prompt
+   * branches on this value: in `auto`, the model skips
+   * ask_user_confirm for non-dangerous tenant_writes; in `ask`/`plan`,
+   * every tenant_write still flows through ask_user_confirm; in
+   * `yolo` (operator-armed escape hatch) the engine itself short-
+   * circuits the gate, so the model still emits the call exactly as
+   * it would in `auto` and the engine accepts it.
    */
-  permission_mode?: "auto" | "ask" | "plan";
+  permission_mode?: "auto" | "ask" | "plan" | "yolo";
 }
 
 /**

@@ -65,6 +65,11 @@ export const AuditAction = {
   EXECUTION_COMPLETED: "execution.completed",
   EXECUTION_ABORTED: "execution.aborted",
   EXECUTION_AUTO_RETRIED: "execution.auto_retried",
+  // Engine boot reaped a `running` execution that had been in-flight for
+  // longer than `workflow.timeout_ms × 1.5` (or the env-configured
+  // fallback). The row was forced to `timed_out` so the operator can
+  // see that the previous engine instance crashed mid-flight.
+  EXECUTION_CRASH_RECOVERED: "execution.crash_recovered",
 
   SCHEDULE_CREATED: "schedule.created",
   SCHEDULE_UPDATED: "schedule.updated",
@@ -160,6 +165,12 @@ export const AuditAction = {
   KNOWLEDGE_SOURCE_DELETED: "knowledge_source.deleted",
   KNOWLEDGE_SOURCE_INGESTED: "knowledge_source.ingested",
   KNOWLEDGE_SOURCE_REFRESHED: "knowledge_source.refreshed",
+  // Wave 2: synthesised connector endpoint candidates from a file (README,
+  // architecture doc, code dump). Distinct from the regular
+  // KNOWLEDGE_SOURCE_REFRESHED action — discovery from files is a
+  // different reason code (`file_analysis`) and an LLM call sat behind
+  // the row, so operators want to filter it separately.
+  KNOWLEDGE_SOURCE_CANDIDATES_SYNTHESIZED: "knowledge_source.candidates_synthesized",
 
   // H2.5: Discovery
   DISCOVERY_RUN_CREATED: "discovery.run_created",

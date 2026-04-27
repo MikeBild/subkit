@@ -26,7 +26,12 @@ import {
   MAX_PAGES,
   makeStrategy,
   PAGE_PROGRESS_INTERVAL,
+  PAGINATION_CHECKPOINT_INTERVAL,
+  type PaginationCheckpoint,
   type PaginationSpec,
+  paginationSignature,
+  readPaginationCheckpoint,
+  writePaginationCheckpoint,
 } from "../pagination.ts";
 import { applyResponseFilters, ResponseFilterFailError } from "../response-filter.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
@@ -188,6 +193,14 @@ interface DoOnePageParams {
   tunnel?: TunnelRoute;
   connector_id?: string | null;
   retry_policy: RetryPolicy;
+  /** When set on a non-idempotent method, an `Idempotency-Key` header is
+   *  injected per attempt as `${base}:${attempt}` so each retry is a fresh
+   *  key. The latest emitted key is returned via `last_idempotency_key`. */
+  idempotency_key_base?: string;
+  /** Out-param: the most recent Idempotency-Key emitted by this call. The
+   *  request step copies the value into `request_meta.idempotency_key` for
+   *  audit. Stays null when no key was emitted (GET / HEAD / OPTIONS). */
+  last_idempotency_key?: { value: string | null };
 }
 
 async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
@@ -199,8 +212,16 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
     if (p.signal.aborted) {
       throw new RequestError("aborted", "abort");
     }
+    // Per-attempt header copy so the Idempotency-Key for attempt N doesn't
+    // leak into attempt N+1 (the loop bumps the suffix every retry).
+    const attemptHeaders: Record<string, string> = { ...p.headers };
+    if (p.idempotency_key_base && !isIdempotent(p.method)) {
+      const key = `${p.idempotency_key_base}:${attempt}`;
+      attemptHeaders["Idempotency-Key"] = key;
+      if (p.last_idempotency_key) p.last_idempotency_key.value = key;
+    }
     try {
-      const res = await fetchOnce(p.url, p.method, p.headers, p.body, p.signal, p.tunnel);
+      const res = await fetchOnce(p.url, p.method, attemptHeaders, p.body, p.signal, p.tunnel);
       if (res.status >= 200 && res.status < 400) return res;
       const is_additional_retry_status = p.retry_policy.additional_retry_statuses.has(res.status);
       if (res.status === 429) {
@@ -703,7 +724,18 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   const retryTotal = { value: 0 };
   const retryCounter = { value: 0 };
   const retry_policy = resolveRetryPolicy(p.step);
+  // Idempotency-Key shape: `${execution_id}:${step_id}:${attempt}`. We pass
+  // the 2-segment base here; doOnePage appends the per-attempt suffix so
+  // each retry is a fresh key. Step.id is the author-facing identifier
+  // (matches the workflow definition), so a retried write that crosses an
+  // engine restart still maps back to the same logical step.
+  const idempotencyBase = isIdempotent(p.step.method) ? null : `${p.ctx.execution_id}:${p.step.id}`;
+  const lastIdempotencyKey: { value: string | null } = { value: null };
   let last_meta: Record<string, unknown> = {};
+  // Most recent in-flight pagination-checkpoint write. Hoisted so the
+  // failure path can `await` it before reporting the result — guarantees
+  // the row reflects the resume position by the time we return.
+  let inFlightCheckpoint: Promise<void> | null = null;
   try {
     if (!p.step.pagination) {
       // Body schema validation (non-paginated path only)
@@ -750,6 +782,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           retry_counter: retryCounter,
           connector_id: p.step.connector_id ?? null,
           retry_policy,
+          last_idempotency_key: lastIdempotencyKey,
+          ...(idempotencyBase ? { idempotency_key_base: idempotencyBase } : {}),
           ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
         });
       const res = httpEgressInput
@@ -811,6 +845,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         method: p.step.method,
         status: res.status,
         bytes_in: res.bytes_in,
+        ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
         ...(connectorResolution ? { connector: connectorResolution } : {}),
       };
       return {
@@ -821,15 +856,59 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         request_meta: last_meta,
       };
     }
-    // paginated request
-    const strat = makeStrategy(p.step.pagination as PaginationSpec, {
-      baseUrl,
-      baseQuery: {},
+    // paginated request — checkpoint + resume.
+    //
+    // Signature: hash of {base_url, path_or_url, query} so a workflow
+    // re-author that flips a query param invalidates the resume position
+    // (we'd otherwise feed the new request shape into the old offset/cursor).
+    const requestSignature = paginationSignature({
+      base_url: baseUrl.origin + baseUrl.pathname,
+      path_or_url: p.step.path ?? p.step.url ?? "/",
+      query: { ...(p.step.query ?? {}) },
     });
+    let resumeSeed: PaginationCheckpoint["state"] | null = null;
+    let resumePageIdx = 0;
+    let resumeAccumulatedCount = 0;
+    try {
+      const existing = await readPaginationCheckpoint(p.ctx.step_row_id, p.ctx.db);
+      if (existing && existing.signature === requestSignature) {
+        resumeSeed = existing.state;
+        resumePageIdx = existing.page_idx;
+        resumeAccumulatedCount = existing.accumulated_count;
+        logger.info({
+          module: "pagination",
+          action: "resumed",
+          msg: "pagination resumed from checkpoint",
+          execution_id: p.ctx.execution_id,
+          step_id: p.step.id,
+          from_page: existing.page_idx,
+          accumulated_count: existing.accumulated_count,
+        });
+      }
+    } catch (err) {
+      // A read failure must NOT prevent the request from running — the
+      // worst case is we restart from page 1 (the existing behaviour).
+      logger.warn({
+        module: "pagination",
+        action: "resume_read_failed",
+        execution_id: p.ctx.execution_id,
+        step_id: p.step.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    const strat = makeStrategy(
+      p.step.pagination as PaginationSpec,
+      { baseUrl, baseQuery: {} },
+      resumeSeed,
+    );
     const acc: unknown[] = [];
     let prev: unknown = null;
     let pageIdx = 0;
     let pages_fetched = 0;
+    // Local mirror of the most recently issued checkpoint write. Carried
+    // forward into `last_meta` so the failure path persists the resume
+    // position even though the actual write to the row is fire-and-forget.
+    let latestCheckpoint: PaginationCheckpoint | null = null;
     while (pageIdx < MAX_PAGES) {
       const next = strat.next(prev, pageIdx);
       if (next.done) break;
@@ -845,6 +924,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           retry_counter: retryCounter,
           connector_id: p.step.connector_id ?? null,
           retry_policy,
+          last_idempotency_key: lastIdempotencyKey,
+          ...(idempotencyBase ? { idempotency_key_base: idempotencyBase } : {}),
           ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
         });
       const pageEgressInput = activeConnector
@@ -885,11 +966,18 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       prev = body;
       pageIdx += 1;
       pages_fetched += 1;
+      // Logical page number = "what page have we now finished" across the
+      // physical run + any prior resumed runs. Used in the checkpoint so a
+      // future restart sees the right resume point.
+      const logicalPageIdx = resumePageIdx + pageIdx;
+      const logicalAccumulated = resumeAccumulatedCount + acc.length;
       last_meta = {
         url: next.url,
         method: p.step.method,
         status: res.status,
-        page_idx: pageIdx,
+        page_idx: logicalPageIdx,
+        ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
+        ...(latestCheckpoint ? { pagination_checkpoint: latestCheckpoint } : {}),
         ...(connectorResolution ? { connector: connectorResolution } : {}),
       };
       if (pages_fetched % PAGE_PROGRESS_INTERVAL === 0) {
@@ -902,16 +990,62 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           pages_fetched,
         });
       }
+      // Checkpoint write — fire-and-forget so the loop doesn't block on
+      // disk. Failures log a warning and the request continues; if the
+      // engine then restarts before the next checkpoint window we lose at
+      // most one window of progress (= PAGINATION_CHECKPOINT_INTERVAL pages).
+      if (logicalPageIdx % PAGINATION_CHECKPOINT_INTERVAL === 0) {
+        const snapshot = strat.snapshot(prev);
+        const checkpoint: PaginationCheckpoint = {
+          state: snapshot,
+          page_idx: logicalPageIdx,
+          accumulated_count: logicalAccumulated,
+          signature: requestSignature,
+          written_at: new Date().toISOString(),
+        };
+        latestCheckpoint = checkpoint;
+        inFlightCheckpoint = writePaginationCheckpoint(
+          p.ctx.step_row_id,
+          checkpoint,
+          p.ctx.db,
+        ).catch((err) => {
+          logger.warn({
+            module: "pagination",
+            action: "checkpoint_write_failed",
+            execution_id: p.ctx.execution_id,
+            step_id: p.step.id,
+            page_idx: logicalPageIdx,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
     }
+    if (inFlightCheckpoint) await inFlightCheckpoint;
     return {
       status: "succeeded",
       output: acc,
       retry_count: retryCounter.value,
       duration_ms: Date.now() - start,
-      request_meta: { ...last_meta, pages_fetched },
+      request_meta: {
+        ...last_meta,
+        pages_fetched: resumePageIdx + pages_fetched,
+        ...(resumePageIdx > 0
+          ? { resumed_from_page: resumePageIdx, resumed_accumulated_count: resumeAccumulatedCount }
+          : {}),
+      },
     };
   } catch (err) {
     const duration_ms = Date.now() - start;
+    // Drain any pending pagination-checkpoint write so the row reflects
+    // the resume position before the catch handler returns. Failures
+    // already log via the inner .catch().
+    if (inFlightCheckpoint) {
+      try {
+        await inFlightCheckpoint;
+      } catch {
+        // Already logged; swallow to keep the original error in flight.
+      }
+    }
     // Circuit breaker: record failure and potentially open the circuit
     if (activeConnector) {
       const newCount = activeConnector.circuit_failure_count + 1;

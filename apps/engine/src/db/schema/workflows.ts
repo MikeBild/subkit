@@ -99,6 +99,13 @@ export const workflowsSchedules = pgTable(
     timezone: text("timezone").default("UTC").notNull(),
     paused: boolean("paused").default(false).notNull(),
     input: jsonb("input"),
+    // Reconciler dedup: timestamp of the most recent enqueue triggered
+    // for this schedule. The reconciler refuses to enqueue again until
+    // at least one cron period has elapsed since this stamp, so a
+    // 10-minute outage cannot fan-out into 10 instant repeats of a
+    // `* * * * *` schedule. NULL means "never fired" — first enqueue is
+    // unconditional.
+    last_enqueued_at: timestamp("last_enqueued_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [index("workflows_schedules_tenant_workflow_idx").on(t.tenant_id, t.workflow_id)],

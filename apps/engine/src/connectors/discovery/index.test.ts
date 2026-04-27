@@ -142,6 +142,48 @@ describe("discoverConnectorEndpoints — fallback chain", () => {
   });
 });
 
+describe("discoverConnectorEndpoints — extended chain (graphql + llms-txt)", () => {
+  test("falls through openapi-direct + swagger-ui-scrape and lands on llms-txt", async () => {
+    const fail1 = makeStrategy("openapi-direct", () =>
+      Promise.reject(new DiscoveryError("http_404", "openapi missing")),
+    );
+    const fail2 = makeStrategy("graphql-introspect", () =>
+      Promise.reject(new DiscoveryError("http_404", "not graphql")),
+    );
+    const fail3 = makeStrategy("swagger-ui-scrape", () =>
+      Promise.reject(new DiscoveryError("spec_not_found", "no swagger ui")),
+    );
+    const success = makeStrategy("llms-txt", () =>
+      Promise.resolve({
+        source_url: "https://docs.example.com/.well-known/llms-full.txt",
+        fetched_at: "2024-01-01T00:00:00Z",
+        strategy: "llms-txt",
+        spec_version: null,
+        title: null,
+        servers: ["https://docs.example.com"],
+        auth_schemes: [],
+        endpoints: [],
+        warnings: [],
+        text_corpus: "# example\n\nFull markdown corpus describing the API.",
+      }),
+    );
+    const skipped = makeStrategy("html-scrape", () => {
+      throw new Error("should never be invoked");
+    });
+
+    const result = await discoverConnectorEndpoints({
+      ingestion_url: "https://docs.example.com/api",
+      strategies: [fail1, fail2, fail3, success, skipped],
+    });
+
+    expect(result.strategy).toBe("llms-txt");
+    expect(result.text_corpus).toContain("Full markdown corpus");
+    expect(result.warnings.some((w) => w.code === "openapi-direct:http_404")).toBe(true);
+    expect(result.warnings.some((w) => w.code === "graphql-introspect:http_404")).toBe(true);
+    expect(result.warnings.some((w) => w.code === "swagger-ui-scrape:spec_not_found")).toBe(true);
+  });
+});
+
 describe("discoverConnectorEndpoints — integration with default strategies", () => {
   let fetchSpy: ReturnType<typeof spyOn>;
 

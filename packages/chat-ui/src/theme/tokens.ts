@@ -21,11 +21,14 @@ export interface ThemeTokens {
     info: string;
     dim: string;
   };
-  /** Mode-banner colors (plan / auto / ask). */
+  /** Mode-banner colors (plan / auto / ask / yolo). yolo intentionally
+   *  uses a destructive-looking red — operators must see it on every
+   *  rendered turn, not just the status line. */
   mode: {
     plan: string;
     auto: string;
     ask: string;
+    yolo: string;
   };
   /** Emphasis + highlight colors used by diff views and destructive confirms. */
   emphasis: {
@@ -55,6 +58,7 @@ export const defaultTheme: ThemeTokens = {
     plan: "cyan",
     auto: "yellow",
     ask: "green",
+    yolo: "red",
   },
   emphasis: {
     added: "green",

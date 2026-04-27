@@ -8,11 +8,16 @@
 // Key map:
 //   Tab / Shift+Tab  — cycle focus between fields (wraps).
 //   Enter            — validate and submit from any field.
+//                      For `json` fields with content, Enter inserts a
+//                      newline (use Ctrl-D to commit a JSON buffer
+//                      without leaving focus, or Tab off the field).
 //   Esc              — onCancel if provided.
-//   Backspace/Delete — pop last char from focused text/number field.
-//   Space            — toggle focused boolean; literal space in text.
+//   Backspace/Delete — pop last char from focused text/number/password/json field.
+//   Space            — toggle focused boolean / `multi` option; literal space in text.
 //   ← / →            — cycle options on focused select field.
-//   Printable char   — append to focused text/number field
+//   ↑ / ↓            — move focused row inside `multi` checkbox grid.
+//   Ctrl-D           — confirm a `json` buffer (parse + clear inline error).
+//   Printable char   — append to focused text/number/password/json field
 //                      (number fields filter to [0-9.\-]).
 
 import { Box, Text, useInput } from "ink";
@@ -29,8 +34,18 @@ export interface FormFieldOption {
 export interface FormField {
   name: string;
   label: string;
-  type: "text" | "number" | "boolean" | "select" | "password";
-  options?: FormFieldOption[] | undefined;
+  /**
+   * Field render mode. `text/number/boolean/select` are the original
+   * four; `password` masks input (single-line); `json` accepts a
+   * multi-line buffer parsed on blur; `multi` is a checkbox grid that
+   * yields a `string[]` subset of `options`.
+   */
+  type: "text" | "number" | "boolean" | "select" | "password" | "json" | "multi";
+  /**
+   * `select` expects `Array<{value,label}>`. `multi` expects
+   * `string[]`. The renderer normalizes both.
+   */
+  options?: FormFieldOption[] | string[] | undefined;
   placeholder?: string | undefined;
   required?: boolean | undefined;
   /**
@@ -39,6 +54,12 @@ export interface FormField {
    * flow so typed secrets never appear on the terminal.
    */
   sensitive?: boolean | undefined;
+  /**
+   * Optional error pin shown beneath the field (e.g. "invalid JSON: …").
+   * Server populates this when it re-prompts; the renderer may also
+   * set it locally for immediate feedback.
+   */
+  error_message?: string | undefined;
 }
 
 export interface FormPromptProps {
@@ -51,12 +72,32 @@ export interface FormPromptProps {
 
 type FieldValues = Record<string, unknown>;
 
+function multiOptions(field: FormField): string[] {
+  if (!Array.isArray(field.options)) return [];
+  return field.options
+    .map((o) => (typeof o === "string" ? o : typeof o === "object" && o ? o.value : null))
+    .filter((s): s is string => s !== null);
+}
+
+function selectOptions(field: FormField): FormFieldOption[] {
+  if (!Array.isArray(field.options)) return [];
+  return field.options
+    .map((o) => {
+      if (typeof o === "string") return { value: o, label: o };
+      if (typeof o === "object" && o) return o;
+      return null;
+    })
+    .filter((o): o is FormFieldOption => o !== null);
+}
+
 function initialValues(fields: FormField[]): FieldValues {
   const initial: FieldValues = {};
   for (const f of fields) {
     if (f.type === "boolean") initial[f.name] = false;
-    else if (f.type === "select" && f.options && f.options.length > 0)
-      initial[f.name] = f.options[0]?.value;
+    else if (f.type === "select") {
+      const opts = selectOptions(f);
+      initial[f.name] = opts[0]?.value ?? "";
+    } else if (f.type === "multi") initial[f.name] = [] as string[];
     else initial[f.name] = "";
   }
   return initial;
@@ -76,13 +117,13 @@ function isPrintable(input: string, key: { ctrl: boolean; meta: boolean }): bool
 /**
  * Strip bracketed-paste wrappers + control chars from a paste chunk.
  * Single-line form fields strip newlines too; multi-line-aware fields
- * (if ever added) can bypass this.
+ * (json) keep newlines.
  */
 // Built via `new RegExp` with a unicode escape so the source file
 // doesn't embed a literal ESC (0x1b) byte that lint flags as a control
 // char in regex-literal syntax.
 // biome-ignore lint/suspicious/noControlCharactersInRegex: literal ESC byte is exactly what we strip — RegExp(...) constructor triggers the opposite "prefer literal" rule.
-const BRACKETED_PASTE_RE = /\u001b\[20[01]~/g;
+const BRACKETED_PASTE_RE = /\[20[01]~/g;
 
 function sanitizePasteChunk(raw: string, singleLine: boolean): string {
   const unwrapped = raw.replace(BRACKETED_PASTE_RE, "");
@@ -97,6 +138,17 @@ function sanitizePasteChunk(raw: string, singleLine: boolean): string {
 
 function isNumericChar(ch: string): boolean {
   return /^[0-9.-]$/.test(ch);
+}
+
+function tryParseJson(value: string): { ok: true } | { ok: false; message: string } {
+  if (value.trim() === "") return { ok: true };
+  try {
+    JSON.parse(value);
+    return { ok: true };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "parse error";
+    return { ok: false, message: `invalid JSON: ${reason}` };
+  }
 }
 
 function coerce(fields: FormField[], values: FieldValues): FieldValues {
@@ -120,10 +172,15 @@ function firstInvalidIndex(fields: FormField[], values: FieldValues): number {
     const v = values[f.name];
     if (f.required) {
       if (v === undefined || v === null || v === "") return i;
+      if (Array.isArray(v) && v.length === 0) return i;
       if (f.type === "number" && typeof v === "string") {
         const n = Number(v);
         if (!Number.isFinite(n)) return i;
       }
+    }
+    if (f.type === "json" && typeof v === "string") {
+      const parsed = tryParseJson(v);
+      if (!parsed.ok) return i;
     }
   }
   return -1;
@@ -140,6 +197,15 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
   const [cursor, setCursor] = useState(0);
   const [values, setValues] = useState<FieldValues>(() => initialValues(fields));
   const [error, setError] = useState<string | null>(null);
+  // Per-field local error pin (currently driven by the json parser).
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
+  // Inner cursor for `multi` rows — which option is currently focused
+  // inside the focused multi field.
+  const [multiRow, setMultiRow] = useState<Record<string, number>>({});
+
+  const setFieldError = (name: string, msg: string | null): void => {
+    setFieldErrors((prev) => ({ ...prev, [name]: msg }));
+  };
 
   useInput(
     (input, key) => {
@@ -150,8 +216,18 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
         return;
       }
 
+      const f = fields[cursor];
+
+      // Tab navigation; before leaving a `json` field we re-validate
+      // so the operator sees the parse error pin without needing
+      // Ctrl-D first.
       if (key.tab) {
         setError(null);
+        if (f && f.type === "json") {
+          const buf = typeof values[f.name] === "string" ? (values[f.name] as string) : "";
+          const parsed = tryParseJson(buf);
+          setFieldError(f.name, parsed.ok ? null : parsed.message);
+        }
         setCursor((i) => {
           const n = fields.length;
           return key.shift ? (i - 1 + n) % n : (i + 1) % n;
@@ -159,9 +235,37 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
         return;
       }
 
+      // Ctrl-D commits a json buffer (parse-only — does NOT submit
+      // the whole form). The operator stays on the field if invalid.
+      if (f?.type === "json" && key.ctrl && (input === "d" || input === "\x04")) {
+        const buf = typeof values[f.name] === "string" ? (values[f.name] as string) : "";
+        const parsed = tryParseJson(buf);
+        setFieldError(f.name, parsed.ok ? null : parsed.message);
+        return;
+      }
+
       if (key.return) {
+        // For json fields with non-empty content, Enter inserts a
+        // newline rather than submitting — so the operator can write
+        // multi-line JSON without prematurely committing.
+        if (f && f.type === "json") {
+          setError(null);
+          setValues((v) => {
+            const cur = typeof v[f.name] === "string" ? (v[f.name] as string) : "";
+            return { ...v, [f.name]: `${cur}\n` };
+          });
+          setFieldError(f.name, null);
+          return;
+        }
         const idx = firstInvalidIndex(fields, values);
         if (idx >= 0) {
+          const failing = fields[idx];
+          if (failing && failing.type === "json") {
+            const buf =
+              typeof values[failing.name] === "string" ? (values[failing.name] as string) : "";
+            const parsed = tryParseJson(buf);
+            if (!parsed.ok) setFieldError(failing.name, parsed.message);
+          }
           setError(`Please fill the required field above.`);
           setCursor(idx);
           return;
@@ -170,7 +274,6 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
         return;
       }
 
-      const f = fields[cursor];
       if (!f) return;
 
       if (f.type === "boolean") {
@@ -181,10 +284,10 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
         return;
       }
 
-      if (f.type === "select" && f.options && f.options.length > 0) {
-        if (key.leftArrow || key.rightArrow) {
+      if (f.type === "select") {
+        const opts = selectOptions(f);
+        if (opts.length > 0 && (key.leftArrow || key.rightArrow)) {
           setError(null);
-          const opts = f.options;
           const idx = opts.findIndex((o) => o.value === values[f.name]);
           const delta = key.rightArrow ? 1 : -1;
           const next = opts[(idx + delta + opts.length) % opts.length];
@@ -193,23 +296,49 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
         return;
       }
 
-      // text / number
+      if (f.type === "multi") {
+        const opts = multiOptions(f);
+        if (opts.length === 0) return;
+        const row = multiRow[f.name] ?? 0;
+        if (key.upArrow) {
+          setMultiRow((m) => ({ ...m, [f.name]: (row - 1 + opts.length) % opts.length }));
+          return;
+        }
+        if (key.downArrow) {
+          setMultiRow((m) => ({ ...m, [f.name]: (row + 1) % opts.length }));
+          return;
+        }
+        if (input === " ") {
+          setError(null);
+          const target = opts[row];
+          if (!target) return;
+          setValues((v) => {
+            const cur = Array.isArray(v[f.name]) ? (v[f.name] as string[]) : [];
+            const next = cur.includes(target) ? cur.filter((x) => x !== target) : [...cur, target];
+            return { ...v, [f.name]: next };
+          });
+        }
+        return;
+      }
+
+      // text / number / password / json
       if (key.backspace || key.delete) {
         setError(null);
         setValues((v) => {
           const cur = typeof v[f.name] === "string" ? (v[f.name] as string) : "";
           return { ...v, [f.name]: cur.slice(0, -1) };
         });
+        if (f.type === "json") setFieldError(f.name, null);
         return;
       }
 
       // Paste: whole clipboard comes in as one chunk. For number
       // fields keep only digits; for text / password allow any
-      // printable char. Fixes GitHub-Token / API-key pastes that
-      // previously got dropped because isPrintable rejected
-      // multi-char inputs.
+      // printable char. Json fields preserve newlines so a pasted
+      // multi-line JSON document survives intact.
       if (!key.ctrl && !key.meta && input.length > 1) {
-        const clean = sanitizePasteChunk(input, true);
+        const isJson = f.type === "json";
+        const clean = sanitizePasteChunk(input, !isJson);
         const filtered =
           f.type === "number" ? clean.split("").filter(isNumericChar).join("") : clean;
         if (filtered.length > 0) {
@@ -218,19 +347,22 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
             const cur = typeof v[f.name] === "string" ? (v[f.name] as string) : "";
             return { ...v, [f.name]: cur + filtered };
           });
+          if (isJson) setFieldError(f.name, null);
         }
         return;
       }
 
       if (isPrintable(input, key)) {
         if (f.type === "number" && !isNumericChar(input)) return;
-        // text / number / password all accept printable chars; password
-        // masks the render elsewhere.
+        // password rejects newlines server-side; the renderer never
+        // gets one through `isPrintable` anyway, but be explicit.
+        if (f.type === "password" && (input === "\n" || input === "\r")) return;
         setError(null);
         setValues((v) => {
           const cur = typeof v[f.name] === "string" ? (v[f.name] as string) : "";
           return { ...v, [f.name]: cur + input };
         });
+        if (f.type === "json") setFieldError(f.name, null);
       }
     },
     { isActive: !inputDisabled },
@@ -256,6 +388,7 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
       {fields.map((f, i) => {
         const focused = i === cursor;
         const value = values[f.name];
+        const fieldError = fieldErrors[f.name] ?? f.error_message ?? null;
         return (
           <Box key={f.name} flexDirection="column" marginTop={i === 0 ? 0 : 1}>
             <Text {...(focused ? { color: theme.role.user } : {})}>
@@ -280,9 +413,9 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
                 {value ? "[✓] yes" : "[ ] no"}
                 {focused ? " (space to toggle)" : ""}
               </Text>
-            ) : f.type === "select" && f.options ? (
+            ) : f.type === "select" ? (
               <Text color={theme.severity.dim}>
-                {f.options.map((o) =>
+                {selectOptions(f).map((o) =>
                   o.value === value ? (
                     <Text key={o.value} color={theme.role.user}>
                       [{o.label}]{" "}
@@ -293,7 +426,61 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
                 )}
                 {focused ? "(←/→ to pick)" : ""}
               </Text>
+            ) : f.type === "multi" ? (
+              <Box flexDirection="column">
+                {multiOptions(f).map((opt, optIdx) => {
+                  const selected = Array.isArray(value) && (value as string[]).includes(opt);
+                  const rowFocused = focused && (multiRow[f.name] ?? 0) === optIdx;
+                  return (
+                    <Text
+                      key={opt}
+                      {...(rowFocused ? { color: theme.role.user } : { color: theme.severity.dim })}
+                    >
+                      {rowFocused ? "▶ " : "  "}
+                      {selected ? "[x] " : "[ ] "}
+                      {opt}
+                    </Text>
+                  );
+                })}
+                {focused ? (
+                  <Text color={theme.severity.dim}>
+                    ↑/↓ to move · space to toggle · Tab/Enter when done
+                  </Text>
+                ) : null}
+              </Box>
+            ) : f.type === "json" ? (
+              <Box flexDirection="column">
+                {(() => {
+                  const buf = typeof value === "string" ? value : "";
+                  const lines = buf.length === 0 ? [""] : buf.split("\n");
+                  return lines.map((line, lineIdx) => {
+                    const isLast = lineIdx === lines.length - 1;
+                    if (focused && !inputDisabled && isLast) {
+                      return (
+                        <Text key={`json-${lineIdx}`}>
+                          {line}
+                          <Text inverse> </Text>
+                        </Text>
+                      );
+                    }
+                    if (line === "" && !focused && lineIdx === 0 && f.placeholder) {
+                      return (
+                        <Text key={`json-${lineIdx}`} color={theme.severity.dim}>
+                          {f.placeholder}
+                        </Text>
+                      );
+                    }
+                    return <Text key={`json-${lineIdx}`}>{line}</Text>;
+                  });
+                })()}
+                {focused ? (
+                  <Text color={theme.severity.dim}>
+                    Enter for newline · Ctrl-D to validate · Tab to leave field
+                  </Text>
+                ) : null}
+              </Box>
             ) : null}
+            {fieldError ? <Text color={theme.severity.error}>{fieldError}</Text> : null}
           </Box>
         );
       })}

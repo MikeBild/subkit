@@ -23,7 +23,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import path from "node:path";
 
 export type AuthStatus = "signed_in" | "signed_out";
-export type PermissionMode = "ask" | "auto" | "plan";
+export type PermissionMode = "ask" | "auto" | "plan" | "yolo";
 /** Live connection state to the subkit engine. */
 export type ConnectionState = "online" | "reconnecting" | "offline" | "unknown";
 

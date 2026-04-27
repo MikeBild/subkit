@@ -5,22 +5,108 @@ import type { ConversationTool, ToolResult } from "../index.ts";
 import { commitIntentSchema } from "./commit-intent.ts";
 import { pauseForUserInput } from "./common.ts";
 
-const fieldSchema = z.object({
-  name: z.string().min(1),
-  label: z.string().min(1),
-  /**
-   * `password` renders as a masked input and is NEVER surfaced on
-   * downstream tool-result payloads or in the transcript — it belongs
-   * to the credential-collection flow. `text` | `number` | `boolean` |
-   * `select` render as plain inputs.
-   */
-  type: z.enum(["text", "number", "boolean", "select", "password"]),
-  options: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
-  placeholder: z.string().optional(),
-  required: z.boolean().optional(),
-  /** When true, the client must mask the field value on keystroke echo. */
-  sensitive: z.boolean().optional(),
-});
+/**
+ * Field type contract for `ask_user_form`.
+ *
+ * `text` / `number` / `boolean` / `select` are the original four types.
+ *
+ * `password` renders as a masked input on the client and is omitted
+ * from any rendered transcript (never echoed). Single-line — the server
+ * rejects values containing newlines.
+ *
+ * `json` renders as a multi-line buffer; the client parses on blur and
+ * pins a parse error inline until the buffer is valid JSON. The server
+ * also re-validates with `JSON.parse(value)` so a malformed value
+ * cannot reach a downstream tool through any other surface.
+ *
+ * `multi` is a checkbox grid. The field declares `options: string[]`
+ * and the value MUST be a `string[]` subset of those options. The
+ * client uses Space to toggle and Enter to confirm.
+ *
+ * `options` accepts two shapes:
+ *   - `Array<{ value: string; label: string }>` — used by `select`
+ *   - `string[]`                                 — used by `multi`
+ * The renderer disambiguates on the field `type`.
+ */
+export const FORM_FIELD_TYPES = [
+  "text",
+  "number",
+  "boolean",
+  "select",
+  "password",
+  "json",
+  "multi",
+] as const;
+
+export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
+
+const selectOptionSchema = z.object({ value: z.string(), label: z.string() });
+
+const fieldSchema = z
+  .object({
+    name: z.string().min(1),
+    label: z.string().min(1),
+    type: z.enum(FORM_FIELD_TYPES),
+    /**
+     * `select` expects `Array<{value,label}>`. `multi` expects
+     * `string[]`. Other types ignore this field. The schema accepts
+     * both shapes; `validateFormFieldDefinition` enforces the
+     * type-specific shape so an LLM cannot ship a `multi` field
+     * without choices.
+     */
+    options: z.union([z.array(selectOptionSchema), z.array(z.string())]).optional(),
+    placeholder: z.string().optional(),
+    required: z.boolean().optional(),
+    /** When true, the client must mask the field value on keystroke echo. */
+    sensitive: z.boolean().optional(),
+    /**
+     * Optional inline error pin shown by the renderer (e.g. "invalid
+     * JSON: Unexpected token …"). The server populates this when it
+     * re-prompts after a value-validation failure; the client may also
+     * set it locally for immediate feedback.
+     */
+    error_message: z.string().optional(),
+  })
+  .superRefine((field, ctx) => {
+    if (field.type === "multi") {
+      if (!Array.isArray(field.options) || field.options.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "multi field requires `options: string[]` with at least one entry",
+          path: ["options"],
+        });
+        return;
+      }
+      const allStrings = field.options.every((o) => typeof o === "string");
+      if (!allStrings) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "multi field options must be `string[]` (use select for label/value pairs)",
+          path: ["options"],
+        });
+      }
+    }
+    if (field.type === "select") {
+      if (!Array.isArray(field.options) || field.options.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "select field requires `options: Array<{value,label}>` with at least one entry",
+          path: ["options"],
+        });
+        return;
+      }
+      const allObjects = field.options.every((o) => typeof o === "object" && o !== null);
+      if (!allObjects) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "select field options must be `Array<{value,label}>`",
+          path: ["options"],
+        });
+      }
+    }
+  });
+
+export type FormFieldDefinition = z.infer<typeof fieldSchema>;
 
 const inputSchema = z
   .object({
@@ -35,6 +121,62 @@ const inputSchema = z
     commit_intent: commitIntentSchema.optional(),
   })
   .openapi("AskUserFormInput");
+
+/**
+ * Validate a single form-value pair against its field declaration.
+ * Returns `null` on success, or a `{ message }` payload the harness
+ * uses to re-prompt the form with `error_message` populated.
+ *
+ * Centralized here so the renderer (`FormPrompt.tsx`) and the engine
+ * resume path share the contract.
+ */
+export function validateFormFieldValue(
+  field: FormFieldDefinition,
+  value: unknown,
+): { message: string } | null {
+  switch (field.type) {
+    case "password": {
+      if (typeof value !== "string") return { message: "password value must be a string" };
+      if (value.includes("\n") || value.includes("\r")) {
+        return { message: "password must be single-line (newlines not allowed)" };
+      }
+      return null;
+    }
+    case "json": {
+      if (typeof value !== "string") return { message: "json value must be a string buffer" };
+      if (value.trim() === "") {
+        return field.required ? { message: "json value is required" } : null;
+      }
+      try {
+        JSON.parse(value);
+        return null;
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : "parse error";
+        return { message: `invalid JSON: ${reason}` };
+      }
+    }
+    case "multi": {
+      if (!Array.isArray(value)) return { message: "multi value must be an array of strings" };
+      if (!value.every((v) => typeof v === "string")) {
+        return { message: "multi value must be an array of strings" };
+      }
+      const allowed = Array.isArray(field.options) ? field.options : [];
+      const allowedSet = new Set(
+        allowed
+          .map((o) => (typeof o === "string" ? o : null))
+          .filter((s): s is string => s !== null),
+      );
+      for (const v of value) {
+        if (!allowedSet.has(v)) {
+          return { message: `value "${v}" is not in the allowed options list` };
+        }
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
 
 export const askUserFormTool: ConversationTool = {
   name: "ask_user_form",

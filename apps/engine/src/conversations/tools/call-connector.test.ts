@@ -6,12 +6,20 @@
 //   - HTTP GET round-trip including auth header injection.
 //   - HTTP POST passes the body through.
 //   - GraphQL `body: {query, variables}` reaches the same path.
+//   - Postgres SELECT happy path; mutation rejected without allow_writes;
+//     mutation accepted WITH allow_writes:true.
+//   - SFTP list happy path; get of an over-sized object → object_too_large.
+//   - S3 GET happy path.
+//   - Driver mismatch: passing `op` to an HTTP connector → invalid_input.
 //   - RBAC denial when a member user lacks `connector:read`.
 //   - connector_not_found surfaces as a structured error.
-//   - non-HTTP/GraphQL drivers (S3) return driver_not_supported_for_call_connector.
+//   - Unsupported driver (redis) returns driver_not_supported_for_call_connector.
 //   - Large response bodies are truncated and surface a raw_ref.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import * as pgDriver from "../../connectors/drivers/postgres.ts";
+import * as s3Driver from "../../connectors/drivers/s3.ts";
+import * as sftpDriver from "../../connectors/drivers/sftp.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { connectors, roles, users } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -117,10 +125,24 @@ async function seedHttpConnector(opts: {
   slug: string;
   authType?: "bearer" | "none";
   tokenValue?: string;
-  driver?: "http" | "graphql" | "s3";
+  driver?: "http" | "graphql" | "s3" | "postgres" | "sftp" | "redis";
   base_url?: string;
+  dsn?: string;
+  config?: Record<string, unknown>;
 }): Promise<{ connector_id: string }> {
   const driver = opts.driver ?? "http";
+  const cfg =
+    opts.config !== undefined
+      ? opts.config
+      : driver === "graphql"
+        ? { endpoint: `${baseUrl}/graphql` }
+        : driver === "s3"
+          ? { region: "us-east-1", bucket: "test-bucket" }
+          : {};
+  const baseUrlField =
+    driver === "postgres" || driver === "sftp" ? null : (opts.base_url ?? baseUrl);
+  const dsnField =
+    opts.dsn ?? (driver === "postgres" || driver === "sftp" ? "sftp://u:p@example.test:22/" : null);
   const [conn] = await ctx.testDb.db
     .insert(connectors)
     .values({
@@ -130,8 +152,9 @@ async function seedHttpConnector(opts: {
       driver,
       environment: "dev",
       auth_type: opts.authType ?? "none",
-      base_url: opts.base_url ?? baseUrl,
-      config: driver === "graphql" ? { endpoint: `${baseUrl}/graphql` } : {},
+      base_url: baseUrlField,
+      dsn: dsnField,
+      config: cfg,
     })
     .returning();
   if (!conn) throw new Error("seed connector failed");
@@ -309,16 +332,16 @@ describe("call_connector — error envelopes", () => {
     expect(err.code).toBe("connector_not_found");
   });
 
-  test("S3 driver returns driver_not_supported_for_call_connector", async () => {
+  test("unsupported driver (redis) returns driver_not_supported_for_call_connector", async () => {
     const { connector_id } = await seedHttpConnector({
-      slug: "call_s3",
-      driver: "s3",
-      base_url: "https://s3.example.test",
+      slug: "call_redis",
+      driver: "redis",
+      base_url: "redis://example.test",
     });
     const result = await callConnectorTool.execute(makeToolContext(), {
       connector_id,
       method: "GET",
-      path: "/some-bucket/key",
+      path: "/some-key",
     });
     expect(result.ok).toBe(false);
     const data = result.data as {
@@ -327,6 +350,19 @@ describe("call_connector — error envelopes", () => {
     };
     expect(data.error.code).toBe("driver_not_supported_for_call_connector");
     expect(data.next_best_actions).toContain("start_workflow_from_goal");
+  });
+
+  test("driver mismatch: passing `op` to an HTTP connector → invalid_input", async () => {
+    const { connector_id } = await seedHttpConnector({ slug: "call_mismatch_http_op" });
+    const result = await callConnectorTool.execute(makeToolContext(), {
+      connector_id,
+      // biome-ignore lint/suspicious/noExplicitAny: deliberately probing input validation
+      op: "list" as any,
+      path: "/v2/droplets",
+    });
+    expect(result.ok).toBe(false);
+    const err = (result.data as { error: { code: string } }).error;
+    expect(err.code).toBe("invalid_input");
   });
 
   test("RBAC: bare-role user without connector:read is denied", async () => {
@@ -371,5 +407,203 @@ describe("call_connector — error envelopes", () => {
     };
     expect(data.error.code).toBe("credential_required");
     expect(data.next_best_actions).toContain("save_connector_draft");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Postgres
+// ---------------------------------------------------------------------------
+
+describe("call_connector — Postgres", () => {
+  test("SELECT happy path returns rows", async () => {
+    const { connector_id } = await seedHttpConnector({
+      slug: "call_pg_select",
+      driver: "postgres",
+      dsn: "postgres://u:p@example.test:5432/db",
+    });
+    const sampleRows = [{ id: 1, name: "alpha" }];
+    const spy = spyOn(pgDriver, "pgQuery").mockResolvedValue(sampleRows);
+    try {
+      const result = await callConnectorTool.execute(makeToolContext(), {
+        connector_id,
+        sql: "SELECT id, name FROM users",
+      });
+      expect(result.ok).toBe(true);
+      const data = result.data as {
+        driver_kind: string;
+        body: { rows: unknown[]; row_count: number };
+      };
+      expect(data.driver_kind).toBe("postgres");
+      expect(data.body.rows).toEqual(sampleRows);
+      expect(data.body.row_count).toBe(1);
+      // row_limit auto-injected when query has no LIMIT.
+      expect(spy).toHaveBeenCalledTimes(1);
+      const call = spy.mock.calls[0]![0] as { sql: string };
+      expect(call.sql).toMatch(/LIMIT 100$/);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("mutation without allow_writes is rejected with writes_not_allowed", async () => {
+    const { connector_id } = await seedHttpConnector({
+      slug: "call_pg_block_write",
+      driver: "postgres",
+      dsn: "postgres://u:p@example.test:5432/db",
+    });
+    const spy = spyOn(pgDriver, "pgQuery").mockResolvedValue([]);
+    try {
+      const result = await callConnectorTool.execute(makeToolContext(), {
+        connector_id,
+        sql: "DELETE FROM users WHERE id = 1",
+      });
+      expect(result.ok).toBe(false);
+      const data = result.data as {
+        error: { code: string };
+        next_best_actions: string[];
+      };
+      expect(data.error.code).toBe("writes_not_allowed");
+      expect(data.next_best_actions).toContain("call_connector_with_allow_writes");
+      // Driver MUST NOT have been called.
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("mutation WITH allow_writes:true passes through", async () => {
+    const { connector_id } = await seedHttpConnector({
+      slug: "call_pg_allow_write",
+      driver: "postgres",
+      dsn: "postgres://u:p@example.test:5432/db",
+    });
+    const spy = spyOn(pgDriver, "pgQuery").mockResolvedValue([]);
+    try {
+      const result = await callConnectorTool.execute(makeToolContext(), {
+        connector_id,
+        sql: "DELETE FROM users WHERE id = $1",
+        parameters: [42],
+        allow_writes: true,
+      });
+      expect(result.ok).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(1);
+      const call = spy.mock.calls[0]![0] as { sql: string; params: unknown[] };
+      // No LIMIT injection when allow_writes is true.
+      expect(call.sql).not.toMatch(/LIMIT 100/);
+      expect(call.params).toEqual([42]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SFTP
+// ---------------------------------------------------------------------------
+
+describe("call_connector — SFTP", () => {
+  test("list happy path returns directory entries", async () => {
+    const { connector_id } = await seedHttpConnector({
+      slug: "call_sftp_list",
+      driver: "sftp",
+      dsn: "sftp://u:p@example.test:22/",
+    });
+    const entries = [
+      { name: "a.csv", size: 100, type: "file" as const, modified_at: null },
+      { name: "sub", size: 0, type: "directory" as const, modified_at: null },
+    ];
+    const spy = spyOn(sftpDriver, "executeSftpCommand").mockResolvedValue({
+      command: "LIST",
+      entries,
+    });
+    try {
+      const result = await callConnectorTool.execute(makeToolContext(), {
+        connector_id,
+        op: "list",
+        path: "/incoming",
+      });
+      expect(result.ok).toBe(true);
+      const data = result.data as {
+        driver_kind: string;
+        body: { command: string; entries: typeof entries };
+      };
+      expect(data.driver_kind).toBe("sftp");
+      expect(data.body.command).toBe("LIST");
+      expect(data.body.entries).toEqual(entries);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("get of file > 1MB is rejected with object_too_large", async () => {
+    const { connector_id } = await seedHttpConnector({
+      slug: "call_sftp_huge",
+      driver: "sftp",
+      dsn: "sftp://u:p@example.test:22/",
+    });
+    // 1 MB + 1 byte payload.
+    const huge = "x".repeat(1024 * 1024 + 1);
+    const spy = spyOn(sftpDriver, "executeSftpCommand").mockResolvedValue({
+      command: "GET",
+      body: huge,
+    });
+    try {
+      const result = await callConnectorTool.execute(makeToolContext(), {
+        connector_id,
+        op: "get",
+        path: "/incoming/big.bin",
+      });
+      expect(result.ok).toBe(false);
+      const data = result.data as {
+        error: { code: string };
+        cap_bytes: number;
+        byte_count: number;
+      };
+      expect(data.error.code).toBe("object_too_large");
+      expect(data.cap_bytes).toBe(1024 * 1024);
+      expect(data.byte_count).toBeGreaterThan(1024 * 1024);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S3
+// ---------------------------------------------------------------------------
+
+describe("call_connector — S3", () => {
+  test("GET happy path returns object body", async () => {
+    const { connector_id } = await seedHttpConnector({
+      slug: "call_s3_get",
+      driver: "s3",
+      base_url: "https://s3.example.test",
+      config: { region: "us-east-1", bucket: "test-bucket" },
+    });
+    const spy = spyOn(s3Driver, "executeS3Request").mockResolvedValue({
+      status: 200,
+      headers: { "content-type": "text/plain" },
+      body: "hello world",
+      credential_id: null,
+    });
+    try {
+      const result = await callConnectorTool.execute(makeToolContext(), {
+        connector_id,
+        method: "GET",
+        path: "/some-key",
+      });
+      expect(result.ok).toBe(true);
+      const data = result.data as { driver_kind: string; status: number; body: string };
+      expect(data.driver_kind).toBe("s3");
+      expect(data.status).toBe(200);
+      expect(data.body).toBe("hello world");
+      expect(spy).toHaveBeenCalledTimes(1);
+      const call = spy.mock.calls[0]![0] as { method: string; path: string };
+      expect(call.method).toBe("GET");
+      expect(call.path).toBe("/some-key");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

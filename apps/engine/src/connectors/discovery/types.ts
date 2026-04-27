@@ -8,11 +8,16 @@
 // `connector_endpoint_index`.
 //
 // Strategies (in order of preference):
-//   1. `openapi-direct`     — fetch a known spec URL and parse it.
-//   2. `swagger-ui-scrape`  — page embeds Swagger UI; pull the spec URL
-//                             out of the page's bootstrap, then delegate.
-//   3. `html-scrape`        — last resort: try common well-known paths
-//                             and look for embedded spec hrefs.
+//   1. `openapi-direct`      — fetch a known spec URL and parse it.
+//   2. `graphql-introspect`  — POST `__schema` introspection against a
+//                              GraphQL endpoint and normalise the result.
+//   3. `swagger-ui-scrape`   — page embeds Swagger UI; pull the spec URL
+//                              out of the page's bootstrap, then delegate.
+//   4. `llms-txt`            — well-known `/.well-known/llms-full.txt` or
+//                              `/.well-known/llms.txt` — markdown corpus,
+//                              not structured endpoints.
+//   5. `html-scrape`         — last resort: try common well-known paths
+//                              and look for embedded spec hrefs.
 //
 // This module is pure compute — no DB writes, no caching. The conversation
 // tool wrapper persists results.
@@ -23,7 +28,13 @@ export type PaginationKind = "page" | "cursor" | "offset" | "link_header";
 
 export interface DiscoveredEndpointParam {
   name: string;
-  in: "path" | "query" | "header" | "cookie";
+  /**
+   * Where the parameter lives on the wire. `body` is reserved for
+   * strategies (e.g. `graphql-introspect`) that flatten root-field
+   * arguments into a JSON request body — OpenAPI strategies never
+   * emit it.
+   */
+  in: "path" | "query" | "header" | "cookie" | "body";
   required: boolean;
   type: string | null;
 }
@@ -69,7 +80,13 @@ export interface DiscoveryWarning {
   message: string;
 }
 
-export type DiscoveryStrategyName = "openapi-direct" | "swagger-ui-scrape" | "html-scrape";
+export type DiscoveryStrategyName =
+  | "openapi-direct"
+  | "graphql-introspect"
+  | "swagger-ui-scrape"
+  | "llms-txt"
+  | "html-scrape"
+  | "playwright-crawl";
 
 export interface DiscoveryResult {
   source_url: string;
@@ -81,6 +98,13 @@ export interface DiscoveryResult {
   auth_schemes: DiscoveredAuthScheme[];
   endpoints: DiscoveredEndpoint[];
   warnings: DiscoveryWarning[];
+  /**
+   * Optional prose corpus for strategies that return markdown documentation
+   * rather than structured endpoint metadata (e.g. `llms-txt`). When present
+   * the caller is expected to feed the text into RAG / chunking, not the
+   * endpoint list. Most strategies leave this `null`.
+   */
+  text_corpus?: string | null;
 }
 
 export interface DiscoveryStrategyOptions {

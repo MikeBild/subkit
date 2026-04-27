@@ -71,6 +71,39 @@ export function isCronDue(cron: string, lastFiredAt: Date | null, now: Date): bo
   }
 }
 
+/**
+ * Estimate the period between successive firings of a cron expression
+ * in milliseconds. The reconciler uses this for the dedup gate: a
+ * schedule is allowed to enqueue at most once per period regardless of
+ * how long the engine was offline. This is intentionally a *lower
+ * bound* — for irregular cron patterns (e.g. `0 9 * * MON`) the
+ * smallest natural period dominates so the dedup never accidentally
+ * over-skips.
+ *
+ * The implementation walks two consecutive `next()` results from the
+ * parser and returns the gap. Returns `null` for invalid expressions
+ * so the caller can fall back to "always allow" rather than crash.
+ *
+ * `every:N` returns N×1000.
+ */
+export function cronPeriodMs(cron: string): number | null {
+  const trimmed = cron.trim();
+  if (trimmed.startsWith("every:")) {
+    const seconds = Number.parseFloat(trimmed.slice("every:".length));
+    if (!Number.isFinite(seconds) || seconds <= 0) return null;
+    return seconds * 1000;
+  }
+  try {
+    const it = CronExpressionParser.parse(trimmed, { strict: false });
+    const a = it.next().toDate().getTime();
+    const b = it.next().toDate().getTime();
+    const diff = b - a;
+    return diff > 0 ? diff : null;
+  } catch {
+    return null;
+  }
+}
+
 export class SchedulerReconciler {
   private timer: NodeJS.Timeout | null = null;
   private everyTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -130,6 +163,20 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "knowledge_refresh_failed",
         msg: "scheduler knowledge auto-refresh pass failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+    // Workflow schedule fan-out is dedup'd via `last_enqueued_at`. The
+    // reconciler itself walks every cron-mode schedule, asks
+    // `isCronDue()` whether one full cron period has elapsed since the
+    // last enqueue, and only THEN fires an execution.run job. A
+    // 10-minute outage that brings a `* * * * *` schedule "10 minutes
+    // behind" therefore produces ONE catch-up enqueue, not 10.
+    await this.reconcileWorkflowSchedules().catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "schedule_fanout_failed",
+        msg: "scheduler workflow schedule fan-out pass failed",
         error: err instanceof Error ? err.message : String(err),
       });
     });
@@ -268,6 +315,102 @@ export class SchedulerReconciler {
         });
       }
     }
+  }
+
+  /**
+   * Walk every active workflow schedule and enqueue an execution.run
+   * job whenever the cron expression has elapsed since the schedule's
+   * `last_enqueued_at`. This is the dedup gate that turns a multi-
+   * minute outage into ONE catch-up enqueue instead of N — the next
+   * time the reconciler runs after a 10-minute gap, `isCronDue` for a
+   * `* * * * *` schedule says "due" exactly once, `last_enqueued_at`
+   * is bumped, and the next pass 60 s later sees it as already-fired.
+   *
+   * Every-mode schedules stay on the `setInterval` path in
+   * `reconcileOnce` because their natural cadence is sub-minute and
+   * the interval timer already enforces the same dedup property.
+   */
+  async reconcileWorkflowSchedules(now: Date = new Date()): Promise<void> {
+    const rows = await this.opts.db
+      .select({
+        schedule: workflowsSchedules,
+        wf: workflows,
+      })
+      .from(workflowsSchedules)
+      .innerJoin(workflows, eq(workflows.id, workflowsSchedules.workflow_id))
+      .where(eq(workflowsSchedules.paused, false));
+
+    for (const { schedule, wf } of rows) {
+      const parsed = parseCronExpression(schedule.cron);
+      if (!parsed.ok) continue;
+      // Every-mode is handled by the local interval timer in
+      // `reconcileOnce`; skip it here so we don't double-fire.
+      if (parsed.mode === "every") continue;
+      // Dedup gate: only enqueue if at least one full cron period has
+      // elapsed since the last enqueue. A 10-minute outage that brings
+      // a `* * * * *` schedule "10 minutes behind" therefore produces
+      // ONE catch-up enqueue, not 10.
+      const period = cronPeriodMs(schedule.cron);
+      const last = schedule.last_enqueued_at ?? null;
+      if (last && period !== null) {
+        if (now.getTime() - last.getTime() < period) continue;
+      } else if (last && period === null) {
+        // Invalid period — be conservative and skip rather than fire
+        // an unbounded number of catch-up enqueues.
+        continue;
+      }
+      try {
+        const payload: ExecutionRunJob = {
+          tenant_id: wf.tenant_id,
+          workflow_id: wf.id,
+          input: schedule.input ?? null,
+          request_source: "scheduler",
+        };
+        // Stamp `last_enqueued_at = now` BEFORE the enqueue so a crash
+        // mid-fire cannot replay the schedule on next boot. The
+        // RETURNING-empty case (parallel reconciler beat us) is not
+        // possible today since the WHERE has no version guard, but the
+        // pattern keeps the door open for one if a second engine
+        // instance is ever introduced.
+        const stamped = await this.opts.db
+          .update(workflowsSchedules)
+          .set({ last_enqueued_at: now })
+          .where(eq(workflowsSchedules.id, schedule.id))
+          .returning({ id: workflowsSchedules.id });
+        if (stamped.length === 0) continue;
+        await this.fireWorkflowSchedule(scheduleKeyForRow(schedule), payload);
+      } catch (err) {
+        logger.error({
+          module: "scheduler",
+          action: "schedule.fanout_failed",
+          msg: "workflow schedule fan-out enqueue failed",
+          schedule_id: schedule.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  private async fireWorkflowSchedule(key: string, payload: ExecutionRunJob): Promise<void> {
+    const workflow_version_id = await this.resolveWorkflowVersion(payload.workflow_id);
+    const execution_id = await createExecution(this.opts.db, {
+      tenant_id: payload.tenant_id,
+      workflow_id: payload.workflow_id,
+      workflow_version_id,
+      source_kind: "saved",
+      source_ref: null,
+      request_source: "scheduler",
+      parent_execution_id: null,
+    });
+    const job: ExecutionRunJob = { ...payload, execution_id, request_source: "scheduler" };
+    await this.opts.boss.send(EXECUTION_RUN_QUEUE, job);
+    logger.info({
+      module: "scheduler",
+      action: "schedule.fired",
+      msg: "cron-schedule enqueued execution.run",
+      schedule_key: key,
+      execution_id,
+    });
   }
 
   private async fireEvery(key: string, payload: ExecutionRunJob): Promise<void> {

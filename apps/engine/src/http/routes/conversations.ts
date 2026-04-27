@@ -48,7 +48,7 @@ const ElicitationParam = z.object({
   elicitation_id: z.string().uuid(),
 });
 
-const PermissionModeSchema = z.enum(["auto", "ask", "plan"]);
+const PermissionModeSchema = z.enum(["auto", "ask", "plan", "yolo"]);
 
 const RespondElicitationBody = z
   .object({

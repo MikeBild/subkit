@@ -4,11 +4,17 @@
 // slug, an explicit `ingestion_url`, or a `base_url` walked against
 // well-known paths) and runs strategies in order:
 //   1. openapi-direct
-//   2. swagger-ui-scrape
-//   3. html-scrape
+//   2. graphql-introspect
+//   3. swagger-ui-scrape
+//   4. llms-txt
+//   5. html-scrape
 // Each failed strategy contributes a warning to the final result if a
 // later strategy succeeds. If all strategies fail, the function throws
 // `DiscoveryError("all_strategies_failed", …)` with aggregated reasons.
+//
+// When the caller hands us a template whose `ingestion_source` is
+// `graphql` or `llms_txt` we promote the matching strategy to the head
+// of the chain so we don't waste a round-trip on `openapi-direct`.
 //
 // Caching is intentionally NOT done here — the conversation tool wrapper
 // owns persisting the result as a `knowledge_sources` row. This module
@@ -17,8 +23,11 @@
 import { log } from "../../logging/logger.ts";
 import { scrubUrl } from "../egress.ts";
 import { getBuiltinTemplate } from "../templates.ts";
+import { graphqlIntrospectStrategy } from "./graphql-introspect.ts";
 import { htmlScrapeStrategy } from "./html-scrape.ts";
+import { llmsTxtStrategy } from "./llms-txt.ts";
 import { openApiDirectStrategy } from "./openapi-direct.ts";
+import { playwrightCrawlStrategy } from "./playwright-crawl.ts";
 import { swaggerUiScrapeStrategy } from "./swagger-ui-scrape.ts";
 import {
   DiscoveryError,
@@ -28,8 +37,17 @@ import {
   type DiscoveryWarning,
 } from "./types.ts";
 
+export { graphqlIntrospectStrategy, looksLikeGraphQLUrl } from "./graphql-introspect.ts";
 export { extractSpecHrefs, htmlScrapeStrategy } from "./html-scrape.ts";
+export { llmsTxtStrategy } from "./llms-txt.ts";
 export { normalizeSpec, openApiDirectStrategy } from "./openapi-direct.ts";
+export {
+  jaccardSimilarity,
+  parseSitemap,
+  playwrightCrawlStrategy,
+  scoreCandidate,
+  setChromiumProviderForTesting,
+} from "./playwright-crawl.ts";
 export { extractEmbeddedSpecUrl, swaggerUiScrapeStrategy } from "./swagger-ui-scrape.ts";
 export * from "./types.ts";
 
@@ -46,9 +64,44 @@ export interface DiscoverConnectorEndpointsInput {
 
 const DEFAULT_STRATEGIES: DiscoveryStrategy[] = [
   openApiDirectStrategy,
+  graphqlIntrospectStrategy,
   swaggerUiScrapeStrategy,
+  llmsTxtStrategy,
   htmlScrapeStrategy,
+  // playwright-crawl is the costliest strategy (launches Chromium) and
+  // therefore always runs last, never gets promoted by template hints.
+  playwrightCrawlStrategy,
 ];
+
+/**
+ * If the resolved template hints at GraphQL or llms.txt ingestion,
+ * promote that strategy to the front of the chain. Other strategies
+ * follow in their canonical order so we still attempt fallbacks if the
+ * primary fails.
+ *
+ * `playwright-crawl` is never promoted — it's the costliest strategy
+ * (launches headless Chromium) and stays pinned to the tail of the
+ * chain regardless of template hints.
+ */
+function reorderStrategiesForTemplate(
+  templateId: string | undefined,
+  base: DiscoveryStrategy[],
+): DiscoveryStrategy[] {
+  if (!templateId) return base;
+  const tmpl = getBuiltinTemplate(templateId);
+  if (!tmpl) return base;
+  const promote = (name: DiscoveryStrategy["name"]): DiscoveryStrategy[] => {
+    if (name === "playwright-crawl") return base; // never promote
+    const idx = base.findIndex((s) => s.name === name);
+    if (idx <= 0) return base;
+    const head = base[idx];
+    if (!head) return base;
+    return [head, ...base.slice(0, idx), ...base.slice(idx + 1)];
+  };
+  if (tmpl.ingestion_source === "graphql") return promote("graphql-introspect");
+  if (tmpl.ingestion_source === "llms_txt") return promote("llms-txt");
+  return base;
+}
 
 function resolveSourceUrl(input: DiscoverConnectorEndpointsInput): string {
   if (input.ingestion_url) return input.ingestion_url;
@@ -83,7 +136,8 @@ export async function discoverConnectorEndpoints(
   input: DiscoverConnectorEndpointsInput,
 ): Promise<DiscoveryResult> {
   const url = resolveSourceUrl(input);
-  const strategies = input.strategies ?? DEFAULT_STRATEGIES;
+  const strategies =
+    input.strategies ?? reorderStrategiesForTemplate(input.template_id, DEFAULT_STRATEGIES);
   const opts: DiscoveryStrategyOptions = {
     ...(input.signal ? { signal: input.signal } : {}),
     ...(input.headers ? { headers: input.headers } : {}),

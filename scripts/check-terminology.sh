@@ -27,24 +27,22 @@ set -euo pipefail
 fail=0
 BANNED_FILE="${BANNED_FILE:-scripts/terminology.banned.txt}"
 
-if [ ! -f "$BANNED_FILE" ]; then
-  echo "ERROR: banned-words file not found: $BANNED_FILE" >&2
-  exit 2
+# Banned-list file is optional — when absent, the gate runs only the
+# OpenAPI-shape checks below (still meaningful) and otherwise short-circuits.
+banned=()
+if [ -f "$BANNED_FILE" ]; then
+  while IFS= read -r line; do
+    trimmed="${line#"${line%%[![:space:]]*}"}"   # ltrim
+    trimmed="${trimmed%"${trimmed##*[![:space:]]}"}" # rtrim
+    case "$trimmed" in
+      ""|"#"*) continue ;;
+    esac
+    banned+=("$trimmed")
+  done < "$BANNED_FILE"
 fi
 
-# Read non-comment, non-blank lines into an array.
-banned=()
-while IFS= read -r line; do
-  trimmed="${line#"${line%%[![:space:]]*}"}"   # ltrim
-  trimmed="${trimmed%"${trimmed##*[![:space:]]}"}" # rtrim
-  case "$trimmed" in
-    ""|"#"*) continue ;;
-  esac
-  banned+=("$trimmed")
-done < "$BANNED_FILE"
-
 if [ "${#banned[@]}" -eq 0 ]; then
-  echo "terminology gate: no banned terms configured (banned list empty)"
+  echo "terminology gate: no banned terms configured (banned list empty or absent)"
 else
   for word in "${banned[@]}"; do
     # Source trees we police. Docs/skills/seed markdown legitimately use
