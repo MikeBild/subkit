@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.8.0](https://github.com/MikeBild/subkit/compare/subkit-v2.7.0...subkit-v2.8.0) (2026-04-27)
+
+
+### Features
+
+* **connectors,llm,mcp,discovery,events:** close 4 behavioral gaps via reference-project audit ([c5218c5](https://github.com/MikeBild/subkit/commit/c5218c5cb0430f19479abd92dd700a9f7f7e81da))
+* **docs,knowledge:** close 8 documentation+knowledge gaps to reach reference parity ([c0b8ddf](https://github.com/MikeBild/subkit/commit/c0b8ddf42c2c0b3fec208fef1b1256913bd1d1c1))
+
+
+### Bug Fixes
+
+* **conversations:** single-token-entry connector save + loop-item teaching + override warning ([0cbd8f4](https://github.com/MikeBild/subkit/commit/0cbd8f49d382744ed6687c0a7ab4d4336a875047))
+
 ## [2.7.0](https://github.com/MikeBild/subkit/compare/subkit-v2.6.0...subkit-v2.7.0) (2026-04-27)
 
 
