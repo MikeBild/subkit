@@ -362,7 +362,14 @@ export class EngineClient {
   }
 
   // --------------------------- Health + Health-like ---------------------------
-  health(): Promise<{ status: string; db_connected: boolean }> {
+  health(): Promise<{
+    status: string;
+    db_connected: boolean;
+    version?: string;
+    uptime_seconds?: number;
+    update_available?: boolean;
+    latest_version?: string;
+  }> {
     return this.request("GET", "/v1/health");
   }
 

@@ -23,6 +23,7 @@ import { connectorsCommand } from "./commands/connectors.ts";
 import { credentialsCommand } from "./commands/credentials.ts";
 import { diagnosticsCommand } from "./commands/diagnostics.ts";
 import { discoveryCommand } from "./commands/discovery.ts";
+import { doctorCommand } from "./commands/doctor.ts";
 import { eventsCommand } from "./commands/events.ts";
 import { executionsCommand } from "./commands/executions.ts";
 import { extractCommand } from "./commands/extract.ts";
@@ -458,6 +459,7 @@ const mainCommand = defineCommand({
     rename: skRename,
     rm: skRm,
     health: healthCommand,
+    doctor: doctorCommand,
     extract: extractCommand,
     auth: authCommand,
     // operator commands
@@ -617,6 +619,7 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   rename: { command: skRename },
   rm: { command: skRm },
   health: { command: healthCommand },
+  doctor: { command: doctorCommand },
   extract: { command: extractCommand, requires: "conversation:write" },
   auth: { command: authCommand, requires: "connector:write" },
   // operator
