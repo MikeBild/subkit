@@ -29,6 +29,7 @@
 import { eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -37,6 +38,7 @@ import { appendSnapshot, loadDraft } from "../draft.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
 import { COMMIT_INTENT_KINDS, type CommitIntent } from "../tools/ask-user/commit-intent.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
+import { probeConnectorDraftTool } from "../tools/probe-connector-draft.ts";
 import { commitWorkflowAtomic } from "./commit-workflow.ts";
 import { setDraftCredential } from "./draft-credential-cache.ts";
 import { type AtomicCredentialInput, saveConnectorAtomic } from "./save-connector.ts";
@@ -142,6 +144,15 @@ export async function maybeAutoPersistFromElicitation(
         toolName = "save_connector_draft";
         const credential = mergeFormIntoCredential(intent, p.elicitation_output);
         const environment = readEnvironment(intent);
+        // Probe-then-save: when the connector hasn't been probed yet
+        // and its template declares a probe_endpoint, run the probe
+        // before the save so the form-submit acts as one transactional
+        // approval. Without this the save bounces off the probe gate
+        // (`save-connector.ts:probeFailed`) and the LLM has to retry
+        // through a second `ask_user_confirm`. The credential cache
+        // was populated by `maybeCacheDraftCredentialFromElicitation`
+        // before this dispatcher ran, so the probe sees auth.
+        await maybeAutoProbeForSave(ctx, p.tenant_id);
         result = await saveConnectorAtomic({
           ctx,
           environment,
@@ -155,9 +166,17 @@ export async function maybeAutoPersistFromElicitation(
       case "commit_workflow_draft": {
         toolName = "commit_draft";
         const targetId = readString(intent.payload, "target_workflow_id");
+        // The LLM declares force_commit in the commit_intent payload
+        // when proposing to commit despite a failed preview. Honour it
+        // here so a single operator confirmation suffices — without
+        // this, the preview gate in commitWorkflowAtomic blocks the
+        // auto-persist and the LLM has to retry through a separate
+        // commit_draft call (the "approve twice" symptom).
+        const forceCommit = intent.payload.force_commit === true;
         result = await commitWorkflowAtomic({
           ctx,
           ...(targetId ? { target_workflow_id: targetId } : {}),
+          ...(forceCommit ? { forceCommit: true } : {}),
           skipPriorApprovalCheck: true,
           reason: "auto_persist_on_confirmation",
           emitAutoPersistAudit: true,
@@ -525,6 +544,54 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
       msg: "failed to cache draft credential — probe will use credential_required path",
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * Auto-probe a draft connector before the auto-persist save runs.
+ *
+ * Reads the draft's resolved template; when the template declares a
+ * `probe_endpoint` and the draft is in the pre-probe state, dispatches
+ * the existing `probe_connector_draft` tool with the template's method
+ * + path. The credential cache populated by
+ * `maybeCacheDraftCredentialFromElicitation` is what authenticates the
+ * probe — so this only fires for the form-submit-then-save bundle.
+ *
+ * No-op when the connector is missing, has no template_slug, the
+ * template has no probe_endpoint, the latest probe already passed, or
+ * any failure is encountered (the save will surface
+ * `probe_failed`/`connector_not_ready` itself).
+ */
+async function maybeAutoProbeForSave(ctx: ToolContext, tenant_id: string): Promise<void> {
+  try {
+    const draft = ctx.getDraft();
+    const connector = draft.connector;
+    if (!connector) return;
+    const requiresProbe =
+      connector.driver === "http" ||
+      connector.driver === "graphql" ||
+      connector.driver === "postgres" ||
+      connector.driver === "s3";
+    if (!requiresProbe) return;
+    if (connector.latest_probe?.ok === true) return;
+    if (!connector.template_slug) return;
+    const templates = await listResolvedConnectorTemplates(ctx.db, tenant_id);
+    const template = templates.find((t) => t.template.slug === connector.template_slug)?.template;
+    const probeEndpoint = template?.probe_endpoint;
+    if (!probeEndpoint) return;
+    await probeConnectorDraftTool.execute(ctx, {
+      method: probeEndpoint.method,
+      path: probeEndpoint.path === "" ? "/" : probeEndpoint.path,
+    });
+  } catch (err) {
+    logger.warn({
+      module: "auto-persist",
+      action: "auto_probe_failed",
+      msg: "auto-probe before save failed — falling through to saveConnectorAtomic which will surface probe_failed",
+      tenant_id,
+      conversation_id: ctx.conversation_id,
       error: err instanceof Error ? err.message : String(err),
     });
   }

@@ -170,8 +170,12 @@ Both can coexist. A common pattern:
 
 ### Loops
 
-Iterate over an array from a prior step. Each iteration gets a `scope.<as>`
-binding with its own envelope (`$scope.<as>.data` is the current item).
+Iterate over an array from a prior step. Each iteration exposes the current
+item as a **top-level scope key** named by `item_var` (defaults to `item`).
+The item is NOT envelope-wrapped — reference it as `${user.field}` or
+`$user.field`, never `$scope.user.data.field`. See the "Loop iteration
+variables" section in `data-handling.md` for the four wrong shapes the
+validator rejects.
 
 ```json
 {
@@ -182,6 +186,20 @@ binding with its own envelope (`$scope.<as>.data` is the current item).
   "item_var": "user"
 }
 ```
+
+Body step referencing the item:
+
+```json
+{
+  "id": "send",
+  "kind": "request",
+  "method": "POST",
+  "path": "/mail",
+  "body": { "to": "${user.email}", "name": "${user.name}" }
+}
+```
+
+`$loop_index` (zero-based) is also available inside the loop body.
 
 ### Branches
 
@@ -266,6 +284,14 @@ Both are correct; the stdlib form is the one the authoring layer proposes.
   that never existed. Probe first, every time.
 - **Committing before every step has a green dry-run.** `commit_draft` doesn't
   run the steps. Bad drafts commit cleanly and then fail at first invocation.
+- **Force-committing without surfacing the override to the operator.** If the
+  operator explicitly chooses to commit despite a failed `dry_run_workflow`,
+  emit `ask_user_confirm` with
+  `commit_intent.payload.force_commit: true`. The harness prepends an
+  override warning to the summary and a single confirmation suffices — do
+  NOT retry through a second `ask_user_confirm` after a "preview_failed"
+  result. The same pattern applies to `save_connector_draft` with
+  `force_save: true` after a failed probe.
 - **Confusing `output_transform` with `data_selector`.** `output_transform` runs
   once, at the end. `data_selector` runs per step. Using `output_transform` to
   trim an early step wastes scope space for the whole run.
