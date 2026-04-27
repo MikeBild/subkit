@@ -11,6 +11,7 @@ import { startTracing } from "./observability/tracing.ts";
 import { startListener, stopListener } from "./pubsub/listener.ts";
 import { startBoss, stopBoss } from "./queue/boss.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
+import { seedBuiltinRolesAndPermissions } from "./rbac/seed.ts";
 import { SchedulerReconciler } from "./scheduler/reconciler.ts";
 import { applySkillSeedsForAllTenants, loadSkillSeedsFromDisk } from "./skills/seed.ts";
 import { startTunnelWsServer, type TunnelWsServerHandle } from "./tunnels/ws-server.ts";
@@ -92,6 +93,28 @@ async function runServer(): Promise<void> {
   // and HTTP routes all land in the same trace context. No-op when no
   // exporter env vars are set.
   const stopTracing = await startTracing();
+
+  // Engine-essential seed: RBAC permission catalog + 6 builtin roles.
+  // Idempotent and fast (<200ms). Running this on every startup
+  // removes the runtime dependency on the separate `seed` compose
+  // container — auth subsystem now boots without it. Wrapped so a
+  // transient DB blip never blocks engine startup; the next boot
+  // retries.
+  try {
+    await seedBuiltinRolesAndPermissions(db);
+    logger.info({
+      module: "engine",
+      action: "rbac.seed_applied",
+      msg: "RBAC roles + permissions seeded on startup",
+    });
+  } catch (err) {
+    logger.error({
+      module: "engine",
+      action: "rbac.seed_failed",
+      msg: "RBAC seed failed; engine will boot but auth may degrade",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // Start pg-boss + register handlers before the HTTP server so enqueue
   // requests hitting the first byte always find a live boss.
