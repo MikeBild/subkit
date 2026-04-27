@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants } from "../../db/schema/index.ts";
+import { eq } from "drizzle-orm";
+import { skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   activateSkill,
@@ -7,6 +8,7 @@ import {
   createSkill,
   deleteSkill,
   getSkill,
+  getSkillBySlug,
   listSkills,
   retrieveApplicableSkills,
   updateSkill,
@@ -144,5 +146,42 @@ describe("skills/service", () => {
     expect(ok).toBe(true);
     const gone = await getSkill(tenant_id, workflowSkill.id, ctx.db);
     expect(gone).toBeNull();
+  });
+
+  test("getSkill rejects non-UUID input without throwing", async () => {
+    const tenant_id = await seedTenant();
+    // The skills.id column is uuid-typed. Earlier callers passed slugs
+    // here and Postgres threw mid-request; getSkill must return null
+    // instead so the caller can fall through to a slug lookup.
+    const result = await getSkill(tenant_id, "workflow-authoring", ctx.db);
+    expect(result).toBeNull();
+  });
+
+  test("getSkillBySlug resolves a seeded skill by slug", async () => {
+    const tenant_id = await seedTenant();
+    const created = await createSkill(
+      {
+        tenant_id,
+        input: {
+          scope: "global",
+          title: "Workflow authoring",
+          body: "Authoring guidance for workflows.",
+        },
+      },
+      ctx.db,
+    );
+    // createSkill does not write `slug`; backfill the column directly to
+    // mirror what the seed loader does.
+    await ctx.db
+      .update(skills)
+      .set({ slug: "workflow-authoring", seed_source: "test-fixture" })
+      .where(eq(skills.id, created.id));
+
+    const found = await getSkillBySlug(tenant_id, "workflow-authoring", ctx.db);
+    expect(found?.id).toBe(created.id);
+    expect(found?.slug).toBe("workflow-authoring");
+
+    const missing = await getSkillBySlug(tenant_id, "does-not-exist", ctx.db);
+    expect(missing).toBeNull();
   });
 });

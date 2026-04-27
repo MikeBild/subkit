@@ -21,6 +21,7 @@ export interface ConnectorDraftForEnrichment {
   dsn?: string | undefined;
   auth_type?: CreateConnectorInput["auth_type"] | undefined;
   config?: Record<string, unknown> | undefined;
+  operator_notes?: string | null | undefined;
 }
 
 export interface EnrichmentOptions {
@@ -107,5 +108,6 @@ export function enrichConnectorFromTemplate(
     config: cfg,
   };
   if (draft.dsn !== undefined) (result as CreateConnectorInput).dsn = draft.dsn;
+  if (draft.operator_notes !== undefined) result.operator_notes = draft.operator_notes;
   return result;
 }

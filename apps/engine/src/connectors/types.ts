@@ -148,6 +148,12 @@ export const CreateConnectorSchema = z
     dsn: z.string().optional(),
     auth_type: AuthTypeEnum.default("none"),
     config: z.record(z.string(), z.unknown()).optional(),
+    // Free-form operator notes surfaced to the LLM whenever this
+    // connector is in scope for a conversation turn. Use for tight,
+    // imperative hints the LLM should treat as authoritative
+    // ("always send `?api-version=2025-01-01`", "treat 422 as success
+    // for upserts"). For larger guidance prefer a connector-scoped Skill.
+    operator_notes: z.string().max(4_000).nullable().optional(),
     template_slug: z.string().min(1).optional(),
     template_source: ConnectorTemplateSourceEnum.optional(),
     template_base_url_environment: z.string().min(1).optional(),
@@ -163,6 +169,8 @@ export const UpdateConnectorSchema = z
     dsn: z.string().optional(),
     auth_type: AuthTypeEnum.optional(),
     config: z.record(z.string(), z.unknown()).optional(),
+    // `null` clears the field; `undefined`/omitted leaves it untouched.
+    operator_notes: z.string().max(4_000).nullable().optional(),
     template_slug: z.string().min(1).optional(),
     template_source: ConnectorTemplateSourceEnum.optional(),
     template_base_url_environment: z.string().min(1).optional(),
@@ -183,6 +191,7 @@ export interface ConnectorView {
   base_url: string | null;
   dsn: string | null;
   config: Record<string, unknown>;
+  operator_notes: string | null;
   template_slug: string | null;
   template_name: string | null;
   template_source: ConnectorTemplateSource | null;

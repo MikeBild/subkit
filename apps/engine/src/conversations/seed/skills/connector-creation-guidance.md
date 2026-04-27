@@ -124,6 +124,16 @@ came back 401/403):
 3. **Never** ask the operator to name the credential. The credential is keyed
    on `(tenant_id, connector_id, environment)`; it has no user-supplied name.
 
+After the connector is saved, the right tool to verify it from the loop is
+`test_connector({ connector_id })` — it runs the driver's canned health
+probe (HTTP HEAD/GET against `base_url`, Postgres `SELECT 1`, S3
+`list-bucket`, etc.) and returns `{ ok, latency_ms, status?, detail? }`. Use
+it after a credential rotation, after self-healing approves a patch, or
+before re-running a workflow that previously failed. Never suggest a
+`curl` or shell command instead — `test_connector` is the chat-first
+contract for that question, and it lands the same audit row
+(`connector.invoked`, `method: "PROBE"`) that the HTTP / CLI surfaces emit.
+
 `save_connector_draft({ credential })` is still defined as a tool but it is
 **diagnostic re-issue only** — for example after a credential rotation, after
 `authenticate_oauth` returns `oauth_not_configured`, or when the operator

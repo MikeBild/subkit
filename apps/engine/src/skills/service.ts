@@ -23,6 +23,8 @@ type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 type SkillRow = typeof skills.$inferSelect;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function blobToFields(blob: unknown): Required<SkillExamplesBlob> {
   const b = (blob ?? {}) as SkillExamplesBlob;
   return {
@@ -168,11 +170,29 @@ export async function getSkill(
   id: string,
   exec?: Executor,
 ): Promise<Skill | null> {
+  // skills.id is uuid; passing a non-UUID makes Postgres throw before we
+  // can return null. Callers that have only a slug must use getSkillBySlug.
+  if (!UUID_RE.test(id)) return null;
   const db = exec ?? getDb();
   const rows = await db
     .select()
     .from(skills)
     .where(and(eq(skills.tenant_id, tenant_id), eq(skills.id, id)))
+    .limit(1);
+  const row = rows[0];
+  return row ? rowToSkill(row) : null;
+}
+
+export async function getSkillBySlug(
+  tenant_id: string,
+  slug: string,
+  exec?: Executor,
+): Promise<Skill | null> {
+  const db = exec ?? getDb();
+  const rows = await db
+    .select()
+    .from(skills)
+    .where(and(eq(skills.tenant_id, tenant_id), eq(skills.slug, slug)))
     .limit(1);
   const row = rows[0];
   return row ? rowToSkill(row) : null;

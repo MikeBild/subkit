@@ -14,6 +14,7 @@
 // Replaces the prior `llm/context.ts` implementation entirely — all
 // callers now import from this module.
 
+import { getConnector } from "../../connectors/service.ts";
 import { generateMainAgentSystemPrompt } from "../../conversations/agent/context.ts";
 import type { Db } from "../../db/client.ts";
 import { getDb } from "../../db/client.ts";
@@ -23,6 +24,7 @@ import { logger } from "../../logging/logger.ts";
 import { recordLlmContextAssembled } from "../../observability/instrumentation.ts";
 import {
   getSkill,
+  getSkillBySlug,
   listAutoLoadSkills,
   listSkills,
   retrieveApplicableSkills,
@@ -45,6 +47,8 @@ import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web";
 
@@ -167,6 +171,22 @@ function fetchedAtSuffix(fetched_at: string | null): string {
   // Trim to YYYY-MM-DD so the prompt header is compact and stable.
   const date = fetched_at.slice(0, 10);
   return ` (fetched ${date})`;
+}
+
+/**
+ * Operator-supplied per-connector notes — short, imperative hints the
+ * operator wants the model to treat as authoritative ("treat 422 as
+ * success on /upsert", "always send `?api-version=2025-01-01`"). Lives
+ * in `connectors.operator_notes`. The block is opt-in (only rendered
+ * when the connector row carries a non-empty value) and stays in the
+ * stable head so it caches alongside skills.
+ *
+ * Format keeps the connector slug + name visible so the model never
+ * confuses notes from two connectors that ended up in scope on the
+ * same turn.
+ */
+function formatOperatorNotes(slug: string, name: string, notes: string): string {
+  return `# Operator notes — connector \`${slug}\` (${name})\n${notes}`;
 }
 
 function formatChunk(chunk: IncludedChunk): string {
@@ -320,25 +340,27 @@ export async function assembleEnhancedPrompt(
   const connectorSkills = skillsApplicable.filter((s) => s.scope === "connector");
   const workflowSkills = skillsApplicable.filter((s) => s.scope === "workflow");
 
-  // On-demand skills (load_skill). Each slug is either a skill id or
-  // title. We fetch by id first (fast path) and fall back to a titled
-  // lookup via listSkills when the slug isn't a UUID. Skills already
-  // covered by scope-based retrieval are de-duped by id.
+  // On-demand skills (load_skill). Each entry is a slug, an id, or a
+  // title. Resolution order is slug → id → title — slug first because
+  // `loaded_skill_slugs` literally carries slugs from the seed-loader
+  // and the auto-loaded authoring constants (loop.ts). Last-resort fetch
+  // routes by shape so a bare slug never hits the uuid-typed id column.
   const loadedSkillSlugs = p.loaded_skill_slugs ?? [];
   const loadedSkills = [] as Skill[];
   if (loadedSkillSlugs.length > 0) {
     const existingIds = new Set(skillsApplicable.map((s) => s.id));
     const allTenantSkills = await listSkills({ tenant_id: p.tenant_id }, db);
-    for (const slug of loadedSkillSlugs) {
-      if (existingIds.has(slug)) continue;
-      let match = allTenantSkills.find((s) => s.id === slug);
+    for (const ref of loadedSkillSlugs) {
+      if (existingIds.has(ref)) continue;
+      let match =
+        allTenantSkills.find((s) => s.slug === ref) ??
+        allTenantSkills.find((s) => s.id === ref) ??
+        allTenantSkills.find((s) => s.title.toLowerCase() === ref.toLowerCase());
       if (!match) {
-        match = allTenantSkills.find((s) => s.title.toLowerCase() === slug.toLowerCase());
-      }
-      if (!match) {
-        // Last-resort by-id fetch — covers the case where listSkills
-        // was paginated and the id isn't in the first page.
-        const fetched = await getSkill(p.tenant_id, slug, db);
+        // Pagination escape hatch: listSkills caps at 500 rows.
+        const fetched = UUID_RE.test(ref)
+          ? await getSkill(p.tenant_id, ref, db)
+          : await getSkillBySlug(p.tenant_id, ref, db);
         if (fetched) match = fetched;
       }
       if (match && !existingIds.has(match.id)) {
@@ -386,6 +408,35 @@ export async function assembleEnhancedPrompt(
   let userMemory = typeof p.user_memory === "string" ? p.user_memory.trim() : "";
   let authoringContext = typeof p.authoring_context === "string" ? p.authoring_context.trim() : "";
 
+  // Operator notes for the in-scope connector. Loaded once per assembly
+  // and rendered as a stable cache block adjacent to connector skills.
+  // The field is hard-capped at 4 KB by the route schema, so the worst-
+  // case token cost is small and we drop it only after every other
+  // optional connector context block is gone.
+  let connectorOperatorNotesBlock: string | null = null;
+  if (p.connector_id) {
+    try {
+      const connector = await getConnector(p.tenant_id, p.connector_id, db);
+      const trimmed = connector?.operator_notes?.trim() ?? "";
+      if (connector && trimmed) {
+        connectorOperatorNotesBlock = formatOperatorNotes(
+          connector.slug,
+          connector.display_name,
+          trimmed,
+        );
+      }
+    } catch (err) {
+      logger.debug({
+        module: "llm",
+        action: "llm.context.operator_notes_skipped",
+        msg: "operator_notes load failed during context assembly",
+        tenant_id: p.tenant_id,
+        connector_id: p.connector_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   const runtimeBlock = p.runtime_context
     ? renderRuntimeContextBlock({
         ...(p.runtime_context.engine_url ? { engine_url: p.runtime_context.engine_url } : {}),
@@ -418,6 +469,7 @@ export async function assembleEnhancedPrompt(
     sections.push(baseSystem);
     if (runtimeBlock) sections.push(runtimeBlock);
     for (const s of globalSkills) sections.push(formatSkill(s, p.runtime_context));
+    if (connectorOperatorNotesBlock) sections.push(connectorOperatorNotesBlock);
     for (const s of connectorSkills) sections.push(formatSkill(s, p.runtime_context));
     for (const s of workflowSkills) sections.push(formatSkill(s, p.runtime_context));
     for (const s of loadedSkills) sections.push(formatSkill(s, p.runtime_context));
@@ -474,6 +526,12 @@ export async function assembleEnhancedPrompt(
     } else if (connectorSkills.length > 0) {
       connectorSkills.pop();
       trimmed.push("connector_skill");
+    } else if (connectorOperatorNotesBlock) {
+      // operator_notes is the operator's direct, imperative instruction
+      // for this connector — drop it only when nothing else remains
+      // except global skills and the base prompt.
+      connectorOperatorNotesBlock = null;
+      trimmed.push("connector_operator_notes");
     } else if (globalSkills.length > 0) {
       globalSkills.pop();
       trimmed.push("global_skill");
