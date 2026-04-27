@@ -44,6 +44,7 @@ describe("conversation tools — registration", () => {
     "suggest_connector_templates",
     "match_connector_template_by_url",
     "import_connector_from_spec",
+    "test_connector",
     "update_connector_draft",
     "update_param",
     "validate_connector_draft",
