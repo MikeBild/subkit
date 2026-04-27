@@ -24,6 +24,7 @@ import { commitDraftTool } from "./commit-draft.ts";
 import { connectStepsTool } from "./connect-steps.ts";
 import { diagnoseLatestExecutionTool } from "./diagnose-latest-execution.ts";
 import { discoverConnectorEndpointsTool } from "./discover-connector-endpoints.ts";
+import { discoverSystemsFromFilesTool } from "./discover-systems-from-files.ts";
 import { dryRunStepTool } from "./dry-run-step.ts";
 import { dryRunTransformTool } from "./dry-run-transform.ts";
 import { dryRunWorkflowTool } from "./dry-run-workflow.ts";
@@ -85,7 +86,16 @@ export interface ToolContext {
    * plan). Tools that stage confirmations (`ask_user_confirm`) can use
    * this to auto-resolve in `auto` mode without pausing the loop.
    */
-  permission_mode?: "auto" | "ask" | "plan" | null;
+  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  /**
+   * Operator's most recent user message, raw text. Threaded so tools
+   * can ground deterministic relevance scoring (e.g.
+   * `discover_connector_endpoints` ranks suggested endpoints against
+   * this string) without re-reading the conversation. `null` when the
+   * turn was triggered without a fresh user message (e.g. a continuation
+   * after an elicitation reply).
+   */
+  recentUserMessage?: string | null;
 }
 
 /** Elicitation pause descriptor shared by both ToolResult branches. */
@@ -239,6 +249,7 @@ register(updateConnectorDraftTool);
 register(connectStepsTool);
 register(diagnoseLatestExecutionTool);
 register(discoverConnectorEndpointsTool);
+register(discoverSystemsFromFilesTool);
 register(dryRunStepTool);
 register(dryRunTransformTool);
 register(dryRunWorkflowTool);

@@ -39,6 +39,7 @@ const ALWAYS_VISIBLE: ReadonlySet<string> = new Set([
   "ask_user_text",
   "cannot_help",
   "discover_connector_endpoints",
+  "discover_systems_from_files",
   "fetch_connector_docs",
   "get_raw_result",
   "inspect_authoring_context",

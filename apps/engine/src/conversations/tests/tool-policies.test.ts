@@ -150,3 +150,72 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     }
   });
 });
+
+// Locks the contract for the `yolo` permission mode: hard-armed
+// escape hatch that lifts the dangerous-tool gate. The tenant gate +
+// non-stickiness + expiry live elsewhere; the resolver itself just
+// honours the override unconditionally except for the inline-
+// credential safeguard.
+describe("resolveToolMode — yolo mode", () => {
+  it("yolo bypasses the dangerous-tools gate", () => {
+    for (const tool of [
+      "delete_workflow",
+      "delete_connector",
+      "revoke_api_key",
+      "approve_patch_candidate",
+    ]) {
+      expect(
+        resolveToolMode({
+          tool,
+          category: "tenant_write",
+          input: { id: "00000000-0000-0000-0000-000000000000" },
+          overrides: {},
+          permission_mode: "yolo",
+        }),
+      ).toBe("no_confirm");
+    }
+  });
+
+  it("yolo bypasses the per-tool default for tenant_write tools", () => {
+    expect(
+      resolveToolMode({
+        tool: "run_workflow",
+        category: "tenant_write",
+        input: { workflow_id: "x", environment: "prod" },
+        overrides: {},
+        permission_mode: "yolo",
+      }),
+    ).toBe("no_confirm");
+  });
+
+  it("yolo still respects the inline-credential safeguard", () => {
+    // `update_connector_draft` is the canonical safeguarded write —
+    // pasting a token shape into config must still trigger a confirm
+    // step even under yolo so the user sees what's being staged. The
+    // credentialFields list (see tool-policies.ts:276) names paths
+    // like `config.token`, so the input must mirror that shape.
+    expect(
+      resolveToolMode({
+        tool: "update_connector_draft",
+        category: "tenant_write",
+        input: {
+          config: { token: "dop_v1_abcdefghijklmnopqrstuvwxyz0123456789ABCDEF" },
+        },
+        overrides: {},
+        permission_mode: "yolo",
+      }),
+    ).toBe("confirm_before_execution");
+  });
+
+  it("auto continues to gate dangerous tools (regression)", () => {
+    expect(
+      resolveToolMode({
+        tool: "delete_connector",
+        category: "tenant_write",
+        input: { id: "00000000-0000-0000-0000-000000000000" },
+        overrides: {},
+        permission_mode: "auto",
+      }),
+    ).toBe("confirm_before_execution");
+  });
+});

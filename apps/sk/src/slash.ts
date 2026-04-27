@@ -116,6 +116,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "identity:read",
   },
   {
+    name: "onboard",
+    help: "Launch an interactive onboarding wizard — pick a template, enter credentials, probe, save",
+    category: "session",
+    requires: "connector:write",
+  },
+  {
     name: "approve",
     help: "Approve a pending request_human_approval",
     category: "session",
@@ -126,6 +132,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Reject a pending approval (with optional reason)",
     category: "session",
     requires: "conversation:approve",
+  },
+  {
+    name: "yolo",
+    help: "Arm yolo mode — lifts the destructive-action confirmation gate (typed `yes` confirmation; auto-disarms after 10 turns / 10 min). `/yolo off` disarms now.",
+    category: "session",
+    requires: "conversation:write",
   },
   { name: "status", help: "Print session + persona status", category: "util" },
   { name: "cost", help: "Show token usage + remaining budget", category: "util" },

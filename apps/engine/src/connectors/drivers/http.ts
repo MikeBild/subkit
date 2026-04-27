@@ -20,8 +20,13 @@ import { log } from "../../logging/logger.ts";
 import { tunnelRegistry } from "../../tunnels/registry.ts";
 import type { TunnelResponse } from "../../tunnels/types.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
+import { assertEgressAllowed } from "../egress-guard.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import type { ConnectorView } from "../types.ts";
+
+// Re-export so callers that already import from this driver can catch
+// the SSRF-block error without taking a direct dependency on the guard.
+export { EgressBlockedError } from "../egress-guard.ts";
 
 export interface HttpRequestDescriptor {
   base_url: string | null;
@@ -117,6 +122,20 @@ export interface ResolveConnectorRequestParams {
   path_or_url: string;
   headers?: Record<string, string>;
   query?: Record<string, string | number | boolean>;
+  /** Skip the `connector_credentials` lookup and use this credential
+   *  verbatim. Used by `probe_connector_draft` to inject the
+   *  in-memory draft credential before the connector has been
+   *  persisted (no UUID-keyed row exists yet). Never use this for
+   *  saved-connector traffic — go through `getCredentialForConnector`
+   *  so audit, rotation, and OAuth refresh stay observable. */
+  credential_override?: DecryptedCredential | null;
+  /** Outbound idempotency key. When set the resolved plan injects an
+   *  `Idempotency-Key` header so retried writes against remotes that honour
+   *  the standard don't double-apply. Caller owns the key shape — the
+   *  request step uses `${execution_id}:${step_id}:${attempt}` so each
+   *  retry is a distinct key tracing back to a concrete attempt. GET /
+   *  HEAD / OPTIONS callers should leave this unset. */
+  idempotency_key?: string;
 }
 
 /** What auth was actually applied — observable at request time.
@@ -183,7 +202,14 @@ export async function buildRequestPlan(
   let credential: DecryptedCredential | null = null;
   let credentialId: string | null = null;
   let oauth2Refreshed = false;
-  if (p.connector.auth_type !== "none") {
+  if (p.credential_override) {
+    // Draft-time override: caller already holds the credential in
+    // memory (see draft-credential-cache.ts). Skip the DB lookup —
+    // the synthetic draft connector_id wouldn't resolve anyway, and
+    // round-tripping through encrypt+decrypt before the connector
+    // exists is not useful.
+    credential = p.credential_override;
+  } else if (p.connector.auth_type !== "none") {
     const row = await getCredentialForConnector(
       p.tenant_id,
       p.connector.id,
@@ -206,6 +232,12 @@ export async function buildRequestPlan(
     }
   }
   applyAuthMaterial(p.connector, credential, headers, query);
+  // Idempotency-Key — opt-in per-call, set by the request step for
+  // non-idempotent methods. Pass-through; the value is plain text and is
+  // not scrubbed by the egress audit (it's not a credential).
+  if (p.idempotency_key) {
+    headers["Idempotency-Key"] = p.idempotency_key;
+  }
   const url = resolveUrl(p.connector.base_url, p.path_or_url);
   for (const [k, v] of Object.entries(query)) {
     url.searchParams.set(k, String(v));
@@ -222,6 +254,13 @@ export async function buildRequestPlan(
   if (typeof cfg.tunnel_target === "string" && cfg.tunnel_target.length > 0) {
     plan.tunnel_target = cfg.tunnel_target;
   }
+  // SSRF guard: block private/loopback/link-local targets unless the
+  // operator authorised the path via a registered tunnel. Must run AFTER
+  // tunnel_target is resolved so the tunnel exemption kicks in.
+  assertEgressAllowed(url, {
+    tenant_id: p.tenant_id,
+    tunnel_target: plan.tunnel_target ?? null,
+  });
   log.connector.request.planned({
     connector_id: p.connector.id,
     auth_type: p.connector.auth_type,
@@ -353,6 +392,8 @@ export async function executeConnectorHttpRequest(params: {
   body?: unknown;
   signal?: AbortSignal;
   timeout_ms?: number;
+  credential_override?: DecryptedCredential | null;
+  idempotency_key?: string;
 }): Promise<HttpExecutionResult> {
   const planArgs: ResolveConnectorRequestParams = {
     db: params.db,
@@ -361,6 +402,8 @@ export async function executeConnectorHttpRequest(params: {
     path_or_url: params.path_or_url,
     ...(params.headers ? { headers: params.headers } : {}),
     ...(params.query ? { query: params.query } : {}),
+    ...(params.credential_override ? { credential_override: params.credential_override } : {}),
+    ...(params.idempotency_key ? { idempotency_key: params.idempotency_key } : {}),
   };
   const plan = await buildRequestPlan(planArgs);
   const signals: AbortSignal[] = [];

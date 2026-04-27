@@ -15,6 +15,7 @@ import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
+import { assertEgressAllowed } from "../egress-guard.ts";
 import type { ConnectorView } from "../types.ts";
 import { applyAuthMaterial } from "./http.ts";
 
@@ -135,6 +136,11 @@ export async function executeGraphQLRequest(p: {
   for (const [k, v] of Object.entries(query)) {
     url.searchParams.set(k, String(v));
   }
+
+  // SSRF guard: block private/loopback/link-local targets. GraphQL
+  // driver doesn't support tunneling today, so pass tunnel_target=null
+  // — the guard fires unconditionally in strict mode.
+  assertEgressAllowed(url, { tenant_id: p.tenant_id, tunnel_target: null });
 
   logger.debug({
     module: "connector",

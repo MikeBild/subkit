@@ -2,6 +2,7 @@ import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
 import { serve } from "@hono/node-server";
 import { ChatAdapterRegistry } from "./chat/registry.ts";
 import { closeDb, getDb } from "./db/client.ts";
+import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
@@ -96,6 +97,33 @@ async function runServer(): Promise<void> {
   // requests hitting the first byte always find a live boss.
   const boss = await startBoss({ connectionString: env.DATABASE_URL });
   await registerAllHandlers({ boss, db, chatRegistry });
+
+  // Crash-recovery sweep: promote any execution stuck in `running` past
+  // its workflow's `timeout_ms × 1.5` grace window into `timed_out`.
+  // Wrapped in try/catch so a sweep failure (e.g. transient DB blip)
+  // never blocks engine startup — the next boot will retry.
+  try {
+    const overrideThresholdMs = resolveCrashRecoveryThresholdMs(
+      process.env.SK_EXECUTION_CRASH_RECOVERY_THRESHOLD_MS,
+    );
+    const { recovered } = await recoverCrashedExecutions(
+      db,
+      overrideThresholdMs ? { overrideThresholdMs } : {},
+    );
+    logger.info({
+      module: "queue",
+      action: "crash_recovery_complete",
+      msg: "boot-time crash recovery sweep finished",
+      recovered,
+    });
+  } catch (err) {
+    logger.error({
+      module: "queue",
+      action: "crash_recovery_failed",
+      msg: "boot-time crash recovery sweep failed (non-fatal)",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // Pub/sub listener — catch-up first, then LISTEN.
   const listener = await startListener({ connectionString: env.DATABASE_URL, db });

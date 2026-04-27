@@ -42,7 +42,8 @@ export type DebugRecordKind =
   | "sse.open"
   | "sse.frame"
   | "sse.close"
-  | "sse.transport_error";
+  | "sse.transport_error"
+  | "approval.diff_fetch_failed";
 
 export interface DebugCorrelationFields {
   mode?: DebugMode;

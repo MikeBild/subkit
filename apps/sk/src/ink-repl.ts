@@ -219,7 +219,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
 
   const onPrompt = async (
     text: string,
-    promptOpts?: { permission_mode?: "auto" | "ask" | "plan" },
+    promptOpts?: { permission_mode?: "auto" | "ask" | "plan" | "yolo" },
   ): Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }> => {
     const turn_id = newDebugTurnId("ink");
     const baseCtx = (): DebugCorrelationFields => ({

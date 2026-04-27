@@ -105,7 +105,7 @@ export interface RunLoopParams {
    * is surfaced to the client identically to "ask". See
    * `tool-policies.ts#resolveToolMode` for the full precedence order.
    */
-  permission_mode?: "auto" | "ask" | "plan" | null;
+  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
 }
 
 export interface RunLoopResult {
@@ -308,6 +308,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       await appendSnapshot(p.tenant_id, p.conversation_id, next, p.db);
     },
     abortSignal: turnAbortCtrl.signal,
+    recentUserMessage: p.user_message ?? null,
   };
 
   const route = await resolveModelRoute(p.tenant_id, p.db);

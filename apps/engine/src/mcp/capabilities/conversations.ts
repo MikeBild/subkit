@@ -84,7 +84,7 @@ export interface HandleConversationToolParams {
    * Matches the sk REPL + HTTP surface contract (auto / ask / plan).
    * When undefined, the conversation falls back to the tenant default.
    */
-  permission_mode?: "auto" | "ask" | "plan" | null;
+  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
 }
 
 export interface HandleConversationToolResult {

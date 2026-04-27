@@ -63,10 +63,51 @@ Read it as:
 - `recommended_probe` — when present, this is the cheapest path to verify the
   credential works. Prefer it over a full list endpoint.
 
-If the template lacks a discovered index (older templates, `discover_connector_endpoints`
-returns `discovery_unavailable`), ask the operator for one canonical endpoint
-and use that as the probe target. Never invent `/account`, `/me`, `/projects`,
-or any other path the spec did not advertise.
+### Read `data.suggested_endpoints` first
+
+When the operator's most recent message is in scope, the result includes
+`data.suggested_endpoints` — the top-3 endpoints ranked by relevance to that
+message via a deterministic BM25-lite scorer over `summary + description +
+path + operation_id + parameter names`. Each suggestion is shaped
+`{ endpoint, score, reasons }`:
+
+- `score` — the raw BM25 score; higher = stronger match. The list only
+  contains entries with `score > 0`, so its mere presence means the operator's
+  message intersected the index in a non-trivial way.
+- `reasons` — short strings like `"matched 'droplets' in path"` enumerating
+  which query token hit which field. Use these to explain to the operator
+  *why* you are recommending an endpoint.
+
+Read `suggested_endpoints` BEFORE re-reading the full `endpoints[]` list — it
+is built so you can act in one turn instead of scanning a 200-endpoint index.
+Treat it as a hint, not a constraint: if the operator's intent is broader, you
+still have the complete list available.
+
+### Fallback: discover_systems_from_files
+
+If the template lacks a discovered index (older templates, no public OpenAPI
+spec) the result returns `endpoints: []` and surfaces
+`next_best_actions: ["discover_systems_from_files"]`. When the operator has
+uploaded a knowledge source describing the system — README, architecture
+document, code dump, vendor PDF — call:
+
+```
+discover_systems_from_files({ knowledge_source_id: "<uuid>" })
+```
+
+The tool asks the LLM to enumerate every third-party system the document
+mentions and synthesises provisional connector candidates of shape
+`{ name, kind, base_url_guess, endpoints, auth_kind, data_flow }`. The result
+is cached for 24h keyed off the source upload's id, and persisted as a
+`knowledge_sources` row of `kind: "connector_endpoint_candidates"` so the
+operator can re-read it without paying for another LLM call. Treat the
+candidates as a starting point the operator must refine — never auto-create
+connectors from them without confirmation.
+
+If neither the OpenAPI chain nor a knowledge-source upload yields anything,
+ask the operator for one canonical endpoint and use that as the probe target.
+Never invent `/account`, `/me`, `/projects`, or any other path no spec or
+document advertised.
 
 ## Credential capture — masked form, atomic save, never named
 

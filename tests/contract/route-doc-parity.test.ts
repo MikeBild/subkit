@@ -63,6 +63,7 @@ function collectRoutesFromSource(files: string[]): Set<string> {
 const ENGINE_ROUTE_FILES = [
   "apps/engine/src/http/routes/conversations.ts",
   "apps/engine/src/http/routes/connectors.ts",
+  "apps/engine/src/http/routes/connector-discovery.ts",
   "apps/engine/src/http/routes/workflows.ts",
 ];
 

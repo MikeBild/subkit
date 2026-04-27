@@ -5,7 +5,21 @@ import type { AuthType, DriverName, Environment } from "../connectors/types.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 
 export type ConversationStatus = "active" | "awaiting_input" | "committed" | "abandoned";
-export type ConversationPermissionMode = "auto" | "ask" | "plan";
+/**
+ * Client-advertised permission mode for a conversation turn.
+ *
+ *   - `ask`  — every tenant_write tool stops on a confirmation gate.
+ *   - `plan` — same UX as `ask`; the assistant proposes work without
+ *     auto-executing destructive tools.
+ *   - `auto` — non-dangerous tools auto-confirm; `delete_*` /
+ *     `revoke_*` / `approve_*` (see `dangerous-tools.ts`) still gate.
+ *   - `yolo` — non-sticky escape hatch that lifts the dangerous-tool
+ *     gate too. Hard-armed in the client (typed confirmation),
+ *     auto-expires after 10 turns / 10 minutes, and never persists
+ *     into `draft.session`. Audit rows for tools executed under yolo
+ *     carry `bypassed_confirmation: true` for forensics.
+ */
+export type ConversationPermissionMode = "auto" | "ask" | "plan" | "yolo";
 
 export type ConversationRole = "user" | "assistant" | "tool" | "system";
 

@@ -434,7 +434,7 @@ export class EngineClient {
       memory?: string;
       model?: string;
       title?: string;
-      permission_mode?: "auto" | "ask" | "plan";
+      permission_mode?: "auto" | "ask" | "plan" | "yolo";
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
@@ -445,7 +445,11 @@ export class EngineClient {
   }
   appendConversationMessage(
     id: string,
-    body: { message: string; memory?: string; permission_mode?: "auto" | "ask" | "plan" },
+    body: {
+      message: string;
+      memory?: string;
+      permission_mode?: "auto" | "ask" | "plan" | "yolo";
+    },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
     return this.request("POST", `/v1/conversations/${id}/messages`, body, undefined, debugContext);
@@ -472,7 +476,7 @@ export class EngineClient {
     output: unknown,
     reason?: string,
     debugContext?: DebugCorrelationFields,
-    permission_mode?: "auto" | "ask" | "plan",
+    permission_mode?: "auto" | "ask" | "plan" | "yolo",
   ): Promise<ConversationRunOutcome> {
     const path = `/v1/conversations/${conversationId}/elicitations/${elicitationId}/respond`;
     const body: Record<string, unknown> = { output };

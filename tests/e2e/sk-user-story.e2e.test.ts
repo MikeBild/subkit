@@ -71,76 +71,93 @@ describe("sk CLI user story — real backend", () => {
     expect(toolNames).toContain("start_connector_from_description");
   }, 120_000);
 
-  // Under the post-rebuild contract the canned plan parks the
-  // conversation in `awaiting_input` at its terminal `ask_user_confirm`.
-  // Resolving the elicitation advances the conversation past the
-  // state where `-r conversationId` can resume, and resolving early
-  // causes the harness's commit_intent dispatcher to interact with
-  // the next turn in ways the existing fixture does not anticipate.
-  // The scheduled follow-up routine
-  // `subkit-conversational-rebuild-fixture-followups` will land a
-  // proper repair (rewrite the canned plan or rework `-r` semantics).
-  // Set RUN_PRE_REBUILD_RESUME_TEST=1 to force-run while iterating.
-  const SKIP_TURN2 = process.env.RUN_PRE_REBUILD_RESUME_TEST !== "1";
-  test.skipIf(SKIP_TURN2)(
-    "turn 2 — resuming the same conversation sees the prior tool chain",
-    async () => {
-      // First turn to establish the session.
-      const turn1 = await cli(["--p", "open-meteo again please", "--output", "json"], {
-        env,
-        persona: "admin",
-        timeout: 60_000,
-      });
-      const conversationId = parseJson<{ session_id: string }>(turn1).session_id;
+  // The canned open-meteo plan parks the conversation in `awaiting_input`
+  // at its terminal `ask_user_confirm` before `commit_draft`. The 409
+  // `pending_elicitation_blocked` guard would refuse a turn-2 message
+  // until the elicitation is resolved. We `decline` (confirmed:false) so
+  // the conversation stays in `active` rather than advancing to
+  // `committed` — approving would leave nothing for `-r` to resume.
+  test("turn 2 — resuming the same conversation sees the prior tool chain", async () => {
+    // First turn to establish the session.
+    const turn1 = await cli(["--p", "open-meteo again please", "--output", "json"], {
+      env,
+      persona: "admin",
+      timeout: 60_000,
+    });
+    const conversationId = parseJson<{ session_id: string }>(turn1).session_id;
 
-      // The canned plan parks the conversation in `awaiting_input` at
-      // its terminal `ask_user_confirm` before `commit_draft`. Resolve
-      // that elicitation before resuming so the second turn isn't
-      // blocked by the 409 `pending_elicitation_blocked` guard.
-      const turn1Detail = (await (
-        await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
-          headers: bearer(env),
-        })
-      ).json()) as {
-        elicitations?: Array<{ id: string; status: string }>;
-      };
-      const pending = (turn1Detail.elicitations ?? []).find((e) => e.status === "pending");
-      if (pending) {
-        // Decline the commit — leaves the conversation in `active`
-        // (no commit) so the resume turn has somewhere to continue.
-        // Approving would advance the conversation to `committed`,
-        // and `-r conversationId` would have nothing to resume.
-        await fetch(
-          `${env.baseUrl}/v1/conversations/${conversationId}/elicitations/${pending.id}/respond`,
-          {
-            method: "POST",
-            headers: { ...bearer(env), "content-type": "application/json" },
-            body: JSON.stringify({ output: { confirmed: false } }),
-          },
-        );
+    // Poll the detail endpoint for `resume_summary.pending_approval`
+    // (the canonical surface for an outstanding ask_user_confirm).
+    type DetailShape = {
+      conversation: { status: string };
+      tool_calls: unknown[];
+      resume_summary?: {
+        pending_approval?: { id: string; tool_name: string; summary: string } | null;
+      } | null;
+    };
+    let pendingId: string | null = null;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const res = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
+        headers: bearer(env),
+      });
+      const body = (await res.json()) as DetailShape;
+      const candidate = body.resume_summary?.pending_approval ?? null;
+      if (candidate) {
+        pendingId = candidate.id;
+        break;
       }
+      if (body.conversation.status !== "awaiting_input") break;
+      // allow-wall-clock: e2e poll for HTTP-side state to settle.
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
 
-      // Second turn, resuming the session via `-r <id>`.
-      const turn2 = await cli(["--p", "status check", "-r", conversationId, "--output", "json"], {
-        env,
-        persona: "admin",
-        timeout: 60_000,
+    if (pendingId) {
+      // Decline the commit — leaves the conversation in `active` so
+      // the resume turn has somewhere to continue. Approving would
+      // advance to `committed`, and `-r conversationId` would have
+      // nothing left to resume.
+      const respondRes = await fetch(
+        `${env.baseUrl}/v1/conversations/${conversationId}/elicitations/${pendingId}/respond`,
+        {
+          method: "POST",
+          headers: { ...bearer(env), "content-type": "application/json" },
+          body: JSON.stringify({ output: { confirmed: false } }),
+        },
+      );
+      expect(respondRes.ok).toBe(true);
+    }
+
+    // Wait until the conversation exits `awaiting_input` so the next
+    // turn is not blocked by the 409 pending_elicitation_blocked guard.
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const res = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
+        headers: bearer(env),
       });
-      expect(turn2.exitCode).toBe(0);
-      const body2 = parseJson<{ session_id: string }>(turn2);
-      expect(body2.session_id).toBe(conversationId);
+      const body = (await res.json()) as DetailShape;
+      if (body.conversation.status !== "awaiting_input") break;
+      // allow-wall-clock: e2e poll for HTTP-side state to settle.
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
 
-      // The detail endpoint must still find the conversation and its
-      // original tool_calls; adding a second turn does not delete them.
-      const detail = (await (
-        await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
-          headers: bearer(env),
-        })
-      ).json()) as { tool_calls: unknown[] };
-      expect(detail.tool_calls.length).toBeGreaterThan(0);
-    },
-    150_000,
-  );
+    // Second turn, resuming the session via `-r <id>`.
+    const turn2 = await cli(["--p", "status check", "-r", conversationId, "--output", "json"], {
+      env,
+      persona: "admin",
+      timeout: 60_000,
+    });
+    expect(turn2.exitCode).toBe(0);
+    const body2 = parseJson<{ session_id: string }>(turn2);
+    expect(body2.session_id).toBe(conversationId);
+
+    // The detail endpoint must still find the conversation and its
+    // original tool_calls; adding a second turn does not delete them.
+    const detail = (await (
+      await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
+        headers: bearer(env),
+      })
+    ).json()) as { tool_calls: unknown[] };
+    expect(detail.tool_calls.length).toBeGreaterThan(0);
+  }, 150_000);
 
   test("stream-json output emits ordered TurnEvent frames", async () => {
     const r = await cli(["--p", "hello engine", "--output", "stream-json"], {

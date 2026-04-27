@@ -34,7 +34,7 @@ import type {
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function normalizePermissionMode(value: unknown): ConversationPermissionMode | null {
-  return value === "auto" || value === "ask" || value === "plan" ? value : null;
+  return value === "auto" || value === "ask" || value === "plan" || value === "yolo" ? value : null;
 }
 
 function getStoredPermissionMode(
@@ -52,6 +52,10 @@ async function persistPermissionModeIfChanged(params: {
 }): Promise<void> {
   const current = getStoredPermissionMode(params.draft);
   const nextMode = normalizePermissionMode(params.permission_mode);
+  // Non-sticky modes (yolo) never overwrite the stored sticky mode.
+  // Treat them as a no-op so the next non-yolo turn picks up the
+  // operator's previous auto/ask/plan choice.
+  if (nextMode === "yolo") return;
   if (current === nextMode) return;
   const baseDraft = params.draft ?? createEmptyDraftDocument();
   await appendSnapshot(
@@ -96,7 +100,7 @@ export interface CreateConversationParams {
   /** Optional human title (sets conversations.title). */
   title?: string | null;
   /** Client-supplied permission mode for the initial turn. */
-  permission_mode?: "auto" | "ask" | "plan" | null;
+  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   /** Real runtime context (engine_url, tenant_slug, actor email/role) — see runtime-context.ts. */
   runtime_context?: {
     engine_url?: string;
@@ -271,7 +275,7 @@ export interface AppendMessageParams {
     actor_role?: string;
   };
   /** Client-supplied permission mode for this turn. */
-  permission_mode?: "auto" | "ask" | "plan" | null;
+  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
 }
 
 export async function appendUserMessage(
@@ -490,7 +494,22 @@ export async function respondElicitation(
   // a normal tool result with `source: "harness_auto_persist"`.
   // Decline path injects a synthetic decline result so the next turn
   // carries the signal without firing the actual write.
-  const { maybeAutoPersistFromElicitation } = await import("./persistence/auto-persist.ts");
+  const { maybeAutoPersistFromElicitation, maybeCacheDraftCredentialFromElicitation } =
+    await import("./persistence/auto-persist.ts");
+  // Cache the credential first — if `auto-persist` then fires a
+  // successful `save_connector_draft`, `saveConnectorAtomic` clears
+  // the cache as part of the same call. The cache is what
+  // `probe_connector_draft` reads when no `connector_credentials`
+  // row exists yet (synthetic draft id ≠ UUID).
+  await maybeCacheDraftCredentialFromElicitation({
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    elicitation_output: p.output,
+    elicitation: {
+      tool_name: resolved.tool_name,
+    },
+    db: exec,
+  });
   await maybeAutoPersistFromElicitation({
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,

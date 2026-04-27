@@ -76,6 +76,7 @@ import {
 } from "./repl/mention-picker.tsx";
 import { MessageContent } from "./repl/message-content.tsx";
 import { type NoticeItem, NoticeStack, type NoticeTone } from "./repl/notices.tsx";
+import { OnboardingWizard } from "./repl/onboarding-wizard.tsx";
 import {
   createPasteStore,
   expandRefs,
@@ -142,7 +143,7 @@ export interface InkAppProps {
   /** Called when the user submits a plain prompt (non-slash). */
   onPrompt: (
     text: string,
-    opts?: { permission_mode?: "auto" | "ask" | "plan" },
+    opts?: { permission_mode?: "auto" | "ask" | "plan" | "yolo" },
   ) => Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }>;
   /** Called when the user submits a slash command other than `/exit`. */
   onSlash?: (
@@ -197,11 +198,59 @@ export interface InkAppProps {
 const SPINNER_FRAMES = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"] as const;
 const PENDING_NOTICE_PREFIX = "Waiting for input:";
 
+// Field names whose values must be redacted in the transcript even
+// when the form schema does not mark them sensitive. Defense in depth
+// for malformed `ask_user_form` calls — a renderer that lazily passes
+// the secret through is the worst possible failure mode.
+const SENSITIVE_FIELD_NAME_RE =
+  /(?:^|_)(?:token|secret|password|passwd|api[-_]?key|access[-_]?key|client[-_]?secret|auth)(?:$|_)/i;
+
+interface FormFieldMeta {
+  name: string;
+  type?: string;
+  sensitive?: boolean;
+  label?: string;
+}
+
+/** Pull the form's field schema out of `PendingElicitation.input`,
+ *  if any. Returns a Map keyed by field name → metadata. */
+function readFormFieldSchema(input: unknown): Map<string, FormFieldMeta> {
+  const out = new Map<string, FormFieldMeta>();
+  if (!input || typeof input !== "object") return out;
+  const fields = (input as { fields?: unknown }).fields;
+  if (!Array.isArray(fields)) return out;
+  for (const f of fields) {
+    if (!f || typeof f !== "object") continue;
+    const obj = f as Record<string, unknown>;
+    if (typeof obj.name !== "string") continue;
+    out.set(obj.name, {
+      name: obj.name,
+      ...(typeof obj.type === "string" ? { type: obj.type } : {}),
+      ...(typeof obj.sensitive === "boolean" ? { sensitive: obj.sensitive } : {}),
+      ...(typeof obj.label === "string" ? { label: obj.label } : {}),
+    });
+  }
+  return out;
+}
+
+function isSensitiveField(name: string, meta: FormFieldMeta | undefined): boolean {
+  if (meta?.sensitive === true) return true;
+  if (meta?.type === "password") return true;
+  return SENSITIVE_FIELD_NAME_RE.test(name);
+}
+
+function truncateForTranscript(value: string): string {
+  return value.length > 40 ? `${value.slice(0, 37)}…` : value;
+}
+
 // Render an elicitation's `output` payload as a short, human-readable
 // string for the transcript. Keeps the assistant turn auditable —
 // without this the scrollback silently mutates ("approve" disappears
-// from the record after the next LLM response).
-function renderElicitAnswer(output: unknown, reason?: string): string {
+// from the record after the next LLM response). Sensitive form fields
+// (type=password, sensitive:true, or a name like `token`/`api_key`)
+// render as `<name>=***` so the audit trail names what was provided
+// without leaking the secret.
+export function renderElicitAnswer(output: unknown, input?: unknown, reason?: string): string {
   const suffix = reason ? ` — ${reason}` : "";
   if (output === null || output === undefined) return `(no answer)${suffix}`;
   if (typeof output === "string") return `${output}${suffix}`;
@@ -217,14 +266,40 @@ function renderElicitAnswer(output: unknown, reason?: string): string {
     if (typeof obj.value === "string") return `${obj.value}${suffix}`;
     if (typeof obj.choice === "string") return `${obj.choice}${suffix}`;
     if (Array.isArray(obj.choices)) return `${(obj.choices as unknown[]).join(", ")}${suffix}`;
-    // Generic form output — show the first few keys inline.
+
+    // Form output — render each field, redacting sensitive ones based
+    // on the input schema (and a defensive name heuristic). Form
+    // submissions arrive shaped as either `{values: {...}}` or `{...}`
+    // depending on the engine path; handle both.
+    const values =
+      typeof obj.values === "object" && obj.values !== null
+        ? (obj.values as Record<string, unknown>)
+        : obj;
+    const schema = readFormFieldSchema(input);
     const parts: string[] = [];
-    for (const [k, v] of Object.entries(obj)) {
-      if (typeof v === "string") parts.push(`${k}=${v}`);
-      else if (typeof v === "number" || typeof v === "boolean") parts.push(`${k}=${v}`);
+    for (const [k, v] of Object.entries(values)) {
+      const meta = schema.get(k);
+      const sensitive = isSensitiveField(k, meta);
+      if (sensitive) {
+        // Render the field name (and "***") even when the value is
+        // missing — this signals "credential collected" without
+        // exposing the secret.
+        parts.push(`${k}=***`);
+      } else if (typeof v === "string") {
+        parts.push(`${k}=${truncateForTranscript(v)}`);
+      } else if (typeof v === "number" || typeof v === "boolean") {
+        parts.push(`${k}=${v}`);
+      }
       if (parts.length >= 3) break;
     }
     if (parts.length > 0) return `${parts.join(", ")}${suffix}`;
+
+    // Output empty / opaque, but the schema names fields — say what
+    // the user filled (by name) so the audit is not just "(answered)".
+    if (schema.size > 0) {
+      const names = [...schema.keys()].slice(0, 3).join(", ");
+      return `(filled: ${names})${suffix}`;
+    }
   }
   return `(answered)${suffix}`;
 }
@@ -372,6 +447,121 @@ const ToolCard: React.FC<ToolCardProps> = memo(({ call, columns, detailed }) => 
   );
 });
 ToolCard.displayName = "ToolCard";
+
+// ---------- Next-best-actions chips ----------
+//
+// When an engine tool returns `{ ok: false, next_best_actions: [...] }`,
+// the suggested follow-up tools render below the tool card as inverse-
+// styled numbered chips. The user can either type
+// `please run <tool_name>` themselves or — while the composer is empty
+// — press the chip number (1..9) to dispatch a synthetic message
+// through the same submit path.
+//
+// The shape lives at one of two paths in `call.result`:
+//   * top-level: `{ ok: false, next_best_actions: [...] }`
+//   * nested under `data`: `{ ok: false, data: { next_best_actions: [...] } }`
+// Both are produced by different tools today; we accept either.
+
+const MAX_CHIPS = 9;
+
+export function extractNextBestActions(result: unknown): string[] {
+  if (!result || typeof result !== "object") return [];
+  const top = result as Record<string, unknown>;
+  if (top.ok !== false) return [];
+  const fromTop = Array.isArray(top.next_best_actions) ? top.next_best_actions : null;
+  const data = typeof top.data === "object" && top.data !== null ? top.data : null;
+  const fromData =
+    data && Array.isArray((data as Record<string, unknown>).next_best_actions)
+      ? ((data as Record<string, unknown>).next_best_actions as unknown[])
+      : null;
+  const raw = fromTop ?? fromData ?? [];
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry === "string" && entry.trim().length > 0) out.push(entry.trim());
+    if (out.length >= MAX_CHIPS) break;
+  }
+  return out;
+}
+
+interface NextBestActionsChipsProps {
+  actions: string[];
+}
+
+const NextBestActionsChips: React.FC<NextBestActionsChipsProps> = memo(({ actions }) => {
+  const theme = useTheme();
+  if (actions.length === 0) return null;
+  return (
+    <Box>
+      <Text color={theme.severity.dim}> suggested next: </Text>
+      {actions.map((action, idx) => (
+        <Box key={`chip-${idx}-${action}`}>
+          <Text inverse>{` [${idx + 1}] ${action} `}</Text>
+          <Text> </Text>
+        </Box>
+      ))}
+    </Box>
+  );
+});
+NextBestActionsChips.displayName = "NextBestActionsChips";
+
+// ---------- Setup-validation banner ----------
+//
+// One-line orange/red banner rendered ABOVE the welcome panel when
+// `GET /v1/diagnostics/setup` reports a non-`ok` overall status.
+// Sticky for the session — the same node is emitted every render
+// until the status flips back to `ok`. The host (`ink-repl.ts`)
+// owns the polling cadence; this component is a pure renderer.
+//
+//   warn    →  ⚠ Setup: {N} warning(s) — run /setup for details
+//   blocked →  ✗ Setup: {N} blocking issue(s) — run /setup to resolve
+//
+// Colors come from the active theme so light-on-light terminals don't
+// produce an unreadable result. The banner must NOT redraw or flash
+// on every render — wrapping in <memo> below pins the props at the
+// snapshot identity, so as long as `setupSnapshot` doesn't change
+// React reuses the existing node.
+
+function renderSetupBanner(snapshot: SetupValidationResponse): React.ReactNode {
+  return (
+    <SetupBanner
+      key={`setup-banner-${snapshot.overall_status}`}
+      status={snapshot.overall_status}
+      warnings={snapshot.summary_counts.warnings}
+      blockers={snapshot.summary_counts.blockers}
+    />
+  );
+}
+
+interface SetupBannerProps {
+  status: "warn" | "blocked" | "ok";
+  warnings: number;
+  blockers: number;
+}
+
+const SetupBanner: React.FC<SetupBannerProps> = memo(({ status, warnings, blockers }) => {
+  const theme = useTheme();
+  if (status === "ok") return null;
+  if (status === "warn") {
+    const label = `${warnings} warning${warnings === 1 ? "" : "s"}`;
+    return (
+      <Box>
+        <Text color={theme.severity.warning} bold>
+          {`⚠ Setup: ${label} — run /setup for details`}
+        </Text>
+      </Box>
+    );
+  }
+  // blocked
+  const label = `${blockers} blocking issue${blockers === 1 ? "" : "s"}`;
+  return (
+    <Box>
+      <Text color={theme.severity.error} bold>
+        {`✗ Setup: ${label} — run /setup to resolve`}
+      </Text>
+    </Box>
+  );
+});
+SetupBanner.displayName = "SetupBanner";
 
 // ---------- Message row (Claude Code style) ----------
 
@@ -1009,15 +1199,35 @@ export const InkApp: React.FC<InkAppProps> = ({
   const [notices, setNotices] = useState<TranscriptNotice[]>([]);
   const [pane, setPane] = useState<PaneSpec | null>(null);
   const setupBannerShownRef = useRef(false);
+  // Latest `next_best_actions` list rendered to the operator. The
+  // digit-key handler reads this when the composer is empty so 1..9
+  // dispatches `please run <action>` for the corresponding chip.
+  // Updated post-render via a useEffect that mirrors the latest
+  // chips computed while walking tool calls.
+  const latestChipsRef = useRef<string[]>([]);
   // Inline Ctrl-R history search (above-composer widget). The old
   // modal `<HistorySearch>` pane is still available via `historyOpen`
   // as a fallback for constrained terminals.
   const [historyOpen, setHistoryOpen] = useState(false);
   const [inlineSearchOpen, setInlineSearchOpen] = useState(false);
-  // Permission mode — cycled by Shift-Tab. Seed from the prop so hosts
-  // that persist a preference can drive it, but own the state locally
-  // once the user interacts.
+  // Permission mode — cycled by Shift-Tab through ask/auto/plan. yolo
+  // is intentionally NOT in the cycle: it must be armed explicitly via
+  // the `/yolo` slash command (with a typed-yes confirmation) and
+  // expires automatically after 10 turns / 10 minutes whichever comes
+  // first. Seed from the prop so hosts that persist a preference can
+  // drive it, but own the state locally once the user interacts.
   const [activeMode, setActiveMode] = useState<PermissionMode>(permissionMode);
+  // Tracks the previous sticky mode so `/yolo off` (or auto-expiry)
+  // can restore exactly what the operator had selected before arming.
+  const preYoloModeRef = useRef<PermissionMode>(permissionMode);
+  // Yolo arming guard — when set, the next composer submission must
+  // be the literal `yes` to confirm arming. Anything else cancels.
+  const [awaitingYoloArm, setAwaitingYoloArm] = useState<boolean>(false);
+  // yolo expiry tracking. Both counters reset every time yolo arms.
+  const yoloArmedAtRef = useRef<number | null>(null);
+  const yoloTurnCountRef = useRef<number>(0);
+  const YOLO_MAX_TURNS = 10;
+  const YOLO_MAX_DURATION_MS = 10 * 60 * 1000;
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("chat");
   const tip = useRef<string>(pickTip());
   const starterActions = useMemo(() => starterActionsForPersona(persona.label), [persona.label]);
@@ -1041,6 +1251,34 @@ export const InkApp: React.FC<InkAppProps> = ({
       // silent — missing / locked file shouldn't crash the REPL
     }
   }, [effectiveHistoryPath, persona.tenant]);
+
+  // Yolo time-based expiry. When yolo is armed, schedule a single
+  // disarm at YOLO_MAX_DURATION_MS after the arming time. Reuse
+  // `activeMode` as the dependency: arming sets it to "yolo" so this
+  // effect fires; disarming sets it back, which invalidates the
+  // pending timer via the cleanup. The turn-based path in
+  // `handleSubmit` covers the case of an active operator hitting the
+  // 10-turn ceiling first.
+  useEffect(() => {
+    if (activeMode !== "yolo") return;
+    const armedAt = yoloArmedAtRef.current ?? Date.now();
+    const remaining = YOLO_MAX_DURATION_MS - (Date.now() - armedAt);
+    const timer = setTimeout(
+      () => {
+        if (activeMode === "yolo") {
+          const restored = preYoloModeRef.current;
+          yoloArmedAtRef.current = null;
+          yoloTurnCountRef.current = 0;
+          setActiveMode(restored);
+          showInfo(
+            `yolo expired after ${Math.round(YOLO_MAX_DURATION_MS / 60_000)} min — restored mode ${restored}.`,
+          );
+        }
+      },
+      Math.max(remaining, 0),
+    );
+    return () => clearTimeout(timer);
+  }, [activeMode]);
 
   // -------- Paste store + busy-turn command queue --------
   const pasteStoreRef = useRef<PasteStore>(createPasteStore());
@@ -1075,12 +1313,16 @@ export const InkApp: React.FC<InkAppProps> = ({
     },
     [pushNotice],
   );
-  const showWarning = useCallback(
+  // Kept around for future warning notices (e.g. yolo expiry, queue
+  // overflow). The setup-validation banner that previously used this
+  // moved to a sticky row above the welcome panel — see SetupBanner.
+  const _showWarning = useCallback(
     (message: string, persistent = true) => {
       pushNotice("warning", message, persistent);
     },
     [pushNotice],
   );
+  void _showWarning;
   const showError = useCallback(
     (message: string) => {
       pushNotice("error", message, true);
@@ -1125,21 +1367,39 @@ export const InkApp: React.FC<InkAppProps> = ({
     });
   }, [session.pendingElicitation]);
 
+  // Sync the latest-chips ref whenever the tool-call list changes. The
+  // ref drives the digit-key shortcut in `useInput` below — pressing
+  // 1..9 with an empty composer dispatches `please run <action>` for
+  // the matching chip. We walk the calls in chronological order and
+  // pick the last one whose `next_best_actions` list is non-empty.
+  // Watching `session.toolCalls` (not the deferred copy) keeps the
+  // shortcut responsive on the very next render frame after a tool
+  // result lands — useDeferredValue can lag a paint or two on slow
+  // hosts and the operator should not have to wait for that.
   useEffect(() => {
-    if (setupBannerShownRef.current) return;
-    const canShowSetup =
-      persona.probe.allows("audit:read") || persona.probe.allows("identity:read");
-    if (!canShowSetup) return;
-    if (!setupSnapshot || setupSnapshot.overall_status === "ok") return;
-    const blockers = setupSnapshot.summary_counts.blockers;
-    const warnings = setupSnapshot.summary_counts.warnings;
-    const blockerLabel = `${blockers} blocker${blockers === 1 ? "" : "s"}`;
-    const warningLabel = `${warnings} warning${warnings === 1 ? "" : "s"}`;
-    showWarning(
-      `setup ${setupSnapshot.overall_status} · ${blockerLabel}, ${warningLabel} · /setup`,
-    );
+    let next: string[] = [];
+    for (const call of session.toolCalls) {
+      const chips = extractNextBestActions(call.result);
+      if (chips.length > 0) next = chips;
+    }
+    latestChipsRef.current = next;
+  }, [session.toolCalls]);
+
+  // Setup-validation banner gating. The actual one-line banner renders
+  // inside `welcomeRow` (see below) so it sits above the welcome panel
+  // as the very first scrollback row. This effect only owns the
+  // "have we already announced this status" memo so a repeated
+  // `setupSnapshot` push (e.g. after a manual `/setup` refresh) does
+  // not flash the banner twice in the notice stack. The render path is
+  // sticky on its own — it emits the same node every render until the
+  // status flips back to `ok`.
+  useEffect(() => {
+    if (!setupSnapshot || setupSnapshot.overall_status === "ok") {
+      setupBannerShownRef.current = false;
+      return;
+    }
     setupBannerShownRef.current = true;
-  }, [setupSnapshot, showWarning]);
+  }, [setupSnapshot]);
 
   // -------- Status line ticker --------
   useEffect(() => {
@@ -1386,7 +1646,10 @@ export const InkApp: React.FC<InkAppProps> = ({
       // produced the answer out of thin air. Without this, an
       // approve-then-next-turn flow shows the LLM saying "Approve"
       // with no visible source. See bug E in the fix plan.
-      const answerText = renderElicitAnswer(output, reason);
+      // Pass the elicitation's `input` so renderElicitAnswer can
+      // redact sensitive form fields based on the schema instead of
+      // collapsing every form to `(answered)`.
+      const answerText = renderElicitAnswer(output, session.pendingElicitation?.input, reason);
       const withAnswer: SkSessionState = {
         ...session,
         messages: [...session.messages, { role: "user", content: answerText }],
@@ -1447,6 +1710,39 @@ export const InkApp: React.FC<InkAppProps> = ({
       setInput(EMPTY_BUFFER);
       historyDraftRef.current = null;
       if (!trimmed) return;
+      // Yolo expiry — by-turn. Auto-disarms after YOLO_MAX_TURNS
+      // turns so a tab left open mid-task doesn't keep destructive
+      // confirmations bypassed indefinitely.
+      if (activeMode === "yolo") {
+        if (yoloTurnCountRef.current >= YOLO_MAX_TURNS) {
+          const restored = preYoloModeRef.current;
+          yoloArmedAtRef.current = null;
+          yoloTurnCountRef.current = 0;
+          setActiveMode(restored);
+          showInfo(`yolo expired after ${YOLO_MAX_TURNS} turns — restored mode ${restored}.`);
+        } else {
+          yoloTurnCountRef.current += 1;
+        }
+      }
+      // Yolo arming intercept. The `/yolo` slash set
+      // `awaitingYoloArm = true`; the very next submit must be the
+      // literal `yes`. Anything else cancels and goes back to the
+      // previous mode without firing the prompt at the engine.
+      if (awaitingYoloArm) {
+        setAwaitingYoloArm(false);
+        if (trimmed.toLowerCase() === "yes") {
+          yoloArmedAtRef.current = Date.now();
+          yoloTurnCountRef.current = 0;
+          setActiveMode("yolo");
+          showInfo(
+            "yolo armed — destructive tools will not prompt. Auto-disarms after " +
+              `${YOLO_MAX_TURNS} turns or ${Math.round(YOLO_MAX_DURATION_MS / 60_000)} min. Type \`/yolo off\` to disarm now.`,
+          );
+        } else {
+          showInfo(`/yolo: cancelled — staying in ${preYoloModeRef.current}.`);
+        }
+        return;
+      }
       // PR5 input-side credential filter, branch 2 — initial detection.
       // Run after we've cleared the field but before the slash /
       // network branches so a pasted secret never reaches the engine
@@ -1531,6 +1827,45 @@ export const InkApp: React.FC<InkAppProps> = ({
           const confirmed = cmd.name === "approve";
           const reason = !confirmed && reasonTokens.length > 0 ? reasonTokens.join(" ") : undefined;
           await submitElicitationResponse(elicitationId, { confirmed }, reason);
+          return;
+        }
+        if (cmd.name === "yolo") {
+          // Refuse arming while a confirmation is pending — the
+          // operator might resolve a confirm-step under a mode they
+          // didn't intend, which is exactly the foot-gun yolo opens
+          // up.
+          if (session.pendingElicitation) {
+            showError("/yolo: cannot arm while an elicitation is pending — resolve it first.");
+            return;
+          }
+          const arg = trimmed.split(/\s+/).slice(1)[0]?.toLowerCase();
+          if (arg === "off" || arg === "disarm") {
+            if (activeMode !== "yolo") {
+              showInfo("/yolo: not currently armed.");
+              return;
+            }
+            yoloArmedAtRef.current = null;
+            yoloTurnCountRef.current = 0;
+            setActiveMode(preYoloModeRef.current);
+            setAwaitingYoloArm(false);
+            showInfo(`/yolo: disarmed — restored mode ${preYoloModeRef.current}.`);
+            return;
+          }
+          if (activeMode === "yolo") {
+            showInfo("/yolo: already armed. Type `/yolo off` to disarm.");
+            return;
+          }
+          if (awaitingYoloArm) {
+            showInfo("/yolo: already awaiting confirmation — type `yes` to arm.");
+            return;
+          }
+          preYoloModeRef.current = activeMode;
+          setAwaitingYoloArm(true);
+          showInfo(
+            "/yolo: type `yes` (literally) and Enter to arm. " +
+              "Yolo lifts the delete/revoke/approve confirmation gate for the " +
+              "next 10 turns / 10 min. Anything else cancels.",
+          );
           return;
         }
         if (onSlash) {
@@ -1751,6 +2086,32 @@ export const InkApp: React.FC<InkAppProps> = ({
       // Keep the guard in case isActive lags one frame behind a
       // freshly-arrived elicit_request event.
       if (elicitOpen) return;
+
+      // --- Next-best-actions chip shortcut (digits 1..9) -------------
+      // Wins over the welcome-action shortcut below: a freshly-failed
+      // tool with chips might land in a session that hasn't pushed an
+      // assistant message yet (so showWelcomeActions is still true),
+      // and the operator should still be able to press 1..9 to run the
+      // suggested action. Empty-input gate is unchanged so the
+      // shortcut never breaks numeric input the user is typing.
+      if (
+        char &&
+        char.length === 1 &&
+        char >= "1" &&
+        char <= "9" &&
+        !key.ctrl &&
+        !key.meta &&
+        input.value.length === 0 &&
+        latestChipsRef.current.length > 0
+      ) {
+        const chipIdx = char.charCodeAt(0) - "1".charCodeAt(0);
+        const action = latestChipsRef.current[chipIdx];
+        if (action) {
+          void handleSubmit(`please run ${action}`);
+          return;
+        }
+      }
+
       if (showWelcomeActions && char && !key.ctrl && !key.meta) {
         if (char === starterActions[0]?.key) {
           void handleSubmit("/resume");
@@ -2123,10 +2484,14 @@ export const InkApp: React.FC<InkAppProps> = ({
         flushBackgroundGroup(pendingBackgroundCalls, `${keyPrefix}-${bgIdx++}`);
         pendingBackgroundCalls = [];
       }
+      const chips = extractNextBestActions(call.result);
       const authoringCard = inspectView ? null : renderAuthoringCard(call, transcriptMode);
       if (authoringCard) {
         transcriptRows.push(authoringCard);
         if (inspectView || call.status === "failed") pushForegroundLogs(call.id);
+        if (chips.length > 0) {
+          transcriptRows.push(<NextBestActionsChips key={`chips-${call.id}`} actions={chips} />);
+        }
         continue;
       }
       if (inspectView || call.status === "failed") {
@@ -2134,6 +2499,15 @@ export const InkApp: React.FC<InkAppProps> = ({
           <ToolCard key={`tc-${call.id}`} call={call} columns={columns} detailed={inspectView} />,
         );
         pushForegroundLogs(call.id);
+        if (chips.length > 0) {
+          transcriptRows.push(<NextBestActionsChips key={`chips-${call.id}`} actions={chips} />);
+        }
+      } else if (chips.length > 0) {
+        // Tool succeeded but still suggested next actions (rare —
+        // typically `ok: true` won't have a chip list, but the helper
+        // already gates on `ok: false`). Surface the chips even when
+        // we suppress the verbose ToolCard in chat mode.
+        transcriptRows.push(<NextBestActionsChips key={`chips-${call.id}`} actions={chips} />);
       }
     }
     if (inspectView && pendingBackgroundCalls.length > 0) {
@@ -2235,8 +2609,24 @@ export const InkApp: React.FC<InkAppProps> = ({
   // between the scrolled-out transcript and the composer once the
   // committed history exceeded one screenful — the cause of the "banner
   // sitzt falsch" reflow visible in long sessions.
+  // Setup-validation banner. Rendered as a one-line orange/red row
+  // ABOVE the welcome panel so the operator sees a degraded engine
+  // before they read the first tip. Visibility gated on:
+  //   * setupSnapshot present and overall_status !== "ok"
+  //   * persona can read /v1/diagnostics (admin or member)
+  // Operators without `audit:read` / `identity:read` cannot meaningfully
+  // act on the diagnostics endpoint, so we suppress the banner for
+  // them — matches the existing `/setup` slash gating.
+  const canShowSetupBanner =
+    persona.probe.allows("audit:read") || persona.probe.allows("identity:read");
+  const setupBannerNode =
+    canShowSetupBanner && setupSnapshot && setupSnapshot.overall_status !== "ok"
+      ? renderSetupBanner(setupSnapshot)
+      : null;
+
   const welcomeRow = (
     <Box key="welcome" flexDirection="column">
+      {setupBannerNode}
       <WelcomeBanner
         persona={persona.label}
         tenant={persona.tenant}
@@ -2357,6 +2747,29 @@ export const InkApp: React.FC<InkAppProps> = ({
       ) : null}
       {pane?.kind === "setup-diagnostics" ? (
         <SetupDiagnosticsPane pane={pane} onDismiss={() => setPane(null)} />
+      ) : null}
+      {pane?.kind === "onboarding-wizard" ? (
+        <OnboardingWizard
+          templates={pane.templates}
+          onProbe={pane.onProbe}
+          onSave={pane.onSave}
+          onDone={(result) => {
+            // Hand the terminal status back to the slash-handler hook
+            // so it can log a notice if it wants, then dismiss the
+            // pane. The wizard component itself does not own pane
+            // lifecycle — that's the host's job.
+            const { onComplete } = pane;
+            onComplete(result);
+            setPane(null);
+            if (result.status === "saved") {
+              showInfo("✓ Connector created — run /connectors list to see it");
+            } else if (result.status === "skipped") {
+              showInfo("onboarding skipped");
+            } else {
+              showInfo("onboarding cancelled");
+            }
+          }}
+        />
       ) : null}
       {pane?.kind === "text" ? (
         <Pane

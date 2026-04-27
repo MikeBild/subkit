@@ -229,7 +229,10 @@ describe("ink-app: journey 01 — admin mounts the REPL", () => {
     });
     await tick();
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("setup warn");
+    // Sticky one-liner above the welcome panel — the new banner format
+    // calls out the action verb ("/setup") and uses the warn glyph.
+    expect(frame).toContain("⚠ Setup");
+    expect(frame).toContain("2 warnings");
     expect(frame).toContain("/setup");
     instance.unmount();
   });

@@ -108,6 +108,17 @@ Discovery results cache for 24 hours per tenant in `knowledge_sources` of kind `
 
 The conversational agent is expected to call `discover_connector_endpoints` BEFORE proposing endpoints to a workflow. Endpoint guesses against an unfamiliar API are an anti-pattern.
 
+CI scripts and SDK callers can drive the same pipeline directly via `POST /v1/connectors/discover`. The route requires the `connector:read` permission and accepts one of `template_id`, `ingestion_url`, or `base_url` plus an optional `force_refresh: true`.
+
+```bash
+curl -X POST "$SK_BASE_URL/v1/connectors/discover" \
+  -H "Authorization: Bearer $SK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "template_id": "stripe" }'
+```
+
+The response is `{ source: "cache" | "fresh", cache_key, result: DiscoveryResult }`. Failed discoveries (every strategy bailed) surface as HTTP 503 with `code: "discovery_unavailable"`; bad input (no template_id / base_url / ingestion_url, or an unknown template id) is HTTP 400.
+
 ---
 
 ## Ad-hoc Invocation
@@ -117,6 +128,17 @@ Once a connector is persisted, the agent can invoke any endpoint against it for 
 `call_connector` is RBAC-checked (`connector:read`), audited (`connector.invoked`), and always confirm-before-execution per the conversational tool policies. Response bodies above ~8 KB are truncated in the tool result with `truncated: true` and `body_byte_count` so the prompt budget stays bounded; the full response is available via the egress telemetry.
 
 Driver coverage: HTTP and GraphQL. For Postgres / S3 / SQL Server / file-transfer drivers, `call_connector` returns a structured `driver_not_supported_for_call_connector` envelope and points at `start_workflow_from_goal` as the path to author a single-step workflow that invokes the driver.
+
+The same surface is reachable as `POST /v1/connectors/{id}/call` for CI scripts and SDK callers. The route applies the saved credential, emits a `connector.invoked` audit row, and returns `{ status, headers, body, latency_ms, body_byte_count, truncated, metadata }`.
+
+```bash
+curl -X POST "$SK_BASE_URL/v1/connectors/$CONNECTOR_ID/call" \
+  -H "Authorization: Bearer $SK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "method": "GET", "path": "/v2/droplets", "query": { "per_page": 10 } }'
+```
+
+Errors are typed: 403 on policy denial, 404 when the connector id is unknown, 422 when the connector exists but is unprocessable (no credential, unsupported driver, GraphQL body shape mismatch). Unsupported drivers carry `details.error_code: "driver_not_supported_for_call_connector"` so SDK callers can disambiguate without parsing the message.
 
 ---
 

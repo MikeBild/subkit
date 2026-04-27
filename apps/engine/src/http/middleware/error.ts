@@ -26,7 +26,7 @@ function envelope(
       trace_id: c.get("trace_id"),
       ...(details ? { details } : {}),
     },
-    status as 400 | 401 | 403 | 404 | 409 | 413 | 415 | 429 | 500 | 502 | 504,
+    status as 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 500 | 502 | 503 | 504,
   );
 }
 

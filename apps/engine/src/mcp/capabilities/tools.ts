@@ -365,7 +365,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         const permissionMode =
           permissionModeMeta === "auto" ||
           permissionModeMeta === "ask" ||
-          permissionModeMeta === "plan"
+          permissionModeMeta === "plan" ||
+          permissionModeMeta === "yolo"
             ? permissionModeMeta
             : undefined;
         const result = await handleConversationTool({

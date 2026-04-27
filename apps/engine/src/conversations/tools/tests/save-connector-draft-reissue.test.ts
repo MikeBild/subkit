@@ -19,7 +19,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import { createEmptyDraftDocument, withConnectorProbe } from "../../authoring-state.ts";
+import { setDraftCredential } from "../../persistence/draft-credential-cache.ts";
 import { createConversation } from "../../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { DraftDocument } from "../../types.ts";
@@ -30,64 +31,83 @@ import { startConnectorFromDescriptionTool } from "../start-connector-from-descr
 import { validateConnectorDraftTool } from "../validate-connector-draft.ts";
 
 let ctx: ConversationTestCtx;
-// Each test owns its own Bun.serve instance — tests previously shared a
-// module-level server which flaked under parallel suite runs (the OS
-// reused the freed port for an unrelated suite, so the probe occasionally
-// hit a stranger's HTTP fixture and got 200 instead of 500). Per-test
-// servers eliminate any port reuse / bind-timing race.
+// Each test owns its own Bun.serve instance bound to a deterministic
+// high-port slot in the IANA ephemeral range (49152-65535). Round-1
+// used `port: 0` (OS-assigned) which flaked under parallel suite runs:
+// the same freed port could be re-handed to a sibling test's server
+// after this suite released it, and the in-flight `fetch` of `/broken`
+// occasionally landed on the stranger's fixture (returning 200 instead
+// of 500). Sequence-bind from a per-suite base + per-test offset keeps
+// the bound port stable for the lifetime of the test, and the marker
+// header below catches any residual collision before assertions run.
 let server: ReturnType<typeof Bun.serve>;
 let baseUrl: string;
 
+// Capture the real `fetch` at module load — sibling test files in the
+// same `bun test` process spy on `globalThis.fetch` (e.g. discovery
+// tests) and a leaked / mid-restore spy will route our probe of
+// `/broken` to a hardcoded `Response(..., {status:200})` instead of
+// our 500. We force-restore the real fetch in `beforeEach` so this
+// suite is not at the mercy of sibling cleanup ordering.
+const ORIGINAL_FETCH = globalThis.fetch;
+
 // Unique fixture marker — makes probe responses observably ours and
-// catches cross-test port reuse if Bun's OS-assigned port-0 binding
-// recycles a port that another suite is also listening on.
+// catches cross-test port collisions if a sibling suite happens to
+// bind the same high port.
 const FIXTURE_MARKER = "save-connector-reissue-fixture-9k83aB";
 
+// Sequence-retry port selector — picks from a high-port window that no
+// `port: 0` allocator should reach in normal use. We avoid `Date.now()`
+// (banned by the determinism gate) and `Math.random()` (banned), so the
+// starting port is derived from a module-scope counter that increments
+// per `startProbeServer` call. If a port is already bound (EADDRINUSE),
+// step to the next one and retry, up to 64 attempts.
+const PORT_BASE = 53_000;
+const PORT_WINDOW = 4_096;
+let portCounter = 0;
+
 function startProbeServer(): { server: ReturnType<typeof Bun.serve>; baseUrl: string } {
-  const s = Bun.serve({
-    port: 0,
-    fetch(req) {
-      const url = new URL(req.url);
-      const headers = { "x-fixture-marker": FIXTURE_MARKER };
-      if (url.pathname === "/health") {
-        return Response.json({ ok: true, marker: FIXTURE_MARKER }, { headers });
+  const handler = (req: Request): Response => {
+    const url = new URL(req.url);
+    const headers = { "x-fixture-marker": FIXTURE_MARKER };
+    if (url.pathname === "/health") {
+      return Response.json({ ok: true, marker: FIXTURE_MARKER }, { headers });
+    }
+    if (url.pathname === "/protected") {
+      const auth = req.headers.get("authorization") ?? "";
+      if (!auth.startsWith("Bearer ")) {
+        return new Response("unauthorized", { status: 401, headers });
       }
-      if (url.pathname === "/protected") {
-        const auth = req.headers.get("authorization") ?? "";
-        if (!auth.startsWith("Bearer ")) {
-          return new Response("unauthorized", { status: 401, headers });
-        }
-        return Response.json({ ok: true, auth, marker: FIXTURE_MARKER }, { headers });
-      }
-      // /broken always 500s — used to land a failed probe.
-      return new Response(`boom:${FIXTURE_MARKER}`, { status: 500, headers });
-    },
-  });
-  return { server: s, baseUrl: `http://127.0.0.1:${s.port}` };
+      return Response.json({ ok: true, auth, marker: FIXTURE_MARKER }, { headers });
+    }
+    // /broken always 500s — used to land a failed probe.
+    return new Response(`boom:${FIXTURE_MARKER}`, { status: 500, headers });
+  };
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 64; attempt++) {
+    const port = PORT_BASE + ((portCounter + attempt) % PORT_WINDOW);
+    try {
+      const s = Bun.serve({ port, hostname: "127.0.0.1", fetch: handler });
+      portCounter = (portCounter + attempt + 1) % PORT_WINDOW;
+      return { server: s, baseUrl: `http://127.0.0.1:${s.port}` };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw new Error(`failed to bind probe fixture in 64 attempts (last error: ${String(lastError)})`);
 }
 
-// Bun's `Bun.serve({port: 0})` + `fetch` interaction occasionally routes
-// a probe's request to a sibling test fixture's server when many test
-// files run in parallel (visible as `/broken` returning 200 instead of
-// 500 because the receiving server is someone else's). The two cases
-// below depend on a deterministic 500 response and flake under
-// suite-parallel runs even with per-test servers and fixture markers.
-// Standalone runs always pass; CI pins them via `bun test apps/engine/src/conversations/tools/tests/save-connector-draft-reissue.test.ts`.
-// The flag below skips the parallel-run path so the pre-push hook is
-// not gated on a Bun runtime quirk.
-const SKIP_BUN_FETCH_FLAKE = process.env.SK_RUN_BUN_FETCH_FLAKES !== "1";
-
 // Defensive pre-flight: confirm the test's server is the one bound at
-// `baseUrl` before running the body. If the OS has handed our port to
-// a sibling fixture, abort the test rather than asserting against an
-// unrelated server's responses.
+// `baseUrl` before running the body. The sequence-retry binder above
+// makes collisions vanishingly unlikely, but the marker check is cheap
+// and gives a clear diagnostic if it ever happens.
 async function assertOwnServer(baseUrl: string): Promise<void> {
   const res = await fetch(`${baseUrl}/health`);
   if (res.headers.get("x-fixture-marker") !== FIXTURE_MARKER) {
     throw new Error(
       `probe fixture port collision: ${baseUrl} is not the server this test started ` +
-        `(missing x-fixture-marker header). This indicates Bun.serve port-0 reuse across ` +
-        `parallel test files. Re-run the test in isolation or serialize the suite.`,
+        `(missing x-fixture-marker header). The sequence-retry port allocator should ` +
+        `prevent this; if you see it, a sibling suite is binding the same high port.`,
     );
   }
 }
@@ -97,6 +117,11 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  // Defensive: pin globalThis.fetch back to the captured original.
+  // Sibling discovery tests spy on fetch with a mock that returns
+  // status:200 for any URL, and a leaked/un-restored spy makes our
+  // probe of `/broken` see 200 instead of our server's 500.
+  globalThis.fetch = ORIGINAL_FETCH;
   const started = startProbeServer();
   server = started.server;
   baseUrl = started.baseUrl;
@@ -159,6 +184,12 @@ describe("save_connector_draft — diagnostic re-issue", () => {
     });
     await inspectConnectorDraftTool.execute(toolCtx.base, {});
     await validateConnectorDraftTool.execute(toolCtx.base, {});
+    // The post-fix probe path refuses to go out unauthenticated for an
+    // auth-required draft (see probe-connector-draft.ts credential
+    // guard). Populate the cache directly to mirror the real flow
+    // where `ask_user_form` would have cached the credential before
+    // the LLM invokes probe.
+    setDraftCredential(toolCtx.conversation_id, { mode: "bearer", token: "tkn-original" });
     await probeConnectorDraftTool.execute(toolCtx.base, { method: "GET", path: "/health" });
 
     const first = await saveConnectorDraftTool.execute(toolCtx.base, {
@@ -218,6 +249,7 @@ describe("save_connector_draft — diagnostic re-issue", () => {
     });
     await inspectConnectorDraftTool.execute(toolCtx.base, {});
     await validateConnectorDraftTool.execute(toolCtx.base, {});
+    setDraftCredential(toolCtx.conversation_id, { mode: "bearer", token: "tkn-old" });
     await probeConnectorDraftTool.execute(toolCtx.base, { method: "GET", path: "/health" });
     const first = await saveConnectorDraftTool.execute(toolCtx.base, {
       credential: { mode: "bearer", token: "tkn-old" },
@@ -252,75 +284,122 @@ describe("save_connector_draft — diagnostic re-issue", () => {
     expect(credentialRotated).toBeDefined();
   });
 
-  test.skipIf(SKIP_BUN_FETCH_FLAKE)(
-    "re-issue with force_save: true after a failed probe persists and surfaces a warning",
-    async () => {
-      await assertOwnServer(baseUrl);
-      const toolCtx = await createToolCtx();
-      await startConnectorFromDescriptionTool.execute(toolCtx.base, {
-        name: "Force Probe Override",
-        driver: "http",
-        environment: "dev",
-        base_url: baseUrl,
-        auth_type: "none",
-      });
-      await inspectConnectorDraftTool.execute(toolCtx.base, {});
-      await validateConnectorDraftTool.execute(toolCtx.base, {});
-      // Probe a 500 endpoint so the probe fails.
-      const probe = await probeConnectorDraftTool.execute(toolCtx.base, {
-        method: "GET",
-        path: "/broken",
-      });
-      expect(probe.ok).toBe(false);
+  // The two probe-failure cases below previously called the live probe
+  // tool against a Bun.serve fixture's /broken endpoint, expecting a
+  // deterministic 500. Under the full-suite run that fetch flaked: the
+  // audit log showed `url_host:127.0.0.1:<our-port>` returning HTTP 200
+  // even though our handler returns 500 — a Bun fetch / port-reuse
+  // interaction we could not reliably contain via marker checks or
+  // sequence-retry port allocation. The save_connector_draft contract
+  // these tests pin reads from `draft.connector.latest_probe.ok` (see
+  // saveConnectorAtomic — the probe gate is a pure draft-state check).
+  // We inject a failed probe state directly via `withConnectorProbe`,
+  // which is exactly what `probe_connector_draft` does on a 500 — but
+  // without the network round-trip that flaked.
+  test("re-issue with force_save: true after a failed probe persists and surfaces a warning", async () => {
+    await assertOwnServer(baseUrl);
+    const toolCtx = await createToolCtx();
+    await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "Force Probe Override",
+      driver: "http",
+      environment: "dev",
+      base_url: baseUrl,
+      auth_type: "none",
+    });
+    await inspectConnectorDraftTool.execute(toolCtx.base, {});
+    await validateConnectorDraftTool.execute(toolCtx.base, {});
+    // Inject a failed probe directly — equivalent to what
+    // probe_connector_draft writes into the draft on a 500.
+    const draftBefore = toolCtx.base.getDraft();
+    const connectorBefore = draftBefore.connector;
+    if (!connectorBefore) throw new Error("connector draft missing");
+    const failedProbeDraft = withConnectorProbe(
+      draftBefore,
+      {
+        ...connectorBefore,
+        latest_probe: {
+          ok: false,
+          method: "GET",
+          path: "/broken",
+          environment: "dev",
+          status_code: 500,
+          duration_ms: 1,
+          summary: "Probe reached the system but returned HTTP 500.",
+          response_preview: "boom",
+        },
+      },
+      false,
+      "probe failed: HTTP 500",
+      "connector_probe_failed",
+    );
+    await toolCtx.base.setDraft(failedProbeDraft);
+    expect(toolCtx.base.getDraft().connector?.latest_probe?.ok).toBe(false);
 
-      const forced = await saveConnectorDraftTool.execute(toolCtx.base, {
-        force_save: true,
-      });
-      expect(forced.ok).toBe(true);
-      const data = forced.data as {
-        connector?: { id: string };
-        warnings?: string[];
-        audit_reason?: string;
-      };
-      expect(data.connector?.id).toBeTruthy();
-      expect(data.audit_reason).toBe("manual_re_issue");
-      expect(Array.isArray(data.warnings)).toBe(true);
-      expect(data.warnings?.[0] ?? "").toContain("force_save");
+    const forced = await saveConnectorDraftTool.execute(toolCtx.base, {
+      force_save: true,
+    });
+    expect(forced.ok).toBe(true);
+    const data = forced.data as {
+      connector?: { id: string };
+      warnings?: string[];
+      audit_reason?: string;
+    };
+    expect(data.connector?.id).toBeTruthy();
+    expect(data.audit_reason).toBe("manual_re_issue");
+    expect(Array.isArray(data.warnings)).toBe(true);
+    expect(data.warnings?.[0] ?? "").toContain("force_save");
 
-      const rows = await listAuditRows(data.connector!.id);
-      const override = rows.find(
-        (r) =>
-          r.reason === "manual_re_issue" &&
-          (r.metadata as { kind?: string }).kind === "probe_override",
-      );
-      expect(override).toBeDefined();
-    },
-  );
+    const rows = await listAuditRows(data.connector!.id);
+    const override = rows.find(
+      (r) =>
+        r.reason === "manual_re_issue" &&
+        (r.metadata as { kind?: string }).kind === "probe_override",
+    );
+    expect(override).toBeDefined();
+  });
 
-  test.skipIf(SKIP_BUN_FETCH_FLAKE)(
-    "re-issue after a failed probe without force_save returns the probe_failed envelope",
-    async () => {
-      await assertOwnServer(baseUrl);
-      const toolCtx = await createToolCtx();
-      await startConnectorFromDescriptionTool.execute(toolCtx.base, {
-        name: "Probe Gate Holds",
-        driver: "http",
-        environment: "dev",
-        base_url: baseUrl,
-        auth_type: "none",
-      });
-      await inspectConnectorDraftTool.execute(toolCtx.base, {});
-      await validateConnectorDraftTool.execute(toolCtx.base, {});
-      await probeConnectorDraftTool.execute(toolCtx.base, {
-        method: "GET",
-        path: "/broken",
-      });
+  test("re-issue after a failed probe without force_save returns the probe_failed envelope", async () => {
+    await assertOwnServer(baseUrl);
+    const toolCtx = await createToolCtx();
+    await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "Probe Gate Holds",
+      driver: "http",
+      environment: "dev",
+      base_url: baseUrl,
+      auth_type: "none",
+    });
+    await inspectConnectorDraftTool.execute(toolCtx.base, {});
+    await validateConnectorDraftTool.execute(toolCtx.base, {});
+    // Inject a failed probe directly (see comment above on why we no
+    // longer route this through the live probe tool + Bun.serve).
+    const draftBefore = toolCtx.base.getDraft();
+    const connectorBefore = draftBefore.connector;
+    if (!connectorBefore) throw new Error("connector draft missing");
+    const failedProbeDraft = withConnectorProbe(
+      draftBefore,
+      {
+        ...connectorBefore,
+        latest_probe: {
+          ok: false,
+          method: "GET",
+          path: "/broken",
+          environment: "dev",
+          status_code: 500,
+          duration_ms: 1,
+          summary: "Probe reached the system but returned HTTP 500.",
+          response_preview: "boom",
+        },
+      },
+      false,
+      "probe failed: HTTP 500",
+      "connector_probe_failed",
+    );
+    await toolCtx.base.setDraft(failedProbeDraft);
 
-      const blocked = await saveConnectorDraftTool.execute(toolCtx.base, {});
-      expect(blocked.ok).toBe(false);
-      if (blocked.ok) throw new Error("expected blocked save");
-      expect(blocked.error_code).toBe("probe_failed");
-      expect(blocked.next_best_actions ?? []).toContain("save_connector_draft");
-    },
-  );
+    const blocked = await saveConnectorDraftTool.execute(toolCtx.base, {});
+    expect(blocked.ok).toBe(false);
+    if (blocked.ok) throw new Error("expected blocked save");
+    expect(blocked.error_code).toBe("probe_failed");
+    expect(blocked.next_best_actions ?? []).toContain("save_connector_draft");
+  });
 });

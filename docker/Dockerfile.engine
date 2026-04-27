@@ -24,6 +24,12 @@ COPY packages ./packages
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
+# Install Chromium for the playwright-crawl discovery strategy. The
+# browser binary and its system dependencies must ship in the runtime
+# image so headless crawls work in production. `--with-deps` lays
+# down the apt packages Chromium needs (libnss3, libatk1.0-0, etc.).
+RUN bunx playwright install chromium --with-deps
+
 # Produce a statically compiled engine binary targeting the host arch.
 # TARGETARCH is amd64 or arm64; Bun's target triples are bun-linux-x64
 # and bun-linux-arm64.

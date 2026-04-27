@@ -7,6 +7,10 @@ import { probePgConnector } from "../../connectors/drivers/postgres.ts";
 import { probeS3Connector } from "../../connectors/drivers/s3.ts";
 import { withConnectorProbe, withConnectorValidation } from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
+import {
+  getDraftCredential,
+  toDecryptedCredential,
+} from "../persistence/draft-credential-cache.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
@@ -232,6 +236,50 @@ export const probeConnectorDraftTool: ConversationTool = {
       };
     }
 
+    // Auth-required drafts need a credential before the probe can be
+    // meaningful. The connector hasn't been inserted yet, so
+    // `connector_credentials` will not have a row keyed by the
+    // synthetic draft id — we read from the in-memory draft cache
+    // populated when the user filled the `ask_user_form`. Without it,
+    // the request goes out unauthenticated and the symptom (HTTP 401
+    // / "Last used: Never" on the upstream) is indistinguishable from
+    // a real auth failure.
+    const draftCredential =
+      draftView.auth_type !== "none" ? getDraftCredential(ctx.conversation_id) : null;
+    if (draftView.auth_type !== "none" && !draftCredential) {
+      const nextDraft = withConnectorProbe(
+        currentDraft,
+        {
+          ...connector,
+          validation,
+          latest_probe: {
+            ok: false,
+            method: args.method,
+            path: args.path,
+            environment: draftView.environment,
+            duration_ms: 0,
+            summary:
+              "Probe blocked: no credential collected yet for this draft. Run ask_user_form(type: password, sensitive: true) to collect the secret, then re-probe.",
+            failure_code: "credential_required",
+          },
+        },
+        false,
+        "credential_required: no draft credential cached",
+        "connector_probe_failed",
+      );
+      await ctx.setDraft(nextDraft);
+      return {
+        ok: false,
+        data: buildLifecyclePayload(nextDraft, {
+          error_code: "credential_required",
+          error:
+            "Cannot probe an auth-required draft without a credential. Collect it via ask_user_form(type: password, sensitive: true) — the harness caches the secret in memory and the next probe will use it.",
+          latest_probe: nextDraft.connector?.latest_probe ?? null,
+          recommended_next: ["ask_user_form"],
+        }),
+      };
+    }
+
     const started = Date.now();
     let status = 0;
     let responseBody: unknown = null;
@@ -250,6 +298,7 @@ export const probeConnectorDraftTool: ConversationTool = {
         ...(args.body !== undefined ? { body: args.body } : {}),
         timeout_ms: args.timeout_ms,
         ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
+        ...(draftCredential ? { credential_override: toDecryptedCredential(draftCredential) } : {}),
       });
       requestUrl = execution.url;
       status = execution.status;

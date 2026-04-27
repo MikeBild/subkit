@@ -18,6 +18,7 @@ import { log, logger } from "../../logging/logger.ts";
 import { recordConversationToolCall } from "../../observability/instrumentation.ts";
 import { resolveAttachments } from "../attachments.ts";
 import { recordTransition } from "../confirmation.ts";
+import { isDangerousTool } from "../dangerous-tools.ts";
 import { createElicitation } from "../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
 import {
@@ -318,6 +319,27 @@ function wrapOne(
           inner.category === "tenant_write" &&
           !policyMarker;
 
+        // yolo audit: when the resolver short-circuits a dangerous
+        // tool because the operator armed yolo, emit a forensic-grade
+        // log line so an operator can later answer "did anyone click
+        // before this delete?". Lives next to the existing
+        // `recordTransition` so the trail also surfaces in the
+        // confirmation-state machine.
+        const bypassedConfirmation = permissionMode === "yolo" && isDangerousTool(inner.name);
+        if (bypassedConfirmation) {
+          logger.warn({
+            module: "tool",
+            action: "tool.executed_yolo",
+            msg: "dangerous tool executed under yolo — confirmation gate bypassed",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            tool_call_id: toolCallId,
+            tool: inner.name,
+            permission_mode: "yolo",
+            bypassed_confirmation: true,
+          });
+        }
+
         // Confirmation-state machine entry: tenant_write tools stage a
         // `proposed` state before execution. On success we transition
         // to `confirmed`, on failure to `declined`. Read-only tools
@@ -329,7 +351,11 @@ function wrapOne(
             to_state: "proposed",
             actor_id: ctx.actor_id,
             tool: inner.name,
-            data: { resolved_mode: resolvedMode },
+            data: {
+              resolved_mode: resolvedMode,
+              ...(permissionMode ? { permission_mode: permissionMode } : {}),
+              ...(bypassedConfirmation ? { bypassed_confirmation: true } : {}),
+            },
           });
         }
 
