@@ -1256,7 +1256,81 @@ describe("ink-app: journey 11 — approval hygiene", () => {
     await type(instance, "/approve");
     await pressEnter(instance);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("no pending elicitation");
+    expect(frame).toContain("no pending approval");
+    instance.unmount();
+  });
+
+  test("AC1b: bare-text 'approve' with no pending elicitation does not start a new turn", async () => {
+    let promptCalled = false;
+    const instance = renderApp({
+      onPrompt: async () => {
+        promptCalled = true;
+        return {
+          events: framesOf({ type: "completed", status: "completed" }),
+          conversationId: "c-noop",
+        };
+      },
+      onElicitResponse: async () => {
+        throw new Error("should not be called");
+      },
+    });
+    await tick();
+    await type(instance, "approve");
+    await pressEnter(instance);
+    await tick(60);
+    expect(promptCalled).toBe(false);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("no pending approval");
+    instance.unmount();
+  });
+
+  test("AC1c: a second /approve while the engine is still processing is a no-op", async () => {
+    const elicit: PendingElicitation = {
+      id: "b1-00000000-0000-0000-0000-000000000000",
+      tool_name: "ask_user_confirm",
+      summary: "confirm step",
+      input: { kind: "generic" },
+    };
+    let respondCalls = 0;
+    const releaseRef: { fn: (() => void) | null } = { fn: null };
+    const instance = renderApp({
+      onPrompt: async () => ({
+        events: framesOf(
+          {
+            type: "elicit_request",
+            elicitation_id: elicit.id,
+            tool_name: elicit.tool_name,
+            summary: elicit.summary,
+            input: elicit.input,
+          },
+          { type: "completed", status: "awaiting_input" },
+        ),
+        conversationId: "c-x",
+      }),
+      onElicitResponse: async () => {
+        respondCalls += 1;
+        // Block the first call long enough that a second /approve has
+        // time to arrive; without the busyRef guard inside
+        // submitElicitationResponse the second call would also POST.
+        await new Promise<void>((resolve) => {
+          releaseRef.fn = resolve;
+        });
+        return { events: framesOf({ type: "completed", status: "completed" }) };
+      },
+    });
+    await tick();
+    await type(instance, "kick off");
+    await pressEnter(instance);
+    await tick(80);
+    await type(instance, "/approve");
+    await pressEnter(instance);
+    await tick(20);
+    await type(instance, "/approve");
+    await pressEnter(instance);
+    await tick(20);
+    expect(respondCalls).toBe(1);
+    releaseRef.fn?.();
+    await tick(40);
     instance.unmount();
   });
 

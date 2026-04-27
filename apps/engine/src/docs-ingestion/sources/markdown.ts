@@ -63,7 +63,8 @@ export function chunkMarkdown(md: string): RawChunk[] {
   let minLevel = Infinity;
   for (const line of lines) {
     const m = /^(#{1,6})\s+/.exec(line);
-    if (m) minLevel = Math.min(minLevel, m[1]!.length);
+    const hashes = m?.[1];
+    if (hashes) minLevel = Math.min(minLevel, hashes.length);
   }
   // No headings at all — emit the whole body as a single chunk.
   if (!Number.isFinite(minLevel)) {
@@ -94,9 +95,10 @@ export function chunkMarkdown(md: string): RawChunk[] {
   };
   for (const line of lines) {
     const m = pattern.exec(line);
-    if (m) {
+    const title = m?.[1];
+    if (title !== undefined) {
       flush();
-      currentTitle = m[1]!.trim();
+      currentTitle = title.trim();
       continue;
     }
     currentBuf.push(line);

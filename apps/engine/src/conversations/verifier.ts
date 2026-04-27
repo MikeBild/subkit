@@ -95,16 +95,14 @@ function scanScopeRefs(
 ): void {
   if (typeof value === "string") {
     const hits = new Set<string>();
-    let m = SCOPE_RE.exec(value);
-    while (m !== null) {
-      hits.add(m[1]!);
-      m = SCOPE_RE.exec(value);
+    for (let m = SCOPE_RE.exec(value); m !== null; m = SCOPE_RE.exec(value)) {
+      const [, ref] = m;
+      if (ref) hits.add(ref);
     }
     SCOPE_RE.lastIndex = 0;
-    m = JSONATA_SCOPE_RE.exec(value);
-    while (m !== null) {
-      hits.add(m[1]!);
-      m = JSONATA_SCOPE_RE.exec(value);
+    for (let m = JSONATA_SCOPE_RE.exec(value); m !== null; m = JSONATA_SCOPE_RE.exec(value)) {
+      const [, ref] = m;
+      if (ref) hits.add(ref);
     }
     JSONATA_SCOPE_RE.lastIndex = 0;
     for (const ref of hits) {
@@ -119,16 +117,18 @@ function scanScopeRefs(
     }
 
     const segmentRefs: Array<{ ref: string; firstField: string }> = [];
-    let seg = SCOPE_SEGMENT_RE.exec(value);
-    while (seg !== null) {
-      segmentRefs.push({ ref: seg[1]!, firstField: seg[2]! });
-      seg = SCOPE_SEGMENT_RE.exec(value);
+    for (let seg = SCOPE_SEGMENT_RE.exec(value); seg !== null; seg = SCOPE_SEGMENT_RE.exec(value)) {
+      const [, ref, firstField] = seg;
+      if (ref && firstField) segmentRefs.push({ ref, firstField });
     }
     SCOPE_SEGMENT_RE.lastIndex = 0;
-    seg = JSONATA_SCOPE_SEGMENT_RE.exec(value);
-    while (seg !== null) {
-      segmentRefs.push({ ref: seg[1]!, firstField: seg[2]! });
-      seg = JSONATA_SCOPE_SEGMENT_RE.exec(value);
+    for (
+      let seg = JSONATA_SCOPE_SEGMENT_RE.exec(value);
+      seg !== null;
+      seg = JSONATA_SCOPE_SEGMENT_RE.exec(value)
+    ) {
+      const [, ref, firstField] = seg;
+      if (ref && firstField) segmentRefs.push({ ref, firstField });
     }
     JSONATA_SCOPE_SEGMENT_RE.lastIndex = 0;
     for (const { ref, firstField } of segmentRefs) {

@@ -191,5 +191,49 @@ describe("run_workflow tool", () => {
       .from(auditLog)
       .where(eq(auditLog.resource_type, "execution"));
     expect(executionAuditRows.length).toBeGreaterThan(0);
+
+    // Contract guarantee: every run_workflow result carries a terminal
+    // `status`. Without this the CLI renders "Execution status missing
+    // from engine — bug, not a state" (the user's transcript).
+    expect((result.data as { status: string }).status).toMatch(
+      /^(succeeded|failed|partial_success)$/,
+    );
+  });
+
+  test("returns status:failed when no workflow_id is resolvable", async () => {
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        draft: {
+          workflow: { name: "stub", steps: [] },
+          state: {
+            mode: "execution",
+            stage: "workflow_executed",
+            connector_mutation_seq: 0,
+            workflow_mutation_seq: 0,
+            checkpoints: {},
+            persisted_resources: [],
+            latest_execution: null,
+            latest_diagnosis: null,
+          },
+        },
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft: conversation.draft as DraftDocument,
+        setDraft: async () => {},
+      }),
+      // No workflow_id and no persisted active target → gate-error path.
+      { environment: "dev" },
+    );
+    expect(result.ok).toBe(false);
+    expect((result.data as { status: string }).status).toBe("failed");
+    expect((result.data as { error_code: string }).error_code).toBe("workflow_not_persisted");
   });
 });

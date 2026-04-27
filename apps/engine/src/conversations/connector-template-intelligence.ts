@@ -166,10 +166,7 @@ export function allowedTemplateAuthTypes(template: ConnectorTemplate): AuthType[
 }
 
 export function defaultTemplateAuthType(template: ConnectorTemplate): AuthType {
-  if (template.auth_options.length > 0) {
-    return template.auth_options[0]!.auth_type;
-  }
-  return template.auth_type;
+  return template.auth_options[0]?.auth_type ?? template.auth_type;
 }
 
 export function inferTemplateRequiredFields(template: ConnectorTemplate): string[] {

@@ -215,20 +215,25 @@ export function parseSimpleXml(text: string): XmlNode {
       if (spaceIdx !== -1) {
         const attrStr = inner.slice(spaceIdx + 1);
         const re = /([A-Za-z0-9_:-]+)="([^"]*)"/g;
-        let m: RegExpExecArray | null = re.exec(attrStr);
-        while (m) {
-          attrs[m[1]!] = m[2]!;
-          m = re.exec(attrStr);
+        for (let m = re.exec(attrStr); m !== null; m = re.exec(attrStr)) {
+          const [, key, val] = m;
+          if (key && val !== undefined) attrs[key] = val;
         }
       }
       const node: XmlNode = { name, attrs, children: [], text: "" };
-      stack[stack.length - 1]!.children.push(node);
+      // invariant: `stack` is seeded with `root` and only ever pops on </close>
+      // tags AFTER pushing — so length >= 1 here.
+      const parent = stack[stack.length - 1];
+      if (parent) parent.children.push(node);
       if (!selfClose) stack.push(node);
     } else {
       const next = text.indexOf("<", i);
       const slice = text.slice(i, next === -1 ? text.length : next);
       const txt = slice.trim();
-      if (txt) stack[stack.length - 1]!.text += txt;
+      if (txt) {
+        const parent = stack[stack.length - 1];
+        if (parent) parent.text += txt;
+      }
       i = next === -1 ? text.length : next;
     }
   }

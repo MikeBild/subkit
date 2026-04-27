@@ -60,20 +60,20 @@ function effectiveMode(override?: GuardMode): GuardMode {
  * wins; the broader one is dropped from the rewrite (but still recorded
  * as a violation in observability).
  */
-function selectRewriteSpans(vs: Violation[]): Violation[] {
-  const spanned = vs.filter((v) => v.span);
+type SpannedViolation = Violation & { span: NonNullable<Violation["span"]> };
+
+function selectRewriteSpans(vs: Violation[]): SpannedViolation[] {
+  const spanned: SpannedViolation[] = vs.filter((v): v is SpannedViolation => v.span !== undefined);
   // Narrowest first (smallest span length).
   const byNarrowest = spanned
     .slice()
-    .sort((a, b) => a.span!.end - a.span!.start - (b.span!.end - b.span!.start));
-  const accepted: Violation[] = [];
+    .sort((a, b) => a.span.end - a.span.start - (b.span.end - b.span.start));
+  const accepted: SpannedViolation[] = [];
   for (const v of byNarrowest) {
-    const overlaps = accepted.some(
-      (a) => v.span!.start < a.span!.end && a.span!.start < v.span!.end,
-    );
+    const overlaps = accepted.some((a) => v.span.start < a.span.end && a.span.start < v.span.end);
     if (!overlaps) accepted.push(v);
   }
-  return accepted.sort((a, b) => b.span!.start - a.span!.start);
+  return accepted.sort((a, b) => b.span.start - a.span.start);
 }
 
 function rewriteSoft(text: string, violations: Violation[]): string {

@@ -63,6 +63,27 @@ const Input = z
   })
   .openapi("RunWorkflowToolInput");
 
+/**
+ * Terminal status the CLI must always see for a `run_workflow` result.
+ * Missing this field is what produced the "Execution status missing
+ * from engine — bug, not a state" UI in session 79bf2cca; the gate
+ * error returns went through `buildGateError` which has no status
+ * field. We close the contract here at the tool boundary instead of
+ * trusting every callsite.
+ */
+type RunWorkflowStatus = "succeeded" | "failed" | "partial_success";
+
+function withStatus(
+  data: Record<string, unknown>,
+  status: RunWorkflowStatus,
+): Record<string, unknown> {
+  // If a caller already set a more specific status (e.g. the lifecycle
+  // path passes "succeeded"/"partial_success" via buildLifecyclePayload's
+  // extra), keep it. Otherwise stamp the supplied default.
+  if (typeof data.status === "string") return data;
+  return { ...data, status };
+}
+
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
   description:
@@ -81,16 +102,19 @@ export const runWorkflowTool: ConversationTool = {
     if (!workflowId) {
       return {
         ok: false,
-        data: buildGateError(currentDraft, {
-          error_code: "workflow_not_persisted",
-          message: "commit the workflow before running it from the conversation surface",
-          recommended_mode: "workflow",
-          stale_checkpoints: ["workflow_persisted"],
-        }),
+        data: withStatus(
+          buildGateError(currentDraft, {
+            error_code: "workflow_not_persisted",
+            message: "commit the workflow before running it from the conversation surface",
+            recommended_mode: "workflow",
+            stale_checkpoints: ["workflow_persisted"],
+          }),
+          "failed",
+        ),
       };
     }
     const wf = await ctx.engineClient.workflows.get(workflowId);
-    if (!wf) return { ok: false, data: { error: "workflow_not_found" } };
+    if (!wf) return { ok: false, data: withStatus({ error: "workflow_not_found" }, "failed") };
     if (
       activeTarget?.kind === "workflow" &&
       activeTarget.lifecycle_state === "draft_only" &&
@@ -98,12 +122,15 @@ export const runWorkflowTool: ConversationTool = {
     ) {
       return {
         ok: false,
-        data: buildGateError(currentDraft, {
-          error_code: "workflow_not_persisted",
-          message: "commit the current workflow draft before running it",
-          recommended_mode: "workflow",
-          stale_checkpoints: ["workflow_persisted"],
-        }),
+        data: withStatus(
+          buildGateError(currentDraft, {
+            error_code: "workflow_not_persisted",
+            message: "commit the current workflow draft before running it",
+            recommended_mode: "workflow",
+            stale_checkpoints: ["workflow_persisted"],
+          }),
+          "failed",
+        ),
       };
     }
 
@@ -122,21 +149,24 @@ export const runWorkflowTool: ConversationTool = {
       });
       return {
         ok: false,
-        data: buildGateError(currentDraft, {
-          error_code: "repair_loop_detected",
-          message:
-            "stop — three consecutive runs of this workflow surfaced the same `unresolved_identifier` warning. The current strategy is not working. Read `data-handling.md` and `workflow-authoring.md` for the loop+JSONata scope rules, ask the user what output they actually want, and propose a structurally different draft. Re-running this one will produce the same warning.",
-          recommended_mode: "diagnosis",
-          next_best_actions: [
-            "ask_user_text",
-            "diagnose_latest_execution",
-            "load_skill",
-            "search_knowledge",
-          ],
-          extra: {
-            recent_warning_codes: breaker.recent_codes,
-          },
-        }),
+        data: withStatus(
+          buildGateError(currentDraft, {
+            error_code: "repair_loop_detected",
+            message:
+              "stop — three consecutive runs of this workflow surfaced the same `unresolved_identifier` warning. The current strategy is not working. Read `data-handling.md` and `workflow-authoring.md` for the loop+JSONata scope rules, ask the user what output they actually want, and propose a structurally different draft. Re-running this one will produce the same warning.",
+            recommended_mode: "diagnosis",
+            next_best_actions: [
+              "ask_user_text",
+              "diagnose_latest_execution",
+              "load_skill",
+              "search_knowledge",
+            ],
+            extra: {
+              recent_warning_codes: breaker.recent_codes,
+            },
+          }),
+          "failed",
+        ),
       };
     }
 
@@ -224,10 +254,20 @@ export const runWorkflowTool: ConversationTool = {
       const hasUnresolvedIdentifierWarning = (result.warnings ?? []).some(
         (w) => w.code === "unresolved_identifier",
       );
+      // The engine emits `loop_body_empty` from inside the loop driver
+      // when iterations > 0 produced no productive body output (P2).
+      // Trust that warning over the legacy "top-level output is []"
+      // heuristic — the user's transcript had a populated top-level
+      // output assembled by a transform AFTER the empty loop body, so
+      // the legacy heuristic missed it.
+      const hasLoopBodyEmptyWarning = (result.warnings ?? []).some(
+        (w) => w.code === "loop_body_empty",
+      );
       const loopStepRanWithEmptyBody =
-        result.steps.some((s) => s.kind === "loop" && s.status === "succeeded") &&
-        Array.isArray(result.output) &&
-        (result.output as unknown[]).length === 0;
+        hasLoopBodyEmptyWarning ||
+        (result.steps.some((s) => s.kind === "loop" && s.status === "succeeded") &&
+          Array.isArray(result.output) &&
+          (result.output as unknown[]).length === 0);
       const isPartialSuccess =
         result.status === "succeeded" &&
         (hasUnresolvedIdentifierWarning || loopStepRanWithEmptyBody);
@@ -258,19 +298,26 @@ export const runWorkflowTool: ConversationTool = {
       await ctx.setDraft(nextDraft);
       return {
         ok: result.status === "succeeded" && !isPartialSuccess,
-        data: buildLifecyclePayload(nextDraft, {
-          execution_id: result.execution_id,
-          workflow_id: workflowId,
-          workflow_version_id: wf.current_version_id,
-          workflow_version: wf.current_version,
-          status: payloadStatus,
-          output: result.output,
-          error: result.error,
-          diagnosis_available: diagnosisAvailable,
-          requires_repair: requiresRepair,
-          recommended_next_tool: diagnosisAvailable ? "diagnose_latest_execution" : null,
-          ...(hasWarnings ? { warnings: result.warnings } : {}),
-        }),
+        data: withStatus(
+          buildLifecyclePayload(nextDraft, {
+            execution_id: result.execution_id,
+            workflow_id: workflowId,
+            workflow_version_id: wf.current_version_id,
+            workflow_version: wf.current_version,
+            status: payloadStatus,
+            output: result.output,
+            error: result.error,
+            diagnosis_available: diagnosisAvailable,
+            requires_repair: requiresRepair,
+            recommended_next_tool: diagnosisAvailable ? "diagnose_latest_execution" : null,
+            ...(hasWarnings ? { warnings: result.warnings } : {}),
+          }),
+          // payloadStatus is one of the three terminal values (already
+          // narrowed above), but withStatus is a no-op when the inner
+          // payload already carries status — keep the default just in
+          // case a future refactor drops the inline status.
+          "failed",
+        ),
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -284,11 +331,14 @@ export const runWorkflowTool: ConversationTool = {
       });
       return {
         ok: false,
-        data: buildGateError(currentDraft, {
-          error_code: "run_failed",
-          message: msg,
-          recommended_mode: "execution",
-        }),
+        data: withStatus(
+          buildGateError(currentDraft, {
+            error_code: "run_failed",
+            message: msg,
+            recommended_mode: "execution",
+          }),
+          "failed",
+        ),
       };
     }
   },

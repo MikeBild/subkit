@@ -385,6 +385,53 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           error: null,
         });
         lastOutput = iterationResults;
+        // Empty-loop-body detection (P2): the loop driver produced N
+        // items, every body step "succeeded", but no iteration's body
+        // output carried a productive payload. Without this signal the
+        // workflow reports `succeeded` and the LLM truthfully claims
+        // "loop completed" while the user sees zero rows — the
+        // session-79bf2cca false-positive. Emit a structured warning
+        // with the actual envelope shape so the LLM can fix its
+        // JSONata next turn instead of guessing.
+        if (iterationResults.length > 0) {
+          const productiveIterations = iterationResults.filter((iter) => {
+            if (!iter || typeof iter !== "object") return false;
+            for (const value of Object.values(iter as Record<string, unknown>)) {
+              const env = value as ScopeEnvelope | null | undefined;
+              if (!env || typeof env !== "object") continue;
+              if (env.error) continue;
+              const data = env.data;
+              if (data == null) continue;
+              if (Array.isArray(data) && data.length === 0) continue;
+              if (typeof data === "object" && Object.keys(data as object).length === 0) continue;
+              return true;
+            }
+            return false;
+          }).length;
+          if (productiveIterations === 0) {
+            const sampleIteration = iterationResults[0];
+            const bodyKeys =
+              sampleIteration && typeof sampleIteration === "object"
+                ? Object.keys(sampleIteration as Record<string, unknown>)
+                : [];
+            warningsAccum.push({
+              code: "loop_body_empty",
+              identifier: step.id,
+              message: `loop "${step.id}" ran ${iterationResults.length} iteration${iterationResults.length === 1 ? "" : "s"} but no iteration produced productive body output — the body steps ran without errors but every result was null / [] / {}`,
+              step_key: step.id,
+              details: {
+                iterations: iterationResults.length,
+                productive_iterations: 0,
+                body_step_ids: bodyKeys,
+                scope_shape: `$scope.${step.id}.data is an array of ${iterationResults.length} iteration objects, each shaped { ${bodyKeys.map((k) => `${k}: { data, error, duration_ms }`).join(", ")} }`,
+                example_path:
+                  bodyKeys.length > 0
+                    ? `$scope.${step.id}.data[0].${bodyKeys[0]}.data`
+                    : `$scope.${step.id}.data`,
+              },
+            });
+          }
+        }
       }
       // Mark body step ids as skipped in the linear walk (they run inside the loop)
       for (const bodyStepId of loopStep.body) {

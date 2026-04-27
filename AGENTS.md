@@ -135,7 +135,7 @@ layer, stop and move it.
 - **`packages/shared/`** — shared domain types & helpers. Pure, deterministic, no
   `apps/*` imports. See `packages/shared/AGENTS.md` for stricter rules.
 
-Subsystem map inside `apps/engine/src/` (37 directories, each owns one concern):
+Subsystem map inside `apps/engine/src/` (39 directories + 5 loose root files):
 
 | Concern | Directory | Key docs |
 |---|---|---|
@@ -145,12 +145,13 @@ Subsystem map inside `apps/engine/src/` (37 directories, each owns one concern):
 | Chat adapters (Slack, Teams, Google Chat) | `chat/` | `docs/03-input-surfaces.md` |
 | 9 drivers + 90 templates | `connectors/` | `docs/05-connectors.md` |
 | AI authoring loop + tool use | `conversations/` | `docs/04-authoring.md` |
-| Encrypted secret storage | `credentials/` | `docs/07-security-governance.md` |
+| Encrypted secret storage + OAuth2 refresh + credential rotation | `credentials/` (incl. `credentials/oauth2/`) | `docs/07-security-governance.md` |
 | AES-256-GCM + redaction | `crypto/` | `docs/07-security-governance.md` |
-| Drizzle schema + migrations + seed | `db/` | `docs/07-security-governance.md` |
+| Drizzle schema + migrations + seed + transactional outbox events | `db/` | `docs/07-security-governance.md` |
 | File → connector/skill proposals | `discovery/` | `docs/04-authoring.md` |
 | OpenAPI / GraphQL / HTML → searchable context | `docs-ingestion/` | `docs/04-authoring.md` |
 | Core domain types | `domain/` | `docs/02-concepts.md` |
+| Typed engine HTTP client (used by sk + agent) | `engine-client/` | `docs/03-input-surfaces.md` |
 | DAG engine + step dispatch | `execution/` | `docs/06-execution.md` |
 | Hono routes + middleware + errors | `http/` | `docs/03-input-surfaces.md` |
 | SSO / OIDC / user provisioning | `identity/` | `docs/07-security-governance.md` |
@@ -159,9 +160,8 @@ Subsystem map inside `apps/engine/src/` (37 directories, each owns one concern):
 | Structured logger + context | `logging/` | `docs/08-operations.md` |
 | MCP server (streamable HTTP + stdio) | `mcp/` | `docs/03-input-surfaces.md` |
 | Rule-based fan-out (Slack, webhook) | `notifications/` | `docs/03-input-surfaces.md` |
-| OAuth2 refresh, credential rotation | `oauth2/` | `docs/07-security-governance.md` |
 | Prometheus metrics + tracing | `observability/` | `docs/08-operations.md` |
-| Transactional outbox | `outbox/` | `docs/06-execution.md` |
+| First-run bootstrap + demo seed | `onboarding/` | `docs/08-operations.md` |
 | PG LISTEN/NOTIFY streaming | `pubsub/` | `docs/06-execution.md` |
 | pg-boss handler dispatch | `queue/` | `docs/06-execution.md` |
 | RBAC (40+ permissions) + ABAC + policies | `rbac/` | `docs/07-security-governance.md` |
@@ -171,9 +171,19 @@ Subsystem map inside `apps/engine/src/` (37 directories, each owns one concern):
 | Drift detection + bounded repair | `self-healing/` | `docs/06-execution.md` |
 | Pattern detection → proposed skills | `skill-candidates/` | `docs/04-authoring.md` |
 | Curated LLM-context records | `skills/` | `docs/04-authoring.md` |
+| Object/blob storage | `storage/` | `docs/06-execution.md` |
+| Engine-internal cross-subsystem fixtures + helpers | `test-helpers/` | (test infrastructure) |
+| Top-level integration suites | `tests/` | (test infrastructure) |
 | Private-network tunnels | `tunnels/` | `docs/05-connectors.md` |
-| Inbound + outbound webhooks | `webhooks/` | `docs/03-input-surfaces.md` |
+| Cross-subsystem utilities | `utils/` | (shared helpers) |
+| Inbound + outbound webhooks (incl. transactional outbox dispatch) | `webhooks/` | `docs/03-input-surfaces.md` |
 | DAG versioning + locking + execution | `workflows/` | `docs/06-execution.md` |
+
+Loose root files in `apps/engine/src/`:
+
+- `index.ts` — process entry point.
+- `env.ts` + `env.test.ts` — Zod-parsed env loader; the only place process.env reads happen at boot.
+- `self-update.ts` + `update-state.ts` — engine self-update channel for dev.
 
 Directory-local overrides:
 

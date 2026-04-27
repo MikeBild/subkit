@@ -33,10 +33,9 @@ export interface LlmsTxtIngestResult {
 export function parseLlmsTxt(body: string): Array<{ title: string; url: string }> {
   const out: Array<{ title: string; url: string }> = [];
   const re = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
-  let m: RegExpExecArray | null = re.exec(body);
-  while (m) {
-    out.push({ title: m[1]!.trim(), url: m[2]! });
-    m = re.exec(body);
+  for (let m = re.exec(body); m !== null; m = re.exec(body)) {
+    const [, title, url] = m;
+    if (title && url) out.push({ title: title.trim(), url });
   }
   return out;
 }

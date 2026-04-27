@@ -141,9 +141,12 @@ export const deleteWorkflowTool: ConversationTool = {
       if (!auth.allow) return permissionDenied("workflow:delete", auth.reason);
     }
 
-    const workflow = args.id
-      ? await ctx.engineClient.workflows.get(args.id)
-      : await ctx.engineClient.workflows.getBySlug(args.slug!);
+    let workflow: Awaited<ReturnType<typeof ctx.engineClient.workflows.get>> | null = null;
+    if (args.id) {
+      workflow = await ctx.engineClient.workflows.get(args.id);
+    } else if (args.slug) {
+      workflow = await ctx.engineClient.workflows.getBySlug(args.slug);
+    }
     if (!workflow) return { ok: false, data: { error: "workflow_not_found" } };
 
     if (!args.id) {

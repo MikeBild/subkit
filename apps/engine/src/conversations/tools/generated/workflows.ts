@@ -54,9 +54,12 @@ export const getWorkflowTool: ConversationTool = {
   category: "tenant_read",
   async execute(ctx, rawArgs) {
     const args = GetInput.parse(rawArgs);
-    const wf = args.id
-      ? await ctx.engineClient.workflows.get(args.id)
-      : await ctx.engineClient.workflows.getBySlug(args.slug!);
+    let wf: Awaited<ReturnType<typeof ctx.engineClient.workflows.get>> | null = null;
+    if (args.id) {
+      wf = await ctx.engineClient.workflows.get(args.id);
+    } else if (args.slug) {
+      wf = await ctx.engineClient.workflows.getBySlug(args.slug);
+    }
     if (!wf) return { ok: false, data: { error: "workflow_not_found" } };
     return { ok: true, data: { workflow: wf } };
   },

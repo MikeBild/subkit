@@ -343,12 +343,17 @@ export async function getCredentialForConnector(
     aadFor(tenant_id, row.id),
   );
   const value = deserializePlain(row.mode as CredentialMode, plain);
-  if (value.mode === "oauth2" && row.oauth2_refresh_ciphertext) {
+  if (
+    value.mode === "oauth2" &&
+    row.oauth2_refresh_ciphertext &&
+    row.oauth2_refresh_iv &&
+    row.oauth2_refresh_auth_tag
+  ) {
     const refresh = decryptSecret(
       {
         ciphertext: row.oauth2_refresh_ciphertext,
-        iv: row.oauth2_refresh_iv!,
-        auth_tag: row.oauth2_refresh_auth_tag!,
+        iv: row.oauth2_refresh_iv,
+        auth_tag: row.oauth2_refresh_auth_tag,
       },
       refreshAadFor(tenant_id, row.id),
     );

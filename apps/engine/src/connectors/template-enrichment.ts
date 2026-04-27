@@ -44,13 +44,12 @@ function resolveBaseUrl(
 ): string {
   if (!isEmpty(draftBaseUrl)) return draftBaseUrl as string;
   const options = template.base_url_options;
-  if (options.length > 0) {
-    if (opts?.environment) {
-      const match = options.find((o) => o.environment === opts.environment);
-      if (match) return match.base_url;
-    }
-    return options[0]!.base_url;
+  if (opts?.environment) {
+    const match = options.find((o) => o.environment === opts.environment);
+    if (match) return match.base_url;
   }
+  const first = options[0];
+  if (first) return first.base_url;
   return template.base_url;
 }
 

@@ -113,7 +113,9 @@ export async function buildAttachmentsMessage(opts: AttachmentsOpts): Promise<st
     lines.push(`- ${r.slug}  (${r.original_filename}, ${r.content_type ?? "unknown"}, ${sizeKb})`);
     if (r.preview && r.preview.length > 0) {
       // Truncate preview to a single visible line in the prompt.
-      const firstLine = r.preview.split("\n")[0]!.slice(0, 160);
+      // split("\n") on a non-empty string always yields at least one element,
+      // so [0] is safe — but guard for noUncheckedIndexedAccess.
+      const firstLine = (r.preview.split("\n")[0] ?? "").slice(0, 160);
       lines.push(`  preview: ${firstLine}${r.preview.length > 160 ? "…" : ""}`);
     }
   }

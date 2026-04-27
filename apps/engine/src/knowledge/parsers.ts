@@ -134,10 +134,10 @@ function parseMarkdownChunks(content: string, filename: string): RawChunk[] {
   };
 
   for (const line of lines) {
-    const headingMatch = line.match(/^(#{1,2})\s+(.+)/);
-    if (headingMatch) {
+    const title = line.match(/^(#{1,2})\s+(.+)/)?.[2];
+    if (title !== undefined) {
       flush();
-      currentTitle = headingMatch[2]!.trim();
+      currentTitle = title.trim();
       currentLines.push(line);
     } else {
       currentLines.push(line);

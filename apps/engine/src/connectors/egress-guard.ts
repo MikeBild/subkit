@@ -6,9 +6,7 @@
 // Why this lives in `connectors/`: every outbound call ultimately lands
 // in `drivers/http.ts`, `drivers/graphql.ts`, or the webhook deliver
 // worker. The same blocklist applies to all three. Pulling it out as
-// `assertEgressAllowed` keeps the policy in one place — a future tenant
-// allowlist (e.g. `tenants.egress_guard_mode`) only needs to wire up
-// the resolver here.
+// `assertEgressAllowed` keeps the policy in one place.
 //
 // Tunnel exemption: when an outbound call is going through a tenant's
 // registered tunnel (the tunnel IS the operator-authorized path to
@@ -16,10 +14,11 @@
 // call would be blocked because tunnels are precisely how subkit
 // reaches `10.x` / `192.168.x` services without exposing them publicly.
 //
-// TODO(2.7.x migration): add `tenants.egress_guard_mode` column so
-// individual tenants can opt into `permissive` mode without the
-// global env var. Drizzle migration deferred to a follow-up; the
-// env-var-driven default is sufficient for 2.7.0.
+// Per-tenant override: `tenants.egress_guard_mode` (added in 0041) lets
+// an operator opt one tenant into `permissive` while the rest stay on
+// the env-var default. Call sites that have a loaded `Tenant` row
+// should pass `ctx.mode = tenant.egress_guard_mode ?? undefined` —
+// the resolver below honors it ahead of the env-var fallback.
 
 import { logger } from "../logging/logger.ts";
 

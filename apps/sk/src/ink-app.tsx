@@ -1638,6 +1638,13 @@ export const InkApp: React.FC<InkAppProps> = ({
     reason?: string,
   ): Promise<void> {
     if (!onElicitResponse) return;
+    // Choke-point idempotency: every caller (slash command, bare-text
+    // shortcut, ElicitRouter digit-shortcut) routes through this. If the
+    // engine is already processing a previous response, drop the
+    // duplicate. Without this, two fast keystrokes POST /respond twice,
+    // the engine re-resolves an already-resolved elicitation, and a
+    // second runLoop fires — the silent-hang transcript's failure mode.
+    if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     try {
@@ -1809,8 +1816,29 @@ export const InkApp: React.FC<InkAppProps> = ({
           return;
         }
         if (cmd.name === "approve" || cmd.name === "reject") {
-          if (!session.pendingElicitation || !onElicitResponse) {
+          if (!onElicitResponse) {
             showError("no pending elicitation");
+            return;
+          }
+          // Idempotency guard: a second `/approve` while the engine is
+          // still processing the first one re-resolves an already-resolved
+          // elicitation and triggers a duplicate runLoop turn (wasted
+          // tokens). Match the bare-text shortcut's behavior: hint and
+          // bail.
+          if (busyRef.current) {
+            showInfo(
+              cmd.name === "approve"
+                ? "approval already sent — engine is executing, hang tight"
+                : "rejection already sent — engine is executing, hang tight",
+            );
+            return;
+          }
+          if (!session.pendingElicitation) {
+            showInfo(
+              session.status === "running"
+                ? `no pending ${cmd.name === "approve" ? "approval" : "rejection"} — engine is still running`
+                : `no pending ${cmd.name === "approve" ? "approval" : "rejection"}`,
+            );
             return;
           }
           const parts = trimmed.split(/\s+/).slice(1);
@@ -1899,32 +1927,54 @@ export const InkApp: React.FC<InkAppProps> = ({
       // a new user message → emits another ask_user_confirm → ad
       // infinitum. This is the dominant cause of the user's
       // "yes / approve / yes / approve" double-confirm spam.
-      if (session.pendingElicitation && onElicitResponse) {
-        const lower = trimmed.toLowerCase();
-        const yes =
-          lower === "yes" ||
-          lower === "y" ||
-          lower === "approve" ||
-          lower === "ok" ||
-          lower === "okay" ||
-          lower === "confirm" ||
-          lower === "go" ||
-          lower === "do it";
-        const no =
-          lower === "no" ||
-          lower === "n" ||
-          lower === "reject" ||
-          lower === "cancel" ||
-          lower === "abort" ||
-          lower === "stop";
-        if (yes || no) {
-          await submitElicitationResponse(
-            session.pendingElicitation.id,
-            { confirmed: yes },
-            no ? "user replied with a short negative" : undefined,
+      const lowerForShortcut = trimmed.toLowerCase();
+      const yesShortcut =
+        lowerForShortcut === "yes" ||
+        lowerForShortcut === "y" ||
+        lowerForShortcut === "approve" ||
+        lowerForShortcut === "ok" ||
+        lowerForShortcut === "okay" ||
+        lowerForShortcut === "confirm" ||
+        lowerForShortcut === "go" ||
+        lowerForShortcut === "do it";
+      const noShortcut =
+        lowerForShortcut === "no" ||
+        lowerForShortcut === "n" ||
+        lowerForShortcut === "reject" ||
+        lowerForShortcut === "cancel" ||
+        lowerForShortcut === "abort" ||
+        lowerForShortcut === "stop";
+      if (yesShortcut || noShortcut) {
+        // While the engine is busy processing a previous response, swallow
+        // duplicate confirm/decline keystrokes so they don't queue a
+        // new prompt or hit /respond twice. This is the second half of
+        // the "approve approve <silence>" failure mode — the first
+        // approve worked, the second was racing the engine.
+        if (busyRef.current) {
+          showInfo(
+            yesShortcut
+              ? "approval already sent — engine is executing, hang tight"
+              : "rejection already sent — engine is executing, hang tight",
           );
           return;
         }
+        if (session.pendingElicitation && onElicitResponse) {
+          await submitElicitationResponse(
+            session.pendingElicitation.id,
+            { confirmed: yesShortcut },
+            noShortcut ? "user replied with a short negative" : undefined,
+          );
+          return;
+        }
+        // No pending elicitation — refuse to forward "approve" as a plain
+        // user message. Otherwise the LLM tries to interpret a bare
+        // "approve", burns a turn, and the operator sees nothing useful.
+        showInfo(
+          session.status === "running"
+            ? "no pending approval — engine is still running"
+            : "no pending approval — type a real prompt or /resume",
+        );
+        return;
       }
 
       // Plain prompt → drive a turn. Busy-guard first: if a turn is

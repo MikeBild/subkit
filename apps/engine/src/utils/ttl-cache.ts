@@ -12,7 +12,7 @@
 // computed at set-time, so a clock bump inside Date.now() during reads
 // is harmless — entries either remain valid or are dropped lazily.
 
-export interface TtlCacheOptions<V> {
+export interface TtlCacheOptions {
   /** Hard size cap; oldest entry is evicted when exceeded. */
   maxEntries: number;
   /** Time-to-live in milliseconds. */
@@ -34,7 +34,7 @@ export class TtlCache<V> {
   private hitCount = 0;
   private missCount = 0;
 
-  constructor(opts: TtlCacheOptions<V>) {
+  constructor(opts: TtlCacheOptions) {
     this.maxEntries = Math.max(1, opts.maxEntries);
     this.ttlMs = Math.max(1, opts.ttlMs);
     this.now = opts.now ?? Date.now;

@@ -1,0 +1,20 @@
+# Terminology gate banlist for subkit. One term per line.
+# Read by scripts/check-terminology.sh — case-insensitive, word-boundary matched
+# against TypeScript/TSX source under apps/engine, apps/sk, apps/agent, packages.
+# Comments (lines starting with #) and blank lines are ignored.
+#
+# Why each term is banned:
+#  - automation / automations: legacy v1 terminology for what is now a Workflow.
+#    Older /v1/automations routes and Automation* schemas are gone; the gate
+#    keeps them gone. The intent-detector still accepts the user-facing
+#    "show my integrations" alias — see check-terminology.sh header.
+#  - superglue: forbidden term per project policy. Do not use in code,
+#    comments, identifiers, or strings.
+#
+# Carve-outs (intentionally NOT here):
+#  - "integration" / "integrations": users say it; the converse pipeline's
+#    intent-detector maps it to connectors. Adding it here breaks that path.
+
+automation
+automations
+superglue

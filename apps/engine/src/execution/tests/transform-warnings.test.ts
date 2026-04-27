@@ -54,6 +54,78 @@ describe("runTransformStep warnings", () => {
     expect(result.warnings?.length).toBe(1);
     expect(result.warnings?.[0]?.code).toBe("unresolved_identifier");
     expect(result.warnings?.[0]?.identifier).toBe("data");
+    // P3: warning details carry the actual scope shape so the LLM can
+    // cite a real path next turn instead of guessing.
+    const details = result.warnings?.[0]?.details as { available_paths: string[] } | undefined;
+    expect(details?.available_paths).toContain("fetch_weather");
+  });
+
+  it("emits `<key>.data` paths when the scope value is a ScopeEnvelope", async () => {
+    const ctx = mkCtx();
+    const step = {
+      kind: "transform" as const,
+      id: "format_output",
+      language: "jsonata" as const,
+      // Reference a non-existent identifier so the warning fires; the
+      // test's point is the available_paths shape, not the unresolved id.
+      expression: "missing_root.foo",
+    };
+    const result = await runTransformStep({
+      ctx,
+      step,
+      scope: {
+        // Real-shaped envelope as the engine produces at runtime.
+        fetch_projects: {
+          data: { projects: [{ id: "p1", name: "Alpha" }] },
+          duration_ms: 12,
+          error: null,
+        },
+      },
+      input: {},
+    });
+    expect(result.warnings?.length).toBe(1);
+    const details = result.warnings?.[0]?.details as { available_paths: string[] } | undefined;
+    expect(details?.available_paths).toContain("fetch_projects");
+    expect(details?.available_paths).toContain("fetch_projects.data");
+  });
+
+  it("offers a 'did you mean' suggestion for a single-typo identifier", async () => {
+    const ctx = mkCtx();
+    const step = {
+      kind: "transform" as const,
+      id: "format_output",
+      language: "jsonata" as const,
+      // `fetch_weathr` is a 1-char typo for the in-scope `fetch_weather`.
+      expression: "fetch_weathr.daily.time[1]",
+    };
+    const result = await runTransformStep({
+      ctx,
+      step,
+      scope: { fetch_weather: { daily: { time: ["a", "b"] } } },
+      input: {},
+    });
+    expect(result.warnings?.length).toBe(1);
+    const details = result.warnings?.[0]?.details as { suggestion?: string } | undefined;
+    expect(details?.suggestion).toBe("fetch_weather");
+  });
+
+  it("does not invent a suggestion when no in-scope key is close enough", async () => {
+    const ctx = mkCtx();
+    const step = {
+      kind: "transform" as const,
+      id: "format_output",
+      language: "jsonata" as const,
+      expression: "totally_different_name",
+    };
+    const result = await runTransformStep({
+      ctx,
+      step,
+      scope: { fetch_weather: { daily: { time: ["a"] } } },
+      input: {},
+    });
+    expect(result.warnings?.length).toBe(1);
+    const details = result.warnings?.[0]?.details as { suggestion?: string } | undefined;
+    expect(details?.suggestion).toBeUndefined();
   });
 
   it("emits no warnings when every referenced identifier is in scope", async () => {

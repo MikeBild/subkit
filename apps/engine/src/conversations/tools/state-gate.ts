@@ -90,8 +90,8 @@ const WORKFLOW_STAGE_PROGRESSION: Readonly<
 function progressionFor(current: AuthoringStage, required: AuthoringStage): string[] {
   const isConnectorRequired = required.startsWith("connector_");
   const map = isConnectorRequired ? CONNECTOR_STAGE_PROGRESSION : WORKFLOW_STAGE_PROGRESSION;
-  const fromCurrent = map[current];
-  if (fromCurrent && fromCurrent[required]) return [...fromCurrent[required]!];
+  const next = map[current]?.[required];
+  if (next) return [...next];
   // No explicit progression mapped — emit a generic recovery hint that
   // points at the inspection / validation tools for the requested
   // resource so the LLM still has a deterministic next move.

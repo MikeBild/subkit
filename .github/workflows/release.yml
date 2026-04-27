@@ -317,6 +317,22 @@ jobs:
           done > SHA256SUMS
           cat SHA256SUMS
 
+      - name: Generate SBOM (CycloneDX)
+        # Pinned to a commit SHA, not @v0, because anchore frequently
+        # republishes major-tagged actions with breaking changes. To
+        # update: pick the latest sha at https://github.com/anchore/sbom-action
+        # and re-pin here.
+        uses: anchore/sbom-action@7ccf588e3cf3cc2611714c2eeae48550fbc17552 # v0.20.4
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: artifacts/sbom.cdx.json
+          # Don't auto-attach to the GitHub Release here; we batch the
+          # whole upload in the next step so the SHA256SUMS line covers
+          # the SBOM too.
+          upload-release-assets: false
+          upload-artifact: false
+
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -326,6 +342,7 @@ jobs:
             artifacts/*/tunnel-agent_*
             artifacts/*/engine_*
             artifacts/SHA256SUMS
+            artifacts/sbom.cdx.json
 
   # ── Docker images ──
   # Gated: only runs when DigitalOcean registry credentials are set.

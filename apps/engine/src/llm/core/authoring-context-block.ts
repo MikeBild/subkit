@@ -344,5 +344,91 @@ function renderWorkflowLines(draft: DraftDocument): string[] {
       `- Latest preview: ${preview.ok ? "ok" : "failed"}${preview.step_id ? ` (step=${preview.step_id})` : ""} — ${preview.summary}`,
     );
   }
+  // P4: append a typed scope manifest so the LLM can cite real JSONata
+  // paths instead of guessing them. Without this the assistant cycles
+  // through `.data.resources`-style invented paths until the dry-run
+  // surfaces unresolved_identifier warnings — the session-79bf2cca
+  // failure mode.
+  const manifest = renderScopeManifestLines(workflow.steps);
+  if (manifest.length > 0) {
+    lines.push("");
+    lines.push("### Scope manifest (paths the LLM may cite in JSONata)");
+    lines.push(...manifest);
+  }
   return lines;
+}
+
+/** Walk the draft's step DAG and produce a path-by-path manifest of what
+ *  is reachable from a JSONata expression at any point in the workflow.
+ *  Output is per-step:
+ *    - `<step_id>` and `<step_id>.data` for plain steps
+ *    - `<loop_id>.data` (array of iterations) plus the per-iteration
+ *      body shape and the post-loop flat access form.
+ *  Skips steps with no `id` or unknown kinds. Truncates to a small
+ *  number of steps to keep the prompt-token cost bounded; the active
+ *  authoring focus is on the few most recent steps. */
+function renderScopeManifestLines(rawSteps: unknown[]): string[] {
+  const lines: string[] = [];
+  const stepsById = new Map<string, Record<string, unknown>>();
+  for (const raw of rawSteps) {
+    if (!raw || typeof raw !== "object") continue;
+    const step = raw as Record<string, unknown>;
+    const id = typeof step.id === "string" ? step.id : null;
+    if (id) stepsById.set(id, step);
+  }
+  for (const raw of rawSteps.slice(0, 12)) {
+    if (!raw || typeof raw !== "object") continue;
+    const step = raw as Record<string, unknown>;
+    const id = typeof step.id === "string" ? step.id : null;
+    const kind = typeof step.kind === "string" ? step.kind : null;
+    if (!id || !kind) continue;
+    if (kind === "loop") {
+      const itemVar = typeof step.item_var === "string" ? step.item_var : "item";
+      const body = Array.isArray(step.body) ? (step.body as unknown[]) : [];
+      const bodyIds = body.filter((b): b is string => typeof b === "string");
+      const firstBodyId = bodyIds[0] ?? null;
+      lines.push(
+        `  - $scope.${id}.data: array — one entry per iteration; each entry is { ${bodyIds.join(", ") || "<no body steps>"} } where each body key is a ScopeEnvelope { data, error, duration_ms }`,
+      );
+      lines.push(`    - inside the loop body, $${itemVar} is the current item (no envelope)`);
+      if (firstBodyId) {
+        // The "flat access" form: jsonata implicitly maps over arrays,
+        // so $scope.<loop>.data.<body>.data flattens iterations into a
+        // single array. This is what users typically want — telling
+        // them up-front saves a guess.
+        lines.push(
+          `    - flat access across all iterations: $scope.${id}.data.${firstBodyId}.data`,
+        );
+        lines.push(`    - one iteration: $scope.${id}.data[0].${firstBodyId}.data`);
+      }
+    } else {
+      lines.push(
+        `  - $scope.${id}.data: ${describeStepDataType(kind, step)} (envelope at $scope.${id})`,
+      );
+    }
+  }
+  return lines;
+}
+
+/** Best-effort label for `<step_id>.data`'s runtime type, derived from
+ *  the step kind and its declared shape. The labels match the wording
+ *  the data-handling skill uses so the LLM can correlate. */
+function describeStepDataType(kind: string, step: Record<string, unknown>): string {
+  switch (kind) {
+    case "request":
+    case "graphql":
+      return "response body (object or array depending on the endpoint)";
+    case "transform": {
+      const expr = typeof step.expression === "string" ? step.expression.trim() : "";
+      if (expr.startsWith("[") || expr.startsWith("$map")) return "array (transform)";
+      if (expr.startsWith("{")) return "object (transform)";
+      return "transform output";
+    }
+    case "branch":
+      return "{ arm: 'then' | 'else' } (branch decision)";
+    case "parallel":
+      return "object keyed by branch index, each holding the branch's last step envelope";
+    default:
+      return `${kind} output`;
+  }
 }

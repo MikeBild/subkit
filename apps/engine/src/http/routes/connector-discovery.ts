@@ -2,7 +2,7 @@
 // endpoint discovery.
 //
 // Mirrors the conversation tool `discover_connector_endpoints` so CI
-// scripts and automation can reach discovery without a conversation.
+// scripts and headless callers can reach discovery without a conversation.
 // Both call into `runDiscoveryCached` from `connectors/discovery/service.ts`
 // — the cache + audit semantics (24h TTL in `knowledge_sources`,
 // `knowledge_source.refreshed` audit row with reason

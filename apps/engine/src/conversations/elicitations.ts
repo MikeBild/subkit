@@ -201,6 +201,24 @@ export async function setElicitationParentMessage(
     .where(inArray(conversationElicitations.id, ids));
 }
 
+/**
+ * Outcome of attempting to resolve an elicitation. The caller distinguishes
+ * three cases:
+ *   - `not_found`  → no row matches the (tenant, id) pair
+ *   - `already_resolved` → the row exists but is no longer pending; carries
+ *     the prior record so the route can return its decision details to the
+ *     client without a second query
+ *   - `resolved` → the transition fired; carries the updated record
+ *
+ * Without this discrimination a duplicate `/respond` POST silently
+ * re-runs the conversation loop, double-charges the LLM, and confuses
+ * the UI — see the silent-hang transcript in session 79bf2cca.
+ */
+export type ResolveElicitationResult =
+  | { kind: "not_found" }
+  | { kind: "already_resolved"; existing: ElicitationRecord }
+  | { kind: "resolved"; record: ElicitationRecord };
+
 export async function resolveElicitation(
   p: {
     tenant_id: string;
@@ -211,7 +229,7 @@ export async function resolveElicitation(
     status?: "resolved" | "cancelled";
   },
   exec: Executor,
-): Promise<ElicitationRecord | null> {
+): Promise<ResolveElicitationResult> {
   const status: ElicitationStatus = p.status ?? "resolved";
   const [row] = await exec
     .update(conversationElicitations)
@@ -227,10 +245,27 @@ export async function resolveElicitation(
       and(
         eq(conversationElicitations.tenant_id, p.tenant_id),
         eq(conversationElicitations.id, p.id),
+        eq(conversationElicitations.status, "pending"),
       ),
     )
     .returning();
-  if (!row) return null;
+  if (!row) {
+    // The conditional update missed: either no such row, or the row is
+    // already in a terminal state. Read it back so we can tell the caller
+    // which case it is.
+    const [existing] = await exec
+      .select()
+      .from(conversationElicitations)
+      .where(
+        and(
+          eq(conversationElicitations.tenant_id, p.tenant_id),
+          eq(conversationElicitations.id, p.id),
+        ),
+      )
+      .limit(1);
+    if (!existing) return { kind: "not_found" };
+    return { kind: "already_resolved", existing: rowToRecord(existing) };
+  }
   await auditAwait(
     {
       tenant_id: p.tenant_id,
@@ -248,5 +283,5 @@ export async function resolveElicitation(
     },
     exec,
   );
-  return rowToRecord(row);
+  return { kind: "resolved", record: rowToRecord(row) };
 }

@@ -1,4 +1,4 @@
-// Chained-Workflow Pattern Detector — surfaces an automation seed when
+// Chained-Workflow Pattern Detector — surfaces a workflow seed when
 // `discover_systems_from_files` returned a non-empty
 // `potential_connections[]` graph between candidates.
 //
@@ -167,7 +167,7 @@ export async function detectChainedWorkflowPatterns(
   //    (a) evidence diversity — appearing across multiple uploads is a
   //    stronger signal than a single mention — and (b) capability
   //    alignment: a `read`-capable source paired with a `write`-capable
-  //    destination is a textbook automation seed.
+  //    destination is a textbook workflow seed.
   const signals: PatternSignal[] = [];
   for (const agg of aggregate.values()) {
     const fromDriver = agg.from_candidate?.kind ?? "unknown";

@@ -122,6 +122,52 @@ describe("conversations/elicitation", () => {
     expect(detail?.conversation.target_workflow_id).toBeNull();
   });
 
+  test("a duplicate /respond on an already-resolved elicitation raises ElicitationAlreadyResolvedError", async () => {
+    const outcome = await createConversation(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.user_id,
+        connector_id: ctx.connector_id,
+        initial_message: "list users",
+      },
+      ctx.testDb.db,
+    );
+    const elicitationId = outcome.result.pending_elicitation_id;
+    if (!elicitationId) throw new Error("no elicitation id");
+
+    // First response — should succeed and move the row to resolved.
+    await respondElicitation(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: outcome.conversation.id,
+        elicitation_id: elicitationId,
+        actor_id: ctx.user_id,
+        output: { confirmed: true },
+      },
+      ctx.testDb.db,
+    );
+
+    // Second response — must reject. Without the gate this would re-run
+    // the conversation loop and double-charge the LLM (the silent-hang
+    // failure mode in session 79bf2cca).
+    await expect(
+      respondElicitation(
+        {
+          tenant_id: ctx.tenant_id,
+          conversation_id: outcome.conversation.id,
+          elicitation_id: elicitationId,
+          actor_id: ctx.user_id,
+          output: { confirmed: true },
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toMatchObject({
+      name: "ElicitationAlreadyResolvedError",
+      elicitation_id: elicitationId,
+      status: "resolved",
+    });
+  });
+
   test("a fresh user prompt is blocked while an elicitation is still pending", async () => {
     const outcome = await createConversation(
       {

@@ -17,6 +17,7 @@ import { bytea, tenantId, timestamps } from "./_common.ts";
 
 export const userRoleEnum = pgEnum("user_role", ["admin", "member", "enduser"]);
 export const auditActorKindEnum = pgEnum("audit_actor_kind", ["user", "system_account", "system"]);
+export const egressGuardModeEnum = pgEnum("egress_guard_mode", ["strict", "permissive"]);
 
 // ----- tenants --------------------------------------------------------------
 
@@ -29,11 +30,28 @@ export const tenants = pgTable(
     llm_primary: text("llm_primary"),
     llm_fallback: text("llm_fallback"),
     llm_monthly_token_budget: bigint("llm_monthly_token_budget", { mode: "number" }),
+    egress_guard_mode: egressGuardModeEnum("egress_guard_mode"),
+    /** Per-tenant runtime overrides for settings declared in the
+     *  `tenant`-scope of `apps/engine/src/settings/registry.ts`.
+     *  Keys absent here fall through to the global `engine_settings`
+     *  default, then to the registry default. */
+    settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [uniqueIndex("tenants_slug_key").on(t.slug)],
 );
+
+/** Global engine settings — values that apply across all tenants
+ *  (LLM provider keys, OIDC issuer URLs, observability endpoints).
+ *  Per-tenant overrides live on `tenants.settings`. Schema and types
+ *  for each key are declared in `apps/engine/src/settings/registry.ts`. */
+export const engineSettings = pgTable("engine_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").$type<unknown>().notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updated_by: uuid("updated_by"),
+});
 
 // ----- users ----------------------------------------------------------------
 

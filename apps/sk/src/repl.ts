@@ -190,6 +190,14 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
     line(`   resumed conversation ${opts.resumeConversationId.slice(0, 8)}`);
   }
 
+  // Idempotency guard: while the engine is processing a turn (initial
+  // prompt OR an elicitation response), a second `/approve`, `/reject`,
+  // or `/respond` is a no-op. Without this, two quick approves race to
+  // POST /respond — the second one re-resolves an already-resolved
+  // elicitation and triggers a duplicate runLoop turn (wasted tokens
+  // and a confusing UI).
+  let elicitInFlight = false;
+
   const rl = readline.createInterface({
     input: stdin,
     output: stdout,
@@ -351,51 +359,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         writeErr("sk: no conversation id after create\n");
         return;
       }
-      const stream = await client.streamConversation(session.conversationId, traceContext());
-      const verbose = isDebugVerbose();
-      let parseErrorReported = false;
-      await readSse(stream, (frame) => {
-        debugLog(
-          "sse.frame",
-          { event: frame.event, ...(verbose ? { raw_data: frame.data } : {}) },
-          traceContext(),
-        );
-        try {
-          const ev = JSON.parse(frame.data) as TurnEvent;
-          debugLog(
-            "dialog.turn_event",
-            verbose ? { event: ev } : { event_type: ev.type },
-            traceContext(),
-          );
-          session = applyTurnEvent(session, ev);
-          renderFrame(ev);
-        } catch (err) {
-          debugLog(
-            "dialog.error",
-            {
-              input_kind,
-              stage: "sse_frame_parse",
-              ...(verbose ? { raw_frame: frame.data } : {}),
-              error: serializeDebugError(err),
-            },
-            traceContext(),
-          );
-          if (!parseErrorReported) {
-            parseErrorReported = true;
-            writeErr("sk: malformed SSE frame — see ~/.sk/debug.log for details\n");
-          }
-        }
-      });
-      debugLog("sse.close", { final_status: session.status }, traceContext());
-      // After the stream closes, print the final assistant text and any usage.
-      const text = lastAssistantText(session).trim();
-      if (text) line(`\nassistant> ${text}`);
-      if (session.usage) {
-        line(
-          `   (usage: ${session.usage.turn_tokens} tokens this turn; ` +
-            `${session.usage.remaining_monthly_budget_tokens ?? "∞"} remaining)`,
-        );
-      }
+      await streamUntilDone(input_kind, traceContext);
     } catch (err) {
       turnStatus = "error";
       debugLog(
@@ -455,6 +419,103 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
       default:
         break;
     }
+  };
+
+  // Print the assistant's last message and the per-turn token usage. Used
+  // at the tail of every consumption path (SSE stream and the synchronous
+  // events array returned by /respond) so a turn always concludes with a
+  // visible result line — which is what was missing from the slash-command
+  // path that produced the silent-hang transcript.
+  const finishTurnRender = (): void => {
+    const text = lastAssistantText(session).trim();
+    if (text) line(`\nassistant> ${text}`);
+    if (session.usage) {
+      line(
+        `   (usage: ${session.usage.turn_tokens} tokens this turn; ` +
+          `${session.usage.remaining_monthly_budget_tokens ?? "∞"} remaining)`,
+      );
+    }
+  };
+
+  // Consume the SSE stream the engine opens after a fresh prompt turn.
+  // Applies each frame to `session` (closure-mutated) and emits the
+  // per-event lines via `renderFrame`. Errors in frame parsing are
+  // logged + reported once per turn so a malformed frame can't silently
+  // freeze the UI.
+  const streamUntilDone = async (
+    input_kind: "slash" | "prompt",
+    traceContext: () => DebugCorrelationFields,
+  ): Promise<void> => {
+    if (!session.conversationId) return;
+    const stream = await client.streamConversation(session.conversationId, traceContext());
+    const verbose = isDebugVerbose();
+    let parseErrorReported = false;
+    await readSse(stream, (frame) => {
+      debugLog(
+        "sse.frame",
+        { event: frame.event, ...(verbose ? { raw_data: frame.data } : {}) },
+        traceContext(),
+      );
+      try {
+        const ev = JSON.parse(frame.data) as TurnEvent;
+        debugLog(
+          "dialog.turn_event",
+          verbose ? { event: ev } : { event_type: ev.type },
+          traceContext(),
+        );
+        session = applyTurnEvent(session, ev);
+        renderFrame(ev);
+      } catch (err) {
+        debugLog(
+          "dialog.error",
+          {
+            input_kind,
+            stage: "sse_frame_parse",
+            ...(verbose ? { raw_frame: frame.data } : {}),
+            error: serializeDebugError(err),
+          },
+          traceContext(),
+        );
+        if (!parseErrorReported) {
+          parseErrorReported = true;
+          writeErr("sk: malformed SSE frame — see ~/.sk/debug.log for details\n");
+        }
+      }
+    });
+    debugLog("sse.close", { final_status: session.status }, traceContext());
+    finishTurnRender();
+  };
+
+  // Apply the synchronous events array that POST /respond returns. The
+  // /respond route runs the next runLoop turn inline and returns its
+  // events in the response body — there is no SSE stream for this path.
+  // Without applying these events the slash-command handlers fell silent
+  // after sending the response (the readline-path silent-hang).
+  const applyTurnEvents = (events: unknown[], traceContext: () => DebugCorrelationFields): void => {
+    const verbose = isDebugVerbose();
+    for (const raw of events) {
+      try {
+        const ev = raw as TurnEvent;
+        debugLog(
+          "dialog.turn_event",
+          verbose ? { event: ev } : { event_type: ev.type },
+          traceContext(),
+        );
+        session = applyTurnEvent(session, ev);
+        renderFrame(ev);
+      } catch (err) {
+        debugLog(
+          "dialog.error",
+          {
+            stage: "respond_event_apply",
+            ...(verbose ? { raw_event: raw } : {}),
+            error: serializeDebugError(err),
+          },
+          traceContext(),
+        );
+      }
+    }
+    finishTurnRender();
   };
 
   const handleSlash = async (name: string, raw: string): Promise<void> => {
@@ -595,43 +656,91 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
       }
       case "approve": {
         const elicitationId = args[0] ?? session.pendingElicitation?.id;
-        if (!session.conversationId || !elicitationId) {
-          line("usage: /approve [elicitation_id]");
+        if (!session.conversationId) {
+          line("sk: no active conversation");
           return;
         }
-        await client.respondElicitation(
-          session.conversationId,
-          elicitationId,
-          { confirmed: true },
-          undefined,
-          activeDebugContext ?? undefined,
-        );
-        session = { ...session, pendingElicitation: null, status: "running" };
-        line("approval sent");
+        if (elicitInFlight) {
+          line("approval already sent — engine is executing, hang tight");
+          return;
+        }
+        if (!elicitationId) {
+          line(
+            session.status === "running"
+              ? "no pending approval — engine is still running"
+              : "no pending approval",
+          );
+          return;
+        }
+        elicitInFlight = true;
+        try {
+          const outcome = await client.respondElicitation(
+            session.conversationId,
+            elicitationId,
+            { confirmed: true },
+            undefined,
+            activeDebugContext ?? undefined,
+          );
+          session = { ...session, pendingElicitation: null, status: "running" };
+          line("approval sent");
+          applyTurnEvents(outcome.events, () => activeDebugContext ?? { mode: "repl" });
+        } finally {
+          elicitInFlight = false;
+        }
         return;
       }
       case "reject": {
         const elicitationId = args[0] ?? session.pendingElicitation?.id;
-        if (!session.conversationId || !elicitationId) {
-          line("usage: /reject [elicitation_id] [reason]");
+        if (!session.conversationId) {
+          line("sk: no active conversation");
+          return;
+        }
+        if (elicitInFlight) {
+          line("rejection already sent — engine is executing, hang tight");
+          return;
+        }
+        if (!elicitationId) {
+          line(
+            session.status === "running"
+              ? "no pending elicitation — engine is still running"
+              : "no pending elicitation",
+          );
           return;
         }
         const reason = args.slice(1).join(" ") || undefined;
-        await client.respondElicitation(
-          session.conversationId,
-          elicitationId,
-          { confirmed: false },
-          reason,
-          activeDebugContext ?? undefined,
-        );
-        session = { ...session, pendingElicitation: null, status: "running" };
-        line("rejection sent");
+        elicitInFlight = true;
+        try {
+          const outcome = await client.respondElicitation(
+            session.conversationId,
+            elicitationId,
+            { confirmed: false },
+            reason,
+            activeDebugContext ?? undefined,
+          );
+          session = { ...session, pendingElicitation: null, status: "running" };
+          line("rejection sent");
+          applyTurnEvents(outcome.events, () => activeDebugContext ?? { mode: "repl" });
+        } finally {
+          elicitInFlight = false;
+        }
         return;
       }
       case "respond": {
         const elicitationId = args[0] ?? session.pendingElicitation?.id;
-        if (!session.conversationId || !elicitationId) {
-          line("usage: /respond [elicitation_id] <value-as-json>");
+        if (!session.conversationId) {
+          line("sk: no active conversation");
+          return;
+        }
+        if (elicitInFlight) {
+          line("response already sent — engine is executing, hang tight");
+          return;
+        }
+        if (!elicitationId) {
+          line(
+            session.status === "running"
+              ? "no pending elicitation — engine is still running"
+              : "no pending elicitation",
+          );
           return;
         }
         const raw = args.slice(1).join(" ");
@@ -641,15 +750,21 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         } catch {
           output = { text: raw };
         }
-        await client.respondElicitation(
-          session.conversationId,
-          elicitationId,
-          output,
-          undefined,
-          activeDebugContext ?? undefined,
-        );
-        session = { ...session, pendingElicitation: null, status: "running" };
-        line("response sent");
+        elicitInFlight = true;
+        try {
+          const outcome = await client.respondElicitation(
+            session.conversationId,
+            elicitationId,
+            output,
+            undefined,
+            activeDebugContext ?? undefined,
+          );
+          session = { ...session, pendingElicitation: null, status: "running" };
+          line("response sent");
+          applyTurnEvents(outcome.events, () => activeDebugContext ?? { mode: "repl" });
+        } finally {
+          elicitInFlight = false;
+        }
         return;
       }
       case "memory": {

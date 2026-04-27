@@ -221,10 +221,10 @@ export const buildWorkflowTool: ConversationTool = {
       for (const t of parsedTokens) {
         if (tokensSeen.has(t.raw)) continue;
         tokensSeen.add(t.raw);
-        if (t.kind === "cred") {
-          tokens.push({ kind: t.kind, slug: t.slug!, field: t.field!, raw: t.raw });
-        } else if (t.kind === "connector_url" || t.kind === "connector_config") {
-          tokens.push({ kind: t.kind, slug: t.slug!, raw: t.raw });
+        if (t.kind === "cred" && t.slug && t.field) {
+          tokens.push({ kind: t.kind, slug: t.slug, field: t.field, raw: t.raw });
+        } else if ((t.kind === "connector_url" || t.kind === "connector_config") && t.slug) {
+          tokens.push({ kind: t.kind, slug: t.slug, raw: t.raw });
         }
       }
     }

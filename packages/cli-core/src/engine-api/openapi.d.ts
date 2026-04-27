@@ -2161,6 +2161,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connectors/{id}/call": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoke an HTTP/GraphQL endpoint against a persisted connector
+         * @description Programmatic surface for ad-hoc connector invocation. Mirrors the call_connector conversation tool: applies the saved credential, audits as connector.invoked, and returns {status, headers, body, latency_ms} with truncation flags for response bodies > 8KB. Driver coverage at this surface is HTTP and GraphQL only — Postgres / SFTP / S3 connectors return a 422 envelope pointing at workflow-step authoring.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConnectorCallRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorCallResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unprocessable entity (driver mismatch, missing credential, …) */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connectors/{id}/oauth/start": {
         parameters: {
             query?: never;
@@ -2378,6 +2450,76 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connectors/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discover endpoints for a connector template or URL
+         * @description Runs the multi-strategy discovery pipeline (OpenAPI direct → GraphQL introspection → Swagger UI scrape → llms.txt → HTML scrape → Playwright crawl) for the given template_id, ingestion_url, or base_url. Cached per-tenant for 24h in knowledge_sources; pass force_refresh:true to bypass.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConnectorDiscoverRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorDiscoverResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Discovery failed (all strategies bailed) */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3800,6 +3942,15 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Pending input */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -5560,6 +5711,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/notifications/rules/:id/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Synthesise a notification event and dispatch it through the rule pipeline. Returns the rule-matching, rate-limit, and channel-dispatch outcome so operators can verify a rule end-to-end without waiting for a real workflow run. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TestNotificationRuleBody"];
+                };
+            };
+            responses: {
+                /** @description Dispatch outcome */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TestNotificationRuleResponse"];
+                    };
+                };
+                /** @description Rule not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/events": {
         parameters: {
             query?: never;
@@ -6100,6 +6302,7 @@ export interface components {
             monthly_budget_tokens: number | null;
             remaining_monthly_budget_tokens: number | null;
             version: string;
+            llm_provider: components["schemas"]["StatusLlmProvider"];
         };
         StatusUser: {
             id: string;
@@ -6110,6 +6313,12 @@ export interface components {
         StatusTenant: {
             id: string;
             slug: string | null;
+        };
+        StatusLlmProvider: {
+            detected: string;
+            ok: boolean;
+            message: string;
+            missing: string[];
         };
         TenantListResponse: {
             items: components["schemas"]["Tenant"][];
@@ -6785,6 +6994,7 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+            operator_notes: string | null;
             template_slug: string | null;
             template_name: string | null;
             /** @enum {string|null} */
@@ -6817,6 +7027,7 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
+            operator_notes?: string | null;
             template_slug?: string;
             /** @enum {string} */
             template_source?: "builtin" | "tenant";
@@ -6832,6 +7043,7 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
+            operator_notes?: string | null;
             template_slug?: string;
             /** @enum {string} */
             template_source?: "builtin" | "tenant";
@@ -6844,6 +7056,41 @@ export interface components {
             status?: number;
             detail?: string;
         };
+        ConnectorCallResponse: {
+            status: number;
+            headers: {
+                [key: string]: string;
+            };
+            body?: unknown;
+            latency_ms: number;
+            truncated: boolean;
+            body_byte_count: number;
+            raw_ref?: string;
+            metadata: components["schemas"]["ConnectorCallMetadata"];
+        };
+        ConnectorCallMetadata: {
+            connector_id: string;
+            connector_slug: string;
+            driver: string;
+            environment: string;
+            method: string;
+            path: string;
+            url_host: string;
+        };
+        ConnectorCallRequest: {
+            method?: components["schemas"]["ConnectorCallMethod"];
+            path?: string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            headers?: {
+                [key: string]: string;
+            };
+            body?: unknown;
+            timeout_ms?: number;
+        };
+        /** @enum {string} */
+        ConnectorCallMethod: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
         OAuthStartResponse: {
             authorization_url: string;
             state: string;
@@ -6868,6 +7115,85 @@ export interface components {
             payload: {
                 [key: string]: unknown;
             };
+        };
+        ConnectorDiscoverResponse: {
+            /** @enum {string} */
+            source: "cache" | "fresh";
+            cache_key: string;
+            result: components["schemas"]["DiscoveryResult"];
+        };
+        DiscoveryResult: {
+            source_url: string;
+            fetched_at: string;
+            strategy: components["schemas"]["DiscoveryStrategyName"];
+            /** @enum {string|null} */
+            spec_version: "openapi-3" | "swagger-2" | null;
+            title: string | null;
+            servers: string[];
+            auth_schemes: components["schemas"]["DiscoveredAuthScheme"][];
+            endpoints: components["schemas"]["DiscoveredEndpoint"][];
+            warnings: components["schemas"]["DiscoveryWarning"][];
+            text_corpus?: string | null;
+        };
+        /** @enum {string} */
+        DiscoveryStrategyName: "openapi-direct" | "graphql-introspect" | "swagger-ui-scrape" | "llms-txt" | "html-scrape" | "playwright-crawl";
+        DiscoveredAuthScheme: {
+            name: string;
+            /** @enum {string} */
+            type: "apiKey" | "http" | "oauth2" | "openIdConnect";
+            /** @enum {string} */
+            location?: "header" | "query" | "cookie";
+            scheme?: string;
+            flows?: {
+                [key: string]: components["schemas"]["DiscoveredAuthSchemeOAuth2Flow"];
+            };
+        };
+        DiscoveredAuthSchemeOAuth2Flow: {
+            authorization_url?: string;
+            token_url?: string;
+            scopes?: {
+                [key: string]: string;
+            };
+        };
+        DiscoveredEndpoint: {
+            /** @enum {string} */
+            method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+            path: string;
+            summary: string | null;
+            description: string | null;
+            operation_id: string | null;
+            scopes: string[];
+            params: components["schemas"]["DiscoveredEndpointParam"][];
+            request_body_schema?: unknown;
+            response_schemas: {
+                [key: string]: unknown;
+            };
+            pagination_hint: components["schemas"]["DiscoveredEndpointPaginationHint"];
+            deprecated: boolean;
+        };
+        DiscoveredEndpointParam: {
+            name: string;
+            /** @enum {string} */
+            in: "path" | "query" | "header" | "cookie" | "body";
+            required: boolean;
+            type: string | null;
+        };
+        DiscoveredEndpointPaginationHint: {
+            /** @enum {string|null} */
+            kind: "page" | "cursor" | "offset" | "link_header" | null;
+            param_names: string[];
+        } | null;
+        DiscoveryWarning: {
+            code: string;
+            message: string;
+        };
+        ConnectorDiscoverRequest: {
+            template_id?: string;
+            /** Format: uri */
+            base_url?: string;
+            /** Format: uri */
+            ingestion_url?: string;
+            force_refresh?: boolean;
         };
         ConnectorDocsIngestResponse: {
             document_id: string | null;
@@ -6907,6 +7233,7 @@ export interface components {
                 rank: number;
                 /** @enum {string} */
                 match_type: "operation" | "auth" | "schema" | "general";
+                fetched_at: string | null;
             }[];
         };
         CredentialRow: {
@@ -7014,6 +7341,7 @@ export interface components {
                 path: string | null;
                 snippet: string;
                 rank: number;
+                fetched_at: string | null;
             }[];
         };
         UpdateKnowledgeSourceBody: {
@@ -7040,7 +7368,7 @@ export interface components {
             connector_id: string | null;
             workflow_id: string | null;
             /** @enum {string} */
-            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern";
+            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern";
             title: string;
             body: string;
             /** @default [] */
@@ -7171,7 +7499,7 @@ export interface components {
             model?: string;
             title?: string;
             /** @enum {string} */
-            permission_mode?: "auto" | "ask" | "plan";
+            permission_mode?: "auto" | "ask" | "plan" | "yolo";
         };
         ConversationDetail: {
             conversation: components["schemas"]["Conversation"];
@@ -7210,7 +7538,7 @@ export interface components {
             message: string;
             memory?: string;
             /** @enum {string} */
-            permission_mode?: "auto" | "ask" | "plan";
+            permission_mode?: "auto" | "ask" | "plan" | "yolo";
         };
         ContextSnapshot: {
             conversation_id: string;
@@ -7223,6 +7551,7 @@ export interface components {
                 readiness: string;
                 next_action: string | null;
                 next_required_action: string | null;
+                next_suggested_tool: string | null;
                 missing_fields: string[];
                 progress_label: string | null;
                 lifecycle_state: string;
@@ -7334,7 +7663,7 @@ export interface components {
             output?: unknown;
             reason?: string;
             /** @enum {string} */
-            permission_mode?: "auto" | "ask" | "plan";
+            permission_mode?: "auto" | "ask" | "plan" | "yolo";
         };
         CompactConversationResponse: {
             conversation: components["schemas"]["Conversation"];
@@ -7658,6 +7987,28 @@ export interface components {
             reason: string | null;
             error: string | null;
             created_at: string;
+        };
+        TestNotificationRuleResponse: {
+            matched: number;
+            delivered: number;
+            outcomes: {
+                rule_id: string;
+                channel_id: string;
+                status: string;
+                reason?: string | null;
+                error?: string | null;
+            }[];
+        };
+        TestNotificationRuleBody: {
+            /** @default notifications.test */
+            event_type: string;
+            workflow_id?: string | null;
+            workflow_slug?: string | null;
+            /** @enum {string} */
+            severity?: "debug" | "info" | "warn" | "error" | "critical";
+            payload?: {
+                [key: string]: unknown;
+            } | null;
         };
         OutboxEventListResponse: {
             items: components["schemas"]["OutboxEvent"][];
