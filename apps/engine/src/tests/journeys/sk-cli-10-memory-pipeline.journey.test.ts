@@ -1,4 +1,4 @@
-// User story: As an admin, I drop a `SUBKIT.md` into my project
+// User story: As an admin, I drop a `SK.md` into my project
 // root, run `sk -p "..."`, and the contents flow through the CLI's
 // memory loader, land on `conversations.memory`, fire a
 // `conversation.memory_injected` audit row, and persist across
@@ -6,16 +6,16 @@
 //
 // Acceptance criteria:
 //
-//   AC1. A project-level SUBKIT.md discovered by the memory loader
+//   AC1. A project-level SK.md discovered by the memory loader
 //        is forwarded on conversation create, written to
 //        `conversations.memory`, and audited.
 //   AC2. A follow-up turn without `memory` on the wire REUSES the
 //        persisted row (no second `memory_injected` row is written).
 //   AC3. Explicitly re-sending memory on a later turn writes a new
 //        `memory_injected` row AND updates the row's memory column.
-//   AC4. `sk --no-memory` skips injection even when SUBKIT.md exists.
+//   AC4. `sk --no-memory` skips injection even when SK.md exists.
 //   AC5. The memory loader walks upward from a nested cwd and
-//        picks up the closest SUBKIT.md.
+//        picks up the closest SK.md.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -75,7 +75,7 @@ describe("journey: sk-cli memory pipeline", () => {
     ctx = await createJourneyCtx("sk-cli-10-memory");
     tmpWorkspace = mkdtempSync(join(tmpdir(), "sk-memory-ws-"));
     writeFileSync(
-      join(tmpWorkspace, "SUBKIT.md"),
+      join(tmpWorkspace, "SK.md"),
       "# Project memory\n- prefer JSON response shapes\n- avoid pagination for list endpoints under 100 rows\n",
       "utf8",
     );
@@ -86,7 +86,7 @@ describe("journey: sk-cli memory pipeline", () => {
     await ctx.cleanup();
   });
 
-  test("AC1: SUBKIT.md is forwarded, stored, and audited on first turn", async () => {
+  test("AC1: SK.md is forwarded, stored, and audited on first turn", async () => {
     const result = await runHeadless({
       profile: profile(),
       prompt: "create a sample workflow",
@@ -154,7 +154,7 @@ describe("journey: sk-cli memory pipeline", () => {
     expect(persisted).toContain("RFC 7807");
   });
 
-  test("AC4: --no-memory skips injection even when SUBKIT.md exists", async () => {
+  test("AC4: --no-memory skips injection even when SK.md exists", async () => {
     const result = await runHeadless({
       profile: profile(),
       prompt: "no memory please",
@@ -174,6 +174,6 @@ describe("journey: sk-cli memory pipeline", () => {
     mkdirSync(nested, { recursive: true });
     const result = loadMemory({ cwd: nested });
     expect(result.content).toContain("prefer JSON response shapes");
-    expect(result.sources[0]).toContain("SUBKIT.md");
+    expect(result.sources[0]).toContain("SK.md");
   });
 });
