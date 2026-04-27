@@ -21,6 +21,7 @@ import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { connectorDocumentChunks, connectorDocuments, connectors } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { TtlCache } from "../utils/ttl-cache.ts";
 import {
   canConsumeBytes,
   createBudgetState,
@@ -330,6 +331,10 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     };
   });
 
+  // Invalidate any cached search results for this connector — the next
+  // search must reflect the freshly-ingested chunks, not a stale snapshot.
+  invalidateDocsCache(p.tenant_id, p.connector_id);
+
   logger.info({
     module: "docs",
     action: "ingest.completed",
@@ -475,6 +480,28 @@ export interface SearchParams {
   limit?: number;
 }
 
+// In-memory cache for repeated FTS lookups. Entries scope to
+// (tenant, connector, normalized query, limit) and live for 60s. Cap of
+// 256 keeps the cache from drifting unbounded under heavy multitenant
+// load. Process-local — no cross-replica coherence.
+const searchCache = new TtlCache<SearchHit[]>({ maxEntries: 256, ttlMs: 60_000 });
+
+function searchCacheKey(p: SearchParams): string {
+  const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
+  const normQuery = p.query.trim().toLowerCase();
+  return `${p.tenant_id}:${p.connector_id}:${limit}:${normQuery}`;
+}
+
+/** Drop every cached search entry for a connector. Called after ingest. */
+export function invalidateDocsCache(tenant_id: string, connector_id: string): void {
+  searchCache.invalidatePrefix(`${tenant_id}:${connector_id}:`);
+}
+
+/** Test/observability hook — counters for cache hits + size. */
+export function getDocsSearchCacheStats(): { hits: number; misses: number; size: number } {
+  return searchCache.stats();
+}
+
 export interface SearchHit {
   id: string;
   document_id: string;
@@ -483,32 +510,46 @@ export interface SearchHit {
   snippet: string;
   rank: number;
   match_type: SearchHitMatchType;
+  /** ISO-8601 timestamp of the document's most recent fetch. */
+  fetched_at: string | null;
 }
 
 export async function searchDocs(p: SearchParams, exec?: Executor): Promise<SearchHit[]> {
   const db = exec ?? getDb();
   const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
   const candidateLimit = Math.min(Math.max(limit * 5, limit), 250);
+
+  // Always cache: HTTP routes and conversation tools pass a request-scoped
+  // executor, but reads from connector_document_chunks are stable enough
+  // that a 60s TTL with invalidate-on-ingest is the right tradeoff.
+  const cacheKey = searchCacheKey(p);
+  const cached = searchCache.get(cacheKey);
+  if (cached) return cached;
   // Drizzle's `sql` template binds params safely. plainto_tsquery itself
   // normalises the query string so we don't need to escape the content.
+  // We JOIN connector_documents so each chunk hit carries the source
+  // document's last-fetch timestamp, letting the caller reason about
+  // staleness without an extra round-trip.
   const out = await db.execute(sql`
     SELECT
-      id::text AS id,
-      document_id::text AS document_id,
-      title,
-      path,
-      content,
+      cdc.id::text AS id,
+      cdc.document_id::text AS document_id,
+      cdc.title AS title,
+      cdc.path AS path,
+      cdc.content AS content,
+      cd.updated_at AS fetched_at,
       ts_headline(
         'english',
-        content,
+        cdc.content,
         plainto_tsquery('english', ${p.query}),
         'MaxWords=25, MinWords=5'
       ) AS snippet,
-      ts_rank_cd(tsv, plainto_tsquery('english', ${p.query})) AS rank
-    FROM connector_document_chunks
-    WHERE tenant_id = ${p.tenant_id}
-      AND connector_id = ${p.connector_id}
-      AND tsv @@ plainto_tsquery('english', ${p.query})
+      ts_rank_cd(cdc.tsv, plainto_tsquery('english', ${p.query})) AS rank
+    FROM connector_document_chunks cdc
+    JOIN connector_documents cd ON cd.id = cdc.document_id
+    WHERE cdc.tenant_id = ${p.tenant_id}
+      AND cdc.connector_id = ${p.connector_id}
+      AND cdc.tsv @@ plainto_tsquery('english', ${p.query})
     ORDER BY rank DESC
     LIMIT ${candidateLimit}
   `);
@@ -520,9 +561,10 @@ export async function searchDocs(p: SearchParams, exec?: Executor): Promise<Sear
     content: string;
     snippet: string;
     rank: number | string;
+    fetched_at: Date | string | null;
   };
   const rows = (out as unknown as { rows: Row[] }).rows ?? (out as unknown as Row[]);
-  return rerankSearchHits(
+  const hits = rerankSearchHits(
     p.query,
     (rows as Row[]).map((r) => ({
       id: r.id,
@@ -532,9 +574,17 @@ export async function searchDocs(p: SearchParams, exec?: Executor): Promise<Sear
       content: r.content,
       snippet: r.snippet,
       rank: Number(r.rank),
+      fetched_at:
+        r.fetched_at instanceof Date
+          ? r.fetched_at.toISOString()
+          : typeof r.fetched_at === "string"
+            ? r.fetched_at
+            : null,
     })),
     limit,
   );
+  searchCache.set(cacheKey, hits);
+  return hits;
 }
 
 // Touch byteLen so the linter doesn't flag an unused import — the

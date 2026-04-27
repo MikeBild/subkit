@@ -61,6 +61,8 @@ export interface IncludedChunk {
   snippet: string;
   rank: number;
   tokens: number;
+  /** ISO-8601 of the source document's last fetch. Used to surface staleness. */
+  fetched_at: string | null;
 }
 
 /** Knowledge Source chunk included in the prompt. */
@@ -72,6 +74,7 @@ export interface IncludedKnowledgeChunk {
   snippet: string;
   rank: number;
   tokens: number;
+  fetched_at: string | null;
 }
 
 export interface AuthoringPromptHint {

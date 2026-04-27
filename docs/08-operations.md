@@ -91,6 +91,26 @@ Per-execution and per-step timeouts prevent runaway workflows from consuming res
 
 These limits have documented defaults and can be tuned by operators for their specific workloads. They are designed so that no single workflow, tenant, or external connector dependency can degrade the platform for others.
 
+### Documentation & Knowledge Tunables
+
+Documentation ingestion and Knowledge Source budgets are env-configurable so operators can raise them on hardware that warrants larger corpora. Defaults are conservative and match the docs in [`04-authoring.md`](04-authoring.md).
+
+| Env var | Default | Effect |
+|---|---|---|
+| `DOCS_INGESTION_MAX_BYTES_PER_CONNECTOR` | `10485760` (10 MB) | Total ingest budget per connector per run. |
+| `DOCS_INGESTION_MAX_BYTES_PER_DOC` | `3145728` (3 MB) | Per-page / per-document hard cap. |
+| `DOCS_INGESTION_MAX_LINKS` | `20` | Links followed from `llms.txt` / markdown indices. |
+| `DOCS_INGESTION_MAX_SPECS` | `100` | OpenAPI / GraphQL specs per ingest run. |
+| `DOCS_INGESTION_MAX_CONCURRENT` | `25` | Concurrent fetches per ingest run. |
+| `KNOWLEDGE_SOURCE_MAX_BYTES` | `52428800` (50 MB) | Per-source upload cap. |
+| `KNOWLEDGE_TENANT_MAX_BYTES` | `524288000` (500 MB) | Per-tenant total knowledge bytes. |
+| `KNOWLEDGE_MAX_FILES_PER_MESSAGE` | `10` | Max files attached in a single conversation message. |
+| `DOCS_CRAWL_POSITIVE_HIGH` | `api,apis,endpoints,reference,docs` | URL keywords that score `+5` during the playwright fallback crawl. |
+| `DOCS_CRAWL_POSITIVE_LOW` | `swagger,openapi` | URL keywords that score `+3`. |
+| `DOCS_CRAWL_NEGATIVE` | `pricing,login,signin,signup,/blog/,careers,/locale/,/legal/,/privacy/,/terms/,/contact/` | URL keywords that score `-10`. |
+
+Each value falls back to the default when the env var is unset, empty, zero, or unparseable — there is no half-configured state.
+
 When a circuit breaker trips, the audit log records it and the event stream delivers a notification. Operators see the failure before users do.
 
 ---

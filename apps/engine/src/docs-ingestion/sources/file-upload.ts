@@ -1,19 +1,28 @@
 // File-upload source normalizer.
 //
 // Accepts a buffer + a hint (filename or MIME type) and returns one or
-// more chunks. Supported formats: JSON, YAML, CSV, XML. PDF, DOCX, and
-// XLSX are explicitly out of scope and surface as `unsupported` errors —
-// no binary parsing libraries are pulled in.
+// more chunks. Supported formats:
+//   - structured: JSON, YAML, CSV, XML (parsed in this module).
+//   - text:       Markdown, HTML, plaintext (delegated to
+//                 `knowledge/parsers.ts` so the connector-docs path and
+//                 the knowledge path stay aligned).
 //
-// The implementation is deliberately library-free: we ship a small YAML
-// parser (good enough for flat key/value docs) and an XML walker that
-// handles the doc-style nesting needed for retrieval. CSV uses a
+// PDF, DOCX, and XLSX are explicitly out of scope and surface as
+// `unsupported` errors — no binary parsing libraries are pulled in.
+//
+// The structured parsers are deliberately library-free: we ship a small
+// YAML parser (good enough for flat key/value docs) and an XML walker
+// that handles the doc-style nesting needed for retrieval. CSV uses a
 // streaming line splitter that respects quoted fields.
 
+import {
+  detectFormat as detectKnowledgeFormat,
+  parseFileToChunks,
+} from "../../knowledge/parsers.ts";
 import { byteLen } from "../chunker.ts";
 import type { RawChunk } from "../types.ts";
 
-export type FileUploadFormat = "json" | "yaml" | "csv" | "xml";
+export type FileUploadFormat = "json" | "yaml" | "csv" | "xml" | "markdown" | "html" | "plaintext";
 
 export class UnsupportedFileUploadError extends Error {
   constructor(format: string) {
@@ -59,6 +68,18 @@ export function detectFormat(input: FileUploadInput): FileUploadFormat {
   if (name.endsWith(".yaml") || name.endsWith(".yml") || mime.includes("yaml")) return "yaml";
   if (name.endsWith(".csv") || mime.includes("csv")) return "csv";
   if (name.endsWith(".xml") || mime.includes("xml")) return "xml";
+  if (name.endsWith(".md") || name.endsWith(".markdown") || mime.includes("markdown")) {
+    return "markdown";
+  }
+  if (name.endsWith(".html") || name.endsWith(".htm") || mime.includes("html")) return "html";
+  if (
+    name.endsWith(".txt") ||
+    name.endsWith(".text") ||
+    name.endsWith(".log") ||
+    mime.includes("text/plain")
+  ) {
+    return "plaintext";
+  }
   throw new UnsupportedFileUploadError(name || mime || "unknown");
 }
 
@@ -280,6 +301,18 @@ export function ingestFileUpload(input: FileUploadInput): FileUploadResult {
         path: "xml",
         content: `# ${uri}\n\n${renderXmlNode(root)}`,
       });
+      break;
+    }
+    case "markdown":
+    case "html":
+    case "plaintext": {
+      // Delegate to the knowledge parser so a Markdown / HTML / plaintext
+      // file uploaded against a connector chunks the same way it would
+      // against a tenant Knowledge Source. Keeps the two surfaces aligned.
+      const knowledgeFormat = detectKnowledgeFormat(uri, input.mime);
+      const fname = input.filename ?? uri;
+      const parsed = parseFileToChunks(text, fname, knowledgeFormat);
+      for (const c of parsed) chunks.push(c);
       break;
     }
   }

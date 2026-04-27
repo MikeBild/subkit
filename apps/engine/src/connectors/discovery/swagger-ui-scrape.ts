@@ -8,7 +8,7 @@
 
 import { log } from "../../logging/logger.ts";
 import { scrubUrl } from "../egress.ts";
-import { openApiDirectStrategy } from "./openapi-direct.ts";
+import { normalizeKnownHosts, openApiDirectStrategy } from "./openapi-direct.ts";
 import {
   DiscoveryError,
   type DiscoveryResult,
@@ -91,6 +91,22 @@ class SwaggerUiScrapeStrategy implements DiscoveryStrategy {
       strategy: this.name,
       url: scrubUrl(url),
     });
+    // Known doc-hosting hosts (e.g. SwaggerHub UI) have a deterministic
+    // spec URL — skip the HTML scrape entirely and delegate to direct.
+    const rewritten = normalizeKnownHosts(url);
+    if (rewritten !== url) {
+      const inner = await openApiDirectStrategy.fetch(rewritten, opts);
+      log.info({
+        module: "connector",
+        action: "discovery.strategy.succeeded",
+        strategy: this.name,
+        url: scrubUrl(url),
+        embedded_spec_url: scrubUrl(rewritten),
+        endpoints: inner.endpoints.length,
+        via: "known_host_rewrite",
+      });
+      return { ...inner, strategy: this.name };
+    }
     try {
       const html = await fetchHtml(url, opts);
       const specUrl = extractEmbeddedSpecUrl(html, url);

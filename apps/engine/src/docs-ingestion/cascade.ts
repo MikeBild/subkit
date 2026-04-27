@@ -17,6 +17,7 @@
 // caps hold across strategies. Playwright-backed HTML crawl is intentionally
 // excluded — it remains a stub in sources/html.ts, shipped as a follow-up.
 
+import { load as loadYaml } from "js-yaml";
 import { canConsumeBytes, consumeBytes, createBudgetState, markBudgetExceeded } from "./budgets.ts";
 import { byteLen } from "./chunker.ts";
 import { ingestGraphQLIntrospection } from "./sources/graphql.ts";
@@ -143,44 +144,126 @@ async function tryOpenAPI(
   return null;
 }
 
+// Match strings that smell like a spec link — must contain openapi /
+// swagger / api-docs AND look URL-shaped (absolute, root-relative, or
+// path-with-extension). Filters out version numbers like "3.0.3" sitting
+// inside a top-level `openapi` field of an already-fetched spec.
+const SPEC_LINK_RE = /openapi|swagger|api-docs/i;
+
+function looksUrlLike(value: string): boolean {
+  if (value.startsWith("http://") || value.startsWith("https://")) return true;
+  if (value.startsWith("/")) return true;
+  // Relative path with a known doc-ish extension.
+  if (/\.(json|ya?ml|html?)(\?|$)/i.test(value)) return true;
+  return false;
+}
+
 /**
- * Scan the raw HTML of a base URL for links that smell like OpenAPI / Swagger
- * specs. Intentionally regex-only — no DOM, no Playwright. We look for
- * `href="...openapi..."`, `href="...swagger..."`, and JSON/YAML URLs.
+ * Walk a parsed JSON/YAML tree and yield every string value that smells
+ * like a spec URL. Iterative DFS to avoid stack overflow on pathological
+ * inputs. Bounded by `MAX_NODES` so a malicious doc can't pin the worker.
+ */
+function walkForSpecLinks(root: unknown): string[] {
+  const MAX_NODES = 5_000;
+  const out: string[] = [];
+  const stack: unknown[] = [root];
+  let visited = 0;
+  while (stack.length > 0 && visited < MAX_NODES) {
+    visited += 1;
+    const node = stack.pop();
+    if (typeof node === "string") {
+      if (SPEC_LINK_RE.test(node) && looksUrlLike(node)) out.push(node);
+      continue;
+    }
+    if (Array.isArray(node)) {
+      for (const v of node) stack.push(v);
+      continue;
+    }
+    if (node && typeof node === "object") {
+      for (const v of Object.values(node)) stack.push(v);
+    }
+  }
+  return out;
+}
+
+/**
+ * Scan the body of a base URL for links that smell like OpenAPI / Swagger
+ * specs. Tries three readers, in order:
+ *   1. JSON parse — walk the tree for string values matching the pattern.
+ *      Handles e.g. `{"swaggerUrl": "/spec.json"}`, ReadMe.io discovery
+ *      payloads, Apigee-style listings.
+ *   2. YAML parse — same walk, for YAML-shaped indices.
+ *   3. HTML href regex — final fallback, the original behaviour.
+ *
+ * The function never throws — failure modes return `[]`. Caller is
+ * responsible for trying each candidate.
  */
 export async function discoverOpenApiLinks(
   baseUrl: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<string[]> {
   let body: string;
+  let contentType: string;
   try {
-    const res = await fetchImpl(baseUrl, { headers: { accept: "text/html,*/*" } });
+    const res = await fetchImpl(baseUrl, {
+      headers: { accept: "application/json, application/yaml, text/yaml, text/html, */*" },
+    });
     if (!res.ok) return [];
-    const ct = res.headers.get("content-type") ?? "";
-    if (!ct.includes("html") && !ct.includes("text")) return [];
+    contentType = (res.headers.get("content-type") ?? "").toLowerCase();
     body = await res.text();
   } catch {
     return [];
   }
-  const hrefRe = /href\s*=\s*["']([^"']+)["']/gi;
   const candidates: string[] = [];
   const seen = new Set<string>();
-  let m: RegExpExecArray | null = hrefRe.exec(body);
-  while (m) {
-    const raw = m[1];
-    if (raw && /openapi|swagger|api-docs/i.test(raw)) {
-      try {
-        const abs = new URL(raw, baseUrl).toString();
-        if (!seen.has(abs)) {
-          seen.add(abs);
-          candidates.push(abs);
-        }
-      } catch {
-        // Skip malformed URLs.
+  const push = (raw: string): void => {
+    try {
+      const abs = new URL(raw, baseUrl).toString();
+      if (!seen.has(abs)) {
+        seen.add(abs);
+        candidates.push(abs);
       }
+    } catch {
+      // Skip malformed URLs.
     }
-    m = hrefRe.exec(body);
+  };
+
+  // 1. JSON walk.
+  if (
+    contentType.includes("json") ||
+    body.trimStart().startsWith("{") ||
+    body.trimStart().startsWith("[")
+  ) {
+    try {
+      const parsed = JSON.parse(body);
+      for (const v of walkForSpecLinks(parsed)) push(v);
+    } catch {
+      // not valid JSON — fall through
+    }
   }
+
+  // 2. YAML walk (when JSON parse missed it). Skip if we already found
+  // candidates via JSON to avoid duplicating effort on pure JSON bodies.
+  if (candidates.length === 0 && (contentType.includes("yaml") || /\.ya?ml(\?|$)/i.test(baseUrl))) {
+    try {
+      const parsed = loadYaml(body);
+      for (const v of walkForSpecLinks(parsed)) push(v);
+    } catch {
+      // not valid YAML — fall through
+    }
+  }
+
+  // 3. HTML href regex — covers landing pages and Swagger-UI shells.
+  if (candidates.length === 0) {
+    const hrefRe = /href\s*=\s*["']([^"']+)["']/gi;
+    let m: RegExpExecArray | null = hrefRe.exec(body);
+    while (m) {
+      const raw = m[1];
+      if (raw && SPEC_LINK_RE.test(raw)) push(raw);
+      m = hrefRe.exec(body);
+    }
+  }
+
   return candidates;
 }
 

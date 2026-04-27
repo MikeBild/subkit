@@ -139,4 +139,67 @@ describe("cascadeIngest", () => {
     expect(links).toContain("https://api.example.com/swagger-ui.html");
     expect(links.some((l) => l.endsWith("/login"))).toBe(false);
   });
+
+  test("discoverOpenApiLinks extracts spec URLs from a JSON discovery document", async () => {
+    const body = JSON.stringify({
+      apis: [
+        { name: "v1", swaggerUrl: "/v1/openapi.json" },
+        { name: "v2", definition: { url: "https://other.example.com/v2/swagger.yaml" } },
+      ],
+      version_string: "3.0.3", // looks-like-a-version, not URL-like — must be filtered
+    });
+    const fn = (async () =>
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch;
+    const links = await discoverOpenApiLinks("https://api.example.com/discovery", fn);
+    expect(links).toContain("https://api.example.com/v1/openapi.json");
+    expect(links).toContain("https://other.example.com/v2/swagger.yaml");
+    // The bare "3.0.3" must not be picked up — it's not URL-shaped.
+    expect(links.every((l) => !l.endsWith("/3.0.3"))).toBe(true);
+  });
+
+  test("discoverOpenApiLinks extracts spec URLs from a YAML body", async () => {
+    const body = [
+      "apis:",
+      "  - name: v1",
+      '    swaggerUrl: "/v1/openapi.json"',
+      "  - name: v2",
+      '    definition: "https://other.example.com/v2/swagger.yaml"',
+    ].join("\n");
+    const fn = (async () =>
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/yaml" },
+      })) as unknown as typeof fetch;
+    const links = await discoverOpenApiLinks("https://api.example.com/discovery.yaml", fn);
+    expect(links).toContain("https://api.example.com/v1/openapi.json");
+    expect(links).toContain("https://other.example.com/v2/swagger.yaml");
+  });
+
+  test("discoverOpenApiLinks falls back to HTML href when JSON parse fails", async () => {
+    const html = `<html><a href="/openapi.json">spec</a></html>`;
+    const fn = (async () =>
+      new Response(html, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      })) as unknown as typeof fetch;
+    const links = await discoverOpenApiLinks("https://api.example.com/", fn);
+    expect(links).toContain("https://api.example.com/openapi.json");
+  });
+
+  test("discoverOpenApiLinks deduplicates identical URLs from multiple sources", async () => {
+    const body = JSON.stringify({
+      first: "/openapi.json",
+      second: { url: "/openapi.json" },
+    });
+    const fn = (async () =>
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch;
+    const links = await discoverOpenApiLinks("https://api.example.com/", fn);
+    expect(links.filter((l) => l === "https://api.example.com/openapi.json")).toHaveLength(1);
+  });
 });

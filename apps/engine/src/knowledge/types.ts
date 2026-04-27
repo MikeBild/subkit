@@ -87,6 +87,8 @@ export interface KnowledgeSearchHit {
   path: string | null;
   snippet: string;
   rank: number;
+  /** ISO-8601 timestamp of the source's last successful refresh. */
+  fetched_at: string | null;
 }
 
 // ----- ingest result ---------------------------------------------------------

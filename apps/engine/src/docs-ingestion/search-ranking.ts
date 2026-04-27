@@ -8,6 +8,11 @@ export interface SearchHitCandidate {
   content: string;
   snippet: string;
   rank: number;
+  /**
+   * ISO-8601 timestamp of the source document's last successful fetch /
+   * refresh. Lets the caller (and the LLM) reason about doc staleness.
+   */
+  fetched_at: string | null;
 }
 
 export interface RankedSearchHit {
@@ -18,6 +23,7 @@ export interface RankedSearchHit {
   snippet: string;
   rank: number;
   match_type: SearchHitMatchType;
+  fetched_at: string | null;
 }
 
 type SearchIntent = SearchHitMatchType;
@@ -205,6 +211,7 @@ export function rerankSearchHits(
         snippet: candidate.snippet,
         rank: Number(boostedRank.toFixed(3)),
         match_type,
+        fetched_at: candidate.fetched_at,
       };
     })
     .sort((a, b) => b.rank - a.rank)
