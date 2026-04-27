@@ -658,10 +658,28 @@ export async function handleSlash(
             : usage.remaining_monthly_budget_tokens.toLocaleString();
         lines.push(`tokens · this turn   ${usage.turn_tokens.toLocaleString()}`);
         lines.push(`remaining · monthly  ${remaining}`);
+        // Per-section breakdown — answers the user's "why is this turn
+        // 88k tokens?" complaint by showing skills vs transcript vs
+        // docs splits. Only rendered when the engine emitted them; a
+        // turn that didn't drive an LLM call has no breakdown.
+        const b = usage.breakdown;
+        if (b) {
+          const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString());
+          lines.push("");
+          lines.push("prompt breakdown for this turn:");
+          lines.push(`  system     ${fmt(b.system).padStart(8)}`);
+          lines.push(`  skills     ${fmt(b.skills).padStart(8)}`);
+          lines.push(`  knowledge  ${fmt(b.knowledge).padStart(8)}`);
+          lines.push(`  docs       ${fmt(b.docs).padStart(8)}`);
+          lines.push(`  failures   ${fmt(b.failures).padStart(8)}`);
+          lines.push(`  messages   ${fmt(b.messages).padStart(8)}`);
+          lines.push(`  total      ${fmt(b.total).padStart(8)}`);
+        }
       } else {
         lines.push("no turn-level usage recorded yet this session");
       }
       if (snap) {
+        lines.push("");
         lines.push(`tokens · today       ${snap.tokens_today.toLocaleString()}`);
         lines.push(`tokens · month       ${snap.tokens_month.toLocaleString()}`);
         if (snap.monthly_budget_tokens !== null) {
@@ -669,6 +687,75 @@ export async function handleSlash(
         }
       }
       return panify(ctx, "cost", lines);
+    }
+    case "exec": {
+      // Per-step audit for an execution. With no argument, picks the
+      // latest execution from the conversation's draft state. With an
+      // explicit `<execution_id>` (full UUID or first 8 chars), fetches
+      // that one. Renders one line per step — the same surface the
+      // ExecutionDiagnosisCard summarizes — so the user can audit a
+      // run from chat without leaving the REPL.
+      const arg = (rawArgs[0] ?? "").trim();
+      let executionId: string | null = arg.length > 0 ? arg : null;
+      if (!executionId) {
+        if (!ctx.session.conversationId) return "no active conversation";
+        try {
+          const detail = await ctx.client.getConversation(ctx.session.conversationId);
+          const draft = detail.draft as {
+            state?: { latest_execution?: { execution_id?: string } };
+          } | null;
+          executionId = draft?.state?.latest_execution?.execution_id ?? null;
+        } catch {
+          executionId = null;
+        }
+      }
+      if (!executionId) {
+        return panify(ctx, "logs", [
+          "no execution available — pass /logs <execution_id> or run a workflow first",
+        ]);
+      }
+      try {
+        const stepsRes = await ctx.client.executionSteps(executionId);
+        const items = Array.isArray(stepsRes.items) ? stepsRes.items : [];
+        if (items.length === 0) {
+          return panify(ctx, `logs · ${executionId.slice(0, 8)}`, [
+            "no steps recorded for this execution",
+          ]);
+        }
+        const lines = items.map((row) => {
+          const r = row as Record<string, unknown>;
+          const key = typeof r.step_key === "string" ? r.step_key : "?";
+          const kind = typeof r.kind === "string" ? r.kind : "?";
+          const status = typeof r.status === "string" ? r.status : "?";
+          const dur = typeof r.duration_ms === "number" ? `${r.duration_ms}ms` : "—";
+          const errVal = r.error;
+          const errMsg =
+            errVal && typeof errVal === "object" && errVal !== null
+              ? (errVal as { message?: unknown }).message
+              : null;
+          const glyph = status === "succeeded" ? "✓" : status === "failed" ? "✗" : "·";
+          return `${glyph} ${key} (${kind}) · ${status} · ${dur}${
+            typeof errMsg === "string" ? ` · ${errMsg}` : ""
+          }`;
+        });
+        return panify(ctx, `logs · ${executionId.slice(0, 8)}`, lines);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return panify(ctx, "logs", [`fetch failed: ${msg}`]);
+      }
+    }
+    case "verbose": {
+      // Toggle SK_VERBOSE for this REPL process. Inline tool_log lines
+      // become visible/hidden under chat-mode tool cards. Persists for
+      // the current session only — set SK_VERBOSE=1 in the environment
+      // to make it the default.
+      const current = process.env.SK_VERBOSE === "1";
+      process.env.SK_VERBOSE = current ? "0" : "1";
+      return panify(ctx, "verbose", [
+        current
+          ? "verbose mode OFF — tool_log lines hidden in chat (still visible in /view inspect)"
+          : "verbose mode ON — every tool's tool_log lines render inline under the card",
+      ]);
     }
     case "draft": {
       if (!ctx.session.conversationId) return "no active conversation";
@@ -1289,11 +1376,11 @@ export async function handleSlash(
       ]);
     }
     case "memory": {
-      const path = join(homedir(), ".sk", "SUBKIT.md");
+      const path = join(homedir(), ".sk", "SK.md");
       return `edit ${path} then restart sk to pick it up`;
     }
     case "init": {
-      const path = join(process.cwd(), "SUBKIT.md");
+      const path = join(process.cwd(), "SK.md");
       if (fs.existsSync(path)) return `${path} already exists`;
       const starter = [
         `# Memory — ${new Date().toISOString().slice(0, 10)}`,

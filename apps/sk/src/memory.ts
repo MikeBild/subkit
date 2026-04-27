@@ -1,7 +1,7 @@
-// SUBKIT.md discovery + merge.
+// SK.md discovery + merge.
 //
-// The `sk` CLI walks upward from cwd looking for a `SUBKIT.md` file and
-// also reads `~/.sk/SUBKIT.md`. When both exist, contents are merged
+// The `sk` CLI walks upward from cwd looking for a `SK.md` file and
+// also reads `~/.sk/SK.md`. When both exist, contents are merged
 // with the user-level memory first and the project memory second, so
 // project context takes precedence for nearby questions.
 //
@@ -34,7 +34,7 @@ export interface LoadMemoryResult {
 
 /**
  * Walk upward from cwd until we hit filesystem root OR the home dir,
- * collecting any `SUBKIT.md` files we find along the way. Closest to
+ * collecting any `SK.md` files we find along the way. Closest to
  * cwd wins — we return in the reverse order (root-most first) so the
  * merged string has the closest context last.
  */
@@ -43,7 +43,7 @@ function walkUpward(cwd: string): string[] {
   const results: string[] = [];
   let dir = resolve(cwd);
   while (true) {
-    const candidate = join(dir, "SUBKIT.md");
+    const candidate = join(dir, "SK.md");
     if (existsSync(candidate)) results.push(candidate);
     const parent = dirname(dir);
     if (parent === dir) break;
@@ -63,8 +63,8 @@ export function loadMemory(opts: LoadMemoryOptions = {}): LoadMemoryResult {
   const maxBytes = opts.max_bytes ?? MAX_MEMORY_BYTES;
   const sources: string[] = [];
 
-  // Start with ~/.sk/SUBKIT.md so project memory can override it.
-  const userPath = join(homedir(), ".sk", "SUBKIT.md");
+  // Start with ~/.sk/SK.md so project memory can override it.
+  const userPath = join(homedir(), ".sk", "SK.md");
   if (existsSync(userPath)) sources.push(userPath);
   for (const p of walkUpward(cwd)) sources.push(p);
 

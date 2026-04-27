@@ -39,7 +39,7 @@ export interface HeadlessRunOptions {
   output: OutputFormat;
   /** Override for settings cwd (tests). */
   cwd?: string;
-  /** Disable SUBKIT.md injection. */
+  /** Disable SK.md injection. */
   noMemory?: boolean;
   /** Resume an existing conversation id instead of creating one. */
   resume?: string;

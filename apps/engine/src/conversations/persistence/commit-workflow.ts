@@ -125,6 +125,68 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     };
   }
 
+  // Partial-success gate — a recent execution that classified itself
+  // as `partial_success` (e.g. unresolved_identifier warning, or a
+  // loop step body that produced no rows) blocks the commit unless
+  // the operator explicitly forces. Without this gate the
+  // v1→v2→v3→v4→v5 broken-workflow stack can land because preview
+  // returns `ok` for empty output.
+  const latestExecution = fullDraft.state?.latest_execution ?? null;
+  if (latestExecution?.requires_repair === true && p.forceCommit !== true) {
+    return {
+      ok: false,
+      error_code: "partial_success_not_acknowledged",
+      message:
+        "the most recent run finished as partial_success — a loop body produced no rows or a transform referenced unresolved identifiers. Repair the workflow, run dry_run_workflow again, or call commit_draft with force_commit:true after the operator explicitly confirms",
+      data: buildGateError(fullDraft, {
+        error_code: "partial_success_not_acknowledged",
+        message:
+          "partial_success cannot be silently committed — repair the workflow or force the commit with operator confirmation",
+        recommended_mode: "execution",
+        next_best_actions: ["diagnose_latest_execution", "propose_step", "dry_run_workflow"],
+        extra: {
+          execution_id: latestExecution.execution_id,
+          warnings_count: latestExecution.warnings_count,
+          force_commit_available: true,
+        },
+      }),
+    };
+  }
+
+  // No-meaningful-change gate — when the latest preview output is
+  // structurally equivalent to the prior committed version's last
+  // preview output AND the workflow def is hash-equivalent, the
+  // already_persisted shortcut in commit-draft.ts catches it. Here we
+  // additionally refuse a commit when the preview output is the
+  // empty-array shape that signaled `partial_success` on the last
+  // execution. The LLM otherwise commits v4, runs, hits warnings,
+  // commits v5 with the same empty shape, and so on.
+  if (
+    latestPreview?.ok === true &&
+    Array.isArray(latestPreview.preview) &&
+    (latestPreview.preview as unknown[]).length === 0 &&
+    latestExecution?.warnings_count != null &&
+    latestExecution.warnings_count > 0 &&
+    p.forceCommit !== true
+  ) {
+    return {
+      ok: false,
+      error_code: "no_meaningful_change",
+      message:
+        "preview output is empty `[]` AND the most recent execution had warnings — committing would stack another broken version. Either change the workflow shape so the loop body produces rows, or call commit_draft with force_commit:true after the operator explicitly confirms",
+      data: buildGateError(fullDraft, {
+        error_code: "no_meaningful_change",
+        message:
+          "preview returned an empty array and the prior execution had warnings — likely a broken loop body",
+        recommended_mode: "workflow",
+        next_best_actions: ["propose_step", "dry_run_workflow"],
+        extra: {
+          force_commit_available: true,
+        },
+      }),
+    };
+  }
+
   // Preview gate — a missing or failed dry-run blocks the commit
   // UNLESS the operator explicitly forces it. Mirrors the connector
   // probe-failed contract.

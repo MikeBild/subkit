@@ -201,6 +201,83 @@ Body step referencing the item:
 
 `$loop_index` (zero-based) is also available inside the loop body.
 
+### Worked example: list DigitalOcean projects + their resources
+
+This is the canonical pattern when a user asks for "list every X with its
+resources / children / details." Copy-paste it; do not invent variants.
+
+```json
+[
+  {
+    "id": "fetch_projects",
+    "kind": "request",
+    "method": "GET",
+    "connector_id": "<digitalocean_connector_id>",
+    "path": "/v2/projects"
+  },
+  {
+    "id": "extract_projects",
+    "kind": "transform",
+    "language": "jsonata",
+    "expression": "$scope.fetch_projects.data.projects.{ \"id\": id, \"name\": name }"
+  },
+  {
+    "id": "fetch_resources",
+    "kind": "loop",
+    "over": "$scope.extract_projects",
+    "item_var": "project",
+    "body": ["get_project_resources"]
+  },
+  {
+    "id": "get_project_resources",
+    "kind": "request",
+    "method": "GET",
+    "connector_id": "<digitalocean_connector_id>",
+    "path": "/v2/projects/${project.id}/resources"
+  },
+  {
+    "id": "format_output",
+    "kind": "transform",
+    "language": "jsonata",
+    "expression": "$scope.fetch_resources.{ \"project\": project.name, \"resources\": $.resources }"
+  }
+]
+```
+
+Three things this example gets right that the LLM frequently gets wrong:
+1. The inner step (`get_project_resources`) **uses `${project.id}`** in the
+   path. Without that, the loop is N copies of the same call. The validator
+   rejects loop bodies that never reference `item_var`.
+2. The loop iterates over a **plain array** (the output of
+   `extract_projects`), not a step envelope. `$scope.extract_projects.data`
+   would be wrong — `extract_projects` is a transform, its raw return value
+   IS the scope value.
+3. The final transform reads from `$scope.fetch_resources` (an array of
+   per-iteration outputs), with the loop's `item_var: "project"` still
+   bound — the closure lets the format step join the project name with its
+   resources.
+
+### Unresolved-identifier warnings are never false positives
+
+If `dry_run_workflow` or `run_workflow` returns a warning of code
+`unresolved_identifier`, the workflow is **broken**, not "warned". The
+runtime parsed your JSONata and could not bind one of the names you
+referenced. Common causes:
+
+- You used `$scope.fetch_X.data` for a `transform` step's output — but
+  transforms don't envelope. Drop the `.data`.
+- You referenced `id` / `name` as bare names but no prior step is named
+  `id` or `name` and you are not inside a loop body where `item_var` is
+  one of those.
+- You typo'd a step id (`$scope.fetcch_projects`).
+- You used `$$` to "fix" the JSONata when you actually wanted
+  `$scope.<step_id>` or the loop's item.
+
+The `commit_workflow_draft` tool refuses to advance until the warning is
+gone or the operator explicitly forces with `force_commit: true`. Do
+not tell the user "this is a false positive" — the engine surfaces these
+warnings precisely because they are not.
+
 ### Branches
 
 First case whose `when` evaluates truthy runs. `default` runs if none match.

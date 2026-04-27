@@ -1320,7 +1320,7 @@ describe("ink-app: journey 12 — onboarding and transcript controls", () => {
     instance.stdin.write("5");
     await tick(40);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("I want help using Subkit surfaces");
+    expect(frame).toContain("I want help using sk surfaces");
     expect(frame).toContain("If something is not exposed in this conversation surface");
     instance.unmount();
   });

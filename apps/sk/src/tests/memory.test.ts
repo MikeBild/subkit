@@ -16,36 +16,36 @@ describe("sk memory loader", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  test("returns null when no SUBKIT.md is anywhere", () => {
+  test("returns null when no SK.md is anywhere", () => {
     const m = loadMemory({ cwd: tmp });
     expect(m.content).toBeNull();
     expect(m.sources).toEqual([]);
   });
 
-  test("reads a local SUBKIT.md and stamps its path", () => {
-    writeFileSync(join(tmp, "SUBKIT.md"), "hello from local memory");
+  test("reads a local SK.md and stamps its path", () => {
+    writeFileSync(join(tmp, "SK.md"), "hello from local memory");
     const m = loadMemory({ cwd: tmp });
     expect(m.content).toContain("hello from local memory");
     expect(m.sources.length).toBe(1);
-    expect(m.sources[0]).toContain("SUBKIT.md");
+    expect(m.sources[0]).toContain("SK.md");
   });
 
   test("walks upward from a nested cwd and picks up the closest file", () => {
     const sub = join(tmp, "nested", "deeper");
     mkdirSync(sub, { recursive: true });
-    writeFileSync(join(tmp, "SUBKIT.md"), "root-level memory");
+    writeFileSync(join(tmp, "SK.md"), "root-level memory");
     const m = loadMemory({ cwd: sub });
     expect(m.content).toContain("root-level memory");
   });
 
   test("honors include=false to skip entirely", () => {
-    writeFileSync(join(tmp, "SUBKIT.md"), "should be ignored");
+    writeFileSync(join(tmp, "SK.md"), "should be ignored");
     const m = loadMemory({ cwd: tmp, include: false });
     expect(m.content).toBeNull();
   });
 
   test("truncates oversized memory at max_bytes with a visible marker", () => {
-    writeFileSync(join(tmp, "SUBKIT.md"), "x".repeat(2048));
+    writeFileSync(join(tmp, "SK.md"), "x".repeat(2048));
     const m = loadMemory({ cwd: tmp, max_bytes: 256 });
     expect(m.truncated).toBe(true);
     expect(m.content).toContain("[sk: memory truncated");

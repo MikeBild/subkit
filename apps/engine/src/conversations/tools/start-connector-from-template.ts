@@ -1,6 +1,8 @@
 import { z } from "@hono/zod-openapi";
+import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { enrichConnectorFromTemplate } from "../../connectors/template-enrichment.ts";
 import { resolveConnectorTemplate } from "../../connectors/template-resolver.ts";
+import { logger } from "../../logging/logger.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import {
@@ -74,6 +76,56 @@ export const startConnectorFromTemplateTool: ConversationTool = {
       "connector_started_from_template",
     );
     await ctx.setDraft(nextDraft);
+
+    // Auto-discover the connector's endpoint catalog when the template
+    // points at an OpenAPI/Swagger spec. The result is cached for 24h
+    // in `knowledge_sources` (see runDiscoveryCached) so the downstream
+    // `propose_step` flow can pull `/v2/projects` etc. from the catalog
+    // instead of inventing the URL. Without this, the LLM authoring
+    // a workflow against (e.g.) DigitalOcean has no spec to ground on
+    // and ends up guessing `/projects` (404). Best-effort — discovery
+    // failures don't block connector creation.
+    let discoveryStatus: { ran: boolean; endpoint_count?: number; error?: string } = {
+      ran: false,
+    };
+    if (template.ingestion_url) {
+      try {
+        ctx.onLog?.(
+          "info",
+          `auto-discovering ${template.slug} endpoints from ${template.ingestion_url}`,
+        );
+        const out = await runDiscoveryCached(
+          {
+            db: ctx.db,
+            tenant_id: ctx.tenant_id,
+            actor_id: ctx.actor_id,
+            ...(ctx.abortSignal ? { abortSignal: ctx.abortSignal } : {}),
+          },
+          { template_id: template.slug, force_refresh: false },
+        );
+        discoveryStatus = {
+          ran: true,
+          endpoint_count: out.result.endpoints.length,
+        };
+        ctx.onLog?.(
+          "info",
+          `cached ${out.result.endpoints.length} endpoint${
+            out.result.endpoints.length === 1 ? "" : "s"
+          } for ${template.slug}`,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        discoveryStatus = { ran: true, error: message };
+        logger.warn({
+          module: "conversation_tool",
+          action: "start_connector_from_template.discovery_failed",
+          tenant_id: ctx.tenant_id,
+          template_slug: template.slug,
+          error: message,
+        });
+      }
+    }
+
     return {
       ok: true,
       data: buildDraftMutationPayload(nextDraft, {
@@ -92,6 +144,7 @@ export const startConnectorFromTemplateTool: ConversationTool = {
             validation,
           },
           validation,
+          endpoint_catalog: discoveryStatus,
         },
       }),
     };
