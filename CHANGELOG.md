@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.1.0](https://github.com/MikeBild/subkit/compare/subkit-v3.0.0...subkit-v3.1.0) (2026-04-28)
+
+
+### Features
+
+* **engine:** seed RBAC essentials on startup ([7329df6](https://github.com/MikeBild/subkit/commit/7329df67fe836c9bb8c9ad21e3cd8f12bac18040))
+* **http:** GET /install route serves a sk install script (Tailscale pattern) ([9477535](https://github.com/MikeBild/subkit/commit/947753566dc63209dbac3dfe6ad2999b0c6b3139))
+* **sk:** doctor command for first-line operator diagnostic ([6cf911d](https://github.com/MikeBild/subkit/commit/6cf911d020211846ed2fa26516bb7f587a871550))
+
+
+### Bug Fixes
+
+* **ci:** gate gitleaks + dependency-review for private repos ([cf7f011](https://github.com/MikeBild/subkit/commit/cf7f011655a17352ee32eaead7b3f6393270afb3))
+* **tests,hooks:** widen hook-timeout budget under parallel load ([a16bb45](https://github.com/MikeBild/subkit/commit/a16bb45b9b8af82a3943fa924f10bbf2c0f27469))
+
 ## [2.8.0](https://github.com/MikeBild/subkit/compare/subkit-v2.7.0...subkit-v2.8.0) (2026-04-27)
 
 
