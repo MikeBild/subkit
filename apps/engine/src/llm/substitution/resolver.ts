@@ -195,6 +195,8 @@ async function resolveOne(tok: Placeholder, ctx: ResolverContext): Promise<OneRe
         return { ok: false, code: "path_empty", message: "scope requires step_id" };
       }
       return resolveJsonPath(ctx.scope?.[tok.stepId], tok.path, `scope.${tok.stepId}`);
+    case "item":
+      return resolveJsonPath(ctx.scope?.$item, tok.path, "item");
   }
 }
 

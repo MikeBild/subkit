@@ -8,7 +8,7 @@
 // banner stay consistent.
 
 import { debugLogPath, isDebugVerbose } from "../debug.ts";
-import { SkEngineError, SkTransportError } from "../engine-client.ts";
+import { type SkEngineError, SkTransportError } from "../engine-client.ts";
 
 const VALID_KINDS = [
   "request",
@@ -177,6 +177,22 @@ function providerHint(err: SkEngineError): string | null {
   if (err.code === "pending_elicitation_blocked") {
     return "resolve the open dialog first — the conversation is paused and waiting for your input";
   }
+  if (err.code === "elicitation_already_resolved") {
+    // The user spammed approve / reject. The engine refuses the
+    // duplicate; surface that plainly instead of a raw 409.
+    const details =
+      err.details && typeof err.details === "object"
+        ? (err.details as Record<string, unknown>)
+        : {};
+    const prev = typeof details.previous_status === "string" ? details.previous_status : null;
+    if (prev === "approved" || prev === "confirmed") {
+      return "already approved — engine has the answer; no second turn needed";
+    }
+    if (prev === "rejected" || prev === "declined") {
+      return "already rejected — engine has the answer; no second turn needed";
+    }
+    return "elicitation already resolved — no second turn needed";
+  }
   if (err.code === "llm_provider_limited") {
     const retryAt = readRetryAt(err.details);
     return retryAt
@@ -199,12 +215,24 @@ function providerHint(err: SkEngineError): string | null {
  * errors are flagged as connectivity issues; everything else falls
  * back to the raw message. Pattern-matched hints are preferred when
  * the error message matches a known signature.
+ *
+ * Uses `err.name` instead of `instanceof` for the SkEngineError /
+ * SkTransportError branches: under bun's parallel test runner the
+ * `engine-client.ts` module can be loaded by two workers concurrently,
+ * yielding two distinct class identities for the same import specifier.
+ * `instanceof` then returns false even though the error has the right
+ * shape. Checking `name` (set in each constructor) is robust to that.
  */
 export function humanizeRequestError(err: unknown): string {
-  if (err instanceof SkEngineError) {
-    const head = `sk: HTTP ${err.status} ${err.code} — ${err.message || "(no detail)"}`;
-    const trace = err.trace_id ? ` · trace_id ${err.trace_id}` : "";
-    const matched = providerHint(err) ?? findErrorHint(`${err.code} ${err.message}`);
+  if (
+    err instanceof Error &&
+    err.name === "SkEngineError" &&
+    typeof (err as SkEngineError).status === "number"
+  ) {
+    const e = err as SkEngineError;
+    const head = `sk: HTTP ${e.status} ${e.code} — ${e.message || "(no detail)"}`;
+    const trace = e.trace_id ? ` · trace_id ${e.trace_id}` : "";
+    const matched = providerHint(e) ?? findErrorHint(`${e.code} ${e.message}`);
     const hint = matched
       ? `\n  ↳ ${matched}`
       : isDebugVerbose()
@@ -212,7 +240,7 @@ export function humanizeRequestError(err: unknown): string {
         : `\n  ↳ ${debugLogPath()} has the request — \`/debug on\` adds bodies, \`/logs\` tails the engine`;
     return `${head}${trace}${hint}`;
   }
-  if (err instanceof SkTransportError) {
+  if (err instanceof Error && err.name === "SkTransportError") {
     const matched = findErrorHint(err.message);
     const hint =
       matched ?? "check the engine URL with /status, or switch profile via /profile <name>";
@@ -224,3 +252,7 @@ export function humanizeRequestError(err: unknown): string {
   }
   return `sk: ${String(err)}`;
 }
+
+// Touch unused imports to keep the type information visible to call
+// sites even though we now match by name + duck-type.
+void SkTransportError;

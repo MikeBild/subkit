@@ -32,6 +32,7 @@ import {
   newDebugTurnId,
   serializeDebugError,
 } from "./debug.ts";
+import { classifyElicitationIntent } from "./elicitation-intent.ts";
 import { EngineClient, SkEngineError, SkTransportError } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
@@ -271,6 +272,61 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           return;
         }
         await handleSlash(cmd.name, input);
+        return;
+      }
+
+      // Pending-elicitation routing — same contract as ink-app:
+      // while an `askUser.*` is open, plain text either resolves the
+      // elicitation or surfaces a hint. NEVER forward as a new prompt
+      // (would race the awaiting-input state and produce a phantom turn).
+      if (session.pendingElicitation && session.conversationId && !elicitInFlight) {
+        const intent = classifyElicitationIntent(input);
+        const tool = session.pendingElicitation.tool_name;
+        if (intent.kind === "confirm" || intent.kind === "reject") {
+          elicitInFlight = true;
+          try {
+            const outcome = await client.respondElicitation(
+              session.conversationId,
+              session.pendingElicitation.id,
+              { confirmed: intent.kind === "confirm" },
+              intent.kind === "reject" ? "user replied with a short negative" : undefined,
+              traceContext(),
+            );
+            session = { ...session, pendingElicitation: null, status: "running" };
+            line(intent.kind === "confirm" ? "approval sent" : "rejection sent");
+            applyTurnEvents(outcome.events, () => activeDebugContext ?? { mode: "repl" });
+          } finally {
+            elicitInFlight = false;
+          }
+          return;
+        }
+        if (intent.kind === "pick") {
+          elicitInFlight = true;
+          try {
+            const outcome = await client.respondElicitation(
+              session.conversationId,
+              session.pendingElicitation.id,
+              { option_index: intent.optionIndex },
+              undefined,
+              traceContext(),
+            );
+            session = { ...session, pendingElicitation: null, status: "running" };
+            line(`option ${intent.optionIndex} sent`);
+            applyTurnEvents(outcome.events, () => activeDebugContext ?? { mode: "repl" });
+          } finally {
+            elicitInFlight = false;
+          }
+          return;
+        }
+        // Ambiguous — show a hint instead of forwarding as new prompt.
+        const truncated = input.length > 80 ? `${input.slice(0, 80)}…` : input;
+        const hint =
+          tool === "ask_user_confirm"
+            ? `there is a pending confirmation — type 'yes' to approve, 'no' to reject, or '/cancel' to abandon. (your message: "${truncated}")`
+            : tool === "ask_user_pick"
+              ? `there is a pending option list — type a number (e.g. '1') or 'option N' to choose. (your message: "${truncated}")`
+              : `there is a pending form — use '/respond <json>' to answer. (your message: "${truncated}")`;
+        line(hint);
         return;
       }
 
