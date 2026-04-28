@@ -35,6 +35,11 @@ bun run build:sk
 bun run build:engine
 
 echo "[pre-push] 5/5 e2e tests"
-bun test tests/e2e/
+# --timeout 60000 covers the per-test budget for e2e suites that boot
+# their own engine on an ephemeral port. Engine startup occasionally
+# exceeds 5s under parallel load (compose pulled images, port races);
+# the test bodies themselves still see real connection-refused
+# failures instantly.
+bun test --timeout 60000 tests/e2e/
 
 echo "[pre-push] all green"
