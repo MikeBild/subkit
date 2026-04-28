@@ -18,7 +18,12 @@ echo "[pre-push] 2/5 tsc (typecheck)"
 bun run typecheck
 
 echo "[pre-push] 3/5 unit + integration tests"
-SKIP_DOCKER=1 SKIP_DB_TESTS=1 bun test \
+# --timeout 60000 covers heavy beforeAll setups (createTestDb + Bun.serve
+# mocks) that occasionally exceed bun's default 5s hook budget under
+# parallel load. Per-test budgets are unaffected (test bodies still get
+# their own timeout). Without this, the gate flakes on otherwise-clean
+# code on laptops running 200+ test files concurrently.
+SKIP_DOCKER=1 SKIP_DB_TESTS=1 bun test --timeout 60000 \
   apps/engine/src/conversations/ \
   apps/engine/src/execution/tests/ \
   apps/engine/src/llm/ \

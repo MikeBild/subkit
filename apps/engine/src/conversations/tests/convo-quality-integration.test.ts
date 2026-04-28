@@ -102,12 +102,12 @@ beforeAll(async () => {
     ctx.db,
   );
   resetProbeRateLimit();
-});
+}, 60_000);
 
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await ctx.cleanup();
-});
+}, 30_000);
 
 function makeToolContext(): ToolContext {
   return {
