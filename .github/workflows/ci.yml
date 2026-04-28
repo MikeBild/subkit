@@ -118,6 +118,12 @@ jobs:
 
   secret-scan:
     name: secret scan (gitleaks)
+    # Run on push to main only. On `pull_request`, the gitleaks-action
+    # tries to list PR commits via the GitHub API, which returns 403
+    # `Resource not accessible by integration` on private repos under
+    # the default GITHUB_TOKEN. Push events scan the diff against the
+    # previous commit and don't hit that path.
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -126,9 +132,6 @@ jobs:
         with:
           fetch-depth: 0
       - name: Gitleaks
-        # Pinned to a major; works on private repos under the default
-        # GITHUB_TOKEN. License var is unset on purpose — required only
-        # for Organization-level enterprise features we do not use.
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -136,7 +139,12 @@ jobs:
   dependency-review:
     name: dependency review
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    # Only runs on PRs to public repos with Dependency Graph + GHAS
+    # enabled. Skips automatically when private (returns
+    # "Dependency review is not supported on this repository"). The
+    # condition below short-circuits the job entirely on private
+    # repos so it doesn't show up as a red check.
+    if: github.event_name == 'pull_request' && github.event.repository.private == false
     permissions:
       contents: read
       pull-requests: read
