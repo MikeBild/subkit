@@ -548,6 +548,19 @@ export class EngineClient {
     return this.request("GET", "/v1/diagnostics/setup");
   }
 
+  // --------------------------- Settings -----------------------------------
+  listSettings(): Promise<{ items: SettingItem[] }> {
+    return this.request("GET", "/v1/settings");
+  }
+
+  getSetting(key: string): Promise<SettingValue> {
+    return this.request("GET", `/v1/settings/${encodeURIComponent(key)}`);
+  }
+
+  setSetting(key: string, value: unknown): Promise<SettingValue> {
+    return this.request("PUT", `/v1/settings/${encodeURIComponent(key)}`, { value });
+  }
+
   getDiagnosticsLlm(): Promise<Record<string, unknown>> {
     return this.request("GET", "/v1/diagnostics/llm");
   }
@@ -1283,6 +1296,25 @@ export interface SetupValidationResponse {
   };
   issues: SetupValidationIssue[];
   recommendations: string[];
+}
+
+export interface SettingItem {
+  key: string;
+  label: string;
+  description: string;
+  scope: "global" | "tenant";
+  category: string;
+  secret: boolean;
+  value: unknown;
+  is_default: boolean;
+}
+
+export interface SettingValue {
+  key: string;
+  scope: "global" | "tenant";
+  secret: boolean;
+  value: unknown;
+  is_default: boolean;
 }
 
 function parseResponseBody(text: string): unknown {

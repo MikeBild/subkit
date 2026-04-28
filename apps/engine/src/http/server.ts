@@ -61,6 +61,7 @@ import { registerNotificationRoutes } from "./routes/notifications.ts";
 import { registerPatchCandidateRoutes } from "./routes/patch-candidates.ts";
 import { registerRbacRoutes } from "./routes/rbac.ts";
 import { registerRequestHookRoutes } from "./routes/request-hooks.ts";
+import { registerSettingsRoutes } from "./routes/settings.ts";
 import { registerSkillCandidateRoutes } from "./routes/skill-candidates.ts";
 import { registerSkillRoutes } from "./routes/skills.ts";
 import { registerStatusRoute } from "./routes/status.ts";
@@ -177,6 +178,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
   registerInstallRoute(app);
   registerStatusRoute(app);
+  registerSettingsRoutes(app);
   registerMetricsRoute(app);
   registerTenantRoutes(app);
   registerUserRoutes(app);
