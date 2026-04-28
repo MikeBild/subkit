@@ -37,6 +37,7 @@ import { portalTokensCommand } from "./commands/portal-tokens.ts";
 import { profileCommand } from "./commands/profile.ts";
 import { rbacCommand } from "./commands/rbac.ts";
 import { sessionsCommand, skLs, skRename, skRm, skShow } from "./commands/sessions.ts";
+import { settingsCommand } from "./commands/settings.ts";
 import { skillCandidatesCommand } from "./commands/skill-candidates.ts";
 import { skillsCommand } from "./commands/skills.ts";
 import { subscriptionsCommand } from "./commands/subscriptions.ts";
@@ -460,6 +461,7 @@ const mainCommand = defineCommand({
     rm: skRm,
     health: healthCommand,
     doctor: doctorCommand,
+    settings: settingsCommand,
     extract: extractCommand,
     auth: authCommand,
     // operator commands
@@ -620,6 +622,7 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   rm: { command: skRm },
   health: { command: healthCommand },
   doctor: { command: doctorCommand },
+  settings: { command: settingsCommand, requires: "settings:read" },
   extract: { command: extractCommand, requires: "conversation:write" },
   auth: { command: authCommand, requires: "connector:write" },
   // operator

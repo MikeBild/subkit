@@ -289,5 +289,16 @@
     "name": "discovery:approve",
     "description": "Approve or reject discovery artifacts",
     "resource_type": "discovery"
+  },
+
+  {
+    "name": "settings:read",
+    "description": "Read engine + tenant settings (secrets are masked in the response)",
+    "resource_type": "settings"
+  },
+  {
+    "name": "settings:write",
+    "description": "Update engine-global or tenant-scoped settings",
+    "resource_type": "settings"
   }
 ]
