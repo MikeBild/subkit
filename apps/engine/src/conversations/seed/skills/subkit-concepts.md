@@ -89,7 +89,7 @@ most common authoring bug.
 
 ## Placeholder tokens
 
-Five token families can appear inside step configs and request bodies. The engine
+Six token families can appear inside step configs and request bodies. The engine
 resolves them at step-start time:
 
 | Token | Resolves to | Example |
@@ -99,6 +99,7 @@ resolves them at step-start time:
 | `${connector.<slug>.config.<path>}` | Arbitrary connector config dotted-path | `${connector.warehouse.config.region}` |
 | `${input.<path>}` | Workflow input, validated against `input_schema` | `${input.week}` |
 | `${scope.<step_id>.<path>}` | Envelope field from a prior step (scope form) | `${scope.list_orders.data.total}` |
+| `${item.<path>}` | Current loop iteration item (only valid inside a loop body) | `${item.id}` |
 
 `${scope...}` and `$scope...` are two interchangeable forms for the same scope
 access. Use `${scope.foo.data.x}` inside string-interpolated configs (URLs, headers,

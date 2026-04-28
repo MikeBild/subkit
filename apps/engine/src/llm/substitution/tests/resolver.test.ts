@@ -263,6 +263,41 @@ describe("resolver — input + scope", () => {
     });
     expect(r.value).toBe('{"k":1,"arr":[1,2]}');
   });
+
+  test(`\${item.<path>} reads from ctx.scope.$item (loop body)`, async () => {
+    const { tenant_id } = await seed({ slug: "none5", mode: "none" });
+    const r = await resolveStringPlaceholders(`/v2/projects/\${item.id}/resources`, {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+      scope: { $item: { id: "abc-123" } },
+    });
+    expect(r.value).toBe("/v2/projects/abc-123/resources");
+    expect(r.unresolved).toEqual([]);
+  });
+
+  test("item path_empty: no $item bound (outside loop body)", async () => {
+    const { tenant_id } = await seed({ slug: "none6", mode: "none" });
+    const r = await resolveStringPlaceholders(`\${item.id}`, {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+      scope: {},
+    });
+    expect(r.unresolved[0]!.code).toBe("path_empty");
+    expect(r.value).toContain(`\${item.id}`);
+  });
+
+  test("item key_not_found: $item bound but missing key", async () => {
+    const { tenant_id } = await seed({ slug: "none7", mode: "none" });
+    const r = await resolveStringPlaceholders(`\${item.does_not_exist}`, {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+      scope: { $item: { id: "abc" } },
+    });
+    expect(r.unresolved[0]!.code).toBe("key_not_found");
+  });
 });
 
 describe("resolver — escape handling", () => {

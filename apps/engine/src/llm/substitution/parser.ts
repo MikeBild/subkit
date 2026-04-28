@@ -1,13 +1,14 @@
 // Placeholder syntax recognised inside any string value that the engine hands
 // to a step driver or to a conversation-tool output envelope.
 //
-// Five token kinds:
+// Six token kinds:
 //
 //     ${cred.<slug>.<field>}                     — credential field
 //     ${connector.<slug>.base_url}               — connector base URL
 //     ${connector.<slug>.config.<pointer>}       — arbitrary connector config
 //     ${input.<pointer>}                         — workflow / tool input
 //     ${scope.<step_id>.<pointer>}               — previous step's data envelope
+//     ${item.<pointer>}                          — current loop iteration item
 //
 // Escapes:
 //
@@ -21,7 +22,13 @@
 // The parser is pure: it does not read DB, does not resolve anything, and does
 // not log token values (there are none to log — it only sees names/paths).
 
-export type PlaceholderKind = "cred" | "connector_url" | "connector_config" | "input" | "scope";
+export type PlaceholderKind =
+  | "cred"
+  | "connector_url"
+  | "connector_config"
+  | "input"
+  | "scope"
+  | "item";
 
 export interface Placeholder {
   kind: PlaceholderKind;
@@ -49,6 +56,7 @@ export interface ParseError {
     | "malformed_connector"
     | "malformed_input"
     | "malformed_scope"
+    | "malformed_item"
     | "bad_identifier";
   message: string;
   span: { start: number; end: number };
@@ -355,12 +363,35 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
       }
       return { ok: true, token: { kind: "scope", stepId, path: pathParts, span, raw } };
     }
+    case "item": {
+      // ${item.<path…>}
+      if (parts.length < 2) {
+        return {
+          ok: false,
+          error: {
+            code: "malformed_item",
+            message: `expected \${item.<path>}`,
+            span,
+          },
+        };
+      }
+      const pathParts = parts.slice(1);
+      for (const p of pathParts) {
+        if (!IDENT.test(p)) {
+          return {
+            ok: false,
+            error: { code: "bad_identifier", message: `invalid item path segment '${p}'`, span },
+          };
+        }
+      }
+      return { ok: true, token: { kind: "item", path: pathParts, span, raw } };
+    }
     default:
       return {
         ok: false,
         error: {
           code: "unknown_kind",
-          message: `unknown placeholder kind '${head}'; expected one of: cred, connector, input, scope`,
+          message: `unknown placeholder kind '${head}'; expected one of: cred, connector, input, scope, item`,
           span,
         },
       };

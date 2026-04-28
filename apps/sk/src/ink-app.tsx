@@ -40,6 +40,7 @@ import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { debugLog, serializeDebugError } from "./debug.ts";
+import { classifyElicitationIntent } from "./elicitation-intent.ts";
 import type { SetupValidationResponse, StatusSummary } from "./engine-client.ts";
 import {
   detectSecretShape,
@@ -1919,31 +1920,22 @@ export const InkApp: React.FC<InkAppProps> = ({
         return;
       }
 
-      // Pending-elicitation shortcut: when the engine is waiting on an
-      // ask_user_confirm and the user types a short affirmative /
-      // negative ("yes", "no", "approve", "reject", "ok", "y", "n"),
-      // route it to the elicitation instead of starting a new turn.
-      // Without this the operator types "yes" → the LLM treats it as
-      // a new user message → emits another ask_user_confirm → ad
-      // infinitum. This is the dominant cause of the user's
-      // "yes / approve / yes / approve" double-confirm spam.
-      const lowerForShortcut = trimmed.toLowerCase();
-      const yesShortcut =
-        lowerForShortcut === "yes" ||
-        lowerForShortcut === "y" ||
-        lowerForShortcut === "approve" ||
-        lowerForShortcut === "ok" ||
-        lowerForShortcut === "okay" ||
-        lowerForShortcut === "confirm" ||
-        lowerForShortcut === "go" ||
-        lowerForShortcut === "do it";
-      const noShortcut =
-        lowerForShortcut === "no" ||
-        lowerForShortcut === "n" ||
-        lowerForShortcut === "reject" ||
-        lowerForShortcut === "cancel" ||
-        lowerForShortcut === "abort" ||
-        lowerForShortcut === "stop";
+      // Pending-elicitation routing.
+      //
+      // The engine pauses the conversation on any `askUser.*` tool and
+      // expects the next /respond call to carry the user's answer.
+      // Until that respond arrives the conversation is in
+      // `awaiting_input` and a fresh user message would either get
+      // rejected by the engine or, worse, race ahead of the still-open
+      // elicitation and create a phantom turn.
+      //
+      // This block intercepts plain text and either resolves the
+      // elicitation (when the text expresses clear intent) or surfaces
+      // a hint asking the operator to clarify. It NEVER forwards plain
+      // text as a new prompt while a pending elicitation exists.
+      const intent = classifyElicitationIntent(trimmed);
+      const yesShortcut = intent.kind === "confirm";
+      const noShortcut = intent.kind === "reject";
       if (yesShortcut || noShortcut) {
         // While the engine is busy processing a previous response, swallow
         // duplicate confirm/decline keystrokes so they don't queue a
@@ -1974,6 +1966,32 @@ export const InkApp: React.FC<InkAppProps> = ({
             ? "no pending approval — engine is still running"
             : "no pending approval — type a real prompt or /resume",
         );
+        return;
+      }
+      if (intent.kind === "pick" && session.pendingElicitation && onElicitResponse) {
+        if (busyRef.current) {
+          showInfo("answer already sent — engine is executing, hang tight");
+          return;
+        }
+        await submitElicitationResponse(
+          session.pendingElicitation.id,
+          { option_index: intent.optionIndex },
+          undefined,
+        );
+        return;
+      }
+      // A pending elicitation is open and the input did not carry clear
+      // intent (e.g. "save the workflow plz", "what about Foo?"). Don't
+      // start a phantom new turn — surface a hint instead.
+      if (session.pendingElicitation && !busyRef.current) {
+        const tool = session.pendingElicitation.tool_name;
+        const hint =
+          tool === "ask_user_confirm"
+            ? `there is a pending confirmation — type 'yes' to approve, 'no' to reject, or '/cancel' to abandon. (your message: "${trimmed.slice(0, 80)}")`
+            : tool === "ask_user_pick"
+              ? `there is a pending option list — type a number (e.g. '1') or 'option N' to choose. (your message: "${trimmed.slice(0, 80)}")`
+              : `there is a pending form — fill the fields shown above and submit. (your message: "${trimmed.slice(0, 80)}")`;
+        showInfo(hint);
         return;
       }
 

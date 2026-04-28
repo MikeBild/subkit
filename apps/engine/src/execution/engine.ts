@@ -335,6 +335,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           const childScope: Record<string, unknown> = {
             ...scope,
             [loopStep.item_var]: item,
+            $item: item,
             $loop_index: itemIdx,
           };
           const bodyResults: Record<string, unknown> = {};

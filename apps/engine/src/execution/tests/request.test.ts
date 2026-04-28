@@ -73,4 +73,88 @@ describe("request step", () => {
     expect(types).toContain("execution.started");
     expect(types).toContain("execution.succeeded");
   });
+
+  test("failed step records non-empty request_meta (url, method, header_keys, body_kind)", async () => {
+    // Force a 4xx so the step fails. The diagnostic envelope MUST
+    // surface what was attempted — without this, diagnose_run returns
+    // `request: {}` and the operator (and the LLM) cannot see the
+    // outbound URL. Regression for session bc745e38.
+    mock.setHandler((_, res) => jsonResponse(res, 404, { error: "not found" }));
+
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "one-shot-404",
+      steps: [
+        {
+          kind: "request",
+          id: "fetch",
+          method: "GET",
+          url: `${mock.baseUrl}/missing`,
+          expected_statuses: [200],
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("failed");
+
+    const stepRows = await ctx.testDb.db
+      .select()
+      .from(executionSteps)
+      .where(eq(executionSteps.execution_id, result.execution_id));
+    expect(stepRows).toHaveLength(1);
+    const meta = stepRows[0]?.output_preview as Record<string, unknown> | null;
+    // The diagnostic envelope is recorded under different keys
+    // depending on how the runtime persists it. Prefer the explicit
+    // `request_meta` field on the step row when present, else fall
+    // back to `output_preview.request`.
+    const rm =
+      (stepRows[0] as unknown as { request_meta?: Record<string, unknown> }).request_meta ??
+      (meta && typeof meta === "object" && "request" in meta
+        ? (meta.request as Record<string, unknown>)
+        : null) ??
+      null;
+    expect(rm).toBeTruthy();
+    expect(typeof (rm as Record<string, unknown>).url).toBe("string");
+    expect(String((rm as Record<string, unknown>).url)).toContain(`${mock.baseUrl}/missing`);
+    expect((rm as Record<string, unknown>).method).toBe("GET");
+    expect(Array.isArray((rm as Record<string, unknown>).header_keys)).toBe(true);
+  });
+
+  test("setup failure (placeholder_unresolved) records request_meta.unresolved_placeholders", async () => {
+    // The other failure mode: the step never reached the wire because
+    // a placeholder couldn't be resolved. Even though no HTTP call was
+    // attempted, the diagnostic envelope must record what tokens were
+    // unresolved so the operator can fix the workflow without guessing.
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "one-shot-bad-placeholder",
+      steps: [
+        {
+          kind: "request",
+          id: "fetch",
+          method: "GET",
+          url: `${mock.baseUrl}/items/\${item.does_not_exist}`,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("failed");
+
+    const stepRows = await ctx.testDb.db
+      .select()
+      .from(executionSteps)
+      .where(eq(executionSteps.execution_id, result.execution_id));
+    const row = stepRows[0];
+    expect(row?.status).toBe("failed");
+    const errorObj = row?.error as { code?: string } | null;
+    expect(errorObj?.code).toBe("placeholder_unresolved");
+  });
 });

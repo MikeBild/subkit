@@ -18,6 +18,7 @@ import { executeS3Request, type S3Method } from "../../connectors/drivers/s3.ts"
 import { withEgressAudit } from "../../connectors/egress.ts";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { connectorEndpointSchemas, connectors } from "../../db/schema/index.ts";
+import { resolvePlaceholders, resolveStringPlaceholders } from "../../llm/substitution/resolver.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordRequestRetry } from "../../observability/instrumentation.ts";
 import type { RequestStep } from "../../workflows/types.ts";
@@ -338,11 +339,65 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   const timeoutCtrl = new AbortController();
   const timer = setTimeout(() => timeoutCtrl.abort("timeout"), timeoutMs);
   const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);
+
+  // Substitute `${item.…}`, `${scope.<step>.…}`, `${input.…}`,
+  // `${cred.…}`, `${connector.…}` against the live execution scope BEFORE
+  // the HTTP driver builds the request. Without this, a literal token like
+  // `${item.id}` flows into `new URL()` and ends up URL-encoded as
+  // `%24%7Bitem.id%7D`, causing the API to 404 on a non-existent id.
+  const resolverCtx = {
+    tenant_id: p.ctx.tenant_id,
+    environment: p.ctx.execution_mode,
+    db: p.ctx.db,
+    input: p.scope?.$input,
+    scope: p.scope,
+    ...(p.ctx.principal ? { principal: p.ctx.principal } : {}),
+  };
+  const pathRes = p.step.path ? await resolveStringPlaceholders(p.step.path, resolverCtx) : null;
+  const urlRes = p.step.url ? await resolveStringPlaceholders(p.step.url, resolverCtx) : null;
+  const headersRes = p.step.headers ? await resolvePlaceholders(p.step.headers, resolverCtx) : null;
+  const queryRes = p.step.query ? await resolvePlaceholders(p.step.query, resolverCtx) : null;
+  const bodyRes =
+    p.step.body !== undefined && p.step.body !== null
+      ? await resolvePlaceholders(p.step.body, resolverCtx)
+      : null;
+  // Fail-fast when path/url has unresolved tokens — otherwise the literal
+  // `${…}` reaches the wire and the operator sees an opaque 404.
+  const pathUrlUnresolved = [...(pathRes?.unresolved ?? []), ...(urlRes?.unresolved ?? [])];
+  if (pathUrlUnresolved.length > 0) {
+    clearTimeout(timer);
+    const tokens = pathUrlUnresolved.map((u) => u.token).join(", ");
+    return {
+      status: "failed",
+      retry_count: 0,
+      duration_ms: Date.now() - start,
+      error: {
+        code: "placeholder_unresolved",
+        message: `unresolved placeholder(s) in path/url: ${tokens}`,
+        details: { unresolved: pathUrlUnresolved },
+      },
+      request_meta: {
+        url: null,
+        method: p.step.method,
+        unresolved_placeholders: pathUrlUnresolved.map((u) => u.token),
+      },
+    };
+  }
+  const resolvedStepPath = pathRes?.value ?? p.step.path ?? null;
+  const resolvedStepUrl = urlRes?.value ?? p.step.url ?? null;
+  const resolvedStepHeaders =
+    (headersRes?.value as Record<string, string> | undefined) ?? p.step.headers ?? {};
+  const resolvedStepQuery =
+    (queryRes?.value as Record<string, string | number | boolean> | undefined) ??
+    p.step.query ??
+    {};
+  const resolvedStepBody = bodyRes ? bodyRes.value : p.step.body;
+
   // Compose headers/query/URL — connector-scoped steps route through the
   // HTTP driver so credentials get decrypted + applied once up front,
   // then the P3 retry loop runs on the resulting URL.
-  const headers: Record<string, string> = { ...(p.step.headers ?? {}) };
-  const query: Record<string, string | number | boolean> = { ...(p.step.query ?? {}) };
+  const headers: Record<string, string> = { ...resolvedStepHeaders };
+  const query: Record<string, string | number | boolean> = { ...resolvedStepQuery };
   let baseUrl: URL;
   let tunnelRoute: TunnelRoute | undefined;
   // Holds the resolved HTTP connector so circuit state can be updated on
@@ -482,7 +537,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       if (connector.driver === "s3") {
         clearTimeout(timer);
         try {
-          const reqPath = p.step.path ?? p.step.url ?? "/";
+          const reqPath = resolvedStepPath ?? resolvedStepUrl ?? "/";
           const params: Parameters<typeof executeS3Request>[0] = {
             db: p.ctx.db,
             tenant_id: p.ctx.tenant_id,
@@ -490,9 +545,11 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             method: (p.step.method ?? "GET") as S3Method,
             path: reqPath,
           };
-          if (p.step.body !== undefined && p.step.body !== null) {
+          if (resolvedStepBody !== undefined && resolvedStepBody !== null) {
             params.body =
-              typeof p.step.body === "string" ? p.step.body : JSON.stringify(p.step.body);
+              typeof resolvedStepBody === "string"
+                ? resolvedStepBody
+                : JSON.stringify(resolvedStepBody);
           }
           const res = await withEgressAudit(
             {
@@ -579,7 +636,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         db: p.ctx.db,
         tenant_id: p.ctx.tenant_id,
         connector,
-        path_or_url: p.step.path ?? p.step.url ?? "/",
+        path_or_url: resolvedStepPath ?? resolvedStepUrl ?? "/",
         headers,
         query,
       });
@@ -598,7 +655,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         if (connectorResolution) connectorResolution.tunnel_target = plan.tunnel_target;
       }
     } else {
-      if (!p.step.url) {
+      if (!resolvedStepUrl) {
         clearTimeout(timer);
         return {
           status: "failed",
@@ -607,7 +664,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           error: { code: "missing_url", message: "request step requires url or connector_id" },
         };
       }
-      baseUrl = new URL(p.step.url);
+      baseUrl = new URL(resolvedStepUrl);
       for (const [k, v] of Object.entries(query)) {
         baseUrl.searchParams.set(k, String(v));
       }
@@ -636,7 +693,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           method: p.step.method,
           url: baseUrl.toString(),
           headers,
-          body: p.step.body ?? null,
+          body: resolvedStepBody ?? null,
           execution_id: p.ctx.execution_id,
           workflow_id: p.ctx.workflow_id,
           step_id: p.step.id,
@@ -731,7 +788,24 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // engine restart still maps back to the same logical step.
   const idempotencyBase = isIdempotent(p.step.method) ? null : `${p.ctx.execution_id}:${p.step.id}`;
   const lastIdempotencyKey: { value: string | null } = { value: null };
-  let last_meta: Record<string, unknown> = {};
+  // Pre-populate the diagnostic envelope with what we are about to send.
+  // Without this, a failure before the first response handler runs (e.g.
+  // an unexpected-status fail-fast or a connection error) returns
+  // `request_meta: {}`, which leaves diagnose_run with nothing to show.
+  // Audit-safe: header / query *names* only, never values.
+  let last_meta: Record<string, unknown> = {
+    url: baseUrl.toString(),
+    method: p.step.method,
+    header_keys: Object.keys(headers).sort(),
+    query_keys: Object.keys(query).sort(),
+    body_kind:
+      resolvedStepBody == null
+        ? "none"
+        : Array.isArray(resolvedStepBody)
+          ? "array"
+          : typeof resolvedStepBody,
+    ...(connectorResolution ? { connector: connectorResolution } : {}),
+  };
   // Most recent in-flight pagination-checkpoint write. Hoisted so the
   // failure path can `await` it before reporting the result — guarantees
   // the row reflects the resume position by the time we return.
@@ -739,8 +813,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   try {
     if (!p.step.pagination) {
       // Body schema validation (non-paginated path only)
-      if (effectiveBodySchema && p.step.body !== undefined && p.step.body !== null) {
-        const bodyErrs = checkRequired(p.step.body, effectiveBodySchema);
+      if (effectiveBodySchema && resolvedStepBody !== undefined && resolvedStepBody !== null) {
+        const bodyErrs = checkRequired(resolvedStepBody, effectiveBodySchema);
         if (bodyErrs.length > 0) {
           clearTimeout(timer);
           return {
@@ -775,7 +849,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           url: baseUrl.toString(),
           method: p.step.method,
           headers,
-          body: p.step.body ?? null,
+          body: resolvedStepBody ?? null,
           max_attempts,
           signal,
           retry_total_ms: retryTotal,
@@ -917,7 +991,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           url: next.url,
           method: p.step.method,
           headers,
-          body: p.step.body ?? null,
+          body: resolvedStepBody ?? null,
           max_attempts,
           signal,
           retry_total_ms: retryTotal,

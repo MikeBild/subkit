@@ -171,11 +171,19 @@ Both can coexist. A common pattern:
 ### Loops
 
 Iterate over an array from a prior step. Each iteration exposes the current
-item as a **top-level scope key** named by `item_var` (defaults to `item`).
-The item is NOT envelope-wrapped — reference it as `${user.field}` or
-`$user.field`, never `$scope.user.data.field`. See the "Loop iteration
-variables" section in `data-handling.md` for the four wrong shapes the
-validator rejects.
+item under two scope keys: `$item` (canonical, used by `${item.…}`) and the
+loop's `item_var` (used by JSONata transforms). The item is NOT
+envelope-wrapped.
+
+**HTTP / placeholder substitution** (path, url, headers, query, body): use
+`${item.<path>}`. This is the only form the runtime placeholder resolver
+accepts — `${user.field}` or `${project.id}` will fail with
+`placeholder_unresolved` because `user` / `project` are not registered
+placeholder kinds.
+
+**JSONata transforms** (`expression`): use the bare `item_var` name —
+JSONata reads it from the scope object, e.g. `user.email` or
+`project.name`.
 
 ```json
 {
@@ -187,7 +195,7 @@ validator rejects.
 }
 ```
 
-Body step referencing the item:
+Body step referencing the item via the placeholder resolver:
 
 ```json
 {
@@ -195,7 +203,7 @@ Body step referencing the item:
   "kind": "request",
   "method": "POST",
   "path": "/mail",
-  "body": { "to": "${user.email}", "name": "${user.name}" }
+  "body": { "to": "${item.email}", "name": "${item.name}" }
 }
 ```
 
@@ -233,7 +241,7 @@ resources / children / details." Copy-paste it; do not invent variants.
     "kind": "request",
     "method": "GET",
     "connector_id": "<digitalocean_connector_id>",
-    "path": "/v2/projects/${project.id}/resources"
+    "path": "/v2/projects/${item.id}/resources"
   },
   {
     "id": "format_output",
@@ -244,18 +252,25 @@ resources / children / details." Copy-paste it; do not invent variants.
 ]
 ```
 
-Three things this example gets right that the LLM frequently gets wrong:
-1. The inner step (`get_project_resources`) **uses `${project.id}`** in the
-   path. Without that, the loop is N copies of the same call. The validator
-   rejects loop bodies that never reference `item_var`.
+Four things this example gets right that the LLM frequently gets wrong:
+1. The inner step (`get_project_resources`) **uses `${item.id}`** (NOT
+   `${project.id}`) in the path. The placeholder resolver only accepts the
+   six registered kinds — `cred`, `connector`, `input`, `scope`, `item` — so
+   `${project.id}` parses as `unknown_kind` and the runtime returns
+   `placeholder_unresolved`. `${item.…}` always means "the current loop
+   item" regardless of what `item_var` happens to be named.
 2. The loop iterates over a **plain array** (the output of
    `extract_projects`), not a step envelope. `$scope.extract_projects.data`
    would be wrong — `extract_projects` is a transform, its raw return value
    IS the scope value.
 3. The final transform reads from `$scope.fetch_resources` (an array of
-   per-iteration outputs), with the loop's `item_var: "project"` still
-   bound — the closure lets the format step join the project name with its
-   resources.
+   per-iteration outputs). It uses `project.name` (not `${item.name}`)
+   because JSONata reads bare names from the scope, not via the placeholder
+   resolver.
+4. `${item.…}` is for path / url / headers / query / body strings (the
+   placeholder pipeline); `item_var` (`project`, `user`, …) is for JSONata
+   `expression` fields (the transform pipeline). Mixing them will surface
+   as `placeholder_unresolved` (HTTP) or `unresolved_identifier` (JSONata).
 
 ### Unresolved-identifier warnings are never false positives
 

@@ -133,11 +133,17 @@ export function validateWorkflowDef(input: unknown): {
       const bodySteps = step.body
         .map((bid) => wf.steps.find((s) => s.id === bid))
         .filter((s): s is StepDef => s !== undefined);
-      const referencesItemVar = bodySteps.some((bs) => stepReferencesIdentifier(bs, itemVar));
+      // A loop body satisfies the reference rule when it mentions either
+      //   - the canonical placeholder `${item.…}` (preferred for URLs /
+      //     headers / query / body strings), or
+      //   - the loop's `item_var` directly (for JSONata expressions).
+      const referencesItemVar = bodySteps.some(
+        (bs) => stepReferencesIdentifier(bs, itemVar) || stepReferencesIdentifier(bs, "item"),
+      );
       if (bodySteps.length > 0 && !referencesItemVar) {
         errors.push({
           path: `steps.${step.id}`,
-          message: `loop body never references the iteration variable \`${itemVar}\` — use \`\${${itemVar}.field}\` in URLs/strings or \`${itemVar}.field\` in JSONata. Without it the loop runs N copies of the same call.`,
+          message: `loop body never references the iteration item — use \`\${item.field}\` in URLs/strings or \`${itemVar}.field\` in JSONata. Without it the loop runs N copies of the same call.`,
         });
       }
     }
