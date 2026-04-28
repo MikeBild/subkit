@@ -1,8 +1,14 @@
 name: release-please
 
+# Manual-only. Many small commits land on main via the regular CI
+# gate; release-please runs only when the operator decides it's time
+# to cut the next version. Trigger via:
+#   gh workflow run release-please.yml
+# Restore push-on-main triggering by uncommenting the block below.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
 
 permissions:
   contents: write
