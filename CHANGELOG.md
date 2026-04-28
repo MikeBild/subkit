@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.2.0](https://github.com/MikeBild/subkit/compare/subkit-v3.1.0...subkit-v3.2.0) (2026-04-28)
+
+
+### Features
+
+* **http,sk:** /v1/settings routes + sk settings command ([600e33c](https://github.com/MikeBild/subkit/commit/600e33cd2b949768093195b9558a2da3a32537de))
+
+
+### Bug Fixes
+
+* **execution,sk:** resolve loop-item placeholders, populate request_meta on failure, route free-text approvals ([c35ef1c](https://github.com/MikeBild/subkit/commit/c35ef1c86c97a735f0a5b228d77f48a56fb6912f))
+* **hooks:** widen e2e test timeout to 60s ([d9f980a](https://github.com/MikeBild/subkit/commit/d9f980a2e89f296383b3f5c04a7de31168fcf479))
+
 ## [3.1.0](https://github.com/MikeBild/subkit/compare/subkit-v3.0.0...subkit-v3.1.0) (2026-04-28)
 
 
