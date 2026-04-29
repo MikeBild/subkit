@@ -239,9 +239,31 @@ export const LoopStepSchema = z
   .object({
     kind: z.literal("loop"),
     ...baseStep,
-    over: z.string(),
+    over: z.string().optional(),
+    /**
+     * JS expression form of the source-array selector — modeled on the
+     * reference impl's `dataSelector`. The expression body receives a
+     * single `sourceData` argument bound to the full execution scope
+     * and must return an array. Example:
+     *
+     *   data_selector: "(sourceData) => sourceData.fetch_projects.data.projects"
+     *
+     * Failures throw a real exception (`Data selector failed: <msg>`)
+     * with the actual JS error, instead of the opaque
+     * `loop_over_unresolved` warning that a path-style `over` produces
+     * when the path resolves to undefined. Prefer this form when
+     * authoring a new loop. `over` (path/JSONata string) is kept for
+     * backwards compatibility — exactly one of `over` or
+     * `data_selector` must be set.
+     */
+    data_selector: z.string().optional(),
     body: z.array(z.string()),
     item_var: z.string().default("item"),
+  })
+  .refine((s) => Boolean(s.over) !== Boolean(s.data_selector), {
+    message:
+      "Loop step must set exactly one of `over` (path/JSONata) or `data_selector` (JS expression).",
+    path: ["over"],
   })
   .openapi("LoopStep");
 

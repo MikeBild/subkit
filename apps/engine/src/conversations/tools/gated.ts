@@ -20,9 +20,28 @@ import { sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { skills as skillsTable } from "../../db/schema/index.ts";
 
-/** Hard-coded baseline gates. */
+/** Hard-coded baseline gates.
+ *
+ * Mirrors the reference impl's `SKILL_LOADING_INSTRUCTIONS`: tools that
+ * mutate or author tenant-visible artifacts are not exposed until the
+ * matching skill is in context. Forces the model to read the skill
+ * (envelope contract, JSONata cheatsheet, recipe) before authoring,
+ * which is what eliminates the "guess and patch" loop on $scope paths.
+ */
 export const SKILL_GATED_TOOLS: Readonly<Record<string, string>> = {
   approve_patch_candidate: "self-healing",
+  // Workflow authoring + edit — the model must load workflow-authoring
+  // (which now requires data-handling + the protocol skill upstream)
+  // before it can build/edit a workflow draft.
+  build_workflow: "workflow-authoring",
+  propose_step: "workflow-authoring",
+  update_param: "workflow-authoring",
+  inspect_workflow: "workflow-authoring",
+  // Connector authoring — same pattern; load connector-creation-guidance
+  // before drafting.
+  start_connector_from_description: "connector-creation-guidance",
+  start_connector_from_template: "connector-creation-guidance",
+  update_connector_draft: "connector-creation-guidance",
 };
 
 type CacheEntry = {

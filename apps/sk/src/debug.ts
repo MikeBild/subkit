@@ -34,6 +34,24 @@ export type DebugRecordKind =
   | "dialog.render_output"
   | "dialog.turn_end"
   | "dialog.error"
+  // dialog.elicitation_routing — emitted on every keystroke that
+  // reaches the pending-elicitation branch with how the input was
+  // classified (confirm / reject / pick / structured_only). Lets a
+  // "the user typed yes but nothing happened" investigation answer
+  // "did the CLI route it as confirm? as ambiguous?" from a single
+  // log file.
+  | "dialog.elicitation_routing"
+  // dialog.plain_prompt_sent — emitted right before forwarding a
+  // plain prompt to the engine. Carries `had_recent_unresolved_intent`
+  // (true when the assistant's last message looks like
+  // "Reply 'yes' to commit" but no elicit_request was emitted —
+  // strong signal of an engine policy-gate bug).
+  | "dialog.plain_prompt_sent"
+  // dialog.elicit_request_received — emitted when an elicit_request
+  // SSE frame arrives client-side. Bookends the engine's
+  // `elicitation.created` log so a "did the prompt actually reach
+  // the CLI?" question is one grep away across both halves.
+  | "dialog.elicit_request_received"
   | "conversation.turn_events"
   | "elicitation.response"
   | "http.request"

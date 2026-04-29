@@ -16,6 +16,7 @@ import {
   conversations,
   conversationToolCalls,
 } from "../db/schema/index.ts";
+import { logger } from "../logging/logger.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -130,6 +131,36 @@ export async function createElicitation(
     .update(conversations)
     .set({ status: "awaiting_input", updated_at: new Date() })
     .where(eq(conversations.id, p.conversation_id));
+  // Forensic log: elicitation row landed in DB and conversation
+  // moved to awaiting_input. Pre-fix the dca36b29 silent failure
+  // looked like "policy.gate_paused fired but the user never saw a
+  // prompt" — without this row we couldn't tell whether the
+  // elicitation actually persisted or whether the SSE emit dropped
+  // before the wire. Carries the input.kind so an operator can
+  // reason about which approval path the row belongs to without
+  // dereferencing the JSONB column.
+  const inputKind =
+    p.input && typeof p.input === "object" && p.input !== null
+      ? ((p.input as { kind?: unknown }).kind ?? null)
+      : null;
+  const intentKind =
+    p.input && typeof p.input === "object" && p.input !== null
+      ? (((p.input as { commit_intent?: { kind?: unknown } }).commit_intent?.kind ?? null) as
+          | string
+          | null)
+      : null;
+  logger.info({
+    module: "conversation",
+    action: "elicitation.created",
+    msg: "elicitation persisted; conversation transitioned to awaiting_input",
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    elicitation_id: inserted.id,
+    tool_name: p.tool_name,
+    ...(p.tool_call_id ? { tool_call_id: p.tool_call_id } : {}),
+    ...(typeof inputKind === "string" ? { input_kind: inputKind } : {}),
+    ...(typeof intentKind === "string" ? { commit_intent_kind: intentKind } : {}),
+  });
   await auditAwait(
     {
       tenant_id: p.tenant_id,
@@ -163,6 +194,39 @@ export async function getElicitation(
     )
     .limit(1);
   const row = rows[0];
+  return row ? rowToRecord(row) : null;
+}
+
+/**
+ * Lookup the active (pending) elicitation tied to a tool_call. Mirrors
+ * the reference impl's `resumeToolCallId` resume key — clients that
+ * tracked the originating tool_call_id can resolve the elicitation
+ * without first reading the elicitation_id from the SSE stream.
+ *
+ * Returns the most recent matching row when multiple elicitations
+ * exist for the same tool_call (e.g. policy gate + LLM-emitted prompt
+ * during the same turn), preferring `pending` status.
+ */
+export async function getPendingElicitationByToolCall(
+  tenant_id: string,
+  conversation_id: string,
+  tool_call_id: string,
+  exec: Executor,
+): Promise<ElicitationRecord | null> {
+  const rows = await exec
+    .select()
+    .from(conversationElicitations)
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, tenant_id),
+        eq(conversationElicitations.conversation_id, conversation_id),
+        eq(conversationElicitations.tool_call_id, tool_call_id),
+      ),
+    )
+    .orderBy(desc(conversationElicitations.created_at));
+  if (rows.length === 0) return null;
+  const pending = rows.find((r) => r.status === "pending");
+  const row = pending ?? rows[0];
   return row ? rowToRecord(row) : null;
 }
 

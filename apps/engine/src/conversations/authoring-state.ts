@@ -262,6 +262,7 @@ function normalizeLatestExecution(value: unknown): LatestExecutionSummary | null
     warnings_count: typeof value.warnings_count === "number" ? value.warnings_count : 0,
     recorded_at: typeof value.recorded_at === "string" ? value.recorded_at : nowIso(),
     diagnosis_available: value.diagnosis_available === true,
+    ...(value.requires_repair === true ? { requires_repair: true } : {}),
   };
 }
 
@@ -1233,6 +1234,10 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
             ...(raw.latest_preview.preview !== undefined
               ? { preview: raw.latest_preview.preview }
               : {}),
+            ...(Array.isArray(raw.latest_preview.warnings)
+              ? { warnings: raw.latest_preview.warnings }
+              : {}),
+            ...(raw.latest_preview.requires_repair === true ? { requires_repair: true } : {}),
           },
         }
       : {}),

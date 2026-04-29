@@ -97,7 +97,33 @@ export async function maybeAutoPersistFromElicitation(
   p: AutoPersistInput,
 ): Promise<AutoPersistDispatch> {
   const intent = extractCommitIntent(p.elicitation.input);
-  if (!intent) return { dispatched: false };
+  if (!intent) {
+    // Forensic log: the elicitation resolved but carried no
+    // commit_intent so the harness has nothing to dispatch. Pre-fix
+    // this branch was completely silent — operators triaging "I
+    // approved but nothing got saved" had to grep for the absence
+    // of a workflow.created row to even notice the harness no-op.
+    // We surface the elicitation kind so the next investigation can
+    // immediately tell whether the LLM forgot to attach commit_intent
+    // (kind=external_write/generic) or whether we were called with
+    // an unrelated elicitation type (kind=ask_user_text/etc).
+    const elicitationInputKind =
+      p.elicitation.input && typeof p.elicitation.input === "object" && p.elicitation.input !== null
+        ? ((p.elicitation.input as { kind?: unknown }).kind ?? null)
+        : null;
+    logger.info({
+      module: "conversation_persistence",
+      action: "auto_persist.skipped",
+      msg: "elicitation resolved without commit_intent — no harness write dispatched",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      elicitation_id: p.elicitation.id,
+      elicitation_tool_name: p.elicitation.tool_name,
+      elicitation_input_kind:
+        typeof elicitationInputKind === "string" ? elicitationInputKind : null,
+    });
+    return { dispatched: false };
+  }
 
   const declineCheck = checkDecline(p.elicitation.tool_name, p.elicitation_output);
   if (declineCheck) {
@@ -212,12 +238,19 @@ export async function maybeAutoPersistFromElicitation(
       commit_intent_kind: intent.kind,
       error: msg,
     });
+    // Translate Postgres errors into actionable error_codes so the
+    // LLM has a concrete recovery path instead of throwing
+    // `cannot_help` and dead-ending the chat (session abeefb33: a
+    // 23505 unique_violation on `connectors_tenant_slug_env_key`
+    // surfaced as "database error" → cannot_help → conversation
+    // ended on a colon with no question for the user).
+    const translated = translateAutoPersistError(err, intent.kind);
     const synthetic: SyntheticToolResult = {
       tool: intentToolName(intent.kind),
       ok: false,
-      error_code: "auto_persist_failed",
-      message: msg,
-      next_best_actions: ["ask_user", "cannot_help"],
+      error_code: translated.error_code,
+      message: translated.message,
+      next_best_actions: translated.next_best_actions,
       source: "harness_auto_persist",
     };
     const callId = await injectSyntheticToolCall({
@@ -347,6 +380,80 @@ function buildSyntheticFromResult(toolName: string, result: ToolResult): Synthet
       ? { next_best_actions: result.next_best_actions }
       : {}),
     source: "harness_auto_persist",
+  };
+}
+
+/**
+ * Map a thrown Postgres / runtime error to a structured envelope the
+ * LLM can act on. Without this every dispatch failure surfaced as the
+ * vague "database error" prose (session abeefb33) and the LLM fell
+ * back to `cannot_help`, leaving the user staring at a colon with no
+ * recovery path. The mapping uses Postgres SQLSTATE codes when
+ * available (`pg` exposes them via `err.code`) plus regex fallbacks
+ * on the message.
+ */
+export function translateAutoPersistError(
+  err: unknown,
+  intentKind: CommitIntent["kind"],
+): { error_code: string; message: string; next_best_actions: string[] } {
+  const msg = err instanceof Error ? err.message : String(err);
+  // biome-ignore lint/suspicious/noExplicitAny: pg errors carry .code
+  const code = (err as any)?.code;
+  const detail =
+    typeof (err as { detail?: unknown })?.detail === "string"
+      ? ((err as { detail: string }).detail as string)
+      : null;
+  const lower = msg.toLowerCase();
+  // 23505 — unique_violation. The dominant cause for re-create after
+  // soft-delete (`connectors_tenant_slug_env_key` /
+  // `workflows_tenant_slug_active_key`) and for genuine slug
+  // collisions on a still-active row.
+  if (code === "23505" || /unique constraint|duplicate key|already exists/i.test(lower)) {
+    const isConnector = intentKind === "save_connector_draft";
+    const isWorkflow = intentKind === "commit_workflow_draft";
+    const resource = isConnector ? "connector" : isWorkflow ? "workflow" : "resource";
+    return {
+      error_code: "slug_already_in_use",
+      message: `A ${resource} with this slug already exists in the tenant. List existing ${resource}s (\`list_${resource === "connector" ? "connectors" : "workflows"}\`) and either choose a different slug, restore the existing row, or update it in place. Detail: ${detail ?? msg}`,
+      next_best_actions:
+        resource === "connector"
+          ? ["list_connectors", "get_connector", "update_connector"]
+          : ["list_workflows", "get_workflow", "update_workflow"],
+    };
+  }
+  // 23503 — foreign_key_violation. Common when deleting something
+  // that's still referenced.
+  if (code === "23503" || /foreign key|violates foreign key/i.test(lower)) {
+    return {
+      error_code: "in_use_by_dependent_rows",
+      message: `Cannot complete the operation because the resource is still referenced by another row. Detail: ${detail ?? msg}`,
+      next_best_actions: ["list_executions", "list_workflows", "list_connectors", "ask_user_text"],
+    };
+  }
+  // 23502 — not_null_violation. Authoring layer bug; surface to LLM
+  // with the column name so it can repair the draft.
+  if (code === "23502" || /null value|violates not-null/i.test(lower)) {
+    return {
+      error_code: "missing_required_field",
+      message: `A required field is missing on the draft. Detail: ${detail ?? msg}`,
+      next_best_actions: ["inspect_connector_draft", "inspect_workflow_draft", "validate_draft"],
+    };
+  }
+  // 22P02 — invalid_text_representation (often "uuid syntax").
+  if (code === "22P02" || /invalid input syntax/i.test(lower)) {
+    return {
+      error_code: "invalid_input_format",
+      message: `An input value has the wrong format (likely a malformed uuid or enum). Detail: ${detail ?? msg}`,
+      next_best_actions: ["inspect_authoring_context", "inspect_connector_draft"],
+    };
+  }
+  // Fallback — truly unexpected. Keep `auto_persist_failed` as the
+  // signal but include the verbatim message so the LLM can paraphrase
+  // SOMETHING actionable to the user instead of dead-ending.
+  return {
+    error_code: "auto_persist_failed",
+    message: `Unexpected error while persisting the ${intentKind} write. ${msg}. Surface this as a clear question for the user: report what failed and ask whether to retry, change inputs, or escalate.`,
+    next_best_actions: ["ask_user_text", "cannot_help"],
   };
 }
 

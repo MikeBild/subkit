@@ -166,6 +166,19 @@ function formatSkill(s: Skill, runtime_context?: AssembleContextParams["runtime_
   return `# Skill: ${s.title} (${s.scope})\n${body}${bp}${pit}${refs}${ex}`;
 }
 
+/**
+ * Public token-counter for an individual skill body using the same
+ * formatter the assembler uses. Lets observability paths (e.g. the
+ * dialog.turn_end log's top_skills_by_tokens breakdown) report a
+ * per-skill weight without re-implementing formatSkill out-of-tree.
+ */
+export function countSkillTokens(
+  s: Skill,
+  runtime_context?: AssembleContextParams["runtime_context"],
+): number {
+  return countTokens(formatSkill(s, runtime_context));
+}
+
 function fetchedAtSuffix(fetched_at: string | null): string {
   if (!fetched_at) return "";
   // Trim to YYYY-MM-DD so the prompt header is compact and stable.
@@ -501,6 +514,34 @@ export async function assembleEnhancedPrompt(
   };
 
   const trimmed: string[] = [];
+  // Skill-body summary used as a fallback when we'd otherwise pop a
+  // whole skill. Keeps the skill name + scope visible to the model
+  // (so it can call `load_skill` to re-fetch the full body) while
+  // shedding the bulk of the markdown body. Saves ~70-90% per skill
+  // vs. dropping it entirely. Pre-fix the trim path popped the whole
+  // skill record, removing the title + scope hint from the model's
+  // context — losing the SIGNAL that the skill exists at all.
+  // 100-char summary keeps the title + first sentence visible (enough
+  // for the model to decide whether to call `load_skill`) without
+  // bloating the trimmed prompt. Lower than the original 200 so a
+  // 5-skill global bundle costs ~250 tokens after trim instead of ~500.
+  const SKILL_BODY_SUMMARY_LIMIT = 100;
+  const trimSkill = (s: import("../../skills/types.ts").Skill): typeof s => {
+    if (s.body.length <= SKILL_BODY_SUMMARY_LIMIT) return s;
+    return {
+      ...s,
+      body: `${s.body.slice(0, SKILL_BODY_SUMMARY_LIMIT).trim()}… [load_skill('${s.title ?? s.id}') for full body]`,
+    };
+  };
+  // Trim every loaded/global/connector/workflow skill BODY to a
+  // summary line FIRST before popping any of them. Saves the model's
+  // awareness that the skill exists + how to recover its full body
+  // (load_skill). Cursors are independent per category so each
+  // category gets its own progressive trim pass.
+  let trimmedLoadedCursor = 0;
+  let trimmedWorkflowCursor = 0;
+  let trimmedConnectorCursor = 0;
+  let trimmedGlobalCursor = 0;
   while (total > cap) {
     if (failures.length > 0) {
       failures = [];
@@ -517,6 +558,34 @@ export async function assembleEnhancedPrompt(
     } else if (authoringContext) {
       authoringContext = "";
       trimmed.push("authoring_context");
+    } else if (loadedSkills.length > 0 && trimmedLoadedCursor < loadedSkills.length) {
+      const idx = trimmedLoadedCursor++;
+      const cur = loadedSkills[idx];
+      if (cur && cur.body.length > SKILL_BODY_SUMMARY_LIMIT) {
+        loadedSkills[idx] = trimSkill(cur);
+        trimmed.push("loaded_skill_body_trimmed");
+      }
+    } else if (workflowSkills.length > 0 && trimmedWorkflowCursor < workflowSkills.length) {
+      const idx = trimmedWorkflowCursor++;
+      const cur = workflowSkills[idx];
+      if (cur && cur.body.length > SKILL_BODY_SUMMARY_LIMIT) {
+        workflowSkills[idx] = trimSkill(cur);
+        trimmed.push("workflow_skill_body_trimmed");
+      }
+    } else if (connectorSkills.length > 0 && trimmedConnectorCursor < connectorSkills.length) {
+      const idx = trimmedConnectorCursor++;
+      const cur = connectorSkills[idx];
+      if (cur && cur.body.length > SKILL_BODY_SUMMARY_LIMIT) {
+        connectorSkills[idx] = trimSkill(cur);
+        trimmed.push("connector_skill_body_trimmed");
+      }
+    } else if (globalSkills.length > 0 && trimmedGlobalCursor < globalSkills.length) {
+      const idx = trimmedGlobalCursor++;
+      const cur = globalSkills[idx];
+      if (cur && cur.body.length > SKILL_BODY_SUMMARY_LIMIT) {
+        globalSkills[idx] = trimSkill(cur);
+        trimmed.push("global_skill_body_trimmed");
+      }
     } else if (loadedSkills.length > 0) {
       loadedSkills.pop();
       trimmed.push("loaded_skill");

@@ -289,11 +289,13 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   {
     name: "save_connector_draft",
     defaultMode: "confirm_before_execution",
+    confirmationKind: "schema_change",
     reason: "Persists draft + credential atomically",
   },
   {
     name: "commit_draft",
     defaultMode: "confirm_before_execution",
+    confirmationKind: "schema_change",
     reason: "Persists workflow",
   },
 
@@ -396,6 +398,7 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   { name: "get_token_budget", defaultMode: "auto" },
   { name: "get_llm_usage", defaultMode: "auto" },
   { name: "get_raw_result", defaultMode: "auto" },
+  { name: "inspect_execution_step", defaultMode: "auto" },
   { name: "get_vendor_recipe", defaultMode: "auto" },
   { name: "preview_attachment", defaultMode: "auto" },
   { name: "whoami", defaultMode: "auto" },

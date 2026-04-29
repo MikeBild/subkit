@@ -42,6 +42,7 @@ describe("policy confirm_before_execution wiring", () => {
       toolInvocationCount: new Map(),
       toolLastErrorHash: new Map(),
       totalLoopWarnings: 0,
+      consecutiveFailures: 0,
       lastAssistantText: "",
     };
     const engineClient = new EngineClient({
@@ -125,6 +126,7 @@ describe("policy confirm_before_execution wiring", () => {
       toolInvocationCount: new Map(),
       toolLastErrorHash: new Map(),
       totalLoopWarnings: 0,
+      consecutiveFailures: 0,
       lastAssistantText: "",
     };
     const engineClient = new EngineClient({

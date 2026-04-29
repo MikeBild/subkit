@@ -290,6 +290,14 @@ export interface WorkflowDraftPreviewSummary {
     code?: string;
     message?: string;
   }>;
+  /**
+   * Set when the engine flagged the run as needing operator attention
+   * (empty extraction over non-empty source, loop body never executed,
+   * unresolved_identifier fired). Read by the auto-persist gate to
+   * distinguish informational warnings (no `requires_repair`) from
+   * real bugs. Mirrors the same flag on `RunResult`.
+   */
+  requires_repair?: boolean;
 }
 
 export interface AuthoringSummary {
@@ -410,6 +418,15 @@ export type TurnEvent =
   | {
       type: "elicit_request";
       elicitation_id: string;
+      /**
+       * The `conversation_tool_calls` row id of the originating tool
+       * call (the gated tool, OR the ask_user_* tool the LLM emitted
+       * directly). Mirrors the reference impl's `resumeToolCallId`
+       * pattern: clients can correlate the elicitation to "the call
+       * that paused" without a follow-up DB read, and may resume by
+       * either id (engine accepts both as aliases).
+       */
+      tool_call_id?: string;
       /** Which `askUser.*` tool paused the loop. */
       tool_name: string;
       /** Short summary stored on the elicitation row (audit + list view). */

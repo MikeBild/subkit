@@ -15,7 +15,7 @@ import {
   SKILL_LOADING_INSTRUCTIONS,
   verbosityFor,
 } from "./prompts.ts";
-import { ALL_AGENT_SKILLS, loadAgentSkills } from "./skills/index.ts";
+import { loadAgentSkills, resolveAgentSkillsForMode } from "./skills/index.ts";
 import type { AgentSystemPromptInput, AgentSystemPromptResult } from "./types.ts";
 
 function summarizeCheckpoints(hint: AuthoringPromptHint, keys: string[]): string {
@@ -147,9 +147,13 @@ export async function generateMainAgentSystemPrompt(
   ];
   const focusBlock = authoringFocusPrompt(input.authoring_hint);
   if (focusBlock) sections.push(focusBlock);
-  // Behaviour skills follow the literal so the model reads the
-  // structural rules first and the detailed behaviour bodies as
-  // grounding context after.
-  sections.push(loadAgentSkills(ALL_AGENT_SKILLS));
+  // Mode-aware behaviour skill loading: always-load core + the
+  // mode-specific bodies for the current authoring mode (workflow /
+  // connector / execution / diagnosis). For chats with no mode
+  // (general help, MCP-only conversations) we drop the workflow /
+  // placeholder skills entirely — saves ~3k tokens per turn that the
+  // LLM would otherwise pay for context that doesn't apply.
+  const mode = input.authoring_hint?.mode ?? null;
+  sections.push(loadAgentSkills(resolveAgentSkillsForMode(mode)));
   return { content: sections.join("\n\n") };
 }

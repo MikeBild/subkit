@@ -32,6 +32,7 @@ import { fetchConnectorDocsTool } from "./fetch-connector-docs.ts";
 import { importConnectorFromSpecTool } from "./import-connector-from-spec.ts";
 import { inspectAuthoringContextTool } from "./inspect-authoring-context.ts";
 import { inspectConnectorDraftTool } from "./inspect-connector-draft.ts";
+import { inspectWorkflowTool } from "./inspect-workflow.ts";
 import { inspectWorkflowDraftTool } from "./inspect-workflow-draft.ts";
 import { listAttachmentsTool } from "./list-attachments.ts";
 import { listSkillSuggestionsTool } from "./list-skill-suggestions.ts";
@@ -226,6 +227,7 @@ register(fetchConnectorDocsTool);
 register(inspectAuthoringContextTool);
 register(inspectConnectorDraftTool);
 register(inspectWorkflowDraftTool);
+register(inspectWorkflowTool);
 register(searchKnowledgeTool);
 register(searchDocsTool);
 register(listSkillSuggestionsTool);
@@ -274,6 +276,15 @@ register(loadSkillTool);
 import { getRawResultTool } from "./get-raw-result.ts";
 
 register(getRawResultTool);
+
+// inspect_execution_step — read persisted output of a single step
+// from a completed execution. Closes the blind-authoring gap that
+// produced session 3f6082d2's "format_output silently dropped fields"
+// failure: now the LLM can read the actual loop body shape after a
+// run instead of guessing JSONata paths.
+import { inspectExecutionStepTool } from "./inspect-execution-step.ts";
+
+register(inspectExecutionStepTool);
 
 // web_search — Tavily escalation when search_knowledge is empty.
 import { webSearchTool } from "./web-search.ts";

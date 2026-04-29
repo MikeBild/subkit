@@ -106,6 +106,7 @@ Re-dry-run the specific step before moving on.
 | `placeholder_unresolved` on `${cred.foo.bar}` | Credential either doesn't exist in this env, or the field name is wrong. Ask the user to create/rotate. |
 | `filter_fail` | Almost always a scope path error. Reread the upstream envelope. |
 | Same error three turns in a row | Stop. Ask the user for guidance; do not thrash. |
+| Five consecutive failed tool calls (any tool, any code) | Stop. Emit `ask_user_choice` with three concrete options derived from the failure shape. Do not continue patching. The counter resets on the first successful tool call. |
 
 ## Worked example
 
@@ -143,8 +144,10 @@ have cost another round-trip guessing `closedate_unix` or similar.
   retrying the same request gets the same error. Fix first.
 - **Ignoring `details.body`.** The vendor's error message is the shortest
   path to a fix. Read it.
-- **Re-running `commit_draft` after a dry-run error.** Commit doesn't re-run
-  the step. You'll commit a known-broken draft.
+- **Re-running the commit path after a dry-run error.** Neither the
+  `ask_user_confirm`+`commit_intent` auto-persist nor a direct `commit_draft`
+  re-runs the failing step. Repair the step + re-`dry_run` first, then commit.
+  You'll otherwise persist a known-broken draft.
 - **Assuming `permission_denied` is a bug.** It's the correct outcome until
   RBAC changes. Surface it; don't work around it.
 - **Looping through retries without bounds.** Three failed turns on the same

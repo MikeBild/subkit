@@ -505,6 +505,20 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       }
     }
 
+    // Capture an output preview for this step. For request/transform/
+    // simple steps we use the raw `outcome.result.output`; for loop +
+    // parallel we use the just-assembled scope envelope which carries
+    // the iterationResults / branchResults so downstream transforms
+    // can be authored against the canonical shape (see fix #20 in
+    // workflow-authoring.md). Truncated downstream by previewOf when
+    // serialised for the LLM.
+    let outputPreview: unknown = outcome.result.output;
+    if (step.kind === "loop" || step.kind === "parallel") {
+      const wrapped = scope[step.id] as { data?: unknown } | undefined;
+      if (wrapped && typeof wrapped === "object" && "data" in wrapped) {
+        outputPreview = wrapped.data;
+      }
+    }
     stepSummaries.push({
       step_key: step.id,
       step_index: i,
@@ -514,6 +528,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       retry_count: outcome.result.retry_count ?? 0,
       error: outcome.result.error ?? null,
       request_meta: outcome.result.request_meta ?? null,
+      ...(outputPreview !== undefined ? { output_preview: outputPreview } : {}),
     });
     if (outcome.result.status !== "succeeded") {
       const onError = step.on_error ?? "fail";

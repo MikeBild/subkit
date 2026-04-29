@@ -75,6 +75,14 @@ export type TurnEvent =
   | {
       type: "elicit_request";
       elicitation_id: string;
+      /**
+       * The originating `conversation_tool_calls` row id (the gated
+       * tool, OR the ask_user_* tool the LLM emitted directly). Mirrors
+       * the reference impl's `resumeToolCallId`: clients can correlate
+       * the elicitation back to "the tool call that paused" without a
+       * follow-up DB read, and may resume by either id.
+       */
+      tool_call_id?: string;
       /** Which `ask_user_*` tool paused the loop. */
       tool_name: string;
       /** Short row-level summary (audit + list view). */
@@ -97,6 +105,12 @@ export type TurnEvent =
 export interface PendingElicitation {
   id: string;
   tool_name: string;
+  /**
+   * Originating tool-call id, when the engine surfaces it on the
+   * elicit_request event. Lets the UI correlate the prompt to "the
+   * tool that paused" and lets clients resume by either id.
+   */
+  tool_call_id?: string | null;
   /** Question / summary shown above the prompt. */
   summary: string;
   /** Tool-specific input — options list, form fields, confirm diff, etc. */
@@ -396,9 +410,35 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
               pendingElicitation: state.pendingElicitation,
               toolCalls: state.toolCalls,
             };
+      // Dedupe optimistic user echoes: when the CLI synthesised a
+      // local `user` message before the engine round-trip (so the
+      // operator sees their input immediately), the engine then
+      // replays the same content as a persisted `message` event with
+      // an id. Replace the local optimistic copy in-place rather
+      // than appending a duplicate `you` line. Two cases collapse:
+      //   1. prior message is local (no id) + same content → replace
+      //   2. prior message is engine-anchored (has id) but its
+      //      content matches the new message AND its id differs →
+      //      replace (engine replayed the same user turn twice; seen
+      //      in session dcdcf246's "› you 1 / › you 1" double-render).
+      let messages = state.messages;
+      const prior = messages[messages.length - 1];
+      const sameContent =
+        ev.role === "user" &&
+        messages.length > 0 &&
+        prior?.role === "user" &&
+        prior.content.trim() === parsed.text.trim();
+      const priorIsLocalEcho = sameContent && prior?.id === undefined;
+      const priorIsDifferentEnginePersist =
+        sameContent && prior?.id !== undefined && prior.id !== ev.id;
+      if (priorIsLocalEcho || priorIsDifferentEnginePersist) {
+        messages = [...messages.slice(0, -1), next];
+      } else {
+        messages = [...messages, next];
+      }
       return {
         ...state,
-        messages: [...state.messages, next],
+        messages,
         pendingElicitation: anchors.pendingElicitation,
         toolCalls: anchors.toolCalls,
         streamingAssistantText: ev.role === "assistant" ? "" : state.streamingAssistantText,
@@ -473,6 +513,7 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
         pendingElicitation: {
           id: ev.elicitation_id,
           tool_name: ev.tool_name,
+          ...(ev.tool_call_id ? { tool_call_id: ev.tool_call_id } : {}),
           summary: ev.summary,
           input: ev.input,
           ...(anchor ? { parent_message_id: anchor } : {}),

@@ -56,3 +56,22 @@ export function classifyElicitationIntent(rawText: string): ElicitationIntent {
 
   return { kind: "ambiguous" };
 }
+
+/**
+ * Detect "Reply 'yes' to commit"-style assistant prose where the LLM
+ * is asking for explicit confirmation but hasn't actually emitted an
+ * elicit_request event. When this pattern appears in the last
+ * assistant message AND `session.pendingElicitation` is null, the
+ * user's "yes" gets forwarded as a plain prompt and the engine never
+ * routes it as an approval — they see "nothing happened".
+ *
+ * Surfaces a one-line warning so the failure mode is loud, not
+ * silent. Used by both repl.ts and ink-app.tsx before forwarding a
+ * plain prompt.
+ */
+const ASSISTANT_CONFIRM_REQUEST_RE =
+  /\b(reply|type|say|answer|respond|confirm)\s+(?:with\s+)?["'`]?(yes|y|ok|okay|confirm|approve|save|proceed|do\s+it|go\s+ahead)["'`]?/i;
+export function looksLikeAssistantConfirmRequest(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return ASSISTANT_CONFIRM_REQUEST_RE.test(text);
+}

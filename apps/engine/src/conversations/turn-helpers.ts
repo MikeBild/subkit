@@ -130,9 +130,33 @@ function describeToolOutput(output: Record<string, unknown>): string {
     const value = output[key];
     if (Array.isArray(value)) return `${value.length} entries`;
   }
+  // run_workflow / dry_run_workflow lifecycle payload — surface the
+  // actual outcome instead of falling through to the generic
+  // "fields: mode, stage, lifecycle_state, …" list (session 86de186b
+  // continuation: when the loop-breaker fired 5× the operator saw
+  // "fields: mode, stage, …" with no actual workflow output, no
+  // status, no warning text — useless).
+  const status = typeof output.status === "string" ? output.status : null;
+  const requiresRepair = output.requires_repair === true;
+  const warnings = Array.isArray(output.warnings) ? (output.warnings as unknown[]) : null;
+  const warningsCount = warnings?.length ?? 0;
+  const wfOutput = output.output;
+  if (status === "succeeded" || status === "partial_success" || status === "failed") {
+    const parts: string[] = [`status=${status}`];
+    if (requiresRepair) parts.push("requires_repair");
+    if (warningsCount > 0) parts.push(`${warningsCount} warning${warningsCount === 1 ? "" : "s"}`);
+    if (Array.isArray(wfOutput)) parts.push(`output: ${wfOutput.length} rows`);
+    else if (wfOutput && typeof wfOutput === "object") {
+      const keys = Object.keys(wfOutput as Record<string, unknown>);
+      parts.push(`output keys: ${keys.slice(0, 5).join(", ")}`);
+    } else if (wfOutput === null || wfOutput === undefined) parts.push("no output");
+    return parts.join(" · ");
+  }
   if (output._truncated && typeof output._note === "string") return String(output._note);
   if (typeof output.error === "string") return `error: ${output.error.slice(0, 160)}`;
+  if (typeof output.error_code === "string") return `error_code: ${String(output.error_code)}`;
   if (typeof output.reason === "string") return `note: ${String(output.reason)}`;
+  if (typeof output.message === "string") return String(output.message).slice(0, 160);
   const keys = Object.keys(output).filter((k) => !k.startsWith("_"));
   return keys.length > 0 ? `fields: ${keys.slice(0, 5).join(", ")}` : "no structured output";
 }

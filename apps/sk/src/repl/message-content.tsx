@@ -7,6 +7,17 @@ import { memo, useMemo } from "react";
 export interface MessageContentProps {
   content: string;
   parts?: RenderableMessagePart[] | undefined;
+  /**
+   * Available width for the body, in columns. Equals
+   * `terminal_columns - indent` where the indent is the row's leading
+   * glyph + speaker-label gutter (2 + 6 = 8 cols today). Pre-fix the
+   * Text wrapped at full terminal width regardless of the speaker
+   * indent — continuation lines lost the indent and words split
+   * mid-glyph (session 86de186b: "transf\norm)" + "wrapper,\n" at
+   * col 0). Passing an explicit width keeps wrap inside the body
+   * column.
+   */
+  width?: number;
 }
 
 function normalizeInlineMarkdown(text: string): string {
@@ -21,18 +32,30 @@ function normalizeInlineMarkdown(text: string): string {
     .replace(/\n{3,}/g, "\n\n");
 }
 
-const MessageContentImpl: React.FC<MessageContentProps> = ({ content, parts }) => {
+const MessageContentImpl: React.FC<MessageContentProps> = ({ content, parts, width }) => {
   const resolved = useMemo(() => {
     if (parts && parts.length > 0) return parts;
     return parseRenderableMessageContent(content).parts;
   }, [content, parts]);
 
+  // When a width is provided we constrain the box so Ink's text
+  // layout wraps WITHIN this column instead of using the full
+  // terminal width. Without this constraint Ink wraps at the
+  // terminal edge AND continuation lines render at col 0, breaking
+  // the speaker-indent the row layout established. Width is clamped
+  // to a sane minimum so a tiny terminal still gets readable lines.
+  const boxWidth = typeof width === "number" && width > 16 ? width : undefined;
+
   if (resolved.length === 0) {
-    return <Text wrap="wrap">{normalizeInlineMarkdown(content)}</Text>;
+    return (
+      <Box width={boxWidth}>
+        <Text wrap="wrap">{normalizeInlineMarkdown(content)}</Text>
+      </Box>
+    );
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" width={boxWidth}>
       {resolved.map((part, index) => {
         if (part.type === "code_block") {
           return (

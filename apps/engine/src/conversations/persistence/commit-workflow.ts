@@ -13,6 +13,7 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { recordWorkflowCreated, recordWorkflowUpdated } from "../../audit/recorders/index.ts";
 import { conversationElicitations, conversations, workflows } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
 import { createWorkflow, updateWorkflow } from "../../workflows/service.ts";
 import { getWorkflowDraft, withWorkflowPersisted } from "../authoring-state.ts";
 import {
@@ -72,6 +73,28 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       head.output !== null &&
       (head.output as { confirmed?: unknown }).confirmed === true;
     if (!head || !confirmed) {
+      // Forensic log: the gate denied the commit. Carries enough
+      // shape to distinguish "no elicitation at all" (head=null —
+      // typical when the LLM skipped ask_user_confirm) from "user
+      // declined" (head.confirmed=false) from "still awaiting input"
+      // (head.status=pending). Pre-fix this collapsed into a single
+      // "tool.failed: no_prior_approval" line which forced operators
+      // to bisect three different bugs.
+      logger.warn({
+        module: "conversation_persistence",
+        action: "commit_gate.denied",
+        msg: "commitWorkflowAtomic prior-approval gate denied — no resolved ask_user_confirm{kind:commit_draft, confirmed:true} found",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        permission_mode: ctx.permission_mode,
+        intent_kind_expected: "commit_draft",
+        latest_elicitation_id: head?.id ?? null,
+        latest_elicitation_status: head?.status ?? null,
+        latest_elicitation_confirmed:
+          head && typeof head.output === "object" && head.output !== null
+            ? (head.output as { confirmed?: unknown }).confirmed === true
+            : null,
+      });
       return {
         ok: false,
         data: buildGateError(ctx.getDraft(), {
@@ -128,25 +151,73 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   // Partial-success gate — a recent execution that classified itself
   // as `partial_success` (e.g. unresolved_identifier warning, or a
   // loop step body that produced no rows) blocks the commit unless
-  // the operator explicitly forces. Without this gate the
-  // v1→v2→v3→v4→v5 broken-workflow stack can land because preview
-  // returns `ok` for empty output.
+  // the operator explicitly forces. The block is bypassed when a
+  // fresher preview has cleared `requires_repair` (the LLM re-ran
+  // dry_run with a fix); otherwise the v1→v2→v3 broken-workflow stack
+  // can land because preview returns `ok` for empty output.
   const latestExecution = fullDraft.state?.latest_execution ?? null;
-  if (latestExecution?.requires_repair === true && p.forceCommit !== true) {
+  const latestPreviewClearedRepair =
+    latestPreview?.ok === true && latestPreview.requires_repair !== true;
+  if (
+    latestExecution?.requires_repair === true &&
+    !latestPreviewClearedRepair &&
+    p.forceCommit !== true
+  ) {
     return {
       ok: false,
       error_code: "partial_success_not_acknowledged",
       message:
-        "the most recent run finished as partial_success — a loop body produced no rows or a transform referenced unresolved identifiers. Repair the workflow, run dry_run_workflow again, or call commit_draft with force_commit:true after the operator explicitly confirms",
+        "the most recent run finished as partial_success and the latest preview has not cleared it. Repair the workflow, run dry_run_workflow again, or call commit_draft with force_commit:true after the operator explicitly confirms",
       data: buildGateError(fullDraft, {
         error_code: "partial_success_not_acknowledged",
         message:
           "partial_success cannot be silently committed — repair the workflow or force the commit with operator confirmation",
         recommended_mode: "execution",
-        next_best_actions: ["diagnose_latest_execution", "propose_step", "dry_run_workflow"],
+        next_best_actions: ["diagnose_latest_execution", "inspect_workflow", "dry_run_workflow"],
         extra: {
           execution_id: latestExecution.execution_id,
           warnings_count: latestExecution.warnings_count,
+          force_commit_available: true,
+        },
+      }),
+    };
+  }
+
+  // Warnings-unacknowledged gate — even when the engine did not flag
+  // The gate fires only when the most recent execution carries the
+  // `requires_repair` flag — the engine sets this when the run shape
+  // suggests a real bug (empty extraction over non-empty source, loop
+  // body never executed, unresolved_identifier fired). Informational
+  // warnings (e.g. `transform_dropped_fields` for an intentional
+  // projection) do not carry `requires_repair: true` and therefore do
+  // not block commit. This matches the documented contract in
+  // workflow-authoring.md — "read requires_repair, not the warning
+  // count" — and unblocks auto-persist for runs that are correct but
+  // happen to surface informational warnings. The check is bypassed
+  // when forceCommit is set, or when a fresher preview has cleared the
+  // repair flag (the LLM has re-run dry_run after the offending
+  // execution). Reuses `latestPreviewClearedRepair` computed above for
+  // the partial_success gate — same predicate, different error_code.
+  if (
+    latestExecution?.requires_repair === true &&
+    !latestPreviewClearedRepair &&
+    p.forceCommit !== true
+  ) {
+    return {
+      ok: false,
+      error_code: "warnings_unacknowledged",
+      message:
+        "the most recent execution carries `requires_repair: true` and the latest preview has not cleared it. Re-run dry_run_workflow with the fixed expressions to confirm the repair flag is gone, or call commit_draft with force_commit:true after the operator explicitly confirms",
+      data: buildGateError(fullDraft, {
+        error_code: "warnings_unacknowledged",
+        message:
+          "the run shape suggests a real bug (requires_repair: true) — repair before committing or force_commit after explicit operator confirmation",
+        recommended_mode: "execution",
+        next_best_actions: ["diagnose_latest_execution", "inspect_workflow", "dry_run_workflow"],
+        extra: {
+          execution_id: latestExecution.execution_id,
+          warnings_count: latestExecution.warnings_count,
+          requires_repair: true,
           force_commit_available: true,
         },
       }),

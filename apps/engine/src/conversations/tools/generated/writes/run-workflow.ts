@@ -254,6 +254,15 @@ export const runWorkflowTool: ConversationTool = {
       const hasUnresolvedIdentifierWarning = (result.warnings ?? []).some(
         (w) => w.code === "unresolved_identifier",
       );
+      const hasTransformEmptyExtractionWarning = (result.warnings ?? []).some(
+        (w) => w.code === "transform_empty_extraction",
+      );
+      const hasTransformDroppedFieldsWarning = (result.warnings ?? []).some(
+        (w) => w.code === "transform_dropped_fields",
+      );
+      const hasLoopOverUnresolvedWarning = (result.warnings ?? []).some(
+        (w) => w.code === "loop_over_unresolved",
+      );
       // The engine emits `loop_body_empty` from inside the loop driver
       // when iterations > 0 produced no productive body output (P2).
       // Trust that warning over the legacy "top-level output is []"
@@ -268,11 +277,30 @@ export const runWorkflowTool: ConversationTool = {
         (result.steps.some((s) => s.kind === "loop" && s.status === "succeeded") &&
           Array.isArray(result.output) &&
           (result.output as unknown[]).length === 0);
+      // Partial-success: the run finished but signals that the LLM
+      // should look at the warnings before treating the output as
+      // final. `transform_dropped_fields` is informational (intentional
+      // projections legitimately narrow fields) and therefore does NOT
+      // tip the run into partial_success on its own — surfacing the
+      // warning is enough; blocking the commit gate would force the
+      // LLM into the patch loop the skill explicitly forbids.
       const isPartialSuccess =
         result.status === "succeeded" &&
-        (hasUnresolvedIdentifierWarning || loopStepRanWithEmptyBody);
+        (hasUnresolvedIdentifierWarning ||
+          loopStepRanWithEmptyBody ||
+          hasTransformEmptyExtractionWarning ||
+          hasLoopOverUnresolvedWarning);
       const payloadStatus = isPartialSuccess ? "partial_success" : result.status;
-      const requiresRepair = hasUnresolvedIdentifierWarning || isPartialSuccess;
+      // requires_repair gates the auto-persist commit. Mirrors the
+      // skill: only the warnings that ALWAYS indicate a real bug
+      // (unresolved identifier, empty extraction, loop body never ran)
+      // tip the flag. transform_dropped_fields is omitted on purpose —
+      // the warning still fires, but commit is not blocked.
+      const requiresRepair =
+        hasUnresolvedIdentifierWarning ||
+        hasTransformEmptyExtractionWarning ||
+        hasLoopOverUnresolvedWarning ||
+        isPartialSuccess;
       const diagnosisAvailable = hasWarnings || result.status !== "succeeded" || isPartialSuccess;
       const boundDraft = bindPersistedWorkflow(currentDraft, {
         kind: "workflow",
