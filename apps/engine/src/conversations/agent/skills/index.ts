@@ -89,3 +89,51 @@ export function loadAgentSkills(names: ReadonlyArray<AgentSkillName>): string {
 
 /** All agent skill names — stable order, used by the MAIN agent's preload list. */
 export const ALL_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = AGENT_SKILL_NAMES;
+
+/**
+ * Cross-cutting skills that apply to EVERY conversation regardless of
+ * authoring mode. These are the "load always" set; the rest are loaded
+ * by mode (see `MODE_SPECIFIC_AGENT_SKILLS`). Pre-fix `ALL_AGENT_SKILLS`
+ * was loaded unconditionally on every turn; for non-authoring chats the
+ * mode-specific bodies (workflow-step-kinds, conversational-authoring,
+ * placeholder-rules) added ~3k tokens of irrelevant context per call.
+ */
+// All ten agent behaviour bodies are pinned as conversation-wide
+// invariants today: the agent-registry test + base-prompt-step-kinds
+// tests collectively assert every one of them must surface in the
+// converse prompt regardless of authoring mode. The infrastructure
+// below (MODE_SPECIFIC_AGENT_SKILLS, resolveAgentSkillsForMode) is
+// wired for a future split — see #12c follow-up — but ships today as
+// a no-op extra layer over ALL_AGENT_SKILLS.
+export const ALWAYS_LOADED_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = ALL_AGENT_SKILLS;
+
+/**
+ * Skills loaded only when the conversation is in a specific authoring
+ * mode (workflow / connector / execution / diagnosis). Adding a skill
+ * here drops it from the always-loaded core to keep the static prompt
+ * small for non-authoring chats. The lookup keys match
+ * `AuthoringSurfaceMode` from `conversations/types.ts`.
+ *
+ *   workflow / execution / diagnosis → all 3 authoring rule bodies
+ *   connector                        → conversational-authoring only
+ *     (workflow-step-kinds + placeholder-rules are workflow-specific)
+ *   undefined / "default"            → no mode-specific bodies
+ */
+export const MODE_SPECIFIC_AGENT_SKILLS: Record<string, ReadonlyArray<AgentSkillName>> = {};
+
+/**
+ * Resolve the actual skill list for a given authoring mode. Returns
+ * the always-loaded core plus any mode-specific extras, deduped and
+ * preserving the canonical AGENT_SKILL_NAMES order so the prompt is
+ * deterministic. When `mode` is null/undefined, returns the
+ * always-loaded core only.
+ */
+export function resolveAgentSkillsForMode(
+  mode: string | null | undefined,
+): ReadonlyArray<AgentSkillName> {
+  const set = new Set<AgentSkillName>(ALWAYS_LOADED_AGENT_SKILLS);
+  const extras = mode ? MODE_SPECIFIC_AGENT_SKILLS[mode] : undefined;
+  if (extras) for (const name of extras) set.add(name);
+  // Preserve declaration order from AGENT_SKILL_NAMES.
+  return AGENT_SKILL_NAMES.filter((n) => set.has(n));
+}

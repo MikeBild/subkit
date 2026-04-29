@@ -98,13 +98,21 @@ describe("journey: rbac can query", () => {
     expect((await can(memberUserId, "execution:read")).allow).toBe(true);
     expect((await can(memberUserId, "connector:read")).allow).toBe(true);
     expect((await can(memberUserId, "skill:read")).allow).toBe(true);
+    // Members manage the lifecycle of operational resources they
+    // create — including delete. Pre-fix the blanket :delete deny
+    // produced session 0aed284f's "I can't delete things I just
+    // created" failure mode.
+    expect((await can(memberUserId, "workflow:delete")).allow).toBe(true);
+    expect((await can(memberUserId, "connector:delete")).allow).toBe(true);
 
-    // Member deny cases.
-    expect((await can(memberUserId, "workflow:delete")).allow).toBe(false);
-    expect((await can(memberUserId, "connector:delete")).allow).toBe(false);
+    // Member deny cases — secrets, RBAC mutations, audit reads,
+    // tunnel infra, api_key lifecycle stay admin-only.
+    expect((await can(memberUserId, "credential:delete")).allow).toBe(false);
     expect((await can(memberUserId, "credential:write")).allow).toBe(false);
     expect((await can(memberUserId, "rbac:write")).allow).toBe(false);
     expect((await can(memberUserId, "audit:read")).allow).toBe(false);
+    expect((await can(memberUserId, "tunnel:delete")).allow).toBe(false);
+    expect((await can(memberUserId, "api_key:revoke")).allow).toBe(false);
 
     // Bare role deny cases.
     expect((await can(bareUserId, "workflow:read")).allow).toBe(false);

@@ -1260,7 +1260,19 @@ describe("ink-app: journey 11 — approval hygiene", () => {
     instance.unmount();
   });
 
-  test("AC1b: bare-text 'approve' with no pending elicitation does not start a new turn", async () => {
+  test("AC1b: bare-text 'approve' with no pending elicitation is forwarded as a plain prompt (mirrors reference impl: no free-text classification of confirmation words)", async () => {
+    // Pre-c35ef1c-followup: a regex classifier intercepted bare
+    // "approve" / "confirm" / "yes" and rendered an info message
+    // ("no pending approval"). That classifier was the source of the
+    // dca36b29 silent-failure bug ("Reply yes" prose with no actual
+    // elicit_request → user typed "yes" → classifier shrugged → user
+    // saw nothing happen). Mirror the reference impl exactly: free
+    // text is NEVER auto-classified as a confirmation answer. The
+    // structured ConfirmPrompt component (Y/N/Enter/Esc keybinds) is
+    // the only confirmation pathway. Bare "approve" with no pending
+    // elicitation is just a regular user message — the LLM may ask
+    // what should be approved, but the CLI does not invent a
+    // "no pending approval" hint.
     let promptCalled = false;
     const instance = renderApp({
       onPrompt: async () => {
@@ -1278,9 +1290,7 @@ describe("ink-app: journey 11 — approval hygiene", () => {
     await type(instance, "approve");
     await pressEnter(instance);
     await tick(60);
-    expect(promptCalled).toBe(false);
-    const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("no pending approval");
+    expect(promptCalled).toBe(true);
     instance.unmount();
   });
 

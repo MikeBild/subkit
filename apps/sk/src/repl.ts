@@ -32,7 +32,10 @@ import {
   newDebugTurnId,
   serializeDebugError,
 } from "./debug.ts";
-import { classifyElicitationIntent } from "./elicitation-intent.ts";
+import {
+  classifyElicitationIntent,
+  looksLikeAssistantConfirmRequest,
+} from "./elicitation-intent.ts";
 import { EngineClient, SkEngineError, SkTransportError } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
@@ -282,6 +285,25 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
       if (session.pendingElicitation && session.conversationId && !elicitInFlight) {
         const intent = classifyElicitationIntent(input);
         const tool = session.pendingElicitation.tool_name;
+        // Forensic event: every keystroke that reaches the
+        // pending-elicitation branch is recorded with how it was
+        // classified. Lets a "the user typed yes but nothing happened"
+        // investigation answer "did the CLI route it as confirm? as
+        // ambiguous? as something else?" from a single log file.
+        debugLog(
+          "dialog.elicitation_routing",
+          {
+            elicitation_id: session.pendingElicitation.id,
+            ...(session.pendingElicitation.tool_call_id
+              ? { tool_call_id: session.pendingElicitation.tool_call_id }
+              : {}),
+            pending_tool: tool,
+            classified_intent: intent.kind,
+            ...(intent.kind === "pick" ? { option_index: intent.optionIndex } : {}),
+            input_excerpt: input.length > 80 ? `${input.slice(0, 80)}…` : input,
+          },
+          traceContext(),
+        );
         if (intent.kind === "confirm" || intent.kind === "reject") {
           elicitInFlight = true;
           try {
@@ -331,6 +353,30 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
       }
 
       // Plain prompt → append to current conversation or create a new one.
+      // Forensic event: any prompt that reaches this branch with a
+      // recently-emitted "Reply 'yes'"-style assistant message but no
+      // pending elicitation is almost certainly hitting the silent
+      // failure mode where the engine asked for confirmation in prose
+      // without actually emitting an elicit_request. Surface a loud
+      // warning so the operator knows the next "yes" will become a
+      // phantom new prompt instead of an approval.
+      const lastAssistant = lastAssistantText(session);
+      const hadRecentUnresolvedIntent =
+        session.pendingElicitation === null && looksLikeAssistantConfirmRequest(lastAssistant);
+      debugLog(
+        "dialog.plain_prompt_sent",
+        {
+          session_status: session.status,
+          had_recent_unresolved_intent: hadRecentUnresolvedIntent,
+          input_excerpt: input.length > 80 ? `${input.slice(0, 80)}…` : input,
+        },
+        traceContext(),
+      );
+      if (hadRecentUnresolvedIntent) {
+        writeErr(
+          "sk: warning — the assistant asked for explicit confirmation but did not emit an elicit_request. Your reply will be sent as a NEW prompt, not as an approval. This usually means an engine policy-gate bug; see logs for `policy.gate_skipped` or `commit_gate.denied`.\n",
+        );
+      }
       const resolved = await resolveMentions(input, {
         cwd: process.cwd(),
         additionalDirectories: settings.merged.additionalDirectories ?? [],
@@ -519,6 +565,27 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           verbose ? { event: ev } : { event_type: ev.type },
           traceContext(),
         );
+        // Forensic event: every elicit_request that crosses the wire
+        // is recorded with the originating tool_call_id and shape.
+        // Bookends the engine-side `elicitation.created` log so a
+        // "did the prompt actually reach the CLI?" question is one
+        // grep away across both halves of the trace.
+        if (ev.type === "elicit_request") {
+          const inputKind =
+            ev.input && typeof ev.input === "object" && ev.input !== null
+              ? ((ev.input as { kind?: unknown }).kind ?? null)
+              : null;
+          debugLog(
+            "dialog.elicit_request_received",
+            {
+              elicitation_id: ev.elicitation_id,
+              ...(ev.tool_call_id ? { tool_call_id: ev.tool_call_id } : {}),
+              tool_name: ev.tool_name,
+              ...(typeof inputKind === "string" ? { input_kind: inputKind } : {}),
+            },
+            traceContext(),
+          );
+        }
         session = applyTurnEvent(session, ev);
         renderFrame(ev);
       } catch (err) {

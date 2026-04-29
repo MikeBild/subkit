@@ -81,6 +81,7 @@ describe("conversations/hardening", () => {
       toolInvocationCount: new Map(),
       toolLastErrorHash: new Map(),
       totalLoopWarnings: 0,
+      consecutiveFailures: 0,
       lastAssistantText: "",
     };
     const events: TurnEvent[] = [];

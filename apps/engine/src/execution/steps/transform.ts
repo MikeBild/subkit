@@ -394,7 +394,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
         bindings[k.slice(1)] = v;
       }
     }
-    const warnings = detectUnresolvedIdentifiers(p.step.expression, p.scope, bindings);
+    const parseTimeWarnings = detectUnresolvedIdentifiers(p.step.expression, p.scope, bindings);
     // race jsonata.evaluate against the abort signal
     const evalPromise = expr.evaluate(p.scope, bindings);
     const result = await Promise.race([
@@ -407,6 +407,122 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
         signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
       }),
     ]);
+    // Suppress parse-time `unresolved_identifier` warnings ONLY for
+    // the projection-iteration case where the LLM wrote a path like
+    // `fetch_projects.data.{ 'id': id, 'name': name }`. Inside that
+    // projection, `id`/`name` are implicit context-step paths against
+    // the iterator — valid at runtime, but the AST walker can't prove
+    // it statically. The signal that this case applied: the result is
+    // a non-empty array (the projection produced one record per
+    // iteration). Top-level object constructors like
+    // `{ "city": ..., "date": data.daily.time[1] }` (the "Berlin bug"
+    // shape) keep their warnings because a bare `data` there is a
+    // genuinely unresolved root identifier and the result happens to
+    // be an object, not an iteration array. The transform_empty_extraction
+    // detector below catches the dual case where the bare identifier
+    // DIDN'T resolve and the projection produced nothing.
+    const resultIsNonEmptyArray = Array.isArray(result) && (result as unknown[]).length > 0;
+    const warnings = resultIsNonEmptyArray
+      ? parseTimeWarnings.filter((w) => w.code !== "unresolved_identifier")
+      : [...parseTimeWarnings];
+    // Empty-extraction detector. Catches "JSONata produced []
+    // from a scope that contained data" — the silent failure mode
+    // observed in session a6440493 where the loop body succeeded with
+    // droplets but the post-loop projection extracted nothing because
+    // the path was wrong. This is heuristic (a legitimate filter that
+    // matches nothing also produces []) so we tag the warning as
+    // informational; the run_workflow lifecycle promotes it to
+    // requires_repair when paired with non-empty source data, which
+    // the commit gate then refuses without force_commit.
+    const isEmptyResult =
+      result === undefined ||
+      result === null ||
+      (Array.isArray(result) && (result as unknown[]).length === 0);
+    let scopeHadData = false;
+    if (isEmptyResult) {
+      for (const v of Object.values(p.scope)) {
+        const env = v as { data?: unknown } | null | undefined;
+        if (!env || typeof env !== "object") continue;
+        const data = env.data;
+        if (Array.isArray(data) && data.length > 0) {
+          scopeHadData = true;
+          break;
+        }
+        if (data && typeof data === "object" && Object.keys(data as object).length > 0) {
+          scopeHadData = true;
+          break;
+        }
+      }
+    }
+    if (isEmptyResult && scopeHadData) {
+      warnings.push({
+        code: "transform_empty_extraction" as const,
+        identifier: p.step.id,
+        message: `transform "${p.step.id}" produced an empty result, but upstream scope had non-empty data — the JSONata expression likely referenced the wrong path. Run dry_run_transform with the actual scope to inspect.`,
+        details: {
+          step_key: p.step.id,
+          available_scope_keys: Object.keys(p.scope),
+        },
+      });
+    }
+    // Dropped-fields detector. When the transform produces an array of
+    // objects (a $map over loop output, the dominant aggregate
+    // pattern) AND there exists a non-empty source array in scope
+    // whose iteration objects carry MORE keys than the result
+    // objects, the projection silently dropped fields. Pre-fix this
+    // was exactly session 3f6082d2's symptom: format_output mapped
+    // over project_loop.data and emitted {project_id, project_name}
+    // only — the body step keys (extract, fetch_resources) were
+    // dropped. The LLM then wrote v2/v3 chasing the same bug because
+    // there was no signal pointing at the missing keys.
+    if (
+      Array.isArray(result) &&
+      (result as unknown[]).length > 0 &&
+      typeof (result as unknown[])[0] === "object" &&
+      (result as unknown[])[0] !== null &&
+      !Array.isArray((result as unknown[])[0])
+    ) {
+      const resultKeys = new Set(Object.keys((result as Array<Record<string, unknown>>)[0] ?? {}));
+      // Walk the scope for the most likely source array — any value
+      // whose `.data` is a non-empty array of objects whose first
+      // element has >= 2 keys (single-key arrays like [{ id }] are
+      // legit projections, not dropped-field cases).
+      for (const [scopeKey, value] of Object.entries(p.scope)) {
+        const env = value as { data?: unknown } | null | undefined;
+        if (!env || typeof env !== "object") continue;
+        const data = env.data;
+        if (!Array.isArray(data) || data.length === 0) continue;
+        const first = data[0] as Record<string, unknown> | null;
+        if (!first || typeof first !== "object" || Array.isArray(first)) continue;
+        const sourceKeys = new Set(Object.keys(first));
+        if (sourceKeys.size < 2) continue;
+        const droppedKeys: string[] = [];
+        for (const k of sourceKeys) {
+          if (!resultKeys.has(k)) droppedKeys.push(k);
+        }
+        // Heuristic threshold: only flag when more than half the
+        // source keys vanished. A projection that explicitly renames
+        // (e.g. id → project_id) legitimately drops the original
+        // names, but you typically rename a small subset. Wholesale
+        // dropping (here: 2/3 of body step keys gone) is the
+        // pathology.
+        if (droppedKeys.length >= 2 && droppedKeys.length >= sourceKeys.size / 2) {
+          warnings.push({
+            code: "transform_dropped_fields" as const,
+            identifier: p.step.id,
+            message: `transform "${p.step.id}" produced ${(result as unknown[]).length} objects with keys [${[...resultKeys].join(", ")}] but the source iteration "${scopeKey}.data[0]" had keys [${[...sourceKeys].join(", ")}] — the projection likely dropped fields. Use inspect_execution_step on the prior run to see the real source shape, then re-author.`,
+            details: {
+              step_key: p.step.id,
+              source_scope_key: scopeKey,
+              result_keys: [...resultKeys],
+              source_keys: [...sourceKeys],
+              dropped_keys: droppedKeys,
+            },
+          });
+          break;
+        }
+      }
+    }
     const out: StepResult = {
       status: "succeeded",
       output: result,

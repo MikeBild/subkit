@@ -23,7 +23,11 @@ import {
 import { checkAndDecrement, checkBudget, monthlyUsage, recordUsage } from "../llm/budgets.ts";
 import { renderAuthoringContextBlock } from "../llm/core/authoring-context-block.ts";
 import { splitPromptIntoBlocks, toSystemMessages } from "../llm/core/cache-blocks.ts";
-import { assembleEnhancedPrompt, detectIntentSkills } from "../llm/core/context-assembler.ts";
+import {
+  assembleEnhancedPrompt,
+  countSkillTokens,
+  detectIntentSkills,
+} from "../llm/core/context-assembler.ts";
 import { resolveModelRoute, resolveLanguageModel as resolveSdkModel } from "../llm/core/invoke.ts";
 import { LlmQuotaExhausted } from "../llm/errors.ts";
 import { createMockLanguageModel } from "../llm/mock-stream.ts";
@@ -347,16 +351,34 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       .limit(5);
     hasFailedExecution = failed.length > 0; // any prior execution counts as feedback context
   }
-  const intentSkillSlugs = await detectIntentSkills(
-    p.tenant_id,
-    {
-      attachmentMimeTypes,
-      userMessage: currentUserText,
-      hasFailedExecution,
-      hasMultipleConnectors: false,
-    },
-    p.db,
-  );
+  // Lazy-eval gate: skip the intent-skill keyword scan when this turn
+  // is a continuation rather than a new topical prompt. Elicitation
+  // responses (currentUserText empty) and short affirmations like
+  // "yes"/"approve" don't shift the conversation's topic, so the
+  // skill set already loaded on the conversation stays valid.
+  // Pre-fix the scan ran every turn including approval round-trips,
+  // burning tokens on a no-op keyword walk plus its DB lookup of
+  // skills by trigger — visible in long sessions where the same
+  // conversation paid the scan cost on every "approve" keystroke.
+  const trimmedUserText = currentUserText.trim();
+  const isContinuationTurn =
+    trimmedUserText.length < 8 ||
+    /^(yes|no|y|n|ok(ay)?|approve|reject|confirm|cancel|sure|please|thanks?)\b/i.test(
+      trimmedUserText,
+    );
+  const intentSkillSlugs =
+    isContinuationTurn && attachmentMimeTypes.length === 0
+      ? []
+      : await detectIntentSkills(
+          p.tenant_id,
+          {
+            attachmentMimeTypes,
+            userMessage: currentUserText,
+            hasFailedExecution,
+            hasMultipleConnectors: false,
+          },
+          p.db,
+        );
   const loadedSkillSlugs = [...new Set([...explicitSkillSlugs, ...intentSkillSlugs])];
 
   // Surface document-analysis registry summary for the active connector
@@ -620,6 +642,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     toolInvocationCount: new Map(),
     toolLastErrorHash: new Map(),
     totalLoopWarnings: 0,
+    consecutiveFailures: 0,
     lastAssistantText: "",
   };
   const wrappedTools = wrapTools(
@@ -1180,6 +1203,44 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     // see which validation/preview cycles burned how many tokens. The
     // CLI already gets the same breakdown via the `completed` event;
     // this is the symmetric server-side record.
+    //
+    // Additionally surface the top-N heaviest included skills so when
+    // a turn balloons past expectation (the dca36b29 session showed
+    // breakdown_skills=26661 — ~27k tokens of skill bodies — without
+    // a way to see WHICH skills) operators can identify the heavy
+    // contributors and trim them. Pre-fix this required reading the
+    // included_skill_ids list and looking up each skill body by hand.
+    const topSkillBreakdown = (() => {
+      if (!prompt) return null;
+      const skills = prompt.included_skills ?? [];
+      if (skills.length === 0) return null;
+      const weighed = skills.map((s) => ({
+        id: s.id,
+        slug: s.slug ?? null,
+        title: s.title ?? null,
+        tokens: prompt.token_counts ? Math.round(prompt.token_counts.skills / skills.length) : 0,
+      }));
+      // Recompute per-skill weights using countTokens so the report
+      // is accurate — the sum-divided-by-count above is just a fallback
+      // when a per-skill counter isn't wired up yet.
+      try {
+        for (const w of weighed) {
+          const skill = skills.find((s) => s.id === w.id);
+          if (skill) {
+            w.tokens = countSkillTokens(skill, p.runtime_context);
+          }
+        }
+      } catch {
+        // best-effort — token counter failures must not block turn end
+      }
+      return weighed
+        .sort((a, b) => b.tokens - a.tokens)
+        .slice(0, 5)
+        .map((w) => ({
+          ...(w.slug ? { slug: w.slug } : { id: w.id }),
+          tokens: w.tokens,
+        }));
+    })();
     logger.info({
       module: "conversation",
       action: "dialog.turn_end",
@@ -1199,6 +1260,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             breakdown_total: breakdown.total,
           }
         : {}),
+      ...(topSkillBreakdown ? { top_skills_by_tokens: topSkillBreakdown } : {}),
     });
 
     const out: RunLoopResult = { events, status };

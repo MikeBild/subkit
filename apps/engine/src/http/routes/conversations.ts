@@ -48,6 +48,11 @@ const ElicitationParam = z.object({
   elicitation_id: z.string().uuid(),
 });
 
+const ToolCallRespondParam = z.object({
+  id: z.string().uuid(),
+  tool_call_id: z.string().uuid(),
+});
+
 const PermissionModeSchema = z.enum(["auto", "ask", "plan", "yolo"]);
 
 const RespondElicitationBody = z
@@ -440,6 +445,32 @@ const respondElicitationRoute = createRoute({
   },
 });
 
+// Resume by tool_call_id alias — mirrors the reference impl's
+// `resumeToolCallId` chat parameter. Looks up the active elicitation
+// linked to the given tool_call and resolves it with the same body
+// shape as the canonical `/elicitations/:elicitation_id/respond`
+// route. Lets clients that tracked the originating tool_call_id
+// resume without a separate elicitation_id round-trip.
+const respondByToolCallRoute = createRoute({
+  method: "post",
+  path: "/v1/conversations/{id}/tool-calls/{tool_call_id}/respond",
+  tags: ["conversations"],
+  summary:
+    "Resolve the pending ask_user_* elicitation linked to the given tool_call (resumeToolCallId alias)",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: ToolCallRespondParam,
+    body: { content: { "application/json": { schema: RespondElicitationBody } } },
+  },
+  responses: {
+    200: { description: "OK", content: { "application/json": { schema: RunOutcomeSchema } } },
+    404: {
+      description: "Not found — no elicitation links to that tool_call",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
 const cancelRoute = createRoute({
   method: "post",
   path: "/v1/conversations/{id}/cancel",
@@ -539,6 +570,9 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     return requireAnyPermission(["conversation:write", "knowledge:write"])(c, next);
   });
   app.use("/v1/conversations/:id/elicitations/:elicitation_id/respond", async (c, next) => {
+    return requireAnyPermission(["conversation:approve", "workflow:write"])(c, next);
+  });
+  app.use("/v1/conversations/:id/tool-calls/:tool_call_id/respond", async (c, next) => {
     return requireAnyPermission(["conversation:approve", "workflow:write"])(c, next);
   });
   app.use("/v1/conversations/:id/context-snapshot", async (c, next) => {
@@ -691,6 +725,49 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(serializeConversation(outcome), 200);
   });
 
+  // Resume-by-tool-call alias. Resolves tool_call_id → elicitation_id
+  // by reading the active row, then delegates to the same service
+  // handler the canonical route uses. Mirrors the reference impl's
+  // `resumeToolCallId` chat parameter while keeping the
+  // elicitation-id-based wire shape as the canonical resume key.
+  app.openapi(respondByToolCallRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id, tool_call_id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const { getPendingElicitationByToolCall } = await import("../../conversations/elicitations.ts");
+    const elicit = await getPendingElicitationByToolCall(principal.tenant_id, id, tool_call_id, db);
+    if (!elicit) {
+      throw new NotFoundError("elicitation_for_tool_call");
+    }
+    let outcome: Awaited<ReturnType<typeof svc.respondElicitation>>;
+    try {
+      outcome = await svc.respondElicitation(
+        {
+          tenant_id: principal.tenant_id,
+          conversation_id: id,
+          elicitation_id: elicit.id,
+          actor_id: principal.id,
+          output: body.output,
+          ...(body.reason ? { reason: body.reason } : {}),
+          ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+        },
+        db,
+      );
+    } catch (error) {
+      if (error instanceof svc.ElicitationAlreadyResolvedError) {
+        throw new HttpError(409, "elicitation_already_resolved", error.message, {
+          elicitation_id: error.elicitation_id,
+          previous_status: error.status,
+          previous_output: error.previous_output,
+          previous_decision_reason: error.previous_decision_reason,
+        });
+      }
+      throw error;
+    }
+    return c.json(serializeConversation(outcome), 200);
+  });
+
   app.openapi(compactRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -808,6 +885,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
           serializeEvent({
             type: "elicit_request",
             elicitation_id: elicit.id,
+            ...(elicit.tool_call_id ? { tool_call_id: elicit.tool_call_id } : {}),
             tool_name: elicit.tool_name,
             summary: elicit.summary,
             input: elicit.input ?? {},

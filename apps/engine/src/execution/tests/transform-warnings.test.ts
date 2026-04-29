@@ -83,8 +83,13 @@ describe("runTransformStep warnings", () => {
       },
       input: {},
     });
-    expect(result.warnings?.length).toBe(1);
-    const details = result.warnings?.[0]?.details as { available_paths: string[] } | undefined;
+    // The unresolved_identifier warning surfaces; the
+    // transform_empty_extraction warning ALSO surfaces because the
+    // expression produced null while upstream scope had data — both
+    // are legitimate signals for this shape.
+    const unresolved = (result.warnings ?? []).find((w) => w.code === "unresolved_identifier");
+    expect(unresolved).toBeDefined();
+    const details = unresolved?.details as { available_paths: string[] } | undefined;
     expect(details?.available_paths).toContain("fetch_projects");
     expect(details?.available_paths).toContain("fetch_projects.data");
   });

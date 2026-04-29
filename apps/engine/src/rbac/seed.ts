@@ -34,6 +34,18 @@ export const BUILTIN_ROLE_NAMES = {
 } as const;
 
 // Permission name filters for the non-admin built-in roles.
+//
+// Members manage their OWN operational resources (workflows,
+// connectors, skills, schedules, subscriptions, inbound hooks,
+// knowledge sources) — that includes the lifecycle right to DELETE
+// them. Pre-fix the blanket `:delete` exclusion produced session
+// 0aed284f's `permission_denied:connector:delete` /
+// `permission_denied:workflow:delete` errors when a user tried to
+// remove a connector + workflow they had just created. The fix is to
+// drop the blanket and rely on the targeted prefix denies for the
+// truly admin-only surfaces (rbac, audit, credential, tunnel,
+// api_key, discovery approval). credential:delete and tunnel:delete
+// are already covered by the existing prefix filters above.
 function memberPermissionFilter(name: string): boolean {
   if (name.startsWith("rbac:")) return false;
   if (name === "audit:read") return false;
@@ -43,7 +55,6 @@ function memberPermissionFilter(name: string): boolean {
   if (name.startsWith("credential:") && name !== "credential:read") return false;
   if (name.startsWith("tunnel:")) return false;
   if (name === "discovery:approve") return false;
-  if (name.endsWith(":delete")) return false;
   return true;
 }
 
@@ -139,7 +150,7 @@ export async function seedBuiltinRolesAndPermissions(db: Db): Promise<SeededRole
   const memberId = await upsertBuiltinRole(
     db,
     BUILTIN_ROLE_NAMES.MEMBER,
-    "Day-to-day operator access: read + run + author, no destructive mutations or secrets",
+    "Day-to-day operator access: read + run + author + delete own operational resources (workflows, connectors, skills, schedules, subscriptions, inbound hooks, knowledge sources). NOT permitted: rbac changes, audit reads, secret/credential mutations, tunnel infra, api_key lifecycle, discovery approvals.",
   );
   const enduserId = await upsertBuiltinRole(
     db,

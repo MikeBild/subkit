@@ -61,6 +61,7 @@ const RELEVANT_READS: ReadonlySet<string> = new Set([
   "get_connector",
   "get_execution",
   "get_workflow",
+  "inspect_execution_step",
   "list_connectors",
   "list_executions",
   "list_workflows",

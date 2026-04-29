@@ -154,7 +154,8 @@ export function nextRecommendedAction(input: PolicyInput): NextAction {
     }
     return {
       kind: "workflow_commit",
-      summary: "Commit the workflow via ask_user_confirm(kind='commit_draft') + commit_draft.",
+      summary:
+        "Commit the workflow via ask_user_confirm with commit_intent { kind: 'commit_workflow_draft' } — the harness auto-persists on confirm; do NOT chain a separate commit_draft call.",
       rationale: "Validation passed and the last preview succeeded.",
     };
   }

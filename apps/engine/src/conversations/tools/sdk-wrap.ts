@@ -15,7 +15,7 @@ import { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { conversationElicitations } from "../../db/schema/index.ts";
+import { conversationElicitations, conversationMessages } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { recordConversationToolCall } from "../../observability/instrumentation.ts";
 import { resolveAttachments } from "../attachments.ts";
@@ -96,6 +96,24 @@ export interface TurnSignals {
    */
   totalLoopWarnings: number;
   /**
+   * Global consecutive-failures counter. Incremented after every tool
+   * call that returns `ok: false` regardless of which tool. Reset to 0
+   * after the first successful tool call. When it reaches
+   * `MAX_CONSECUTIVE_FAILURES`, the next tool call is short-circuited
+   * with a structured envelope instructing the model to emit
+   * `ask_user_choice` / `ask_user_text` instead of patching further.
+   *
+   * The reference impl enforces "no more than 5 failed tool calls in a
+   * row" at the prompt level. Per-tool caps (toolInvocationCount above)
+   * push the model to switch tool but keep looping; this global cap
+   * forces a question to the user. Both layers are kept — the per-tool
+   * cap protects against pathological retries on a single tool, the
+   * global cap protects against an authoring loop that walks
+   * (update_param → dry_run_workflow → update_param → dry_run_workflow)
+   * without ever succeeding.
+   */
+  consecutiveFailures: number;
+  /**
    * Running snapshot of the most recent assistant text surfaced by
    * `onStepFinish`. Used by the post-run fallback that synthesises a
    * visible message when the turn ended with no text but tool results.
@@ -105,6 +123,13 @@ export interface TurnSignals {
 
 /** Max tolerated `loop_detected` short-circuits per turn before the outer loop stops. */
 export const MAX_TURN_LOOP_WARNINGS = 2;
+
+/**
+ * Max consecutive failed tool calls before the wrapper short-circuits
+ * with a structured "ask the user" envelope. Mirrors reference impl's
+ * "no more than 5 failed tool calls in a row" prompt rule.
+ */
+export const MAX_CONSECUTIVE_FAILURES = 5;
 
 /**
  * Map tenant_write tools to the `commit_intent.kind` value the LLM
@@ -130,6 +155,153 @@ function mapToolToCommitIntentKind(tool: string): string | null {
     default:
       return null;
   }
+}
+
+/**
+ * Pull plain text out of a persisted conversation_messages.content
+ * payload. Messages are jsonb; content is usually either a string or
+ * an array of `{ type, text }` parts (Anthropic shape) or a single
+ * `{ text }` object. Extracts every string we can find and joins.
+ * Returns `""` when nothing usable is present.
+ */
+function extractText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!content || typeof content !== "object") return "";
+  if (Array.isArray(content)) {
+    return content
+      .map((p) => extractText(p))
+      .filter((s) => s.length > 0)
+      .join(" ");
+  }
+  const obj = content as Record<string, unknown>;
+  if (typeof obj.text === "string") return obj.text;
+  if (typeof obj.content === "string") return obj.content;
+  if (Array.isArray(obj.parts)) return extractText(obj.parts);
+  if (Array.isArray(obj.content)) return extractText(obj.content);
+  return "";
+}
+
+/**
+ * Detect whether the user's free-text reply is an unambiguous
+ * affirmation. Conservative — only the short canonical forms count
+ * so a chatty "yes please go ahead but skip the broken one" does
+ * NOT bypass the gate (the user's intent there is more nuanced).
+ * Mirrors the regex in apps/sk/src/elicitation-intent.ts so the CLI
+ * + engine agree on what "yes" means.
+ */
+const PROSE_AFFIRMATION_RE =
+  /^(?:yes(?: please)?|y|yep|yeah|yup|sure|of course|absolutely|ok(?:ay)?|fine|approve(?:d)?|confirm(?:ed)?|go(?: ahead)?|do it|proceed|please proceed|please do|go for it|let's do it|ship it)\.?$/i;
+function isAffirmation(text: string): boolean {
+  return PROSE_AFFIRMATION_RE.test(text.trim().replace(/[.!?\s]+$/, ""));
+}
+
+/**
+ * Detect whether the assistant's prior message was a prose pre-
+ * confirmation about the SAME destructive intent the policy gate is
+ * about to fire on. Two signals must both match:
+ *   1. A pre-confirmation phrase ("shall I proceed", "do you want me
+ *      to delete", "confirm if I should", "should I go ahead", etc.).
+ *   2. A reference to the operation's verb / object (delete /
+ *      revoke / drop + a noun matching the tool's resource type).
+ * Conservative on purpose — false positives let through unconfirmed
+ * destructive writes, so any miss falls through to the policy gate.
+ */
+const PROSE_PRECONFIRM_RE =
+  /\b(shall i (?:proceed|continue|delete|remove|drop|revoke)|should i (?:proceed|continue|go ahead|delete|remove)|do you want me to (?:proceed|continue|delete|remove|drop|revoke)|confirm (?:if|that|whether)|(?:proceed|go ahead) (?:to|with) (?:delete|remove|drop|revoke))\b/i;
+function referencesProseConfirmation(asstText: string, toolName: string): boolean {
+  // Map the tool to a noun the prose is likely to mention. Without
+  // this match the dedupe could trigger on an unrelated prior
+  // question — too risky for a destructive write.
+  const verbObject = (() => {
+    if (toolName === "delete_workflow") return /\bworkflow/i;
+    if (toolName === "delete_connector") return /\bconnector/i;
+    if (toolName === "delete_knowledge_source") return /\bknowledge/i;
+    if (toolName === "delete_subscription") return /\bsubscription/i;
+    if (toolName === "delete_tunnel") return /\btunnel/i;
+    if (toolName === "delete_schedule") return /\bschedule/i;
+    if (toolName === "revoke_api_key") return /\b(?:api[_ ]?key|key)/i;
+    if (toolName === "revoke_portal_token") return /\b(?:portal[_ ]?token|token)/i;
+    return null;
+  })();
+  if (!verbObject) return false;
+  // Both signals must co-occur in the SAME sentence. Pre-fix the
+  // checker globbed the whole assistant message and false-matched on
+  // "Your DigitalOcean connector is configured. Shall I proceed to
+  // fetch your projects?" → `connector` and `Shall I proceed`
+  // appeared in different sentences but the OR-in-message check
+  // skipped the gate as if they were one intent. Splitting on
+  // sentence-ending punctuation (`.!?`) tightens the heuristic so the
+  // dedupe only fires when the prose is actually asking about THIS
+  // resource type.
+  const sentences = asstText.split(/(?<=[.!?])\s+/);
+  for (const sentence of sentences) {
+    if (PROSE_PRECONFIRM_RE.test(sentence) && verbObject.test(sentence)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Top-level `input.kind` to stamp on a policy-gate elicitation so the
+ * tool's downstream prior-approval gate (e.g. `commit-workflow.ts`'s
+ * SQL filter `(input ->> 'kind') = 'commit_draft'`) finds the resolved
+ * row when the LLM re-issues the call with `__policy_confirmed: true`.
+ *
+ * For `commit_draft` we MUST use `"commit_draft"` (not `"external_write"`)
+ * — without this the policy-gate elicitation would never satisfy the
+ * inner `commitWorkflowAtomic` prior-approval check, and a re-issue
+ * would loop indefinitely with `error: no_prior_approval`. Other
+ * persisting tools fall back to `"external_write"` — they do not gate
+ * themselves on a specific `input.kind` value.
+ */
+function topLevelElicitationKindForTool(
+  tool: string,
+): "commit_draft" | "external_write" | "generic" {
+  if (tool === "commit_draft") return "commit_draft";
+  return "external_write";
+}
+
+/**
+ * Build the optional `commit_intent` carrier the harness reads in
+ * `maybeAutoPersistFromElicitation` to atomically persist the write
+ * the moment the operator confirms — no LLM re-issue required.
+ *
+ * Returns `null` when we have no shape contract for the tool's payload
+ * yet; the call falls back to the legacy LLM-re-issue path
+ * (`__policy_confirmed: true`).
+ */
+function buildPolicyGateCommitIntent(
+  tool: string,
+  rawArgs: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const intentKind = mapToolToCommitIntentKind(tool);
+  if (!intentKind) return null;
+  if (intentKind === "commit_workflow_draft") {
+    const targetId =
+      typeof rawArgs.target_workflow_id === "string" ? rawArgs.target_workflow_id : undefined;
+    const forceCommit = rawArgs.force_commit === true;
+    return {
+      kind: "commit_workflow_draft",
+      payload: {
+        ...(targetId ? { target_workflow_id: targetId } : {}),
+        ...(forceCommit ? { force_commit: true } : {}),
+      },
+      description: "Save the current workflow draft.",
+    };
+  }
+  if (intentKind === "save_connector_draft") {
+    const env = typeof rawArgs.environment === "string" ? rawArgs.environment : "dev";
+    return {
+      kind: "save_connector_draft",
+      payload: { environment: env },
+      description: "Save the current connector draft.",
+    };
+  }
+  // delete_* / run_workflow / update_* — payload shapes still owned by
+  // the LLM-driven ask_user_confirm path; the policy-gate fallback for
+  // these uses the re-issue contract.
+  return null;
 }
 
 /**
@@ -232,10 +404,53 @@ function wrapOne(
           };
         }
 
+        // Global consecutive-failures cap (mirrors reference impl's
+        // "no more than 5 failed tool calls in a row" rule). Checked
+        // before the per-tool cap because it overrides — when the
+        // model has hit the cap on ANY mix of tools, the next dispatch
+        // returns a structured "ask the user" envelope instead of
+        // running the tool. The model is then forced to emit
+        // `ask_user_choice` / `ask_user_text` to break the loop.
+        // Exception: ask_user_* tools always run (those are how the
+        // model recovers). Read-only inspection tools also pass so the
+        // model can call inspect_workflow to read scope shape after
+        // the cap fires.
+        const isAskUser = inner.name.startsWith("ask_user_");
+        const isInspect =
+          inner.name.startsWith("inspect_") || inner.name === "diagnose_latest_execution";
+        if (!isAskUser && !isInspect && signals.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          logger.warn({
+            module: "conversation_tool",
+            action: "tool.consecutive_failures_block",
+            msg: "global consecutive-failures cap reached — short-circuiting until model asks the user",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            consecutive_failures: signals.consecutiveFailures,
+          });
+          return {
+            ok: false,
+            data: {
+              error_code: "consecutive_failures_cap",
+              message: `${signals.consecutiveFailures} tool calls have failed in a row — stop patching and emit ask_user_choice with concrete options derived from the most recent failure (e.g. "commit anyway", "revert the last patch", "hand-edit the workflow JSON"). The cap resets on the first successful tool call.`,
+              reason: "consecutive_failures_cap",
+              consecutive_failures: signals.consecutiveFailures,
+              next_best_actions: ["ask_user_choice", "ask_user_text", "inspect_workflow"],
+            },
+          };
+        }
+
         // Loop-breaker: short-circuit before doing any side effects
         // when the model has already called this tool too many times
-        // in the current turn.
-        const MAX_CALLS_PER_TURN = inner.category === "tenant_read" ? 3 : 5;
+        // in the current turn. Pre-fix tenant_read was capped at 3 —
+        // too tight when the LLM legitimately needs to inspect 4
+        // execution steps in sequence (session 09219b6d:
+        // inspect_execution_step hit the cap mid-debug and produced
+        // the "I've hit a tool call limit" mid-sentence cut). The
+        // tenant_read cap goes to 6; tenant_write stays at 5 because
+        // every write is a state mutation worth being conservative
+        // about. draft_write is read-mostly and follows tenant_read.
+        const MAX_CALLS_PER_TURN =
+          inner.category === "tenant_write" ? 5 : inner.category === "draft_write" ? 6 : 6;
         const priorCount = signals.toolInvocationCount.get(inner.name) ?? 0;
         if (priorCount >= MAX_CALLS_PER_TURN) {
           signals.totalLoopWarnings += 1;
@@ -273,14 +488,21 @@ function wrapOne(
               : `tool.loop_detected: ${inner.name} called ${priorCount} times in one turn — aborting further calls`,
             ts: new Date().toISOString(),
           });
+          // Structured envelope for the LLM. The `next_best_actions`
+          // hint tells the model exactly how to recover so the next
+          // turn doesn't degrade into "I've hit a tool call limit"
+          // mid-sentence — instead the LLM emits an `ask_user_choice`
+          // / `ask_user_text` and hands control back to the user.
           return {
             ok: false,
             data: {
-              error: turnBudgetReached
-                ? `this tool has been invoked ${priorCount} times and the turn loop budget is exhausted — stop calling tools, summarise what you already know for the user, and end the turn`
-                : `this tool has already been invoked ${priorCount} times in the current turn — change approach or ask the user for guidance instead of retrying with the same shape`,
+              error_code: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
+              message: turnBudgetReached
+                ? `this turn called tools ${signals.totalLoopWarnings}× past the loop-warning budget — stop, summarise what you already know, and end the turn with a single question for the user (use ask_user_choice or ask_user_text, not prose).`
+                : `${inner.name} has been invoked ${priorCount} times in this turn — change approach or stop and ask the user via ask_user_choice / ask_user_text. Do NOT retry with the same shape.`,
               reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
               tool: inner.name,
+              next_best_actions: ["ask_user_choice", "ask_user_text", "diagnose_latest_execution"],
             },
           };
         }
@@ -352,6 +574,18 @@ function wrapOne(
         // the most recent matching elicitation; skips the gate when
         // that elicitation was confirmed within the last 5 minutes.
         const intentKindForCurrentTool = mapToolToCommitIntentKind(inner.name);
+        // Dedupe filter: the LLM-emitted ask_user_confirm uses the
+        // CONFIRM_KIND namespace (`"commit_draft" | "external_write" |
+        // "generic"`) as `input.kind`, NOT the COMMIT_INTENT_KIND
+        // namespace (`"commit_workflow_draft" | …`) that the harness
+        // routes on. So when checking "did the LLM already prompt for
+        // this same intent?" we must compare against the top-level
+        // confirm kind, not the commit_intent kind. Pre-fix the
+        // dedupe always missed because the SQL compared the wrong
+        // namespaces; the bug only surfaced after the gate started
+        // firing for commit_draft (previously the category guard
+        // suppressed the second pause entirely).
+        const llmEmittedKindForCurrentTool = topLevelElicitationKindForTool(inner.name);
         let recentlyConfirmedByLLM = false;
         if (intentKindForCurrentTool) {
           try {
@@ -368,7 +602,7 @@ function wrapOne(
                   eq(conversationElicitations.tenant_id, ctx.tenant_id),
                   eq(conversationElicitations.conversation_id, ctx.conversation_id),
                   eq(conversationElicitations.tool_name, "ask_user_confirm"),
-                  sql`(${conversationElicitations.input} ->> 'kind') = ${intentKindForCurrentTool}`,
+                  sql`(${conversationElicitations.input} ->> 'kind') = ${llmEmittedKindForCurrentTool}`,
                 ),
               )
               .orderBy(desc(conversationElicitations.created_at))
@@ -388,11 +622,74 @@ function wrapOne(
             // silently elide a security-critical confirm.
           }
         }
+        // Prose-pre-confirmation dedupe: when the LLM wrote a prose
+        // pre-confirmation ("Shall I proceed to delete all 6
+        // workflows?", "Confirm if I should delete the connector?")
+        // and the user immediately answered with a clear affirmation
+        // ("yes" / "go ahead" / "do it") in the next user message,
+        // treat that exchange as the confirmation and skip the
+        // policy-gate elicitation. Pre-fix the LLM kept writing prose
+        // pre-confirmations across 6+ versions despite skill rules
+        // forbidding them, producing the visible "ask twice" anti-
+        // pattern (session abeefb33: prose "Shall I proceed?" + user
+        // "yes" + structured ConfirmPrompt for the same delete).
+        // Heuristic is scoped to the IMMEDIATELY-PRECEDING two
+        // messages and a 5-minute freshness window so the path
+        // cannot retroactively wave through an unrelated approval.
+        let recentlyConfirmedByProse = false;
+        try {
+          const recentMessages = await db
+            .select({
+              role: conversationMessages.role,
+              content: conversationMessages.content,
+              created_at: conversationMessages.created_at,
+            })
+            .from(conversationMessages)
+            .where(
+              and(
+                eq(conversationMessages.tenant_id, ctx.tenant_id),
+                eq(conversationMessages.conversation_id, ctx.conversation_id),
+              ),
+            )
+            .orderBy(desc(conversationMessages.created_at))
+            .limit(4);
+          // Walk newest → older, looking for [user-affirm, assistant-question]
+          // pairs where the assistant question references the same tool
+          // (or destructive verb) the gate is about to fire on.
+          const FIVE_MIN_MS = 5 * 60 * 1000;
+          for (let i = 0; i < recentMessages.length - 1; i++) {
+            const userMsg = recentMessages[i];
+            const asstMsg = recentMessages[i + 1];
+            if (!userMsg || !asstMsg) continue;
+            if (userMsg.role !== "user" || asstMsg.role !== "assistant") continue;
+            if (userMsg.created_at && Date.now() - userMsg.created_at.getTime() > FIVE_MIN_MS)
+              break;
+            const userText = extractText(userMsg.content);
+            const asstText = extractText(asstMsg.content);
+            if (!isAffirmation(userText)) continue;
+            if (!referencesProseConfirmation(asstText, inner.name)) continue;
+            recentlyConfirmedByProse = true;
+            break;
+          }
+        } catch {
+          // DB blip: fall back to gating. Better to ask twice than
+          // silently elide a security-critical confirm.
+        }
+        // Gate decision is driven by `resolvedMode` ALONE — not by
+        // `inner.category`. The legacy `category === "tenant_write"`
+        // filter conflated "needs confirmation" with "stages a
+        // confirmation-state-machine row" and silently let `draft_write`
+        // tools that demand confirm_before_execution (notably
+        // `commit_draft`) bypass the gate, where they then died with
+        // `no_prior_approval` because no elicitation was ever created.
+        // The state-machine recording at `recordTransition` below stays
+        // scoped to `tenant_write` — that part of the original guard
+        // is still correct.
         const needsPreConfirmation =
           resolvedMode === "confirm_before_execution" &&
-          inner.category === "tenant_write" &&
           !policyMarker &&
-          !recentlyConfirmedByLLM;
+          !recentlyConfirmedByLLM &&
+          !recentlyConfirmedByProse;
         if (recentlyConfirmedByLLM && resolvedMode === "confirm_before_execution") {
           logger.info({
             module: "conversation_tool",
@@ -402,6 +699,42 @@ function wrapOne(
             conversation_id: ctx.conversation_id,
             tool: inner.name,
             intent_kind: intentKindForCurrentTool,
+          });
+        }
+        if (recentlyConfirmedByProse && resolvedMode === "confirm_before_execution") {
+          logger.info({
+            module: "conversation_tool",
+            action: "tool_policy.prose_confirmation_deduped",
+            msg: "skipping policy-gate confirm — prose pre-confirmation matched + user affirmed",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+          });
+        }
+        // Forensic log when the gate was evaluated but skipped, so the
+        // next "tool ran without confirmation" investigation can read
+        // why directly from engine logs instead of bisecting the
+        // wrapper. Pre-fix this exact failure mode silently swallowed
+        // a commit_draft call (session dca36b29 — `paused: false,
+        // committed: false, error: no_prior_approval`).
+        if (resolvedMode === "confirm_before_execution" && !needsPreConfirmation) {
+          const skipReason = policyMarker
+            ? "policy_marker_present"
+            : recentlyConfirmedByLLM
+              ? "recently_confirmed_by_llm"
+              : recentlyConfirmedByProse
+                ? "recently_confirmed_by_prose"
+                : "unknown";
+          logger.info({
+            module: "conversation_tool",
+            action: "policy.gate_skipped",
+            msg: "policy gate skipped despite confirm_before_execution mode",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            category: inner.category,
+            skip_reason: skipReason,
+            ...(intentKindForCurrentTool ? { intent_kind: intentKindForCurrentTool } : {}),
           });
         }
 
@@ -487,6 +820,23 @@ function wrapOne(
           // first-class fields (target id, environment, key shape)
           // instead of a raw arg blob the user has to parse.
           const pendingOutput = buildPendingOutputForTool(inner.name, rawArgs);
+          // Top-level kind matters: `commit_draft` MUST stamp
+          // `kind: "commit_draft"` so the inner prior-approval gate in
+          // commit-workflow.ts:54-89 finds the resolved row when the
+          // LLM re-issues with __policy_confirmed: true.
+          const topLevelKind = topLevelElicitationKindForTool(inner.name);
+          // Optional commit_intent so `maybeAutoPersistFromElicitation`
+          // (service.ts:551 → auto-persist.ts) can apply the write
+          // atomically the moment the operator confirms — bypassing
+          // the LLM re-issue round-trip entirely.
+          const policyCommitIntent = buildPolicyGateCommitIntent(inner.name, rawArgs);
+          const elicitationInput: Record<string, unknown> = {
+            kind: topLevelKind,
+            question: `Policy requires confirmation before running ${inner.name}. Proceed?`,
+            target: { tool: inner.name, args: rawArgs },
+            ...(pendingOutput ? { pending_output: pendingOutput } : {}),
+            ...(policyCommitIntent ? { commit_intent: policyCommitIntent } : {}),
+          };
           const elicitation = await createElicitation(
             {
               tenant_id: ctx.tenant_id,
@@ -494,21 +844,45 @@ function wrapOne(
               tool_call_id: toolCallId,
               tool_name: "ask_user_confirm",
               summary: `Confirm ${inner.name} (policy: ${resolvedMode})`,
-              input: {
-                kind: "external_write",
-                question: `Policy requires confirmation before running ${inner.name}. Proceed?`,
-                target: { tool: inner.name, args: rawArgs },
-                ...(pendingOutput ? { pending_output: pendingOutput } : {}),
-              },
+              input: elicitationInput,
               actor_id: ctx.actor_id,
             },
             db,
           );
           signals.pendingChildElicitationIds.push(elicitation.id);
+          // Forensic log: confirmation event was emitted with full
+          // payload context so an operator triaging "did the gate
+          // actually pause?" can answer it from logs alone.
+          logger.info({
+            module: "conversation_tool",
+            action: "policy.gate_paused",
+            msg: "policy gate paused tool execution and emitted ask_user_confirm",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            category: inner.category,
+            elicitation_id: elicitation.id,
+            tool_call_id: toolCallId,
+            elicitation_kind: topLevelKind,
+            has_commit_intent: policyCommitIntent !== null,
+            ...(policyCommitIntent
+              ? { commit_intent_kind: policyCommitIntent.kind as string }
+              : {}),
+          });
+          // Stamp `status: "awaiting_confirmation"` so any CLI card that
+          // dispatches on `tool: "run_workflow" | "commit_draft"` and
+          // reads `data.status` shows a meaningful pending state instead
+          // of falling into the "Execution status missing" branch.
+          // Pre-fix this output was status-less and the ExecutionDiagnosisCard
+          // briefly rendered `× bug, not a state` for the operator.
           const output = {
             pending: true,
+            status: "awaiting_confirmation" as const,
             policy_mode: resolvedMode,
-            note: "policy_confirm_required — operator must confirm before the tool executes. Re-issue the same call with __policy_confirmed: true after receiving confirmation.",
+            elicitation_id: elicitation.id,
+            note: policyCommitIntent
+              ? "policy_confirm_required — the operator must confirm via the emitted ask_user_confirm. The harness will auto-persist on confirm via the attached commit_intent; you do NOT need to re-issue this tool call."
+              : "policy_confirm_required — operator must confirm before the tool executes. Re-issue the same call with __policy_confirmed: true after receiving confirmation.",
           };
           await updateToolCallOutput(db, toolCallId, output);
           events.push({
@@ -520,6 +894,7 @@ function wrapOne(
           events.push({
             type: "elicit_request",
             elicitation_id: elicitation.id,
+            tool_call_id: toolCallId,
             tool_name: "ask_user_confirm",
             summary: elicitation.summary,
             input: elicitation.input,
@@ -528,7 +903,7 @@ function wrapOne(
           signals.pendingElicitation = {
             elicitation_id: elicitation.id,
             tool_name: "ask_user_confirm",
-            kind: "external_write",
+            kind: topLevelKind,
             summary: `Confirm ${inner.name}`,
             input: elicitation.input,
           };
@@ -545,11 +920,8 @@ function wrapOne(
               elicitation_id: elicitation.id,
               tool_name: "ask_user_confirm",
               summary: `Confirm ${inner.name}`,
-              kind: "external_write",
-              input: {
-                kind: "external_write",
-                target: { tool: inner.name, args: rawArgs },
-              },
+              kind: topLevelKind,
+              input: elicitationInput,
             },
           };
         }
@@ -696,6 +1068,8 @@ function wrapOne(
         // as a repeat.
         if (result.ok) {
           signals.toolLastErrorHash.delete(inner.name);
+          // First success resets the global consecutive-failures counter.
+          signals.consecutiveFailures = 0;
         } else {
           const errObj = (resultPayload ?? {}) as Record<string, unknown>;
           const reason =
@@ -714,6 +1088,28 @@ function wrapOne(
                   : "";
           const shape = `${reason}|${err.slice(0, 120)}`;
           signals.toolLastErrorHash.set(inner.name, shape);
+          // Global cap: every ok=false tool result anywhere increments
+          // the running counter. The next dispatch tick reads this
+          // and short-circuits if the model has not asked the user yet.
+          signals.consecutiveFailures += 1;
+          if (signals.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            logger.warn({
+              module: "conversation_tool",
+              action: "tool.consecutive_failures_cap",
+              msg: "five consecutive failed tool calls — model must ask the user before continuing",
+              conversation_id: ctx.conversation_id,
+              tool: inner.name,
+              consecutive_failures: signals.consecutiveFailures,
+            });
+            events.push({
+              type: "tool_log",
+              call_id: "consecutive-failures",
+              tool: inner.name,
+              level: "warn",
+              message: `tool.consecutive_failures_cap: ${signals.consecutiveFailures} failed tool calls in a row — emit ask_user_choice / ask_user_text instead of patching further.`,
+              ts: new Date().toISOString(),
+            });
+          }
         }
 
         // Mirror the old loop: a `tool` role message keeps the audit
@@ -760,6 +1156,7 @@ function wrapOne(
           events.push({
             type: "elicit_request",
             elicitation_id: result.pause.elicitation_id,
+            tool_call_id: toolCallId,
             tool_name: result.pause.tool_name,
             summary: result.pause.summary,
             input: inputPayload,

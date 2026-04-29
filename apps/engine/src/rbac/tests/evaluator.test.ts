@@ -68,14 +68,18 @@ describe("rbac evaluator", () => {
     resourceGrantUserId = await seedUser("grant@ev", memberRoleId);
     groupUserId = await seedUser("group@ev", null);
 
-    // Resource grant: user X has `workflow:delete` on workflowA.
+    // Resource grant: user X has `audit:read` scoped to workflowA.
+    // We use `audit:read` (admin-only at role level) as a sentinel
+    // because members now hold `workflow:delete` via the member role
+    // — pre-fix the grant on a member-role permission collapsed the
+    // resource-scope vs role-scope distinction these tests pin.
     await grantsSvc.grantResource(db, {
       tenant_id: tenantId,
       subject_type: "user",
       subject_id: resourceGrantUserId,
       resource_type: "workflow",
       resource_id: workflowA,
-      permission: "workflow:delete",
+      permission: "audit:read",
     });
 
     // Group path: create a group that is assigned the `admin` role
@@ -124,10 +128,14 @@ describe("rbac evaluator", () => {
   });
 
   test("role denies when permission not in role_permissions", async () => {
+    // `audit:read` is admin-only — `workflow:delete` was previously
+    // used here as the "member doesn't have it" sentinel, but
+    // members now CAN delete workflows they own (session 0aed284f
+    // fix). Use a permission that's still admin-only.
     const d = await can(db, {
       tenant_id: tenantId,
       principal: mkPrincipal(memberUserId, "member"),
-      permission: "workflow:delete",
+      permission: "audit:read",
     });
     expect(d.allow).toBe(false);
     expect(d.reason).toContain("permission_denied");
@@ -137,7 +145,7 @@ describe("rbac evaluator", () => {
     const d = await can(db, {
       tenant_id: tenantId,
       principal: mkPrincipal(resourceGrantUserId, "member"),
-      permission: "workflow:delete",
+      permission: "audit:read",
       resource: { type: "workflow", id: workflowA },
     });
     expect(d.allow).toBe(true);
@@ -148,7 +156,7 @@ describe("rbac evaluator", () => {
     const d = await can(db, {
       tenant_id: tenantId,
       principal: mkPrincipal(resourceGrantUserId, "member"),
-      permission: "workflow:delete",
+      permission: "audit:read",
       resource: { type: "workflow", id: workflowB },
     });
     expect(d.allow).toBe(false);

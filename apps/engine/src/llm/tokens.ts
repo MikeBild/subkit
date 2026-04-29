@@ -63,7 +63,16 @@ export function contextCapFor(model: string): number {
   if (id.includes("gpt-4o")) return 120_000;
   if (id.includes("gpt-4")) return 110_000;
   if (id.includes("gpt-3.5")) return 15_000;
-  if (id.includes("mock")) return 8_000;
+  // Mock model cap — sized to fit the full pre-loaded agent-skill
+  // bundle (turn-rhythm + chat-first + confirmation-discipline +
+  // error-recovery-and-rbac + conversational-authoring + …) plus a
+  // sample tenant snapshot, with a small headroom so genuine prompt
+  // overflow still surfaces. Pre-bump this was 8_000, which fit the
+  // older agent-skill bundle but not the current reference-aligned
+  // version (Build Recipe + 5-failure cap + structured recovery
+  // rules). Bumping to 12_000 keeps overflow detection alive while
+  // matching the bundled rules' real footprint.
+  if (id.includes("mock")) return 12_000;
   // Sane default for unknown models — Anthropic-ish.
   return 100_000;
 }

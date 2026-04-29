@@ -51,6 +51,32 @@ export interface SpinnerProps {
    * elapsed timer when non-null.
    */
   turnTokens?: number | null;
+  /**
+   * Name of the tool currently executing on the engine, if any.
+   * When set, the spinner replaces the rotating verb with a
+   * concrete "running <tool_name>" line so the user sees real
+   * progress instead of just "thinking…" for 1m+. Pre-fix session
+   * 86de186b: the engine ran build_workflow → validate_draft →
+   * dry_run_workflow over 1m20s while the CLI showed only
+   * "thinking… 1m16s". Mirrors reference impl's per-tool ticker.
+   */
+  currentTool?: string | null;
+  /**
+   * Optional descriptor of the tool's current substep, surfaced
+   * after the tool name (e.g. "running fetch_projects (request)").
+   */
+  currentToolKind?: string | null;
+  /**
+   * Number of tool calls that COMPLETED this turn but no tool is
+   * currently in flight. When non-zero and `currentTool` is null,
+   * the spinner switches from a generic verb to "summarising N
+   * tool result(s)…" so the user sees concrete progress during the
+   * LLM's pure-compose phase rather than a random rotating verb.
+   * Pre-fix session dcdcf246: spinner showed "considering… 12s",
+   * "composing… 8s", "reviewing… 18s" with no signal that the
+   * engine had already finished its tool work.
+   */
+  completedToolsThisTurn?: number;
   /** Override the verb list (tests). */
   verbs?: readonly string[];
   /** Frame duration in ms. Default 120ms. */
@@ -62,6 +88,9 @@ export interface SpinnerProps {
 const SpinnerImpl: React.FC<SpinnerProps> = ({
   active,
   turnTokens,
+  currentTool,
+  currentToolKind,
+  completedToolsThisTurn = 0,
   verbs = SPINNER_VERBS,
   frameMs = 120,
   verbMs = 2500,
@@ -124,11 +153,22 @@ const SpinnerImpl: React.FC<SpinnerProps> = ({
   const verb = verbs[verbIndex] ?? verbs[0] ?? "thinking";
   const elapsed = startedAt ? formatElapsed(now - startedAt) : "";
   const tokens = typeof turnTokens === "number" && turnTokens > 0 ? ` · ${turnTokens}t` : "";
+  // Concrete progress line when a tool is in flight: "running
+  // dry_run_workflow…  1m16s · 204879t". When no tool is in flight
+  // BUT tools have completed this turn, switch to "summarising N
+  // tool result(s)…" so the user sees concrete pipeline progress
+  // during the LLM's compose phase. Verb rotation is the last-
+  // resort fallback (pure thinking, no tools yet).
+  const headLabel = currentTool
+    ? `running ${currentTool}${currentToolKind ? ` (${currentToolKind})` : ""}`
+    : completedToolsThisTurn > 0
+      ? `summarising ${completedToolsThisTurn} tool result${completedToolsThisTurn === 1 ? "" : "s"}`
+      : verb;
 
   return (
     <Box marginBottom={1}>
       <Text color="yellow">{glyph} </Text>
-      <Text bold>{verb}…</Text>
+      <Text bold>{headLabel}…</Text>
       <Text dimColor>
         {"  "}
         {elapsed}

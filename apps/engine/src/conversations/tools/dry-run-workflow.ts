@@ -209,6 +209,18 @@ export const dryRunWorkflowTool: ConversationTool = {
         count: runWarnings.length,
       });
     }
+    // Mirror run-workflow's requires_repair derivation so the
+    // commit-workflow gate can see that a fresher dry-run has cleared
+    // (or kept) the repair flag. Only the warnings that ALWAYS
+    // indicate a real bug contribute — `transform_dropped_fields`
+    // alone is informational.
+    const dryRunRequiresRepair = runWarnings.some(
+      (w) =>
+        w.code === "unresolved_identifier" ||
+        w.code === "transform_empty_extraction" ||
+        w.code === "loop_over_unresolved" ||
+        w.code === "loop_body_empty",
+    );
     const nextDraft = withLatestPreview(
       ctx.getDraft(),
       {
@@ -217,11 +229,33 @@ export const dryRunWorkflowTool: ConversationTool = {
         summary: lastStep?.summary ?? `Run completed with status ${run.status}.`,
         preview: lastStep?.output_preview ?? null,
         ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
+        ...(dryRunRequiresRepair ? { requires_repair: true } : {}),
       },
       "dry_run_workflow",
       "workflow_previewed",
     );
     await ctx.setDraft(nextDraft);
+
+    // Per-step output previews — surface every step's actual output
+    // shape on the dry_run response so the LLM can author downstream
+    // transforms against REAL scope shapes instead of guessing at
+    // JSONata paths. Pre-fix the LLM in session 3f6082d2 wrote
+    // format_output blind, the projection silently dropped the loop
+    // body's resources field, and v1→v2→v3 of the workflow committed
+    // without ever seeing the canonical shape. Each entry is
+    // truncated to ~1KB by the runtime's offload layer (output_preview
+    // is already capped); the LLM sees enough shape to author the
+    // next transform without burning the whole context.
+    const stepOutputs = run.steps.map((s) => ({
+      step_id: s.step_key,
+      kind: s.kind,
+      status: s.status,
+      ...(s.duration_ms != null ? { duration_ms: s.duration_ms } : {}),
+      ...(s.output_preview !== undefined && s.output_preview !== null
+        ? { output_preview: s.output_preview }
+        : {}),
+      ...(s.error ? { error: s.error } : {}),
+    }));
 
     return {
       ok: run.status === "succeeded",
@@ -237,6 +271,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             : `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`,
         execution_id: run.execution_id,
         ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
+        step_outputs: stepOutputs,
         ...(lastStep
           ? {
               last_step: {

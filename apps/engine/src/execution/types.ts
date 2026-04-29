@@ -52,7 +52,32 @@ export interface StepRunContext extends ExecutionContext {
   step_row_id: string;
 }
 
-export type StepWarningCode = "unresolved_identifier" | "loop_body_empty";
+export type StepWarningCode =
+  | "unresolved_identifier"
+  | "loop_body_empty"
+  // Emitted by runTransformStep when a transform produces empty/null
+  // result but upstream scope had non-empty data. Catches the silent
+  // failure mode where a JSONata projection over loop output extracts
+  // nothing because the path is wrong. The commit gate refuses
+  // unacknowledged warnings of this code without force_commit.
+  | "transform_empty_extraction"
+  // Emitted by runTransformStep when a transform that maps over a
+  // non-empty array produces an array of objects whose keys are a
+  // STRICT SUBSET of the source iteration's keys — a strong signal
+  // the projection silently dropped fields. Pre-fix this caused the
+  // session 3f6082d2 failure: format_output mapped over a loop output
+  // with body keys (extract, fetch_resources) and emitted
+  // [{project_id, project_name}] only — the resources field was
+  // silently dropped. The commit gate refuses unacknowledged warnings
+  // without force_commit.
+  | "transform_dropped_fields"
+  // Emitted by the loop driver when its `over` expression evaluates
+  // to a non-array (undefined, null, scalar, plain object). Pre-fix
+  // the loop silently returned [] and the LLM authored 9× variants
+  // of the same broken `over` path (session 86de186b). The warning
+  // names the resolved type + the scope keys so the LLM can fix the
+  // path on the next attempt.
+  | "loop_over_unresolved";
 
 export interface StepWarning {
   code: StepWarningCode;
@@ -151,6 +176,15 @@ export interface RunResult {
     retry_count: number;
     error: unknown;
     request_meta?: Record<string, unknown> | null;
+    /**
+     * Truncated preview of the step's output. Populated by the
+     * execution engine for every step (the same value persisted to
+     * `execution_steps.output_preview`). Surfaces on dry_run_workflow
+     * responses so the LLM can author downstream transforms against
+     * REAL scope shapes — closes the blind-authoring gap that drove
+     * session 3f6082d2's silent format_output failures.
+     */
+    output_preview?: unknown;
   }>;
   /** One entry per unique connector used in this run. Deduped per
    *  connector_id, first occurrence wins. Absent when no request/graphql

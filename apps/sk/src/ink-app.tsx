@@ -17,6 +17,7 @@
 // state transitions go through `applyTurnEvent` from @cli-core.
 
 import {
+  ChoicePrompt,
   ConversationBrowser,
   type ElicitationResponse,
   ElicitRouter,
@@ -35,12 +36,12 @@ import type {
   ToolCallState,
   TurnEvent,
 } from "@cli-core/index.ts";
-import { applyTurnEvent, initialSessionState } from "@cli-core/index.ts";
+import { applyTurnEvent, initialSessionState, lastAssistantText } from "@cli-core/index.ts";
 import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { debugLog, serializeDebugError } from "./debug.ts";
-import { classifyElicitationIntent } from "./elicitation-intent.ts";
+import { looksLikeAssistantConfirmRequest } from "./elicitation-intent.ts";
 import type { SetupValidationResponse, StatusSummary } from "./engine-client.ts";
 import {
   detectSecretShape,
@@ -86,6 +87,7 @@ import {
   type StoredPaste,
 } from "./repl/paste-store.ts";
 import { PendingAttachments } from "./repl/pending-attachments.tsx";
+import { detectProseOptions } from "./repl/prose-options-detector.ts";
 import { createQueue } from "./repl/queue.ts";
 import type { PaneSpec } from "./repl/slash-handler.ts";
 import { Spinner } from "./repl/spinner.tsx";
@@ -251,6 +253,60 @@ function truncateForTranscript(value: string): string {
 // (type=password, sensitive:true, or a name like `token`/`api_key`)
 // render as `<name>=***` so the audit trail names what was provided
 // without leaking the secret.
+/**
+ * Pull a short, transcript-safe summary of WHAT a confirmation
+ * elicitation is about. Tries (in order):
+ *   1. `input.commit_intent.description` — the LLM's own summary line
+ *      written when it set the commit_intent carrier.
+ *   2. `input.target.tool` + a workflow/connector identifier from
+ *      `target.args` — falls back when the LLM forgot to set
+ *      description.
+ *   3. `input.summary` / `input.question` — last-resort string field.
+ *
+ * Truncates to 80 chars so a long description doesn't push the
+ * transcript line off the screen.
+ */
+function describeConfirmationPayload(input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const obj = input as Record<string, unknown>;
+  const commitIntent =
+    obj.commit_intent && typeof obj.commit_intent === "object" && obj.commit_intent !== null
+      ? (obj.commit_intent as Record<string, unknown>)
+      : null;
+  const description =
+    commitIntent && typeof commitIntent.description === "string" ? commitIntent.description : null;
+  if (description && description.trim().length > 0) {
+    return truncateForTranscript(description.trim());
+  }
+  const target =
+    obj.target && typeof obj.target === "object" && obj.target !== null
+      ? (obj.target as Record<string, unknown>)
+      : null;
+  const tool = target && typeof target.tool === "string" ? target.tool : null;
+  const args =
+    target && typeof target.args === "object" && target.args !== null
+      ? (target.args as Record<string, unknown>)
+      : null;
+  const idHint =
+    args && typeof args.target_workflow_id === "string"
+      ? args.target_workflow_id
+      : args && typeof args.workflow_id === "string"
+        ? args.workflow_id
+        : args && typeof args.slug === "string"
+          ? args.slug
+          : args && typeof args.connector_id === "string"
+            ? args.connector_id
+            : null;
+  if (tool) return truncateForTranscript(idHint ? `${tool} ${idHint}` : tool);
+  const fallback =
+    typeof obj.summary === "string"
+      ? obj.summary
+      : typeof obj.question === "string"
+        ? obj.question
+        : null;
+  return fallback ? truncateForTranscript(fallback.trim()) : null;
+}
+
 export function renderElicitAnswer(output: unknown, input?: unknown, reason?: string): string {
   const suffix = reason ? ` — ${reason}` : "";
   if (output === null || output === undefined) return `(no answer)${suffix}`;
@@ -260,10 +316,19 @@ export function renderElicitAnswer(output: unknown, input?: unknown, reason?: st
   }
   if (typeof output === "object") {
     const obj = output as Record<string, unknown>;
-    if (obj.confirmed === true) return `approve${suffix}`;
-    if (obj.confirmed === false || obj.declined === true) return `reject${suffix}`;
-    if (obj.tested === true) return `test${suffix}`;
-    if (obj.partial === true) return `partial${suffix}`;
+    // For confirmations, append a short payload preview so the
+    // transcript captures WHAT was approved, not just the verb. Pulled
+    // from `commit_intent.description` first (the LLM's own one-line
+    // summary), then `target.tool` + workflow/connector identifier as
+    // a fallback. Without this, scrolling back through 5 "approve"
+    // lines is meaningless — exactly the audit gap the operator hit
+    // in session a6440493.
+    const payloadPreview = describeConfirmationPayload(input);
+    const previewSuffix = payloadPreview ? ` · ${payloadPreview}` : "";
+    if (obj.confirmed === true) return `approve${previewSuffix}${suffix}`;
+    if (obj.confirmed === false || obj.declined === true) return `reject${previewSuffix}${suffix}`;
+    if (obj.tested === true) return `test${previewSuffix}${suffix}`;
+    if (obj.partial === true) return `partial${previewSuffix}${suffix}`;
     if (typeof obj.value === "string") return `${obj.value}${suffix}`;
     if (typeof obj.choice === "string") return `${obj.choice}${suffix}`;
     if (Array.isArray(obj.choices)) return `${(obj.choices as unknown[]).join(", ")}${suffix}`;
@@ -566,11 +631,21 @@ SetupBanner.displayName = "SetupBanner";
 
 // ---------- Message row (Claude Code style) ----------
 
+const MESSAGE_ROW_INDENT = 8; // 2 glyph + 6 label
+const MESSAGE_ROW_RIGHT_MARGIN = 2; // safety so a wide ¶ doesn't kiss the right edge
+
 const MessageRow: React.FC<{
   role: string;
   content: string;
   parts?: RenderableMessagePart[] | undefined;
-}> = memo(({ role, content, parts }) => {
+  /**
+   * Terminal column count, used to constrain the body box width so
+   * continuation lines don't lose the speaker indent. Pre-fix the
+   * absence of this prop made Ink wrap at full terminal width and
+   * split words across the column origin (session 86de186b).
+   */
+  columns?: number;
+}> = memo(({ role, content, parts, columns }) => {
   const theme = useTheme();
   // Speaker label + glyph. Two columns: a 2-char glyph slot, then a
   // fixed-width label so wrapping body text aligns under itself, not
@@ -601,7 +676,15 @@ const MessageRow: React.FC<{
         </Text>
       </Box>
       <Box flexDirection="column" flexGrow={1}>
-        <MessageContent content={content} parts={parts} />
+        <MessageContent
+          content={content}
+          parts={parts}
+          {...(typeof columns === "number" && columns > 0
+            ? {
+                width: Math.max(16, columns - MESSAGE_ROW_INDENT - MESSAGE_ROW_RIGHT_MARGIN),
+              }
+            : {})}
+        />
       </Box>
     </Box>
   );
@@ -1626,6 +1709,27 @@ export const InkApp: React.FC<InkAppProps> = ({
       };
       setSession(next);
       for await (const ev of events) {
+        // Forensic event: every elicit_request that crosses the wire
+        // is recorded with the originating tool_call_id and shape.
+        // Bookends the engine-side `elicitation.created` log so a
+        // "did the prompt actually reach the CLI?" question is one
+        // grep away across both halves of the trace.
+        if (ev.type === "elicit_request") {
+          const inputKind =
+            ev.input && typeof ev.input === "object" && ev.input !== null
+              ? ((ev.input as { kind?: unknown }).kind ?? null)
+              : null;
+          debugLog(
+            "dialog.elicit_request_received",
+            {
+              elicitation_id: ev.elicitation_id,
+              ...(ev.tool_call_id ? { tool_call_id: ev.tool_call_id } : {}),
+              tool_name: ev.tool_name,
+              ...(typeof inputKind === "string" ? { input_kind: inputKind } : {}),
+            },
+            {},
+          );
+        }
         next = applyTurnEvent(next, ev);
         setSession({ ...next });
       }
@@ -1920,77 +2024,54 @@ export const InkApp: React.FC<InkAppProps> = ({
         return;
       }
 
-      // Pending-elicitation routing.
+      // Pending-elicitation routing — mirrors the reference impl's
+      // structured-only confirmation pattern.
       //
       // The engine pauses the conversation on any `askUser.*` tool and
-      // expects the next /respond call to carry the user's answer.
-      // Until that respond arrives the conversation is in
-      // `awaiting_input` and a fresh user message would either get
-      // rejected by the engine or, worse, race ahead of the still-open
-      // elicitation and create a phantom turn.
+      // expects the next /respond call to carry a STRUCTURED answer
+      // (confirmed boolean, option index, or form values). The chat-ui
+      // ships a dedicated component for each tool — ConfirmPrompt,
+      // ChoicePrompt, MultiChoicePrompt, TextPrompt, FormPrompt — all
+      // with explicit keybinds (Y/N/Enter/Esc/Tab/arrows) that drive
+      // submitElicitationResponse directly.
       //
-      // This block intercepts plain text and either resolves the
-      // elicitation (when the text expresses clear intent) or surfaces
-      // a hint asking the operator to clarify. It NEVER forwards plain
-      // text as a new prompt while a pending elicitation exists.
-      const intent = classifyElicitationIntent(trimmed);
-      const yesShortcut = intent.kind === "confirm";
-      const noShortcut = intent.kind === "reject";
-      if (yesShortcut || noShortcut) {
-        // While the engine is busy processing a previous response, swallow
-        // duplicate confirm/decline keystrokes so they don't queue a
-        // new prompt or hit /respond twice. This is the second half of
-        // the "approve approve <silence>" failure mode — the first
-        // approve worked, the second was racing the engine.
-        if (busyRef.current) {
-          showInfo(
-            yesShortcut
-              ? "approval already sent — engine is executing, hang tight"
-              : "rejection already sent — engine is executing, hang tight",
-          );
-          return;
-        }
-        if (session.pendingElicitation && onElicitResponse) {
-          await submitElicitationResponse(
-            session.pendingElicitation.id,
-            { confirmed: yesShortcut },
-            noShortcut ? "user replied with a short negative" : undefined,
-          );
-          return;
-        }
-        // No pending elicitation — refuse to forward "approve" as a plain
-        // user message. Otherwise the LLM tries to interpret a bare
-        // "approve", burns a turn, and the operator sees nothing useful.
-        showInfo(
-          session.status === "running"
-            ? "no pending approval — engine is still running"
-            : "no pending approval — type a real prompt or /resume",
+      // Free text typed at the main prompt input while an elicitation
+      // is open is NEVER classified as a confirmation answer. The
+      // pre-c35ef1c regex classifier ("yes" / "save it" / "ship it" →
+      // confirm) was fragile, surfaced silent false-positives, and is
+      // not how the reference impl works. We forward the user to the
+      // structured component instead. Slash commands (/approve,
+      // /reject, /respond, /cancel) remain available for explicit
+      // CLI-only flows.
+      if (session.pendingElicitation) {
+        debugLog(
+          "dialog.elicitation_routing",
+          {
+            elicitation_id: session.pendingElicitation.id,
+            ...(session.pendingElicitation.tool_call_id
+              ? { tool_call_id: session.pendingElicitation.tool_call_id }
+              : {}),
+            pending_tool: session.pendingElicitation.tool_name,
+            classified_intent: "structured_only",
+            input_excerpt: trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed,
+          },
+          {},
         );
-        return;
-      }
-      if (intent.kind === "pick" && session.pendingElicitation && onElicitResponse) {
         if (busyRef.current) {
           showInfo("answer already sent — engine is executing, hang tight");
           return;
         }
-        await submitElicitationResponse(
-          session.pendingElicitation.id,
-          { option_index: intent.optionIndex },
-          undefined,
-        );
-        return;
-      }
-      // A pending elicitation is open and the input did not carry clear
-      // intent (e.g. "save the workflow plz", "what about Foo?"). Don't
-      // start a phantom new turn — surface a hint instead.
-      if (session.pendingElicitation && !busyRef.current) {
         const tool = session.pendingElicitation.tool_name;
         const hint =
           tool === "ask_user_confirm"
-            ? `there is a pending confirmation — type 'yes' to approve, 'no' to reject, or '/cancel' to abandon. (your message: "${trimmed.slice(0, 80)}")`
-            : tool === "ask_user_pick"
-              ? `there is a pending option list — type a number (e.g. '1') or 'option N' to choose. (your message: "${trimmed.slice(0, 80)}")`
-              : `there is a pending form — fill the fields shown above and submit. (your message: "${trimmed.slice(0, 80)}")`;
+            ? `pending confirmation above — press Y/Enter to approve, N/Esc to reject, Tab to add a reason. /approve and /reject also work. (typed text is not auto-classified)`
+            : tool === "ask_user_choice" || tool === "ask_user_pick"
+              ? `pending option list above — focus the choice with arrows and press Enter, or type the option number on the choice itself. /respond also works.`
+              : tool === "ask_user_multi"
+                ? `pending multi-select above — toggle items with Space, then press Enter to submit.`
+                : tool === "ask_user_text"
+                  ? `pending text prompt above — type into THAT field and press Enter to submit. /respond <text> also works.`
+                  : `pending form above — fill the fields shown and press Enter to submit. /respond <json> also works.`;
         showInfo(hint);
         return;
       }
@@ -1998,6 +2079,31 @@ export const InkApp: React.FC<InkAppProps> = ({
       // Plain prompt → drive a turn. Busy-guard first: if a turn is
       // already in flight, enqueue the prompt and let the draining
       // loop pick it up after the current turn completes.
+      // Forensic event: any prompt that reaches this branch with a
+      // recently-emitted "Reply 'yes'"-style assistant message but no
+      // pending elicitation is almost certainly hitting the silent
+      // failure mode where the engine asked for confirmation in prose
+      // without actually emitting an elicit_request. Surface a loud
+      // warning so the operator knows the next "yes" will become a
+      // phantom new prompt instead of an approval.
+      const lastAssistantTextValue = lastAssistantText(session);
+      const hadRecentUnresolvedIntent =
+        session.pendingElicitation === null &&
+        looksLikeAssistantConfirmRequest(lastAssistantTextValue);
+      debugLog(
+        "dialog.plain_prompt_sent",
+        {
+          session_status: session.status,
+          had_recent_unresolved_intent: hadRecentUnresolvedIntent,
+          input_excerpt: trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed,
+        },
+        {},
+      );
+      if (hadRecentUnresolvedIntent) {
+        showError(
+          "the assistant asked for explicit confirmation but did not emit an elicit_request — your reply will be sent as a NEW prompt, not as an approval. This usually means an engine policy-gate bug; see logs for `policy.gate_skipped` or `commit_gate.denied`.",
+        );
+      }
       if (busyRef.current) {
         queueRef.current.enqueue(trimmed);
         setQueuedCount(queueRef.current.length);
@@ -2034,10 +2140,36 @@ export const InkApp: React.FC<InkAppProps> = ({
 
       try {
         setNotices((current) => current.filter((item) => item.tone !== "error"));
+        // Synthesize the user-role message BEFORE awaiting onPrompt
+        // so the operator sees their input echoed in the transcript
+        // immediately. Pre-fix the user typed "3" to pick option 3
+        // from the LLM's prose options and waited 1m26s for the
+        // assistant to respond before their own message appeared in
+        // the scrollback (session 09219b6d). Mirrors how the
+        // elicitation pathway already echoes via
+        // submitElicitationResponse at line 1748.
+        // De-dupe at the insert site: when the previous message is
+        // already a no-id user message with the same content, skip
+        // the second optimistic append. Pre-fix re-entrant
+        // handleSubmit (e.g. fast double-Enter) produced "› you 1 /
+        // › you 1" twice in the transcript before any sk reply
+        // (session dcdcf246).
+        const lastMsg = session.messages[session.messages.length - 1];
+        const alreadyEchoed =
+          lastMsg?.role === "user" &&
+          lastMsg.id === undefined &&
+          lastMsg.content.trim() === trimmed.trim();
+        const optimisticSession: SkSessionState = alreadyEchoed
+          ? session
+          : {
+              ...session,
+              messages: [...session.messages, { role: "user", content: trimmed }],
+            };
+        if (!alreadyEchoed) setSession(optimisticSession);
         const { events, conversationId } = await onPrompt(finalPrompt, {
           permission_mode: activeMode,
         });
-        await applyEventStream({ ...session, conversationId }, events, conversationId);
+        await applyEventStream({ ...optimisticSession, conversationId }, events, conversationId);
       } catch (err) {
         showError(humanizeRequestError(err));
       } finally {
@@ -2578,6 +2710,29 @@ export const InkApp: React.FC<InkAppProps> = ({
   const renderToolCallList = (calls: ToolCallState[], keyPrefix: string): void => {
     let pendingBackgroundCalls: ToolCallState[] = [];
     let bgIdx = 0;
+    // De-duplication of CONSECUTIVE identical card signatures —
+    // session 86de186b stacked 4 identical "Execution needs
+    // diagnosis · partial_success · v2 · 1 warning" cards in a row
+    // when the LLM retried run_workflow without changing the
+    // workflow. The signature compares tool name + status + the
+    // structured outcome (success/error_code/partial_success
+    // marker). When N consecutive calls collapse to the same
+    // signature, we render the FIRST card and append a "(×N)"
+    // multiplier instead of N stacked clones. Inspect view bypasses
+    // the dedupe so an operator can still see every call individually.
+    let lastCardSignature: string | null = null;
+    let lastCardCount = 0;
+    let lastCardIndex = -1;
+    const cardSignatureFor = (c: ToolCallState): string | null => {
+      if (inspectView) return null;
+      const result = (c.result ?? {}) as Record<string, unknown>;
+      const data = (result.data ?? {}) as Record<string, unknown>;
+      const status = typeof data.status === "string" ? data.status : c.status;
+      const errorCode = typeof data.error_code === "string" ? data.error_code : null;
+      const requiresRepair = data.requires_repair === true ? "rr" : "";
+      const warningsCount = Array.isArray(data.warnings) ? (data.warnings as unknown[]).length : 0;
+      return [c.name, status, errorCode ?? "", requiresRepair, warningsCount].join("|");
+    };
     for (const call of calls) {
       if (isBackgroundTool(call)) {
         if (!inspectView) continue;
@@ -2590,8 +2745,32 @@ export const InkApp: React.FC<InkAppProps> = ({
       }
       const chips = extractNextBestActions(call.result);
       const authoringCard = inspectView ? null : renderAuthoringCard(call, transcriptMode);
+      // Consecutive-dedupe check. When this card's signature matches
+      // the previous one, replace the previous card with a "(×N)"-
+      // suffixed version instead of pushing a clone.
+      const signature = authoringCard ? cardSignatureFor(call) : null;
+      if (
+        authoringCard &&
+        signature !== null &&
+        signature === lastCardSignature &&
+        lastCardIndex === transcriptRows.length - 1
+      ) {
+        lastCardCount += 1;
+        transcriptRows[lastCardIndex] = (
+          <Box key={`dup-${call.id}`} flexDirection="column" marginBottom={1}>
+            {authoringCard}
+            <Box marginLeft={2}>
+              <Text dimColor>{`(repeated ${lastCardCount}× — same outcome)`}</Text>
+            </Box>
+          </Box>
+        );
+        continue;
+      }
+      lastCardSignature = signature;
+      lastCardCount = 1;
       if (authoringCard) {
         transcriptRows.push(authoringCard);
+        lastCardIndex = transcriptRows.length - 1;
         // Render `tool_log` entries inline under: (a) anything in
         // inspect view, (b) any failed tool so the diagnosis is
         // visible, (c) any RUNNING tool so the user sees per-step
@@ -2664,7 +2843,13 @@ export const InkApp: React.FC<InkAppProps> = ({
     const m = deferredMessages[i];
     if (!m) continue;
     transcriptRows.push(
-      <MessageRow key={`msg-${i}`} role={m.role} content={m.content} parts={m.parts} />,
+      <MessageRow
+        key={`msg-${i}`}
+        role={m.role}
+        content={m.content}
+        parts={m.parts}
+        columns={columns}
+      />,
     );
     if (m.id) {
       const childCalls = callsByParent.get(m.id);
@@ -2699,8 +2884,62 @@ export const InkApp: React.FC<InkAppProps> = ({
         key="live-delta"
         role={"assistant" as const}
         content={session.streamingAssistantText}
+        columns={columns}
       />,
     );
+  }
+  // Prose-options translator. The LLM occasionally still emits a
+  // numbered list with a trailing question ("1. Run … 2. Show … Which
+  // would you prefer?") despite the STRUCTURED USER INTERACTION skill
+  // rule. When that shape lands and no real elicitation is pending,
+  // synthesise a ChoicePrompt under the message so the user gets an
+  // actual ink picker instead of having to type "1" or "yes" into a
+  // free-text composer. Pre-fix sessions dcdcf246 / 86de186b kept
+  // hitting this anti-pattern.
+  if (
+    !busy &&
+    pendingElicit === null &&
+    session.streamingAssistantText.length === 0 &&
+    deferredToolCalls.every(isToolCallFinalized)
+  ) {
+    const lastAssistant = lastAssistantText(session);
+    const detected = detectProseOptions(lastAssistant);
+    if (detected) {
+      // Anchor the synthesised pick to the message id of the
+      // assistant turn whose text it came from. When that id
+      // changes (engine emits a new assistant message), the
+      // ChoicePrompt re-mounts — keys old focused state from
+      // bleeding across forks.
+      const lastAssistantMsg = (() => {
+        for (let i = session.messages.length - 1; i >= 0; i--) {
+          const m = session.messages[i];
+          if (m?.role === "assistant") return m;
+        }
+        return null;
+      })();
+      const anchorKey = lastAssistantMsg?.id ?? lastAssistant.length.toString(36);
+      dynamicRows.push(
+        <Box key={`prose-choice-${anchorKey}`} marginLeft={MESSAGE_ROW_INDENT}>
+          <ChoicePrompt
+            question={detected.question}
+            options={detected.options.map((o) => ({ value: o.value, label: o.label }))}
+            inputDisabled={pane !== null || slashMode}
+            onResponse={(out) => {
+              // Belt-and-braces double-fire guard. ChoicePrompt's
+              // useInput hook can fire twice in rapid succession
+              // when the user mashes Enter / a digit, and the
+              // synchronous `setBusy(true)` race in handleSubmit
+              // would otherwise queue the duplicate via the prompt
+              // queue. We never want a queued duplicate from a
+              // single pick — read busyRef directly so the
+              // second fire bails before any side effect.
+              if (busyRef.current) return;
+              void handleSubmit(out.value);
+            }}
+          />
+        </Box>,
+      );
+    }
   }
   // Orphaned tool calls (no parent_message_id, or anchor not in
   // current messages array). Rendered as a trailing block so nothing
@@ -2978,8 +3217,31 @@ export const InkApp: React.FC<InkAppProps> = ({
         </Box>
       ) : null}
 
-      {/* Thinking spinner */}
-      <Spinner active={busy} turnTokens={session.usage?.turn_tokens ?? null} />
+      {/* Thinking spinner — surfaces the in-flight tool name so the
+          user sees concrete progress instead of just "thinking…" for
+          long turns. Pre-fix session 86de186b sat on "thinking…
+          1m16s" while the engine ran build_workflow → validate_draft
+          → dry_run_workflow with no visibility. */}
+      {(() => {
+        const running = session.toolCalls.find(
+          (c) => c.status === "running" || c.status === "pending",
+        );
+        // Count tools that COMPLETED this turn (status done/failed)
+        // so we can show "summarising N tool result(s)…" instead of
+        // the rotating verb when the LLM is composing without an
+        // active tool call.
+        const completedThisTurn = session.toolCalls.filter(
+          (c) => c.status === "done" || c.status === "failed",
+        ).length;
+        return (
+          <Spinner
+            active={busy}
+            turnTokens={session.usage?.turn_tokens ?? null}
+            currentTool={running?.name ?? null}
+            completedToolsThisTurn={running ? 0 : completedThisTurn}
+          />
+        );
+      })()}
 
       {/* Subkit-specific telemetry line — tokens, connector count,
           optional shell-hook output. Sits above the footer so the
