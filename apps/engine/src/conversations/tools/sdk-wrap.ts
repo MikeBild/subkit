@@ -1186,6 +1186,102 @@ function wrapOne(
           signals.committed = { workflow_id: result.committed_workflow_id };
         }
 
+        // Post-execution review pause (mirrors reference impl's
+        // `confirm_after_execution`). When the resolved mode says the
+        // tool's RESULT must be reviewed before the loop continues,
+        // and the tool body succeeded (ok=true) and didn't already
+        // emit its own pause, synthesise an `ask_user_confirm`
+        // elicitation carrying the captured result. The operator
+        // accepts → loop resumes; declines → loop receives a
+        // `result_review_declined` envelope (subkit's tenant_write
+        // tools are mostly idempotent / non-rollbackable, so we don't
+        // attempt automatic rollback — declining is logged + surfaced
+        // and the model decides on the next turn).
+        if (
+          resolvedMode === "confirm_after_execution" &&
+          result.ok &&
+          !result.pause &&
+          !signals.pendingElicitation &&
+          // Inline-credential safeguards already pre-confirmed; don't
+          // double-prompt.
+          !policyMarker
+        ) {
+          const reviewElicitation = await createElicitation(
+            {
+              tenant_id: ctx.tenant_id,
+              conversation_id: ctx.conversation_id,
+              tool_call_id: toolCallId,
+              tool_name: "ask_user_confirm",
+              summary: `Review result of ${inner.name}`,
+              input: {
+                kind: "review_after_execution",
+                summary: `Review result of ${inner.name}`,
+                target: { tool: inner.name, args: rawArgs },
+                pending_output: resultPayload,
+              },
+              actor_id: ctx.actor_id,
+            },
+            db,
+          );
+          const reviewElicitationId = reviewElicitation.id;
+          signals.pendingChildElicitationIds.push(reviewElicitationId);
+          events.push({
+            type: "elicit_request",
+            elicitation_id: reviewElicitationId,
+            tool_call_id: toolCallId,
+            tool_name: "ask_user_confirm",
+            summary: `Review result of ${inner.name}`,
+            input: {
+              kind: "review_after_execution",
+              question: `${inner.name} ran. Keep this result?`,
+              target: { tool: inner.name, args: rawArgs },
+            },
+            pending_output: resultPayload as Record<string, unknown>,
+          });
+          log.conversation.approval.requested({
+            conversation_id: ctx.conversation_id,
+            approval_id: reviewElicitationId,
+            kind: "review_after_execution",
+          });
+          signals.pendingElicitation = {
+            elicitation_id: reviewElicitationId,
+            tool_name: "ask_user_confirm",
+            kind: "review_after_execution",
+            summary: `Review result of ${inner.name}`,
+            input: {
+              kind: "review_after_execution",
+              question: `${inner.name} ran. Keep this result?`,
+              target: { tool: inner.name, args: rawArgs },
+            },
+          };
+          logger.info({
+            module: "conversation_tool",
+            action: "post_execution_pause.created",
+            msg: "tool ran; pausing for operator review (confirm_after_execution)",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            elicitation_id: reviewElicitationId,
+          });
+          return {
+            ok: result.ok,
+            data: resultPayload,
+            pause: {
+              tool_name: "ask_user_confirm",
+              kind: "generic",
+              summary: `Review result of ${inner.name}`,
+              elicitation_id: reviewElicitationId,
+              input: {
+                kind: "review_after_execution",
+                question: `${inner.name} ran. Keep this result?`,
+                target: { tool: inner.name, args: rawArgs },
+              },
+            },
+            ...(result.committed_workflow_id
+              ? { committed_workflow_id: result.committed_workflow_id }
+              : {}),
+          };
+        }
+
         return {
           ok: result.ok,
           data: resultPayload,

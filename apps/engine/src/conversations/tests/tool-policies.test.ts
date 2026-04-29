@@ -117,7 +117,12 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     ).toBe("confirm_before_execution");
   });
 
-  it("authenticate_oauth requires confirm by default", () => {
+  it("authenticate_oauth runs first, then pauses for review (confirm_after_execution, Bug UU)", () => {
+    // Mirrors reference impl: the OAuth dance produces a staged
+    // credential; the operator reviews the captured scopes / expiry
+    // BEFORE the loop continues. Pre-fix this was
+    // confirm_before_execution which had the operator approve a
+    // flow they couldn't see the result of yet.
     expect(
       resolveToolMode({
         tool: "authenticate_oauth",
@@ -125,7 +130,7 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
         input: { connector_id: "00000000-0000-0000-0000-000000000000" },
         overrides: {},
       }),
-    ).toBe("confirm_before_execution");
+    ).toBe("confirm_after_execution");
   });
 
   it("cleanup write tools require confirm by default", () => {

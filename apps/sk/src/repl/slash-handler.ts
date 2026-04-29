@@ -1115,6 +1115,80 @@ export async function handleSlash(
         items.map((item) => `${item.status.padEnd(9)} ${item.tool} · ${item.summary}`),
       );
     }
+    case "policy": {
+      // /policy                              → list tools + current mode
+      // /policy <tool> auto|ask|review|reset → pin per-conversation override
+      // Mirrors reference impl's `setToolPolicy` + AgentCapabilities panel
+      // in one slash. The "review" alias maps to confirm_after_execution
+      // (mirrors APPROVAL_LABELS["approval_after"] = "Review after run").
+      if (!ctx.session.conversationId) return "no active conversation";
+      const args = rawArgs;
+      // Map CLI shorthands → engine modes.
+      const modeAlias: Record<
+        string,
+        "no_confirm" | "confirm_before_execution" | "confirm_after_execution" | null
+      > = {
+        auto: "no_confirm",
+        ask: "confirm_before_execution",
+        before: "confirm_before_execution",
+        review: "confirm_after_execution",
+        after: "confirm_after_execution",
+        reset: null,
+        clear: null,
+        default: null,
+      };
+      if (args.length >= 2) {
+        const tool = args[0];
+        const aliasRaw = args[1]?.toLowerCase() ?? "";
+        if (!tool) return "/policy: missing tool name";
+        if (!(aliasRaw in modeAlias)) {
+          return `/policy: unknown mode '${aliasRaw}' — use auto | ask | review | reset`;
+        }
+        const mode = modeAlias[aliasRaw] ?? null;
+        const result = await ctx.client.setConversationToolPolicies(ctx.session.conversationId, {
+          [tool]: mode,
+        });
+        const verb = mode === null ? "cleared" : `pinned to ${aliasRaw}`;
+        const remaining = Object.keys(result.policies).length;
+        return `/policy: ${tool} ${verb}. ${remaining} per-tool override${remaining === 1 ? "" : "s"} active.`;
+      }
+      // Listing path. Pull current overrides + emit the badge per
+      // visible tool. The "default badge" comes from the engine's
+      // tool-policies module — but the slash handler can't import the
+      // engine package; we render the override map and tell the user
+      // how to read the default by category.
+      const { policies } = await ctx.client.getConversationToolPolicies(ctx.session.conversationId);
+      const overrideKeys = Object.keys(policies).sort();
+      const lines =
+        overrideKeys.length === 0
+          ? [
+              "no per-tool overrides set for this conversation.",
+              "",
+              "default behaviour is set by the engine's tool-policies module:",
+              "  - tenant_read tools  → auto (run automatically)",
+              "  - draft_write tools  → auto",
+              "  - tenant_write tools → ask before running",
+              "",
+              "set an override with `/policy <tool_name> auto|ask|review|reset`.",
+            ]
+          : [
+              "per-conversation tool overrides:",
+              "",
+              ...overrideKeys.map((tool) => {
+                const mode = policies[tool];
+                const badge =
+                  mode === "no_confirm"
+                    ? "auto         "
+                    : mode === "confirm_after_execution"
+                      ? "review-after "
+                      : "ask-before   ";
+                return `  ${badge} ${tool}`;
+              }),
+              "",
+              "clear an override with `/policy <tool_name> reset`.",
+            ];
+      return panify(ctx, "tool policies", lines);
+    }
     case "clear":
     case "new": {
       ctx.setConversationId(null);

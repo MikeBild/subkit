@@ -500,6 +500,25 @@ export class EngineClient {
   streamConversation(id: string, debugContext?: DebugCorrelationFields): Promise<Response> {
     return this.stream(`/v1/conversations/${id}/stream`, undefined, debugContext);
   }
+  // Per-tool execution-mode overrides (Bug RR). Empty `{policies}`
+  // GETs the current map; PUT merges the supplied entries (a `null`
+  // value clears that tool's override).
+  getConversationToolPolicies(id: string): Promise<{
+    policies: Record<string, "no_confirm" | "confirm_before_execution" | "confirm_after_execution">;
+  }> {
+    return this.request("GET", `/v1/conversations/${id}/tool-policies`);
+  }
+  setConversationToolPolicies(
+    id: string,
+    policies: Record<
+      string,
+      "no_confirm" | "confirm_before_execution" | "confirm_after_execution" | null
+    >,
+  ): Promise<{
+    policies: Record<string, "no_confirm" | "confirm_before_execution" | "confirm_after_execution">;
+  }> {
+    return this.request("PUT", `/v1/conversations/${id}/tool-policies`, { policies });
+  }
 
   // --------------------------- Skills ---------------------------
   listSkills(
