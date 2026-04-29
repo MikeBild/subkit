@@ -139,6 +139,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "session",
     requires: "conversation:write",
   },
+  {
+    name: "policy",
+    help: "List tool execution-mode badges, or pin a per-tool override. `/policy` lists; `/policy <tool> <auto|ask|review>` sets; `/policy <tool> reset` clears.",
+    category: "session",
+    requires: "conversation:write",
+  },
   { name: "status", help: "Print session + persona status", category: "util" },
   { name: "cost", help: "Show token usage + remaining budget", category: "util" },
   {
