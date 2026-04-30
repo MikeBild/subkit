@@ -9,7 +9,15 @@
 // Wired into `streamText({ prepareStep })` in conversations/loop.ts.
 
 import type { LanguageModel, ModelMessage } from "ai";
+import type { ConversationTool } from "../../conversations/tools/index.ts";
 import type { AuthoringStage } from "../../conversations/types.ts";
+import { logger } from "../../logging/logger.ts";
+import type { LlmProviderKind } from "../types.ts";
+
+// One-shot warning per provider — keeps logs clean when a tenant is
+// pinned to a provider whose ladder has no upgrade for the configured
+// model.
+const NO_UPGRADE_WARNED: Set<string> = new Set();
 
 /** Signals the loop computes per turn and threads into every prepareStep call. */
 export interface StepRouterSignals {
@@ -33,6 +41,12 @@ export interface StepRouterParams {
   messages: ReadonlyArray<ModelMessage>;
   /** The model the loop already resolved (tenant default). */
   model: LanguageModel;
+  /** Tenant default model id (string). Used to compute escalation targets. */
+  tenantDefaultModelId: string;
+  /** Provider currently in use. Drives the per-provider upgrade ladder. */
+  provider: LlmProviderKind;
+  /** Available tools, keyed by name. Used for activeTools narrowing. */
+  toolsByName: Record<string, ConversationTool>;
   signals: StepRouterSignals;
 }
 
@@ -40,25 +54,309 @@ export interface StepRouterParams {
  * Decision returned to the AI SDK's `prepareStep`. Every field is
  * optional; omitted fields mean "use what the loop already configured".
  *
- * Provider options are kept open-ended on purpose — extended thinking
- * lives there for Anthropic-class models, and other providers will
- * grow analogous knobs.
+ * Extended thinking is deliberately NOT a field here — AI SDK 6.x
+ * applies `providerOptions` at streamText construction and there is
+ * no per-step override. The loop checks `supportsExtendedThinking`
+ * directly when computing turn-level providerOptions.
  */
 export interface StepDecision {
-  model?: LanguageModel;
+  /** When set, the per-step model id the loop should resolve and pass to streamText. */
+  modelId?: string;
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK ToolChoice is generic over the variadic tool set.
   toolChoice?: any;
   activeTools?: string[];
   system?: string;
-  // biome-ignore lint/suspicious/noExplicitAny: AI SDK providerOptions is provider-specific JSON.
-  providerOptions?: Record<string, any>;
+  /** Internal reason — surfaces in telemetry. */
+  reason?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Per-provider upgrade ladder.
+//
+// Maps a model id to the next-tier-up id for the same provider. Only
+// upward edges are listed — by construction, `routeUp(top)` is the
+// identity. Providers without a sensibly stronger tier silently no-op
+// the upgrade.
+// ---------------------------------------------------------------------------
+
+interface UpgradeLadder {
+  /** Bare model id → next-tier-up id (one step). */
+  oneUp: Record<string, string>;
+  /** Bare model id → top-tier id (terminal). */
+  top: Record<string, string>;
+}
+
+// `bareModelId` strips date suffixes, so each ladder entry is keyed
+// on the canonical base id. `claude-haiku-4-5-20251001` and
+// `gpt-4o-2024-11-20` collapse to their base equivalents before lookup.
+const ANTHROPIC_LADDER: UpgradeLadder = {
+  oneUp: {
+    "claude-3-5-haiku": "claude-3-5-sonnet",
+    "claude-3-5-sonnet": "claude-3-opus",
+    "claude-3-opus": "claude-opus-4-7",
+    "claude-haiku-4-5": "claude-sonnet-4-5",
+    "claude-sonnet-4-5": "claude-opus-4-7",
+    "claude-sonnet-4-6": "claude-opus-4-7",
+    "claude-opus-4-6": "claude-opus-4-7",
+  },
+  top: {
+    "claude-3-5-haiku": "claude-opus-4-7",
+    "claude-3-5-sonnet": "claude-opus-4-7",
+    "claude-3-opus": "claude-opus-4-7",
+    "claude-haiku-4-5": "claude-opus-4-7",
+    "claude-sonnet-4-5": "claude-opus-4-7",
+    "claude-sonnet-4-6": "claude-opus-4-7",
+    "claude-opus-4-6": "claude-opus-4-7",
+  },
+};
+
+const OPENAI_LADDER: UpgradeLadder = {
+  oneUp: {
+    "gpt-4o-mini": "gpt-4o",
+    "gpt-4o": "gpt-4.1",
+    "gpt-4-turbo": "gpt-4o",
+    "o1-mini": "o1-preview",
+  },
+  top: {
+    "gpt-4o-mini": "gpt-4.1",
+    "gpt-4o": "gpt-4.1",
+    "gpt-4-turbo": "gpt-4.1",
+    "gpt-4.1": "gpt-4.1",
+    "o1-mini": "o1-preview",
+    "o1-preview": "o1-preview",
+  },
+};
+
+const GEMINI_LADDER: UpgradeLadder = {
+  oneUp: {
+    "gemini-1.5-flash": "gemini-1.5-pro",
+    "gemini-2.0-flash": "gemini-2.5-pro",
+    "gemini-2.5-flash": "gemini-2.5-pro",
+  },
+  top: {
+    "gemini-1.5-flash": "gemini-2.5-pro",
+    "gemini-1.5-pro": "gemini-2.5-pro",
+    "gemini-2.0-flash": "gemini-2.5-pro",
+    "gemini-2.5-flash": "gemini-2.5-pro",
+    "gemini-2.5-pro": "gemini-2.5-pro",
+  },
+};
+
+const LADDERS: Partial<Record<LlmProviderKind, UpgradeLadder>> = {
+  anthropic: ANTHROPIC_LADDER,
+  bedrock: ANTHROPIC_LADDER,
+  vertex: ANTHROPIC_LADDER,
+  gateway: ANTHROPIC_LADDER,
+  openai: OPENAI_LADDER,
+  azure: OPENAI_LADDER,
+  gemini: GEMINI_LADDER,
+};
+
+function bareModelId(modelId: string): string {
+  // Strip provider prefixes (`anthropic/claude-…`).
+  const noProvider = modelId.includes("/") ? (modelId.split("/").pop() ?? modelId) : modelId;
+  // Strip vendor-stamped date suffixes so `gpt-4o-2024-11-20` and
+  // `claude-haiku-4-5-20251001` collapse to their base ids in the
+  // ladder lookup. The pattern matches a trailing `-YYYYMMDD` (8
+  // contiguous digits) or `-YYYY-MM-DD`.
+  return noProvider.replace(/-\d{4}-\d{2}-\d{2}$/, "").replace(/-\d{8}$/, "");
+}
+
+/** Returns the next-tier-up model id for `modelId` on `provider`, or `modelId` if no upgrade exists. */
+export function routeUp(provider: LlmProviderKind, modelId: string): string {
+  const ladder = LADDERS[provider];
+  if (!ladder) {
+    warnOnceNoUpgrade(provider, modelId, "no_ladder_for_provider");
+    return modelId;
+  }
+  const bare = bareModelId(modelId);
+  const upgraded = ladder.oneUp[bare];
+  if (upgraded === undefined) {
+    warnOnceNoUpgrade(provider, modelId, "no_upgrade_in_ladder");
+    return modelId;
+  }
+  return upgraded;
+}
+
+/** Returns the top-tier model id for `provider`, or `modelId` if no top is known. */
+export function routeTop(provider: LlmProviderKind, modelId: string): string {
+  const ladder = LADDERS[provider];
+  if (!ladder) return modelId;
+  const bare = bareModelId(modelId);
+  return ladder.top[bare] ?? modelId;
+}
+
+function warnOnceNoUpgrade(provider: LlmProviderKind, modelId: string, reason: string): void {
+  const key = `${provider}::${bareModelId(modelId)}::${reason}`;
+  if (NO_UPGRADE_WARNED.has(key)) return;
+  NO_UPGRADE_WARNED.add(key);
+  logger.warn({
+    module: "llm",
+    action: "step_router.no_upgrade_available",
+    msg: "no upgrade tier available for this provider+model — escalation will be a no-op",
+    provider,
+    model: modelId,
+    reason,
+  });
+}
+
+/** True when extended thinking is supported on this model id. */
+export function supportsExtendedThinking(provider: LlmProviderKind, modelId: string): boolean {
+  if (
+    provider !== "anthropic" &&
+    provider !== "bedrock" &&
+    provider !== "vertex" &&
+    provider !== "gateway"
+  )
+    return false;
+  const bare = bareModelId(modelId);
+  // Sonnet 4.5+, Opus 4.6+ support extended thinking. Haiku does not.
+  return /^claude-(sonnet-4-5|sonnet-4-6|opus-4-6|opus-4-7)/.test(bare);
+}
+
+// ---------------------------------------------------------------------------
+// activeTools — phase narrowing.
+//
+// Selects the subset of tool names the model may emit this step, based
+// on the active authoring stage. Returning `undefined` means "use the
+// full palette" (the SDK default).
+// ---------------------------------------------------------------------------
+
+const ALWAYS_AVAILABLE: ReadonlySet<string> = new Set([
+  "ask_user_choice",
+  "ask_user_multi",
+  "ask_user_text",
+  "ask_user_form",
+  "ask_user_confirm",
+  "cannot_help",
+  "load_skill",
+  "list_skills",
+  "list_skill_suggestions",
+  "search_knowledge",
+  "search_docs",
+  "fetch_connector_docs",
+  "get_raw_result",
+  "inspect_authoring_context",
+]);
+
+function activeToolsForStage(
+  stage: AuthoringStage | undefined,
+  toolsByName: Record<string, ConversationTool>,
+): string[] | undefined {
+  if (!stage || stage === "idle") {
+    // No active draft yet — leave full palette so the model can start anywhere.
+    return undefined;
+  }
+  const names = Object.keys(toolsByName);
+  const keep = (predicate: (t: ConversationTool) => boolean): string[] =>
+    names.filter((n) => {
+      if (ALWAYS_AVAILABLE.has(n)) return true;
+      const t = toolsByName[n];
+      return t ? predicate(t) : false;
+    });
+  switch (stage) {
+    case "connector_targeted":
+    case "workflow_targeted":
+    case "diagnosing":
+      // Discover phase — favour reads.
+      return keep((t) => t.category === "tenant_read");
+    case "connector_draft_started":
+    case "connector_inspected":
+    case "connector_validated":
+    case "connector_authenticated":
+    case "connector_probed":
+    case "workflow_draft_started":
+    case "workflow_inspected":
+    case "workflow_validated":
+    case "workflow_previewed":
+      // Propose / refine phase — draft writes + reads.
+      return keep((t) => t.category === "tenant_read" || t.category === "draft_write");
+    case "repairing":
+      // Repair phase — same as propose but `tenant_write` is also
+      // available so a successful repair can land its `commit_draft` /
+      // `save_connector_draft` without a forced stage transition.
+      return undefined;
+    case "connector_persisted":
+    case "workflow_persisted":
+    case "workflow_executed":
+      // Commit / execute phase — full palette (tenant_write becomes relevant).
+      return undefined;
+    default: {
+      // Exhaustive guard — TypeScript will flag this if a new stage
+      // is added to AuthoringStage without updating the switch.
+      const _exhaustive: never = stage;
+      void _exhaustive;
+      return undefined;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// prepareStep — entry point.
+// ---------------------------------------------------------------------------
+
 /**
- * No-op default. Step 2 fills in escalation rules; Step 1 wires the
- * call site in loop.ts. Until then, returning undefined keeps the
- * loop's existing per-step model and full palette.
+ * Compute the per-step decision. Returns `undefined` to mean "no
+ * override" (the loop's existing config wins). The router never
+ * downgrades the tenant's configured model.
  */
-export function prepareStep(_params: StepRouterParams): StepDecision | undefined {
-  return undefined;
+export function prepareStep(params: StepRouterParams): StepDecision | undefined {
+  const { signals, provider, tenantDefaultModelId, toolsByName } = params;
+
+  // ---- Escalation ladder ------------------------------------------------
+  let modelId: string | undefined;
+  const reasonParts: string[] = [];
+
+  if (signals.escalateMax === true || signals.priorCriticFail === true) {
+    const top = routeTop(provider, tenantDefaultModelId);
+    if (top !== tenantDefaultModelId) {
+      modelId = top;
+      reasonParts.push(signals.priorCriticFail ? "prior_critic_fail" : "escalate_max");
+    }
+  } else if (
+    signals.escalate === true ||
+    signals.hadRepairThisTurn === true ||
+    signals.strongRunIntent === true ||
+    isHardStage(signals.stage)
+  ) {
+    const next = routeUp(provider, tenantDefaultModelId);
+    if (next !== tenantDefaultModelId) {
+      modelId = next;
+      if (signals.hadRepairThisTurn) reasonParts.push("repair_in_prior_step");
+      if (signals.strongRunIntent) reasonParts.push("strong_run_intent");
+      if (signals.escalate) reasonParts.push("escalate_signal");
+      if (isHardStage(signals.stage)) reasonParts.push(`hard_stage:${signals.stage}`);
+    }
+  }
+
+  // ---- activeTools narrowing -------------------------------------------
+  const activeTools = activeToolsForStage(signals.stage, toolsByName);
+  if (activeTools !== undefined) {
+    reasonParts.push(`narrow:${activeTools.length}`);
+  }
+
+  if (modelId === undefined && activeTools === undefined) {
+    return undefined;
+  }
+  const decision: StepDecision = {};
+  if (modelId !== undefined) decision.modelId = modelId;
+  if (activeTools !== undefined) decision.activeTools = activeTools;
+  if (reasonParts.length > 0) decision.reason = reasonParts.join(",");
+  return decision;
+}
+
+function isHardStage(stage: AuthoringStage | undefined): boolean {
+  if (!stage) return false;
+  // "Hard" = stages where the model is composing schema-shaped artefacts
+  // or repairing. Routine reads / inspections do not qualify.
+  switch (stage) {
+    case "connector_validated":
+    case "connector_persisted":
+    case "workflow_validated":
+    case "workflow_persisted":
+    case "repairing":
+      return true;
+    default:
+      return false;
+  }
 }

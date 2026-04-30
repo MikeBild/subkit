@@ -1,27 +1,36 @@
 // commit-draft critic rubric.
 //
 // Triggered when the loop terminates on `commit_draft` (workflow
-// commit) or `save_connector_draft` (connector save). Asks the
-// tenant-default model to verdict-check a freshly committed artifact
-// against five concrete questions:
+// commit) or `save_connector_draft` (connector save). The artifact
+// carries STRUCTURAL FACTS about what was committed (not just
+// prose) so the rubric's checks are grounded:
 //
-//   1. Was the artifact actually saved (id present)?
-//   2. Is the auth flow defined (connector) or trigger defined (workflow)?
-//   3. Is at least one validated step present?
-//   4. Are there NO `[guard:placeholder]` markers in the committed text?
-//   5. Do all referenced credentials exist in the tenant snapshot?
+//   1. saved                    — artifact_id is non-null
+//   2. auth_or_trigger_defined  — connector has an auth_mode set, OR
+//                                 workflow has at least one step + a
+//                                 trigger_kind that isn't 'unknown'
+//   3. validated_step_present   — validated_step_count >= 1
+//   4. no_placeholder_markers   — committed_text has no [guard:…]
+//   5. credentials_exist        — every referenced_credential id
+//                                 appears in the snapshot
 //
-// Step 0 exports the schema + the (empty) judge prompt. Step 4
-// fills in the prompt body.
+// All five are deterministic predicates over the artifact fields —
+// no second LLM call.
 
 import { z } from "zod";
 
 export const CommitDraftArtifactSchema = z.object({
   resource_kind: z.enum(["connector", "workflow"]),
   resource_id: z.string().nullable(),
-  /** Canonicalised text or JSON of what was committed — used for grounded scanning. */
+  /** Connectors only: the auth mode actually configured on the saved row. */
+  connector_auth_mode: z.string().nullable().default(null),
+  /** Workflows only: the trigger kind actually configured. */
+  workflow_trigger_kind: z.string().nullable().default(null),
+  /** Number of steps that successfully passed validation in this draft. */
+  validated_step_count: z.number().int().nonnegative().default(0),
+  /** The actual committed assistant prose — scanned for placeholder leakage. */
   committed_text: z.string(),
-  /** Connector id <→ credential id references the artifact depends on. */
+  /** Credential ids the artifact depends on — checked against the snapshot. */
   referenced_credentials: z.array(z.string()).default([]),
 });
 
@@ -50,6 +59,4 @@ export type CommitDraftVerdict = z.infer<typeof CommitDraftVerdictSchema>;
 export const commitDraftRubric = {
   kind: "commit_draft" as const,
   schema: CommitDraftVerdictSchema,
-  /** Step 4 fills this in. */
-  prompt: "",
 };
