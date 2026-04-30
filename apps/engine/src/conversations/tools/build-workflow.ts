@@ -20,7 +20,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import { connectors as connectorsTable } from "../../db/schema/index.ts";
+import { connectors as connectorsTable, conversations } from "../../db/schema/index.ts";
 import { describeConnectorPlaceholders, parsePlaceholders } from "../../llm/substitution/index.ts";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
@@ -524,6 +524,23 @@ export const buildWorkflowTool: ConversationTool = {
     const beforeJson = canonicalJson(currentDraft.workflow ?? null);
     const nextDraft = withWorkflowDraft(currentDraft, workflowDraft, "workflow_built");
     await ctx.setDraft(nextDraft);
+    // Detach from any previously-saved workflow target. build_workflow
+    // replaces the draft wholesale; if the conversation row still
+    // pointed at an earlier workflow with a different slug, downstream
+    // commit_draft would key the upsert on the stale id. The
+    // commit-time identity gate also catches this, but resetting here
+    // keeps inspect / dry_run pre-commit aligned with the new draft.
+    if (currentDraft.workflow?.slug !== args.slug) {
+      await ctx.db
+        .update(conversations)
+        .set({ target_workflow_id: null, updated_at: new Date() })
+        .where(
+          and(
+            eq(conversations.tenant_id, ctx.tenant_id),
+            eq(conversations.id, ctx.conversation_id),
+          ),
+        );
+    }
     if (ctx.emitDiff) {
       const afterJson = canonicalJson(nextDraft.workflow ?? null);
       ctx.emitDiff({
