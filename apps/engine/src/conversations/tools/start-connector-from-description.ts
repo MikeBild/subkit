@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
+import { matchTemplateByUrl } from "../../connectors/template-url-match.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import {
@@ -22,7 +23,9 @@ const inputSchema = z
     environment: z.enum(["dev", "prod"]).default("dev"),
     base_url: z.string().optional(),
     dsn: z.string().optional(),
-    auth_type: z.enum(["none", "header", "query", "bearer", "basic", "oauth2"]).optional(),
+    auth_type: z
+      .enum(["none", "header", "query", "bearer", "basic", "oauth2", "aws_sigv4"])
+      .optional(),
   })
   .openapi("StartConnectorFromDescriptionToolInput");
 
@@ -47,12 +50,28 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
       .filter((value): value is string => typeof value === "string" && value.length > 0)
       .join(" ");
     const resolvedTemplates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
+
+    // Prefer URL-pattern match when a URL is supplied — text matching
+    // gets fooled by descriptions like "AWS AppSync GraphQL" picking up
+    // generic "graphql" templates that hardcode `auth_type=header`,
+    // when the URL clearly identifies a Cognito-fronted AppSync API
+    // and we have a dedicated `appsync-cognito` template.
+    const urlMatched = args.base_url
+      ? matchTemplateByUrl(
+          args.base_url,
+          resolvedTemplates.map((entry) => entry.template),
+        )
+      : null;
+    const urlMatchedAllowed =
+      urlMatched &&
+      (!args.auth_type || allowedTemplateAuthTypes(urlMatched.template).includes(args.auth_type));
+
     const bestTemplate = pickBestConnectorTemplate(
       descriptionForMatching,
       inferredDriver,
       resolvedTemplates.map((entry) => entry.template),
     );
-    const resolvedTemplate =
+    const textMatchedAllowed =
       bestTemplate &&
       shouldAutoSelectConnectorTemplate({
         template: bestTemplate.template,
@@ -60,8 +79,13 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
         name: args.name,
         ...(args.description ? { description: args.description } : {}),
       }) &&
-      (!args.auth_type || allowedTemplateAuthTypes(bestTemplate.template).includes(args.auth_type))
-        ? (resolvedTemplates.find((entry) => entry.template.slug === bestTemplate.template.slug) ??
+      (!args.auth_type || allowedTemplateAuthTypes(bestTemplate.template).includes(args.auth_type));
+
+    const resolvedTemplate = urlMatchedAllowed
+      ? (resolvedTemplates.find((entry) => entry.template.slug === urlMatched.template.slug) ??
+        null)
+      : textMatchedAllowed
+        ? (resolvedTemplates.find((entry) => entry.template.slug === bestTemplate!.template.slug) ??
           null)
         : null;
     const template = resolvedTemplate?.template ?? null;
@@ -119,15 +143,21 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
             validation,
           },
           validation,
-          matched_template:
-            template && bestTemplate
-              ? {
-                  slug: template.slug,
-                  name: template.name,
-                  score: bestTemplate.score,
-                  required_fields: inferTemplateRequiredFields(template),
-                }
-              : null,
+          matched_template: template
+            ? {
+                slug: template.slug,
+                name: template.name,
+                score:
+                  urlMatched && template.slug === urlMatched.template.slug
+                    ? urlMatched.score
+                    : (bestTemplate?.score ?? 0),
+                match_kind:
+                  urlMatched && template.slug === urlMatched.template.slug
+                    ? ("url" as const)
+                    : ("text" as const),
+                required_fields: inferTemplateRequiredFields(template),
+              }
+            : null,
         },
       }),
     };
