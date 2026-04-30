@@ -134,6 +134,8 @@ describe("conversation tools — registration", () => {
     "update_connector",
     "update_knowledge_source",
     "update_subscription",
+    "list_draft_snapshots",
+    "restore_draft_snapshot",
   ] as const;
 
   test("the expected tool palette is registered", () => {
