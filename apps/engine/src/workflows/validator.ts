@@ -127,10 +127,8 @@ export function validateWorkflowDef(
         if (!isAbsolute && !isConnectorBaseUrlPlaceholder) {
           errors.push({
             path: `steps.${step.id}.url`,
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: the
-            // operator-facing message must contain the literal placeholder
-            // syntax `${connector.<slug>.base_url}` — see substitution/parser.ts.
             message:
+              // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message must show the literal `${connector.<slug>.base_url}` placeholder syntax — see substitution/parser.ts
               "url must start with http(s):// OR with `${connector.<slug>.base_url}` — alternatively set `connector_id` and `path` so the driver merges base_url + path",
           });
         }
