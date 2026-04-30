@@ -293,7 +293,19 @@ export async function buildRequestPlan(
     credential_id: credentialId,
     oauth2_refreshed: oauth2Refreshed,
   } = await resolveConnectorCredential(resolveOpts);
+  // Step-level `Authorization` wins over the connector credential.
+  // Pre-fix `applyAuthMaterial` unconditionally clobbered it — so a
+  // workflow author who minted a token in step N and tried to forward
+  // it as `headers: { Authorization: "${scope.…}" }` to step N+1 saw
+  // the explicit header overwritten by the connector's auth_type.
+  // Session 8de01f2f spent four preview rounds before working around
+  // by switching `auth_type` to `none`.
+  const stepAuthHeader = headers.Authorization ?? headers.authorization ?? null;
   applyAuthMaterial(p.connector, credential, headers, query);
+  if (stepAuthHeader) {
+    delete headers.authorization;
+    headers.Authorization = stepAuthHeader;
+  }
   // Idempotency-Key — opt-in per-call, set by the request step for
   // non-idempotent methods. Pass-through; the value is plain text and is
   // not scrubbed by the egress audit (it's not a credential).
@@ -393,11 +405,31 @@ function sniffBodyShape(text: string): "json" | "xml" | "csv" | null {
   return null;
 }
 
+/** Content-types that carry JSON payloads but don't say "application/json"
+ *  in the header. Pre-fix the parser only honoured `application/json` so
+ *  AWS Cognito IDP responses (`application/x-amz-json-1.1`) and AWS
+ *  service responses generally were returned to the workflow scope as
+ *  raw strings — the LLM had to call `$parseJson()` in JSONata and
+ *  session 8de01f2f spent five preview rounds debugging a string-typed
+ *  IdToken before figuring this out. */
+function isJsonContentType(contentType: string): boolean {
+  if (!contentType) return false;
+  const ct = contentType.toLowerCase();
+  return (
+    ct.includes("application/json") ||
+    ct.includes("application/x-amz-json") || // AWS service APIs (Cognito IDP, DynamoDB, …)
+    ct.includes("application/vnd.api+json") || // JSON:API
+    ct.includes("application/ld+json") || // JSON-LD
+    ct.includes("application/hal+json") || // HAL
+    /\+json(\b|;)/.test(ct) // catch-all: any subtype ending in +json
+  );
+}
+
 /** @internal Exported for unit tests; do not import outside http.ts. */
 export function parseResponseBody(text: string, contentType: string): unknown {
   // Trusted-header fast path. JSON is the overwhelming majority of
   // responses we see; honour the header without sniffing.
-  if (contentType.includes("application/json") && text.length > 0) {
+  if (isJsonContentType(contentType) && text.length > 0) {
     try {
       return JSON.parse(text);
     } catch {

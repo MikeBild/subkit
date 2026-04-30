@@ -134,6 +134,69 @@ export async function createConnector(
     const environment = effective.environment ?? "dev";
     const auth_type = effective.auth_type ?? "none";
     validateHttpConfig(effective.driver, effective.config);
+    // Upsert semantics on (tenant_id, environment, slug): when a
+    // connector with the same slug already exists in the same
+    // environment, treat the call as an update rather than letting the
+    // unique-constraint throw. Mirrors the reference impl's
+    // `upsertSystem ON CONFLICT (id, environment, org_id) DO UPDATE`.
+    // Pre-fix the LLM authoring flow looped here: re-running
+    // start_connector_from_description with the same URL produced the
+    // same slug, the insert threw `duplicate key violates …
+    // connectors_tenant_environment_slug_idx`, and the LLM started
+    // recreating workflows from scratch.
+    const existingRows = await tx
+      .select()
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.tenant_id, p.tenant_id),
+          eq(connectors.slug, slug),
+          eq(connectors.environment, environment),
+          isNull(connectors.deleted_at),
+        ),
+      )
+      .limit(1);
+    const existing = existingRows[0];
+    if (existing) {
+      const updated = await tx
+        .update(connectors)
+        .set({
+          display_name: effective.name,
+          driver: effective.driver,
+          auth_type,
+          base_url: effective.base_url ?? existing.base_url,
+          dsn: effective.dsn ?? existing.dsn,
+          config: effective.config ?? existing.config,
+          operator_notes: effective.operator_notes ?? existing.operator_notes,
+          ...(resolved.binding ?? {}),
+          updated_at: new Date(),
+        })
+        .where(eq(connectors.id, existing.id))
+        .returning();
+      const row = updated[0] ?? existing;
+      await auditAwait(
+        {
+          tenant_id: p.tenant_id,
+          actor_type: p.actor_id ? "user" : "system",
+          actor_id: p.actor_id,
+          action: AuditAction.CONNECTOR_UPDATED,
+          resource_type: "connector",
+          resource_id: row.id,
+          result: "success",
+          reason: "upsert_on_slug_conflict",
+          metadata: {
+            slug,
+            driver: effective.driver,
+            environment,
+            auth_type,
+            template_slug: row.template_slug ?? null,
+            template_source: row.template_source ?? null,
+          },
+        },
+        tx,
+      );
+      return toView(row);
+    }
     const inserted = await tx
       .insert(connectors)
       .values({

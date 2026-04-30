@@ -8,7 +8,7 @@ import {
   jsonResponse,
   type MockServer,
 } from "../../execution/tests/setup.ts";
-import { applyAuthMaterial, buildRequestPlan } from "../drivers/http.ts";
+import { applyAuthMaterial, buildRequestPlan, parseResponseBody } from "../drivers/http.ts";
 import { createConnector, getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 
@@ -82,6 +82,55 @@ describe("http driver auth application", () => {
     expect(res.status).toBe(200);
     expect(lastRequest?.headers.authorization).toBe("Bearer bearer-xyz");
     expect(lastRequest?.url).toBe("/ping");
+  });
+
+  test("step-level Authorization header wins over the connector's bearer credential", async () => {
+    // Reproduces the regression in session 8de01f2f. The LLM minted
+    // a Cognito IdToken in step N and tried to forward it as
+    // `headers: { Authorization: "<id_token>" }` to step N+1. Pre-fix
+    // `applyAuthMaterial` unconditionally clobbered the explicit
+    // header with the connector's bearer credential. The LLM had to
+    // work around by switching `auth_type` to `none`.
+    const conn = await makeConnector({ auth_type: "bearer" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: conn.id,
+        environment: "dev",
+        mode: "bearer",
+        value: { mode: "bearer", token: "stale-token" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const fresh = await getConnector(ctx.tenantId, conn.id, ctx.testDb.db);
+    const plan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: fresh!,
+      path_or_url: "/ping",
+      headers: { Authorization: "eyJraWQiOiJ.id-token-from-prior-step" },
+    });
+    expect(plan.headers.Authorization).toBe("eyJraWQiOiJ.id-token-from-prior-step");
+    expect(plan.headers.Authorization).not.toContain("Bearer stale-token");
+  });
+
+  test("parseResponseBody parses application/x-amz-json-1.1 (AWS Cognito IDP)", () => {
+    const cognito = `{"AuthenticationResult":{"IdToken":"eyJ…","AccessToken":"eyJ…","ExpiresIn":3600}}`;
+    const parsed = parseResponseBody(cognito, "application/x-amz-json-1.1");
+    expect(typeof parsed).toBe("object");
+    expect(
+      (parsed as { AuthenticationResult: { IdToken: string } }).AuthenticationResult.IdToken,
+    ).toBe("eyJ…");
+  });
+
+  test("parseResponseBody parses any +json subtype (JSON:API, HAL, JSON-LD)", () => {
+    const body = `{"data":{"id":"1"}}`;
+    expect(parseResponseBody(body, "application/vnd.api+json")).toEqual({ data: { id: "1" } });
+    expect(parseResponseBody(body, "application/hal+json")).toEqual({ data: { id: "1" } });
+    expect(parseResponseBody(body, "application/ld+json; charset=utf-8")).toEqual({
+      data: { id: "1" },
+    });
   });
 
   test("header credential is applied as raw request headers", async () => {
