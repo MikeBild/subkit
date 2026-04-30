@@ -51,6 +51,7 @@ import {
 } from "./lib/secret-shape.ts";
 import { ActivityLine } from "./repl/activity-line.tsx";
 import { AlternateScreen } from "./repl/alt-screen.tsx";
+import { describeConfirmationPayload } from "./repl/approval/describe-confirmation.ts";
 import { ResumeSummaryCard, renderAuthoringCard } from "./repl/authoring-cards.tsx";
 import { BackgroundToolGroup, isBackgroundTool } from "./repl/background-tools.tsx";
 import { classifyAttachment, readClipboard } from "./repl/clipboard-read.ts";
@@ -266,60 +267,6 @@ function truncateForTranscript(value: string): string {
 // (type=password, sensitive:true, or a name like `token`/`api_key`)
 // render as `<name>=***` so the audit trail names what was provided
 // without leaking the secret.
-/**
- * Pull a short, transcript-safe summary of WHAT a confirmation
- * elicitation is about. Tries (in order):
- *   1. `input.commit_intent.description` — the LLM's own summary line
- *      written when it set the commit_intent carrier.
- *   2. `input.target.tool` + a workflow/connector identifier from
- *      `target.args` — falls back when the LLM forgot to set
- *      description.
- *   3. `input.summary` / `input.question` — last-resort string field.
- *
- * Truncates to 80 chars so a long description doesn't push the
- * transcript line off the screen.
- */
-function describeConfirmationPayload(input: unknown): string | null {
-  if (!input || typeof input !== "object") return null;
-  const obj = input as Record<string, unknown>;
-  const commitIntent =
-    obj.commit_intent && typeof obj.commit_intent === "object" && obj.commit_intent !== null
-      ? (obj.commit_intent as Record<string, unknown>)
-      : null;
-  const description =
-    commitIntent && typeof commitIntent.description === "string" ? commitIntent.description : null;
-  if (description && description.trim().length > 0) {
-    return truncateForTranscript(description.trim());
-  }
-  const target =
-    obj.target && typeof obj.target === "object" && obj.target !== null
-      ? (obj.target as Record<string, unknown>)
-      : null;
-  const tool = target && typeof target.tool === "string" ? target.tool : null;
-  const args =
-    target && typeof target.args === "object" && target.args !== null
-      ? (target.args as Record<string, unknown>)
-      : null;
-  const idHint =
-    args && typeof args.target_workflow_id === "string"
-      ? args.target_workflow_id
-      : args && typeof args.workflow_id === "string"
-        ? args.workflow_id
-        : args && typeof args.slug === "string"
-          ? args.slug
-          : args && typeof args.connector_id === "string"
-            ? args.connector_id
-            : null;
-  if (tool) return truncateForTranscript(idHint ? `${tool} ${idHint}` : tool);
-  const fallback =
-    typeof obj.summary === "string"
-      ? obj.summary
-      : typeof obj.question === "string"
-        ? obj.question
-        : null;
-  return fallback ? truncateForTranscript(fallback.trim()) : null;
-}
-
 export function renderElicitAnswer(output: unknown, input?: unknown, reason?: string): string {
   const suffix = reason ? ` — ${reason}` : "";
   if (output === null || output === undefined) return `(no answer)${suffix}`;

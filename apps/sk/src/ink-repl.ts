@@ -47,29 +47,11 @@ export interface InkReplOptions {
   noMemory?: boolean;
 }
 
-const PROBE_PERMISSIONS = [
-  "conversation:read",
-  "conversation:write",
-  "conversation:approve",
-  "conversation:cancel",
-  "conversation:commit",
-  "conversation:list",
-  "memory:write",
-  "mcp:read",
-  "skill:read",
-  "audit:read",
-  "identity:read",
-  // Operator / admin probes — used for top-level command visibility gating.
-  "workflow:read",
-  "workflow:write",
-  "connector:read",
-  "skill:write",
-  "execution:read",
-  "notification:read",
-  "rbac:read",
-  "api_key:read",
-  "portal_token:read",
-] as const;
+// Persona resolution lives in `./persona-probe.ts` so this REPL and
+// the readline REPL share one tier-filtered probe path. Pre-fix each
+// ran its own ~22 rbac:can calls; together that doubled to ~44
+// audit-log rows on every session start.
+import { resolvePersonaShared } from "./persona-probe.ts";
 
 interface ResolvedPersona {
   label: string;
@@ -85,46 +67,7 @@ async function resolvePersona(
   client: EngineClient,
   profile: ResolvedProfile,
 ): Promise<ResolvedPersona> {
-  const allowed = new Set<string>();
-  let label = profile.persona_hint ?? "user";
-  let tenant: string | null = profile.active_tenant_id ?? null;
-  let email: string | null = null;
-  try {
-    const who = await client.whoami().catch(() => null);
-    if (who) {
-      email = who.email ?? null;
-      tenant = who.tenant_slug ?? who.tenant_id ?? tenant;
-      // Seed label from the role_name the engine returned before any
-      // probe runs, so status line renders the right persona even if
-      // the RBAC check endpoint denies us later (e.g. on a fresh tenant
-      // with a restricted key).
-      if (who.role_name) label = who.role_name;
-      for (const p of PROBE_PERMISSIONS) {
-        try {
-          const d = await client.rbacCan({ principal_id: who.id, permission: p });
-          if (d.allow) allowed.add(p);
-        } catch {
-          /* ignore */
-        }
-      }
-      // Refine label if we got enough signal back from the RBAC probes.
-      if (allowed.has("audit:read")) label = "admin";
-      else if (allowed.has("workflow:write") && allowed.has("connector:read")) label = "operator";
-      else if (allowed.has("mcp:read") && allowed.has("skill:read")) label = "member";
-      else if (!allowed.has("conversation:list") && allowed.has("conversation:write"))
-        label = "portal";
-      else if (allowed.has("conversation:write")) label = "enduser";
-    }
-  } catch {
-    /* leave label as-is */
-  }
-  return {
-    label,
-    probe: { allows: (p: string) => allowed.has(p) },
-    allowed,
-    tenant,
-    email,
-  };
+  return resolvePersonaShared(client, profile);
 }
 
 export async function runInkRepl(opts: InkReplOptions): Promise<number> {
