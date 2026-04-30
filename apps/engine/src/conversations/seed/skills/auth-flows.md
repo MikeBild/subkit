@@ -67,12 +67,32 @@ Connector config keys:
 | `cognito_username` | yes | Email or sub the user logs in with |
 | `cognito_use_access_token` | optional | `true` to send AccessToken instead of IdToken (resource APIs) |
 
-The username + password live in the credential row (`mode: "basic"`):
-the driver lifts them at first use, calls InitiateAuth, persists the
-resulting tokens.
+**How to collect the credentials (the only path that works):**
 
-Use the built-in `appsync-cognito` template to skip manual config —
-it pre-fills the endpoint, headers, and `token_type:"none"`.
+1. Set the connector config first via `update_connector_draft`:
+   `{ aws_region, oauth: { client_id, grant_type: "cognito_user_password" } }`.
+   These are NOT secrets — write them directly. (`token_endpoint`,
+   `authorization_endpoint`, `issuer_url` are also non-secret URLs;
+   the engine's credential-leak guard allow-lists them.)
+2. Call `ask_user_form(type: "password", sensitive: true)` with fields
+   `[username, password]`. The harness caches the form output as a
+   `cognito_user_password` credential keyed on the conversation.
+3. `probe_connector_draft` then mints the IdToken on the fly via
+   `runCognitoUserPasswordGrant`, applies it as raw `Authorization`
+   header, and the AppSync probe returns 200.
+4. `save_connector_draft` persists the IdToken + RefreshToken as a
+   regular oauth2 credential row; refresh-worker rotates via
+   `REFRESH_TOKEN_AUTH` on stale.
+
+**Anti-pattern**: putting `username` / `password` on
+`update_connector_draft.config` (or anywhere on the draft body). The
+engine rejects the patch with `credential_must_use_form` and the
+operator gets stuck. The masked-form path is the only credential ingress.
+
+Use the built-in `appsync-cognito` template (URL-match auto-selects it
+for `*.appsync-api.*.amazonaws.com` hosts) to skip the config dance —
+it pre-fills the endpoint, headers, `grant_type`, and
+`token_type:"none"`.
 
 ### `jwt_bearer` specifics (RFC 7523)
 

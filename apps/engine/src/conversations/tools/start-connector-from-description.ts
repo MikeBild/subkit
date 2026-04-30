@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
-import { matchTemplateByUrl } from "../../connectors/template-url-match.ts";
+import { matchTemplatesByUrl } from "../../connectors/template-url-match.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import {
@@ -56,15 +56,30 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
     // generic "graphql" templates that hardcode `auth_type=header`,
     // when the URL clearly identifies a Cognito-fronted AppSync API
     // and we have a dedicated `appsync-cognito` template.
-    const urlMatched = args.base_url
-      ? matchTemplateByUrl(
+    //
+    // When multiple templates share the same url_pattern (AppSync has
+    // both `appsync-cognito` and `appsync-iam`), bias selection by the
+    // LLM-supplied `auth_type` hint when it's compatible with one of
+    // them; otherwise pick the first match (alphabetical tie-break in
+    // `matchTemplatesByUrl`). The hint may also be wrong — the LLM
+    // tends to guess SigV4 for any `appsync-api.*.amazonaws.com` host
+    // even when the operator says "I have username and password" —
+    // so when the hint disagrees with what URL match finds, URL match
+    // still wins (the operator's URL is ground truth, the LLM hint
+    // is a guess).
+    const urlMatches = args.base_url
+      ? matchTemplatesByUrl(
           args.base_url,
+          5,
           resolvedTemplates.map((entry) => entry.template),
         )
+      : [];
+    const urlMatchedByAuthHint = args.auth_type
+      ? (urlMatches.find((m) => allowedTemplateAuthTypes(m.template).includes(args.auth_type!)) ??
+        null)
       : null;
-    const urlMatchedAllowed =
-      urlMatched &&
-      (!args.auth_type || allowedTemplateAuthTypes(urlMatched.template).includes(args.auth_type));
+    const urlMatched = urlMatchedByAuthHint ?? urlMatches[0] ?? null;
+    const urlMatchedAllowed = urlMatched !== null;
 
     const bestTemplate = pickBestConnectorTemplate(
       descriptionForMatching,

@@ -150,6 +150,58 @@ describe("connector draft tools", () => {
     expect(data.matched_template?.match_kind).toBe("url");
   });
 
+  test("URL match still wins when LLM mis-guesses auth_type as aws_sigv4", async () => {
+    // Reproduces the regression in session 3f81fb2a. The LLM sees an
+    // AppSync hostname and unconditionally guesses `aws_sigv4`. URL
+    // match returns BOTH `appsync-cognito` and `appsync-iam`. Pre-fix
+    // the guard "args.auth_type must be in URL-match's auth_options"
+    // disqualified cognito (no aws_sigv4 option), fell back to text
+    // match which picked `appsync-iam` — auth=aws_sigv4 baked into the
+    // draft. Now we bias-by-auth-type-hint among URL matches: pick the
+    // template whose auth_options accept the LLM's guess.
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "AWS AppSync GraphQL",
+      description: "AWS AppSync GraphQL endpoint",
+      base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+      environment: "dev",
+      auth_type: "aws_sigv4", // mis-guess — operator actually has user+pass
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: { template_slug: string | null; auth_type: string };
+      matched_template: { slug: string; match_kind: "url" | "text" } | null;
+    };
+    // SigV4-compatible URL match → appsync-iam wins (the auth_type
+    // hint biased the URL-match selection).
+    expect(data.connector.template_slug).toBe("appsync-iam");
+    expect(data.connector.auth_type).toBe("aws_sigv4");
+    expect(data.matched_template?.match_kind).toBe("url");
+  });
+
+  test("URL match falls back to first candidate when LLM auth_type matches no URL template", async () => {
+    // LLM mis-guesses again, this time with an auth_type that NO
+    // AppSync template supports. URL match should still win — first
+    // candidate (alphabetical: appsync-cognito), auth_type forced to
+    // template's primary (oauth2). Operator's URL is ground truth.
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "AWS AppSync GraphQL",
+      description: "AWS AppSync GraphQL endpoint",
+      base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+      environment: "dev",
+      auth_type: "bearer", // not in either appsync template's auth_options
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: { template_slug: string | null; auth_type: string };
+      matched_template: { slug: string; match_kind: "url" | "text" } | null;
+    };
+    expect(data.connector.template_slug).toBe("appsync-cognito");
+    expect(data.connector.auth_type).toBe("oauth2"); // template wins, not LLM's bearer
+    expect(data.matched_template?.match_kind).toBe("url");
+  });
+
   test("start_connector_from_template reports unresolved endpoint placeholders as missing fields", async () => {
     const toolCtx = await createToolCtx();
     const started = await startConnectorFromTemplateTool.execute(toolCtx.base, {

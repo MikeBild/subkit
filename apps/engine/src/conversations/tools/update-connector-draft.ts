@@ -19,6 +19,27 @@ const CREDENTIAL_KEY_RE =
   /^(token|api[_-]?key|password|credential|secret|.*_token|authorization|access[_-]?token|client[_-]?secret|private[_-]?key)$/i;
 
 /**
+ * OAuth2 / Cognito metadata fields that *contain* the substring "token"
+ * or "authorization" but are NOT secrets. These are public URLs that
+ * the LLM legitimately needs to write to `update_connector_draft.config`
+ * when wiring an OAuth2 connector.
+ *
+ * Pre-fix the credential-leak guard fired on `token_endpoint` (matched
+ * `SENSITIVE_KEY_PATTERN.token`) and refused the update — the LLM then
+ * couldn't fix the AppSync Cognito config and the operator was stuck.
+ */
+const NON_SECRET_KEYS = new Set<string>([
+  "token_endpoint",
+  "authorization_endpoint",
+  "token_url",
+  "authorization_url",
+  "device_authorization_endpoint",
+  "issuer_url",
+  "token_auth_method",
+  "token_content_type",
+]);
+
+/**
  * Walk `value` recursively and return the key path of the first credential-shaped
  * field found, or `null` if none. A field is credential-shaped when:
  *   a) its key name matches CREDENTIAL_KEY_RE, OR
@@ -47,10 +68,15 @@ function containsCredentialShape(value: unknown, path: string, depth: number): s
 
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     const childPath = path ? `${path}.${key}` : key;
-    // Key name check — uses the scrubber's SENSITIVE_KEY_PATTERN as the broad
-    // net, plus our stricter CREDENTIAL_KEY_RE for full-word anchoring.
-    if (SENSITIVE_KEY_PATTERN.test(key) || CREDENTIAL_KEY_RE.test(key)) {
-      return childPath;
+    // Allow-list: well-known OAuth2 / Cognito *metadata* keys that
+    // happen to contain "token" / "authorization" as a substring but
+    // carry public URLs / enums, not secrets.
+    if (!NON_SECRET_KEYS.has(key.toLowerCase())) {
+      // Key name check — uses the scrubber's SENSITIVE_KEY_PATTERN as the broad
+      // net, plus our stricter CREDENTIAL_KEY_RE for full-word anchoring.
+      if (SENSITIVE_KEY_PATTERN.test(key) || CREDENTIAL_KEY_RE.test(key)) {
+        return childPath;
+      }
     }
     const hit = containsCredentialShape(child, childPath, depth + 1);
     if (hit !== null) return hit;
