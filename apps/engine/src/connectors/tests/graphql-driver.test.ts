@@ -248,5 +248,54 @@ describe("graphql driver", () => {
     expect(res.status).toBe(200);
     const body = res.body as { extensions?: { auth?: string } };
     expect(body.extensions?.auth).toBe("Bearer tk-shh");
+    // Reports the applied auth method back to callers — the request step
+    // threads this onto request_meta.connector.auth_method for audit.
+    expect(res.auth_method).toBe("bearer");
+  });
+
+  test("auth_method=none for unauthenticated connector", async () => {
+    const fresh = await getConnector(tenantId, connectorId, testDb.db);
+    const res = await gqlQuery({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh!,
+      query: "{ users(limit: 1) { id } }",
+    });
+    if (res.status === 501) throw new Error("unexpected not_implemented");
+    expect(res.auth_method).toBe("none");
+  });
+
+  test("subscription not_implemented carries auth_method=none", async () => {
+    const fresh = await getConnector(tenantId, bearerConnectorId, testDb.db);
+    const res = await gqlQuery({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh!,
+      operation: "subscription",
+      query: "subscription { tick }",
+    });
+    expect(res.status).toBe(501);
+    expect(res.auth_method).toBe("none");
+  });
+
+  test("credential_override skips the DB lookup (draft-time probe)", async () => {
+    // Use the unauthenticated connector but inject a draft bearer credential
+    // — mirrors the HTTP driver's `credential_override` path used by
+    // probe_connector_draft to test pre-persist drafts.
+    const fresh = await getConnector(tenantId, connectorId, testDb.db);
+    const res = await gqlQuery({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh!,
+      query: "{ users(limit: 1) { id } }",
+      credential_override: { mode: "bearer", token: "draft-only" },
+    });
+    expect(res.status).toBe(200);
+    expect(res.auth_method).toBe("bearer");
+    const body = res.body as { extensions?: { auth?: string } };
+    expect(body.extensions?.auth).toBe("Bearer draft-only");
+    // No persisted credential row was created — the override path bypasses
+    // the DB so credential_id stays null.
+    expect(res.credential_id).toBeNull();
   });
 });

@@ -23,6 +23,7 @@ import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import type { ConnectorView } from "../types.ts";
+import { signSigV4Request } from "./aws-sigv4.ts";
 
 // Re-export so callers that already import from this driver can catch
 // the SSRF-block error without taking a direct dependency on the guard.
@@ -109,9 +110,30 @@ export function applyAuthMaterial(
       headers.Authorization = `Basic ${encoded}`;
       return;
     }
-    case "oauth2":
-      headers.Authorization = `${credential.token_type ?? "Bearer"} ${credential.access_token}`;
+    case "aws_sigv4":
+      // SigV4 needs the URL + method + body to compute the canonical
+      // request — we can't sign here. The dispatch path
+      // (`executePlannedHttpRequest`) checks the credential mode and
+      // calls `signSigV4Request` right before fetch. This branch is a
+      // no-op so the switch stays exhaustive.
       return;
+    case "oauth2": {
+      // `token_type` controls the Authorization scheme.
+      //
+      // - "Bearer" (RFC 6750) is the common case — Linear, GitHub, Monday,
+      //   Auth0, Cognito client-credentials.
+      // - Empty / null / "none" / "no_prefix" → emit the token VERBATIM
+      //   without a scheme prefix. Required by AppSync Cognito User-Pool
+      //   auth and Lambda authorizer flows that expect the raw JWT
+      //   (`Authorization: eyJ…`), and tolerant of IdPs that return
+      //   `token_type: ""`.
+      const scheme = (credential.token_type ?? "").trim();
+      const rawScheme = scheme === "" || /^(none|no_prefix)$/i.test(scheme);
+      headers.Authorization = rawScheme
+        ? credential.access_token
+        : `${scheme} ${credential.access_token}`;
+      return;
+    }
   }
 }
 
@@ -149,7 +171,87 @@ export type AppliedAuthMethod =
   | "query"
   | "basic"
   | "oauth2_static"
-  | "oauth2_refreshed";
+  | "oauth2_refreshed"
+  | "aws_sigv4";
+
+export interface ResolvedConnectorCredential {
+  credential: DecryptedCredential | null;
+  credential_id: string | null;
+  /** True when the oauth2 path rotated a stale token inline. Always
+   *  false for non-oauth2 modes. */
+  oauth2_refreshed: boolean;
+}
+
+/**
+ * Shared credential resolver for any driver that uses connector auth.
+ * Pulls the persisted credential row, decrypts it, and runs the inline
+ * oauth2 refresh path if the token is near expiry. Drivers should use
+ * this instead of calling `getCredentialForConnector` directly so
+ * GraphQL / S3 / future drivers get the same refresh-on-stale guarantees
+ * the HTTP driver has.
+ *
+ * The `override` parameter mirrors `buildRequestPlan`'s
+ * `credential_override` slot — used by `probe_connector_draft` to test
+ * pre-persist drafts.
+ */
+export async function resolveConnectorCredential(p: {
+  db: Db;
+  tenant_id: string;
+  connector: ConnectorView;
+  override?: DecryptedCredential | null;
+}): Promise<ResolvedConnectorCredential> {
+  if (p.override !== undefined) {
+    return { credential: p.override, credential_id: null, oauth2_refreshed: false };
+  }
+  if (p.connector.auth_type === "none") {
+    return { credential: null, credential_id: null, oauth2_refreshed: false };
+  }
+  const row = await getCredentialForConnector(
+    p.tenant_id,
+    p.connector.id,
+    p.connector.environment,
+    p.db,
+  );
+  if (!row) {
+    return { credential: null, credential_id: null, oauth2_refreshed: false };
+  }
+  let credential: DecryptedCredential = row.value;
+  let oauth2_refreshed = false;
+  if (credential.mode === "oauth2") {
+    const preToken = credential.access_token;
+    credential = await refreshIfStale(p.db, p.tenant_id, row.row, credential);
+    if (credential.mode === "oauth2" && credential.access_token !== preToken) {
+      oauth2_refreshed = true;
+    }
+  }
+  return { credential, credential_id: row.row.id, oauth2_refreshed };
+}
+
+/** Map a `DecryptedCredential` + the oauth2-refresh observation into the
+ *  observable `AppliedAuthMethod`. Shared by HTTP, GraphQL, and any
+ *  future driver. */
+export function deriveAppliedAuthMethod(
+  credential: DecryptedCredential | null,
+  oauth2Refreshed: boolean,
+): AppliedAuthMethod {
+  if (!credential) return "none";
+  switch (credential.mode) {
+    case "none":
+      return "none";
+    case "bearer":
+      return "bearer";
+    case "header":
+      return "header";
+    case "query":
+      return "query";
+    case "basic":
+      return "basic";
+    case "oauth2":
+      return oauth2Refreshed ? "oauth2_refreshed" : "oauth2_static";
+    case "aws_sigv4":
+      return "aws_sigv4";
+  }
+}
 
 export interface ResolvedRequestPlan {
   url: URL;
@@ -168,27 +270,6 @@ export interface ResolvedRequestPlan {
   tunnel_target?: string;
 }
 
-function deriveAuthMethod(
-  credential: DecryptedCredential | null,
-  oauth2Refreshed: boolean,
-): AppliedAuthMethod {
-  if (!credential) return "none";
-  switch (credential.mode) {
-    case "none":
-      return "none";
-    case "bearer":
-      return "bearer";
-    case "header":
-      return "header";
-    case "query":
-      return "query";
-    case "basic":
-      return "basic";
-    case "oauth2":
-      return oauth2Refreshed ? "oauth2_refreshed" : "oauth2_static";
-  }
-}
-
 /**
  * One-shot: pull the connector's credential, apply it, and return a
  * ready-to-fetch plan. Used both by the request step runner and by the
@@ -199,38 +280,19 @@ export async function buildRequestPlan(
 ): Promise<ResolvedRequestPlan> {
   const headers = { ...(p.headers ?? {}) };
   const query = { ...(p.query ?? {}) };
-  let credential: DecryptedCredential | null = null;
-  let credentialId: string | null = null;
-  let oauth2Refreshed = false;
-  if (p.credential_override) {
-    // Draft-time override: caller already holds the credential in
-    // memory (see draft-credential-cache.ts). Skip the DB lookup —
-    // the synthetic draft connector_id wouldn't resolve anyway, and
-    // round-tripping through encrypt+decrypt before the connector
-    // exists is not useful.
-    credential = p.credential_override;
-  } else if (p.connector.auth_type !== "none") {
-    const row = await getCredentialForConnector(
-      p.tenant_id,
-      p.connector.id,
-      p.connector.environment,
-      p.db,
-    );
-    if (row) {
-      credential = row.value;
-      credentialId = row.row.id;
-      if (credential.mode === "oauth2") {
-        // Synchronous refresh path — if the token is stale, refresh
-        // inline so the caller gets a fresh token on the request. The
-        // refresh-worker module documents the rationale.
-        const preToken = credential.access_token;
-        credential = await refreshIfStale(p.db, p.tenant_id, row.row, credential);
-        if (credential.mode === "oauth2" && credential.access_token !== preToken) {
-          oauth2Refreshed = true;
-        }
-      }
-    }
+  const resolveOpts: Parameters<typeof resolveConnectorCredential>[0] = {
+    db: p.db,
+    tenant_id: p.tenant_id,
+    connector: p.connector,
+  };
+  if (p.credential_override !== undefined) {
+    resolveOpts.override = p.credential_override;
   }
+  const {
+    credential,
+    credential_id: credentialId,
+    oauth2_refreshed: oauth2Refreshed,
+  } = await resolveConnectorCredential(resolveOpts);
   applyAuthMaterial(p.connector, credential, headers, query);
   // Idempotency-Key — opt-in per-call, set by the request step for
   // non-idempotent methods. Pass-through; the value is plain text and is
@@ -249,7 +311,7 @@ export async function buildRequestPlan(
     query,
     credential,
     credential_id: credentialId,
-    auth_method: deriveAuthMethod(credential, oauth2Refreshed),
+    auth_method: deriveAppliedAuthMethod(credential, oauth2Refreshed),
   };
   if (typeof cfg.tunnel_target === "string" && cfg.tunnel_target.length > 0) {
     plan.tunnel_target = cfg.tunnel_target;
@@ -282,7 +344,59 @@ export interface HttpExecutionResult {
   tunnel_target?: string;
 }
 
-function parseResponseBody(text: string, contentType: string): unknown {
+/**
+ * Decide whether the Content-Type header is informative or not.
+ * Servers that return JSON with `application/octet-stream`,
+ * `text/plain`, or no header at all are common enough that we'd
+ * rather sniff than mis-parse. The trusted-header path stays the
+ * fast path: if the header explicitly says `application/json`,
+ * `text/csv`, or any well-known text variant, we honour it without
+ * inspecting body bytes.
+ */
+function shouldSniff(contentType: string): boolean {
+  if (!contentType) return true;
+  const ct = contentType.toLowerCase();
+  if (ct.includes("application/octet-stream")) return true;
+  if (ct === "text/plain" || ct.startsWith("text/plain;")) return true;
+  return false;
+}
+
+/**
+ * Body content sniffer — reads the first ~512 bytes and decides
+ * whether the payload looks like JSON, XML, or CSV. Keep the
+ * heuristics conservative (`{` or `[` for JSON; `<?xml`/`<root>` for
+ * XML; comma-delimited header line for CSV) so we never mis-classify
+ * arbitrary text. Returns `null` when no shape matches; caller falls
+ * back to the raw text.
+ */
+function sniffBodyShape(text: string): "json" | "xml" | "csv" | null {
+  const sample = text.slice(0, 512).trimStart();
+  if (!sample) return null;
+  if (sample.startsWith("{") || sample.startsWith("[")) return "json";
+  if (sample.startsWith("<?xml") || /^<[a-z_][\w:.-]*[\s>]/i.test(sample)) return "xml";
+  // CSV heuristic: header line is a comma-delimited list of identifier-
+  // ish tokens (no internal spaces) AND the body has at least one
+  // additional row. Requiring identifier-shaped header cells avoids
+  // false positives on prose ("just some prose, nothing structured" —
+  // both cells contain spaces).
+  const lines = sample.split(/\r?\n/);
+  if (lines.length >= 2) {
+    const header = lines[0] ?? "";
+    if (header.includes(",")) {
+      const cells = header.split(",");
+      const looksLikeIdentifierHeader =
+        cells.length >= 2 && cells.every((c) => /^[A-Za-z_][\w\-.]{0,63}$/.test(c.trim()));
+      const secondLineHasContent = (lines[1] ?? "").trim().length > 0;
+      if (looksLikeIdentifierHeader && secondLineHasContent) return "csv";
+    }
+  }
+  return null;
+}
+
+/** @internal Exported for unit tests; do not import outside http.ts. */
+export function parseResponseBody(text: string, contentType: string): unknown {
+  // Trusted-header fast path. JSON is the overwhelming majority of
+  // responses we see; honour the header without sniffing.
   if (contentType.includes("application/json") && text.length > 0) {
     try {
       return JSON.parse(text);
@@ -290,7 +404,368 @@ function parseResponseBody(text: string, contentType: string): unknown {
       return text;
     }
   }
+  // Magic-byte sniff for headers that don't disclose the real shape
+  // (octet-stream, text/plain, missing). Returning the parsed JSON /
+  // CSV row array here lets a downstream `data_selector` work even
+  // when the vendor didn't set Content-Type properly.
+  if (shouldSniff(contentType) && text.length > 0) {
+    const shape = sniffBodyShape(text);
+    if (shape === "json") {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+    }
+    if (shape === "csv") {
+      return parseCsvBody(text);
+    }
+    if (shape === "xml") {
+      const parsed = parseXmlBody(text);
+      if (parsed !== null) return parsed;
+      // Fall through to raw text on malformed XML.
+    }
+  }
   return text;
+}
+
+/**
+ * Tiny tag-soup XML parser. Handles enough of XML 1.0 + namespaces to
+ * convert SOAP / XML-RPC / RSS responses into a JSONata-friendly tree:
+ *
+ *   <root xmlns:ns="…"><a id="1">x</a><a id="2">y</a></root>
+ *     →  { "root": { "a": [ { "@id": "1", "#text": "x" },
+ *                            { "@id": "2", "#text": "y" } ] } }
+ *
+ * Conventions:
+ *   - Attributes are prefixed `@` so they sit alongside element
+ *     children without colliding with element names.
+ *   - Repeated child elements collapse to an array (the typical
+ *     vendor convention; single-child cases stay as an object).
+ *   - Text content lives at `#text` so a node with both attributes
+ *     and text reads cleanly.
+ *   - Namespace prefixes (`ns:tag`) keep the prefix in the key so
+ *     authors can address them without inventing local-name munging.
+ *   - Self-closing tags become `null`.
+ *   - CDATA segments are concatenated into `#text` verbatim.
+ *
+ * Returns `null` on any parse failure so the caller falls back to the
+ * raw text.
+ */
+/**
+ * Serialize a structured value back into XML using the same
+ * conventions the parser produces. `@attr` keys become attributes,
+ * `#text` becomes text content, arrays become repeated elements.
+ * Unknown values stringify via `String(value)`. Used for symmetric
+ * `xml: { … }` request bodies — operators can build the same tree
+ * shape they consume.
+ */
+export function serializeXmlBody(value: unknown): string {
+  const escapeText = (s: string): string =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const escapeAttr = (s: string): string =>
+    s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const renderNode = (name: string, node: unknown): string => {
+    if (node === null || node === undefined) return `<${name}/>`;
+    if (typeof node === "string" || typeof node === "number" || typeof node === "boolean") {
+      return `<${name}>${escapeText(String(node))}</${name}>`;
+    }
+    if (Array.isArray(node)) {
+      return node.map((entry) => renderNode(name, entry)).join("");
+    }
+    if (typeof node === "object") {
+      const obj = node as Record<string, unknown>;
+      const attrs: string[] = [];
+      const children: string[] = [];
+      for (const [k, v] of Object.entries(obj)) {
+        if (k.startsWith("@")) {
+          attrs.push(`${k.slice(1)}="${escapeAttr(String(v ?? ""))}"`);
+        } else if (k === "#text") {
+          children.push(escapeText(String(v ?? "")));
+        } else {
+          children.push(renderNode(k, v));
+        }
+      }
+      const head = attrs.length > 0 ? `${name} ${attrs.join(" ")}` : name;
+      if (children.length === 0) return `<${head}/>`;
+      return `<${head}>${children.join("")}</${name}>`;
+    }
+    return `<${name}>${escapeText(String(node))}</${name}>`;
+  };
+  if (value === null || value === undefined) return "";
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return renderNode("root", value);
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 1) {
+    const [name, child] = entries[0]!;
+    return renderNode(name, child);
+  }
+  return renderNode("root", value);
+}
+
+function parseXmlBody(text: string): unknown {
+  try {
+    type XmlNode = string | { [k: string]: unknown };
+    let i = 0;
+    const len = text.length;
+    // Active namespace bindings stack — each frame is the prefix→URI
+    // map in scope at that depth. Pushed on element entry, popped on
+    // element exit. A `null` URI means "no namespace" (default
+    // namespace removed).
+    const nsStack: Array<Record<string, string>> = [{}];
+
+    const currentBindings = (): Record<string, string> => Object.assign({}, ...nsStack);
+
+    const resolveNs = (qname: string): { prefix: string; local: string; uri: string | null } => {
+      const idx = qname.indexOf(":");
+      if (idx < 0) {
+        const bindings = currentBindings();
+        return { prefix: "", local: qname, uri: bindings[""] ?? null };
+      }
+      const prefix = qname.slice(0, idx);
+      const local = qname.slice(idx + 1);
+      const bindings = currentBindings();
+      return { prefix, local, uri: bindings[prefix] ?? null };
+    };
+
+    const skipWhitespace = (): void => {
+      while (i < len) {
+        const ch = text[i]!;
+        if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") i++;
+        else break;
+      }
+    };
+
+    // Drop XML declaration, DOCTYPE, comments, processing instructions.
+    const consumeProlog = (): void => {
+      while (i < len) {
+        skipWhitespace();
+        if (text.startsWith("<?", i)) {
+          const end = text.indexOf("?>", i + 2);
+          if (end < 0) break;
+          i = end + 2;
+          continue;
+        }
+        if (text.startsWith("<!--", i)) {
+          const end = text.indexOf("-->", i + 4);
+          if (end < 0) break;
+          i = end + 3;
+          continue;
+        }
+        if (text.startsWith("<!DOCTYPE", i) || text.startsWith("<!doctype", i)) {
+          const end = text.indexOf(">", i);
+          if (end < 0) break;
+          i = end + 1;
+          continue;
+        }
+        break;
+      }
+    };
+
+    const decodeEntities = (s: string): string =>
+      s
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&amp;/g, "&");
+
+    const parseAttrs = (raw: string): Record<string, string> => {
+      const attrs: Record<string, string> = {};
+      const re = /([A-Za-z_][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+      for (let m = re.exec(raw); m !== null; m = re.exec(raw)) {
+        attrs[`@${m[1]}`] = decodeEntities(m[2] ?? m[3] ?? "");
+      }
+      return attrs;
+    };
+
+    const parseElement = (): { name: string; node: XmlNode } | null => {
+      if (text[i] !== "<") return null;
+      const tagEnd = text.indexOf(">", i);
+      if (tagEnd < 0) return null;
+      const tagBody = text.slice(i + 1, tagEnd).trim();
+      const selfClosing = tagBody.endsWith("/");
+      const inner = selfClosing ? tagBody.slice(0, -1).trim() : tagBody;
+      const spaceIdx = inner.search(/\s/);
+      const rawName = spaceIdx < 0 ? inner : inner.slice(0, spaceIdx);
+      const attrPart = spaceIdx < 0 ? "" : inner.slice(spaceIdx + 1);
+      const rawAttrs = parseAttrs(attrPart);
+
+      // Pull xmlns declarations out of the attribute set + push a new
+      // namespace frame so child elements resolve through the right
+      // bindings. The xmlns bindings still surface on the resulting
+      // node (as @xmlns:* attrs) for round-trip transparency, but
+      // resolveNs() answers about URIs, not just prefixes.
+      const newBindings: Record<string, string> = {};
+      for (const [k, v] of Object.entries(rawAttrs)) {
+        if (k === "@xmlns") {
+          newBindings[""] = v;
+        } else if (k.startsWith("@xmlns:")) {
+          newBindings[k.slice("@xmlns:".length)] = v;
+        }
+      }
+      nsStack.push(newBindings);
+
+      const resolved = resolveNs(rawName);
+      // The rendered key uses the local name when a default namespace
+      // is in scope (so `<foo xmlns="urn:bar"><baz/></foo>` renders as
+      // `{ foo: { baz: null } }` rather than carrying a synthetic
+      // prefix). When a prefix is present, keep the prefixed form so
+      // authors can still address it; the resolved URI surfaces under
+      // a synthetic `@xmlns:_resolved` attribute when prefixes from
+      // different scopes share a local name. The collision case is
+      // when the document itself overloads `prefix:tag` from disjoint
+      // URIs in sibling subtrees — rare in practice; we handle the
+      // common SOAP / RSS / XHTML case correctly.
+      const name = resolved.prefix ? rawName : resolved.local;
+      i = tagEnd + 1;
+
+      // Translate attributes: map `@a` (an attribute) to `@@a` when
+      // the parent will also have a child named `a`. We can't know
+      // ahead of time, so eagerly use `@@` for ALL attributes that
+      // collide with a known reserved child name (handled below at
+      // child-merge time). For now keep them as parsed (`@a`).
+      if (selfClosing) {
+        nsStack.pop();
+        const node =
+          Object.keys(rawAttrs).length > 0
+            ? (rawAttrs as Record<string, unknown>)
+            : (null as unknown as XmlNode);
+        return { name, node };
+      }
+      // Collect children + text until the matching close tag.
+      const children: Record<string, unknown> = { ...rawAttrs };
+      let textBuf = "";
+      let closed = false;
+      while (i < len) {
+        if (text.startsWith("</", i)) {
+          const end = text.indexOf(">", i + 2);
+          if (end < 0) return null;
+          i = end + 1;
+          closed = true;
+          break;
+        }
+        if (text.startsWith("<![CDATA[", i)) {
+          const end = text.indexOf("]]>", i + 9);
+          if (end < 0) return null;
+          textBuf += text.slice(i + 9, end);
+          i = end + 3;
+          continue;
+        }
+        if (text.startsWith("<!--", i)) {
+          const end = text.indexOf("-->", i + 4);
+          if (end < 0) return null;
+          i = end + 3;
+          continue;
+        }
+        if (text[i] === "<") {
+          const child = parseElement();
+          if (!child) return null;
+          // Collision-avoidance: if an attribute exists at @name and a
+          // child element shares the local name, rewrite the attribute
+          // key to @@name so the operator can disambiguate. The double-
+          // @ is parser-internal escape — `serializeXmlBody` reads it
+          // back as a single attribute name on round-trip.
+          const collidingAttr = `@${child.name}`;
+          if (collidingAttr in children) {
+            children[`@@${child.name}`] = children[collidingAttr];
+            delete children[collidingAttr];
+          }
+          const existing = children[child.name];
+          if (existing === undefined) {
+            children[child.name] = child.node;
+          } else if (Array.isArray(existing)) {
+            existing.push(child.node);
+          } else {
+            children[child.name] = [existing, child.node];
+          }
+        } else {
+          const next = text.indexOf("<", i);
+          textBuf += text.slice(i, next < 0 ? len : next);
+          i = next < 0 ? len : next;
+        }
+      }
+      if (!closed) {
+        nsStack.pop();
+        return null;
+      }
+      nsStack.pop();
+      const trimmed = decodeEntities(textBuf).trim();
+      if (Object.keys(children).length === 0) {
+        return { name, node: trimmed };
+      }
+      if (trimmed.length > 0) children["#text"] = trimmed;
+      return { name, node: children };
+    };
+
+    consumeProlog();
+    if (i >= len || text[i] !== "<") return null;
+    const root = parseElement();
+    if (!root) return null;
+    return { [root.name]: root.node };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Tiny RFC-4180-ish CSV parser. Handles double-quoted fields with
+ * embedded commas + escaped double-quotes; trims the trailing newline.
+ * The first row is treated as a header; downstream rows render as
+ * objects keyed by header name. Returns an empty array on any parse
+ * failure rather than throwing — the caller can fall back to text.
+ */
+function parseCsvBody(text: string): Array<Record<string, string>> {
+  try {
+    const rows: string[][] = [];
+    let cur: string[] = [];
+    let field = "";
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"' && text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          field += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ",") {
+          cur.push(field);
+          field = "";
+        } else if (ch === "\n" || ch === "\r") {
+          if (ch === "\r" && text[i + 1] === "\n") i++;
+          cur.push(field);
+          rows.push(cur);
+          cur = [];
+          field = "";
+        } else {
+          field += ch;
+        }
+      }
+    }
+    if (field.length > 0 || cur.length > 0) {
+      cur.push(field);
+      rows.push(cur);
+    }
+    if (rows.length === 0) return [];
+    const header = rows[0]!;
+    return rows.slice(1).map((cells) => {
+      const obj: Record<string, string> = {};
+      for (let i = 0; i < header.length; i++) {
+        obj[header[i]!] = cells[i] ?? "";
+      }
+      return obj;
+    });
+  } catch {
+    return [];
+  }
 }
 
 function mergeSignals(signals: AbortSignal[]): AbortSignal {
@@ -313,6 +788,14 @@ export async function executePlannedHttpRequest(params: {
   body?: unknown;
   signal: AbortSignal;
   tunnel_target?: string;
+  /** When set, the dispatch path runs SigV4 signing right before
+   *  `fetch` — sigv4 needs the URL + method + body to compute the
+   *  canonical request, so it can't run earlier. */
+  sigv4?: {
+    region: string;
+    service: string;
+    credential: import("../../credentials/types.ts").AwsSigV4CredentialValue;
+  };
 }): Promise<HttpExecutionResult> {
   if (params.tunnel_target) {
     const effectiveBody =
@@ -365,6 +848,19 @@ export async function executePlannedHttpRequest(params: {
     }
   }
   injectTraceContext(headers);
+  // SigV4 must run AFTER content-type / trace headers are stamped (they
+  // contribute to the canonical-headers hash) and BEFORE fetch.
+  if (params.sigv4) {
+    signSigV4Request({
+      method: params.method,
+      url: params.url,
+      headers,
+      body: typeof init.body === "string" ? init.body : undefined,
+      region: params.sigv4.region,
+      service: params.sigv4.service,
+      credential: params.sigv4.credential,
+    });
+  }
   const res = await fetch(params.url, init);
   const text = await res.text();
   const headerObj: Record<string, string> = {};
@@ -420,6 +916,24 @@ export async function executeConnectorHttpRequest(params: {
         ? signals[0]!
         : mergeSignals(signals);
 
+  // SigV4 connector → derive the signer from the resolved credential
+  // and the connector config (`aws_region`, `aws_service`).
+  let sigv4Args: Parameters<typeof executePlannedHttpRequest>[0]["sigv4"] | undefined;
+  if (plan.credential?.mode === "aws_sigv4") {
+    const cfg = (params.connector.config ?? {}) as {
+      aws_region?: unknown;
+      aws_service?: unknown;
+    };
+    const region = typeof cfg.aws_region === "string" ? cfg.aws_region : "us-east-1";
+    const service = typeof cfg.aws_service === "string" ? cfg.aws_service : null;
+    if (!service) {
+      throw new Error(
+        `aws_sigv4 connector ${params.connector.id} missing required config.aws_service`,
+      );
+    }
+    sigv4Args = { region, service, credential: plan.credential };
+  }
+
   return await executePlannedHttpRequest({
     tenant_id: params.tenant_id,
     method: params.method,
@@ -428,6 +942,7 @@ export async function executeConnectorHttpRequest(params: {
     body: params.body,
     signal,
     ...(plan.tunnel_target ? { tunnel_target: plan.tunnel_target } : {}),
+    ...(sigv4Args ? { sigv4: sigv4Args } : {}),
   });
 }
 

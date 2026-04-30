@@ -2,7 +2,13 @@
 // union so callers (routes, workers, drivers) can pick the right wrapper
 // without knowing openid-client v6 internals.
 
-export type OAuth2GrantKind = "authorization_code" | "client_credentials";
+export type OAuth2GrantKind =
+  | "authorization_code"
+  | "client_credentials"
+  | "password"
+  | "cognito_user_password"
+  | "jwt_bearer"
+  | "device_code";
 
 export interface OAuth2ClientConfig {
   issuer_url: string;

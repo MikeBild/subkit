@@ -3698,7 +3698,15 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "example_paths": [
+      "/projects",
+      "/projects/${item.id}/resources",
+      "/droplets",
+      "/droplets/${item.id}",
+      "/domains",
+      "/domains/${item.name}"
+    ]
   },
   {
     "version": 1,
@@ -5570,6 +5578,265 @@
         "field": "password",
         "label": "Password",
         "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
+  },
+  {
+    "version": 1,
+    "slug": "appsync-cognito",
+    "name": "AWS AppSync (Cognito User-Password)",
+    "driver": "graphql",
+    "base_url": null,
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://cognito-idp.eu-central-1.amazonaws.com",
+      "token_endpoint": "https://cognito-idp.eu-central-1.amazonaws.com/",
+      "grant_type": "cognito_user_password",
+      "token_auth_method": "body",
+      "token_content_type": "json",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {
+        "x-amz-target": "AWSCognitoIdentityProviderService.InitiateAuth"
+      }
+    },
+    "default_skill": "auth-flows",
+    "ingestion_source": "graphql",
+    "ingestion_url": null,
+    "icon": "aws.svg",
+    "description": "AWS AppSync GraphQL API authenticated via Cognito User-Pool USER_PASSWORD_AUTH. The driver mints an IdToken from email+password, refreshes via REFRESH_TOKEN_AUTH (1h access / 30d refresh), and emits the raw JWT in the Authorization header.",
+    "category": "aws",
+    "tags": ["graphql", "aws", "cognito", "appsync", "user-password"],
+    "setup_instructions": "Pick the AWS region of the User Pool. Enter the App Client ID (USER_PASSWORD_AUTH must be enabled on the client; client secret is optional). Set base_url to your AppSync GraphQL endpoint (https://<api-id>.appsync-api.<region>.amazonaws.com/graphql). Provide the user's email + password as credentials.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "Cognito User-Password (USER_PASSWORD_AUTH)",
+        "description": "Email + password against a Cognito User Pool. Driver runs InitiateAuth, caches the IdToken, refreshes via REFRESH_TOKEN_AUTH.",
+        "oauth": {
+          "grant_type": "cognito_user_password",
+          "token_auth_method": "body",
+          "token_content_type": "json",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {
+            "x-amz-target": "AWSCognitoIdentityProviderService.InitiateAuth"
+          },
+          "issuer_url": "https://cognito-idp.eu-central-1.amazonaws.com",
+          "token_endpoint": "https://cognito-idp.eu-central-1.amazonaws.com/",
+          "scopes": ""
+        }
+      },
+      {
+        "auth_type": "header",
+        "label": "Static Cognito IdToken",
+        "description": "Paste a pre-minted Cognito IdToken into the Authorization header. Useful for short-lived access; no refresh.",
+        "oauth": null
+      }
+    ],
+    "url_pattern": "^https:\\/\\/[a-z0-9]+\\.appsync-api\\.[a-z0-9-]+\\.amazonaws\\.com\\/graphql$",
+    "keywords": ["cognito", "appsync", "user_password_auth", "id_token"],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "POST",
+      "path": "/graphql"
+    },
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "Cognito User Email",
+        "placeholder": "user@example.com",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "Cognito Password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
+  },
+  {
+    "version": 1,
+    "slug": "appsync-iam",
+    "name": "AWS AppSync (IAM SigV4)",
+    "driver": "graphql",
+    "base_url": null,
+    "auth_type": "aws_sigv4",
+    "oauth": null,
+    "default_skill": "auth-flows",
+    "ingestion_source": "graphql",
+    "ingestion_url": null,
+    "icon": "aws.svg",
+    "description": "AWS AppSync GraphQL API authenticated via IAM SigV4. Every request is signed with the connector's AWS credentials before dispatch — works with static IAM user keys or temporary STS credentials (AssumeRole / IAM Identity Center).",
+    "category": "aws",
+    "tags": ["graphql", "aws", "sigv4", "iam", "appsync"],
+    "setup_instructions": "Set base_url to your AppSync GraphQL endpoint (https://<api-id>.appsync-api.<region>.amazonaws.com/graphql). Set config.aws_region to the region (e.g. eu-central-1) and config.aws_service to 'appsync'. Provide AWS access key + secret key (and optionally a session token from STS) as credentials.",
+    "auth_options": [
+      {
+        "auth_type": "aws_sigv4",
+        "label": "AWS IAM SigV4",
+        "description": "Sign every request with AWS Signature V4. Supports static IAM keys or temporary STS credentials.",
+        "oauth": null
+      }
+    ],
+    "url_pattern": "^https:\\/\\/[a-z0-9]+\\.appsync-api\\.[a-z0-9-]+\\.amazonaws\\.com\\/graphql$",
+    "keywords": ["sigv4", "iam", "appsync"],
+    "inline_schema": null,
+    "probe_endpoint": { "method": "POST", "path": "/graphql" },
+    "credential_hints": [
+      {
+        "field": "access_key_id",
+        "label": "AWS Access Key ID",
+        "placeholder": "AKIA...",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "secret_access_key",
+        "label": "AWS Secret Access Key",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      },
+      {
+        "field": "session_token",
+        "label": "AWS Session Token (optional, STS)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
+  },
+  {
+    "version": 1,
+    "slug": "aws-apigw-iam",
+    "name": "AWS API Gateway (IAM SigV4)",
+    "driver": "http",
+    "base_url": null,
+    "auth_type": "aws_sigv4",
+    "oauth": null,
+    "default_skill": "auth-flows",
+    "ingestion_source": null,
+    "ingestion_url": null,
+    "icon": "aws.svg",
+    "description": "AWS API Gateway REST endpoint with IAM authorization. Every request signed with SigV4.",
+    "category": "aws",
+    "tags": ["rest", "aws", "sigv4", "iam", "apigw"],
+    "setup_instructions": "Set base_url to https://<api-id>.execute-api.<region>.amazonaws.com/<stage>. Set config.aws_region to the region and config.aws_service to 'execute-api'. Provide AWS credentials.",
+    "auth_options": [
+      {
+        "auth_type": "aws_sigv4",
+        "label": "AWS IAM SigV4",
+        "description": "Sign every request with AWS Signature V4.",
+        "oauth": null
+      }
+    ],
+    "url_pattern": "^https:\\/\\/[a-z0-9]+\\.execute-api\\.[a-z0-9-]+\\.amazonaws\\.com\\/.*$",
+    "keywords": ["sigv4", "iam", "apigw", "api-gateway"],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "access_key_id",
+        "label": "AWS Access Key ID",
+        "placeholder": "AKIA...",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "secret_access_key",
+        "label": "AWS Secret Access Key",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    }
+  },
+  {
+    "version": 1,
+    "slug": "gcp-service-account",
+    "name": "Google Cloud Platform (Service Account)",
+    "driver": "http",
+    "base_url": null,
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://oauth2.googleapis.com",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "grant_type": "jwt_bearer",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
+    },
+    "default_skill": "auth-flows",
+    "ingestion_source": null,
+    "ingestion_url": null,
+    "icon": "gcp.svg",
+    "description": "Google Cloud APIs (BigQuery, Cloud Storage, Sheets, Drive, ...) authenticated via service-account JWT bearer. The driver signs an RS256 JWT with the SA private key, exchanges it for an access token at oauth2.googleapis.com, and refreshes inline.",
+    "category": "gcp",
+    "tags": ["rest", "gcp", "service-account", "jwt-bearer"],
+    "setup_instructions": "Create a Service Account in GCP IAM, download the JSON key. Set config.jwt_subject to the SA email (e.g. svc@project.iam.gserviceaccount.com), config.jwt_audience to https://oauth2.googleapis.com/token, scope to the GCP API scope (e.g. https://www.googleapis.com/auth/bigquery). Paste the private_key field from the JSON into config.jwt_private_key_pem (or store as a credential).",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "Service Account JWT (RS256)",
+        "description": "Sign a JWT with the service account private key, exchange for an access token via JWT-Bearer grant.",
+        "oauth": {
+          "grant_type": "jwt_bearer",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
+          "issuer_url": "https://oauth2.googleapis.com",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": ""
+        }
+      }
+    ],
+    "url_pattern": null,
+    "keywords": ["jwt-bearer", "rs256", "service-account", "gcp", "google"],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "jwt_private_key_pem",
+        "label": "Service Account Private Key (PEM)",
+        "placeholder": "-----BEGIN PRIVATE KEY-----\\n...",
         "doc_url": null,
         "secret": true
       }
