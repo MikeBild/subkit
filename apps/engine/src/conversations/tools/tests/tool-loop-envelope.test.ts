@@ -39,14 +39,16 @@ function freshSignals(): TurnSignals {
     pendingChildElicitationIds: [],
     toolInvocationCount: new Map(),
     toolLastErrorHash: new Map(),
+    toolArgsRepeat: new Map(),
+    toolValidationFingerprint: new Map(),
     totalLoopWarnings: 0,
     consecutiveFailures: 0,
     lastAssistantText: "",
   };
 }
 
-describe("loop-breaker structured envelope", () => {
-  it("tenant_read cap is 6 (not 3) — inspect_execution_step calls 4 + 5 + 6 succeed", async () => {
+describe("adaptive loop-breaker structured envelope", () => {
+  it("tenant_read tools have NO repeat cap — inspect_execution_step is callable many times with same args", async () => {
     const signals = freshSignals();
     const events: TurnEvent[] = [];
     const engineClient = new EngineClient({
@@ -76,26 +78,12 @@ describe("loop-breaker structured envelope", () => {
     );
     const inspect = wrapped.inspect_execution_step;
     expect(inspect).toBeDefined();
-    // Call 4× — pre-fix this would short-circuit on call 4 (cap=3).
-    // Post-fix the cap is 6, so calls 1-6 should bypass the loop
-    // breaker and only hit the tool's own error path
-    // (execution_not_found here because no execution was seeded).
-    for (let i = 1; i <= 4; i++) {
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-      const result = await (inspect!.execute as any)(
-        {
-          execution_id: "00000000-0000-0000-0000-000000000000",
-          step_key: "any",
-        },
-        { toolCallId: `t${i}`, messages: [] },
-      );
-      // tool_loop_detected is the loop-breaker error; until call 7 we
-      // should NEVER see it.
-      const data = result.data as { error_code?: string };
-      expect(data.error_code).not.toBe("tool_loop_detected");
-    }
-    // Now invocation count is 4. Three more calls (5, 6) are fine, 7 trips.
-    for (let i = 5; i <= 6; i++) {
+    // Reads are exempt from the per-tool breaker. Even 10 calls with
+    // IDENTICAL args must not trip the breaker — the LLM legitimately
+    // re-reads state to ground its next move. The tool may still
+    // return its own typed error (execution_not_found), but never
+    // tool_loop_detected.
+    for (let i = 1; i <= 10; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       const result = await (inspect!.execute as any)(
         {
@@ -107,28 +95,109 @@ describe("loop-breaker structured envelope", () => {
       const data = result.data as { error_code?: string };
       expect(data.error_code).not.toBe("tool_loop_detected");
     }
-    // 7th call MUST trip the cap.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const result7 = await (inspect!.execute as any)(
-      {
-        execution_id: "00000000-0000-0000-0000-000000000000",
-        step_key: "any",
-      },
-      { toolCallId: "t7", messages: [] },
+  });
+
+  it("write tools trip on consecutive identical args (REPEAT_THRESHOLD=3)", async () => {
+    const signals = freshSignals();
+    const events: TurnEvent[] = [];
+    const engineClient = new EngineClient({
+      tenant_id: ctx.tenant_id,
+      actor_id: null,
+      actor_type: "system",
+      db: ctx.testDb.db as unknown as Db,
+    });
+    const toolCtx: ToolContext = {
+      db: ctx.testDb.db as unknown as Db,
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      actor_id: null,
+      connector_id: null,
+      workflow_id: null,
+      engineClient,
+      getDraft: () => ({ workflow: { name: "t", steps: [] } }),
+      setDraft: async () => {},
+    };
+    const wrapped = wrapTools(
+      toolCtx,
+      signals,
+      events,
+      ctx.testDb.db as unknown as Db,
+      ["workflow-authoring"],
+      {},
     );
-    const data7 = result7.data as {
+    const propose = wrapped.propose_step;
+    expect(propose).toBeDefined();
+    // Same args three times in a row → trips on the 3rd.
+    const sameArgs = { step: { id: "x", kind: "transform", expression: "$input.n" } };
+    for (let i = 1; i <= 2; i++) {
+      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      const result = await (propose!.execute as any)(sameArgs, {
+        toolCallId: `t${i}`,
+        messages: [],
+      });
+      const data = result.data as { error_code?: string };
+      expect(data.error_code).not.toBe("tool_loop_detected");
+    }
+    // 3rd identical call trips.
+    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    const result3 = await (propose!.execute as any)(sameArgs, {
+      toolCallId: "t3",
+      messages: [],
+    });
+    const data3 = result3.data as {
       error_code?: string;
       next_best_actions?: string[];
       message?: string;
+      repeat_count?: number;
     };
-    expect(data7.error_code).toBe("tool_loop_detected");
-    // Structured recovery hint — the LLM gets concrete next actions
-    // (ask_user_choice / ask_user_text) instead of a vague "stop".
-    expect(data7.next_best_actions).toEqual(
+    expect(data3.error_code).toBe("tool_loop_detected");
+    expect(data3.next_best_actions).toEqual(
       expect.arrayContaining(["ask_user_choice", "ask_user_text"]),
     );
-    // Message tells the LLM to USE the structured tools, not write
-    // prose. Pre-fix the message was a vague "change approach".
-    expect(data7.message).toContain("ask_user_choice");
+    expect(data3.message).toContain("ask_user_choice");
+    expect(data3.repeat_count).toBeGreaterThanOrEqual(3);
+  });
+
+  it("write tools do NOT trip when args change between calls (legitimate incremental authoring)", async () => {
+    const signals = freshSignals();
+    const events: TurnEvent[] = [];
+    const engineClient = new EngineClient({
+      tenant_id: ctx.tenant_id,
+      actor_id: null,
+      actor_type: "system",
+      db: ctx.testDb.db as unknown as Db,
+    });
+    const toolCtx: ToolContext = {
+      db: ctx.testDb.db as unknown as Db,
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      actor_id: null,
+      connector_id: null,
+      workflow_id: null,
+      engineClient,
+      getDraft: () => ({ workflow: { name: "t", steps: [] } }),
+      setDraft: async () => {},
+    };
+    const wrapped = wrapTools(
+      toolCtx,
+      signals,
+      events,
+      ctx.testDb.db as unknown as Db,
+      ["workflow-authoring"],
+      {},
+    );
+    const propose = wrapped.propose_step;
+    // Five propose_step calls with DIFFERENT step ids — the canonical
+    // 5-step workflow build. Pre-fix this tripped the cap at call 6.
+    // Post-fix the args differ each time so no repeat is detected.
+    for (let i = 1; i <= 5; i++) {
+      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      const result = await (propose!.execute as any)(
+        { step: { id: `s${i}`, kind: "transform", expression: "$input.n" } },
+        { toolCallId: `t${i}`, messages: [] },
+      );
+      const data = result.data as { error_code?: string };
+      expect(data.error_code).not.toBe("tool_loop_detected");
+    }
   });
 });

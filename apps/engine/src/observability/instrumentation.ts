@@ -244,6 +244,65 @@ export function recordExecutionWarningsEmitted(args: {
   });
 }
 
+/** Allow-list for `code` label values on AUTHORING_GATE_BLOCKS_TOTAL.
+ *  Cardinality control: any code outside this list collapses to
+ *  "other" so a typo or new-but-unannounced gate can't blow up the
+ *  metric backend's cardinality budget. Update this list (and the
+ *  metric help text) when adding a new gate. */
+const AUTHORING_GATE_CODES = new Set<string>([
+  "workflow_cycle_detected",
+  "workflow_unresolved_step_reference",
+  "loop_authoring_requires_inspect",
+  "repair_loop_detected",
+]);
+/** Allow-list for `tool` label values. */
+const AUTHORING_GATE_TOOLS = new Set<string>([
+  "build_workflow",
+  "propose_step",
+  "update_param",
+  "edit_workflow_patch",
+  "dry_run_workflow",
+  "run_workflow",
+]);
+
+const TOOL_CIRCUIT_REASONS = new Set<string>([
+  "tool_loop_detected",
+  "consecutive_failures_cap",
+  "turn_loop_budget_exhausted",
+  "validation_fingerprint_repeat",
+]);
+
+/**
+ * Counter for per-tool circuit-breaker opens. Fired by sdk-wrap
+ * when a tool's repeat-args detector or the global
+ * consecutive-failures cap short-circuits a call. Both labels are
+ * allow-listed; unknown reasons collapse to "other".
+ */
+export function recordToolCircuitOpen(args: { tool: string; reason: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.TOOL_CIRCUIT_OPEN_TOTAL, {
+      tool: args.tool,
+      reason: TOOL_CIRCUIT_REASONS.has(args.reason) ? args.reason : "other",
+    });
+  });
+}
+
+/**
+ * Counter for authoring-time gate refusals (reference / cycle / loop-
+ * inspect / repair-loop). High counts per (code, tool) indicate the
+ * skill or prompt isn't teaching the rule effectively. Both labels
+ * are validated against an allow-list — unknown values collapse to
+ * "other" to keep cardinality bounded.
+ */
+export function recordAuthoringGateBlock(args: { code: string; tool: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.AUTHORING_GATE_BLOCKS_TOTAL, {
+      code: AUTHORING_GATE_CODES.has(args.code) ? args.code : "other",
+      tool: AUTHORING_GATE_TOOLS.has(args.tool) ? args.tool : "other",
+    });
+  });
+}
+
 export function recordExecutionDryRun(args: { tenant_id: string; source_kind: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.EXECUTION_DRY_RUN_TOTAL, {

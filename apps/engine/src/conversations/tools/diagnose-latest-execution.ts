@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { and, asc, eq } from "drizzle-orm";
 import { executionSteps } from "../../db/schema/index.ts";
+import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import { withWorkflowDiagnosis } from "../authoring-state.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -104,12 +105,19 @@ export const diagnoseLatestExecutionTool: ConversationTool = {
           ? previewRecord.value
           : row.output_preview;
       const truncatedPreview = truncateForLlm(previewValue);
+      // scope_at_step on each step makes the diagnosis prompt
+      // ground the repair LLM in real shapes rather than docs. Pre-
+      // fix the LLM proposed patches against an imagined envelope
+      // and the next dry-run revealed the same bug.
+      const scope =
+        previewValue !== undefined && previewValue !== null ? buildScopeAtStep(previewValue) : null;
       return {
         step_key: row.step_key,
         kind: row.kind,
         status: row.status,
         duration_ms: row.duration_ms ?? null,
         ...(previewValue !== undefined ? { output_preview: truncatedPreview.data } : {}),
+        ...(scope ? { scope_at_step: scope } : {}),
         ...(row.error !== null ? { error: row.error } : {}),
         ...(row.request_meta !== null ? { request_meta: row.request_meta } : {}),
       };

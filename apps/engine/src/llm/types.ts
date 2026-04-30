@@ -92,6 +92,12 @@ export interface AuthoringPromptHint {
   latest_diagnosis: {
     reason: string;
   } | null;
+  /**
+   * Optional sub-mode hint orthogonal to the primary mode.
+   * Currently used to switch the persona to the RBAC-editing variant
+   * when the operator is configuring a role's policy.
+   */
+  scope?: "rbac";
 }
 
 export interface AssembleContextParams {
@@ -135,6 +141,17 @@ export interface AssembleContextParams {
    * mode/stage-specific converse focus block.
    */
   authoring_hint?: AuthoringPromptHint;
+  /**
+   * Conversation id, when the assembler is being driven from the
+   * converse flow. When present, the assembler loads the last N
+   * resolved elicitations (`conversation_elicitations` rows) and
+   * renders them as an `interaction_log` section so the model can see
+   * what was tested vs. confirmed vs. declined this turn — mirroring
+   * the reference impl's `interactionLog` array. Without it the model
+   * re-asks for already-declined actions and double-acts on already-
+   * confirmed ones.
+   */
+  conversation_id?: string;
   /**
    * Real runtime context the model must quote verbatim instead of
    * inventing placeholders. Rendered into a stable block placed right

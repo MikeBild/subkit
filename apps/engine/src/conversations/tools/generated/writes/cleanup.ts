@@ -2,8 +2,10 @@ import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../../auth/types.ts";
 import { roles, systemAccounts, users } from "../../../../db/schema/index.ts";
+import { logger } from "../../../../logging/logger.ts";
 import { can } from "../../../../rbac/evaluator.ts";
 import { tunnelRegistry } from "../../../../tunnels/registry.ts";
+import { translateAutoPersistError } from "../../../persistence/auto-persist.ts";
 import type { ConversationTool, ToolContext } from "../../index.ts";
 
 const WorkflowDeleteInput = z
@@ -157,7 +159,31 @@ export const deleteWorkflowTool: ConversationTool = {
       if (!auth.allow) return permissionDenied("workflow:delete", auth.reason);
     }
 
-    const ok = await ctx.engineClient.workflows.delete(workflow.id);
+    let ok: boolean;
+    try {
+      ok = await ctx.engineClient.workflows.delete(workflow.id);
+    } catch (err) {
+      // Translate Postgres errors (FK violations from running
+      // executions, schedules, hooks) into typed error_codes.
+      const translated = translateAutoPersistError(err, "delete_workflow");
+      logger.warn({
+        module: "conversation_tool",
+        action: "delete_workflow.threw",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        workflow_id: workflow.id,
+        error_code: translated.error_code,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return {
+        ok: false,
+        data: {
+          error: translated.error_code,
+          message: translated.message,
+          next_best_actions: translated.next_best_actions,
+        },
+      };
+    }
     if (!ok) {
       const audit_log_id = await ctx.engineClient.audit_write({
         resource_type: "workflow",
@@ -207,7 +233,29 @@ export const deleteConnectorTool: ConversationTool = {
     const connector = await ctx.engineClient.connectors.get(args.id);
     if (!connector) return { ok: false, data: { error: "connector_not_found" } };
 
-    const ok = await ctx.engineClient.connectors.delete(connector.id);
+    let ok: boolean;
+    try {
+      ok = await ctx.engineClient.connectors.delete(connector.id);
+    } catch (err) {
+      const translated = translateAutoPersistError(err, "delete_connector");
+      logger.warn({
+        module: "conversation_tool",
+        action: "delete_connector.threw",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        connector_id: connector.id,
+        error_code: translated.error_code,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return {
+        ok: false,
+        data: {
+          error: translated.error_code,
+          message: translated.message,
+          next_best_actions: translated.next_best_actions,
+        },
+      };
+    }
     if (!ok) {
       const audit_log_id = await ctx.engineClient.audit_write({
         resource_type: "connector",

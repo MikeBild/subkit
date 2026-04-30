@@ -22,10 +22,54 @@ export interface ValidationError {
   message: string;
 }
 
-export function validateWorkflowDef(input: unknown): {
+/**
+ * Forward-reference tolerance.
+ *
+ * Default ("strict") mode: every `loop.body[]`, `parallel.branches[][]`,
+ * `branch.then_steps[]`, and `branch.else_steps[]` id MUST already exist
+ * — used by `dry_run_workflow` and `commit_workflow_draft`, the
+ * boundaries that can no longer recover from a missing dependency.
+ *
+ * "lenient" mode: unknown control-flow targets are returned as
+ * structured `forward_refs` instead of `errors`. Used by the incremental
+ * authoring tools (`propose_step`, `build_workflow`, `update_param`,
+ * `edit_workflow_patch`) where the LLM authors a parent step before its
+ * children — exactly the dependency-order mistake every screenshot in
+ * session a53ae358 hit:
+ *
+ *   sk: I need to create the body step first.
+ *   validation errors
+ *   × unknown loop body target: fetch_resource_details
+ *
+ * Reference impl avoids this entirely because `build_tool` ships the
+ * whole workflow at once. Subkit's incremental flow needs the same
+ * leniency at authoring boundaries; the strict gate stays at preview /
+ * commit so the saved workflow is never broken.
+ */
+export interface ValidateOptions {
+  /** When true, unknown control-flow targets become `forward_refs`
+   *  instead of `errors`. Default false (strict). */
+  allowForwardRefs?: boolean;
+}
+
+export interface ForwardRef {
+  /** id of the step holding the unresolved reference. */
+  step_id: string;
+  /** Which control-flow array carried the unknown id (`loop.body`,
+   *  `parallel.branches`, `branch.then_steps`, `branch.else_steps`). */
+  field: "loop.body" | "parallel.branches" | "branch.then_steps" | "branch.else_steps";
+  /** The unresolved id. */
+  ref: string;
+}
+
+export function validateWorkflowDef(
+  input: unknown,
+  options: ValidateOptions = {},
+): {
   ok: boolean;
   workflow?: WorkflowDef;
   errors: ValidationError[];
+  forward_refs?: ForwardRef[];
 } {
   const parsed = WorkflowDefSchema.safeParse(input);
   if (!parsed.success) {
@@ -43,6 +87,8 @@ export function validateWorkflowDef(input: unknown): {
   }
   const wf = parsed.data;
   const errors: ValidationError[] = [];
+  const forwardRefs: ForwardRef[] = [];
+  const allowForwardRefs = options.allowForwardRefs === true;
   const ids = new Set<string>();
   for (const step of wf.steps) {
     if (ids.has(step.id)) {
@@ -93,12 +139,28 @@ export function validateWorkflowDef(input: unknown): {
       }
     }
     if (step.kind === "branch") {
-      for (const ref of [...step.then_steps, ...(step.else_steps ?? [])]) {
+      for (const ref of step.then_steps) {
         if (!ids.has(ref)) {
-          errors.push({
-            path: `steps.${step.id}`,
-            message: `unknown branch target: ${ref}`,
-          });
+          if (allowForwardRefs) {
+            forwardRefs.push({ step_id: step.id, field: "branch.then_steps", ref });
+          } else {
+            errors.push({
+              path: `steps.${step.id}`,
+              message: `unknown branch target: ${ref}`,
+            });
+          }
+        }
+      }
+      for (const ref of step.else_steps ?? []) {
+        if (!ids.has(ref)) {
+          if (allowForwardRefs) {
+            forwardRefs.push({ step_id: step.id, field: "branch.else_steps", ref });
+          } else {
+            errors.push({
+              path: `steps.${step.id}`,
+              message: `unknown branch target: ${ref}`,
+            });
+          }
         }
       }
     }
@@ -106,10 +168,14 @@ export function validateWorkflowDef(input: unknown): {
       for (const branch of step.branches) {
         for (const ref of branch) {
           if (!ids.has(ref)) {
-            errors.push({
-              path: `steps.${step.id}`,
-              message: `unknown parallel target: ${ref}`,
-            });
+            if (allowForwardRefs) {
+              forwardRefs.push({ step_id: step.id, field: "parallel.branches", ref });
+            } else {
+              errors.push({
+                path: `steps.${step.id}`,
+                message: `unknown parallel target: ${ref}`,
+              });
+            }
           }
         }
       }
@@ -117,10 +183,14 @@ export function validateWorkflowDef(input: unknown): {
     if (step.kind === "loop") {
       for (const ref of step.body) {
         if (!ids.has(ref)) {
-          errors.push({
-            path: `steps.${step.id}`,
-            message: `unknown loop body target: ${ref}`,
-          });
+          if (allowForwardRefs) {
+            forwardRefs.push({ step_id: step.id, field: "loop.body", ref });
+          } else {
+            errors.push({
+              path: `steps.${step.id}`,
+              message: `unknown loop body target: ${ref}`,
+            });
+          }
         }
       }
       // The body must reference the loop's item_var somewhere. A loop
@@ -137,10 +207,14 @@ export function validateWorkflowDef(input: unknown): {
       //   - the canonical placeholder `${item.…}` (preferred for URLs /
       //     headers / query / body strings), or
       //   - the loop's `item_var` directly (for JSONata expressions).
+      // Skip the check when ANY body id is still a forward reference —
+      // the LLM hasn't authored that step yet, so we cannot tell whether
+      // it will read the iteration item.
+      const someBodyIsForwardRef = step.body.some((bid) => !ids.has(bid));
       const referencesItemVar = bodySteps.some(
         (bs) => stepReferencesIdentifier(bs, itemVar) || stepReferencesIdentifier(bs, "item"),
       );
-      if (bodySteps.length > 0 && !referencesItemVar) {
+      if (bodySteps.length > 0 && !someBodyIsForwardRef && !referencesItemVar) {
         errors.push({
           path: `steps.${step.id}`,
           message: `loop body never references the iteration item — use \`\${item.field}\` in URLs/strings or \`${itemVar}.field\` in JSONata. Without it the loop runs N copies of the same call.`,
@@ -148,7 +222,49 @@ export function validateWorkflowDef(input: unknown): {
       }
     }
   }
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, workflow: wf, errors: [] };
+  // Item-placeholder containment check. A step that uses `${item.X}`
+  // (or the loop's documented `${<item_var>.X}`) MUST be listed in
+  // some loop's `body[]`. Pre-fix the LLM commonly added the body
+  // step BEFORE wrapping it in a loop, then dry_run failed at runtime
+  // with `placeholder_unresolved: ${item.id}` (session a128deba). The
+  // root cause is structural — caught at authoring time here so the
+  // LLM gets a typed error before the run.
+  const containedStepIds = new Set<string>();
+  for (const step of wf.steps) {
+    if (step.kind === "loop") {
+      for (const bid of step.body) containedStepIds.add(bid);
+    } else if (step.kind === "branch") {
+      for (const bid of [...step.then_steps, ...(step.else_steps ?? [])]) {
+        containedStepIds.add(bid);
+      }
+    } else if (step.kind === "parallel") {
+      for (const branch of step.branches) {
+        for (const bid of branch) containedStepIds.add(bid);
+      }
+    }
+  }
+  const ITEM_PLACEHOLDER_RE = /\$\{\s*item\.[a-zA-Z_]/;
+  for (const step of wf.steps) {
+    if (containedStepIds.has(step.id)) continue;
+    const haystack = JSON.stringify(step);
+    if (ITEM_PLACEHOLDER_RE.test(haystack)) {
+      errors.push({
+        path: `steps.${step.id}`,
+        message:
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal `${item.…}` token names the placeholder grammar surfaced to the LLM.
+          "step uses `${item.…}` placeholder but is not contained in any `loop.body[]`. Add a `loop` step that lists this step in its `body` (the placeholder resolver only sets `$item` inside loop iterations).",
+      });
+    }
+  }
+
+  if (errors.length > 0) {
+    return forwardRefs.length > 0
+      ? { ok: false, errors, forward_refs: forwardRefs }
+      : { ok: false, errors };
+  }
+  return forwardRefs.length > 0
+    ? { ok: true, workflow: wf, errors: [], forward_refs: forwardRefs }
+    : { ok: true, workflow: wf, errors: [] };
 }
 
 function stepReferencesIdentifier(step: StepDef, identifier: string): boolean {

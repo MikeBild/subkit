@@ -14,6 +14,7 @@ import { writeEvent } from "../../db/events.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
 import { cancel as abortCancel, getAbort } from "../../execution/abort.ts";
 import { runExecution } from "../../execution/engine.ts";
+import { RequestMetaSchema } from "../../execution/request-meta-schema.ts";
 import { type RunExecutionSource, resolveDefinition } from "../../execution/resolve-definition.ts";
 import { createExecution } from "../../execution/state.ts";
 import type { ExecutionMode } from "../../execution/types.ts";
@@ -264,7 +265,10 @@ const RunStepSummarySchema = z
     duration_ms: z.number().nullable(),
     retry_count: z.number().int(),
     error: z.unknown().nullable(),
-    request_meta: z.record(z.string(), z.unknown()).nullable().optional(),
+    // Driver-discriminated meta — published as a discriminatedUnion
+    // so external clients can narrow on `.driver` from the OpenAPI
+    // contract. See `execution/request-meta-schema.ts`.
+    request_meta: RequestMetaSchema.nullable().optional(),
   })
   .openapi("ExecutionRunStepSummary");
 
@@ -474,6 +478,11 @@ export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
           execution_mode,
         },
       });
+      // Cast through `any` for the response body: step.request_meta
+      // is a driver-discriminated union (see RequestMeta) and the
+      // OpenAPI Zod schema declares the looser `unknown` shape, so
+      // structural compatibility holds at runtime but the OpenAPI
+      // type system requires the cast.
       return c.json(
         {
           execution_id: result.execution_id,
@@ -485,7 +494,8 @@ export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
             ? { connector_resolutions: result.connector_resolutions }
             : {}),
           ...(result.warnings?.length ? { warnings: result.warnings } : {}),
-        },
+          // biome-ignore lint/suspicious/noExplicitAny: union vs unknown widening at the OpenAPI boundary
+        } as any,
         200,
       );
     } catch (err) {

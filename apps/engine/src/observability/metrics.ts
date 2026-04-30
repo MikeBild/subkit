@@ -328,6 +328,14 @@ export const METRIC_NAMES = {
   LLM_CONTEXT_ASSEMBLED_TOTAL: "llm_context_assembled_total",
   LLM_CONTEXT_DROPPED_SECTIONS_TOTAL: "llm_context_dropped_sections_total",
   LLM_CONTEXT_TOTAL_TOKENS: "llm_context_total_tokens",
+  AUTHORING_GATE_BLOCKS_TOTAL: "subkit_authoring_gate_blocks_total",
+  // Per-tool circuit-breaker open events. Fired when the
+  // sdk-wrap layer short-circuits a tool call due to repeated
+  // identical args (`tool_loop_detected`) or the global
+  // consecutive-failures cap (`consecutive_failures_cap`). Lets a
+  // dashboard show flapping tools the same way the connector
+  // circuit metric shows flapping connectors.
+  TOOL_CIRCUIT_OPEN_TOTAL: "subkit_tool_circuit_open_total",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -466,6 +474,16 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.EXECUTION_DRY_RUN_TOTAL,
     help: "Dry-run previews of workflows or steps, partitioned by source kind.",
     labels: ["tenant_id", "source_kind"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.AUTHORING_GATE_BLOCKS_TOTAL,
+    help: "Authoring-time gate refusals — workflow_unresolved_step_reference, workflow_cycle_detected, loop_authoring_requires_inspect, repair_loop_detected. Tells us how often the LLM hits these guards (high counts = the skill / prompt is failing to teach the rule).",
+    labels: ["code", "tool"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.TOOL_CIRCUIT_OPEN_TOTAL,
+    help: "Per-tool circuit-breaker opens. `reason` is `tool_loop_detected` (3× identical args) or `consecutive_failures_cap` (5 consecutive fails). High counts on a specific tool point at flapping behaviour or a brittle skill prompt.",
+    labels: ["tool", "reason"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.LLM_CACHE_HIT_TOTAL,

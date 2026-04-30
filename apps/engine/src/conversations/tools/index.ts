@@ -28,10 +28,18 @@ import { discoverSystemsFromFilesTool } from "./discover-systems-from-files.ts";
 import { dryRunStepTool } from "./dry-run-step.ts";
 import { dryRunTransformTool } from "./dry-run-transform.ts";
 import { dryRunWorkflowTool } from "./dry-run-workflow.ts";
+import { editRoleTool } from "./edit-role.ts";
+import { editWorkflowPatchTool } from "./edit-workflow-patch.ts";
 import { fetchConnectorDocsTool } from "./fetch-connector-docs.ts";
+import { findConnectorTool } from "./find-connector.ts";
+import { findRoleTool } from "./find-role.ts";
+import { findSkillTool } from "./find-skill.ts";
+import { findUserTool } from "./find-user.ts";
+import { findWorkflowTool } from "./find-workflow.ts";
 import { importConnectorFromSpecTool } from "./import-connector-from-spec.ts";
 import { inspectAuthoringContextTool } from "./inspect-authoring-context.ts";
 import { inspectConnectorDraftTool } from "./inspect-connector-draft.ts";
+import { inspectRoleTool } from "./inspect-role.ts";
 import { inspectWorkflowTool } from "./inspect-workflow.ts";
 import { inspectWorkflowDraftTool } from "./inspect-workflow-draft.ts";
 import { listAttachmentsTool } from "./list-attachments.ts";
@@ -41,6 +49,7 @@ import { matchConnectorTemplateByUrlTool } from "./match-connector-template-by-u
 import { previewAttachmentTool } from "./preview-attachment.ts";
 import { probeConnectorTool } from "./probe-connector.ts";
 import { probeConnectorDraftTool } from "./probe-connector-draft.ts";
+import { proposeSchemaMigrationTool } from "./propose-schema-migration.ts";
 import { proposeSkillTool } from "./propose-skill.ts";
 import { proposeStepTool } from "./propose-step.ts";
 import { saveConnectorDraftTool } from "./save-connector-draft.ts";
@@ -50,6 +59,7 @@ import { startConnectorFromDescriptionTool } from "./start-connector-from-descri
 import { startConnectorFromTemplateTool } from "./start-connector-from-template.ts";
 import { startWorkflowFromGoalTool } from "./start-workflow-from-goal.ts";
 import { suggestConnectorTemplatesTool } from "./suggest-connector-templates.ts";
+import { suggestJsonataPathsTool } from "./suggest-jsonata-paths.ts";
 import { testConnectorTool } from "./test-connector.ts";
 import { updateConnectorDraftTool } from "./update-connector-draft.ts";
 import { updateParamTool } from "./update-param.ts";
@@ -98,6 +108,24 @@ export interface ToolContext {
    * after an elicitation reply).
    */
   recentUserMessage?: string | null;
+  /**
+   * Optional diff emitter — tools that mutate the draft (`build_workflow`,
+   * `edit_workflow_patch`, `update_param`, `save_connector_draft`) call
+   * this with the canonical before/after JSON of the affected resource.
+   * The conversation loop turns it into a `diff` TurnEvent the CLI
+   * renders inline as a unified-diff cell. Mirrors codex's
+   * `PatchHistoryCell` — operators see exactly what changed without
+   * scrolling back to the prior state.
+   *
+   * Best-effort: emitter errors never block the tool. Tools that pass
+   * undefined skip the diff cell entirely.
+   */
+  emitDiff?: (params: {
+    title: string;
+    language: "json" | "yaml" | "text";
+    before: string;
+    after: string;
+  }) => void;
 }
 
 /** Elicitation pause descriptor shared by both ToolResult branches. */
@@ -246,9 +274,19 @@ register(startConnectorFromDescriptionTool);
 register(startConnectorFromTemplateTool);
 register(startWorkflowFromGoalTool);
 register(suggestConnectorTemplatesTool);
+register(suggestJsonataPathsTool);
+register(findWorkflowTool);
+register(findConnectorTool);
+register(findSkillTool);
+register(findRoleTool);
+register(findUserTool);
+register(inspectRoleTool);
+register(editRoleTool);
 register(matchConnectorTemplateByUrlTool);
 register(importConnectorFromSpecTool);
 register(updateParamTool);
+register(editWorkflowPatchTool);
+register(proposeSchemaMigrationTool);
 register(updateConnectorDraftTool);
 register(connectStepsTool);
 register(diagnoseLatestExecutionTool);

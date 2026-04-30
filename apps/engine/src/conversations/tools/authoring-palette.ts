@@ -112,6 +112,7 @@ const CONNECTOR_OAUTH: ReadonlySet<string> = new Set(["authenticate_oauth"]);
 const WORKFLOW_AUTHORING: ReadonlySet<string> = new Set([
   "build_workflow",
   "connect_steps",
+  "edit_workflow_patch",
   "inspect_workflow_draft",
   "propose_step",
   "start_workflow_from_goal",

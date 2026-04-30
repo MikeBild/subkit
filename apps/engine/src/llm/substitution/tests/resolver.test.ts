@@ -17,6 +17,7 @@ import {
   describeConnectorPlaceholders,
   flattenCredential,
   resolvePlaceholders,
+  resolvePlaceholdersTypePreserving,
   resolveStringPlaceholders,
 } from "../resolver.ts";
 
@@ -491,5 +492,180 @@ describe("resolvePlaceholders — walks nested structures", () => {
     });
     // deduped — even though the token appears twice
     expect(r.placeholders_used).toEqual([`\${cred.deep1.token}`]);
+  });
+});
+
+describe("resolvePlaceholdersTypePreserving — preserves native JSON types", () => {
+  test("integer placeholder alone returns number, not string", async () => {
+    const { tenant_id } = await seed({ slug: "tp1", mode: "none" });
+    const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
+      { limit: `\${input.limit}` },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        input: { limit: 7 },
+      },
+    );
+    expect(r.unresolved).toEqual([]);
+    expect(r.value).toEqual({ limit: 7 });
+    expect(typeof (r.value as { limit: unknown }).limit).toBe("number");
+  });
+
+  test("boolean placeholder alone returns boolean", async () => {
+    const { tenant_id } = await seed({ slug: "tp2", mode: "none" });
+    const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
+      { active: `\${input.active}` },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        input: { active: true },
+      },
+    );
+    expect(r.value).toEqual({ active: true });
+    expect(typeof (r.value as { active: unknown }).active).toBe("boolean");
+  });
+
+  test("object placeholder alone returns object reference, not JSON-stringified", async () => {
+    const { tenant_id } = await seed({ slug: "tp3", mode: "none" });
+    const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
+      { filter: `\${input.filter}` },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        input: { filter: { id: { eq: "abc" } } },
+      },
+    );
+    expect(r.value).toEqual({ filter: { id: { eq: "abc" } } });
+    expect((r.value as { filter: unknown }).filter).toEqual({ id: { eq: "abc" } });
+  });
+
+  test("array placeholder alone returns array", async () => {
+    const { tenant_id } = await seed({ slug: "tp4", mode: "none" });
+    const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
+      { ids: `\${input.ids}` },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        input: { ids: [1, 2, 3] },
+      },
+    );
+    expect(r.value).toEqual({ ids: [1, 2, 3] });
+    expect(Array.isArray((r.value as { ids: unknown }).ids)).toBe(true);
+  });
+
+  test("mixed string with placeholder stays string", async () => {
+    const { tenant_id } = await seed({ slug: "tp5", mode: "none" });
+    const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
+      { greeting: `Hi \${input.name}!` },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        input: { name: "Ada" },
+      },
+    );
+    expect(r.value).toEqual({ greeting: "Hi Ada!" });
+  });
+
+  test("string placeholder alone returns string", async () => {
+    const { tenant_id } = await seed({ slug: "tp6", mode: "none" });
+    const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
+      { name: `\${input.name}` },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        input: { name: "Ada" },
+      },
+    );
+    expect(r.value).toEqual({ name: "Ada" });
+    expect(typeof (r.value as { name: unknown }).name).toBe("string");
+  });
+
+  test("nested object recursion preserves types throughout", async () => {
+    const { tenant_id } = await seed({ slug: "tp7", mode: "none" });
+    const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
+      {
+        page: { limit: `\${input.limit}`, offset: `\${input.offset}` },
+        filters: [`\${input.flag}`, { tag: `\${input.tag}` }],
+      },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        input: { limit: 25, offset: 0, flag: true, tag: "active" },
+      },
+    );
+    expect(r.value).toEqual({
+      page: { limit: 25, offset: 0 },
+      filters: [true, { tag: "active" }],
+    });
+  });
+
+  test("unresolved placeholder leaves the literal in place", async () => {
+    const { tenant_id } = await seed({ slug: "tp8", mode: "none" });
+    const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
+      { limit: `\${input.limit}` },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        input: {},
+      },
+    );
+    expect(r.unresolved.length).toBeGreaterThan(0);
+    expect(r.value).toEqual({ limit: `\${input.limit}` });
+  });
+
+  test("null placeholder value survives as null (not empty string)", async () => {
+    const { tenant_id } = await seed({ slug: "tp9", mode: "none" });
+    const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
+      { tag: `\${input.tag}` },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        input: { tag: null },
+      },
+    );
+    expect(r.unresolved).toEqual([]);
+    expect(r.value).toEqual({ tag: null });
+  });
+
+  test("escape adjacent to a real placeholder still unescapes (mixed path)", async () => {
+    const { tenant_id } = await seed({ slug: "tp10", mode: "none" });
+    const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
+      { template: `$\${input.name} = \${input.name}` },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        input: { name: "Ada" },
+      },
+    );
+    // Mirrors the existing `resolver — escape handling` test: the escape is
+    // honored when it sits alongside a real placeholder in the same string.
+    expect(r.value).toEqual({ template: `\${input.name} = Ada` });
+  });
+
+  test("placeholder + adjacent literal text — single-token detection does NOT trigger", async () => {
+    const { tenant_id } = await seed({ slug: "tp11", mode: "none" });
+    // Even with `${...}` at start, the trailing text means it's a mixed
+    // string and must resolve to a string (not a number).
+    const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
+      { x: `\${input.n}-suffix` },
+      {
+        tenant_id,
+        environment: "dev",
+        db: ctx.db,
+        input: { n: 7 },
+      },
+    );
+    expect(r.value).toEqual({ x: "7-suffix" });
+    expect(typeof (r.value as { x: unknown }).x).toBe("string");
   });
 });

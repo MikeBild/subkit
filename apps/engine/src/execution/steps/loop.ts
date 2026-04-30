@@ -5,9 +5,12 @@
 import jsonata from "jsonata";
 import { logger } from "../../logging/logger.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
+import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { LoopStep } from "../../workflows/types.ts";
+import { buildJsonataBindings } from "../jsonata-bindings.ts";
 import { applySelector } from "../selectors.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
+import { buildStepErrorDetail } from "./error-detail.ts";
 
 export const LOOP_ITERATION_CAP = 10_000;
 
@@ -42,14 +45,40 @@ export async function runLoopStep(p: {
         collection = (out as { output: unknown }).output;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        // did_you_mean post-processing for the dominant
+        // data_selector failure: `Cannot read property 'X' of
+        // undefined` / `Cannot read properties of undefined (reading 'X')`.
+        // The LLM commonly writes `(data) => data.fetch_projects.…`
+        // when the actual scope key is `fetch_project` — without the
+        // suggestion the QuickJS message is opaque.
+        // Two error message shapes in the wild:
+        //   QuickJS / older SpiderMonkey: "cannot read property 'X' of undefined"
+        //   modern V8 / Node:             "Cannot read properties of undefined (reading 'X')"
+        const propMatch =
+          msg.match(/cannot read propert(?:y|ies) '([\w_-]+)' of undefined/i) ??
+          msg.match(/cannot read propert(?:y|ies) of undefined\s+\(reading '([\w_-]+)'\)/i);
+        const badKey = propMatch?.[1] ?? null;
+        const scopeKeys = Object.keys(p.scope).filter((k) => !k.startsWith("$"));
+        const suggestions = badKey ? suggestClosest(badKey, scopeKeys, 3) : [];
         return {
           status: "failed",
           retry_count: 0,
           duration_ms: Date.now() - start,
           error: {
             code: "data_selector_error",
-            message: `Data selector failed: ${msg}`,
-            details: { data_selector: p.step.data_selector },
+            message: `Data selector failed: ${msg}${
+              suggestions.length > 0
+                ? ` (did you mean: ${suggestions.map((s) => `\`${s}\``).join(", ")})`
+                : ""
+            }`,
+            details: {
+              data_selector: p.step.data_selector,
+              available_scope_keys: scopeKeys.slice(0, 16),
+              ...(badKey ? { bad_key: badKey } : {}),
+              ...(suggestions.length > 0
+                ? { did_you_mean: [{ from: badKey ?? "(unknown)", to: suggestions }] }
+                : {}),
+            },
           },
         };
       }
@@ -57,7 +86,12 @@ export async function runLoopStep(p: {
       if (p.step.over.startsWith("$.") || p.step.over === "$") {
         collection = applySelector(p.step.over, p.scope);
       } else {
-        collection = await jsonata(p.step.over).evaluate(p.scope);
+        // Bind `$input`, `$scope`, `$steps`, and unpacked `$<key>`
+        // entries so the loop's `over` expression honors the same
+        // skill-documented `$scope.<id>.data` contract every other
+        // author-written JSONata site does.
+        const bindings = buildJsonataBindings(p.scope, (p.scope as { $input?: unknown }).$input);
+        collection = await jsonata(p.step.over).evaluate(p.scope, bindings);
       }
     } else {
       // Schema refine prevents this, but keep a defensive branch.
@@ -87,6 +121,34 @@ export async function runLoopStep(p: {
             ? "object (not array)"
             : typeof collection;
       const scopeKeys = Object.keys(p.scope).slice(0, 8);
+      // Concrete suggestion for the LLM: pick the first non-`$`
+      // scope key as a stand-in and emit BOTH equivalent forms
+      // (`$scope.<id>.data` and bare `<id>.data`) so the next
+      // attempt converges. Pre-fix the LLM cycled through path
+      // variants because the message only said "uniformly
+      // enveloped" without giving a concrete path to try.
+      const stepIds = scopeKeys.filter((k) => !k.startsWith("$"));
+      // did_you_mean — extract referenced step ids from the source
+      // expression and Levenshtein-match them against the actual
+      // scope keys. Pre-fix the warning listed every available scope
+      // key but never named the typo; the LLM had to do the diff
+      // itself. With this match in place the very first retry can
+      // copy the suggested id verbatim.
+      const sourceText = p.step.data_selector ?? p.step.over ?? "";
+      const referenced = extractStepIdReferences(sourceText);
+      const didYouMean: Array<{ from: string; to: string[] }> = [];
+      for (const ref of referenced) {
+        if (!stepIds.includes(ref)) {
+          const matches = suggestClosest(ref, stepIds, 3);
+          if (matches.length > 0) didYouMean.push({ from: ref, to: matches });
+        }
+      }
+      const sampleStep = didYouMean[0]?.to[0] ?? stepIds[0];
+      const hint = sampleStep
+        ? didYouMean.length > 0
+          ? ` Did you mean \`$scope.${sampleStep}.data\` (closest match for \`${didYouMean[0]!.from}\`)? Confirm the upstream step's output shape with inspect_workflow_draft.`
+          : ` Try \`$scope.${sampleStep}.data\` (or the equivalent bare form \`${sampleStep}.data\`) and confirm the upstream step's output shape with inspect_workflow_draft.`
+        : " Verify the upstream step's actual output shape with inspect_workflow_draft.";
       return {
         status: "succeeded",
         output: [],
@@ -96,13 +158,19 @@ export async function runLoopStep(p: {
           {
             code: "loop_over_unresolved" as const,
             identifier: p.step.id,
-            message: `loop "${p.step.id}" source expression \`${p.step.data_selector ?? p.step.over}\` resolved to ${observedType} — expected an array. The loop produced 0 iterations. Available scope keys: ${scopeKeys.join(", ")}. Every step output is uniformly enveloped at \`$scope.<step>.data.<field>\`. Verify the upstream step's actual output shape with inspect_workflow.`,
+            message: `loop "${p.step.id}" source expression \`${p.step.data_selector ?? p.step.over}\` resolved to ${observedType} — expected an array. The loop produced 0 iterations. Available scope keys: ${scopeKeys.join(", ")}. Every step output is uniformly enveloped at \`$scope.<step>.data.<field>\`.${hint}`,
             details: {
               ...(p.step.data_selector !== undefined
                 ? { data_selector: p.step.data_selector }
                 : { over: p.step.over }),
               resolved_type: observedType,
               available_scope_keys: scopeKeys,
+              ...(sampleStep
+                ? {
+                    suggested_paths: [`$scope.${sampleStep}.data`, `${sampleStep}.data`],
+                  }
+                : {}),
+              ...(didYouMean.length > 0 ? { did_you_mean: didYouMean } : {}),
             },
           },
         ],
@@ -137,10 +205,7 @@ export async function runLoopStep(p: {
       status: "failed",
       retry_count: 0,
       duration_ms: Date.now() - start,
-      error: {
-        code: "loop_error",
-        message: err instanceof Error ? err.message : String(err),
-      },
+      error: buildStepErrorDetail({ code: "loop_error", err }),
     };
   }
 }

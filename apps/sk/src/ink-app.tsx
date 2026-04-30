@@ -37,6 +37,7 @@ import type {
   TurnEvent,
 } from "@cli-core/index.ts";
 import { applyTurnEvent, initialSessionState, lastAssistantText } from "@cli-core/index.ts";
+import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
 import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -48,10 +49,12 @@ import {
   REQUEST_CREDENTIAL_FORM_FALLBACK,
   secretRedirectHint,
 } from "./lib/secret-shape.ts";
+import { ActivityLine } from "./repl/activity-line.tsx";
 import { AlternateScreen } from "./repl/alt-screen.tsx";
 import { ResumeSummaryCard, renderAuthoringCard } from "./repl/authoring-cards.tsx";
 import { BackgroundToolGroup, isBackgroundTool } from "./repl/background-tools.tsx";
 import { classifyAttachment, readClipboard } from "./repl/clipboard-read.ts";
+import { DiffCard } from "./repl/diff-cell.tsx";
 import {
   humanizeRequestError,
   humanizeValidationError,
@@ -92,7 +95,9 @@ import { createQueue } from "./repl/queue.ts";
 import type { PaneSpec } from "./repl/slash-handler.ts";
 import { Spinner } from "./repl/spinner.tsx";
 import { StarterActions, starterActionsForPersona } from "./repl/starter-actions.tsx";
+import { type PagerEntry, TranscriptPager } from "./repl/transcript-pager.tsx";
 import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
+import { classifyVersionSkew, VersionMismatchBanner } from "./repl/version-mismatch-banner.tsx";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
 import { findSlashCommand, type PersonaProbe, renderHelp, searchSlashCommands } from "./slash.ts";
 import {
@@ -171,6 +176,13 @@ export interface InkAppProps {
     | Promise<void>;
   /** Called when the user exits. */
   onExit?: () => void;
+  /**
+   * Called when the user presses Esc during a long-running turn
+   * (codex parity). Routes to `engineClient.cancelConversation(id)`
+   * which fires the engine's abort signal so the in-flight stream
+   * ends with `cancelled` instead of `succeeded` / `failed`.
+   */
+  onCancelConversation?: (conversationId: string) => Promise<unknown>;
   /**
    * Optional resume summary rendered at the top of the transcript on a
    * fresh attach. Populated by the host from `GET /v1/conversations/:id`'s
@@ -1241,11 +1253,13 @@ export const InkApp: React.FC<InkAppProps> = ({
   onSelectConversation,
   onElicitResponse,
   onExit,
+  onCancelConversation,
   resumeSummary,
 }) => {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const columns = stdout?.columns ?? DEFAULT_RULE_WIDTH;
+  const rows = stdout?.rows ?? 30;
   const [session, setSession] = useState<SkSessionState>(() =>
     initialSessionState(initialConversationId ?? null),
   );
@@ -1279,6 +1293,9 @@ export const InkApp: React.FC<InkAppProps> = ({
   // twice (or 50 times if the key is held down).
   const busyRef = useRef(false);
   const [altScreen, setAltScreen] = useState(false);
+  // Transcript pager — Ctrl-P toggles a modal overlay that renders
+  // every cell with full output and unabridged diffs. Codex parity.
+  const [pagerOpen, setPagerOpen] = useState(false);
   const [statusLine, setStatusLine] = useState<string>("");
   const [notices, setNotices] = useState<TranscriptNotice[]>([]);
   const [pane, setPane] = useState<PaneSpec | null>(null);
@@ -1762,12 +1779,34 @@ export const InkApp: React.FC<InkAppProps> = ({
       // redact sensitive form fields based on the schema instead of
       // collapsing every form to `(answered)`.
       const answerText = renderElicitAnswer(output, session.pendingElicitation?.input, reason);
-      const withAnswer: SkSessionState = {
-        ...session,
-        messages: [...session.messages, { role: "user", content: answerText }],
-        pendingElicitation: null,
-        status: "running",
-      };
+      // De-dupe at the insert site — mirrors handleSubmit's
+      // `alreadyEchoed` guard. Two consecutive elicit responses that
+      // render to the same redacted text (e.g. two form prompts that
+      // both ask for `token`, the assistant re-asks because the first
+      // submission failed validation, or any path where the prior
+      // optimistic echo is still the last message) would otherwise
+      // produce two `› you token=***` lines in the transcript with
+      // nothing between them. Engine never replays elicit answers as
+      // role=user message events (service.ts:605 `user_message:null`
+      // when resuming), so the turn-event dedupe at turn-event.ts:426
+      // never gets a chance to collapse the duplicates.
+      const lastMsg = session.messages[session.messages.length - 1];
+      const alreadyEchoed =
+        lastMsg?.role === "user" &&
+        lastMsg.id === undefined &&
+        lastMsg.content.trim() === answerText.trim();
+      const withAnswer: SkSessionState = alreadyEchoed
+        ? {
+            ...session,
+            pendingElicitation: null,
+            status: "running",
+          }
+        : {
+            ...session,
+            messages: [...session.messages, { role: "user", content: answerText }],
+            pendingElicitation: null,
+            status: "running",
+          };
       setSession(withAnswer);
       const outcome = await onElicitResponse(elicitationId, output, reason);
       await applyEventStream(
@@ -2260,6 +2299,13 @@ export const InkApp: React.FC<InkAppProps> = ({
   useInput(
     (char, key) => {
       // --- Global shortcuts (active even under modal / busy) ----------
+      // Ctrl-P toggles the transcript pager — codex-style modal showing
+      // every cell with full output / full diff. Distinct from the
+      // alt-screen inspect mode (Ctrl-T) which is a different rendering.
+      if (key.ctrl && char === "p") {
+        setPagerOpen((prev) => !prev);
+        return;
+      }
       if (key.ctrl && char === "t") {
         setAltScreen((prev) => !prev);
         return;
@@ -2301,6 +2347,28 @@ export const InkApp: React.FC<InkAppProps> = ({
         setPendingSecretRedirect(null);
         setInput(EMPTY_BUFFER);
         showInfo("credential paste cancelled");
+        return;
+      }
+      // Esc-to-interrupt for a long-running turn — codex parity.
+      // Routes to the engine's cancel endpoint via the conversation
+      // id; the running stream sees its abort signal fire and the
+      // turn ends with a `cancelled` status. Only fires when the CLI
+      // is actually busy (busyRef) AND no other Esc-consumer is
+      // armed (no pending elicit, no notice, no pane).
+      if (
+        key.escape &&
+        busyRef.current &&
+        pendingElicit === null &&
+        pane === null &&
+        !inlineSearchOpen
+      ) {
+        const cid = session.conversationId;
+        if (cid && onCancelConversation) {
+          showInfo("interrupting current turn — esc pressed");
+          void onCancelConversation(cid).catch(() => {
+            /* engine logs the failure; CLI surfaces the abort UX regardless */
+          });
+        }
         return;
       }
       if (
@@ -2839,6 +2907,63 @@ export const InkApp: React.FC<InkAppProps> = ({
     );
   };
 
+  // Bucket diff cells by parent_message_id so they thread under the
+  // assistant message that triggered them. Diffs without an anchor
+  // render in a trailing block at the end (rare — only when the
+  // diff TurnEvent arrived before any assistant message in the turn).
+  const diffsByParent = new Map<string, typeof session.diffs>();
+  const orphanDiffs: typeof session.diffs = [];
+  for (const d of session.diffs) {
+    if (d.parentMessageId) {
+      const list = diffsByParent.get(d.parentMessageId) ?? [];
+      list.push(d);
+      diffsByParent.set(d.parentMessageId, list);
+    } else {
+      orphanDiffs.push(d);
+    }
+  }
+
+  // Pager entries — flat list of every cell rendered in chronological
+  // order with full payloads (no truncation). Built once per render so
+  // toggling the pager doesn't recompute on each keystroke.
+  const pagerEntries: PagerEntry[] = [];
+  for (let i = 0; i < deferredMessages.length; i++) {
+    const m = deferredMessages[i];
+    if (!m) continue;
+    pagerEntries.push({
+      id: m.id ?? `pager-msg-${i}`,
+      kind: m.role === "user" ? "user" : "assistant",
+      text: m.content,
+    });
+    if (m.id) {
+      const childCalls = callsByParent.get(m.id);
+      if (childCalls) {
+        for (const c of childCalls) {
+          pagerEntries.push({ id: `pager-tc-${c.id}`, kind: "tool", toolCall: c });
+        }
+      }
+      const childDiffs = diffsByParent.get(m.id);
+      if (childDiffs) {
+        for (const d of childDiffs) {
+          pagerEntries.push({
+            id: `pager-diff-${d.id}`,
+            kind: "diff",
+            diff: { title: d.title, language: d.language, hunks: d.hunks },
+          });
+        }
+      }
+    }
+  }
+  for (const c of orphanCalls) {
+    pagerEntries.push({ id: `pager-tc-orphan-${c.id}`, kind: "tool", toolCall: c });
+  }
+  for (const d of orphanDiffs) {
+    pagerEntries.push({
+      id: `pager-diff-orphan-${d.id}`,
+      kind: "diff",
+      diff: { title: d.title, language: d.language, hunks: d.hunks },
+    });
+  }
   for (let i = 0; i < deferredMessages.length; i++) {
     const m = deferredMessages[i];
     if (!m) continue;
@@ -2866,6 +2991,17 @@ export const InkApp: React.FC<InkAppProps> = ({
           transcriptRows = staticRows;
         }
       }
+      // Render any threaded diff cells under this assistant message.
+      // Codex parity: structural mutation visible inline at the moment
+      // it lands, no scroll-back required.
+      const childDiffs = diffsByParent.get(m.id);
+      if (childDiffs && childDiffs.length > 0) {
+        for (const d of childDiffs) {
+          transcriptRows.push(
+            <DiffCard key={`diff-${d.id}`} title={d.title} language={d.language} hunks={d.hunks} />,
+          );
+        }
+      }
       if (elicitAnchor === m.id) {
         // Pending elicit is by definition unresolved → dynamic.
         transcriptRows = dynamicRows;
@@ -2873,6 +3009,22 @@ export const InkApp: React.FC<InkAppProps> = ({
         transcriptRows = staticRows;
       }
     }
+  }
+  // Trailing orphan diffs (no parent_message_id) — render dynamically
+  // so they update if more land before the next assistant message.
+  if (orphanDiffs.length > 0) {
+    transcriptRows = dynamicRows;
+    for (const d of orphanDiffs) {
+      transcriptRows.push(
+        <DiffCard
+          key={`diff-orphan-${d.id}`}
+          title={d.title}
+          language={d.language}
+          hunks={d.hunks}
+        />,
+      );
+    }
+    transcriptRows = staticRows;
   }
   // Live streaming assistant buffer — rendered in the dynamic bucket
   // until the next `message` frame arrives and clears it. Keeps the
@@ -2980,8 +3132,21 @@ export const InkApp: React.FC<InkAppProps> = ({
       ? renderSetupBanner(setupSnapshot)
       : null;
 
+  // Sticky version-skew banner: compares CLI VERSION to engine
+  // /v1/status.version. Mismatch → operator sees a one-line hint
+  // pointing at the rebuild command. Pre-fix this triage cost a
+  // 2-cycle "why isn't my fix landing" debug session.
+  const versionSkewNode = statusSnapshot
+    ? (() => {
+        const skew = classifyVersionSkew(CLI_VERSION, statusSnapshot.version);
+        if (skew.severity === "match" || skew.severity === "dev_build") return null;
+        return <VersionMismatchBanner snapshot={skew} />;
+      })()
+    : null;
+
   const welcomeRow = (
     <Box key="welcome" flexDirection="column">
+      {versionSkewNode}
       {setupBannerNode}
       <WelcomeBanner
         persona={persona.label}
@@ -3195,20 +3360,29 @@ export const InkApp: React.FC<InkAppProps> = ({
         />
       ) : null}
 
-      {/* Validation errors — humanized: Step N: invalid `kind` + valid-kinds hint */}
-      {session.validationErrors.length > 0 ? (
+      {/* Validation errors — surfaced only when the turn is actually
+          in a terminal failure state. Mid-turn iterations clear via
+          the `tool_call_start` reducer reset; the block here stays
+          for awaiting_input / completed / error so the user has the
+          last word on what failed. Tone follows status: error → red
+          (real failure), other → yellow (the LLM may still recover). */}
+      {session.validationErrors.length > 0 &&
+      (session.status === "error" ||
+        session.status === "awaiting_input" ||
+        session.status === "completed") ? (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color="red" bold>
-            validation errors
+          <Text color={session.status === "error" ? "red" : "yellow"} bold>
+            {session.status === "error" ? "validation errors" : "draft validation"}
           </Text>
           {session.validationErrors.map((e, idx) => {
             const h = humanizeValidationError({
               path: e.path,
               message: typeof e.message === "string" ? e.message : JSON.stringify(e.message),
             });
+            const tone = session.status === "error" ? "red" : "yellow";
             return (
               <Box key={`err-${idx}`} flexDirection="column">
-                <Text color="red">× {h.label}</Text>
+                <Text color={tone}>× {h.label}</Text>
                 {h.hint ? <Text color="yellow"> ↳ {h.hint}</Text> : null}
                 {h.detail ? <Text dimColor> {h.detail}</Text> : null}
               </Box>
@@ -3233,15 +3407,59 @@ export const InkApp: React.FC<InkAppProps> = ({
         const completedThisTurn = session.toolCalls.filter(
           (c) => c.status === "done" || c.status === "failed",
         ).length;
+        const failed = session.toolCalls.filter((c) => c.status === "failed");
+        const lastFailure = failed[failed.length - 1];
+        // Best-effort: pull `error_code` from the last failed tool's
+        // result envelope. Surface it in the spinner so a long
+        // recovery flow reads "5 tools failed (slug_already_in_use)"
+        // instead of an opaque "summarising 5 tool results" — the
+        // exact symptom of session 975a64b0 (3m09s of opaque
+        // summarisation while the LLM tried to recover from a
+        // 23505 unique-violation).
+        const lastFailureCode = (() => {
+          const result = lastFailure?.result as
+            | {
+                error_code?: unknown;
+                error?: unknown;
+                data?: { error_code?: unknown };
+              }
+            | undefined;
+          if (!result) return null;
+          if (typeof result.error_code === "string") return result.error_code;
+          if (typeof result.data?.error_code === "string") return result.data.error_code;
+          if (typeof result.error === "string") return result.error;
+          return null;
+        })();
         return (
           <Spinner
             active={busy}
             turnTokens={session.usage?.turn_tokens ?? null}
             currentTool={running?.name ?? null}
             completedToolsThisTurn={running ? 0 : completedThisTurn}
+            failedToolsThisTurn={failed.length}
+            lastFailureCode={lastFailureCode}
           />
         );
       })()}
+
+      {/* Activity ticker — single line above the composer telling the
+          operator what the engine is doing right now (current tool,
+          composing reply, idle after last tool). Engine emits
+          `activity` TurnEvents at meaningful boundaries; the cli-core
+          reducer drops them into `session.activity`; the component
+          throttles re-renders at 250ms to avoid Ink flicker. Hidden
+          when `busy` is false. */}
+      <ActivityLine activity={session.activity} active={busy} />
+
+      {/* Modal transcript pager — codex parity (Ctrl-P toggles).
+          Renders every cell with full output and unabridged diffs.
+          Returns null when closed; ESC inside it routes to onClose. */}
+      <TranscriptPager
+        open={pagerOpen}
+        entries={pagerEntries}
+        onClose={() => setPagerOpen(false)}
+        rows={rows}
+      />
 
       {/* Subkit-specific telemetry line — tokens, connector count,
           optional shell-hook output. Sits above the footer so the
@@ -3265,6 +3483,10 @@ export const InkApp: React.FC<InkAppProps> = ({
         transcriptMode={transcriptMode}
         connectionState={connectionSnapshot?.state ?? "unknown"}
         connectionReason={connectionSnapshot?.reason ?? null}
+        sessionTokens={session.sessionTotalTokens}
+        tokensToday={statusSnapshot?.tokens_today ?? null}
+        tokensMonth={statusSnapshot?.tokens_month ?? null}
+        monthlyBudget={statusSnapshot?.monthly_budget_tokens ?? null}
         columns={columns}
       />
 

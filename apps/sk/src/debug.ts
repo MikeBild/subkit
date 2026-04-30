@@ -57,6 +57,13 @@ export type DebugRecordKind =
   | "http.request"
   | "http.response"
   | "http.transport_error"
+  // http.transport_recovery — emitted when engine-client recovers from
+  // a transient ECONNRESET / socket-closed mid-turn by retrying or
+  // synthesising state from a re-fetched conversation detail. The
+  // `strategy` field distinguishes the path so post-mortems can
+  // separate "we retried and the engine accepted it" from "we replayed
+  // via getConversation".
+  | "http.transport_recovery"
   | "sse.open"
   | "sse.frame"
   | "sse.close"

@@ -358,8 +358,11 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     instance.unmount();
   });
 
-  test("AC3: validation_error frame renders the red errors panel", async () => {
-    const instance = renderApp({
+  test("AC3: validation_error frame renders the panel — copy and tone follow turn status", async () => {
+    // Active turn (status=completed, non-terminal-failure): the panel
+    // appears under "draft validation" (yellow) — informative, not
+    // alarming, since the next attempt may still recover.
+    const activeInstance = renderApp({
       onPrompt: async () => ({
         events: framesOf(
           {
@@ -371,19 +374,49 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
           },
           { type: "completed", status: "active" },
         ),
-        conversationId: "c-val",
+        conversationId: "c-val-active",
       }),
     });
     await tick();
-    await type(instance, "broken");
-    await pressEnter(instance);
+    await type(activeInstance, "broken");
+    await pressEnter(activeInstance);
     await tick(80);
-    const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("validation errors");
-    expect(frame).toContain("steps.0.connector_id");
-    expect(frame).toContain("required");
-    expect(frame).toContain("must start with /");
-    instance.unmount();
+    const activeFrame = activeInstance.lastFrame() ?? "";
+    expect(activeFrame).toContain("draft validation");
+    expect(activeFrame).not.toMatch(/^validation errors$/m);
+    expect(activeFrame).toContain("steps.0.connector_id");
+    expect(activeFrame).toContain("required");
+    expect(activeFrame).toContain("must start with /");
+    activeInstance.unmount();
+
+    // Mid-turn iteration: a tool_call_start AFTER a validation_error
+    // resets the panel — the LLM's next attempt either succeeds or
+    // emits a fresh validation_error. The panel should NOT linger.
+    const iteratingInstance = renderApp({
+      onPrompt: async () => ({
+        events: framesOf(
+          {
+            type: "validation_error",
+            errors: [{ path: "steps.0.connector_id", message: "required" }],
+          },
+          {
+            type: "tool_call_start",
+            call_id: "call-2",
+            tool: "build_workflow",
+          },
+          { type: "completed", status: "active" },
+        ),
+        conversationId: "c-val-iterating",
+      }),
+    });
+    await tick();
+    await type(iteratingInstance, "broken");
+    await pressEnter(iteratingInstance);
+    await tick(80);
+    const iteratingFrame = iteratingInstance.lastFrame() ?? "";
+    expect(iteratingFrame).not.toContain("draft validation");
+    expect(iteratingFrame).not.toContain("validation errors");
+    iteratingInstance.unmount();
   });
 });
 

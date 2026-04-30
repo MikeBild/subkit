@@ -1,6 +1,7 @@
 import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
 import { serve } from "@hono/node-server";
 import { ChatAdapterRegistry } from "./chat/registry.ts";
+import { closeAllPools } from "./connectors/drivers/postgres.ts";
 import { closeDb, getDb } from "./db/client.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
@@ -302,6 +303,18 @@ async function runServer(): Promise<void> {
         (server as unknown as { close?: (cb: () => void) => void }).close?.(() => resolve()) ??
           resolve();
       });
+      // Drain every postgres-driver connection pool so the database
+      // doesn't observe abandoned connections after the engine exits.
+      try {
+        await closeAllPools();
+      } catch (err) {
+        logger.warn({
+          module: "engine",
+          action: "shutdown.pg_pools_drain_failed",
+          msg: "failed to drain postgres connector pools",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       await closeDb();
       // Flush + shutdown the OTel tracer last so any shutdown-related
       // spans land at the exporter. Best-effort — exporter failure

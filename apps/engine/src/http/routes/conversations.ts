@@ -14,7 +14,7 @@ import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { buildMessagesV2 } from "../../conversations/parts.ts";
 import * as svc from "../../conversations/service.ts";
 import { replayEvents, serializeEvent } from "../../conversations/streaming.ts";
-import type { ConversationStatus } from "../../conversations/types.ts";
+import type { ConversationStatus, TurnEvent } from "../../conversations/types.ts";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { monthlyUsage } from "../../llm/budgets.ts";
 import { resolveModelRoute } from "../../llm/core/invoke.ts";
@@ -588,6 +588,41 @@ function serializeConversation(c: svc.ConversationTurnOutcome): RunOutcomeJson {
   return out;
 }
 
+/**
+ * True when the client asked for live SSE on a turn-driving POST.
+ * We content-negotiate on `Accept: text/event-stream` so existing
+ * JSON callers (web, MCP bridge, test suites) keep their current
+ * single-response shape, while sk-cli opts in to live frames.
+ */
+function wantsSSE(accept: string | null | undefined): boolean {
+  if (!accept) return false;
+  return accept.toLowerCase().includes("text/event-stream");
+}
+
+/**
+ * Terminal SSE event carrying the conversation row + final status that
+ * JSON callers receive in the response body. Live consumers read this
+ * to learn the conversation_id (on create) and to know the loop has
+ * fully unwound. Distinct from the in-loop `completed` frame, which
+ * carries the per-turn token usage.
+ */
+function outcomeFrame(c: svc.ConversationTurnOutcome): { event: string; data: string } {
+  const json = serializeConversation(c);
+  // events[] is omitted from the SSE outcome — every event already
+  // streamed live, repeating them here would double-render.
+  const { events: _drop, ...rest } = json;
+  void _drop;
+  return { event: "outcome", data: JSON.stringify(rest) };
+}
+
+function errorFrame(payload: {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+}): { event: string; data: string } {
+  return { event: "error", data: JSON.stringify(payload) };
+}
+
 export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   // Conversations are gated on a dedicated `conversation:*` permission
   // family (added in the sk-cli rollout). The legacy `workflow:*`
@@ -658,21 +693,58 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
-    const outcome = await svc.createConversation(
-      {
-        tenant_id: principal.tenant_id,
-        actor_id: principal.id,
-        ...(body.connector_id ? { connector_id: body.connector_id } : {}),
-        ...(body.workflow_id ? { workflow_id: body.workflow_id } : {}),
-        ...(body.initial_message ? { initial_message: body.initial_message } : {}),
-        ...(body.memory !== undefined ? { memory: body.memory } : {}),
-        ...(body.model ? { model: body.model } : {}),
-        ...(body.title ? { title: body.title } : {}),
-        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-        runtime_context: buildRuntimeContextFromRequest(c, principal),
-      },
-      db,
-    );
+    const baseParams = {
+      tenant_id: principal.tenant_id,
+      actor_id: principal.id,
+      ...(body.connector_id ? { connector_id: body.connector_id } : {}),
+      ...(body.workflow_id ? { workflow_id: body.workflow_id } : {}),
+      ...(body.initial_message ? { initial_message: body.initial_message } : {}),
+      ...(body.memory !== undefined ? { memory: body.memory } : {}),
+      ...(body.model ? { model: body.model } : {}),
+      ...(body.title ? { title: body.title } : {}),
+      ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+      runtime_context: buildRuntimeContextFromRequest(c, principal),
+    } as const;
+
+    if (wantsSSE(c.req.header("accept"))) {
+      // streamSSE returns plain Response; the openapi handler signature
+      // wants a TypedResponse derived from the JSON schema. Cast — the
+      // runtime is correct, and the OpenAPI doc still describes the
+      // JSON branch faithfully (clients without `Accept: text/event-stream`
+      // never see the SSE wire). Mirrors the hand-rolled `/stream`
+      // replay route below that bypasses openapi for the same reason.
+      return streamSSE(c, async (stream) => {
+        try {
+          const outcome = await svc.createConversation(
+            {
+              ...baseParams,
+              onCreated: (record) => {
+                void stream.writeSSE({
+                  event: "conversation_started",
+                  data: JSON.stringify({ conversation: record }),
+                });
+              },
+              onEvent: (ev: TurnEvent) => {
+                void stream.writeSSE(serializeEvent(ev));
+              },
+            },
+            db,
+          );
+          await stream.writeSSE(outcomeFrame(outcome));
+        } catch (error) {
+          const err = error as Error;
+          await stream.writeSSE(
+            errorFrame({
+              code: "internal",
+              message: err?.message ?? "internal_error",
+            }),
+          );
+        }
+        // biome-ignore lint/suspicious/noExplicitAny: see comment above.
+      }) as any;
+    }
+
+    const outcome = await svc.createConversation(baseParams, db);
     return c.json(serializeConversation(outcome), 201);
   });
 
@@ -700,20 +772,58 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
+    const baseParams = {
+      tenant_id: principal.tenant_id,
+      conversation_id: id,
+      actor_id: principal.id,
+      message: body.message,
+      ...(body.memory !== undefined ? { memory: body.memory } : {}),
+      ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+      runtime_context: buildRuntimeContextFromRequest(c, principal),
+    } as const;
+
+    if (wantsSSE(c.req.header("accept"))) {
+      return streamSSE(c, async (stream) => {
+        try {
+          const outcome = await svc.appendUserMessage(
+            {
+              ...baseParams,
+              onEvent: (ev: TurnEvent) => {
+                void stream.writeSSE(serializeEvent(ev));
+              },
+            },
+            db,
+          );
+          await stream.writeSSE(outcomeFrame(outcome));
+        } catch (error) {
+          if (error instanceof svc.PendingElicitationBlockedError) {
+            await stream.writeSSE(
+              errorFrame({
+                code: "pending_elicitation_blocked",
+                message: error.message,
+                details: {
+                  conversation_status: "awaiting_input",
+                  pending_elicitation: error.pending_elicitation,
+                },
+              }),
+            );
+            return;
+          }
+          const err = error as Error;
+          await stream.writeSSE(
+            errorFrame({
+              code: "internal",
+              message: err?.message ?? "internal_error",
+            }),
+          );
+        }
+        // biome-ignore lint/suspicious/noExplicitAny: see createRouteSpec branch above.
+      }) as any;
+    }
+
     let outcome: svc.ConversationTurnOutcome;
     try {
-      outcome = await svc.appendUserMessage(
-        {
-          tenant_id: principal.tenant_id,
-          conversation_id: id,
-          actor_id: principal.id,
-          message: body.message,
-          ...(body.memory !== undefined ? { memory: body.memory } : {}),
-          ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-          runtime_context: buildRuntimeContextFromRequest(c, principal),
-        },
-        db,
-      );
+      outcome = await svc.appendUserMessage(baseParams, db);
     } catch (error) {
       if (error instanceof svc.PendingElicitationBlockedError) {
         throw new HttpError(409, "pending_elicitation_blocked", error.message, {
@@ -749,20 +859,61 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id, elicitation_id } = c.req.valid("param");
     const body = c.req.valid("json");
+    const baseParams = {
+      tenant_id: principal.tenant_id,
+      conversation_id: id,
+      elicitation_id,
+      actor_id: principal.id,
+      output: body.output,
+      ...(body.reason ? { reason: body.reason } : {}),
+      ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+    } as const;
+
+    // SSE branch — when the CLI sends `Accept: text/event-stream`, stream
+    // every TurnEvent the resumed runLoop produces in real time. Pre-fix
+    // this route was JSON-only, so an elicit response that triggered a
+    // 1–2 minute LLM turn left the operator staring at a `summarising N
+    // tool results · 1m43s` spinner with no incremental progress until
+    // the buffered JSON came back. Mirrors the SSE branch on `/messages`
+    // and the create route above.
+    if (wantsSSE(c.req.header("accept"))) {
+      return streamSSE(c, async (stream) => {
+        try {
+          const outcome = await svc.respondElicitation(
+            {
+              ...baseParams,
+              onEvent: (ev) => {
+                void stream.writeSSE(serializeEvent(ev));
+              },
+            },
+            db,
+          );
+          await stream.writeSSE(outcomeFrame(outcome));
+        } catch (error) {
+          if (error instanceof svc.ElicitationAlreadyResolvedError) {
+            await stream.writeSSE(
+              errorFrame({
+                code: "elicitation_already_resolved",
+                message: error.message,
+              }),
+            );
+            return;
+          }
+          const err = error as Error;
+          await stream.writeSSE(
+            errorFrame({
+              code: "internal",
+              message: err?.message ?? "internal_error",
+            }),
+          );
+        }
+        // biome-ignore lint/suspicious/noExplicitAny: streamSSE returns a plain Response; the openapi handler wants the typed shape.
+      }) as any;
+    }
+
     let outcome: Awaited<ReturnType<typeof svc.respondElicitation>>;
     try {
-      outcome = await svc.respondElicitation(
-        {
-          tenant_id: principal.tenant_id,
-          conversation_id: id,
-          elicitation_id,
-          actor_id: principal.id,
-          output: body.output,
-          ...(body.reason ? { reason: body.reason } : {}),
-          ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-        },
-        db,
-      );
+      outcome = await svc.respondElicitation(baseParams, db);
     } catch (error) {
       if (error instanceof svc.ElicitationAlreadyResolvedError) {
         throw new HttpError(409, "elicitation_already_resolved", error.message, {
@@ -792,20 +943,54 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!elicit) {
       throw new NotFoundError("elicitation_for_tool_call");
     }
+    const baseParams = {
+      tenant_id: principal.tenant_id,
+      conversation_id: id,
+      elicitation_id: elicit.id,
+      actor_id: principal.id,
+      output: body.output,
+      ...(body.reason ? { reason: body.reason } : {}),
+      ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+    } as const;
+
+    if (wantsSSE(c.req.header("accept"))) {
+      return streamSSE(c, async (stream) => {
+        try {
+          const outcome = await svc.respondElicitation(
+            {
+              ...baseParams,
+              onEvent: (ev) => {
+                void stream.writeSSE(serializeEvent(ev));
+              },
+            },
+            db,
+          );
+          await stream.writeSSE(outcomeFrame(outcome));
+        } catch (error) {
+          if (error instanceof svc.ElicitationAlreadyResolvedError) {
+            await stream.writeSSE(
+              errorFrame({
+                code: "elicitation_already_resolved",
+                message: error.message,
+              }),
+            );
+            return;
+          }
+          const err = error as Error;
+          await stream.writeSSE(
+            errorFrame({
+              code: "internal",
+              message: err?.message ?? "internal_error",
+            }),
+          );
+        }
+        // biome-ignore lint/suspicious/noExplicitAny: streamSSE returns plain Response.
+      }) as any;
+    }
+
     let outcome: Awaited<ReturnType<typeof svc.respondElicitation>>;
     try {
-      outcome = await svc.respondElicitation(
-        {
-          tenant_id: principal.tenant_id,
-          conversation_id: id,
-          elicitation_id: elicit.id,
-          actor_id: principal.id,
-          output: body.output,
-          ...(body.reason ? { reason: body.reason } : {}),
-          ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-        },
-        db,
-      );
+      outcome = await svc.respondElicitation(baseParams, db);
     } catch (error) {
       if (error instanceof svc.ElicitationAlreadyResolvedError) {
         throw new HttpError(409, "elicitation_already_resolved", error.message, {

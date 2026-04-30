@@ -9,11 +9,19 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
 import { render } from "ink-testing-library";
+import type { ReactElement } from "react";
 import { renderAuthoringCard } from "./authoring-cards.tsx";
 
 function snapshot(s: ReturnType<typeof render>): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes
   return (s.lastFrame() ?? "").replace(/\[[0-9;]*m/g, "");
+}
+
+/** `renderAuthoringCard` returns `React.ReactNode | null`; ink-testing-library's
+ *  `render` is typed for `ReactElement`. Cast to satisfy the API at the
+ *  test boundary — every call site here passes a non-null call so the
+ *  returned node is always a real element. */
+function renderCard(call: ToolCallState): ReturnType<typeof render> {
+  return render(renderAuthoringCard(call, "chat") as ReactElement);
 }
 
 function makeCall(name: string, output: unknown): ToolCallState {
@@ -40,7 +48,7 @@ describe("dry_run_workflow card · output rendering (bug C / 86de186b)", () => {
         ],
       },
     });
-    const r = render(<>{renderAuthoringCard(call, "chat")}</>);
+    const r = renderCard(call);
     const frame = snapshot(r);
     expect(frame).toContain("Preview complete");
     // Some signal of the preview output, not just the bare summary.
@@ -61,7 +69,7 @@ describe("dry_run_workflow card · output rendering (bug C / 86de186b)", () => {
         },
       ],
     });
-    const r = render(<>{renderAuthoringCard(call, "chat")}</>);
+    const r = renderCard(call);
     const frame = snapshot(r);
     expect(frame).toContain("Preview complete");
     expect(frame).toMatch(/alpha|resources/);
@@ -73,7 +81,7 @@ describe("dry_run_workflow card · output rendering (bug C / 86de186b)", () => {
       ok: true,
       summary: "Ran 1 step with no errors.",
     });
-    const r = render(<>{renderAuthoringCard(call, "chat")}</>);
+    const r = renderCard(call);
     const frame = snapshot(r);
     expect(frame).toContain("Preview complete");
     expect(frame).toContain("Ran 1 step with no errors");

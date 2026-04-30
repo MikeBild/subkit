@@ -28,6 +28,7 @@ import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { translateAutoPersistError } from "../persistence/auto-persist.ts";
 import { type AtomicCredentialInput, saveConnectorAtomic } from "../persistence/save-connector.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -199,13 +200,43 @@ export const saveConnectorDraftTool: ConversationTool = {
       connector?.driver === "s3";
     const probeFailed = Boolean(connector) && requiresProbe && connector?.latest_probe?.ok !== true;
 
-    const atomicResult = await saveConnectorAtomic({
-      ctx,
-      environment: args.environment,
-      forceSave: args.force_save,
-      reason: "manual_re_issue",
-      ...(supplied ? { credential: supplied as AtomicCredentialInput } : {}),
-    });
+    let atomicResult: ToolResult;
+    try {
+      atomicResult = await saveConnectorAtomic({
+        ctx,
+        environment: args.environment,
+        forceSave: args.force_save,
+        reason: "manual_re_issue",
+        ...(supplied ? { credential: supplied as AtomicCredentialInput } : {}),
+      });
+    } catch (err) {
+      // Translate Postgres errors (23505 unique_violation, 23503 fk
+      // violation, 23502 not-null, 22P02 invalid uuid/enum) into the
+      // same typed error_codes the auto-persist path uses.
+      // Pre-fix (session 975a64b0 16:37:21) the raw `Failed query:
+      // insert into "connectors" ...` SQL was passed verbatim to the
+      // LLM, which then spent 90s of "summarising 5 tool results"
+      // trying to make sense of it. Post-fix the LLM gets
+      // `slug_already_in_use` + `next_best_actions: [list_connectors,
+      // get_connector, update_connector]` and can recover in one turn.
+      const translated = translateAutoPersistError(err, "save_connector_draft");
+      logger.warn({
+        module: "conversation_tool",
+        action: "save_connector_draft.atomic_threw",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        error_code: translated.error_code,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return {
+        ok: false,
+        data: {
+          error_code: translated.error_code,
+          message: translated.message,
+          next_best_actions: translated.next_best_actions,
+        },
+      };
+    }
     if (!atomicResult.ok) {
       // probe_failed / connector_not_ready etc — the helper already
       // populated next_best_actions and force_save_available.

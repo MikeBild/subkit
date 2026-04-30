@@ -57,6 +57,21 @@ export type DriftSignal =
       current_version: string;
       recorded_major: number;
       current_major: number;
+    }
+  | {
+      // Workflow-level invariant violation. Emitted when the
+      // `validation_expression` on a WorkflowDef evaluates to a
+      // falsy result against the run's final output — the run
+      // structurally succeeded, but a business invariant ("orders
+      // must be non-empty", "every charge has a currency") didn't
+      // hold. The repair flow gets the expression text + the
+      // offending output so it can propose a fix that re-satisfies
+      // the invariant. Mirrors the reference impl's optional
+      // `validationFunction` callback, which serves the same
+      // role pre-LLM-judge.
+      kind: "validation_failed";
+      expression: string;
+      actual_value: unknown;
     };
 
 // The classifier output. A PatchDecision says whether the engine may

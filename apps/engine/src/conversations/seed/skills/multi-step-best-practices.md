@@ -51,3 +51,64 @@ Do NOT use parallel when one branch's output feeds another branch's input — us
 - `output_schema` on the WorkflowDef: match what downstream consumers expect
 - Use ISO 8601 date formats and consistent key names across all output fields
 - Sort array outputs by a stable key for reproducible results across runs
+
+## Example: branch + parallel composition
+
+A typical orchestration pattern: fetch a record, branch on a field, fan out
+two parallel writes. Branches reference contained step ids by name; parallel
+branches are arrays of arrays (each inner array is one parallel chain).
+
+```json
+{
+  "name": "Tier-aware fan-out",
+  "slug": "tier-fanout",
+  "steps": [
+    {
+      "id": "lookup",
+      "kind": "request",
+      "method": "GET",
+      "connector_id": "<crm_connector_id>",
+      "path": "/customers/${input.id}"
+    },
+    {
+      "id": "is_enterprise",
+      "kind": "branch",
+      "when": "$scope.lookup.data.tier = 'enterprise'",
+      "then_steps": ["fan_out"],
+      "else_steps": ["log_self_serve"]
+    },
+    {
+      "id": "fan_out",
+      "kind": "parallel",
+      "branches": [["notify_csm"], ["create_ticket"]]
+    },
+    {
+      "id": "notify_csm",
+      "kind": "request",
+      "method": "POST",
+      "connector_id": "<slack_connector_id>",
+      "path": "/api/chat.postMessage",
+      "body": { "channel": "#csm", "text": "New enterprise: ${scope.lookup.data.email}" }
+    },
+    {
+      "id": "create_ticket",
+      "kind": "request",
+      "method": "POST",
+      "connector_id": "<zendesk_connector_id>",
+      "path": "/api/v2/tickets.json",
+      "body": { "ticket": { "subject": "Onboarding for ${scope.lookup.data.email}" } }
+    },
+    {
+      "id": "log_self_serve",
+      "kind": "transform",
+      "language": "jsonata",
+      "expression": "{ 'logged': $scope.lookup.data.id }"
+    }
+  ]
+}
+```
+
+The `then_steps` / `else_steps` on `branch` and the `branches` on `parallel`
+list **step ids by name**; the engine wires the control flow from those ids.
+Each contained step still appears in the top-level `steps` array — there is
+no nesting in the JSON.

@@ -11,11 +11,13 @@ import {
   recordExecutionDryRun,
   recordExecutionWarningsEmitted,
 } from "../../observability/instrumentation.ts";
+import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { pickProbeRecoveryActions } from "./probe-recovery.ts";
 
 const inputSchema = z
   .object({
@@ -99,6 +101,37 @@ export const dryRunStepTool: ConversationTool = {
         count: runWarnings.length,
       });
     }
+    // Build a one-entry step_traces slot mirroring dry_run_workflow's
+    // shape so subsequent inspect_workflow_draft / suggest_jsonata_paths
+    // calls have a per-step scope to read against. Single-step
+    // dry-runs are how the LLM explores a request shape before
+    // committing to a transform — without persisting scope_at_step
+    // here, the next call would have to re-run the whole workflow
+    // just to learn the same shape.
+    const runStep = run.steps[0];
+    const stepTraceEntry = runStep
+      ? {
+          step_id: runStep.step_key,
+          kind: runStep.kind,
+          status: runStep.status,
+          ...(runStep.duration_ms != null ? { duration_ms: runStep.duration_ms } : {}),
+          ...(runStep.output_preview !== undefined && runStep.output_preview !== null
+            ? { output_preview: runStep.output_preview }
+            : {}),
+          ...(runStep.raw_preview !== undefined && runStep.raw_preview !== null
+            ? { raw_preview: runStep.raw_preview }
+            : {}),
+          ...(runStep.output_preview !== undefined && runStep.output_preview !== null
+            ? { scope_at_step: buildScopeAtStep(runStep.output_preview) }
+            : {}),
+          ...(runStep.error && typeof runStep.error === "object" && runStep.error !== null
+            ? typeof (runStep.error as { code?: unknown }).code === "string"
+              ? { error_code: (runStep.error as { code: string }).code }
+              : {}
+            : {}),
+        }
+      : null;
+
     const nextDraft = withLatestPreview(
       ctx.getDraft(),
       {
@@ -107,11 +140,38 @@ export const dryRunStepTool: ConversationTool = {
         summary: summary.summary,
         preview: summary.output_preview ?? null,
         ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
+        ...(stepTraceEntry ? { step_traces: [stepTraceEntry] } : {}),
+        input: args.input ?? null,
       },
       "dry_run_step",
       "workflow_previewed",
     );
     await ctx.setDraft(nextDraft);
+
+    // Probe-style recovery hints when the step actually failed at the
+    // driver level. Only applies to request-like kinds (request /
+    // call) where status/timeout makes sense; transforms / loops
+    // surface their own typed errors via `summary.error`.
+    const meta = (runStep?.request_meta ?? null) as {
+      driver?: string;
+      status?: number | null;
+    } | null;
+    const status = meta && typeof meta.status === "number" ? meta.status : 0;
+    const errorCode = summary.error?.code ?? null;
+    const failureCode =
+      errorCode === "request_timeout" || errorCode === "probe_timeout" ? "request_timeout" : null;
+    const isRequestFailure =
+      (summary.ok === false &&
+        (meta?.driver === "http" || meta?.driver === "graphql") &&
+        status >= 400) ||
+      failureCode !== null;
+    const nextBestActions = isRequestFailure
+      ? pickProbeRecoveryActions({
+          ...(status > 0 ? { status } : {}),
+          ...(failureCode ? { failure_code: failureCode } : {}),
+        })
+      : null;
+
     return {
       ok: summary.ok,
       data: buildLifecyclePayload(nextDraft, {
@@ -123,6 +183,11 @@ export const dryRunStepTool: ConversationTool = {
         execution_id: run.execution_id,
         ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
         ...(summary.output_preview !== undefined ? { output_preview: summary.output_preview } : {}),
+        ...(stepTraceEntry?.scope_at_step ? { scope_at_step: stepTraceEntry.scope_at_step } : {}),
+        ...(stepTraceEntry?.raw_preview !== undefined
+          ? { raw_preview: stepTraceEntry.raw_preview }
+          : {}),
+        ...(nextBestActions ? { next_best_actions: nextBestActions } : {}),
         ...(summary.error ? { error: summary.error } : {}),
       }),
     };

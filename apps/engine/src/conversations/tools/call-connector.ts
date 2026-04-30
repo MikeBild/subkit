@@ -52,7 +52,7 @@ import { recordConnectorInvoked } from "../../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
-import { pgQuery } from "../../connectors/drivers/postgres.ts";
+import { pgQueryWithCount } from "../../connectors/drivers/postgres.ts";
 import { executeS3Request, type S3Method } from "../../connectors/drivers/s3.ts";
 import { executeSftpCommand } from "../../connectors/drivers/sftp.ts";
 import { getConnector } from "../../connectors/service.ts";
@@ -543,14 +543,14 @@ export const callConnectorTool: ConversationTool = {
         if (!allowWrites && !SQL_HAS_LIMIT_RE.test(finalSql)) {
           finalSql = `${finalSql} LIMIT ${rowLimit}`;
         }
-        const rows = await pgQuery({
+        const res = await pgQueryWithCount({
           connector,
           sql: finalSql,
           params: args.parameters ?? [],
         });
         status = 200;
         responseHeaders = {};
-        responseBody = { rows, row_count: rows.length };
+        responseBody = { rows: res.rows, row_count: res.row_count ?? res.rows.length };
         usedHost = hostOf(connector.dsn ?? "") || "postgres";
         auditMethod = allowWrites ? "WRITE" : "READ";
         auditPathSummary = summarizeSql(sql);

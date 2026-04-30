@@ -116,18 +116,32 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   // The structural gates (inspect + validate) are non-overridable —
   // they reflect "the draft itself is broken", which `force_commit`
   // was never intended to bypass.
-  const staleCheckpoints = missingFreshCheckpoints(fullDraft, [
-    "workflow_inspected",
-    "workflow_validated",
-  ]);
-  const blocking_reasons = [
-    ...(fullDraft.summary?.blocked_by ?? []).filter(
-      (reason) =>
-        reason === "inspect_workflow_draft" ||
-        reason === "validate_draft" ||
-        reason.startsWith("missing:"),
-    ),
-  ];
+  //
+  // Exception: when a fresh `workflow_previewed` checkpoint exists
+  // AND the preview was successful, we treat that as subsuming
+  // `workflow_inspected` + `workflow_validated`. Reason: a successful
+  // dry_run necessarily walked + validated the draft and produced a
+  // real shape per step. Without this exemption, the auto-persist
+  // path failed the very first commit (session a128deba 15:18:31.506)
+  // because the LLM dry-ran but never explicitly inspected/validated,
+  // so the operator's approval click did nothing and they had to
+  // approve a SECOND time.
+  const previewedSeq = fullDraft.state?.checkpoints?.workflow_previewed?.mutation_seq ?? -1;
+  const draftSeq = fullDraft.state?.workflow_mutation_seq ?? 0;
+  const previewSatisfiesInspectValidate = latestPreview?.ok === true && previewedSeq === draftSeq;
+  const staleCheckpoints = previewSatisfiesInspectValidate
+    ? []
+    : missingFreshCheckpoints(fullDraft, ["workflow_inspected", "workflow_validated"]);
+  const blocking_reasons = previewSatisfiesInspectValidate
+    ? []
+    : [
+        ...(fullDraft.summary?.blocked_by ?? []).filter(
+          (reason) =>
+            reason === "inspect_workflow_draft" ||
+            reason === "validate_draft" ||
+            reason.startsWith("missing:"),
+        ),
+      ];
   if (staleCheckpoints.length > 0 || blocking_reasons.length > 0) {
     return {
       ok: false,
@@ -374,16 +388,47 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     }
   }
 
+  // Per-step authoring vocabulary captured from the most recent
+  // dry_run / run on this draft. Persisted next to the DAG so a
+  // follow-up authoring session can call inspect_workflow /
+  // suggest_jsonata_paths without re-running the workflow. Empty
+  // map when no preview was recorded — never undefined, so the
+  // column distinguishes "no preview" from "scope explicitly empty".
+  const scopeIndex: Record<
+    string,
+    { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
+  > = {};
+  for (const trace of latestPreview?.step_traces ?? []) {
+    if (!trace?.scope_at_step) continue;
+    scopeIndex[trace.step_id] = {
+      available_paths: trace.scope_at_step.available_paths ?? [],
+      shape_summary: trace.scope_at_step.shape_summary ?? "unknown",
+      primary_data_path: trace.scope_at_step.primary_data_path ?? null,
+    };
+  }
+  const persistScopeIndex = Object.keys(scopeIndex).length > 0 ? scopeIndex : null;
+
   let result: Awaited<ReturnType<typeof createWorkflow>>;
   try {
     if (targetWorkflowId) {
       result = await updateWorkflow(
-        { tenant_id: ctx.tenant_id, id: targetWorkflowId, def, actor_id: ctx.actor_id },
+        {
+          tenant_id: ctx.tenant_id,
+          id: targetWorkflowId,
+          def,
+          actor_id: ctx.actor_id,
+          scope_index: persistScopeIndex,
+        },
         ctx.db,
       );
     } else {
       result = await createWorkflow(
-        { tenant_id: ctx.tenant_id, def, actor_id: ctx.actor_id },
+        {
+          tenant_id: ctx.tenant_id,
+          def,
+          actor_id: ctx.actor_id,
+          scope_index: persistScopeIndex,
+        },
         ctx.db,
       );
     }

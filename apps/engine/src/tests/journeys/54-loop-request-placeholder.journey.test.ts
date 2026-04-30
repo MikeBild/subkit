@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
 // User story: As a workflow author, I want a loop body that calls an HTTP
 // endpoint with the current item's id in the path to actually substitute
 // that id at request time, so my "list X then fetch each X's resources"

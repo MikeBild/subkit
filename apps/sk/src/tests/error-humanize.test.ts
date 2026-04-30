@@ -172,4 +172,50 @@ describe("humanizeRequestError surfaces hints", () => {
     const out = humanizeRequestError(new Error("something opaque"));
     expect(out).toBe("sk: something opaque");
   });
+
+  test("transient socket drop renders a non-alarming recovery hint", () => {
+    // Long LLM turns can exceed bun-fetch's keep-alive window.
+    // When that happens, we want a calm "recovering" message, not
+    // a red "cannot reach engine" block — the engine kept running
+    // server-side and the next user prompt will resync state.
+    const cause = new Error(
+      "The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()",
+    );
+    (cause as { code?: string }).code = "ECONNRESET";
+    const err = new SkTransportError(cause);
+    const out = humanizeRequestError(err);
+    expect(out).toContain("engine connection dropped");
+    expect(out).toContain("recovering");
+    // Bun-fetch verbose hint must be stripped — it's CLI-internal
+    // noise that makes the user think they did something wrong.
+    expect(out).not.toContain("verbose: true");
+    expect(out).not.toContain("second argument to fetch()");
+    // The "cannot reach engine" framing is reserved for non-transient
+    // failures (engine actually unreachable).
+    expect(out).not.toContain("cannot reach engine");
+  });
+
+  test("ECONNREFUSED is NOT classified as transient socket drop", () => {
+    // Distinct from ECONNRESET: ECONNREFUSED means the engine isn't
+    // listening at all, so the "engine unreachable" framing is right.
+    const cause = new Error("fetch failed: ECONNREFUSED");
+    (cause as { code?: string }).code = "ECONNREFUSED";
+    const err = new SkTransportError(cause);
+    const out = humanizeRequestError(err);
+    expect(out).toContain("cannot reach engine");
+    expect(out).toContain("unreachable");
+    expect(out).not.toContain("engine connection dropped");
+  });
+
+  test("verbose-fetch suffix is stripped from any transport error message", () => {
+    // Even non-transient transport errors should not leak the bun
+    // verbose-fetch hint into the operator-visible banner.
+    const err = new SkTransportError(
+      new Error(
+        "getaddrinfo ENOTFOUND. For more information, pass `verbose: true` in the second argument to fetch()",
+      ),
+    );
+    const out = humanizeRequestError(err);
+    expect(out).not.toContain("verbose: true");
+  });
 });

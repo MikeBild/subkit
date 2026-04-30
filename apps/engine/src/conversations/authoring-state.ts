@@ -1238,6 +1238,60 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
               ? { warnings: raw.latest_preview.warnings }
               : {}),
             ...(raw.latest_preview.requires_repair === true ? { requires_repair: true } : {}),
+            ...(raw.latest_preview.input !== undefined ? { input: raw.latest_preview.input } : {}),
+            ...(Array.isArray(raw.latest_preview.step_traces)
+              ? {
+                  step_traces: raw.latest_preview.step_traces
+                    .filter((entry: unknown): entry is Record<string, unknown> => isRecord(entry))
+                    .map((entry: Record<string, unknown>) => {
+                      const scope =
+                        isRecord(entry.scope_at_step) &&
+                        Array.isArray(
+                          (entry.scope_at_step as Record<string, unknown>).available_paths,
+                        )
+                          ? {
+                              available_paths: (
+                                (entry.scope_at_step as Record<string, unknown>)
+                                  .available_paths as unknown[]
+                              ).filter((s): s is string => typeof s === "string"),
+                              shape_summary:
+                                typeof (entry.scope_at_step as Record<string, unknown>)
+                                  .shape_summary === "string"
+                                  ? ((entry.scope_at_step as Record<string, unknown>)
+                                      .shape_summary as string)
+                                  : "unknown",
+                              primary_data_path:
+                                typeof (entry.scope_at_step as Record<string, unknown>)
+                                  .primary_data_path === "string"
+                                  ? ((entry.scope_at_step as Record<string, unknown>)
+                                      .primary_data_path as string)
+                                  : null,
+                            }
+                          : undefined;
+                      return {
+                        step_id: typeof entry.step_id === "string" ? entry.step_id : "(unknown)",
+                        kind: typeof entry.kind === "string" ? entry.kind : "unknown",
+                        status: typeof entry.status === "string" ? entry.status : "unknown",
+                        ...(typeof entry.duration_ms === "number"
+                          ? { duration_ms: entry.duration_ms }
+                          : {}),
+                        ...(entry.output_preview !== undefined
+                          ? { output_preview: entry.output_preview }
+                          : {}),
+                        ...(entry.raw_preview !== undefined
+                          ? { raw_preview: entry.raw_preview }
+                          : {}),
+                        ...(scope ? { scope_at_step: scope } : {}),
+                        ...(entry.request_meta !== undefined
+                          ? { request_meta: entry.request_meta }
+                          : {}),
+                        ...(typeof entry.error_code === "string"
+                          ? { error_code: entry.error_code }
+                          : {}),
+                      };
+                    }),
+                }
+              : {}),
           },
         }
       : {}),

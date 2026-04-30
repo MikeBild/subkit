@@ -151,6 +151,30 @@ export async function executeS3Request(p: {
   method: S3Method;
   path: string;
   body?: string | Uint8Array | Buffer | null;
+  /** Content-Type for PUT. Forwarded to the s3-lite-client putObject. */
+  contentType?: string;
+  /** Object metadata for PUT. Each entry rides as `x-amz-meta-<key>`. */
+  metadata?: Record<string, string>;
+  /** LIST cap. Defaults to 1000; capped to 10 000 to keep scope bounded. */
+  maxKeys?: number;
+  /** When true, walk continuation tokens until `maxKeys` is reached
+   *  or the bucket is exhausted. When false (default), the driver
+   *  returns at most one batch (still bounded by `maxKeys`). */
+  paginate?: boolean;
+  /** Override the multipart-upload threshold in MiB. The driver
+   *  switches to multipart upload when the body exceeds this size.
+   *  Defaults to 8 (s3-lite-client's default). When `multipart: false`
+   *  the threshold is forced to a value larger than the body so a
+   *  single PUT is used regardless. */
+  multipart?: boolean;
+  multipartThresholdMb?: number;
+  /** RFC 7233 byte-range expression for partial GETs. Forwarded as a
+   *  Range request header. */
+  range?: string;
+  /** When set, the operation is *not* executed; the driver returns a
+   *  presigned URL that grants temporary access to the operation
+   *  caller. Supported on GET / PUT. */
+  presignExpiresIn?: number;
 }): Promise<S3Response> {
   const { creds: credentials, credential_id } = await resolveS3Credentials(
     p.db,
@@ -170,12 +194,53 @@ export async function executeS3Request(p: {
   });
   switch (method) {
     case "GET": {
-      const res = await client.getObject(key);
-      const text = await res.text();
+      // Presigned URL path — operator wants delegated read access.
+      if (p.presignExpiresIn !== undefined) {
+        const url = await client.getPresignedUrl("GET", key, {
+          expirySeconds: p.presignExpiresIn,
+        });
+        return {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: {
+            url,
+            method: "GET",
+            expires_at: new Date(Date.now() + p.presignExpiresIn * 1000).toISOString(),
+          },
+          credential_id,
+        };
+      }
+      // s3-lite-client's getObject doesn't accept custom headers, so
+      // when a range is requested we fall through to its signed-URL
+      // helper + a direct fetch with the Range header. This keeps
+      // partial-GET semantics without forking the client.
+      let res: Response;
+      if (p.range) {
+        const url = await client.getPresignedUrl("GET", key, { expirySeconds: 60 });
+        res = await fetch(url, { headers: { range: p.range } });
+      } else {
+        res = await client.getObject(key);
+      }
+      // Surface raw bytes when the caller wants them. `arrayBuffer()`
+      // is preferred over `.text()` because it preserves binary
+      // payloads losslessly; the request-step driver decides how to
+      // hand them off (text / base64 / bytes / auto).
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const headers = headersFromResponse(res);
+      // For text-y content types, also expose the decoded string so a
+      // caller without `parse_as` set still sees readable output (the
+      // historical behaviour). Binary content stays as Buffer.
+      const ct = (headers["content-type"] ?? "").toLowerCase();
+      const isText =
+        ct.startsWith("text/") ||
+        ct.includes("json") ||
+        ct.includes("xml") ||
+        ct.includes("yaml") ||
+        ct.includes("csv");
       return {
         status: res.status,
-        headers: headersFromResponse(res),
-        body: text,
+        headers,
+        body: isText ? buffer.toString("utf8") : buffer,
         credential_id,
       };
     }
@@ -183,17 +248,75 @@ export async function executeS3Request(p: {
       if (p.body === undefined || p.body === null) {
         throw new Error("s3 PUT requires a body");
       }
+      // Presigned URL path on PUT — caller uploads directly to S3.
+      if (p.presignExpiresIn !== undefined) {
+        const url = await client.getPresignedUrl("PUT", key, {
+          expirySeconds: p.presignExpiresIn,
+        });
+        return {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: {
+            url,
+            method: "PUT",
+            expires_at: new Date(Date.now() + p.presignExpiresIn * 1000).toISOString(),
+          },
+          credential_id,
+        };
+      }
       const data =
         typeof p.body === "string"
           ? p.body
           : p.body instanceof Uint8Array
             ? p.body
             : new Uint8Array(p.body as Buffer);
-      const info = await client.putObject(key, data);
+      const putOpts: Record<string, unknown> = {};
+      if (p.contentType) putOpts.metadata = { "Content-Type": p.contentType };
+      if (p.metadata) {
+        const metaHeaders: Record<string, string> = {};
+        if (p.contentType) metaHeaders["Content-Type"] = p.contentType;
+        for (const [k, v] of Object.entries(p.metadata)) {
+          // S3 prefixes user-defined metadata with `x-amz-meta-` on the
+          // wire. The s3-lite-client passes `metadata` straight into
+          // the headers, so we apply the prefix ourselves to avoid
+          // collisions with reserved Content-* headers.
+          metaHeaders[`x-amz-meta-${k.toLowerCase()}`] = v;
+        }
+        putOpts.metadata = metaHeaders;
+      }
+      // Multipart configuration. The s3-lite-client switches on size by
+      // default; explicit `multipart: false` forces a single PUT by
+      // raising the threshold above the body size, and an explicit
+      // threshold MiB overrides the default 8 MiB.
+      const dataSize =
+        typeof data === "string"
+          ? Buffer.byteLength(data, "utf8")
+          : (data as Uint8Array).byteLength;
+      const partSize =
+        p.multipart === false
+          ? Math.max(dataSize + 1, 8 * 1024 * 1024)
+          : (p.multipartThresholdMb ?? 0) > 0
+            ? p.multipartThresholdMb! * 1024 * 1024
+            : undefined;
+      if (partSize !== undefined) putOpts.partSize = partSize;
+      const info = await client.putObject(
+        key,
+        data,
+        Object.keys(putOpts).length > 0 ? (putOpts as never) : undefined,
+      );
       return {
         status: 200,
-        headers: { etag: info.etag, "x-amz-version-id": info.versionId ?? "" },
-        body: { etag: info.etag, version_id: info.versionId },
+        headers: {
+          etag: info.etag,
+          "x-amz-version-id": info.versionId ?? "",
+          ...(p.contentType ? { "content-type": p.contentType } : {}),
+        },
+        body: {
+          etag: info.etag,
+          version_id: info.versionId,
+          key,
+          multipart: typeof partSize === "number" && partSize <= dataSize,
+        },
         credential_id,
       };
     }
@@ -215,9 +338,17 @@ export async function executeS3Request(p: {
     }
     case "LIST": {
       const prefix = key.length > 0 ? key : "";
+      const cap = Math.min(p.maxKeys ?? 1000, 10_000);
       const items: Array<{ key: string; size: number; etag: string; last_modified: string }> = [];
+      // The s3-lite-client iterator already follows continuation
+      // tokens internally; we just decide when to stop walking. With
+      // `paginate: true` the iterator runs until either the bucket is
+      // exhausted or `cap` is hit. Without it, a single LIST batch is
+      // collected so callers can opt-in to the heavier traversal.
+      const stopAt = p.paginate === true ? cap : Math.min(cap, 1000);
       for await (const obj of client.listObjects({ prefix })) {
         if (obj.type !== "Object") continue;
+        if (items.length >= stopAt) break;
         items.push({
           key: obj.key,
           size: obj.size,
@@ -228,7 +359,12 @@ export async function executeS3Request(p: {
       return {
         status: 200,
         headers: {},
-        body: { items, count: items.length },
+        body: {
+          items,
+          count: items.length,
+          truncated: items.length >= stopAt,
+          paginated: p.paginate === true,
+        },
         credential_id,
       };
     }

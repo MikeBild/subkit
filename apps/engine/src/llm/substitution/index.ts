@@ -24,3 +24,10 @@ export {
   type Unresolved,
   type UnresolvedCode,
 } from "./resolver.ts";
+
+// Unsupported-placeholder detector (Mustache + bad kinds):
+export {
+  findUnsupportedPlaceholders,
+  type UnsupportedPlaceholder,
+  type UnsupportedPlaceholderCode,
+} from "./unsupported.ts";

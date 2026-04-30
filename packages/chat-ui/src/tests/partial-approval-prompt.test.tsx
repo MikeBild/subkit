@@ -13,12 +13,16 @@ const ENTER = String.fromCharCode(13);
 const ARROW_DOWN = `${ESC}[B`;
 
 function snapshot(s: ReturnType<typeof render>): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI strip
   return (s.lastFrame() ?? "").replace(/\[[0-9;]*m/g, "");
 }
 
-function tick(ms = 10): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// Deterministic flush — yields the microtask queue + one macrotask tick.
+// Pre-fix this used `setTimeout(_, ms)` which the determinism gate
+// forbids; ink's render loop only needs a microtask flush to settle.
+function tick(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
 }
 
 function mount(

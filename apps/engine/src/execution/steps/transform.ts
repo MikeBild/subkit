@@ -17,10 +17,13 @@ import {
   SandboxMemoryError,
   SandboxTimeoutError,
 } from "../../sandboxes/quickjs/types.ts";
+import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { TransformStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
+import { buildJsonataBindings } from "../jsonata-bindings.ts";
 import { TRANSFORM_TIMEOUT_DEFAULT_MS } from "../timeouts.ts";
 import type { StepResult, StepRunContext, StepWarning } from "../types.ts";
+import { buildStepErrorDetail } from "./error-detail.ts";
 
 export interface RunTransformParams {
   ctx: StepRunContext;
@@ -384,16 +387,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
     //                is unpacked. Plain (non-`$`) keys remain
     //                addressable as bare path expressions against the
     //                root context object.
-    const bindings: Record<string, unknown> = {
-      input: p.input,
-      scope: p.scope,
-      steps: p.scope,
-    };
-    for (const [k, v] of Object.entries(p.scope)) {
-      if (k.startsWith("$") && k.length > 1) {
-        bindings[k.slice(1)] = v;
-      }
-    }
+    const bindings = buildJsonataBindings(p.scope, p.input);
     const parseTimeWarnings = detectUnresolvedIdentifiers(p.step.expression, p.scope, bindings);
     // race jsonata.evaluate against the abort signal
     const evalPromise = expr.evaluate(p.scope, bindings);
@@ -455,13 +449,36 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
       }
     }
     if (isEmptyResult && scopeHadData) {
+      // did_you_mean post-processing — same shape as
+      // loop_over_unresolved / branch_when_unresolved. Walk the
+      // expression for $scope/$steps/${scope.X} refs, cross-check
+      // against the actual scope keys, and surface Levenshtein
+      // matches. Pre-fix the LLM had to guess from "available_scope_keys"
+      // alone; with did_you_mean it can copy the suggested step id
+      // directly into the next attempt.
+      const referenced = extractStepIdReferences(p.step.expression ?? "");
+      const scopeKeys = Object.keys(p.scope).filter((k) => !k.startsWith("$"));
+      const didYouMean: Array<{ from: string; to: string[] }> = [];
+      for (const ref of referenced) {
+        if (!scopeKeys.includes(ref)) {
+          const matches = suggestClosest(ref, scopeKeys, 3);
+          if (matches.length > 0) didYouMean.push({ from: ref, to: matches });
+        }
+      }
+      const dymHint =
+        didYouMean.length > 0
+          ? ` Did you mean ${didYouMean
+              .map((d) => `\`${d.to[0]}\` (closest match for \`${d.from}\`)`)
+              .join(", ")}? `
+          : "";
       warnings.push({
         code: "transform_empty_extraction" as const,
         identifier: p.step.id,
-        message: `transform "${p.step.id}" produced an empty result, but upstream scope had non-empty data — the JSONata expression likely referenced the wrong path. Run dry_run_transform with the actual scope to inspect.`,
+        message: `transform "${p.step.id}" produced an empty result, but upstream scope had non-empty data — the JSONata expression likely referenced the wrong path.${dymHint} Run dry_run_transform with the actual scope to inspect.`,
         details: {
           step_key: p.step.id,
           available_scope_keys: Object.keys(p.scope),
+          ...(didYouMean.length > 0 ? { did_you_mean: didYouMean } : {}),
         },
       });
     }
@@ -475,7 +492,19 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
     // only — the body step keys (extract, fetch_resources) were
     // dropped. The LLM then wrote v2/v3 chasing the same bug because
     // there was no signal pointing at the missing keys.
+    // Per-step opt-out for transforms whose authors have consciously
+    // acknowledged the projection. The detector's heuristics still fire
+    // by default — opt out via `silence_warnings: ["dropped_fields"]`
+    // when the omission is intentional (e.g. session f00b8d1c style
+    // derived projections that rename source keys wholesale).
+    const silenceWarnings = Array.isArray(
+      (p.step as { silence_warnings?: unknown }).silence_warnings,
+    )
+      ? ((p.step as { silence_warnings: unknown[] }).silence_warnings as unknown[])
+      : [];
+    const droppedFieldsSilenced = silenceWarnings.includes("dropped_fields");
     if (
+      !droppedFieldsSilenced &&
       Array.isArray(result) &&
       (result as unknown[]).length > 0 &&
       typeof (result as unknown[])[0] === "object" &&
@@ -510,7 +539,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
           warnings.push({
             code: "transform_dropped_fields" as const,
             identifier: p.step.id,
-            message: `transform "${p.step.id}" produced ${(result as unknown[]).length} objects with keys [${[...resultKeys].join(", ")}] but the source iteration "${scopeKey}.data[0]" had keys [${[...sourceKeys].join(", ")}] — the projection likely dropped fields. Use inspect_execution_step on the prior run to see the real source shape, then re-author.`,
+            message: `transform "${p.step.id}" produced ${(result as unknown[]).length} objects with keys [${[...resultKeys].join(", ")}] but the source iteration "${scopeKey}.data[0]" had keys [${[...sourceKeys].join(", ")}] — the projection likely dropped fields. Use inspect_execution_step on the prior run to see the real source shape, then re-author. Suppress with \`silence_warnings: ["dropped_fields"]\` on the step when the omission is intentional.`,
             details: {
               step_key: p.step.id,
               source_scope_key: scopeKey,
@@ -531,11 +560,18 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
     };
     if (warnings.length > 0) {
       out.warnings = warnings;
+      // Log the warning CODES, not the identifier. Pre-fix the
+      // identifier carried the step id (because `identifier` is
+      // populated as the offending step on parse-time warnings),
+      // so the log read like `warnings: ["format_output"]` instead
+      // of `warnings: ["transform_dropped_fields"]` — masking the
+      // actual diagnostic class.
       logger.info({
         module: "execution",
         action: "step.transform.warnings",
         step_id: p.step.id,
-        warnings: warnings.map((w) => w.identifier).filter(Boolean),
+        warnings: warnings.map((w) => w.code),
+        identifiers: warnings.map((w) => w.identifier).filter(Boolean),
       });
     }
     return out;
@@ -610,7 +646,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
       status: "failed",
       retry_count: 0,
       duration_ms,
-      error: { code: "transform_error", message },
+      error: buildStepErrorDetail({ code: "transform_error", err, message }),
     };
   } finally {
     clearTimeout(timer);

@@ -34,3 +34,30 @@ The base-prompt TURN-ONE DISCIPLINE rule applies in full: do not call `create_ap
 - Do not substitute this tool lookup with an inline JSON shape, even for well-known clients.
 - Do not emit `your-subkit-instance.com`, `<YOUR_API_KEY>`, `[rest-of-your-key]`, or any other placeholder host / key. The output guard will rewrite these; the user will reject them.
 - Do not recommend a transport the recipe does not declare in its `transports` array.
+
+## Example: get_vendor_recipe response (engine-side only)
+
+This is the engine response shape `get_vendor_recipe` returns, NOT a client
+config. The `config_template_streamable_http` / `config_template_stdio`
+fields ship verbatim — never paraphrase. The freshness `status` decides
+whether to use, warn, or refuse.
+
+```json
+{
+  "ok": true,
+  "client": "claude-desktop",
+  "transports": ["streamable-http", "stdio"],
+  "freshness": {
+    "status": "fresh",
+    "verified_at": "2026-04-01T00:00:00Z",
+    "days_since": 28
+  },
+  "config_path_hints": [
+    "~/Library/Application Support/Claude/claude_desktop_config.json"
+  ]
+}
+```
+
+Use the response's `config_template_*` field (omitted from this example
+because the assembler-substituted body is vendor-specific) verbatim in
+your reply.
