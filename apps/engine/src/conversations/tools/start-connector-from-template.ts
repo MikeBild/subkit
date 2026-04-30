@@ -52,13 +52,17 @@ export const startConnectorFromTemplateTool: ConversationTool = {
       template,
       args.base_url_environment ? { environment: args.base_url_environment } : undefined,
     );
+    // enriched.base_url falls back to template.base_url (which can now be
+    // null for per-tenant templates like AppSync / GCP). When still null,
+    // omit the field so validateConnectorDraft surfaces the missing-URL
+    // gap and the operator is asked to provide it.
+    const resolvedBaseUrl = enriched.base_url ?? template.base_url ?? undefined;
     const connector = {
       name: enriched.name,
       slug: enriched.slug ?? template.slug,
       driver: enriched.driver,
       environment: enriched.environment,
-      // enriched.base_url is always set because resolveBaseUrl falls back to template.base_url.
-      base_url: enriched.base_url ?? template.base_url,
+      ...(resolvedBaseUrl ? { base_url: resolvedBaseUrl } : {}),
       auth_type: enriched.auth_type,
       config: enriched.config ?? {},
       description: template.description,
