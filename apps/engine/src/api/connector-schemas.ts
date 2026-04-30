@@ -73,6 +73,8 @@ export const DiscoveryStrategyNameEnum = z
   .enum([
     "openapi-direct",
     "graphql-introspect",
+    "postgres-introspect",
+    "mssql-introspect",
     "swagger-ui-scrape",
     "llms-txt",
     "html-scrape",

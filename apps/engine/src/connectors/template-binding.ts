@@ -95,5 +95,19 @@ export async function resolveConnectorOAuthConfig(
   } else if (templateOauth && Object.keys(templateOauth.extra_headers).length > 0) {
     out.extra_token_headers = templateOauth.extra_headers;
   }
+  // Grant type — drives which token-endpoint flow runs at mint /
+  // refresh time. `cognito_user_password` switches the refresh-worker
+  // to the AWS InitiateAuth path.
+  const grant_type = nonEmptyString(cfg.grant_type) ?? nonEmptyString(templateOauth?.grant_type);
+  if (
+    grant_type === "authorization_code" ||
+    grant_type === "client_credentials" ||
+    grant_type === "password" ||
+    grant_type === "cognito_user_password" ||
+    grant_type === "jwt_bearer" ||
+    grant_type === "device_code"
+  ) {
+    out.grant_type = grant_type;
+  }
   return out;
 }

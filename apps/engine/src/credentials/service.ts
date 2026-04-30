@@ -106,6 +106,15 @@ function deserializePlain(mode: CredentialMode, raw: string): DecryptedCredentia
         refresh_token: null,
         expires_at: null,
       };
+    case "aws_sigv4":
+      return {
+        mode: "aws_sigv4",
+        access_key_id: String(parsed.access_key_id ?? ""),
+        secret_access_key: String(parsed.secret_access_key ?? ""),
+        ...(typeof parsed.session_token === "string"
+          ? { session_token: parsed.session_token }
+          : {}),
+      };
     default: {
       const exhaustive: never = mode;
       void exhaustive;

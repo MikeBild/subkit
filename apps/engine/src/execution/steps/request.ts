@@ -13,16 +13,31 @@
 import { and, eq } from "drizzle-orm";
 import { evaluateHook } from "../../auth/hooks.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
-import { buildRequestPlan, executePlannedHttpRequest } from "../../connectors/drivers/http.ts";
+import {
+  buildRequestPlan,
+  executePlannedHttpRequest,
+  serializeXmlBody,
+} from "../../connectors/drivers/http.ts";
+import {
+  pgQueryCursor,
+  pgQueryWithCount,
+  pgTransaction,
+} from "../../connectors/drivers/postgres.ts";
 import { executeS3Request, type S3Method } from "../../connectors/drivers/s3.ts";
 import { withEgressAudit } from "../../connectors/egress.ts";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { connectorEndpointSchemas, connectors } from "../../db/schema/index.ts";
-import { resolvePlaceholders, resolveStringPlaceholders } from "../../llm/substitution/resolver.ts";
+import {
+  resolvePlaceholders,
+  resolvePlaceholdersTypePreserving,
+  resolveStringPlaceholders,
+} from "../../llm/substitution/resolver.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordRequestRetry } from "../../observability/instrumentation.ts";
+import { recordSuccessShape } from "../../schema-versions/service.ts";
 import type { RequestStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
+import { type ExpectedRowCount, evaluateExpectedRowCount } from "../expected-row-count.ts";
 import {
   MAX_PAGES,
   makeStrategy,
@@ -35,7 +50,13 @@ import {
   writePaginationCheckpoint,
 } from "../pagination.ts";
 import { applyResponseFilters, ResponseFilterFailError } from "../response-filter.ts";
-import type { StepResult, StepRunContext } from "../types.ts";
+import type {
+  ConnectorResolutionSummary,
+  RequestMeta,
+  StepResult,
+  StepRunContext,
+} from "../types.ts";
+import { buildStepErrorDetail } from "./error-detail.ts";
 
 export const RETRY_BASE_MS = 200;
 export const RETRY_CAP_MS = 30_000;
@@ -71,8 +92,16 @@ function jitter(ms: number): number {
  *  distinguishes oauth2_refreshed vs oauth2_static). GraphQL/S3 paths
  *  use this directly since they don't do inline oauth2 refresh. */
 function deriveAuthMethodFromAuthType(
-  authType: "none" | "bearer" | "basic" | "oauth2" | "header" | "query",
-): "none" | "bearer" | "header" | "query" | "basic" | "oauth2_static" | "oauth2_refreshed" {
+  authType: "none" | "bearer" | "basic" | "oauth2" | "header" | "query" | "aws_sigv4",
+):
+  | "none"
+  | "bearer"
+  | "header"
+  | "query"
+  | "basic"
+  | "oauth2_static"
+  | "oauth2_refreshed"
+  | "aws_sigv4" {
   if (authType === "oauth2") return "oauth2_static";
   return authType;
 }
@@ -225,24 +254,35 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
       const res = await fetchOnce(p.url, p.method, attemptHeaders, p.body, p.signal, p.tunnel);
       if (res.status >= 200 && res.status < 400) return res;
       const is_additional_retry_status = p.retry_policy.additional_retry_statuses.has(res.status);
+      // Reference-aligned retry telemetry: every retry emits the
+      // same shape — `attempt_no`, `total_attempts`, `delay_ms`,
+      // `next_attempt_at`, plus the typed `reason`. Lets an
+      // operator grep `action: "request.retry"` and reconstruct
+      // the entire backoff timeline without parsing free-form
+      // messages. Mirrors the reference impl's per-attempt logs.
       if (res.status === 429) {
         const after = parseRetryAfter(res.headers["retry-after"] ?? null);
         const wait = Math.min(
           after ?? backoffMs(attempt, p.retry_policy.backoff_base_ms),
           60 * 60_000,
         );
-        logger.info({
-          module: "execution",
-          action: "request.retry",
-          msg: "request retrying due to 429",
-          reason: "http_429",
-          attempt,
-          wait_ms: Math.round(wait),
-        });
-        recordRequestRetry({ connector_id: p.connector_id ?? null, reason: "http_429" });
         if (attempt >= p.max_attempts) {
           throw new RequestError(`http 429`, "http_429", 429, { headers: res.headers });
         }
+        logger.info({
+          module: "execution",
+          action: "request.retry",
+          msg: `retrying after http 429 in ${Math.round(wait)}ms`,
+          reason: "http_429",
+          attempt_no: attempt,
+          total_attempts: p.max_attempts,
+          delay_ms: Math.round(wait),
+          next_attempt_at: new Date(Date.now() + wait).toISOString(),
+          status: res.status,
+          retry_after_header: after ?? null,
+          connector_id: p.connector_id ?? null,
+        });
+        recordRequestRetry({ connector_id: p.connector_id ?? null, reason: "http_429" });
         p.retry_total_ms.value += wait;
         await sleep(wait, p.signal);
         continue;
@@ -258,10 +298,14 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         logger.info({
           module: "execution",
           action: "request.retry",
-          msg: "request retrying due to 5xx",
+          msg: `retrying after http ${res.status} in ${Math.round(wait)}ms`,
           reason: "http_5xx",
-          attempt,
-          wait_ms: Math.round(wait),
+          attempt_no: attempt,
+          total_attempts: p.max_attempts,
+          delay_ms: Math.round(wait),
+          next_attempt_at: new Date(Date.now() + wait).toISOString(),
+          status: res.status,
+          connector_id: p.connector_id ?? null,
         });
         recordRequestRetry({ connector_id: p.connector_id ?? null, reason: "http_5xx" });
         await sleep(wait, p.signal);
@@ -276,11 +320,14 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         logger.info({
           module: "execution",
           action: "request.retry",
-          msg: "request retrying due to opted-in status",
+          msg: `retrying opted-in status http ${res.status} in ${Math.round(wait)}ms`,
           reason: "http_4xx_opt_in",
+          attempt_no: attempt,
+          total_attempts: p.max_attempts,
+          delay_ms: Math.round(wait),
+          next_attempt_at: new Date(Date.now() + wait).toISOString(),
           status: res.status,
-          attempt,
-          wait_ms: Math.round(wait),
+          connector_id: p.connector_id ?? null,
         });
         recordRequestRetry({ connector_id: p.connector_id ?? null, reason: "http_4xx_opt_in" });
         await sleep(wait, p.signal);
@@ -314,10 +361,14 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
       logger.info({
         module: "execution",
         action: "request.retry",
-        msg: "request retrying due to connection error",
+        msg: `retrying after connection error in ${Math.round(wait)}ms`,
         reason: "connection_error",
-        attempt,
-        wait_ms: Math.round(wait),
+        attempt_no: attempt,
+        total_attempts: p.max_attempts,
+        delay_ms: Math.round(wait),
+        next_attempt_at: new Date(Date.now() + wait).toISOString(),
+        error_message: e.message ?? null,
+        connector_id: p.connector_id ?? null,
       });
       recordRequestRetry({ connector_id: p.connector_id ?? null, reason: "connection" });
       await sleep(wait, p.signal);
@@ -377,9 +428,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         details: { unresolved: pathUrlUnresolved },
       },
       request_meta: {
+        driver: "error",
         url: null,
         method: p.step.method,
         unresolved_placeholders: pathUrlUnresolved.map((u) => u.token),
+        // No digest yet — placeholder failure happens before headers
+        // are built; consumers fall back to the unresolved list.
       },
     };
   }
@@ -391,12 +445,59 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     (queryRes?.value as Record<string, string | number | boolean> | undefined) ??
     p.step.query ??
     {};
-  const resolvedStepBody = bodyRes ? bodyRes.value : p.step.body;
+  // Resolve placeholders inside the structured s3 / sql blocks alongside
+  // the HTTP fields so dispatch downstream can use the resolved values
+  // verbatim.
+  const s3KeyRes = p.step.s3?.key
+    ? await resolveStringPlaceholders(p.step.s3.key, resolverCtx)
+    : null;
+  const s3PrefixRes = p.step.s3?.prefix
+    ? await resolveStringPlaceholders(p.step.s3.prefix, resolverCtx)
+    : null;
+  const resolvedS3Key = s3KeyRes?.value ?? p.step.s3?.key;
+  const resolvedS3Prefix = s3PrefixRes?.value ?? p.step.s3?.prefix;
+  // SQL params: only string entries get placeholder resolution; other
+  // values pass through untouched.
+  let resolvedSqlParams: unknown[] | undefined;
+  if (p.step.sql && Array.isArray(p.step.sql.params)) {
+    resolvedSqlParams = [];
+    for (const raw of p.step.sql.params) {
+      if (typeof raw === "string") {
+        const r = await resolveStringPlaceholders(raw, resolverCtx);
+        resolvedSqlParams.push(r.value);
+      } else {
+        resolvedSqlParams.push(raw);
+      }
+    }
+  }
+  let resolvedStepBody = bodyRes ? bodyRes.value : p.step.body;
+  // Symmetric XML request body. When `xml: { body, declaration? }` is
+  // set, serialise via the same tree conventions the response parser
+  // produces and stamp `Content-Type: application/xml` unless the
+  // operator already set one. Resolved placeholders inside the tree
+  // come from the standard body resolution above when `step.body` was
+  // ALSO set; the `xml` block is a separate slot, so we resolve it
+  // here independently.
+  let xmlContentTypeSet = false;
+  if (p.step.xml !== undefined) {
+    const xmlBodyRes = await resolvePlaceholders(p.step.xml.body, resolverCtx);
+    const tree = (xmlBodyRes?.value as unknown) ?? p.step.xml.body;
+    let xmlText = serializeXmlBody(tree);
+    if (p.step.xml.declaration) {
+      xmlText = `<?xml version="1.0" encoding="UTF-8"?>${xmlText}`;
+    }
+    resolvedStepBody = xmlText;
+    xmlContentTypeSet = true;
+  }
 
   // Compose headers/query/URL — connector-scoped steps route through the
   // HTTP driver so credentials get decrypted + applied once up front,
   // then the P3 retry loop runs on the resulting URL.
   const headers: Record<string, string> = { ...resolvedStepHeaders };
+  if (xmlContentTypeSet) {
+    const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === "content-type");
+    if (!hasContentType) headers["Content-Type"] = "application/xml";
+  }
   const query: Record<string, string | number | boolean> = { ...resolvedStepQuery };
   let baseUrl: URL;
   let tunnelRoute: TunnelRoute | undefined;
@@ -406,16 +507,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // Credential row id from the resolved HTTP plan, threaded into the
   // egress audit so the trail names which secret was used.
   let activeCredentialId: string | null = null;
-  let connectorResolution: {
-    connector_id: string;
-    connector_slug: string;
-    requested_environment: string;
-    resolved_environment: string;
-    driver: string;
-    auth_method: string;
-    base_url: string | null;
-    tunnel_target?: string | null;
-  } | null = null;
+  let connectorResolution: ConnectorResolutionSummary | null = null;
   try {
     if (p.step.connector_id) {
       const connector = await getConnectorForEnvironment(
@@ -437,6 +529,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         };
       }
       connectorResolution = {
+        step_key: p.step.id,
         connector_id: connector.id,
         connector_slug: connector.slug,
         requested_environment: p.ctx.execution_mode,
@@ -464,14 +557,47 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           };
         }
         try {
+          // Resolve placeholders BEFORE handing to the GraphQL driver.
+          // The query is a string (so we use the string-only resolver); the
+          // variables map must preserve native JSON types — `${input.limit}`
+          // alone in a value position becomes the typed input, not the
+          // string `"7"`. Pre-fix the shared `resolvePlaceholders` walker
+          // stringified every leaf and AppSync rejected `Variable 'limit'
+          // has an invalid value` for ~30 minutes in session 820c1664.
+          const queryRes = await resolveStringPlaceholders(p.step.graphql.query, resolverCtx);
+          const variablesRes =
+            p.step.graphql.variables !== undefined
+              ? await resolvePlaceholdersTypePreserving(p.step.graphql.variables, resolverCtx)
+              : null;
+          const allUnresolved = [...queryRes.unresolved, ...(variablesRes?.unresolved ?? [])];
+          if (allUnresolved.length > 0) {
+            clearTimeout(timer);
+            const tokens = allUnresolved.map((u) => u.token).join(", ");
+            return {
+              status: "failed",
+              retry_count: 0,
+              duration_ms: Date.now() - start,
+              error: {
+                code: "placeholder_unresolved",
+                message: `unresolved placeholder(s) in graphql query/variables: ${tokens}`,
+                details: { unresolved: allUnresolved },
+              },
+              request_meta: {
+                driver: "error",
+                method: "POST",
+                url: connector.base_url ?? null,
+                unresolved_placeholders: allUnresolved.map((u) => u.token),
+              },
+            };
+          }
           const args: Parameters<typeof graphqlQuery>[0] = {
             db: p.ctx.db,
             tenant_id: p.ctx.tenant_id,
             connector,
-            query: p.step.graphql.query,
+            query: queryRes.value,
           };
-          if (p.step.graphql.variables !== undefined) {
-            args.variables = p.step.graphql.variables;
+          if (variablesRes !== null) {
+            args.variables = variablesRes.value as Record<string, unknown>;
           }
           if (p.step.graphql.operation !== undefined) {
             args.operation = p.step.graphql.operation;
@@ -500,6 +626,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             () => graphqlQuery(args),
             (out) => ({ status: out.status, bytes_in: out.bytes_in }),
           );
+          // Update connectorResolution with the actually-applied auth method
+          // (may be `oauth2_refreshed` if the driver rotated a stale token).
+          connectorResolution = {
+            ...connectorResolution,
+            auth_method: res.auth_method,
+          };
           return {
             status: res.status >= 200 && res.status < 300 ? "succeeded" : "failed",
             output: res.body,
@@ -507,11 +639,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             duration_ms: Date.now() - start,
             request_meta: {
               driver: "graphql",
+              method: "POST",
               status: res.status,
-              operation: p.step.graphql.operation ?? "query",
-              operation_name: res.operation_name,
-              bytes_in: res.bytes_in,
-              ...(connectorResolution ? { connector: connectorResolution } : {}),
+              connector: connectorResolution,
             },
             ...(res.status >= 200 && res.status < 300
               ? {}
@@ -527,22 +657,34 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             status: "failed",
             retry_count: 0,
             duration_ms: Date.now() - start,
-            error: {
-              code: "graphql_error",
-              message: err instanceof Error ? err.message : String(err),
-            },
+            error: buildStepErrorDetail({ code: "graphql_error", err }),
           };
         }
       }
       if (connector.driver === "s3") {
         clearTimeout(timer);
         try {
-          const reqPath = resolvedStepPath ?? resolvedStepUrl ?? "/";
+          // The `s3` block carries operation-specific affordances
+          // (key, prefix, parse_as, content_type, metadata, range,
+          // presign, multipart…). The verb itself lives at
+          // `step.method` — single source of truth. Placeholder
+          // resolution already ran upstream into resolvedS3Key /
+          // resolvedS3Prefix.
+          const s3Spec = p.step.s3;
+          const method = (p.step.method ?? "GET") as S3Method;
+          const resolvedKey = resolvedS3Key;
+          const resolvedPrefix = resolvedS3Prefix;
+          const reqPath =
+            method === "LIST"
+              ? `/${(resolvedPrefix ?? "").replace(/^\/+/, "")}`
+              : resolvedKey
+                ? `/${resolvedKey.replace(/^\/+/, "")}`
+                : (resolvedStepPath ?? resolvedStepUrl ?? "/");
           const params: Parameters<typeof executeS3Request>[0] = {
             db: p.ctx.db,
             tenant_id: p.ctx.tenant_id,
             connector,
-            method: (p.step.method ?? "GET") as S3Method,
+            method,
             path: reqPath,
           };
           if (resolvedStepBody !== undefined && resolvedStepBody !== null) {
@@ -550,6 +692,24 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               typeof resolvedStepBody === "string"
                 ? resolvedStepBody
                 : JSON.stringify(resolvedStepBody);
+          }
+          if (s3Spec?.content_type) {
+            params.contentType = s3Spec.content_type;
+          }
+          if (s3Spec?.metadata) {
+            params.metadata = s3Spec.metadata;
+          }
+          if (typeof s3Spec?.max_keys === "number") {
+            params.maxKeys = s3Spec.max_keys;
+          }
+          if (s3Spec?.paginate !== undefined) params.paginate = s3Spec.paginate;
+          if (s3Spec?.multipart !== undefined) params.multipart = s3Spec.multipart;
+          if (s3Spec?.multipart_threshold_mb !== undefined) {
+            params.multipartThresholdMb = s3Spec.multipart_threshold_mb;
+          }
+          if (s3Spec?.range !== undefined) params.range = s3Spec.range;
+          if (s3Spec?.presign !== undefined) {
+            params.presignExpiresIn = s3Spec.presign.expires_in_s;
           }
           const res = await withEgressAudit(
             {
@@ -560,7 +720,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               connector_slug: connector.slug,
               driver: "s3",
               credential_id: null, // populated post-call from response.credential_id
-              operation: p.step.method ?? "GET",
+              operation: method,
               url: null,
               source: "execution",
               execution_id: p.ctx.execution_id,
@@ -570,16 +730,94 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             () => executeS3Request(params),
             (out) => ({ status: out.status }),
           );
+          // parse_as decides how the GET body is decoded. Default
+          // honours the driver's auto-detection; the explicit modes
+          // give the caller a deterministic shape for downstream
+          // transforms. `bytes` returns a Buffer (raw); `base64`
+          // encodes the actual bytes (not double-encoded over a
+          // utf8-decoded string, which previously corrupted binary
+          // payloads).
+          let output: unknown = res.body;
+          if (method === "GET" && s3Spec?.parse_as) {
+            const raw = res.body;
+            const buf = Buffer.isBuffer(raw)
+              ? raw
+              : raw instanceof Uint8Array
+                ? Buffer.from(raw)
+                : typeof raw === "string"
+                  ? Buffer.from(raw, "utf8")
+                  : Buffer.from(String(raw ?? ""), "utf8");
+            if (s3Spec.parse_as === "json") {
+              try {
+                output = JSON.parse(buf.toString("utf8"));
+              } catch {
+                output = buf.toString("utf8");
+              }
+            } else if (s3Spec.parse_as === "base64") {
+              output = buf.toString("base64");
+            } else if (s3Spec.parse_as === "bytes") {
+              output = buf;
+            } else {
+              output = buf.toString("utf8");
+            }
+          }
+          // expected_statuses honours the same contract as HTTP — the
+          // S3 driver returns synthetic 200/204/404 codes that map
+          // cleanly to operator expectations.
+          if (
+            Array.isArray(p.step.expected_statuses) &&
+            p.step.expected_statuses.length > 0 &&
+            !p.step.expected_statuses.includes(res.status)
+          ) {
+            return {
+              status: "failed",
+              retry_count: 0,
+              duration_ms: Date.now() - start,
+              error: {
+                code: "unexpected_status_code",
+                message: `expected one of ${JSON.stringify(p.step.expected_statuses)}, got ${res.status}`,
+              },
+              request_meta: {
+                driver: "s3",
+                method,
+                status: res.status,
+                ...(resolvedKey ? { key: resolvedKey } : {}),
+                ...(resolvedPrefix ? { prefix: resolvedPrefix } : {}),
+                connector: connectorResolution!,
+              },
+            };
+          }
+
+          // Record success shape for drift detection / migration
+          // tooling. Best-effort — observability, not load-bearing.
+          if (res.status >= 200 && res.status < 300) {
+            try {
+              await recordSuccessShape(
+                {
+                  tenant_id: p.ctx.tenant_id,
+                  connector_id: connector.id,
+                  endpoint_key: `S3 ${method} ${resolvedPrefix ?? resolvedKey ?? "/"}`,
+                  value: output,
+                },
+                p.ctx.db,
+              );
+            } catch {
+              // tolerated
+            }
+          }
+
           return {
             status: res.status >= 200 && res.status < 300 ? "succeeded" : "failed",
-            output: res.body,
+            output,
             retry_count: 0,
             duration_ms: Date.now() - start,
             request_meta: {
               driver: "s3",
-              method: p.step.method ?? "GET",
+              method,
               status: res.status,
-              ...(connectorResolution ? { connector: connectorResolution } : {}),
+              ...(resolvedKey ? { key: resolvedKey } : {}),
+              ...(resolvedPrefix ? { prefix: resolvedPrefix } : {}),
+              connector: connectorResolution!,
             },
           };
         } catch (err) {
@@ -587,10 +825,196 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             status: "failed",
             retry_count: 0,
             duration_ms: Date.now() - start,
+            error: buildStepErrorDetail({ code: "s3_error", err }),
+          };
+        }
+      }
+      if (connector.driver === "postgres") {
+        clearTimeout(timer);
+        if (!p.step.sql?.query) {
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
             error: {
-              code: "s3_error",
-              message: err instanceof Error ? err.message : String(err),
+              code: "sql_required_for_postgres",
+              message:
+                "request step on a postgres connector requires `sql.query` (parameterised SQL) — the http path doesn't apply",
             },
+          };
+        }
+        try {
+          // Placeholder resolution for `params` already happened
+          // upstream into `resolvedSqlParams`. The query string itself
+          // is NEVER interpolated — placeholders go through `params`
+          // to keep SQL injection structurally impossible.
+          const sqlBlock = p.step.sql;
+          const useTransaction =
+            sqlBlock.transaction === true ||
+            (sqlBlock.also !== undefined && sqlBlock.also.length > 0);
+          const useCursor = sqlBlock.cursor !== undefined;
+
+          const dispatch = async (): Promise<{
+            output: unknown;
+            rowCount: number | null;
+            rowCountPerStatement?: Array<number | null>;
+          }> => {
+            if (useTransaction) {
+              const alsoStatements = sqlBlock.also ?? [];
+              const statements = [
+                { query: sqlBlock.query, params: resolvedSqlParams ?? [] },
+                ...alsoStatements.map((s) => ({
+                  query: s.query,
+                  params: (s.params ?? []) as unknown[],
+                })),
+              ];
+              // Per-statement assertions: index 0 inherits the
+              // step-level expected_row_count; indices 1+ pull from
+              // the matching `also[i-1].expected_row_count`. Throwing
+              // inside `onStatement` rolls back the whole tx.
+              const stepLevelExpectation = p.step.expected_row_count;
+              const tx = await pgTransaction({
+                connector,
+                statements,
+                onStatement: (idx, _rows, rowCount) => {
+                  if (rowCount === null) return;
+                  const expectation =
+                    idx === 0 ? stepLevelExpectation : alsoStatements[idx - 1]?.expected_row_count;
+                  if (expectation === undefined) return;
+                  const violation = evaluateExpectedRowCount(
+                    expectation as ExpectedRowCount,
+                    rowCount,
+                  );
+                  if (violation) {
+                    throw Object.assign(
+                      new Error(`expected_row_count violation on statement ${idx}: ${violation}`),
+                      { code: "expected_row_count_mismatch", statement_index: idx },
+                    );
+                  }
+                },
+              });
+              return {
+                output: tx.rows_per_statement[0] ?? [],
+                rowCount: tx.total_row_count,
+                rowCountPerStatement: tx.row_count_per_statement,
+              };
+            }
+            if (useCursor) {
+              const rows = await pgQueryCursor({
+                connector,
+                sql: sqlBlock.query,
+                params: resolvedSqlParams ?? [],
+                fetch_size: sqlBlock.cursor!.fetch_size,
+              });
+              return { output: rows, rowCount: Array.isArray(rows) ? rows.length : null };
+            }
+            const res = await pgQueryWithCount({
+              connector,
+              sql: sqlBlock.query,
+              params: resolvedSqlParams ?? [],
+            });
+            return { output: res.rows, rowCount: res.row_count };
+          };
+
+          const dispatched = await withEgressAudit(
+            {
+              tenant_id: p.ctx.tenant_id,
+              actor_id: p.ctx.principal?.id ?? null,
+              actor_type: p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
+              connector_id: connector.id,
+              connector_slug: connector.slug,
+              driver: "postgres",
+              credential_id: null,
+              operation: p.step.method ?? (useTransaction ? "TRANSACTION" : "QUERY"),
+              url: null,
+              source: "execution",
+              execution_id: p.ctx.execution_id,
+              workflow_id: p.ctx.workflow_id,
+              step_id: p.step.id,
+            },
+            dispatch,
+            () => ({ status: 200 }),
+          );
+
+          // Step-level assertion (single-statement path). The
+          // transaction path checks per-statement inside the
+          // `onStatement` hook above and rolls back on miss.
+          if (
+            !useTransaction &&
+            p.step.expected_row_count !== undefined &&
+            dispatched.rowCount !== null
+          ) {
+            const violation = evaluateExpectedRowCount(
+              p.step.expected_row_count as ExpectedRowCount,
+              dispatched.rowCount,
+            );
+            if (violation && connectorResolution) {
+              return {
+                status: "failed",
+                retry_count: 0,
+                duration_ms: Date.now() - start,
+                error: {
+                  code: "expected_row_count_mismatch",
+                  message: violation,
+                },
+                request_meta: {
+                  driver: "postgres",
+                  query_preview: sqlBlock.query.slice(0, 120),
+                  row_count: dispatched.rowCount,
+                  transaction: useTransaction,
+                  cursor: useCursor,
+                  connector: connectorResolution,
+                },
+              };
+            }
+          }
+
+          // Record success shape for drift / migration tooling.
+          // Best-effort — observability, not load-bearing.
+          try {
+            await recordSuccessShape(
+              {
+                tenant_id: p.ctx.tenant_id,
+                connector_id: connector.id,
+                endpoint_key: `${p.step.method ?? "SQL"} ${sqlBlock.query.slice(0, 80)}`,
+                value: dispatched.output,
+              },
+              p.ctx.db,
+            );
+          } catch {
+            // tolerated
+          }
+
+          return {
+            status: "succeeded",
+            output: dispatched.output,
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            request_meta: {
+              driver: "postgres",
+              query_preview: sqlBlock.query.slice(0, 120),
+              row_count: dispatched.rowCount,
+              transaction: useTransaction,
+              cursor: useCursor,
+              connector: connectorResolution!,
+              ...(dispatched.rowCountPerStatement
+                ? { row_count_per_statement: dispatched.rowCountPerStatement }
+                : {}),
+            },
+          };
+        } catch (err) {
+          // The onStatement hook tags expected_row_count violations
+          // with a structured error.code so the caller sees the
+          // typed envelope rather than a generic postgres_error.
+          const code =
+            err && typeof err === "object" && (err as { code?: string }).code
+              ? (err as { code: string }).code
+              : "postgres_error";
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: buildStepErrorDetail({ code, err }),
           };
         }
       }
@@ -675,10 +1099,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       status: "failed",
       retry_count: 0,
       duration_ms: Date.now() - start,
-      error: {
-        code: "request_setup_error",
-        message: err instanceof Error ? err.message : String(err),
-      },
+      error: buildStepErrorDetail({ code: "request_setup_error", err }),
     };
   }
 
@@ -732,10 +1153,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         status: "failed",
         retry_count: 0,
         duration_ms: Date.now() - start,
-        error: {
-          code: "hook_error",
-          message: err instanceof Error ? err.message : String(err),
-        },
+        error: buildStepErrorDetail({ code: "hook_error", err }),
       };
     }
   }
@@ -793,9 +1211,11 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // an unexpected-status fail-fast or a connection error) returns
   // `request_meta: {}`, which leaves diagnose_run with nothing to show.
   // Audit-safe: header / query *names* only, never values.
-  let last_meta: Record<string, unknown> = {
-    url: baseUrl.toString(),
-    method: p.step.method,
+  // Pre-populated diagnostic envelope. The audit-safe digest of
+  // header + query keys + body kind lives in the first-class
+  // `digest` field; both the http and connectorless variants surface
+  // it identically.
+  const digest = {
     header_keys: Object.keys(headers).sort(),
     query_keys: Object.keys(query).sort(),
     body_kind:
@@ -804,8 +1224,21 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         : Array.isArray(resolvedStepBody)
           ? "array"
           : typeof resolvedStepBody,
-    ...(connectorResolution ? { connector: connectorResolution } : {}),
   };
+  let last_meta: RequestMeta = connectorResolution
+    ? {
+        driver: "http",
+        url: baseUrl.toString(),
+        method: p.step.method ?? "GET",
+        connector: connectorResolution,
+        digest,
+      }
+    : {
+        driver: "connectorless",
+        url: baseUrl.toString(),
+        method: p.step.method ?? "GET",
+        digest,
+      };
   // Most recent in-flight pagination-checkpoint write. Hoisted so the
   // failure path can `await` it before reporting the result — guarantees
   // the row reflects the resume position by the time we return.
@@ -914,14 +1347,26 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           .set({ circuit_state: "closed", circuit_failure_count: 0 })
           .where(eq(connectors.id, activeConnector.id));
       }
-      last_meta = {
-        url: baseUrl.toString(),
-        method: p.step.method,
-        status: res.status,
-        bytes_in: res.bytes_in,
-        ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
-        ...(connectorResolution ? { connector: connectorResolution } : {}),
-      };
+      last_meta = connectorResolution
+        ? {
+            driver: "http",
+            url: baseUrl.toString(),
+            method: p.step.method ?? "GET",
+            status: res.status,
+            bytes_in: res.bytes_in,
+            ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
+            connector: connectorResolution,
+            digest,
+          }
+        : {
+            driver: "connectorless",
+            url: baseUrl.toString(),
+            method: p.step.method ?? "GET",
+            status: res.status,
+            bytes_in: res.bytes_in,
+            ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
+            digest,
+          };
       return {
         status: "succeeded",
         output: body,
@@ -1045,15 +1490,40 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       // future restart sees the right resume point.
       const logicalPageIdx = resumePageIdx + pageIdx;
       const logicalAccumulated = resumeAccumulatedCount + acc.length;
-      last_meta = {
-        url: next.url,
-        method: p.step.method,
-        status: res.status,
-        page_idx: logicalPageIdx,
-        ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
-        ...(latestCheckpoint ? { pagination_checkpoint: latestCheckpoint } : {}),
-        ...(connectorResolution ? { connector: connectorResolution } : {}),
-      };
+      // Pagination checkpoint goes on the typed `pagination_checkpoint`
+      // field; the recovery path reads it directly from there.
+      const checkpointTyped = latestCheckpoint
+        ? {
+            page_idx: logicalPageIdx,
+            accumulated_count: logicalAccumulated,
+            signature:
+              typeof (latestCheckpoint as { signature?: unknown }).signature === "string"
+                ? (latestCheckpoint as { signature: string }).signature
+                : "",
+          }
+        : undefined;
+      last_meta = connectorResolution
+        ? {
+            driver: "http",
+            url: next.url,
+            method: p.step.method ?? "GET",
+            status: res.status,
+            ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
+            connector: connectorResolution,
+            digest,
+            pages_fetched: logicalPageIdx,
+            ...(checkpointTyped ? { pagination_checkpoint: checkpointTyped } : {}),
+          }
+        : {
+            driver: "connectorless",
+            url: next.url,
+            method: p.step.method ?? "GET",
+            status: res.status,
+            ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
+            digest,
+            pages_fetched: logicalPageIdx,
+            ...(checkpointTyped ? { pagination_checkpoint: checkpointTyped } : {}),
+          };
       if (pages_fetched % PAGE_PROGRESS_INTERVAL === 0) {
         logger.info({
           module: "execution",
@@ -1104,9 +1574,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         ...last_meta,
         pages_fetched: resumePageIdx + pages_fetched,
         ...(resumePageIdx > 0
-          ? { resumed_from_page: resumePageIdx, resumed_accumulated_count: resumeAccumulatedCount }
+          ? {
+              resumed_from_page: resumePageIdx,
+              resumed_accumulated_count: resumeAccumulatedCount,
+            }
           : {}),
-      },
+      } as RequestMeta,
     };
   } catch (err) {
     const duration_ms = Date.now() - start;
@@ -1167,15 +1640,15 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         request_meta: last_meta,
       };
     }
-    const e = err instanceof Error ? err : new Error(String(err));
     return {
       status: "failed",
       retry_count: retryCounter.value,
       duration_ms,
-      error: {
+      error: buildStepErrorDetail({
         code: err instanceof RequestError ? err.cause_kind : "request_error",
-        message: e.message,
-      },
+        err,
+        request_meta: last_meta,
+      }),
       request_meta: last_meta,
     };
   } finally {
