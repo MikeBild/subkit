@@ -2915,15 +2915,30 @@ export const InkApp: React.FC<InkAppProps> = ({
   for (let i = 0; i < deferredMessages.length; i++) {
     const m = deferredMessages[i];
     if (!m) continue;
-    transcriptRows.push(
-      <MessageRow
-        key={`msg-${i}`}
-        role={m.role}
-        content={m.content}
-        parts={m.parts}
-        columns={columns}
-      />,
-    );
+    // Skip empty assistant turns. The model occasionally emits a
+    // pure tool-calling turn with no text (or a literal "{}" stub
+    // when the structured output didn't include a text field). The
+    // raw stringified `{}` rendered as a `• sk    {}` line in the
+    // transcript — visual noise that confused operators in session
+    // 1222158a. The child tool calls below still render under the
+    // same parent_message_id, so dropping the empty header row only
+    // removes the speaker line, never the work the turn produced.
+    const trimmedContent = (m.content ?? "").trim();
+    const isEmptyAssistantStub =
+      m.role === "assistant" &&
+      (trimmedContent === "" || trimmedContent === "{}") &&
+      (!m.parts || m.parts.length === 0);
+    if (!isEmptyAssistantStub) {
+      transcriptRows.push(
+        <MessageRow
+          key={`msg-${i}`}
+          role={m.role}
+          content={m.content}
+          parts={m.parts}
+          columns={columns}
+        />,
+      );
+    }
     if (m.id) {
       const childCalls = callsByParent.get(m.id);
       if (childCalls && childCalls.length > 0) {
@@ -3044,17 +3059,23 @@ export const InkApp: React.FC<InkAppProps> = ({
   // Orphaned tool calls (no parent_message_id, or anchor not in
   // current messages array). Rendered as a trailing block so nothing
   // is silently dropped — happens for legacy conversations from before
-  // engine migration 0032. Split static / dynamic by status like the
-  // anchored path above.
+  // engine migration 0032 AND for live SSE streams where a tool_result
+  // arrives before its parent message frame.
+  //
+  // Render-bucket choice is critical: orphan cards MUST go into
+  // dynamicRows, not staticRows. Session 1222158a reproduced the
+  // "✓ Endpoint check complete" appearing twice — once when the call
+  // was orphan (parent message hadn't streamed yet) and again after
+  // the message arrived and the call moved into callsByParent. Ink's
+  // <Static> never un-flushes a row, so the first orphan render stays
+  // on stdout while the new parented render is appended below it,
+  // visually duplicating the card. Keeping orphan cards dynamic lets
+  // them migrate into static cleanly under the parent on the next
+  // re-render.
   if (orphanCalls.length > 0) {
-    const finalized = orphanCalls.filter(isToolCallFinalized);
-    const active = orphanCalls.filter((c) => !isToolCallFinalized(c));
-    if (finalized.length > 0) renderToolCallList(finalized, "orphan");
-    if (active.length > 0) {
-      transcriptRows = dynamicRows;
-      renderToolCallList(active, "orphan-active");
-      transcriptRows = staticRows;
-    }
+    transcriptRows = dynamicRows;
+    renderToolCallList(orphanCalls, "orphan");
+    transcriptRows = staticRows;
   }
 
   // Welcome banner + starter actions + resume card are pushed ONCE into
