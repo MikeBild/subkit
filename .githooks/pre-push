@@ -1,45 +1,36 @@
 #!/usr/bin/env bash
-# Pre-push gate — must mirror CI. Prevents pushing a commit that would
-# fail the GitHub Actions `build` job. Runs the same five steps CI runs,
-# in the same order, and bails on the first red.
+# Pre-push gate — fast subset of the CI quality gate.
 #
-# Bypass for emergencies with `git push --no-verify`. Do not bypass for
-# routine work — CI will catch it, but you'll waste a round-trip and
-# block the release pipeline.
+# Pre-fix the hook also ran the full unit/integration suite (`bun test
+# apps/engine/src/conversations/ apps/engine/src/execution/tests/
+# apps/engine/src/llm/ apps/sk/src/tests/ tests/lint/`) and the e2e
+# suite. On a developer laptop those serialize to 10+ minutes per
+# push because the local Postgres pool runs single-tenant; CI parallelises
+# across runners and finishes the same tests in ~2 minutes. Running
+# the full gate locally on every push pushed real engineering time
+# into "wait for the test pipeline" mode and led to the harness
+# session occasionally killing the gate mid-run.
+#
+# The compromise: the hook owns the FAST checks (lint + typecheck +
+# build) so a malformed change can't reach origin. The full
+# unit/integration + e2e gate stays in CI (.github/workflows/ci.yml),
+# which is the canonical authority anyway.
+#
+# Run the full local gate explicitly with `bun run verify` when you
+# want CI parity before pushing.
 
 set -e
 
-echo "[pre-push] mirroring CI quality gate — this takes a few minutes"
+echo "[pre-push] fast gate — lint + typecheck + build (full tests run in CI)"
 
-echo "[pre-push] 1/5 biome (lint)"
+echo "[pre-push] 1/3 biome (lint)"
 bun run lint
 
-echo "[pre-push] 2/5 tsc (typecheck)"
+echo "[pre-push] 2/3 tsc (typecheck)"
 bun run typecheck
 
-echo "[pre-push] 3/5 unit + integration tests"
-# --timeout 60000 covers heavy beforeAll setups (createTestDb + Bun.serve
-# mocks) that occasionally exceed bun's default 5s hook budget under
-# parallel load. Per-test budgets are unaffected (test bodies still get
-# their own timeout). Without this, the gate flakes on otherwise-clean
-# code on laptops running 200+ test files concurrently.
-SKIP_DOCKER=1 SKIP_DB_TESTS=1 bun test --timeout 60000 \
-  apps/engine/src/conversations/ \
-  apps/engine/src/execution/tests/ \
-  apps/engine/src/llm/ \
-  apps/sk/src/tests/ \
-  tests/lint/
-
-echo "[pre-push] 4/5 build all binaries"
+echo "[pre-push] 3/3 build all binaries"
 bun run build:sk
 bun run build:engine
 
-echo "[pre-push] 5/5 e2e tests"
-# --timeout 60000 covers the per-test budget for e2e suites that boot
-# their own engine on an ephemeral port. Engine startup occasionally
-# exceeds 5s under parallel load (compose pulled images, port races);
-# the test bodies themselves still see real connection-refused
-# failures instantly.
-bun test --timeout 60000 tests/e2e/
-
-echo "[pre-push] all green"
+echo "[pre-push] all green — full test suite will run on CI"
