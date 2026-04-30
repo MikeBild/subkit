@@ -56,6 +56,7 @@ import {
   buildModelMessages,
   buildUserContentParts,
   setToolCallParentMessage,
+  updateMessageContent,
 } from "./persist.ts";
 import type { ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
@@ -644,6 +645,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const signals: TurnSignals = {
     step: 0,
     toolChain: Promise.resolve(),
+    assistantMessageId: null,
     pendingChildToolCallIds: [],
     pendingChildElicitationIds: [],
     toolInvocationCount: new Map(),
@@ -950,23 +952,32 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                   : {}),
               })
             : { text: "", violations: [] };
-          const assistantMessageId = await appendMessage(
-            p.db,
-            p.tenant_id,
-            p.conversation_id,
-            "assistant",
-            {
-              text: guarded.text,
-              ...(guarded.violations.length > 0
-                ? {
-                    _violations: guarded.violations.map((v) => ({
-                      kind: v.kind,
-                      message: v.message,
-                    })),
-                  }
-                : {}),
-            },
-          );
+          const assistantContent =
+            hasText || guarded.violations.length > 0
+              ? {
+                  ...(hasText ? { text: guarded.text } : {}),
+                  ...(guarded.violations.length > 0
+                    ? {
+                        _violations: guarded.violations.map((v) => ({
+                          kind: v.kind,
+                          message: v.message,
+                        })),
+                      }
+                    : {}),
+                }
+              : {};
+          const assistantMessageId =
+            signals.assistantMessageId ??
+            (await appendMessage(
+              p.db,
+              p.tenant_id,
+              p.conversation_id,
+              "assistant",
+              assistantContent,
+            ));
+          if (signals.assistantMessageId) {
+            await updateMessageContent(p.db, assistantMessageId, assistantContent);
+          }
           // Back-fill parent_message_id on every child row created during
           // this step so the read path can interleave them under this
           // assistant message in chronological order.
@@ -978,16 +989,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           );
           signals.pendingChildToolCallIds = [];
           signals.pendingChildElicitationIds = [];
+          signals.assistantMessageId = null;
           if (hasText) {
             signals.lastAssistantText = guarded.text;
-            events.push({
-              type: "message",
-              role: "assistant",
-              content: { text: guarded.text },
-              id: assistantMessageId,
-              parent_message_id: assistantMessageId,
-            });
           }
+          events.push({
+            type: "message",
+            role: "assistant",
+            content: assistantContent,
+            id: assistantMessageId,
+            parent_message_id: assistantMessageId,
+          });
         }
       },
     });
