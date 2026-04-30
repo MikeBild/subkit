@@ -132,7 +132,9 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
     const draft = draftWithSteps([
       { id: "fetch", kind: "request", method: "GET", path: "/v2/projects" },
     ]);
-    // Inject a latest_preview that step_outputs would have populated.
+    // Canonical surface: latest_preview.step_traces. The legacy
+    // step_outputs fallback was removed when step_traces became the
+    // source of truth.
     const draftWithPreview: DraftDocument = {
       ...draft,
       latest_preview: {
@@ -140,19 +142,15 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
         step_id: "fetch",
         summary: "Ran 1 step",
         preview: { projects: [{ id: "p1", name: "CodeCommission" }] },
-        // Imitate dry_run_workflow's step_outputs key.
-        // biome-ignore lint/suspicious/noExplicitAny: test fixture
-      } as any,
-    };
-    (draftWithPreview.latest_preview as { preview?: unknown }).preview = {
-      step_outputs: [
-        {
-          step_id: "fetch",
-          kind: "request",
-          status: "succeeded",
-          output_preview: { data: { projects: [{ id: "p1" }] } },
-        },
-      ],
+        step_traces: [
+          {
+            step_id: "fetch",
+            kind: "request",
+            status: "succeeded",
+            output_preview: { data: { projects: [{ id: "p1" }] } },
+          },
+        ],
+      },
     };
     const toolCtx = makeCtx(draftWithPreview);
     const result = await inspectWorkflowTool.execute(toolCtx, {

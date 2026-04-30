@@ -67,20 +67,21 @@ export const inspectWorkflowTool: ConversationTool = {
     const args = Input.parse(rawArgs);
     const draft = ctx.getDraft();
     const workflow = getWorkflowDraft(draft);
-    // Build the captured-results lookup. step_outputs is populated by
-    // dry_run_workflow → buildLifecyclePayload; we read from the
-    // canonical latest_preview entry first, fall back to no_result.
+    // Build the captured-results lookup. The canonical surface is
+    // `latest_preview.step_traces` populated by dry_run_workflow /
+    // run_workflow — one entry per step with output_preview,
+    // raw_preview, and scope_at_step.
     const previewSteps = (() => {
       const latest = draft.latest_preview as
-        | { preview?: { step_outputs?: Array<Record<string, unknown>> } }
+        | { step_traces?: Array<Record<string, unknown>> }
         | null
         | undefined;
-      const stepOutputs = latest?.preview?.step_outputs;
-      if (!Array.isArray(stepOutputs)) return new Map<string, Record<string, unknown>>();
       const m = new Map<string, Record<string, unknown>>();
-      for (const so of stepOutputs) {
-        const id = so.step_id;
-        if (typeof id === "string") m.set(id, so);
+      if (Array.isArray(latest?.step_traces)) {
+        for (const trace of latest!.step_traces!) {
+          const id = (trace as { step_id?: unknown }).step_id;
+          if (typeof id === "string") m.set(id, trace);
+        }
       }
       return m;
     })();
@@ -102,9 +103,18 @@ export const inspectWorkflowTool: ConversationTool = {
           case "output_transform":
             result.output_transform = wf.output_transform ?? null;
             break;
-          case "payload":
-            result.payload = wf.input_schema_sample ?? null;
+          case "payload": {
+            // Prefer the schema sample (declared canonical input).
+            // When absent, fall back to the most recent dry_run /
+            // run input persisted on latest_preview.input — gives
+            // the LLM a concrete payload to author against without
+            // requiring the user to maintain input_schema_sample.
+            const samplePayload = wf.input_schema_sample;
+            const recentInput = (draft.latest_preview as { input?: unknown } | null | undefined)
+              ?.input;
+            result.payload = samplePayload ?? recentInput ?? null;
             break;
+          }
           case "response_filters":
             result.response_filters = wf.response_filters ?? null;
             break;

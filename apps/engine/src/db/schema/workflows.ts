@@ -62,6 +62,19 @@ export const workflowVersions = pgTable(
     author_user_id: uuid("author_user_id"),
     author_system_account_id: uuid("author_system_account_id"),
     note: text("note"),
+    // Compact `step_id → scope_at_step` map captured from the most
+    // recent dry_run / run before this version was committed. Lets
+    // a follow-up authoring session populate `inspect_workflow` and
+    // `suggest_jsonata_paths` without re-running the workflow.
+    // Shape: { [stepId]: { available_paths, shape_summary,
+    //                      primary_data_path } }
+    scope_index:
+      jsonb("scope_index").$type<
+        Record<
+          string,
+          { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
+        >
+      >(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [

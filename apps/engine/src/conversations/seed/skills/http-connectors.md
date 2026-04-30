@@ -13,20 +13,43 @@ The `http` driver is the most commonly used connector in subkit. It speaks
 REST/JSON over HTTPS, handles auth, retries, and pagination, and returns the
 standard envelope.
 
+## Placeholder grammar — the only forms the runtime substitutes
+
+```
+${cred.<slug>.<field>}                  ${connector.<slug>.base_url}
+${connector.<slug>.config.<pointer>}    ${input.<pointer>}
+${scope.<step_id>.<pointer>}            ${item.<pointer>}
+```
+
+Anything else ships **verbatim** into the URL, body, header, or query
+value. Specifically:
+
+- `{{ ... }}` — Mustache. Never substituted. The URL gets percent-
+  encoded as `%7B%7B...%7D%7D` and the upstream API returns 404.
+- `${user.X}` / `${project.X}` / `${data.X}` — unknown kinds. Rejected
+  by `build_workflow` / `dry_run_workflow` with code
+  `workflow_unsupported_placeholder`.
+- `${$loop.X}` / `${$item.X}` — JSONata bindings, not placeholders.
+  Inside an HTTP string field write `${item.X}`.
+
+`base_url` is **already** baked into the connector. Write paths as
+`/projects` (not `/v2/projects` if the connector's base_url is
+`https://api.digitalocean.com/v2`). When in doubt, inspect the connector
+with `find_connector` / `inspect_connector` and read `base_url` +
+`example_paths` before writing the request step.
+
 ## Step shape
 
 ```json
 {
   "id": "list_contacts",
   "kind": "request",
-  "config": {
-    "connector": "hubspot",
-    "method": "GET",
-    "path": "/crm/v3/objects/contacts",
-    "query": { "limit": 100 },
-    "headers": { "accept": "application/json" },
-    "body": null
-  }
+  "method": "GET",
+  "connector_id": "<hubspot_connector_id>",
+  "path": "/crm/v3/objects/contacts",
+  "query": { "limit": 100 },
+  "headers": { "accept": "application/json" },
+  "body": null
 }
 ```
 
@@ -42,12 +65,10 @@ auth headers from the connector's auth config, then dispatches. The envelope's
 {
   "id": "search_issues",
   "kind": "request",
-  "config": {
-    "connector": "github",
-    "method": "GET",
-    "path": "/search/issues",
-    "query": { "q": "repo:${input.repo} is:open", "per_page": 50 }
-  }
+  "method": "GET",
+  "connector_id": "<github_connector_id>",
+  "path": "/search/issues",
+  "query": { "q": "repo:${input.repo} is:open", "per_page": 50 }
 }
 ```
 
@@ -57,17 +78,15 @@ auth headers from the connector's auth config, then dispatches. The envelope's
 {
   "id": "create_ticket",
   "kind": "request",
-  "config": {
-    "connector": "zendesk",
-    "method": "POST",
-    "path": "/api/v2/tickets.json",
-    "headers": { "content-type": "application/json" },
-    "body": {
-      "ticket": {
-        "subject": "${input.subject}",
-        "comment": { "body": "${input.body}" },
-        "requester_id": "${scope.lookup_user.data.id}"
-      }
+  "method": "POST",
+  "connector_id": "<zendesk_connector_id>",
+  "path": "/api/v2/tickets.json",
+  "headers": { "content-type": "application/json" },
+  "body": {
+    "ticket": {
+      "subject": "${input.subject}",
+      "comment": { "body": "${input.body}" },
+      "requester_id": "${scope.lookup_user.data.id}"
     }
   }
 }
@@ -79,12 +98,10 @@ auth headers from the connector's auth config, then dispatches. The envelope's
 {
   "id": "update_deal",
   "kind": "request",
-  "config": {
-    "connector": "hubspot",
-    "method": "PATCH",
-    "path": "/crm/v3/objects/deals/${scope.find_deal.data.id}",
-    "body": { "properties": { "dealstage": "${input.target_stage}" } }
-  }
+  "method": "PATCH",
+  "connector_id": "<hubspot_connector_id>",
+  "path": "/crm/v3/objects/deals/${scope.find_deal.data.id}",
+  "body": { "properties": { "dealstage": "${input.target_stage}" } }
 }
 ```
 
@@ -94,30 +111,26 @@ auth headers from the connector's auth config, then dispatches. The envelope's
 {
   "id": "revoke_token",
   "kind": "request",
-  "config": { "connector": "auth0", "method": "DELETE", "path": "/api/v2/device-credentials/${scope.find_cred.data.id}" }
+  "method": "DELETE",
+  "connector_id": "<auth0_connector_id>",
+  "path": "/api/v2/device-credentials/${scope.find_cred.data.id}"
 }
 ```
 
 ### Form-encoded body
 
-Set `body_encoding: "form"`. The driver will serialize `body` as
-`application/x-www-form-urlencoded`:
+For `application/x-www-form-urlencoded`, send a pre-encoded string body and set
+the matching `content-type` header explicitly:
 
 ```json
 {
   "id": "exchange_code",
   "kind": "request",
-  "config": {
-    "connector": "slack_oauth",
-    "method": "POST",
-    "path": "/api/oauth.v2.access",
-    "body_encoding": "form",
-    "body": {
-      "code": "${input.code}",
-      "client_id": "${cred.slack_oauth.client_id}",
-      "client_secret": "${cred.slack_oauth.client_secret}"
-    }
-  }
+  "method": "POST",
+  "connector_id": "<slack_oauth_connector_id>",
+  "path": "/api/oauth.v2.access",
+  "headers": { "content-type": "application/x-www-form-urlencoded" },
+  "body": "code=${input.code}&client_id=${cred.slack_oauth.client_id}&client_secret=${cred.slack_oauth.client_secret}"
 }
 ```
 
@@ -156,12 +169,11 @@ concatenating `data`:
 ```json
 {
   "pagination": {
-    "mode": "offset",
-    "limit_param": "limit",
-    "offset_param": "offset",
+    "strategy": "offset",
     "page_size": 100,
-    "items_path": "$.results",
-    "total_path": "$.total"
+    "offset_param": "offset",
+    "limit_param": "limit",
+    "stop_when_empty_path": "results"
   }
 }
 ```
@@ -171,13 +183,11 @@ concatenating `data`:
 ```json
 {
   "pagination": {
-    "mode": "page",
-    "page_param": "page",
-    "start_page": 1,
+    "strategy": "page",
     "page_size": 50,
-    "page_size_param": "per_page",
-    "items_path": "$.data",
-    "has_more_path": "$.has_next"
+    "page_param": "page",
+    "limit_param": "per_page",
+    "start_page": 1
   }
 }
 ```
@@ -187,40 +197,49 @@ concatenating `data`:
 ```json
 {
   "pagination": {
-    "mode": "cursor",
-    "cursor_param": "after",
-    "cursor_path": "$.paging.next.after",
-    "items_path": "$.results"
+    "strategy": "cursor",
+    "cursor_request_param": "after",
+    "cursor_response_path": "paging.next.after",
+    "page_size": 100
   }
 }
 ```
 
 When pagination is set, the envelope's `data` is the concatenated array of
-items across pages. `status_code` reflects the last page's status. Cap runaway
-pagination with `max_pages` (defaults to 100).
+items across pages. `status_code` reflects the last page's status. The driver
+caps at MAX_PAGES = 1000 iterations.
 
 ## Retries and 429
 
-Default `onError` for HTTP steps is `fail`. To retry on 5xx or network errors:
+Retry behaviour is configured by **direct fields on the request step** —
+there is no nested `onError` object. Defaults:
+
+- GET / HEAD / OPTIONS retry on 5xx + 429 + connection errors
+- POST / PUT / PATCH / DELETE retry on 429 + connection errors only
+  (idempotency rule — non-idempotent verbs do not retry on 5xx)
+
+Override per step:
 
 ```json
 {
-  "onError": {
-    "mode": "retry",
-    "max_retries": 3,
-    "backoff_ms": 500,
-    "backoff_strategy": "exponential"
-  }
+  "id": "list_with_retries",
+  "kind": "request",
+  "method": "GET",
+  "connector_id": "<flaky_api_connector_id>",
+  "path": "/v1/items",
+  "max_retries": 3,
+  "retry_backoff_ms": 500,
+  "retry_on_status": [502, 503, 504]
 }
 ```
 
-The driver special-cases `429 Too Many Requests`: if a `Retry-After` header is
-present (seconds or HTTP-date), the driver honors it, overriding `backoff_ms`.
-You still need `mode: "retry"` for the retry to happen at all.
+The driver honors `Retry-After` on 429 (seconds or HTTP-date) — it overrides
+`retry_backoff_ms` for that one wait. `retry_on_status` adds extra status
+codes on top of the defaults.
 
-Increase `max_retries` to 5+ only for flaky downstreams you've confirmed via
-`probe_connector`. Past 5, the step's wall-clock becomes unpredictable;
-consider splitting the work instead.
+Workflow-level error policy is `on_error: "fail" | "continue"` directly on
+the step (defaults to `fail`). `continue` keeps the run going past a failed
+step rather than aborting the whole workflow.
 
 ## Referencing credentials
 

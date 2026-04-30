@@ -3,8 +3,25 @@
 // non-empty body containing the persona + every preloaded skill.
 
 import { describe, expect, it } from "bun:test";
+import type { AuthoringPromptHint } from "../../../llm/types.ts";
+import type { AuthoringSurfaceMode } from "../../types.ts";
 import { AGENT_REGISTRY, AgentType, getAgent } from "../registry.ts";
 import { ALL_AGENT_SKILLS } from "../skills/index.ts";
+
+function makeHint(mode: AuthoringSurfaceMode): AuthoringPromptHint {
+  return {
+    mode,
+    stage: "idle",
+    lifecycle_state: "draft_only",
+    active_target: { kind: "workflow", lifecycle_state: "draft_only" },
+    blocked_by: [],
+    next_required_action: null,
+    next_suggested_tool: null,
+    checkpoints: [],
+    latest_execution: null,
+    latest_diagnosis: null,
+  };
+}
 
 describe("agent registry — MAIN", () => {
   it("registers MAIN with every behaviour skill preloaded", () => {
@@ -17,13 +34,13 @@ describe("agent registry — MAIN", () => {
     expect(Object.keys(AGENT_REGISTRY)).toEqual(["main"]);
   });
 
-  it("generates a system prompt that includes persona + preloaded skill bodies", async () => {
+  it("generates a default system prompt with the always-loaded skill bodies", async () => {
     const main = getAgent(AgentType.MAIN);
     const result = await main.systemPromptGenerator({ surface: "sk_interactive" });
     expect(result.content).toContain("subkit's authoring + operator assistant");
     expect(result.content).toContain("GENERAL RULES:");
     expect(result.content).toContain("SKILL LOADING:");
-    // One marker from each preloaded behaviour skill body.
+    // Always-loaded skill bodies — present regardless of mode.
     expect(result.content).toContain("CHAT-FIRST CONTRACT");
     expect(result.content).toContain("SINGLE-CONFIRMATION RULE");
     expect(result.content).toContain("PERMISSION-MODE-AWARE CONFIRMATION");
@@ -35,7 +52,36 @@ describe("agent registry — MAIN", () => {
     expect(result.content).toContain("WORKFLOW STEP KINDS");
     expect(result.content).toContain("ERROR RECOVERY:");
     expect(result.content).toContain("ACCESS RULES (RBAC):");
+    // conversational-authoring is mode-specific (workflow / connector
+    // only) so it must NOT appear in a default-mode prompt.
+    expect(result.content).not.toContain("CONVERSATIONAL AUTHORING:");
+  });
+
+  it("workflow-mode prompt adds the conversational-authoring body", async () => {
+    const main = getAgent(AgentType.MAIN);
+    const result = await main.systemPromptGenerator({
+      surface: "sk_interactive",
+      authoring_hint: makeHint("workflow"),
+    });
     expect(result.content).toContain("CONVERSATIONAL AUTHORING:");
+  });
+
+  it("connector-mode prompt adds the conversational-authoring body", async () => {
+    const main = getAgent(AgentType.MAIN);
+    const result = await main.systemPromptGenerator({
+      surface: "sk_interactive",
+      authoring_hint: makeHint("connector"),
+    });
+    expect(result.content).toContain("CONVERSATIONAL AUTHORING:");
+  });
+
+  it("execution-mode prompt does not add the conversational-authoring body", async () => {
+    const main = getAgent(AgentType.MAIN);
+    const result = await main.systemPromptGenerator({
+      surface: "sk_interactive",
+      authoring_hint: makeHint("execution"),
+    });
+    expect(result.content).not.toContain("CONVERSATIONAL AUTHORING:");
   });
 
   it("threads surface verbosity into the prompt", async () => {

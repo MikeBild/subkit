@@ -9,7 +9,6 @@ import { render } from "ink-testing-library";
 import { MessageContent } from "./message-content.tsx";
 
 function snapshot(s: ReturnType<typeof render>): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes
   return (s.lastFrame() ?? "").replace(/\[[0-9;]*m/g, "");
 }
 

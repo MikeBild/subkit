@@ -22,13 +22,22 @@ import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { connectors as connectorsTable } from "../../db/schema/index.ts";
 import { describeConnectorPlaceholders, parsePlaceholders } from "../../llm/substitution/index.ts";
+import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
+import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
+import {
+  validateStepReferences,
+  validateUnsupportedPlaceholders,
+} from "../../workflows/reference-validator.ts";
 import { sampleToSchema } from "../../workflows/sample-to-schema.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
+import { canonicalJson } from "../diff-util.ts";
 import type { DraftDocument, WorkflowDraftDocument } from "../types.ts";
 import { verifyWorkflow } from "../verifier.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";
+import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
 
 const StepShape = z.record(z.string(), z.unknown());
 
@@ -118,6 +127,12 @@ function buildWorkflowSuccessPayload(
         steps: args.steps.length,
         last_step_id: typeof lastStep?.id === "string" ? lastStep.id : null,
         step_type: typeof lastStep?.kind === "string" ? lastStep.kind : null,
+        // build_workflow never auto-saves — the result is always a
+        // draft. Surfacing the persistence state explicitly mirrors
+        // the reference impl's `build_tool` contract so the LLM
+        // never assumes the workflow is committed.
+        persistence: "draft_only" as const,
+        next_step: "commit_draft" as const,
         warnings: args.warnings,
         infos: args.infos,
       },
@@ -351,8 +366,173 @@ export const buildWorkflowTool: ConversationTool = {
     if (args.output_schema) workflowDraft.output_schema = args.output_schema;
     if (args.output_transform) workflowDraft.output_transform = args.output_transform;
 
+    // Cycle detection — pre-flight before the draft is accepted. A
+    // workflow whose `${scope.X}` placeholders form a loop never
+    // produces useful output (one of X always sees undefined). The
+    // detector runs in pure-function mode against the assembled
+    // WorkflowDef shape; cycles are typed as `workflow_cycle_detected`
+    // so the LLM / operator can read the participating step ids.
+    {
+      // biome-ignore lint/suspicious/noExplicitAny: WorkflowDraftDocument is structurally compatible with WorkflowDef for DAG analysis
+      const dag = buildStepDag(workflowDraft as any);
+      const cycleReport = detectCycles(dag);
+      if (cycleReport.has_cycle) {
+        recordAuthoringGateBlock({ code: "workflow_cycle_detected", tool: "build_workflow" });
+        return {
+          ok: false,
+          data: buildGateError(currentDraft, {
+            error_code: "workflow_cycle_detected",
+            message: `workflow has a cyclic step dependency: ${renderCycleReport(cycleReport)}`,
+            recommended_mode: "workflow",
+            next_best_actions: ["inspect_workflow_draft", "update_param", "edit_workflow_patch"],
+            extra: {
+              cycles: cycleReport.cycles,
+            },
+          }),
+        };
+      }
+    }
+
+    // Unsupported placeholder rejection — Mustache `{{ ... }}`,
+    // `${$loop...}`, `${user.X}`, etc. ship verbatim through to drivers
+    // and produce 404s upstream. Reject with `did_you_mean` rewrites so
+    // the LLM can fix on the next round-trip without burning a dry-run.
+    {
+      // biome-ignore lint/suspicious/noExplicitAny: WorkflowDraftDocument structurally compatible
+      const placeholderErrors = validateUnsupportedPlaceholders(workflowDraft as any);
+      if (placeholderErrors.length > 0) {
+        const summary = placeholderErrors
+          .map(
+            (e) =>
+              `step \`${e.step_id}\`.${e.field}: \`${e.raw}\` (${e.code}) → use \`${e.did_you_mean}\``,
+          )
+          .join("; ");
+        recordAuthoringGateBlock({
+          code: "workflow_unsupported_placeholder",
+          tool: "build_workflow",
+        });
+        return {
+          ok: false,
+          data: buildGateError(currentDraft, {
+            error_code: "workflow_unsupported_placeholder",
+            message: `workflow contains placeholder forms the runtime will not substitute: ${summary}`,
+            recommended_mode: "workflow",
+            next_best_actions: ["inspect_workflow_draft", "update_param", "edit_workflow_patch"],
+            extra: {
+              unsupported_placeholders: placeholderErrors,
+            },
+          }),
+        };
+      }
+    }
+
+    // Reference validation — every `$scope.<id>...`, `$steps.<id>...`,
+    // and `${scope.<id>...}` reference must point at a step that
+    // actually exists in steps[]. Pre-fix the LLM could author
+    // `over: "$scope.wrong_step.data"` and only see the typo at
+    // runtime via `loop_over_unresolved`. Authoring-time refusal
+    // saves a full dry-run cycle.
+    {
+      // biome-ignore lint/suspicious/noExplicitAny: WorkflowDraftDocument structurally compatible
+      const refErrors = validateStepReferences(workflowDraft as any);
+      if (refErrors.length > 0) {
+        const summary = refErrors
+          .map(
+            (e) =>
+              `step \`${e.step_id}\`.${e.field} references unknown step \`${e.bad_reference}\`` +
+              (e.did_you_mean.length > 0
+                ? ` (did you mean: ${e.did_you_mean.map((s) => `\`${s}\``).join(", ")})`
+                : ""),
+          )
+          .join("; ");
+        recordAuthoringGateBlock({
+          code: "workflow_unresolved_step_reference",
+          tool: "build_workflow",
+        });
+        return {
+          ok: false,
+          data: buildGateError(currentDraft, {
+            error_code: "workflow_unresolved_step_reference",
+            message: `workflow references unknown step ids: ${summary}`,
+            recommended_mode: "workflow",
+            next_best_actions: ["inspect_workflow_draft", "update_param", "edit_workflow_patch"],
+            extra: {
+              unresolved_references: refErrors,
+            },
+          }),
+        };
+      }
+    }
+
+    // Loop-authoring inspection gate. Every loop step that reads
+    // `$scope.<X>` must have a recorded preview for X with a
+    // populated scope_at_step. Refuse when missing — the LLM should
+    // dry-run first to learn the actual shape.
+    //
+    // Probe-evidence exemption: when X is a `request` step routed
+    // through a connector the operator has already successfully
+    // probed in this conversation, the probe counts as shape
+    // evidence and the gate skips it. This matches the reference
+    // impl's call_system → build_tool flow where probes ARE the
+    // shape-discovery signal. Without this, the LLM had to add an
+    // EXTRA dry_run_workflow round-trip after a successful probe
+    // (session 0a01c5f3 16:18:26 wasted a turn on this).
+    const probedConnectorSlugs = await collectProbedConnectorSlugs(ctx, workflowDraft.steps);
+    {
+      const gate = evaluateLoopAuthoringGate(workflowDraft, currentDraft.latest_preview ?? null, {
+        probedConnectorSlugs,
+      });
+      if (!gate.ok) {
+        const summary = gate.blocks
+          .map(
+            (b) =>
+              `loop \`${b.loop_step_id}\` reads \`$scope.${b.referenced_step_id}\` but ${
+                b.reason === "no_dry_run_yet"
+                  ? "no dry-run has been recorded yet"
+                  : b.reason === "no_preview_for_referenced_step"
+                    ? `\`${b.referenced_step_id}\` has no recent preview`
+                    : `the recorded preview for \`${b.referenced_step_id}\` doesn't include a scope summary`
+              }`,
+          )
+          .join("; ");
+        recordAuthoringGateBlock({
+          code: "loop_authoring_requires_inspect",
+          tool: "build_workflow",
+        });
+        return {
+          ok: false,
+          data: buildGateError(currentDraft, {
+            error_code: "loop_authoring_requires_inspect",
+            message: `before committing a workflow with a loop step, dry-run once so the upstream step's actual output shape is recorded. ${summary}.`,
+            recommended_mode: "workflow",
+            next_best_actions: [
+              "dry_run_workflow",
+              "inspect_workflow_draft",
+              "suggest_jsonata_paths",
+            ],
+            extra: {
+              gate_blocks: gate.blocks,
+            },
+          }),
+        };
+      }
+    }
+
+    // Pre-mutation snapshot for the inline diff cell (codex pattern):
+    // emit a unified diff of the workflow DAG so the operator sees
+    // exactly what changed structurally vs. the previous draft state.
+    const beforeJson = canonicalJson(currentDraft.workflow ?? null);
     const nextDraft = withWorkflowDraft(currentDraft, workflowDraft, "workflow_built");
     await ctx.setDraft(nextDraft);
+    if (ctx.emitDiff) {
+      const afterJson = canonicalJson(nextDraft.workflow ?? null);
+      ctx.emitDiff({
+        title: `workflow · ${args.slug}`,
+        language: "json",
+        before: beforeJson,
+        after: afterJson,
+      });
+    }
 
     const infos = verdict.infos.map((info) => `${info.code}:${info.path}`);
     const warningCodes = [

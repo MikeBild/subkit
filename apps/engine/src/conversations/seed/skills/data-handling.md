@@ -131,7 +131,9 @@ Example — HTTP response is huge, we only need three fields:
 {
   "id": "fetch_issues",
   "kind": "request",
-  "config": { "connector": "github", "method": "GET", "path": "/repos/org/repo/issues" },
+  "method": "GET",
+  "connector_id": "<github_connector_id>",
+  "path": "/repos/org/repo/issues",
   "data_selector": "$.{ 'id': id, 'title': title, 'labels': labels.name }"
 }
 ```
@@ -148,9 +150,7 @@ multi-source reshaping:
 {
   "id": "report_rows",
   "kind": "transform",
-  "config": {
-    "expression": "$scope.orders.data.{ 'order_id': id, 'customer': $scope.customers.data[id = $$.customer_id].email, 'total': total }"
-  }
+  "expression": "$scope.orders.data.{ 'order_id': id, 'customer': $scope.customers.data[id = $$.customer_id].email, 'total': total }"
 }
 ```
 
@@ -193,28 +193,28 @@ input at the gate.
     {
       "id": "fetch_orders",
       "kind": "request",
-      "config": { "connector": "shop", "method": "GET", "path": "/orders?since=${input.since}" },
+      "method": "GET",
+      "connector_id": "<shop_connector_id>",
+      "path": "/orders?since=${input.since}",
       "data_selector": "$.orders.{ 'id': id, 'email': customer.email, 'total': total_price, 'status': financial_status }"
     },
     {
       "id": "fetch_contacts",
       "kind": "request",
-      "config": { "connector": "crm", "method": "GET", "path": "/contacts" },
+      "method": "GET",
+      "connector_id": "<crm_connector_id>",
+      "path": "/contacts",
       "data_selector": "$.results.{ 'email': email, 'lifecycle': lifecyclestage }"
     },
     {
       "id": "joined",
       "kind": "transform",
-      "config": {
-        "expression": "$scope.fetch_orders.data.{ 'order_id': id, 'total': total, 'lifecycle': $scope.fetch_contacts.data[email = $$.email].lifecycle ? $scope.fetch_contacts.data[email = $$.email].lifecycle : 'unknown' }"
-      }
+      "expression": "$scope.fetch_orders.data.{ 'order_id': id, 'total': total, 'lifecycle': $scope.fetch_contacts.data[email = $$.email].lifecycle ? $scope.fetch_contacts.data[email = $$.email].lifecycle : 'unknown' }"
     },
     {
       "id": "totals_by_lifecycle",
       "kind": "transform",
-      "config": {
-        "expression": "$scope.joined.data{ lifecycle: $sum(total) }"
-      }
+      "expression": "$scope.joined.data{ lifecycle: $sum(total) }"
     }
   ],
   "outputTransform": "{ 'report': $scope.totals_by_lifecycle.data, 'row_count': $count($scope.joined.data) }"
@@ -238,13 +238,21 @@ not envelope-wrapped.
 Correct:
 
 ```json
-{ "id": "list_projects",     "kind": "request", "path": "/v2/projects" }
-{ "id": "for_each_project",  "kind": "loop",
-  "over": "$scope.list_projects.data.projects",
-  "item_var": "project",
-  "body": ["fetch_resources"] }
-{ "id": "fetch_resources",   "kind": "request",
-  "path": "/v2/projects/${project.id}/resources" }
+[
+  { "id": "list_projects", "kind": "request", "path": "/v2/projects" },
+  {
+    "id": "for_each_project",
+    "kind": "loop",
+    "over": "$scope.list_projects.data.projects",
+    "item_var": "project",
+    "body": ["fetch_resources"]
+  },
+  {
+    "id": "fetch_resources",
+    "kind": "request",
+    "path": "/v2/projects/${project.id}/resources"
+  }
+]
 ```
 
 `$loop_index` (zero-based) is also available inside the loop body.

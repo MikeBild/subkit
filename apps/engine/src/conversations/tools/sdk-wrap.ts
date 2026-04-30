@@ -17,10 +17,14 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { conversationElicitations, conversationMessages } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
-import { recordConversationToolCall } from "../../observability/instrumentation.ts";
+import {
+  recordConversationToolCall,
+  recordToolCircuitOpen,
+} from "../../observability/instrumentation.ts";
 import { resolveAttachments } from "../attachments.ts";
 import { recordTransition } from "../confirmation.ts";
 import { isDangerousTool } from "../dangerous-tools.ts";
+import { computeLineDiff } from "../diff-util.ts";
 import { createElicitation } from "../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
 import {
@@ -88,6 +92,42 @@ export interface TurnSignals {
   toolInvocationCount: Map<string, number>;
   toolLastErrorHash: Map<string, string>;
   /**
+   * Per-tool consecutive-identical-args streak tracker for the
+   * adaptive loop-breaker. Reference impl uses a single global
+   * `stepCountIs(50)` and trusts the model; subkit's per-tool
+   * counters fired even on legitimate incremental authoring (e.g.
+   * propose_step × 5 across a 5-step workflow). Adaptive shape:
+   *   - reads / probes: NO per-tool cap (the model needs them)
+   *   - writes: cap on consecutive IDENTICAL args, not total calls.
+   *     Five propose_step calls with different step ids = fine.
+   *     Three propose_step calls with the same args = repair spiral.
+   * Map value: { last_args_hash, repeat_count }. Reset when the
+   * hash changes.
+   */
+  toolArgsRepeat: Map<string, { hash: string; count: number }>;
+  /**
+   * Per-tool consecutive-identical-validation-fingerprint streak. Args
+   * may differ across attempts ("propose_step with step.id=A" then
+   * "propose_step with step.id=B") yet the engine returns the SAME
+   * validation error pattern (e.g. both miss a required `connector_id`).
+   * The argsHash tracker above wouldn't fire because each call has
+   * unique args. This tracker fingerprints the `errors[]` array — if
+   * the SHAPE of failures stays identical across N attempts, the model
+   * is hitting the same constraint and needs the user to weigh in.
+   *
+   * Fingerprint: sorted (path, message-prefix) tuples joined. Reordering
+   * within errors[] hashes the same. Different shape → counter resets.
+   *
+   * Distinct from `toolLastErrorHash` (which records the latest shape
+   * for diagnostics) — this one drives the loop break.
+   *
+   * Pre-fix session f00b8d1c: build_workflow tried 4 different
+   * step shapes, each producing the same `unknown loop body target`
+   * + `${item.…} placeholder outside loop body` pair. Old loop
+   * detector saw 4 distinct argsHashes and never tripped.
+   */
+  toolValidationFingerprint: Map<string, { hash: string; count: number }>;
+  /**
    * Turn-level loop-warning counter. Incremented by the per-tool
    * loop-breaker on every short-circuit. Once this exceeds
    * `MAX_TURN_LOOP_WARNINGS`, the loop's `stopWhen` bails out so the
@@ -125,11 +165,53 @@ export interface TurnSignals {
 export const MAX_TURN_LOOP_WARNINGS = 2;
 
 /**
+ * Reduce an `errors[]` array into a stable fingerprint:
+ *   - keep only path + first 60 chars of message
+ *   - sort lexicographically so reordering doesn't change the hash
+ *   - drop dynamic IDs / UUIDs / numbers from messages so error
+ *     messages whose only difference is a UUID still hash the same
+ *
+ * Returns null when the input is empty or unrecognisable so the caller
+ * can skip fingerprint tracking entirely.
+ */
+export function computeValidationFingerprint(
+  errors: Array<{ path?: unknown; message?: unknown }>,
+): string | null {
+  if (!Array.isArray(errors) || errors.length === 0) return null;
+  const tuples: string[] = [];
+  for (const e of errors) {
+    const path = typeof e.path === "string" ? e.path : "";
+    const rawMsg = typeof e.message === "string" ? e.message : "";
+    if (!path && !rawMsg) continue;
+    // Strip UUID-like tokens and numbers so identical-shape errors
+    // that vary only in IDs still hash the same.
+    const stripped = rawMsg
+      .replace(/\b[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/gi, "<uuid>")
+      .replace(/\b\d+\b/g, "<n>")
+      .slice(0, 60);
+    tuples.push(`${path}::${stripped}`);
+  }
+  if (tuples.length === 0) return null;
+  return tuples.sort().join("|");
+}
+
+/**
  * Max consecutive failed tool calls before the wrapper short-circuits
  * with a structured "ask the user" envelope. Mirrors reference impl's
  * "no more than 5 failed tool calls in a row" prompt rule.
  */
 export const MAX_CONSECUTIVE_FAILURES = 5;
+
+/**
+ * Max consecutive identical validation-fingerprint failures on the same
+ * tool before the wrapper escalates with a structured "stop iterating
+ * over this constraint" envelope. Lower than MAX_CONSECUTIVE_FAILURES
+ * because identical-fingerprint loops are even less productive than
+ * heterogeneous failures — the model is stuck on a structural issue
+ * (loop body containment, ${item.…} placement, missing connector
+ * binding, etc.) that needs operator input or a different approach.
+ */
+export const MAX_VALIDATION_FINGERPRINT_REPEAT = 3;
 
 /**
  * Map tenant_write tools to the `commit_intent.kind` value the LLM
@@ -152,6 +234,18 @@ function mapToolToCommitIntentKind(tool: string): string | null {
       return "update_connector";
     case "update_workflow":
       return "update_workflow";
+    // Pre-fix (session 975a64b0): delete_connector / delete_workflow
+    // policy-gate elicitations carried NO commit_intent. The user
+    // clicked "approve", auto-persist found no intent, logged
+    // `auto_persist.skipped`, and the delete silently never ran.
+    // The LLM then claimed "Connector deleted" (hallucination) and
+    // moved on — leaving the row alive. The next save_connector_draft
+    // for the same slug then crashed with 23505 unique-violation
+    // (16:37:21).
+    case "delete_connector":
+      return "delete_connector";
+    case "delete_workflow":
+      return "delete_workflow";
     default:
       return null;
   }
@@ -298,8 +392,26 @@ function buildPolicyGateCommitIntent(
       description: "Save the current connector draft.",
     };
   }
-  // delete_* / run_workflow / update_* — payload shapes still owned by
-  // the LLM-driven ask_user_confirm path; the policy-gate fallback for
+  if (intentKind === "delete_connector") {
+    const id = typeof rawArgs.id === "string" ? rawArgs.id : null;
+    if (!id) return null;
+    return {
+      kind: "delete_connector",
+      payload: { id },
+      description: "Permanently delete this connector.",
+    };
+  }
+  if (intentKind === "delete_workflow") {
+    const id = typeof rawArgs.id === "string" ? rawArgs.id : null;
+    if (!id) return null;
+    return {
+      kind: "delete_workflow",
+      payload: { id },
+      description: "Permanently delete this workflow.",
+    };
+  }
+  // run_workflow / update_* — payload shapes still owned by the
+  // LLM-driven ask_user_confirm path; the policy-gate fallback for
   // these uses the re-issue contract.
   return null;
 }
@@ -419,6 +531,10 @@ function wrapOne(
         const isInspect =
           inner.name.startsWith("inspect_") || inner.name === "diagnose_latest_execution";
         if (!isAskUser && !isInspect && signals.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          recordToolCircuitOpen({
+            tool: inner.name,
+            reason: "consecutive_failures_cap",
+          });
           logger.warn({
             module: "conversation_tool",
             action: "tool.consecutive_failures_block",
@@ -439,20 +555,87 @@ function wrapOne(
           };
         }
 
-        // Loop-breaker: short-circuit before doing any side effects
-        // when the model has already called this tool too many times
-        // in the current turn. Pre-fix tenant_read was capped at 3 —
-        // too tight when the LLM legitimately needs to inspect 4
-        // execution steps in sequence (session 09219b6d:
-        // inspect_execution_step hit the cap mid-debug and produced
-        // the "I've hit a tool call limit" mid-sentence cut). The
-        // tenant_read cap goes to 6; tenant_write stays at 5 because
-        // every write is a state mutation worth being conservative
-        // about. draft_write is read-mostly and follows tenant_read.
-        const MAX_CALLS_PER_TURN =
-          inner.category === "tenant_write" ? 5 : inner.category === "draft_write" ? 6 : 6;
+        // Adaptive loop-breaker. Reference impl uses a single global
+        // `stepCountIs(50)` and trusts the model — no per-tool cap.
+        // Subkit's per-tool counters fired even on legitimate
+        // incremental authoring (session a128deba 15:13:16:
+        // propose_step capped mid-build of a 4-step workflow).
+        //
+        // Adaptive shape:
+        //   - tenant_read tools have NO repeat cap. Reads are
+        //     idempotent — the model needs them.
+        //   - draft_write / tenant_write tools trip ONLY when the
+        //     SAME args are submitted REPEAT_THRESHOLD times in a
+        //     row. Five propose_step calls with five different step
+        //     ids = fine. Three propose_step calls with the same
+        //     args = repair spiral, halt.
+        //   - The global step ceiling lives in the outer loop's
+        //     `stopWhen: stepCountIs(N)` (matches reference's
+        //     stopWhen contract). Per-tool repeat detection here
+        //     short-circuits before that ceiling fires.
+        const REPEAT_THRESHOLD = 3;
+        // Recursive stable serialiser: sort object keys at every
+        // depth so { a: { x: 1, y: 2 } } and { a: { y: 2, x: 1 } }
+        // hash the same. JSON.stringify's replacer-array only
+        // applies at the top level and silently drops keys at
+        // deeper levels — we need a deep-stable hash.
+        const stableStringify = (v: unknown): string => {
+          if (v === null || typeof v !== "object") return JSON.stringify(v);
+          if (Array.isArray(v)) {
+            return `[${v.map(stableStringify).join(",")}]`;
+          }
+          const keys = Object.keys(v as Record<string, unknown>).sort();
+          return `{${keys
+            .map(
+              (k) => `${JSON.stringify(k)}:${stableStringify((v as Record<string, unknown>)[k])}`,
+            )
+            .join(",")}}`;
+        };
+        const argsHash = (() => {
+          try {
+            return stableStringify(rawArgs);
+          } catch {
+            return "";
+          }
+        })();
+        // Exempt-by-name list: tools whose meaningful state lives
+        // in the conversation's DRAFT, not in args. Re-running them
+        // with identical args after editing the draft is the
+        // canonical "iterate the workflow" pattern — flagging it
+        // as a repeat spiral is a false positive.
+        // Pre-fix (session 8d152b9f 16:00:59): dry_run_workflow
+        // capped after 3 previews of the SAME draft args even
+        // though each preview ran against a DIFFERENT draft state.
+        const REPEAT_EXEMPT_TOOLS = new Set<string>([
+          "dry_run_workflow",
+          "dry_run_step",
+          "dry_run_transform",
+          "validate_draft",
+          "validate_connector_draft",
+          "inspect_workflow_draft",
+          "inspect_workflow",
+          "inspect_connector_draft",
+          "inspect_authoring_context",
+          "inspect_execution_step",
+          "list_skills",
+          "load_skill",
+          "search_docs",
+          "search_knowledge",
+        ]);
+        const isReadOnly = inner.category === "tenant_read" || REPEAT_EXEMPT_TOOLS.has(inner.name);
+        const repeatTracker = signals.toolArgsRepeat.get(inner.name);
+        let repeatCount = 0;
+        if (!isReadOnly && argsHash) {
+          if (repeatTracker?.hash === argsHash) {
+            repeatCount = repeatTracker.count + 1;
+          } else {
+            repeatCount = 1;
+          }
+          signals.toolArgsRepeat.set(inner.name, { hash: argsHash, count: repeatCount });
+        }
         const priorCount = signals.toolInvocationCount.get(inner.name) ?? 0;
-        if (priorCount >= MAX_CALLS_PER_TURN) {
+        const tripped = !isReadOnly && repeatCount >= REPEAT_THRESHOLD;
+        if (tripped) {
           signals.totalLoopWarnings += 1;
           const turnBudgetReached = signals.totalLoopWarnings >= MAX_TURN_LOOP_WARNINGS;
           log.conversation.tool.called({
@@ -462,20 +645,24 @@ function wrapOne(
           });
           // Structured engine-log warning so the short-circuit is
           // visible in Docker / stdout without reading the response
-          // tool_log events. Pre-fix: loop_detected only surfaced in
-          // the CLI debug log (session 4e6696e3 fired 18× invisible to
-          // the operator).
+          // tool_log events.
+          recordToolCircuitOpen({
+            tool: inner.name,
+            reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
+          });
           logger.warn({
             module: "conversation",
             action: "tool.loop_detected",
             msg: turnBudgetReached
               ? "turn loop budget exhausted — ending turn"
-              : "tool called too many times in one turn — aborting further calls",
+              : "same args submitted to a write tool 3× in a row — aborting further calls",
             conversation_id: ctx.conversation_id,
             tool: inner.name,
             tool_count: priorCount,
+            repeat_count: repeatCount,
+            args_hash: argsHash.slice(0, 64),
             total_loop_warnings: signals.totalLoopWarnings,
-            max_calls_per_turn: MAX_CALLS_PER_TURN,
+            repeat_threshold: REPEAT_THRESHOLD,
             turn_budget_reached: turnBudgetReached,
           });
           events.push({
@@ -484,24 +671,20 @@ function wrapOne(
             tool: inner.name,
             level: "warn",
             message: turnBudgetReached
-              ? `tool.loop_detected: ${inner.name} called ${priorCount} times; turn-level loop budget exhausted (${signals.totalLoopWarnings}) — ending turn`
-              : `tool.loop_detected: ${inner.name} called ${priorCount} times in one turn — aborting further calls`,
+              ? `tool.loop_detected: ${inner.name} repeated identical args ${repeatCount}×; turn-level loop budget exhausted (${signals.totalLoopWarnings}) — ending turn`
+              : `tool.loop_detected: ${inner.name} called with identical args ${repeatCount}× in a row — change approach or ask the user`,
             ts: new Date().toISOString(),
           });
-          // Structured envelope for the LLM. The `next_best_actions`
-          // hint tells the model exactly how to recover so the next
-          // turn doesn't degrade into "I've hit a tool call limit"
-          // mid-sentence — instead the LLM emits an `ask_user_choice`
-          // / `ask_user_text` and hands control back to the user.
           return {
             ok: false,
             data: {
               error_code: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
               message: turnBudgetReached
                 ? `this turn called tools ${signals.totalLoopWarnings}× past the loop-warning budget — stop, summarise what you already know, and end the turn with a single question for the user (use ask_user_choice or ask_user_text, not prose).`
-                : `${inner.name} has been invoked ${priorCount} times in this turn — change approach or stop and ask the user via ask_user_choice / ask_user_text. Do NOT retry with the same shape.`,
+                : `${inner.name} has been called with identical args ${repeatCount}× in a row in this turn — change the args or stop and ask the user via ask_user_choice / ask_user_text. Do NOT retry with the SAME shape.`,
               reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
               tool: inner.name,
+              repeat_count: repeatCount,
               next_best_actions: ["ask_user_choice", "ask_user_text", "diagnose_latest_execution"],
             },
           };
@@ -525,6 +708,17 @@ function wrapOne(
           input_partial: rawArgs,
         });
         events.push({ type: "tool_call_end", call_id: toolCallId, input: rawArgs });
+        // Single-line activity ticker: tell the operator WHAT the
+        // engine is doing right now. The transcript already shows the
+        // tool-call card; this just keeps the ticker accurate when
+        // the card scrolls out of view. Throttled in EventSink.
+        events.push({
+          type: "activity",
+          phase: "tool",
+          label: inner.name,
+          tool_name: inner.name,
+          call_id: toolCallId,
+        });
         log.conversation.tool.called({
           conversation_id: ctx.conversation_id,
           tool: inner.name,
@@ -547,6 +741,19 @@ function wrapOne(
               message,
               ts: new Date().toISOString(),
             });
+          },
+          // Inline diff emitter — tools that mutate the draft call this
+          // with canonical before/after JSON; we compute the unified
+          // line-diff once on the engine side and ship pre-built hunks
+          // over the wire. Mirrors codex's `PatchHistoryCell` pattern.
+          emitDiff: ({ title, language, before, after }) => {
+            try {
+              const hunks = computeLineDiff(before, after, { context: 3 });
+              if (hunks.length === 0) return;
+              events.push({ type: "diff", title, language, hunks });
+            } catch {
+              // Best-effort — never block the tool on a diff failure.
+            }
           },
         };
 
@@ -820,6 +1027,32 @@ function wrapOne(
           // first-class fields (target id, environment, key shape)
           // instead of a raw arg blob the user has to parse.
           const pendingOutput = buildPendingOutputForTool(inner.name, rawArgs);
+          // Per-tool summary so the confirmation card can show the
+          // operator what they're about to approve. For `run_workflow`,
+          // include the workflow's display name + the last preview's
+          // step count + summary so the operator sees concrete
+          // context, not just the policy mode. Mirrors the reference
+          // impl's `run_tool` confirm UX which surfaces the test
+          // payload + last output.
+          const buildPolicyGateSummary = (): string => {
+            if (inner.name === "run_workflow") {
+              const draft = ctx.getDraft();
+              const wfName =
+                draft.summary?.active_target?.name ?? draft.workflow?.name ?? "(unnamed)";
+              const env =
+                (rawArgs &&
+                  typeof rawArgs === "object" &&
+                  (rawArgs as { environment?: string }).environment) ??
+                "dev";
+              const lastPreview = draft.latest_preview;
+              const previewBit = lastPreview?.summary
+                ? ` · last preview: ${lastPreview.summary.slice(0, 80)}`
+                : "";
+              return `Run workflow "${wfName}" in ${env}${previewBit}`;
+            }
+            return `Confirm ${inner.name} (policy: ${resolvedMode})`;
+          };
+          const policyGateSummary = buildPolicyGateSummary();
           // Top-level kind matters: `commit_draft` MUST stamp
           // `kind: "commit_draft"` so the inner prior-approval gate in
           // commit-workflow.ts:54-89 finds the resolved row when the
@@ -843,7 +1076,7 @@ function wrapOne(
               conversation_id: ctx.conversation_id,
               tool_call_id: toolCallId,
               tool_name: "ask_user_confirm",
-              summary: `Confirm ${inner.name} (policy: ${resolvedMode})`,
+              summary: policyGateSummary,
               input: elicitationInput,
               actor_id: ctx.actor_id,
             },
@@ -1042,6 +1275,21 @@ function wrapOne(
               }
             : resultPayload,
         });
+        // Activity ticker: tool ended → switch to idle so the CLI
+        // ticker stops showing the tool name. `last_completed` lets
+        // the operator see what just finished (codex pattern: prefer
+        // visibility over silence) even after the call card scrolls.
+        const completedDurationMs = Date.now() - startedAt;
+        events.push({
+          type: "activity",
+          phase: "idle",
+          label: `last: ${inner.name} ${result.ok ? "ok" : "fail"} · ${completedDurationMs}ms`,
+          last_completed: {
+            tool_name: inner.name,
+            ok: result.ok,
+            duration_ms: completedDurationMs,
+          },
+        });
 
         const dataSummary = summarizeToolData(resultPayload);
         const logCtx = {
@@ -1068,6 +1316,7 @@ function wrapOne(
         // as a repeat.
         if (result.ok) {
           signals.toolLastErrorHash.delete(inner.name);
+          signals.toolValidationFingerprint.delete(inner.name);
           // First success resets the global consecutive-failures counter.
           signals.consecutiveFailures = 0;
         } else {
@@ -1088,6 +1337,47 @@ function wrapOne(
                   : "";
           const shape = `${reason}|${err.slice(0, 120)}`;
           signals.toolLastErrorHash.set(inner.name, shape);
+          // Validation-fingerprint tracker: catches the case where
+          // args differ but the engine keeps returning the same
+          // validation error shape. Args-hash repeat detection won't
+          // fire there because each call has unique args; this
+          // detector watches the OUTPUT shape instead.
+          if (Array.isArray(errObj.errors)) {
+            const fingerprint = computeValidationFingerprint(
+              errObj.errors as Array<{ path?: unknown; message?: unknown }>,
+            );
+            if (fingerprint) {
+              const prior = signals.toolValidationFingerprint.get(inner.name);
+              const nextCount = prior?.hash === fingerprint ? prior.count + 1 : 1;
+              signals.toolValidationFingerprint.set(inner.name, {
+                hash: fingerprint,
+                count: nextCount,
+              });
+              if (nextCount >= MAX_VALIDATION_FINGERPRINT_REPEAT) {
+                logger.warn({
+                  module: "conversation_tool",
+                  action: "tool.validation_fingerprint_cap",
+                  msg: "same validation error shape repeated — model must ask user or change approach",
+                  conversation_id: ctx.conversation_id,
+                  tool: inner.name,
+                  fingerprint,
+                  repeat_count: nextCount,
+                });
+                recordToolCircuitOpen({
+                  tool: inner.name,
+                  reason: "validation_fingerprint_repeat",
+                });
+                events.push({
+                  type: "tool_log",
+                  call_id: "validation-fingerprint-cap",
+                  tool: inner.name,
+                  level: "warn",
+                  message: `tool.validation_fingerprint_cap: ${inner.name} hit the SAME validation error shape ${nextCount}× — different args, same constraint. Stop iterating; emit ask_user_choice / ask_user_text describing the constraint and offering a path forward (e.g. simpler workflow, different connector field, hand-edited JSON).`,
+                  ts: new Date().toISOString(),
+                });
+              }
+            }
+          }
           // Global cap: every ok=false tool result anywhere increments
           // the running counter. The next dispatch tick reads this
           // and short-circuits if the model has not asked the user yet.

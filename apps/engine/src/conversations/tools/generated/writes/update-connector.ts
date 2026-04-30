@@ -14,6 +14,7 @@ import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../../auth/types.ts";
 import { roles, systemAccounts, users } from "../../../../db/schema/index.ts";
 import { can } from "../../../../rbac/evaluator.ts";
+import { translateAutoPersistError } from "../../../persistence/auto-persist.ts";
 import type { ConversationTool, ToolContext } from "../../index.ts";
 
 const UpdateConnectorInput = z
@@ -201,7 +202,20 @@ export const updateConnectorTool: ConversationTool = {
       if (code === "connector_template_unknown" || code === "connector_template_conflict") {
         return { ok: false, data: { error: code, message: msg } };
       }
-      return { ok: false, data: { error: "update_failed", message: msg } };
+      // Translate Postgres errors (23505 unique-violation, 23503 fk
+      // violation, 23502 not-null, 22P02 invalid uuid/enum) into the
+      // same typed error_codes the auto-persist path uses, so the
+      // LLM can recover via the structured `next_best_actions` hint
+      // instead of getting a raw SQL string.
+      const translated = translateAutoPersistError(err, "update_connector");
+      return {
+        ok: false,
+        data: {
+          error: translated.error_code,
+          message: translated.message,
+          next_best_actions: translated.next_best_actions,
+        },
+      };
     }
   },
 };

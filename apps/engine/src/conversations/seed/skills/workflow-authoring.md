@@ -54,7 +54,7 @@ chat; the same six tools repair in place:
    `error.message`, failing `step_id`, captured response shape. Do not
    paraphrase the error away.
 2. **`diagnose_latest_execution`** — pulls causal trace; do not guess from the bare error.
-3. **Edit the offending step** — `update_param` for a single field, `propose_step` to replace a step body, `connect_steps` to retarget. For schema drift on a request step, `probe_connector` first.
+3. **Edit the offending step** — `update_param` for a single field, `propose_step` to replace a step body, `connect_steps` to retarget. For schema drift on a request step, `probe_connector` first; if the connector's response shape changed over time, call `propose_schema_migration` (returns a structured rename/add/remove/widen plan against the recorded shape ledger) before deciding how to patch the transform.
 4. **`validate_draft`** — re-runs structural checks.
 5. **`dry_run_workflow`** when the change is non-trivial; otherwise the auto-persist path accepts the update directly.
 6. **`ask_user_confirm` with `commit_intent: { kind: "commit_workflow_draft", payload: { target_workflow_id?: <id> } }`** — harness persists on confirm. Do NOT chain a separate `commit_draft` after.
@@ -80,7 +80,7 @@ Three places to reshape data — pick the smallest one that fits:
 
 - **Step-level `data_selector`** — trim a step's `.data` for downstream consumers (drop heavy fields).
 - **`transform` step** — reshape across multiple upstream steps, or compute derived values.
-- **`output_transform`** — workflow-level final payload the caller sees (hide internals).
+- **`output_transform`** (JSONata) or **`output_transform_function`** (JS) — workflow-level final payload the caller sees (hide internals). Pick exactly one — the schema rejects setting both. JSONata is the default; reach for the JS form via QuickJS sandbox only when the reshape needs imperative logic, mutation, or multi-pass scans JSONata can't express. Same affordance pattern as `validation_expression` (JSONata) vs `validation_function` (JS).
 
 See `data-handling.md` for full examples.
 
@@ -114,11 +114,108 @@ item under two scope keys: `$item` (canonical, used by `${item.…}`) and the
 loop's `item_var` (used by JSONata transforms). The item is NOT
 envelope-wrapped.
 
+**Mandatory: dry-run before authoring a loop.** `propose_step`,
+`build_workflow`, `edit_workflow_patch`, and `update_param` all
+refuse a loop step that reads `$scope.<X>` (or the equivalent bare
+form `<X>.data`) until a dry-run has recorded X's actual output
+shape (error code `loop_authoring_requires_inspect`). The fix: call
+`dry_run_workflow` first so the engine publishes `scope_at_step` for
+every prior step. Then call `suggest_jsonata_paths` (returns ranked
+path candidates against the recorded preview, with fallback to the
+last committed version's `scope_index` and the most recent execution
+when no fresh draft preview exists) or `inspect_workflow_draft`
+(returns each step's preview side-by-side with config). Authoring a
+loop's `over` against the LLM's mental model of the API instead of
+the recorded preview is how 4–9× retry spirals start; the gate
+exists to break that loop deterministically.
+
+**Bare-path step refs are validated.** Forms like `fetch_users.data`
+(no `$scope.` prefix) are equivalent to `$scope.fetch_users.data`
+and are validated identically. A typo in the leading identifier is
+rejected at authoring time with `workflow_unresolved_step_reference`.
+
+**`output_transform` / `output_transform_function` references are
+validated too.** Same rule: every `$scope.<id>...` and bare
+`<id>....` reference in the workflow-level transform must point at a
+real step.
+
+**`authoring_scope_changed` warning fires when consecutive dry-runs
+lose paths.** If a step previously published `data.results[*].email`
+and the next dry-run no longer surfaces that path (e.g. an upstream
+API silently dropped a field), the warning lists every removed path
+so downstream transforms / loops can be re-checked before re-
+committing. The check is skipped when the workflow draft was
+structurally rewritten between dry-runs (mutation_seq guard).
+
+**Catalog discovery.** Use `find_workflow` / `find_connector` /
+`find_skill` (free-text keyword search across the saved catalogs)
+before reaching for `list_workflows` / `list_connectors`. They are
+faster for tenants with more than ~50 workflows or connectors and
+return ranked matches in one call.
+
+**`build_workflow` returns `persistence: "draft_only"` and
+`next_step: "commit_draft"`.** The build never auto-saves — the
+fields make this explicit so the LLM never assumes a workflow is
+committed after `build_workflow`.
+
+**Scope vocabulary survives commits.** After every successful run
+the engine writes `step_id → scope_at_step` to
+`workflow_versions.scope_index`. Repair-author sessions opening
+months later have `suggest_jsonata_paths` populated from this
+persisted vocabulary even before the first dry-run.
+
+**`loop.over`** is JSONata evaluated with the same bindings as
+`transform.expression`: `$input`, `$scope`, `$steps`, and unpacked
+`$<key>` bindings. Both forms below are equivalent — pick whichever
+reads better:
+
+- `over: "$scope.<step_id>.data"` (matches the skill's documented
+  envelope path; symmetric with transform expressions)
+- `over: "<step_id>.data"` (bare path against the root scope object)
+
+**`branch.when`** is the same surface — `$scope.<step_id>.data.field`
+or bare `<step_id>.data.field` both resolve.
+
 **HTTP / placeholder substitution** (path, url, headers, query, body): use
 `${item.<path>}`. This is the only form the runtime placeholder resolver
 accepts — `${user.field}` or `${project.id}` will fail with
 `placeholder_unresolved` because `user` / `project` are not registered
 placeholder kinds.
+
+**NEVER write Mustache `{{ ... }}` anywhere.** It is not a placeholder
+syntax; the engine ships the literal string upstream and the URL gets
+percent-encoded (you get `%7B%7B%20$item.id%20%7D%7D` in the request and
+the API answers 404). `{{ $item.id }}`, `{{ $loop.item.id }}`,
+`{{ project.id }}` are all wrong — the only correct form for the loop
+item inside a string field is `${item.id}`. The draft validator rejects
+Mustache shapes with code `workflow_unsupported_placeholder` and a
+concrete `did_you_mean` rewrite, so never propose a Mustache
+placeholder.
+
+### Authoring order — body steps before the loop
+
+When you add a `loop` step whose `body: ["A", "B"]` references steps A
+and B, propose `A` and `B` **first**, then propose the loop. The
+incremental draft validator now accepts forward references on
+`loop.body` / `branch.then_steps` / `parallel.branches[]` (it returns
+them as `pending_forward_refs` so you can see what's missing), but
+`dry_run_workflow` and `commit_workflow_draft` still reject the draft
+until every referenced id exists. Order matters for two reasons:
+
+1. The `loop` requires `${item.<field>}` placeholders inside its body
+   step's URL / path / headers / body. Author the body step with the
+   real placeholders so the loop's `item_var` semantics surface
+   immediately on the next preview — no second authoring round-trip.
+2. Body-first matches the data-flow direction: the body fetches a
+   resource, the loop iterates the parent collection. Reading the
+   workflow top-down should follow producer → consumer.
+
+If you find yourself thinking "I'll add the loop and fill in the body
+next," stop and write the body step first instead. The reference impl
+ships the whole tool at once via `build_tool`; subkit's incremental
+flow now tolerates the dependency-inverted shape, but the author who
+writes body-then-loop is shorter by 1–2 round-trips and never sees a
+red `unknown loop body target` banner.
 
 **JSONata transforms** (`expression`): use the bare `item_var` name —
 JSONata reads it from the scope object, e.g. `user.email` or
@@ -211,6 +308,104 @@ Four rules this example encodes:
 2. **EVERY step output is uniformly enveloped** as `{data, status_code?, headers?, duration_ms, error}` — including `transform` and `loop`. The loop's `over` reads `$scope.extract_projects.data` (the array), not `$scope.extract_projects` (the envelope). See `data-handling.md`.
 3. Loop output is at `$scope.<loop_id>.data.<body_step_id>.data` (envelope-in-envelope). JSONata reads `project.name` (the bare loop item) directly from scope, not via placeholder resolver.
 4. `${item.…}` for path/url/headers/query/body strings; `item_var` (e.g. `project`) for JSONata expressions. Mixing surfaces as `placeholder_unresolved` or `unresolved_identifier`.
+
+### Worked example: HATEOAS link expansion (follow `links.self`)
+
+When a list endpoint returns resources with a `links.self` URL pointing
+at the full record (DigitalOcean, GitHub, Stripe, JSON:API services),
+the natural author shape is **two flat loops** — one to fetch the IDs,
+a second one to flatten and re-fetch each `links.self`. Do NOT try to
+nest loops; the body of a `loop` step is an array of step ids, not
+another loop.
+
+```json
+[
+  {
+    "id": "fetch_projects",
+    "kind": "request",
+    "method": "GET",
+    "connector_id": "<digitalocean_connector_id>",
+    "path": "/v2/projects"
+  },
+  {
+    "id": "fetch_resources",
+    "kind": "loop",
+    "over": "$scope.fetch_projects.data.projects",
+    "item_var": "project",
+    "body": ["get_project_resources"]
+  },
+  {
+    "id": "get_project_resources",
+    "kind": "request",
+    "method": "GET",
+    "connector_id": "<digitalocean_connector_id>",
+    "path": "/v2/projects/${item.id}/resources"
+  },
+  {
+    "id": "flatten_links",
+    "kind": "transform",
+    "language": "jsonata",
+    "expression": "$scope.fetch_resources.data.get_project_resources.data.resources.{ \"urn\": urn, \"path\": $substring(links.self, $length('https://api.digitalocean.com')) }"
+  },
+  {
+    "id": "expand_resource",
+    "kind": "loop",
+    "over": "$scope.flatten_links.data",
+    "item_var": "resource",
+    "body": ["fetch_resource_detail"]
+  },
+  {
+    "id": "fetch_resource_detail",
+    "kind": "request",
+    "method": "GET",
+    "connector_id": "<digitalocean_connector_id>",
+    "path": "${item.path}"
+  },
+  {
+    "id": "merge_full_details",
+    "kind": "transform",
+    "language": "jsonata",
+    "expression": "$scope.expand_resource.data.{ \"urn\": resource.urn, \"details\": fetch_resource_detail.data }"
+  }
+]
+```
+
+Three rules this encodes:
+1. **Strip the connector base URL before reusing `links.self`.** The
+   connector's `base_url` already includes the path prefix (e.g.
+   `/v2`). If you write `${item.url}` against a connector with
+   `base_url: https://api.digitalocean.com/v2`, the URL resolver pastes
+   the full self URL on top and you double the host. Use `${item.path}`
+   where `path` was extracted by stripping the host in the previous
+   transform.
+2. **Flatten before the second loop.** A loop body cannot recursively
+   loop; the body field is an array of step ids. Project the parent
+   loop output into a flat array of `{ ...parent_keys, path }` objects
+   before the second loop runs.
+3. **Use `${item.path}` not `${item.links.self}`.** The path is what
+   the connector expects relative to its base_url. The full self URL
+   (host included) is rejected with `404` because the host is fixed by
+   the connector definition.
+
+Alternative — **`expand_links` directive** (when the API consistently
+uses `links.self` and you want to skip the manual flatten):
+
+```json
+{
+  "id": "fetch_resources_expanded",
+  "kind": "request",
+  "method": "GET",
+  "connector_id": "<digitalocean_connector_id>",
+  "path": "/v2/projects/${item.id}/resources",
+  "expand_links": ["links.self"]
+}
+```
+
+The HTTP driver follows every `links.self` URL in the response (capped
+at 50 per request) and embeds each fetched body under `_resolved` next
+to the original entry. Use the manual two-loop pattern when you need
+control (rate limits, conditional expansion); use `expand_links` when
+the shape is consistent.
 
 ### Unresolved-identifier warnings are never false positives
 

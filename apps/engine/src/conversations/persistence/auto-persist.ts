@@ -228,6 +228,8 @@ export async function maybeAutoPersistFromElicitation(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // biome-ignore lint/suspicious/noExplicitAny: pg errors carry .code / .constraint
+    const pgErr = err as any;
     logger.error({
       module: "auto-persist",
       action: "dispatch.threw",
@@ -236,6 +238,9 @@ export async function maybeAutoPersistFromElicitation(
       conversation_id: p.conversation_id,
       elicitation_id: p.elicitation.id,
       commit_intent_kind: intent.kind,
+      pg_code: pgErr?.code ?? null,
+      pg_constraint: pgErr?.constraint ?? null,
+      pg_detail: pgErr?.detail ?? null,
       error: msg,
     });
     // Translate Postgres errors into actionable error_codes so the
@@ -392,9 +397,17 @@ function buildSyntheticFromResult(toolName: string, result: ToolResult): Synthet
  * available (`pg` exposes them via `err.code`) plus regex fallbacks
  * on the message.
  */
+/** Label hint passed to `translateAutoPersistError` so it can pick
+ *  resource-specific recovery actions. Accepts the canonical
+ *  CommitIntent kinds plus the bare resource labels used by direct
+ *  tool paths (`update_connector`, `update_workflow`). When the
+ *  caller's tool doesn't fit any of these, the translator falls
+ *  back to a generic resource label. */
+export type ErrorTranslationContext = CommitIntent["kind"] | "update_connector" | "update_workflow";
+
 export function translateAutoPersistError(
   err: unknown,
-  intentKind: CommitIntent["kind"],
+  intentKind: ErrorTranslationContext,
 ): { error_code: string; message: string; next_best_actions: string[] } {
   const msg = err instanceof Error ? err.message : String(err);
   // biome-ignore lint/suspicious/noExplicitAny: pg errors carry .code
@@ -409,8 +422,14 @@ export function translateAutoPersistError(
   // `workflows_tenant_slug_active_key`) and for genuine slug
   // collisions on a still-active row.
   if (code === "23505" || /unique constraint|duplicate key|already exists/i.test(lower)) {
-    const isConnector = intentKind === "save_connector_draft";
-    const isWorkflow = intentKind === "commit_workflow_draft";
+    const isConnector =
+      intentKind === "save_connector_draft" ||
+      intentKind === "update_connector" ||
+      intentKind === "delete_connector";
+    const isWorkflow =
+      intentKind === "commit_workflow_draft" ||
+      intentKind === "update_workflow" ||
+      intentKind === "delete_workflow";
     const resource = isConnector ? "connector" : isWorkflow ? "workflow" : "resource";
     return {
       error_code: "slug_already_in_use",

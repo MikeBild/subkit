@@ -15,12 +15,15 @@
 // request_source='tool-chain' and depth+1.
 
 import { and, eq, isNull } from "drizzle-orm";
+import jsonata from "jsonata";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
+import { buildStepDag, topoSort } from "../workflows/dag.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import {
   type BranchStep,
@@ -215,10 +218,40 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   const stepSummaries: RunResult["steps"] = [];
   let lastOutput: unknown = null;
   let lastError: { code: string; message: string } | null = null;
+  // Populated by the workflow-level `validation_expression` check
+  // when it returns a falsy verdict or throws. Used to surface a
+  // typed `validation_failed` error on the run result so the
+  // self-healing flow can act on it.
+  let validationError: { code: string; message: string; details?: unknown } | null = null;
   const skippedStepIds = new Set<string>();
   const warningsAccum: NonNullable<RunResult["warnings"]> = [];
 
-  for (let i = 0; i < def.steps.length; i++) {
+  // Topologically sort the steps so a step that references
+  // `$scope.<id>.data` runs AFTER `<id>` even when declared earlier.
+  // The DAG combines data-flow refs with control-flow containment
+  // (branch arms / parallel branches / loop bodies depend on their
+  // container), so contained steps still run after their container —
+  // identical semantics to the old linear walk for declaration-ordered
+  // workflows, but correct ordering for forward-ref workflows. Cycles
+  // are rejected at authoring time; a cycle here would have been
+  // caught by build_workflow / dry_run_workflow / edit_workflow_patch.
+  const dag = buildStepDag(def);
+  const stepIndexById = new Map(def.steps.map((s, i) => [s.id, i] as const));
+  let executionOrder: ReadonlyArray<string>;
+  try {
+    executionOrder = topoSort(dag);
+  } catch {
+    // Should not be reachable — pre-flight cycle checks gate every
+    // tool that produces a WorkflowDef. If a cycle slipped through,
+    // fall back to declaration order so the run can still emit step
+    // summaries (and the existing unresolved-identifier warnings will
+    // surface the bug downstream).
+    executionOrder = def.steps.map((s) => s.id);
+  }
+
+  for (let topoIdx = 0; topoIdx < executionOrder.length; topoIdx++) {
+    const id = executionOrder[topoIdx]!;
+    const i = stepIndexById.get(id) ?? topoIdx;
     const step = def.steps[i] as StepDef;
     if (signal.aborted) {
       // Drain remaining steps as aborted summary entries.
@@ -375,6 +408,26 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               normalizedInput,
               async ({ ctx: cctx, step: cstep }) => runCallStep(db, cctx, cstep as CallStep),
             );
+            // Per-iteration trace: surface the post-substitution URL +
+            // status + outcome so an operator (or the LLM author reading
+            // diagnose_run) can see which iteration of which body step
+            // ran where. Pre-fix the engine logged only the unresolved
+            // template, leaving session f00b8d1c blind to which item
+            // produced the 404. Best-effort — only fires on HTTP-shaped
+            // request_meta variants where a resolved URL exists.
+            const bodyMeta = bodyOutcome.result.request_meta ?? null;
+            if (bodyMeta && (bodyMeta.driver === "http" || bodyMeta.driver === "connectorless")) {
+              logger.info({
+                module: "execution",
+                action: "loop.iteration",
+                step_id: bodyStep.id,
+                parent_step_id: loopStep.id,
+                iteration: itemIdx,
+                resolved_url: bodyMeta.url,
+                upstream_status: bodyMeta.status ?? null,
+                outcome: bodyOutcome.result.status,
+              });
+            }
             childScope[bodyStep.id] = envelopeFor(bodyOutcome);
             bodyResults[bodyStep.id] = envelopeFor(bodyOutcome);
           }
@@ -529,6 +582,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       error: outcome.result.error ?? null,
       request_meta: outcome.result.request_meta ?? null,
       ...(outputPreview !== undefined ? { output_preview: outputPreview } : {}),
+      ...(outcome.raw_output !== undefined ? { raw_preview: outcome.raw_output } : {}),
     });
     if (outcome.result.status !== "succeeded") {
       const onError = step.on_error ?? "fail";
@@ -537,12 +591,19 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         if (outcome.result.status === "aborted") finalStatus = "aborted";
         else if (outcome.result.status === "timed_out") finalStatus = "timed_out";
         else finalStatus = "failed";
-        // mark remaining steps aborted in summary
-        for (let j = i + 1; j < def.steps.length; j++) {
-          const s = def.steps[j] as StepDef;
+        // Mark every remaining step in the topological order as
+        // aborted. Iterating `executionOrder` rather than the raw
+        // declaration array ensures contained branch arms / parallel
+        // branches that haven't been visited yet still surface a
+        // summary entry — and we don't double-count any step already
+        // executed earlier in the topo walk.
+        for (let j = topoIdx + 1; j < executionOrder.length; j++) {
+          const remainingId = executionOrder[j]!;
+          const remainingIdx = stepIndexById.get(remainingId) ?? j;
+          const s = def.steps[remainingIdx] as StepDef;
           stepSummaries.push({
             step_key: s.id,
-            step_index: j,
+            step_index: remainingIdx,
             kind: s.kind,
             status: "aborted",
             duration_ms: 0,
@@ -557,10 +618,167 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     }
   }
 
+  // Optional final-output transform. The two forms are mutually
+  // exclusive at authoring time (Zod superRefine), so exactly one
+  // branch runs per workflow:
+  //   - `output_transform` (JSONata)
+  //   - `output_transform_function` (JS, evaluated in QuickJS)
+  // Both shape the workflow's public payload BEFORE output_schema /
+  // validation_expression / validation_function gate the returned
+  // value.
+  if (lastOutput !== undefined && finalStatus === "succeeded") {
+    if (def.output_transform) {
+      try {
+        const expr = jsonata(def.output_transform);
+        const transformed = await expr.evaluate(lastOutput);
+        if (transformed !== undefined) lastOutput = transformed;
+      } catch (err) {
+        logger.warn({
+          module: "execution",
+          action: "execution.output_transform_threw",
+          msg: "output_transform threw",
+          execution_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        finalStatus = "failed";
+        validationError = {
+          code: "output_transform_failed",
+          message: `output_transform threw: ${err instanceof Error ? err.message : String(err)}`,
+          details: { expression: def.output_transform },
+        };
+      }
+    } else if (def.output_transform_function) {
+      try {
+        const result = await runJs<unknown>({
+          code: def.output_transform_function,
+          input: lastOutput,
+        });
+        if (result.output !== undefined) lastOutput = result.output;
+      } catch (err) {
+        logger.warn({
+          module: "execution",
+          action: "execution.output_transform_function_threw",
+          msg: "output_transform_function threw",
+          execution_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        finalStatus = "failed";
+        validationError = {
+          code: "output_transform_failed",
+          message: `output_transform_function threw: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          details: { expression: def.output_transform_function },
+        };
+      }
+    }
+  }
+
   if (def.output_schema && lastOutput !== undefined) {
     const check = validateAgainstJsonSchema(lastOutput, def.output_schema, "$output");
     if (!check.valid) {
       logger.warn({ msg: "output schema violation", errors: check.errors });
+    }
+  }
+
+  // Optional `validation_expression` — evaluated AFTER output_schema so
+  // shape errors surface first. A falsy result trips finalStatus to
+  // failed and stamps the typed `validation_failed` error code; the
+  // self-healing flow recognises this code and produces a
+  // `validation_failed` drift signal that carries the expression text
+  // and the offending value, so the repair LLM can propose a patch.
+  // Mirrors the reference impl's optional `validationFunction`.
+  if (def.validation_expression && lastOutput !== undefined && finalStatus === "succeeded") {
+    try {
+      const expr = jsonata(def.validation_expression);
+      const verdict = await expr.evaluate(lastOutput);
+      if (!verdict) {
+        logger.warn({
+          module: "execution",
+          action: "execution.validation_failed",
+          msg: "validation_expression returned falsy",
+          execution_id,
+          expression: def.validation_expression,
+        });
+        finalStatus = "failed";
+        validationError = {
+          code: "validation_failed",
+          message: `validation_expression \`${def.validation_expression}\` returned ${
+            verdict === undefined ? "undefined" : JSON.stringify(verdict)
+          }`,
+          details: {
+            expression: def.validation_expression,
+            actual_value: lastOutput,
+          },
+        };
+      }
+    } catch (err) {
+      logger.warn({
+        module: "execution",
+        action: "execution.validation_threw",
+        msg: "validation_expression threw",
+        execution_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      finalStatus = "failed";
+      validationError = {
+        code: "validation_failed",
+        message: `validation_expression \`${def.validation_expression}\` threw: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        details: {
+          expression: def.validation_expression,
+          actual_value: lastOutput,
+        },
+      };
+    }
+  }
+
+  // Optional `validation_function` — JS escape hatch for invariants
+  // JSONata can't express. Runs in the QuickJS sandbox with the
+  // final output bound as `input`. A `false` return (or any throw)
+  // trips the same `validation_failed` envelope.
+  if (def.validation_function && lastOutput !== undefined && finalStatus === "succeeded") {
+    try {
+      const result = await runJs<unknown>({
+        code: def.validation_function,
+        input: lastOutput,
+      });
+      const verdict = result.output;
+      if (verdict === false) {
+        logger.warn({
+          module: "execution",
+          action: "execution.validation_function_failed",
+          msg: "validation_function returned false",
+          execution_id,
+        });
+        finalStatus = "failed";
+        validationError = {
+          code: "validation_failed",
+          message: "validation_function returned false",
+          details: {
+            expression: def.validation_function,
+            actual_value: lastOutput,
+          },
+        };
+      }
+    } catch (err) {
+      logger.warn({
+        module: "execution",
+        action: "execution.validation_function_threw",
+        msg: "validation_function threw",
+        execution_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      finalStatus = "failed";
+      validationError = {
+        code: "validation_failed",
+        message: `validation_function threw: ${err instanceof Error ? err.message : String(err)}`,
+        details: {
+          expression: def.validation_function,
+          actual_value: lastOutput,
+        },
+      };
     }
   }
 
@@ -626,7 +844,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     execution_id,
     status: finalStatus,
     output: lastOutput,
-    error: lastError,
+    // Workflow-level `validation_expression` failures take precedence
+    // over step-level errors on the result envelope: if the steps
+    // succeeded but the invariant didn't hold, the operator and the
+    // self-healing flow need to see the typed `validation_failed`
+    // code, not whatever the last step happened to be.
+    error: validationError
+      ? { code: validationError.code, message: validationError.message }
+      : lastError,
     steps: stepSummaries,
   };
   const resolutions = rollupConnectorResolutions(stepSummaries, execution_mode);

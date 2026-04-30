@@ -53,3 +53,44 @@ The workflow's final output doesn't match the declared `output_schema`.
 If a connector's `circuit_state` is `open`, all requests to it fail immediately without making HTTP calls. The circuit opens after `circuit_threshold` consecutive failures and resets after `circuit_reset_ms` milliseconds.
 → Use `get_connector` to check the current circuit state.
 → If the underlying API is healthy again, the circuit will move to `half-open` automatically after the reset period.
+
+## Example: failure envelope shape
+
+Failed steps return a typed envelope. The `error_code` is the canonical
+machine key — branch on it; the `message` is for the human. `request_meta`
+carries driver-level context (status code, byte counts, connector
+resolution) when the step actually hit the network.
+
+```json
+{
+  "step_id": "fetch",
+  "kind": "request",
+  "status": "failed",
+  "duration_ms": 412,
+  "error_code": "http_4xx",
+  "error": {
+    "code": "http_4xx",
+    "message": "400 Bad Request",
+    "details": {
+      "status": 400,
+      "body": {
+        "error": "property 'closedate' is not searchable; use 'hs_closedate'"
+      }
+    }
+  },
+  "request_meta": {
+    "method": "GET",
+    "status": 400,
+    "bytes_in": 187,
+    "connector": { "connector_id": "<hubspot_connector_id>", "auth_method": "bearer" }
+  }
+}
+```
+
+Common `error_code` values worth memorising:
+
+- `placeholder_unresolved` — `${scope.…}` / `${cred.…}` did not resolve to a value
+- `http_4xx` / `http_5xx` — auth / payload / server errors
+- `transform_dropped_fields` (warning, not failure) — projection silently lost fields
+- `validation_failed` — workflow-level `validation_expression` returned falsy
+- `workflow_cycle_detected` — authoring-time cycle in step references

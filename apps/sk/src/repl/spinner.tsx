@@ -77,6 +77,22 @@ export interface SpinnerProps {
    * engine had already finished its tool work.
    */
   completedToolsThisTurn?: number;
+  /**
+   * Number of tool calls that FAILED this turn. Surfaced inside
+   * the spinner head when ≥2, alongside the last failure's
+   * structured `error_code` if known. Lets the user see "5 tools
+   * failed (slug_already_in_use) · 3m09s" instead of an opaque
+   * "summarising 5 tool results…" — exactly the symptom in
+   * session 975a64b0 where the LLM spent 3m09s burning tokens on a
+   * recovery flow that started with a 23505 surfaced as a raw SQL
+   * error string.
+   */
+  failedToolsThisTurn?: number;
+  /**
+   * Optional structured error_code from the most recent failed
+   * tool call. Rendered after the failure count for transparency.
+   */
+  lastFailureCode?: string | null;
   /** Override the verb list (tests). */
   verbs?: readonly string[];
   /** Frame duration in ms. Default 120ms. */
@@ -91,6 +107,8 @@ const SpinnerImpl: React.FC<SpinnerProps> = ({
   currentTool,
   currentToolKind,
   completedToolsThisTurn = 0,
+  failedToolsThisTurn = 0,
+  lastFailureCode = null,
   verbs = SPINNER_VERBS,
   frameMs = 120,
   verbMs = 2500,
@@ -159,16 +177,34 @@ const SpinnerImpl: React.FC<SpinnerProps> = ({
   // tool result(s)…" so the user sees concrete pipeline progress
   // during the LLM's compose phase. Verb rotation is the last-
   // resort fallback (pure thinking, no tools yet).
+  // Failure-aware head: when ≥2 tools have failed in this turn, the
+  // spinner surfaces the failure count + last error code so the user
+  // sees a concrete "5 tools failed (slug_already_in_use)" instead
+  // of a misleading "summarising 5 tool results" — which suggests
+  // the LLM is wrapping up when it's actually still recovering.
+  const failureHead =
+    failedToolsThisTurn >= 2
+      ? `${failedToolsThisTurn} tools failed${lastFailureCode ? ` (${lastFailureCode})` : ""}`
+      : null;
   const headLabel = currentTool
     ? `running ${currentTool}${currentToolKind ? ` (${currentToolKind})` : ""}`
-    : completedToolsThisTurn > 0
-      ? `summarising ${completedToolsThisTurn} tool result${completedToolsThisTurn === 1 ? "" : "s"}`
-      : verb;
+    : (failureHead ??
+      (completedToolsThisTurn > 0
+        ? `summarising ${completedToolsThisTurn} tool result${completedToolsThisTurn === 1 ? "" : "s"}`
+        : verb));
+  const headColor = failureHead && !currentTool ? "red" : "yellow";
 
+  const isFailureHead = Boolean(failureHead) && !currentTool;
   return (
     <Box marginBottom={1}>
-      <Text color="yellow">{glyph} </Text>
-      <Text bold>{headLabel}…</Text>
+      <Text color={headColor}>{glyph} </Text>
+      {isFailureHead ? (
+        <Text bold color="red">
+          {headLabel}…
+        </Text>
+      ) : (
+        <Text bold>{headLabel}…</Text>
+      )}
       <Text dimColor>
         {"  "}
         {elapsed}

@@ -94,6 +94,7 @@ export {
   type WelcomeCell,
 } from "./transcript-cell.ts";
 export {
+  type ActivityState,
   applyTurnEvent,
   type DataPartState,
   initialSessionState,

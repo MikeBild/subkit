@@ -51,3 +51,51 @@ Do NOT generate workflow steps until the user confirms:
 2. The overall goal (what should happen when the workflow runs)
 
 Only then call `build_workflow` or `propose_step`.
+
+## Example: extracted endpoint summary
+
+A structured summary of what the assistant pulled from the uploaded
+document, ready to surface back to the user before any workflow step is
+generated. Keep this format consistent so the user can quickly point at
+which endpoints to wire into the workflow.
+
+```json
+{
+  "format": "openapi",
+  "confidence": 0.94,
+  "auth": {
+    "type": "bearer",
+    "header": "Authorization",
+    "scheme": "Bearer"
+  },
+  "pagination": {
+    "strategy": "cursor",
+    "cursor_request_param": "starting_after",
+    "cursor_response_path": "data[last].id"
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/v1/customers",
+      "description": "List customers (paginated)",
+      "expected_statuses": [200]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/customers",
+      "description": "Create a customer",
+      "expected_statuses": [200, 201]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/customers/{id}",
+      "description": "Get a customer by id",
+      "expected_statuses": [200, 404]
+    }
+  ]
+}
+```
+
+After the user picks the endpoints to wire, translate each one to a
+`request` step with `method`, `connector_id`, and `path` fields directly
+on the step (not nested under a `config` wrapper).

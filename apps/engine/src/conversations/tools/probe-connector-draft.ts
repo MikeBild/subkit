@@ -13,6 +13,7 @@ import {
 } from "../persistence/draft-credential-cache.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { pickProbeRecoveryActions as pickFromShared } from "./probe-recovery.ts";
 import { truncateForLlm } from "./truncate.ts";
 
 const inputSchema = z
@@ -367,12 +368,22 @@ export const probeConnectorDraftTool: ConversationTool = {
       ctx.db,
     );
     if (errorDetail) {
+      // Probe failure with structured next-best-actions so the LLM
+      // doesn't have to guess the recovery move. Pre-fix a 404 left
+      // the LLM to manually decide whether to call search_docs,
+      // discover_connector_endpoints, or update the path — the
+      // session ebd66982 trace showed the LLM pivoting to "let me
+      // check the DigitalOcean API documentation" without prompting,
+      // costing extra turns. The hint maps the HTTP status to the
+      // most likely fix.
+      const nextBestActions = pickProbeRecoveryActions(latest_probe);
       return {
         ok: false,
         data: buildLifecyclePayload(nextDraft, {
           error: errorDetail,
           error_code: latest_probe.failure_code ?? "probe_failed",
           latest_probe,
+          next_best_actions: nextBestActions,
         }),
       };
     }
@@ -391,3 +402,13 @@ export const probeConnectorDraftTool: ConversationTool = {
     };
   },
 };
+
+/**
+ * Backwards-compatible re-export. The mapping itself lives in
+ * `./probe-recovery.ts` so probe_connector / dry_run_step share the
+ * same surface. Kept here for the existing test that imports from
+ * this file.
+ *
+ * @internal Exported for unit tests.
+ */
+export const pickProbeRecoveryActions = pickFromShared;

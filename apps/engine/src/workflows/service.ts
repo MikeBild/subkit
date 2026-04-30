@@ -95,6 +95,17 @@ export interface CreateWorkflowInput {
   tenant_id: string;
   def: unknown;
   actor_id: string | null;
+  /**
+   * Optional `step_id → scope_at_step` map captured from the most
+   * recent dry_run / run before commit. When supplied, persisted on
+   * `workflow_versions.scope_index` so a follow-up authoring session
+   * can populate `inspect_workflow` / `suggest_jsonata_paths` without
+   * re-running the workflow.
+   */
+  scope_index?: Record<
+    string,
+    { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
+  > | null;
 }
 
 export async function createWorkflow(
@@ -132,6 +143,7 @@ export async function createWorkflow(
         workflow_id: wf.id,
         version: 1,
         dag: def,
+        ...(input.scope_index ? { scope_index: input.scope_index } : {}),
       })
       .returning();
     if (!v) throw new Error("workflow_versions insert returned no row");
@@ -169,6 +181,11 @@ export interface UpdateWorkflowInput {
   id: string;
   def: unknown;
   actor_id: string | null;
+  /** See `CreateWorkflowInput.scope_index`. */
+  scope_index?: Record<
+    string,
+    { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
+  > | null;
 }
 
 export async function updateWorkflow(
@@ -217,6 +234,7 @@ export async function updateWorkflow(
         workflow_id: wf.id,
         version: next,
         dag: def,
+        ...(input.scope_index ? { scope_index: input.scope_index } : {}),
       })
       .returning();
     if (!v) throw new Error("workflow_versions insert returned no row");

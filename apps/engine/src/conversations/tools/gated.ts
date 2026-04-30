@@ -36,6 +36,7 @@ export const SKILL_GATED_TOOLS: Readonly<Record<string, string>> = {
   build_workflow: "workflow-authoring",
   propose_step: "workflow-authoring",
   update_param: "workflow-authoring",
+  edit_workflow_patch: "workflow-authoring",
   inspect_workflow: "workflow-authoring",
   // Connector authoring — same pattern; load connector-creation-guidance
   // before drafting.

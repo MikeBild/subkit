@@ -42,7 +42,15 @@ import type {
 } from "./turn-event.ts";
 import { parseRenderableMessageContent } from "./turn-event.ts";
 
-export type CellKind = "welcome" | "user" | "assistant" | "tool" | "error" | "system" | "elicit";
+export type CellKind =
+  | "welcome"
+  | "user"
+  | "assistant"
+  | "tool"
+  | "error"
+  | "system"
+  | "elicit"
+  | "diff";
 
 export type ErrorOrigin =
   | "slash"
@@ -141,6 +149,19 @@ export interface ElicitationCell extends BaseCell {
   parentMessageId?: string | null;
 }
 
+/**
+ * Inline unified-diff cell. Holds engine-computed line hunks for a
+ * structural mutation (workflow build, patch). The renderer paints a
+ * codex-style colored gutter + content view.
+ */
+export interface DiffCell extends BaseCell {
+  kind: "diff";
+  title: string;
+  language: "json" | "yaml" | "text";
+  hunks: Array<{ kind: "+" | "-" | " "; text: string }>;
+  parentMessageId?: string | null;
+}
+
 export type TranscriptCell =
   | WelcomeCell
   | UserCell
@@ -148,7 +169,8 @@ export type TranscriptCell =
   | ToolCell
   | ErrorCell
   | SystemCell
-  | ElicitationCell;
+  | ElicitationCell
+  | DiffCell;
 
 /**
  * Ephemeral, TTL-bounded notice rendered in a fixed-height slot above
@@ -296,6 +318,26 @@ export function newElicitationCell(args: {
     summary: args.summary,
     input: args.input,
     status: "open",
+    ...(args.parentMessageId ? { parentMessageId: args.parentMessageId } : {}),
+    ...(args.traceId ? { traceId: args.traceId } : {}),
+  };
+}
+
+export function newDiffCell(args: {
+  title: string;
+  language: "json" | "yaml" | "text";
+  hunks: Array<{ kind: "+" | "-" | " "; text: string }>;
+  parentMessageId?: string | null;
+  traceId?: string | null;
+}): DiffCell {
+  return {
+    kind: "diff",
+    id: nextCellId("diff"),
+    createdAt: Date.now(),
+    finalized: true,
+    title: args.title,
+    language: args.language,
+    hunks: args.hunks,
     ...(args.parentMessageId ? { parentMessageId: args.parentMessageId } : {}),
     ...(args.traceId ? { traceId: args.traceId } : {}),
   };
@@ -703,6 +745,38 @@ export function applyTurnEventToCells(state: CellState, ev: CellTurnEvent): Cell
           }),
         ],
       };
+
+    case "diff": {
+      // Inline diff cell — engine emits these after a draft mutation
+      // (build_workflow / edit_workflow_patch). Codex pattern: render
+      // a colored unified diff inline so the operator sees structural
+      // change without scrolling back. Always finalized at insertion.
+      let flushed = state;
+      if (flushed.active) flushed = commitActive(flushed);
+      // Anchor under the most recent assistant cell so the diff threads
+      // with the message that triggered it.
+      let parent: string | null = null;
+      for (let i = flushed.cells.length - 1; i >= 0; i--) {
+        const c = flushed.cells[i];
+        if (c && isAssistantCell(c)) {
+          parent = c.id;
+          break;
+        }
+      }
+      return {
+        ...flushed,
+        cells: [
+          ...flushed.cells,
+          newDiffCell({
+            title: ev.title,
+            language: ev.language,
+            hunks: ev.hunks,
+            ...(parent ? { parentMessageId: parent } : {}),
+            traceId,
+          }),
+        ],
+      };
+    }
 
     default:
       return state;

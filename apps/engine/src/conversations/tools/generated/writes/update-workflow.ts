@@ -20,6 +20,7 @@ import type { ResolvedPrincipal } from "../../../../auth/types.ts";
 import { conversations, roles, systemAccounts, users } from "../../../../db/schema/index.ts";
 import { can } from "../../../../rbac/evaluator.ts";
 import { bindPersistedWorkflow } from "../../../authoring-state.ts";
+import { translateAutoPersistError } from "../../../persistence/auto-persist.ts";
 import type { ConversationTool, ToolContext } from "../../index.ts";
 
 const UpdateWorkflowInput = z
@@ -145,12 +146,29 @@ export const updateWorkflowTool: ConversationTool = {
     });
     if (!auth.allow) return permissionDenied("workflow:write", auth.reason);
 
-    const result = await ctx.engineClient.workflows.update({
-      id: args.id,
-      ...(args.slug !== undefined ? { slug: args.slug } : {}),
-      ...(args.name !== undefined ? { name: args.name } : {}),
-      ...(args.lifecycle !== undefined ? { lifecycle: args.lifecycle } : {}),
-    });
+    let result: Awaited<ReturnType<typeof ctx.engineClient.workflows.update>>;
+    try {
+      result = await ctx.engineClient.workflows.update({
+        id: args.id,
+        ...(args.slug !== undefined ? { slug: args.slug } : {}),
+        ...(args.name !== undefined ? { name: args.name } : {}),
+        ...(args.lifecycle !== undefined ? { lifecycle: args.lifecycle } : {}),
+      });
+    } catch (err) {
+      // Translate Postgres errors so the LLM gets `slug_already_in_use`
+      // / `in_use_by_dependent_rows` / `missing_required_field`
+      // instead of a raw SQL string. Mirrors save-connector-draft.ts
+      // and the auto-persist dispatcher.
+      const translated = translateAutoPersistError(err, "commit_workflow_draft");
+      return {
+        ok: false,
+        data: {
+          error: translated.error_code,
+          message: translated.message,
+          next_best_actions: translated.next_best_actions,
+        },
+      };
+    }
 
     if (result.errors) {
       if (result.conflict) {

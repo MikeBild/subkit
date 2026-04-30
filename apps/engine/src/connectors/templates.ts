@@ -192,6 +192,17 @@ export const ConnectorTemplateSchema = z
     base_url_options: z.array(BaseUrlOptionSchema).default([]),
     pagination_defaults: PaginationDefaultsSchema.nullable(),
     capabilities: CapabilitiesSchema,
+    /**
+     * Optional list of canonical request paths surfaced to the LLM
+     * authoring agent so it does not have to guess `/v2` prefixes.
+     * Each entry is a path *relative to* `base_url` (i.e. paths must NOT
+     * include the segment already baked into `base_url`). The propose-step
+     * tool surfaces these in its response so the next round-trip carries
+     * the hint. Pre-fix the LLM in session f00b8d1c repeatedly authored
+     * `/v2/projects` against a connector whose base_url already ended in
+     * `/v2`, producing recurring `https://…/v2/v2/projects` 404s.
+     */
+    example_paths: z.array(z.string()).default([]),
   })
   .superRefine((t, ctx) => {
     // Consistency gate: a template that offers BOTH a primary non-oauth auth

@@ -156,6 +156,7 @@ describe("classifyElicitationIntent — invariant: never throws", () => {
       "🚀🔥",
       "a".repeat(10_000),
       "\n\n\n\t\t",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder token under test
       "${item.id}",
       "DROP TABLE users;",
       "<script>alert(1)</script>",

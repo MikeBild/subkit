@@ -207,7 +207,16 @@ describe("s3 driver", () => {
       path: "/hello.txt",
     });
     expect(got.status).toBe(200);
-    expect(got.body).toBe("hello world");
+    // The driver returns raw bytes for non-text content types (MinIO
+    // defaults to application/octet-stream); the request-step path
+    // uses `parse_as` to decode. Direct callers convert explicitly.
+    const gotBody =
+      typeof got.body === "string"
+        ? got.body
+        : Buffer.isBuffer(got.body)
+          ? got.body.toString("utf8")
+          : String(got.body ?? "");
+    expect(gotBody).toBe("hello world");
 
     // HEAD
     const head = await executeS3Request({
@@ -255,5 +264,88 @@ describe("s3 driver", () => {
       connector: fresh!,
     });
     expect(dispatched.ok).toBe(true);
+  }, 120_000);
+
+  test("presigned URL + range GET + paginated LIST + multipart override", async () => {
+    if (!docker || !connectorId) return;
+    const fresh = await getConnector(tenantId, connectorId, testDb.db);
+    if (!fresh) throw new Error("connector vanished");
+
+    // Seed three small objects so the paginated LIST has something to walk.
+    for (const i of [1, 2, 3]) {
+      const put = await executeS3Request({
+        db: testDb.db,
+        tenant_id: tenantId,
+        connector: fresh,
+        method: "PUT",
+        path: `/page/obj-${i}.txt`,
+        body: `body-${i}`,
+      });
+      expect(put.status).toBe(200);
+    }
+
+    // Presigned GET — driver returns the URL instead of fetching.
+    const presigned = await executeS3Request({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh,
+      method: "GET",
+      path: "/page/obj-1.txt",
+      presignExpiresIn: 60,
+    });
+    expect(presigned.status).toBe(200);
+    const presignBody = presigned.body as { url: string; method: string; expires_at: string };
+    expect(typeof presignBody.url).toBe("string");
+    expect(presignBody.url.length).toBeGreaterThan(0);
+    expect(presignBody.method).toBe("GET");
+
+    // Range GET — request only the first 4 bytes of `body-1`.
+    const ranged = await executeS3Request({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh,
+      method: "GET",
+      path: "/page/obj-1.txt",
+      range: "bytes=0-3",
+    });
+    // Range responses come back as 206 Partial Content.
+    expect(ranged.status === 206 || ranged.status === 200).toBe(true);
+    const rangedBody =
+      typeof ranged.body === "string"
+        ? ranged.body
+        : Buffer.isBuffer(ranged.body)
+          ? ranged.body.toString("utf8")
+          : String(ranged.body);
+    expect(rangedBody.length).toBeLessThanOrEqual(7);
+    expect(rangedBody.startsWith("body")).toBe(true);
+
+    // paginate: true walks the whole page tree until cap.
+    const paged = await executeS3Request({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh,
+      method: "LIST",
+      path: "/page/",
+      paginate: true,
+      maxKeys: 10,
+    });
+    expect(paged.status).toBe(200);
+    const pagedBody = paged.body as { count: number; paginated: boolean };
+    expect(pagedBody.paginated).toBe(true);
+    expect(pagedBody.count).toBeGreaterThanOrEqual(3);
+
+    // multipart: false on a small body still produces a valid PUT.
+    const single = await executeS3Request({
+      db: testDb.db,
+      tenant_id: tenantId,
+      connector: fresh,
+      method: "PUT",
+      path: "/page/single.txt",
+      body: "single-shot",
+      multipart: false,
+    });
+    expect(single.status).toBe(200);
+    const singleBody = single.body as { multipart: boolean };
+    expect(singleBody.multipart).toBe(false);
   }, 120_000);
 });

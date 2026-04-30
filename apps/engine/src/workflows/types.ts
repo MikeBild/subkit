@@ -117,7 +117,25 @@ export const RequestStepSchema = z
     kind: z.literal("request"),
     ...baseStep,
     method: z
-      .enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"])
+      .enum([
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "HEAD",
+        "OPTIONS",
+        // S3 driver — `LIST` is informational at the step level;
+        // prefer the structured `s3` block to express intent.
+        "LIST",
+        // Postgres driver — informational SQL verbs. Prefer the
+        // structured `sql` block; the driver decides return shape
+        // from the query, not the method.
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "CALL",
+      ])
       .optional()
       .default("GET"),
     url: z.string().optional(),
@@ -158,13 +176,310 @@ export const RequestStepSchema = z
     // Optional GraphQL operation. When present, the request step routes
     // through the GraphQL driver instead of the HTTP retry pipeline.
     graphql: GraphQLConfigSchema.optional(),
+    /**
+     * Optional SQL operation. When present, the request step routes
+     * through the postgres driver. `query` is a parameterised SQL
+     * statement (use `$1`, `$2` placeholders); `params` is the bound
+     * argument list. Method on the step is informational ("SELECT",
+     * "INSERT", "UPDATE", "DELETE", "CALL"); the driver decides
+     * whether to return rows or affected counts based on the query
+     * shape.
+     */
+    /**
+     * Optional XML request body. Symmetric to the response parser —
+     * the same tree shape (`@attr` keys, `#text`, repeated children
+     * as arrays) round-trips back into well-formed XML. Sets the
+     * `Content-Type: application/xml` header automatically unless one
+     * was set explicitly.
+     */
+    xml: z
+      .object({
+        body: JsonValueSchema,
+        /** Add the XML declaration `<?xml version="1.0" …?>` prologue. */
+        declaration: z.boolean().optional(),
+      })
+      .optional(),
+    sql: z
+      .object({
+        query: z.string().min(1),
+        params: z.array(z.unknown()).optional(),
+        /** Wrap the statement (and any subsequent statements in the
+         *  `also` array) in a single transaction. When `also` is set
+         *  the driver opens a connection, BEGIN, runs every statement
+         *  in order, COMMIT (or ROLLBACK on first failure), then
+         *  releases the connection. */
+        also: z
+          .array(
+            z.object({
+              query: z.string().min(1),
+              params: z.array(z.unknown()).optional(),
+              /** Per-statement row-count assertion. Same shape as
+               *  step.expected_row_count. Mismatch rolls back the
+               *  whole transaction with `expected_row_count_mismatch`. */
+              expected_row_count: z
+                .union([
+                  z.number().int().min(0),
+                  z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+                  z
+                    .object({
+                      min: z.number().int().min(0).optional(),
+                      max: z.number().int().min(0).optional(),
+                    })
+                    .refine((v) => v.min !== undefined || v.max !== undefined, {
+                      message: "expected_row_count requires `min` and/or `max`",
+                    }),
+                ])
+                .optional(),
+            }),
+          )
+          .optional(),
+        transaction: z.boolean().optional(),
+        /** Stream rows via a server-side cursor instead of buffering
+         *  the full result set. `fetch_size` controls the per-batch
+         *  size; the step output is still a single concatenated array
+         *  (caller-visible scope contract is unchanged), but memory
+         *  pressure stays bounded. */
+        cursor: z
+          .object({
+            fetch_size: z.number().int().positive().max(10_000).default(1000),
+          })
+          .optional(),
+      })
+      .optional(),
+    /**
+     * Optional S3 operation. When present, the request step routes
+     * through the S3 driver. Richer fields than the bare HTTP path:
+     * `key` is the object key (with `${input.…}` substitution),
+     * `prefix` for LIST operations, `parse_as` controls the response
+     * decode ("json" | "text" | "base64" | "bytes"), `max_keys` +
+     * `paginate` cover LIST pagination, `content_type` + `metadata` +
+     * `multipart_threshold_mb` ride on PUT, `range` on GET, and
+     * `presign` on GET/PUT to mint a presigned URL instead of
+     * executing.
+     */
+    s3: z
+      .object({
+        key: z.string().optional(),
+        prefix: z.string().optional(),
+        parse_as: z.enum(["json", "text", "base64", "bytes"]).optional(),
+        max_keys: z.number().int().positive().max(10_000).optional(),
+        content_type: z.string().optional(),
+        metadata: z.record(z.string(), z.string()).optional(),
+        /** Continue across continuation tokens until `max_keys` items
+         *  are collected (or the bucket is exhausted). When false, the
+         *  driver returns at most one page (default behaviour). */
+        paginate: z.boolean().optional(),
+        /** Force / disable multipart upload. When set, overrides the
+         *  driver's automatic threshold. */
+        multipart: z.boolean().optional(),
+        /** Override the per-PUT multipart threshold in MiB. Default 8. */
+        multipart_threshold_mb: z.number().positive().max(1024).optional(),
+        /** RFC 7233 byte-range expression for partial GETs (e.g.
+         *  "bytes=0-1023"). The driver forwards it as a Range header. */
+        range: z.string().optional(),
+        /** Generate a presigned URL instead of executing the
+         *  operation. Returns `{ url, method, expires_at }` as the
+         *  step output. Supported for GET / PUT. */
+        presign: z
+          .object({
+            expires_in_s: z
+              .number()
+              .int()
+              .positive()
+              .max(7 * 24 * 3600)
+              .default(900),
+          })
+          .optional(),
+      })
+      .optional(),
     body_schema: z.record(z.string(), z.unknown()).optional(),
     response_schema: z.record(z.string(), z.unknown()).optional(),
+    /**
+     * Allowed HTTP status codes (HTTP / S3 drivers only). When the
+     * response status is outside this list, the step fails with
+     * `unexpected_status_code`. Postgres steps use
+     * `expected_row_count` instead — the two are not interchangeable.
+     */
     expected_statuses: z.array(z.number().int()).optional(),
+    /**
+     * Postgres-only row-count assertion. Accepts:
+     *   - number          ⇒ exact match required
+     *   - [min, max]      ⇒ inclusive range
+     *   - { min: N }      ⇒ at-least N rows
+     *   - { max: N }      ⇒ at-most N rows
+     *   - { min, max }    ⇒ inclusive range (object form)
+     * On miss the step fails with `expected_row_count_mismatch`.
+     */
+    expected_row_count: z
+      .union([
+        z.number().int().min(0),
+        z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+        z
+          .object({
+            min: z.number().int().min(0).optional(),
+            max: z.number().int().min(0).optional(),
+          })
+          .refine((v) => v.min !== undefined || v.max !== undefined, {
+            message: "expected_row_count object must set at least one of `min` or `max`",
+          }),
+      ])
+      .optional(),
     idempotency_key: z.string().optional(),
   })
-  .refine((s) => s.url !== undefined || s.connector_id !== undefined, {
-    message: "request step must specify either url or connector_id",
+  .refine((s) => s.url !== undefined || s.connector_id !== undefined || s.sql !== undefined, {
+    message:
+      "request step must specify either url, connector_id, or sql (postgres connectors are routed via the sql block)",
+  })
+  .superRefine((s, ctx) => {
+    // Per-driver method invariants. The shared `method` enum has to
+    // accept HTTP + S3 + SQL verbs because legacy callers might still
+    // set `step.method` rather than `step.s3.method` / `step.sql.method`.
+    // The superRefine catches mixed usage so the LLM gets a typed
+    // error at authoring time instead of a runtime drive mismatch.
+    const HTTP_VERBS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
+    const S3_VERBS = new Set(["GET", "PUT", "HEAD", "DELETE", "LIST"]);
+    const SQL_VERBS = new Set(["SELECT", "INSERT", "UPDATE", "DELETE", "CALL"]);
+
+    if (s.s3 !== undefined) {
+      // S3 block present — step.method must be S3-compatible.
+      if (s.method !== undefined && !S3_VERBS.has(s.method)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["method"],
+          message: `s3 step requires method ∈ ${[...S3_VERBS].join("|")}, got ${s.method}`,
+        });
+      }
+      // LIST needs a prefix; GET/PUT/HEAD/DELETE need a key (or step.path).
+      const effective = (s.method ?? "GET") as string;
+      if (effective === "LIST" && !s.s3.prefix) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["s3", "prefix"],
+          message: "s3 LIST requires a prefix",
+        });
+      }
+      if (effective !== "LIST" && !s.s3.key && !s.path) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["s3", "key"],
+          message: `s3 ${effective} requires either s3.key or step.path`,
+        });
+      }
+      // Cursor + transaction are sql-only knobs but the schema can't
+      // know which driver runs at runtime; the dispatch validates.
+    }
+
+    // Cross-validate expected_row_count tuples and object bounds at
+    // authoring time so the LLM doesn't have to discover an
+    // unsatisfiable assertion at runtime.
+    const validateExpectation = (val: unknown, path: (string | number)[]): void => {
+      if (Array.isArray(val) && val.length === 2) {
+        const [lo, hi] = val as [number, number];
+        if (lo > hi) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path,
+            message: `expected_row_count tuple [${lo}, ${hi}] has lo > hi (unsatisfiable)`,
+          });
+        }
+      } else if (val && typeof val === "object" && !Array.isArray(val)) {
+        const obj = val as { min?: number; max?: number };
+        if (obj.min !== undefined && obj.max !== undefined && obj.min > obj.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path,
+            message: `expected_row_count { min: ${obj.min}, max: ${obj.max} } has min > max (unsatisfiable)`,
+          });
+        }
+      }
+    };
+    if (s.expected_row_count !== undefined) {
+      validateExpectation(s.expected_row_count, ["expected_row_count"]);
+    }
+    if (s.sql?.also) {
+      s.sql.also.forEach((stmt, idx) => {
+        if (stmt.expected_row_count !== undefined) {
+          validateExpectation(stmt.expected_row_count, ["sql", "also", idx, "expected_row_count"]);
+        }
+      });
+    }
+
+    if (s.sql !== undefined && s.expected_statuses !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["expected_statuses"],
+        message: "expected_statuses is HTTP/S3 only; postgres steps use expected_row_count",
+      });
+    }
+    if (s.s3 !== undefined && s.expected_row_count !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["expected_row_count"],
+        message: "expected_row_count is postgres-only; s3 steps use expected_statuses",
+      });
+    }
+    if (
+      s.s3 === undefined &&
+      s.sql === undefined &&
+      s.graphql === undefined &&
+      s.expected_row_count !== undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["expected_row_count"],
+        message: "expected_row_count is postgres-only; HTTP steps use expected_statuses",
+      });
+    }
+
+    if (s.sql !== undefined) {
+      const methodStr: string | undefined = s.method;
+      // GET is the schema default; we only flag a non-default HTTP verb.
+      if (
+        methodStr !== undefined &&
+        !SQL_VERBS.has(methodStr) &&
+        methodStr !== "GET" &&
+        HTTP_VERBS.has(methodStr)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["method"],
+          message: `sql step requires method ∈ ${[...SQL_VERBS].join("|")}, got ${methodStr}`,
+        });
+      }
+      // sql.transaction false + sql.also is contradictory.
+      if (s.sql.transaction === false && s.sql.also && s.sql.also.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["sql", "transaction"],
+          message: "sql.transaction cannot be false when sql.also is set",
+        });
+      }
+      // sql.cursor + sql.also conflict — the cursor opens its own
+      // implicit transaction.
+      if (s.sql.cursor !== undefined && s.sql.also !== undefined && s.sql.also.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["sql", "cursor"],
+          message:
+            "sql.cursor cannot be combined with sql.also (the cursor opens its own transaction)",
+        });
+      }
+    }
+
+    // Pure HTTP path: no s3 / sql / graphql block ⇒ method must be HTTP.
+    if (
+      s.s3 === undefined &&
+      s.sql === undefined &&
+      s.graphql === undefined &&
+      s.method !== undefined &&
+      !HTTP_VERBS.has(s.method)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["method"],
+        message: `http request step requires method ∈ ${[...HTTP_VERBS].join("|")}, got ${s.method}; add an \`s3\` or \`sql\` block to dispatch through those drivers`,
+      });
+    }
   })
   .openapi("RequestStep");
 
@@ -176,6 +491,17 @@ export const TransformStepSchema = z
     language: z.enum(["jsonata", "javascript"]).optional(),
     input_schema: z.record(z.string(), z.unknown()).optional(),
     output_schema: z.record(z.string(), z.unknown()).optional(),
+    /**
+     * Per-step opt-out for non-fatal warnings the author has consciously
+     * acknowledged. Currently honoured: `dropped_fields` (suppresses the
+     * `transform_dropped_fields` heuristic when the projection
+     * intentionally omits source keys). Pre-fix the LLM rewrote correct
+     * transforms repeatedly because the warning had no escape hatch.
+     */
+    silence_warnings: z
+      .array(z.enum(["dropped_fields"]))
+      .optional()
+      .openapi({ description: "Suppress specific non-fatal warnings on this step." }),
   })
   .openapi("TransformStep");
 
@@ -287,16 +613,71 @@ export const WorkflowRuntimeSchema = z
   })
   .openapi("WorkflowRuntime");
 
-export const WorkflowDefSchema = z
-  .object({
-    name: z.string().min(1),
-    slug: z.string().min(1).optional(),
-    description: z.string().optional(),
-    input_schema: z.record(z.string(), z.unknown()).optional(),
-    output_schema: z.record(z.string(), z.unknown()).optional(),
-    steps: z.array(StepSchema).min(1).max(200),
-    timeout_ms: z.number().int().positive().optional(),
-    runtime: WorkflowRuntimeSchema.optional(),
+const _baseWorkflowDefSchema = z.object({
+  name: z.string().min(1),
+  slug: z.string().min(1).optional(),
+  description: z.string().optional(),
+  input_schema: z.record(z.string(), z.unknown()).optional(),
+  output_schema: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Optional JSONata predicate evaluated against the final workflow
+   * output after `output_schema` validation. A falsy result raises a
+   * typed `validation_failed` error and emits a `validation_failed`
+   * drift signal — letting operators encode business invariants the
+   * schema cannot ("orders.length > 0", "every charge has currency").
+   */
+  validation_expression: z.string().min(1).optional(),
+  /**
+   * Optional JavaScript validator run alongside `validation_expression`.
+   * The body executes in the QuickJS sandbox with the final output
+   * bound as `input`; a return value of `false` (or any throw) trips
+   * `validation_failed`. Use when the invariant needs imperative
+   * logic (multi-pass scans, regex, custom comparators) that JSONata
+   * can't express. Mirrors the reference impl's `validationFunction`.
+   */
+  validation_function: z.string().min(1).optional(),
+  /**
+   * Optional final-output transform. JSONata expression applied to
+   * the last step's output to produce the workflow's public payload.
+   * Equivalent to declaring a trailing `transform` step but keeps
+   * the public-facing shape declared at the workflow root. Mirrors
+   * the reference impl's JSONata-equivalent `outputTransform`.
+   */
+  output_transform: z.string().min(1).optional(),
+  /**
+   * Optional final-output transform expressed in JavaScript and
+   * evaluated in the QuickJS sandbox (same surface as
+   * `validation_function`). The body executes with the last step's
+   * output bound as `input`; whatever it returns becomes the
+   * workflow's public payload. Throws on the JS side surface as
+   * `output_transform_failed`. Mirrors the reference impl's JS
+   * `outputTransform` arrow-function form.
+   */
+  output_transform_function: z.string().min(1).optional(),
+  steps: z.array(StepSchema).min(1).max(200),
+  timeout_ms: z.number().int().positive().optional(),
+  runtime: WorkflowRuntimeSchema.optional(),
+});
+
+export const WorkflowDefSchema = _baseWorkflowDefSchema
+  .superRefine((s, ctx) => {
+    // The two final-output forms are mutually exclusive — the engine
+    // applies whichever one is set first, so accepting both would
+    // silently shadow the second. Reject at authoring time.
+    if (s.output_transform && s.output_transform_function) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["output_transform_function"],
+        message:
+          "set either `output_transform` (JSONata) or `output_transform_function` (JS), not both",
+      });
+    }
+    if (s.validation_expression && s.validation_function) {
+      // Both are allowed at runtime — they evaluate independently and
+      // either tripping fails the run. Surface as info, not error,
+      // by skipping the issue. Kept here as a hook for a future
+      // policy.
+    }
   })
   .openapi("WorkflowDef");
 

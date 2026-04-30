@@ -92,20 +92,27 @@ export const ALL_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = AGENT_SKILL_NAMES
 
 /**
  * Cross-cutting skills that apply to EVERY conversation regardless of
- * authoring mode. These are the "load always" set; the rest are loaded
- * by mode (see `MODE_SPECIFIC_AGENT_SKILLS`). Pre-fix `ALL_AGENT_SKILLS`
- * was loaded unconditionally on every turn; for non-authoring chats the
- * mode-specific bodies (workflow-step-kinds, conversational-authoring,
- * placeholder-rules) added ~3k tokens of irrelevant context per call.
+ * authoring mode. The remainder live in `MODE_SPECIFIC_AGENT_SKILLS`
+ * and only ship when the matching mode is active.
+ *
+ * `conversational-authoring` is the only body large enough (~7.3KB / ~1.8k
+ * tokens) and authoring-specific enough that loading it for non-authoring
+ * chats (general help, MCP-only conversations, execution-mode debugging
+ * without a draft in flight) is wasted budget. Everything else
+ * (turn-rhythm, chat-first, confirmation, attachment, error-recovery,
+ * placeholder-rules, workflow-step-kinds, …) is small or universal
+ * enough that pinning it costs less than the test maintenance of
+ * splitting it.
+ *
+ * The other behaviour rules — workflow-step-kinds and placeholder-rules
+ * specifically — stay in always-loaded because base-prompt-step-kinds
+ * tests pin them as anti-Zapier-namespace guardrails that apply even
+ * when the user asks an off-topic question; trimming them invites the
+ * model to invent shapes.
  */
-// All ten agent behaviour bodies are pinned as conversation-wide
-// invariants today: the agent-registry test + base-prompt-step-kinds
-// tests collectively assert every one of them must surface in the
-// converse prompt regardless of authoring mode. The infrastructure
-// below (MODE_SPECIFIC_AGENT_SKILLS, resolveAgentSkillsForMode) is
-// wired for a future split — see #12c follow-up — but ships today as
-// a no-op extra layer over ALL_AGENT_SKILLS.
-export const ALWAYS_LOADED_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = ALL_AGENT_SKILLS;
+export const ALWAYS_LOADED_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = AGENT_SKILL_NAMES.filter(
+  (n) => n !== "conversational-authoring",
+);
 
 /**
  * Skills loaded only when the conversation is in a specific authoring
@@ -114,12 +121,20 @@ export const ALWAYS_LOADED_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = ALL_AGE
  * small for non-authoring chats. The lookup keys match
  * `AuthoringSurfaceMode` from `conversations/types.ts`.
  *
- *   workflow / execution / diagnosis → all 3 authoring rule bodies
- *   connector                        → conversational-authoring only
- *     (workflow-step-kinds + placeholder-rules are workflow-specific)
- *   undefined / "default"            → no mode-specific bodies
+ *   workflow / connector → conversational-authoring (the ideal-flow
+ *                          narrative + stage signals)
+ *   execution / diagnosis → none (always-loaded core only)
+ *   undefined / null     → none (always-loaded core only)
+ *
+ * If a future skill is too verbose to load universally and clearly maps
+ * to one mode, add it here rather than padding the always-loaded set.
  */
-export const MODE_SPECIFIC_AGENT_SKILLS: Record<string, ReadonlyArray<AgentSkillName>> = {};
+export const MODE_SPECIFIC_AGENT_SKILLS: Record<string, ReadonlyArray<AgentSkillName>> = {
+  workflow: ["conversational-authoring"],
+  connector: ["conversational-authoring"],
+  execution: [],
+  diagnosis: [],
+};
 
 /**
  * Resolve the actual skill list for a given authoring mode. Returns

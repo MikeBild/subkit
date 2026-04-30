@@ -17,28 +17,42 @@ WORKDIR /app
 # across rebuilds when source files change.
 COPY package.json bun.lock bunfig.toml tsconfig.json tsconfig.base.json biome.json ./
 COPY scripts ./scripts
-COPY apps ./apps
-COPY packages ./packages
 
 # Cache bun's install directory between builds for faster rebuilds.
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
-# Install Chromium for the playwright-crawl discovery strategy. The
-# browser binary and its system dependencies must ship in the runtime
-# image so headless crawls work in production. `--with-deps` lays
-# down the apt packages Chromium needs (libnss3, libatk1.0-0, etc.).
-RUN bunx playwright install chromium --with-deps
+# Install Chromium for the playwright-crawl discovery strategy. Done before
+# the source copy so the layer is cached as long as package.json / bun.lock
+# don't change. `--with-deps` lays down the apt packages Chromium needs
+# (libnss3, libatk1.0-0, etc.). The apt cache mount keeps deb downloads
+# warm across rebuilds.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    bunx playwright install chromium --with-deps
+
+COPY apps ./apps
+COPY packages ./packages
 
 # Produce a statically compiled engine binary targeting the host arch.
 # TARGETARCH is amd64 or arm64; Bun's target triples are bun-linux-x64
 # and bun-linux-arm64.
+#
+# `--define BUILD_VERSION="\"x.y.z\""` bakes the version directly into
+# the compiled binary so an operator running it without the runtime
+# ENGINE_VERSION env var still gets the right number on /v1/health.
+# Note: bun's --define replaces the identifier with the literal value
+# parsed as JS — `"3.2.0"` is the JS string literal we want, so the
+# argument we pass on the shell must be exactly `BUILD_VERSION="3.2.0"`
+# (one set of quotes, after shell expansion). Earlier variants used
+# nested escapes which leaked literal quotes into the runtime string.
 RUN mkdir -p /out \
     && BUN_TARGET="bun-linux-$(if [ "$TARGETARCH" = "amd64" ]; then echo x64; else echo arm64; fi)" \
-    && echo "compiling engine for $BUN_TARGET" \
+    && echo "compiling engine for $BUN_TARGET (version=$ENGINE_VERSION)" \
     && bun build apps/engine/src/index.ts \
         --compile \
         --target="$BUN_TARGET" \
+        --define BUILD_VERSION=\"${ENGINE_VERSION}\" \
         --outfile=/out/engine
 
 # --- runtime image ---------------------------------------------------------

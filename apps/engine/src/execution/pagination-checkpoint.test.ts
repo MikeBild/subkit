@@ -230,8 +230,11 @@ describe("pagination checkpoint", () => {
     // Output items reflect resume-only accumulation: 150 pages × PAGE_SIZE.
     const items = r2.output as unknown[];
     expect(items.length).toBe(150 * PAGE_SIZE);
-    // Confirm resume metadata surfaces in request_meta.
-    const meta = r2.request_meta as Record<string, unknown>;
+    // Resume metadata is now first-class on the http variant.
+    const meta = r2.request_meta as {
+      resumed_from_page?: number;
+      resumed_accumulated_count?: number;
+    };
     expect(meta.resumed_from_page).toBe(50);
     expect(meta.resumed_accumulated_count).toBe(50 * PAGE_SIZE);
   });
@@ -268,7 +271,7 @@ describe("pagination checkpoint", () => {
     const ctx = makeStepRunCtx({ execution_id, step_row_id, step });
     const r = await runRequestStep({ ctx, step, scope: {} });
     expect(r.status).toBe("succeeded");
-    const meta = r.request_meta as Record<string, unknown>;
+    const meta = r.request_meta as { resumed_from_page?: number };
     // No resume keys — the stale signature was rejected and the run
     // started from page 1.
     expect(meta.resumed_from_page).toBeUndefined();

@@ -422,7 +422,10 @@ describe("call_connector — Postgres", () => {
       dsn: "postgres://u:p@example.test:5432/db",
     });
     const sampleRows = [{ id: 1, name: "alpha" }];
-    const spy = spyOn(pgDriver, "pgQuery").mockResolvedValue(sampleRows);
+    const spy = spyOn(pgDriver, "pgQueryWithCount").mockResolvedValue({
+      rows: sampleRows,
+      row_count: sampleRows.length,
+    });
     try {
       const result = await callConnectorTool.execute(makeToolContext(), {
         connector_id,
@@ -451,7 +454,10 @@ describe("call_connector — Postgres", () => {
       driver: "postgres",
       dsn: "postgres://u:p@example.test:5432/db",
     });
-    const spy = spyOn(pgDriver, "pgQuery").mockResolvedValue([]);
+    const spy = spyOn(pgDriver, "pgQueryWithCount").mockResolvedValue({
+      rows: [],
+      row_count: 0,
+    });
     try {
       const result = await callConnectorTool.execute(makeToolContext(), {
         connector_id,
@@ -477,7 +483,10 @@ describe("call_connector — Postgres", () => {
       driver: "postgres",
       dsn: "postgres://u:p@example.test:5432/db",
     });
-    const spy = spyOn(pgDriver, "pgQuery").mockResolvedValue([]);
+    const spy = spyOn(pgDriver, "pgQueryWithCount").mockResolvedValue({
+      rows: [],
+      row_count: 0,
+    });
     try {
       const result = await callConnectorTool.execute(makeToolContext(), {
         connector_id,

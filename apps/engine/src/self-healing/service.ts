@@ -34,6 +34,7 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
+import { RequestMetaSchema } from "../execution/request-meta-schema.ts";
 import { MAX_REPAIR_ATTEMPTS } from "../execution/timeouts.ts";
 import { LlmQuotaExhausted } from "../llm/errors.ts";
 import {
@@ -76,15 +77,30 @@ export interface RunSelfHealingParams extends WorkflowRepairJob {
 }
 
 function buildDryRunStep(snapshot: FailingStepSnapshot): DryRunStep {
-  const reqMeta = (snapshot.request_meta ?? {}) as Record<string, unknown>;
+  // `data_selector` / `response_filters` / `expression` come from the
+  // persisted step config (whoever upstream loaded the snapshot
+  // populated `snapshot.expression`); the typed RequestMeta union
+  // intentionally doesn't carry them. Future expansion: surface
+  // additional dry-run inputs on FailingStepSnapshot itself.
   const kind = snapshot.kind === "transform" ? "transform" : "request";
   const step: DryRunStep = { id: snapshot.id, kind };
-  if (typeof reqMeta.data_selector === "string") step.data_selector = reqMeta.data_selector;
-  if (typeof reqMeta.response_filters !== "undefined")
-    step.response_filters = reqMeta.response_filters;
   if (typeof snapshot.expression === "string") step.expression = snapshot.expression;
-  else if (typeof reqMeta.expression === "string") step.expression = reqMeta.expression as string;
   return step;
+}
+
+/**
+ * Parse the persisted JSONB request_meta payload through the strict
+ * RequestMeta schema. Tolerant fall-through: rows persisted before
+ * the typed-union migration, or with a future driver variant we
+ * don't recognise here, return `null` rather than crashing the
+ * repair loop.
+ */
+function parsePersistedRequestMeta(
+  raw: unknown,
+): import("../execution/types.ts").RequestMeta | null {
+  if (raw === null || raw === undefined) return null;
+  const parsed = RequestMetaSchema.safeParse(raw);
+  return parsed.success ? (parsed.data as import("../execution/types.ts").RequestMeta) : null;
 }
 
 async function loadStepSnapshot(
@@ -103,7 +119,7 @@ async function loadStepSnapshot(
     kind: row.kind,
     status: row.status,
     error: row.error,
-    request_meta: row.request_meta,
+    request_meta: parsePersistedRequestMeta(row.request_meta),
     output_preview: row.output_preview,
   };
 }

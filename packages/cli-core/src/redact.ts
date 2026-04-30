@@ -44,7 +44,17 @@ const SENSITIVE_KEYS = new Set<string>([
 ]);
 
 const REDACTED = "***redacted***";
-const MAX_DEPTH = 4;
+// Operator-debugging depth. Tool envelopes legitimately nest 5–7
+// levels (tool_result.output.summary.checkpoints[…].verified_by_tool;
+// build_workflow.errors[].path; propose_step.errors[].message).
+// Pre-fix MAX_DEPTH=4 collapsed those to "[depth-exceeded]" in the
+// debug log, so an operator grepping `~/.sk/debug.log` for "what
+// went wrong" saw only opaque markers — exactly the symptom in
+// session 0a01c5f3 ("a lot of warning messages but they disappear").
+// Cycle-detection still terminates via the in-place `seen` Set in
+// scrubSecrets, so raising the depth doesn't enable infinite-recursion
+// risk on circular inputs. 16 matches scrub-secrets's own ceiling.
+const MAX_DEPTH = 16;
 
 /** Regex scrubs applied to any string value (top-level or nested). */
 const SCRUBBERS: RegExp[] = [

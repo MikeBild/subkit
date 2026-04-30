@@ -61,7 +61,7 @@ import type { ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import { resolveExecutionMode } from "./tools/tool-policies.ts";
 import { synthesizeFallbackMessage, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
-import type { DraftDocument, TurnEvent } from "./types.ts";
+import type { ConversationStatus, DraftDocument, TurnEvent } from "./types.ts";
 
 export interface RunLoopParams {
   db: Db;
@@ -119,7 +119,13 @@ export interface RunLoopResult {
   pending_elicitation_id?: string;
 }
 
-const DEFAULT_BUDGET = 20;
+// Per-turn step ceiling. Reference impl uses `stepCountIs(50)` and
+// trusts the model. Subkit's old budget of 20 was too tight for
+// incremental authoring (a 5-step workflow with dry_run + inspect +
+// commit flow easily exceeds 20). Raised to 50 to match the
+// reference; the adaptive per-tool repeat detector and the
+// consecutive-failures cap remain the actual loop-protection layers.
+const DEFAULT_BUDGET = 50;
 
 /**
  * Resolve the SDK language model for this run. The mock provider
@@ -533,6 +539,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ...(authoringContext ? { authoring_context: authoringContext } : {}),
       ...(authoringHint ? { authoring_hint: authoringHint } : {}),
       ...(combinedPriorFailures.length > 0 ? { prior_failures: combinedPriorFailures } : {}),
+      conversation_id: p.conversation_id,
       ...(p.runtime_context
         ? {
             runtime_context: {
@@ -641,6 +648,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     pendingChildElicitationIds: [],
     toolInvocationCount: new Map(),
     toolLastErrorHash: new Map(),
+    toolArgsRepeat: new Map(),
+    toolValidationFingerprint: new Map(),
     totalLoopWarnings: 0,
     consecutiveFailures: 0,
     lastAssistantText: "",
@@ -824,6 +833,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       enabled: cacheSupported,
       ttl: "1h",
     });
+    // Activity ticker: flip the CLI status line to "composing" before
+    // we hand off to the provider. Without this the user sees only
+    // the spinner for the LLM-generation phase (often 30–90s) with no
+    // hint that the engine is waiting on the model rather than stuck
+    // in a tool call. Model identifier intentionally NOT included —
+    // operators don't need provider/model details on the live ticker.
+    events.push({
+      type: "activity",
+      phase: "composing",
+      label: "composing reply",
+    });
     const result = streamText({
       model: resolvedModel,
       system: systemMessages,
@@ -972,17 +992,68 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       },
     });
     try {
+      // Composing-phase heartbeat. The activity ticker would otherwise
+      // sit on the SAME label (`composing reply`) for the entire
+      // LLM-generation phase — operator can't tell if the engine is
+      // making progress or stuck. Refresh every 5s with just an
+      // elapsed-time suffix; the EventSink's `(phase, label)` throttle
+      // does NOT collapse these because the label string differs each
+      // tick. Cleared by the for-await drain below when text starts
+      // arriving (Layer B then carries visibility). Model identifier
+      // intentionally NOT included — operator doesn't need it.
+      const composingStart = Date.now();
+      let heartbeat: ReturnType<typeof setInterval> | null = setInterval(() => {
+        const elapsedSec = Math.round((Date.now() - composingStart) / 1000);
+        events.push({
+          type: "activity",
+          phase: "composing",
+          label: `composing reply · ${elapsedSec}s`,
+        });
+      }, 5_000);
+      const stopHeartbeat = () => {
+        if (heartbeat !== null) {
+          clearInterval(heartbeat);
+          heartbeat = null;
+        }
+      };
       // Drain the text stream so we can emit `text_delta` events as
       // assistant tokens arrive. The onStepFinish callback still runs
       // after the stream completes and appends the full assistant
       // message — text_delta is for live rendering, `message` is the
       // persisted record.
+      //
+      // Layer-B finalization signal: while prose is actively streaming
+      // refresh the activity ticker with a "X paragraphs so far"
+      // label every paragraph boundary. Keeps the ticker informative
+      // when text IS arriving (the operator sees the bottom-pane line
+      // tick alongside the streaming buffer above it). Paragraph
+      // boundaries are blank-line separated runs, the same shape the
+      // assistant naturally emits between tool-call narrations.
       try {
+        let proseBuffer = "";
+        let paragraphsEmitted = 0;
         for await (const chunk of result.textStream) {
-          if (chunk.length > 0) events.push({ type: "text_delta", text: chunk });
+          if (chunk.length === 0) continue;
+          // Once tokens arrive, the heartbeat is redundant — Layer B
+          // takes over visibility. Stop the timer so we never publish
+          // a stale "still composing" tick on top of live tokens.
+          stopHeartbeat();
+          events.push({ type: "text_delta", text: chunk });
+          proseBuffer += chunk;
+          const paragraphs = proseBuffer.split(/\n\s*\n/).length - 1;
+          if (paragraphs > paragraphsEmitted && paragraphs >= 2) {
+            paragraphsEmitted = paragraphs;
+            events.push({
+              type: "activity",
+              phase: "composing",
+              label: `composing reply · ${paragraphs} paragraphs so far`,
+            });
+          }
         }
       } catch {
         // Drain errors surface via onError/capturedError below; ignore here.
+      } finally {
+        stopHeartbeat();
       }
       await result.finishReason;
     } catch (err) {
@@ -1140,17 +1211,18 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       cancelled ||
       persistedStatus === "abandoned" ||
       turnAbortCtrl.signal.reason === CONVERSATION_CANCELLED_REASON;
+    let completedStatus: ConversationStatus;
     if (conversationCancelled) {
       status = "abandoned";
-      events.push({ type: "completed", status: "abandoned" });
+      completedStatus = "abandoned";
     } else if (signals.committed) {
       status = "committed";
       committedWorkflowId = signals.committed.workflow_id;
-      events.push({ type: "completed", status: "committed" });
+      completedStatus = "committed";
     } else if (signals.pendingElicitation || persistedStatus === "awaiting_input") {
       status = "awaiting_input";
       pendingElicitationId = signals.pendingElicitation?.elicitation_id;
-      events.push({ type: "completed", status: "awaiting_input" });
+      completedStatus = "awaiting_input";
     } else {
       if (signals.step >= budget && !signals.pendingElicitation) {
         log.warn({
@@ -1161,14 +1233,18 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           step_budget: budget,
         });
       }
-      events.push({ type: "completed", status: "active" });
+      completedStatus = "active";
     }
 
-    // Attach turn usage to every `completed` frame (sk status-line
+    // Attach turn usage to the `completed` frame (sk status-line
     // reads `turn_tokens` + `remaining_monthly_budget_tokens`). The
     // optional `breakdown` carries the per-section token shape from
     // the assembled prompt so the spinner / `/cost` view can show
     // skills 4.2k · transcript 6.1k · docs 2.0k · total 14.5k.
+    //
+    // Compute usage BEFORE pushing the frame so live SSE emits the
+    // payload-complete event in one go. Mutating array entries after
+    // a buffered push doesn't re-fire the live emitter.
     const usageAfter = await monthlyUsage(p.tenant_id, p.db).catch(() => usageBefore);
     const turnTokens = Math.max(0, usageAfter - usageBefore);
     const remaining =
@@ -1184,19 +1260,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           total: prompt.token_counts.total,
         }
       : undefined;
-    for (let i = events.length - 1; i >= 0; i--) {
-      const ev = events[i];
-      if (ev && ev.type === "completed") {
-        events[i] = {
-          ...ev,
-          usage: {
-            turn_tokens: turnTokens,
-            remaining_monthly_budget_tokens: remaining,
-            ...(breakdown ? { breakdown } : {}),
-          },
-        };
-      }
-    }
+    events.push({
+      type: "completed",
+      status: completedStatus,
+      usage: {
+        turn_tokens: turnTokens,
+        remaining_monthly_budget_tokens: remaining,
+        ...(breakdown ? { breakdown } : {}),
+      },
+    });
 
     // P6: emit a per-turn token-usage log line so the operator can grep
     // engine logs alone (without enabling client-side debug output) to

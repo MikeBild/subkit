@@ -273,6 +273,48 @@ export interface ConnectorDraftDocument {
   saved_connector_id?: string | null;
 }
 
+/**
+ * Per-step preview entry persisted on `latest_preview.step_traces`.
+ * Built once at the end of every dry_run / run and read by:
+ *   - `inspect_workflow_draft` so the LLM can see each step's actual
+ *     output shape next to its config (no guessing the JSONata path
+ *     of downstream transforms).
+ *   - `suggest_jsonata_paths` to enumerate valid `$scope.<id>.<…>`
+ *     paths the LLM can copy verbatim.
+ *   - `context-assembler.latest_preview` section, surfaced to the
+ *     model on every authoring turn.
+ *
+ * Pre-fix the LLM had to read the entire dry_run envelope every turn
+ * to recover any per-step shape it needed. Persisting a compact slot
+ * keeps that context warm without burning re-reads.
+ */
+export interface WorkflowDraftStepPreview {
+  step_id: string;
+  kind: string;
+  status: string;
+  duration_ms?: number | null;
+  /** Truncated post-selector preview (≤4KB by the offload layer). */
+  output_preview?: unknown;
+  /**
+   * Pre-data_selector envelope (HTTP raw body, GraphQL response,
+   * driver result). Lets the LLM see what the selector dropped and
+   * choose a different `data_selector` without re-running.
+   */
+  raw_preview?: unknown;
+  /**
+   * Authoring-vocab summary of the step's scope: enumerated JSONata
+   * paths, one-line shape, and best-guess primary data path.
+   * Populated for every step that produced an `output_preview`.
+   */
+  scope_at_step?: {
+    available_paths: string[];
+    shape_summary: string;
+    primary_data_path: string | null;
+  };
+  request_meta?: unknown;
+  error_code?: string | null;
+}
+
 export interface WorkflowDraftPreviewSummary {
   ok: boolean;
   step_id?: string | null;
@@ -298,6 +340,19 @@ export interface WorkflowDraftPreviewSummary {
    * real bugs. Mirrors the same flag on `RunResult`.
    */
   requires_repair?: boolean;
+  /**
+   * Per-step compact preview entries. Indexed by step id. Reset on
+   * every fresh dry_run / run so it always reflects the most recent
+   * walk of the draft.
+   */
+  step_traces?: WorkflowDraftStepPreview[];
+  /**
+   * The workflow input passed to the most recent dry_run / run.
+   * Surfaced via `inspect_workflow` `payload` section as a fallback
+   * when no `input_schema_sample` is set, so the LLM can author
+   * against the actual input shape used in the last preview.
+   */
+  input?: unknown;
 }
 
 export interface AuthoringSummary {
@@ -447,7 +502,71 @@ export type TurnEvent =
       parent_message_id?: string;
     }
   | { type: "committed"; workflow_id: string }
-  | { type: "completed"; status: ConversationStatus; usage?: TurnUsage };
+  | { type: "completed"; status: ConversationStatus; usage?: TurnUsage }
+  /**
+   * Inline unified-diff cell. Emitted after a draft-mutation tool
+   * produces a meaningful structural change (workflow build, patch,
+   * connector update). The CLI renders a colored gutter + content
+   * diff like codex's `PatchHistoryCell` — operators see exactly
+   * what changed without scrolling back to the prior state.
+   *
+   * The engine pre-computes line-by-line hunks (no diff library on
+   * the CLI side). `language` lets the renderer pick a syntax theme
+   * but otherwise the strings are rendered verbatim.
+   */
+  | {
+      type: "diff";
+      title: string;
+      language: "json" | "yaml" | "text";
+      hunks: Array<{ kind: "+" | "-" | " "; text: string }>;
+      /** Optional anchor — same as tool_call's `parent_message_id`
+       *  pattern so the cell threads under the right assistant turn. */
+      parent_message_id?: string;
+    }
+  /**
+   * Single-line activity ticker the CLI renders between the transcript
+   * and the spinner. Tells the operator WHAT the engine is doing right
+   * now in human-readable form — `"calling probe_connector"`,
+   * `"composing reply"`, `"idle · last: delete_workflow ok 142ms"`.
+   *
+   * Emitted at meaningful phase boundaries only:
+   *   - `phase: "tool"`   — a tool just started; `label` = tool name.
+   *   - `phase: "composing"` — LLM provider is streaming text.
+   *   - `phase: "idle"`   — between tool calls / between turn-bursts;
+   *                         `last_completed` carries the previous tool's
+   *                         summary for the operator to reason about.
+   *
+   * Engine-side throttled in EventSink (200ms window, same `(phase,
+   * label)` collapsed) so a tool burst never floods the wire. CLI also
+   * debounces the payload at 250ms before re-rendering, so even the
+   * smallest legitimate burst paints exactly once.
+   *
+   * Never persisted, never folded into transcript cells. Pure UI hint.
+   */
+  | {
+      type: "activity";
+      phase: "tool" | "composing" | "idle";
+      /** Free-form one-line label rendered to the right of the spinner.
+       *  Codex pattern: prefer visibility over silence — when in doubt
+       *  emit a generic "Working" label rather than nothing. */
+      label: string;
+      /** Optional tool name when phase is `"tool"` (call card already
+       *  surfaced separately; this just lets the ticker stay accurate
+       *  if the call card is scrolled out of view). */
+      tool_name?: string;
+      /** Optional call id, useful for cross-correlating with the
+       *  ToolCallState card the user can scroll back to. */
+      call_id?: string;
+      /** Set on `phase: "idle"` after a tool just finished. The CLI
+       *  shows it as `last: <tool> ok|fail · <duration>ms` so the
+       *  operator can see what the engine just did even if it scrolled
+       *  past. */
+      last_completed?: {
+        tool_name: string;
+        ok: boolean;
+        duration_ms: number;
+      };
+    };
 
 export interface ConversationResumeSummary {
   active_target: {

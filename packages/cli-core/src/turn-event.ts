@@ -94,7 +94,36 @@ export type TurnEvent =
       parent_message_id?: string;
     }
   | { type: "committed"; workflow_id: string }
-  | { type: "completed"; status: string; usage?: TurnUsage };
+  | { type: "completed"; status: string; usage?: TurnUsage }
+  /**
+   * Single-line activity ticker — see `ActivityState`. Mirrors the
+   * engine's `apps/engine/src/conversations/types.ts` discriminant.
+   */
+  | {
+      type: "activity";
+      phase: "tool" | "composing" | "idle";
+      label: string;
+      tool_name?: string;
+      call_id?: string;
+      last_completed?: {
+        tool_name: string;
+        ok: boolean;
+        duration_ms: number;
+      };
+    }
+  /**
+   * Inline unified-diff cell. Engine pre-computes the line hunks; the
+   * CLI renders a colored gutter + content cell. Used for workflow /
+   * connector mutations so the operator sees structural changes
+   * inline (codex `PatchHistoryCell` parity).
+   */
+  | {
+      type: "diff";
+      title: string;
+      language: "json" | "yaml" | "text";
+      hunks: Array<{ kind: "+" | "-" | " "; text: string }>;
+      parent_message_id?: string;
+    };
 
 /**
  * Pending user-input request — populated when the loop pauses on any
@@ -168,6 +197,29 @@ export interface ToolLogEntry {
   ts: string;
 }
 
+/**
+ * Activity ticker payload — single-line "what's happening right now"
+ * status the CLI renders between the transcript and the spinner. Set
+ * by every `activity` TurnEvent; cleared on `completed`.
+ *
+ * Intentionally NOT folded into transcript cells (codex pattern: keep
+ * transient progress separate from durable history). Pre-fix the
+ * `summarising N tool results` line was the only signal during long
+ * LLM-text-composition phases — operators saw the spinner and a token
+ * count but no hint of WHAT the engine was doing.
+ */
+export interface ActivityState {
+  phase: "tool" | "composing" | "idle";
+  label: string;
+  tool_name?: string;
+  call_id?: string;
+  last_completed?: { tool_name: string; ok: boolean; duration_ms: number };
+  /** Wall-clock timestamp of the last update — used by the CLI's
+   *  ActivityLine to render an "elapsed" hint when the same phase
+   *  stays active for a long time. */
+  updated_at: number;
+}
+
 export interface SkSessionState {
   messages: MessageState[];
   toolCalls: ToolCallState[];
@@ -182,6 +234,25 @@ export interface SkSessionState {
   streamingAssistantText: string;
   /** Live per-tool-call log entries (cleared when the tool result arrives). */
   toolLogs: ToolLogEntry[];
+  /** Latest activity ticker payload — see ActivityState. `null` while
+   *  no `activity` event has arrived in the current turn. */
+  activity: ActivityState | null;
+  /** Running total of `turn_tokens` accumulated across every
+   *  `completed` event in this conversation. The footer renders it as
+   *  `session <N>` so the operator sees what the current chat has
+   *  cost so far. Reset only by `initialSessionState` (a fresh REPL /
+   *  conversation). */
+  sessionTotalTokens: number;
+  /** Inline diff cells emitted by mutation tools (build_workflow,
+   *  edit_workflow_patch). Threaded by `parent_message_id` so they
+   *  render under the assistant message that triggered them. */
+  diffs: Array<{
+    id: string;
+    title: string;
+    language: "json" | "yaml" | "text";
+    hunks: Array<{ kind: "+" | "-" | " "; text: string }>;
+    parentMessageId?: string;
+  }>;
 }
 
 export function initialSessionState(conversationId: string | null): SkSessionState {
@@ -197,6 +268,9 @@ export function initialSessionState(conversationId: string | null): SkSessionSta
     usage: null,
     streamingAssistantText: "",
     toolLogs: [],
+    activity: null,
+    sessionTotalTokens: 0,
+    diffs: [],
   };
 }
 
@@ -523,6 +597,14 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
     case "tool_call_start": {
       const input = ev.input_partial === undefined ? undefined : ev.input_partial;
       const anchor = ev.parent_message_id ?? lastAssistantMessageId(state);
+      // Starting a new tool call invalidates any stale top-level
+      // validation errors emitted by the previous failed attempt. The
+      // LLM is iterating; the previous draft's errors aren't the
+      // user's problem to solve. The new attempt either succeeds
+      // (errors stay cleared) or emits its own fresh validation_error
+      // event. Without this reset, the red "validation errors" block
+      // sits in the transcript for the entire mid-turn loop, looking
+      // like a permanent failure even when the next call succeeds.
       return {
         ...state,
         toolCalls: [
@@ -535,6 +617,11 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
             ...(anchor ? { parent_message_id: anchor } : {}),
           },
         ],
+        validationErrors: [],
+        // Restore "running" status — the previous validation_error
+        // event flipped it to "error" but a new tool call means the
+        // turn is still active.
+        status: state.status === "error" ? "running" : state.status,
       };
     }
     case "tool_call_delta": {
@@ -576,11 +663,58 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
     case "completed": {
       const nextStatus: SkSessionState["status"] =
         ev.status === "awaiting_input" ? "awaiting_input" : "completed";
+      // Accumulate session tokens across every turn so the footer
+      // can render `session <N>` without re-querying the engine. The
+      // engine's `tokens_today` / `tokens_month` come from /v1/status
+      // (refreshed by ink-repl on `completed`); session-scoped totals
+      // are CLI-only and live in this slot.
+      const turnTokens = ev.usage?.turn_tokens ?? 0;
       return {
         ...state,
         status: nextStatus,
         usage: ev.usage ?? state.usage,
         pendingElicitation: ev.status === "awaiting_input" ? state.pendingElicitation : null,
+        // Clear the activity ticker when the turn finishes — the
+        // ActivityLine component then unmounts cleanly. Without this
+        // an `idle · last: <tool>` line would linger past the turn.
+        activity: null,
+        sessionTotalTokens: state.sessionTotalTokens + turnTokens,
+      };
+    }
+    case "activity": {
+      // Single source of truth for the live ticker. Replaces (not
+      // appends to) the previous payload — the renderer reads the
+      // current activity slot and shows ONE line. Codex pattern: keep
+      // transient progress separate from durable history. Never
+      // appended to messages or cells, never persisted.
+      const next: ActivityState = {
+        phase: ev.phase,
+        label: ev.label,
+        ...(ev.tool_name !== undefined ? { tool_name: ev.tool_name } : {}),
+        ...(ev.call_id !== undefined ? { call_id: ev.call_id } : {}),
+        ...(ev.last_completed !== undefined ? { last_completed: ev.last_completed } : {}),
+        updated_at: Date.now(),
+      };
+      return { ...state, activity: next };
+    }
+    case "diff": {
+      // Append a diff entry threaded under the most recent assistant
+      // message. The Ink renderer pulls these from session.diffs and
+      // paints them inline below the parent assistant cell — codex's
+      // PatchHistoryCell parity.
+      const parent = lastAssistantMessageId(state);
+      return {
+        ...state,
+        diffs: [
+          ...state.diffs,
+          {
+            id: `diff-${state.diffs.length}-${Date.now()}`,
+            title: ev.title,
+            language: ev.language,
+            hunks: ev.hunks,
+            ...(parent ? { parentMessageId: parent } : {}),
+          },
+        ],
       };
     }
     default:

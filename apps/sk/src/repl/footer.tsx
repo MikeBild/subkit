@@ -1,8 +1,14 @@
-// Two-line REPL footer — sits below the bordered composer and keeps the
-// persistent chrome intentionally compact:
+// Three-line REPL footer — sits below the bordered composer and keeps
+// the persistent chrome intentionally compact:
 //
 //   line 1: <user> @ <tenant>  ·  <engine-host>  ·  <session>
 //   line 2: ⏵⏵ <mode>  ·  <view>            (shift+tab / ctrl-o hints)
+//   line 3: ↘ session <N>  ·  today <N>  ·  month <N> / <budget>
+//
+// Line 3 is suppressed when the operator hasn't fired any turns yet
+// (every counter is zero) so a fresh REPL doesn't render a row of
+// zeroes. Otherwise it's always visible — operators consistently
+// asked for budget transparency without having to leave the REPL.
 //
 // Rationale: sk is a workflow-authoring CLI against a multi-tenant
 // engine. Users care about "which tenant am I talking to, on which
@@ -42,8 +48,25 @@ export interface FooterProps {
   connectionState?: "online" | "reconnecting" | "offline" | "unknown";
   /** Short reason attached to non-online states. */
   connectionReason?: string | null;
+  /** Cumulative tokens across every turn in the current conversation
+   *  (CLI-side accumulator over `usage.turn_tokens`). */
+  sessionTokens?: number;
+  /** Sum of total_tokens since UTC midnight (engine `/v1/status`). */
+  tokensToday?: number | null;
+  /** Sum of total_tokens since the start of the current month. */
+  tokensMonth?: number | null;
+  /** Effective monthly budget; null = unlimited. */
+  monthlyBudget?: number | null;
   /** Terminal width hint for collapse logic. */
   columns?: number | undefined;
+}
+
+/** Compact 1.2k / 4.8M formatting for the budget line. */
+export function formatTokens(n: number | null | undefined): string {
+  if (n == null) return "–";
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0)}M`;
 }
 
 export const MODE_LABELS: Record<PermissionMode, string> = {
@@ -72,6 +95,10 @@ const FooterImpl: React.FC<FooterProps> = ({
   transcriptMode,
   connectionState = "unknown",
   connectionReason,
+  sessionTokens = 0,
+  tokensToday = null,
+  tokensMonth = null,
+  monthlyBudget = null,
   columns = 80,
 }) => {
   const theme = useTheme();
@@ -88,6 +115,15 @@ const FooterImpl: React.FC<FooterProps> = ({
     columns,
   });
   const connChip = renderConnectionBadge(connectionState, connectionReason ?? null, theme, layout);
+  // Hide the budget line entirely on a fresh REPL (no turns fired,
+  // no engine snapshot yet). Show it the moment any counter has a
+  // real value — operators always want budget transparency once
+  // they've started spending tokens.
+  const hasAnyUsage =
+    sessionTokens > 0 ||
+    (tokensToday != null && tokensToday > 0) ||
+    (tokensMonth != null && tokensMonth > 0) ||
+    (monthlyBudget != null && monthlyBudget > 0);
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
@@ -105,6 +141,61 @@ const FooterImpl: React.FC<FooterProps> = ({
         <Text color={modeColor}>{layout.modeLabel}</Text>
         <Text color={theme.severity.dim}>{layout.activitySuffix}</Text>
       </Box>
+      {hasAnyUsage ? (
+        <BudgetLine
+          sessionTokens={sessionTokens}
+          tokensToday={tokensToday}
+          tokensMonth={tokensMonth}
+          monthlyBudget={monthlyBudget}
+          theme={theme}
+        />
+      ) : null}
+    </Box>
+  );
+};
+
+interface BudgetLineProps {
+  sessionTokens: number;
+  tokensToday: number | null;
+  tokensMonth: number | null;
+  monthlyBudget: number | null;
+  theme: ReturnType<typeof useTheme>;
+}
+
+const BudgetLine: React.FC<BudgetLineProps> = ({
+  sessionTokens,
+  tokensToday,
+  tokensMonth,
+  monthlyBudget,
+  theme,
+}) => {
+  const monthDisplay =
+    monthlyBudget != null && monthlyBudget > 0
+      ? `${formatTokens(tokensMonth)} / ${formatTokens(monthlyBudget)}`
+      : formatTokens(tokensMonth);
+  const pct =
+    monthlyBudget != null && monthlyBudget > 0 && tokensMonth != null
+      ? Math.min(100, Math.round((tokensMonth / monthlyBudget) * 100))
+      : null;
+  // Color the month chip by usage: green <60%, yellow 60–90%, red >90%.
+  // Without a budget the chip stays dim (informational only).
+  const monthColor =
+    pct == null
+      ? theme.severity.dim
+      : pct >= 90
+        ? theme.severity.error
+        : pct >= 60
+          ? theme.severity.warning
+          : theme.severity.dim;
+  return (
+    <Box>
+      <Text color={theme.severity.dim}> ↘ session </Text>
+      <Text color={theme.role.assistant}>{formatTokens(sessionTokens)}</Text>
+      <Text color={theme.severity.dim}> · today </Text>
+      <Text color={theme.severity.dim}>{formatTokens(tokensToday)}</Text>
+      <Text color={theme.severity.dim}> · month </Text>
+      <Text color={monthColor}>{monthDisplay}</Text>
+      {pct != null ? <Text color={monthColor}> ({pct}%)</Text> : null}
     </Box>
   );
 };
@@ -163,52 +254,75 @@ function pickVariant<T>(variants: readonly T[], fits: (variant: T) => boolean): 
   return variants[variants.length - 1] ?? first;
 }
 
+/**
+ * Render-width estimate for the inline connection chip. Mirrors the
+ * branches in `renderConnectionBadge` exactly so the layout planner
+ * never picks an identity variant that would collide with the chip
+ * and force a mid-word wrap (the bug surfaced in session f00b8d1c
+ * at 101 cols with a 50-char reason).
+ *
+ * For "compact" the chip is just " · ⟳ reconnecting" / " · ● offline".
+ * For "full" we add " · <truncated_reason>" using the SAME 37+ellipsis
+ * truncation rule that the badge applies, so the math matches reality.
+ */
+const REASON_TRUNCATION_BUDGET = 37;
+const REASON_ELLIPSIS = "…";
+
+function connectionChipWidth(
+  state: "online" | "reconnecting" | "offline" | "unknown",
+  variant: "none" | "compact" | "full",
+  reason: string | null,
+): number {
+  if (state === "online" || state === "unknown" || variant === "none") return 0;
+  // " · " separator + label
+  const labelLength = state === "offline" ? "● offline".length : "⟳ reconnecting".length;
+  const baseWidth = " · ".length + labelLength;
+  if (variant === "compact") return baseWidth;
+  if (!reason || reason.length === 0) return baseWidth;
+  const reasonRendered =
+    reason.length > REASON_TRUNCATION_BUDGET + 3
+      ? REASON_TRUNCATION_BUDGET + REASON_ELLIPSIS.length
+      : reason.length;
+  return baseWidth + " · ".length + reasonRendered;
+}
+
 export function layoutFooterLines(props: FooterProps): FooterLayout {
   const tenantLabel = props.tenant ?? "(no tenant)";
   const host = engineHost(props.engineUrl);
   const sessionLabel = props.sessionId ? props.sessionId.slice(0, 8) : "new";
   const nextView = props.transcriptMode === "chat" ? "inspect" : "chat";
   const width = Math.max(props.columns ?? 80, 24);
+  const reason = props.connectionReason ?? null;
   const hasConnection =
     props.connectionState === "offline" || props.connectionState === "reconnecting";
+  // Identity variants are now decoupled from connection variant. The
+  // planner picks identity first (largest fit assuming a COMPACT chip
+  // — the floor every degraded state still gets), then upgrades the
+  // chip to FULL only if there's slack for the truncated reason.
   const identityVariants = [
     {
       prefix: `${props.user} @ ${tenantLabel} · ${host} · session `,
       highlight: sessionLabel,
       suffix: "",
-      connectionVariant: hasConnection ? ("full" as const) : ("none" as const),
     },
     {
       prefix: `${props.user} @ ${tenantLabel} · session `,
       highlight: sessionLabel,
       suffix: "",
-      connectionVariant: hasConnection ? ("compact" as const) : ("none" as const),
     },
     {
       prefix: `${tenantLabel} · session `,
       highlight: sessionLabel,
       suffix: "",
-      connectionVariant: hasConnection ? ("compact" as const) : ("none" as const),
     },
     {
       prefix: "session ",
       highlight: sessionLabel,
       suffix: "",
-      connectionVariant: hasConnection ? ("compact" as const) : ("none" as const),
     },
   ] as const satisfies readonly [
-    {
-      prefix: string;
-      highlight: string;
-      suffix: string;
-      connectionVariant: "none" | "compact" | "full";
-    },
-    ...Array<{
-      prefix: string;
-      highlight: string;
-      suffix: string;
-      connectionVariant: "none" | "compact" | "full";
-    }>,
+    { prefix: string; highlight: string; suffix: string },
+    ...Array<{ prefix: string; highlight: string; suffix: string }>,
   ];
 
   const activityVariants = [
@@ -227,9 +341,27 @@ export function layoutFooterLines(props: FooterProps): FooterLayout {
     ...Array<{ modeLabel: string; suffix: string }>,
   ];
 
+  // Identity must fit with at least the COMPACT chip — that's the
+  // floor we'll render in any degraded connection state.
+  const compactChipWidth = hasConnection
+    ? connectionChipWidth(props.connectionState ?? "unknown", "compact", reason)
+    : 0;
   const identity = pickVariant(identityVariants, (variant) => {
-    return variant.prefix.length + variant.highlight.length + variant.suffix.length <= width - 2;
+    const identityWidth = variant.prefix.length + variant.highlight.length + variant.suffix.length;
+    return identityWidth + compactChipWidth <= width - 2;
   });
+
+  // Now decide whether we have room to upgrade the chip to FULL (with
+  // truncated reason). Prefer "full" so the user sees the reason; fall
+  // back to "compact" when the line would otherwise wrap mid-word.
+  let connectionVariant: "none" | "compact" | "full" = "none";
+  if (hasConnection) {
+    const identityWidth =
+      identity.prefix.length + identity.highlight.length + identity.suffix.length;
+    const fullChipWidth = connectionChipWidth(props.connectionState ?? "unknown", "full", reason);
+    connectionVariant = reason && identityWidth + fullChipWidth <= width - 2 ? "full" : "compact";
+  }
+
   const activity = pickVariant(
     activityVariants,
     (variant) => variant.modeLabel.length + variant.suffix.length <= width - 4,
@@ -241,6 +373,6 @@ export function layoutFooterLines(props: FooterProps): FooterLayout {
     identitySuffix: identity.suffix,
     modeLabel: activity.modeLabel,
     activitySuffix: activity.suffix,
-    connectionVariant: identity.connectionVariant,
+    connectionVariant,
   };
 }

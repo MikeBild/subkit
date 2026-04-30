@@ -29,7 +29,9 @@ import type { Db } from "../../db/client.ts";
 import { connectors as connectorsTable } from "../../db/schema/index.ts";
 import { resolvePlaceholders } from "../../llm/substitution/resolver.ts";
 import { logger } from "../../logging/logger.ts";
+import { recordSuccessShape } from "../../schema-versions/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { pickProbeRecoveryActions } from "./probe-recovery.ts";
 import { truncateForLlm } from "./truncate.ts";
 
 const Method = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
@@ -291,14 +293,19 @@ export const probeConnectorTool: ConversationTool = {
 
     if (errorDetail) {
       const timeout = isTimeoutError(errorDetail);
+      const failure_code = timeout ? "probe_timeout" : "probe_fetch_failed";
       return {
         ok: false,
         data: {
           persistence: "none" as const,
           error: {
-            code: timeout ? "probe_timeout" : "probe_fetch_failed",
+            code: failure_code,
             message: timeout ? `Probe timed out after ${args.timeout_ms}ms.` : errorDetail,
           },
+          // Same recovery vocabulary as probe_connector_draft so the
+          // LLM doesn't need to branch on which probe surface raised
+          // the error. dry_run_step uses the same mapping.
+          next_best_actions: pickProbeRecoveryActions({ failure_code }),
           metadata: {
             connector_slug: args.connector_slug,
             method: args.method,
@@ -310,6 +317,46 @@ export const probeConnectorTool: ConversationTool = {
       };
     }
 
+    // HTTP-level failure (4xx / 5xx) — return ok: true at the tool
+    // boundary because the request completed, but include a
+    // `failure_signal` + recovery actions so the LLM can inspect the
+    // status without re-parsing the response body. Successful 2xx
+    // responses skip this surface.
+    const isHttpFailure = status >= 400;
+
+    // Successful probes record the observed top-level shape against
+    // `schema_versions` so the drift detector and the next
+    // `inspect_connector` / `suggest_jsonata_paths` call have a
+    // canonical "what does this endpoint actually return" reference.
+    // Pre-fix only request-step executions populated schema_versions
+    // — probes were the LLM's primary discovery surface but their
+    // observations were thrown away. Endpoint key is `<METHOD>
+    // <path>` so multiple probes against the same endpoint reuse a
+    // row.
+    if (!isHttpFailure && status >= 200 && status < 300 && responseBody !== null) {
+      try {
+        await recordSuccessShape(
+          {
+            tenant_id: ctx.tenant_id,
+            connector_id: connector.id,
+            endpoint_key: `${args.method} ${resolvedValue.path}`,
+            value: responseBody,
+          },
+          ctx.db,
+        );
+      } catch (err) {
+        // Never let shape recording fail the probe — the LLM still
+        // needs the response. Log and move on.
+        logger.warn({
+          module: "conversation.probe_connector",
+          action: "probe.shape_record_failed",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          connector_id: connector.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
     return {
       ok: true,
       data: {
@@ -320,6 +367,7 @@ export const probeConnectorTool: ConversationTool = {
         truncated: truncated.truncated,
         raw_ref: truncated.raw_ref,
         placeholders_used: resolved.placeholders_used,
+        ...(isHttpFailure ? { next_best_actions: pickProbeRecoveryActions({ status }) } : {}),
         metadata: {
           connector_slug: args.connector_slug,
           method: args.method,

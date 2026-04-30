@@ -87,6 +87,42 @@ describe("sk turn-event reducer", () => {
     expect(s.validationErrors).toEqual(errs);
   });
 
+  test("tool_call_start AFTER a validation_error clears stale errors and resumes running", () => {
+    // Mid-turn iteration: the LLM saw a validation failure and is
+    // trying again. The standalone "validation errors" panel must
+    // not linger past the new attempt — the previous draft's errors
+    // aren't the user's problem to solve.
+    let s = initialSessionState("c1");
+    s = applyTurnEvent(s, {
+      type: "validation_error",
+      errors: [{ path: "steps.0", message: "missing connector_id" }],
+    });
+    expect(s.status).toBe("error");
+    expect(s.validationErrors).toHaveLength(1);
+
+    s = applyTurnEvent(s, {
+      type: "tool_call_start",
+      call_id: "call-2",
+      tool: "build_workflow",
+    });
+    expect(s.validationErrors).toEqual([]);
+    expect(s.status).toBe("running");
+  });
+
+  test("tool_call_start does NOT clear errors when the turn never went into error state", () => {
+    // Sanity: starting a tool call from a fresh (running) session
+    // shouldn't touch validationErrors or transition status weirdly.
+    let s = initialSessionState("c1");
+    expect(s.status).toBe("running");
+    s = applyTurnEvent(s, {
+      type: "tool_call_start",
+      call_id: "call-1",
+      tool: "list_workflows",
+    });
+    expect(s.validationErrors).toEqual([]);
+    expect(s.status).toBe("running");
+  });
+
   test("lastAssistantText returns the most recent assistant message", () => {
     const events: TurnEvent[] = [
       { type: "message", role: "user", content: { text: "hi" } },

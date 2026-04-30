@@ -7,6 +7,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
+import { closePoolForConnector } from "./drivers/postgres.ts";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import { buildTemplateBindingFields, resolveConnectorTemplate } from "./template-resolver.ts";
 import {
@@ -365,7 +366,17 @@ export async function deleteConnector(
   exec?: Executor,
 ): Promise<boolean> {
   const db = exec ?? getDb();
-  const ok = await db.transaction(async (tx) => {
+  // The transaction returns the row to evict (when one matches the
+  // postgres-eviction policy). This avoids a side-channel `let` that
+  // TS struggles to narrow across the async boundary.
+  type EvictRow = {
+    id: string;
+    environment: "dev" | "prod";
+    dsn: string | null;
+    driver: string;
+  };
+  type DeleteResult = { ok: boolean; evict: EvictRow | null };
+  const result: DeleteResult = await db.transaction(async (tx) => {
     const existing = await tx
       .select()
       .from(connectors)
@@ -377,7 +388,8 @@ export async function deleteConnector(
         ),
       )
       .limit(1);
-    if (!existing[0]) return false;
+    if (!existing[0]) return { ok: false, evict: null };
+    const evict = existing[0].driver === "postgres" ? (existing[0] as unknown as EvictRow) : null;
     await tx
       .update(connectors)
       .set({ deleted_at: new Date(), updated_at: new Date() })
@@ -395,7 +407,13 @@ export async function deleteConnector(
       },
       tx,
     );
-    return true;
+    return { ok: true, evict };
   });
+  const ok = result.ok;
+  // After the row is soft-deleted, evict the postgres pool so the
+  // connector's connection pool doesn't linger until process restart.
+  if (ok && result.evict) {
+    await closePoolForConnector(result.evict as never).catch(() => {});
+  }
   return ok;
 }
