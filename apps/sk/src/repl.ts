@@ -64,67 +64,31 @@ interface PersonaSnapshot {
   probe: PersonaProbe;
 }
 
-const PROBE_PERMISSIONS = [
-  "conversation:read",
-  "conversation:write",
-  "conversation:approve",
-  "conversation:cancel",
-  "conversation:commit",
-  "conversation:list",
-  "memory:write",
-  "mcp:read",
-  "skill:read",
-  "audit:read",
-  "identity:read",
-  // Operator / admin probes — used for top-level command visibility gating.
-  "workflow:read",
-  "workflow:write",
-  "connector:read",
-  "skill:write",
-  "execution:read",
-  "notification:read",
-  "rbac:read",
-  "api_key:read",
-  "portal_token:read",
-] as const;
+// Persona resolution lives in `./persona-probe.ts` so the readline
+// REPL and the Ink REPL share one tier-filtered probe path. Pre-fix
+// each REPL ran its own ~22 rbac:can calls; doubled to ~44 audit
+// rows on every session start. The shared helper short-circuits on
+// `who.role_name` and only probes the role's tier (and below).
+import {
+  ALL_PROBE_PERMISSIONS as PROBE_PERMISSIONS,
+  resolvePersonaShared,
+} from "./persona-probe.ts";
 
 async function resolvePersona(
   client: EngineClient,
   profile: ResolvedProfile,
 ): Promise<PersonaSnapshot> {
-  const allowed = new Set<string>();
-  let label = profile.persona_hint ?? "user";
-  try {
-    const who = await client.whoami().catch(() => null);
-    const principalId = who?.id;
-    if (principalId) {
-      for (const p of PROBE_PERMISSIONS) {
-        try {
-          const d = await client.rbacCan({ principal_id: principalId, permission: p });
-          if (d.allow) allowed.add(p);
-        } catch {
-          /* ignore probe failures */
-        }
-      }
-      // Cheap persona label heuristic: admin if every perm allowed, portal
-      // if read+write but not list, enduser if write without mcp/skill,
-      // member otherwise.
-      if (allowed.has("audit:read")) label = "admin";
-      else if (allowed.has("workflow:write") && allowed.has("connector:read")) label = "operator";
-      else if (allowed.has("mcp:read") && allowed.has("skill:read")) label = "member";
-      else if (!allowed.has("conversation:list") && allowed.has("conversation:write"))
-        label = "portal";
-      else if (allowed.has("conversation:write")) label = "enduser";
-    }
-  } catch {
-    /* leave label + allowed as-is */
-  }
+  const snapshot = await resolvePersonaShared(client, profile);
   return {
-    label,
-    allowed,
-    probe: { allows: (p) => allowed.has(p) },
+    label: snapshot.label,
+    allowed: snapshot.allowed,
+    probe: snapshot.probe,
   };
 }
+// Suppress unused-import lint: `PROBE_PERMISSIONS` is exported for
+// callers that introspect the full list (e.g. /whoami debug). It is
+// not referenced inside this module.
+void PROBE_PERMISSIONS;
 
 export async function runRepl(opts: ReplRunOptions): Promise<number> {
   const stdout = opts.stdout ?? process.stdout;
