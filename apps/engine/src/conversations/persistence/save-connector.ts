@@ -16,6 +16,7 @@ import {
 } from "../../audit/recorders/index.ts";
 import { createConnector, getConnector } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
+import { runCognitoUserPasswordGrant } from "../../credentials/oauth2/client.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
@@ -31,12 +32,46 @@ import {
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { clearDraftCredential, getDraftCredential } from "./draft-credential-cache.ts";
 
-/** Shape of the optional credential collected via `ask_user_form(type:password)`. */
+/** Shape of the optional credential collected via `ask_user_form(type:password)`.
+ *
+ *  `cognito_user_password` is the bootstrap shape: the operator hands us
+ *  a Cognito email + password; the engine exchanges them at
+ *  `cognito-idp.<region>.amazonaws.com` for an IdToken + RefreshToken
+ *  before any probe runs. The persisted credential row ends up as
+ *  `mode: "oauth2"` with `token_type: "none"` so the raw JWT lands in
+ *  the `Authorization` header (AppSync rejects anything with a `Bearer`
+ *  prefix). Refresh-on-stale uses `REFRESH_TOKEN_AUTH` against the
+ *  same endpoint via `runCognitoRefreshTokenGrant`.
+ *
+ *  `aws_sigv4` is also a bootstrap shape — keys are persisted verbatim;
+ *  signing happens per-request inside the HTTP driver's
+ *  `executePlannedHttpRequest`.
+ */
 export type AtomicCredentialInput =
   | { mode: "bearer"; token: string }
   | { mode: "basic"; username: string; password: string }
   | { mode: "header"; header_name: string; header_value: string }
-  | { mode: "query"; param: string; value: string };
+  | { mode: "query"; param: string; value: string }
+  | {
+      mode: "cognito_user_password";
+      username: string;
+      password: string;
+      /** Override the `aws_region` from connector config when present. */
+      aws_region?: string;
+      /** Override the `client_id` from `oauth.client_id` when present. */
+      client_id?: string;
+      /** Optional Cognito app-client secret (apps with secret enabled). */
+      client_secret?: string;
+      /** Send AccessToken instead of IdToken (resource APIs that want
+       *  the access scope). Defaults to IdToken (AppSync convention). */
+      use_access_token?: boolean;
+    }
+  | {
+      mode: "aws_sigv4";
+      access_key_id: string;
+      secret_access_key: string;
+      session_token?: string;
+    };
 
 export interface SaveConnectorAtomicParams {
   ctx: ToolContext;
@@ -105,6 +140,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
           environment: p.environment,
           actor_id: ctx.actor_id,
           credential: p.credential,
+          connectorConfig: (existing.config ?? {}) as Record<string, unknown>,
           db: ctx.db as Db,
         });
         credential_persisted = true;
@@ -356,6 +392,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       environment: p.environment,
       actor_id: ctx.actor_id,
       credential,
+      connectorConfig: (saved.config ?? {}) as Record<string, unknown>,
       db: ctx.db as Db,
     });
     credential_persisted = true;
@@ -445,9 +482,78 @@ async function persistCredential(p: {
   environment: "dev" | "prod";
   actor_id: string | null;
   credential: AtomicCredentialInput;
+  /** Connector config — used for `cognito_user_password` to pull
+   *  `aws_region` + `client_id` when not on the credential itself. */
+  connectorConfig?: Record<string, unknown> | null;
   db: Db;
 }): Promise<void> {
   const cred = p.credential;
+  // Cognito bootstrap: mint an IdToken before persisting so the row
+  // ends up as a regular oauth2 credential (with refresh_token +
+  // expires_at). The refresh-worker later rotates via
+  // REFRESH_TOKEN_AUTH transparently.
+  if (cred.mode === "cognito_user_password") {
+    const cfg = (p.connectorConfig ?? {}) as {
+      aws_region?: unknown;
+      oauth?: { client_id?: unknown };
+    };
+    const oauthCfg = (cfg.oauth ?? {}) as { client_id?: unknown };
+    const region = cred.aws_region ?? (typeof cfg.aws_region === "string" ? cfg.aws_region : null);
+    const client_id =
+      cred.client_id ?? (typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null);
+    if (!region || !client_id) {
+      throw new Error(
+        `cognito_user_password persist requires aws_region + client_id (region=${region ?? "missing"}, client_id=${client_id ? "set" : "missing"})`,
+      );
+    }
+    const grantParams: Parameters<typeof runCognitoUserPasswordGrant>[0] = {
+      region,
+      client_id,
+      username: cred.username,
+      password: cred.password,
+      use_access_token: cred.use_access_token === true,
+    };
+    if (cred.client_secret) grantParams.client_secret = cred.client_secret;
+    const bundle = await runCognitoUserPasswordGrant(grantParams);
+    await upsertCredential(
+      {
+        tenant_id: p.tenant_id,
+        connector_id: p.connector_id,
+        environment: p.environment,
+        mode: "oauth2",
+        value: {
+          mode: "oauth2",
+          access_token: bundle.access_token,
+          token_type: bundle.token_type, // "none" — raw JWT in Authorization
+          ...(bundle.scope ? { scope: bundle.scope } : {}),
+        },
+        oauth2_refresh_token: bundle.refresh_token,
+        oauth2_expires_at: bundle.expires_at,
+        actor_id: p.actor_id,
+      },
+      p.db,
+    );
+    return;
+  }
+  if (cred.mode === "aws_sigv4") {
+    await upsertCredential(
+      {
+        tenant_id: p.tenant_id,
+        connector_id: p.connector_id,
+        environment: p.environment,
+        mode: "aws_sigv4",
+        value: {
+          mode: "aws_sigv4",
+          access_key_id: cred.access_key_id,
+          secret_access_key: cred.secret_access_key,
+          ...(cred.session_token ? { session_token: cred.session_token } : {}),
+        },
+        actor_id: p.actor_id,
+      },
+      p.db,
+    );
+    return;
+  }
   const value =
     cred.mode === "bearer"
       ? { mode: "bearer" as const, token: cred.token }

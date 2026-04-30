@@ -10,6 +10,7 @@ import { toCreateConnectorInput, validateConnectorDraft } from "../connector-dra
 import {
   getDraftCredential,
   toDecryptedCredential,
+  toDecryptedCredentialAsync,
 } from "../persistence/draft-credential-cache.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -289,6 +290,23 @@ export const probeConnectorDraftTool: ConversationTool = {
     let requestUrl = "";
 
     try {
+      // For `cognito_user_password` the cached credential is the raw
+      // username + password. We have to mint an IdToken via Cognito
+      // InitiateAuth before the probe — that's what the async helper
+      // does. Other modes round-trip through the sync converter.
+      const draftCfg = (draftView.config ?? {}) as {
+        aws_region?: unknown;
+        oauth?: { client_id?: unknown };
+      };
+      const oauthCfg = (draftCfg.oauth ?? {}) as { client_id?: unknown };
+      const credentialOverride = draftCredential
+        ? draftCredential.mode === "cognito_user_password"
+          ? await toDecryptedCredentialAsync(draftCredential, {
+              aws_region: typeof draftCfg.aws_region === "string" ? draftCfg.aws_region : null,
+              client_id: typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null,
+            })
+          : toDecryptedCredential(draftCredential)
+        : null;
       const execution = await executeConnectorHttpRequest({
         db: ctx.db,
         tenant_id: ctx.tenant_id,
@@ -300,7 +318,7 @@ export const probeConnectorDraftTool: ConversationTool = {
         ...(args.body !== undefined ? { body: args.body } : {}),
         timeout_ms: args.timeout_ms,
         ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
-        ...(draftCredential ? { credential_override: toDecryptedCredential(draftCredential) } : {}),
+        ...(credentialOverride ? { credential_override: credentialOverride } : {}),
       });
       requestUrl = execution.url;
       status = execution.status;

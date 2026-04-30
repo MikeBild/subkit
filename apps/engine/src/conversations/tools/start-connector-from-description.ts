@@ -89,10 +89,18 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
           null)
         : null;
     const template = resolvedTemplate?.template ?? null;
-    const auth_type =
-      args.auth_type ??
-      inferAuthTypeFromDescription(args.description) ??
-      (template ? defaultTemplateAuthType(template) : "none");
+    // When URL match selects the template, the template's primary
+    // `auth_type` is authoritative — the LLM's `args.auth_type` is just
+    // a guess that gets it wrong for AppSync (Cognito → "header"
+    // assumption was the bug in session bb31c50b). For text matches
+    // and unmatched drafts the LLM hint still wins.
+    const urlPickedTemplate =
+      urlMatchedAllowed && urlMatched && template?.slug === urlMatched.template.slug;
+    const auth_type = urlPickedTemplate
+      ? template.auth_type
+      : (args.auth_type ??
+        inferAuthTypeFromDescription(args.description) ??
+        (template ? defaultTemplateAuthType(template) : "none"));
     const resolvedDescription = args.description ?? template?.description;
     const resolvedBaseUrl = args.base_url ?? template?.base_url;
     const connector: ConnectorDraftDocument = {
