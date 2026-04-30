@@ -323,6 +323,46 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     .limit(1);
   let targetWorkflowId = convRows[0]?.target_workflow_id ?? null;
 
+  // Identity gate: the draft's slug is the source of truth for what
+  // workflow row this commit targets. The conversation's stored
+  // target_workflow_id is just remembered context — when the draft has
+  // pivoted to a different slug, treating it as the upsert key would
+  // silently overwrite the previously-saved workflow with the new
+  // artifact's content (the bug seen on Berlin → GitHub topic
+  // pivots). Explicit p.target_workflow_id is the only override —
+  // that's the LLM signalling "yes, intentionally update this row"
+  // (e.g. a slug rename after the user confirmed overwrite).
+  if (targetWorkflowId && !p.target_workflow_id && def.slug) {
+    const targetSlugRows = await ctx.db
+      .select({ slug: workflows.slug })
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.tenant_id, ctx.tenant_id),
+          eq(workflows.id, targetWorkflowId),
+          isNull(workflows.deleted_at),
+        ),
+      )
+      .limit(1);
+    const targetSlug = targetSlugRows[0]?.slug ?? null;
+    if (targetSlug !== null && targetSlug !== def.slug) {
+      logger.info({
+        module: "conversation",
+        action: "commit_draft.target_pivot_detected",
+        msg: "draft slug diverged from conversation target_workflow_id — treating as new artifact",
+        conversation_id: ctx.conversation_id,
+        stale_target_workflow_id: targetWorkflowId,
+        stale_target_slug: targetSlug,
+        draft_slug: def.slug,
+      });
+      targetWorkflowId = null;
+      await ctx.db
+        .update(conversations)
+        .set({ target_workflow_id: null, updated_at: new Date() })
+        .where(eq(conversations.id, ctx.conversation_id));
+    }
+  }
+
   if (p.target_workflow_id) {
     const explicitRows = await ctx.db
       .select({ id: workflows.id })
