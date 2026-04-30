@@ -27,6 +27,15 @@ export interface StepRouterSignals {
   hadRepairThisTurn?: boolean;
   /** Set when the intent detector flagged a strong run-intent verb. */
   strongRunIntent?: boolean;
+  /**
+   * Set when the user's current message explicitly requested BOTH a
+   * connector AND a workflow ("create a connector and a workflow ...").
+   * Used by the router to force tool-calling on the step right after a
+   * successful save_connector_draft auto-persist, so the model proceeds
+   * to the workflow instead of stopping on a "now let's build the
+   * workflow" closing sentence.
+   */
+  multiArtifactIntent?: boolean;
   /** Set after a critic verdict: "fail" earlier in this conversation. */
   priorCriticFail?: boolean;
   /** Manual one-tier-up bump from caller. */
@@ -335,14 +344,59 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
     reasonParts.push(`narrow:${activeTools.length}`);
   }
 
-  if (modelId === undefined && activeTools === undefined) {
+  // ---- Multi-artifact continuation -------------------------------------
+  // The user asked for "a connector AND a workflow". The harness just
+  // auto-persisted the connector. Without a nudge the model often emits
+  // a closing "Now let's build the workflow" sentence and exits the
+  // turn — leaving the user to retype "yes" to continue. Force a tool
+  // call on this step so the model proceeds with the workflow side of
+  // the request instead of stopping on the promise.
+  let toolChoice: StepDecision["toolChoice"];
+  let systemNudge: string | undefined;
+  if (signals.multiArtifactIntent === true && priorStepWasSuccessfulConnectorAutoPersist(params)) {
+    toolChoice = "required";
+    systemNudge =
+      "The user asked for both a connector AND a workflow in their most recent message. The connector is now saved. Continue with the workflow now — call the next authoring tool (start_workflow_from_goal or build_workflow). Do NOT end the turn with a `now let's …` closing sentence; the user already approved the multi-artifact intent.";
+    reasonParts.push("multi_artifact_continue");
+  }
+
+  if (
+    modelId === undefined &&
+    activeTools === undefined &&
+    toolChoice === undefined &&
+    systemNudge === undefined
+  ) {
     return undefined;
   }
   const decision: StepDecision = {};
   if (modelId !== undefined) decision.modelId = modelId;
   if (activeTools !== undefined) decision.activeTools = activeTools;
+  if (toolChoice !== undefined) decision.toolChoice = toolChoice;
+  if (systemNudge !== undefined) decision.system = systemNudge;
   if (reasonParts.length > 0) decision.reason = reasonParts.join(",");
   return decision;
+}
+
+/**
+ * Check the prior step's tool results for a successful
+ * harness-auto-persist of `save_connector_draft`. Read defensively —
+ * the AI SDK types `steps` as a generic `unknown[]` here, but the
+ * runtime shape is `{ toolResults: { toolName, output }[] }` which the
+ * stop-conditions in conversations/loop.ts already rely on.
+ */
+function priorStepWasSuccessfulConnectorAutoPersist(params: StepRouterParams): boolean {
+  const prior = params.steps[params.steps.length - 1] as
+    | {
+        toolResults?: ReadonlyArray<{ toolName?: unknown; output?: unknown }>;
+      }
+    | undefined;
+  const results = Array.isArray(prior?.toolResults) ? prior.toolResults : [];
+  return results.some((r) => {
+    if (r?.toolName !== "save_connector_draft") return false;
+    const output = r.output as Record<string, unknown> | null | undefined;
+    if (!output || typeof output !== "object") return false;
+    return output.source === "harness_auto_persist" && output.ok === true;
+  });
 }
 
 function isHardStage(stage: AuthoringStage | undefined): boolean {

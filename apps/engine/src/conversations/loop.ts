@@ -57,7 +57,11 @@ import { startNewWorkflowDraft } from "./authoring-state.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
-import { detectUserIntent, inferStateDrivenFollowUpTool } from "./intent-detector.ts";
+import {
+  detectMultiArtifactIntent,
+  detectUserIntent,
+  inferStateDrivenFollowUpTool,
+} from "./intent-detector.ts";
 import {
   appendMessage,
   buildModelMessages,
@@ -349,6 +353,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       detectedIntent.forceTool === "run_workflow" ||
       detectedIntent.forceTool === "build_workflow" ||
       detectedIntent.forceTool === "commit_draft",
+    multiArtifactIntent: detectMultiArtifactIntent(p.user_message),
     priorCriticFail: false,
   };
 
