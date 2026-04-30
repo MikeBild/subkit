@@ -150,6 +150,33 @@ describe("connector draft tools", () => {
     expect(data.matched_template?.match_kind).toBe("url");
   });
 
+  test("URL-matched template seeds config.oauth (grant_type, client_id, token_endpoint)", async () => {
+    // Reproduces the silent break in session 351518a2: the URL match
+    // chose `appsync-cognito` (oauth2) but `connector.config` was
+    // empty `{}` — so `maybeCacheDraftCredentialFromElicitation`
+    // couldn't tell it was a Cognito flow and the form-cache helper
+    // returned null seedMode. Probe then went out unauthenticated.
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "AppSync GraphQL",
+      base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+      environment: "dev",
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: {
+        template_slug: string | null;
+        auth_type: string;
+        config?: Record<string, unknown>;
+      };
+    };
+    expect(data.connector.template_slug).toBe("appsync-cognito");
+    const oauthCfg = data.connector.config?.oauth as Record<string, unknown> | undefined;
+    expect(oauthCfg).toBeDefined();
+    expect(oauthCfg?.grant_type).toBe("cognito_user_password");
+    expect(typeof oauthCfg?.token_endpoint).toBe("string");
+  });
+
   test("URL match still wins when LLM mis-guesses auth_type as aws_sigv4", async () => {
     // Reproduces the regression in session 3f81fb2a. The LLM sees an
     // AppSync hostname and unconditionally guesses `aws_sigv4`. URL
