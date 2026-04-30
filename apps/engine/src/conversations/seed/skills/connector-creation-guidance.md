@@ -162,6 +162,16 @@ call it as the normal commit step. Behaviour notes:
 - **OAuth2** — `load_skill("oauth-flow")`. Briefly: collect `client_id` +
   `client_secret` via masked form, save with `mode: "oauth2"`, then call
   `authenticate_oauth`. Access + refresh tokens never reach the agent.
+- **Cognito User-Password / JWT-Bearer / Device / SigV4** —
+  `load_skill("auth-flows")`. **Trust the matched_template** returned by
+  `start_connector_from_description` — when the URL pattern matches an
+  AWS / Cognito / GCP template, the engine pre-selects the correct
+  `auth_type` + `oauth.grant_type` and the credential_hints array tells
+  you exactly which fields to ask for (e.g. `username` + `password` for
+  Cognito, `jwt_private_key_pem` for GCP, `access_key_id` +
+  `secret_access_key` for SigV4). Don't override `auth_type` to
+  `"header"` because you recognise an `appsync-api.*.amazonaws.com`
+  hostname — that path forces the operator to re-enter creds twice.
 
 ## Connector config defaults
 

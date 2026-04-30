@@ -125,6 +125,31 @@ describe("connector draft tools", () => {
     expect(data.matched_template?.score).toBeGreaterThan(0);
   });
 
+  test("start_connector_from_description prefers URL-pattern match over text match (AppSync Cognito)", async () => {
+    // Pre-fix the LLM passing description="AWS AppSync GraphQL" + a
+    // matching url got handed a generic graphql template that hardcoded
+    // `auth_type=header`, forcing the operator through a credential
+    // dance: ask for username+password (Cognito), reject those because
+    // the draft says header-auth, ask for x-api-key. URL match now
+    // wins so the operator hits `appsync-cognito` (oauth2 +
+    // cognito_user_password) on the first turn.
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "AWS AppSync GraphQL",
+      description: "AWS AppSync GraphQL endpoint",
+      base_url: "https://qjzi627ik5b4xjya4cibaba6ai.appsync-api.eu-central-1.amazonaws.com/graphql",
+      environment: "dev",
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: { template_slug: string | null; auth_type: string };
+      matched_template: { slug: string; match_kind: "url" | "text" } | null;
+    };
+    expect(data.connector.template_slug).toBe("appsync-cognito");
+    expect(data.connector.auth_type).toBe("oauth2");
+    expect(data.matched_template?.match_kind).toBe("url");
+  });
+
   test("start_connector_from_template reports unresolved endpoint placeholders as missing fields", async () => {
     const toolCtx = await createToolCtx();
     const started = await startConnectorFromTemplateTool.execute(toolCtx.base, {
