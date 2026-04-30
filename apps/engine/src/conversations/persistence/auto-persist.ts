@@ -727,7 +727,25 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
     } else if (authType === "aws_sigv4") {
       seedMode = "aws_sigv4";
     }
-    if (!seedMode) return;
+    if (!seedMode) {
+      // Forensic log so future regressions are debuggable from the
+      // engine log alone — pre-fix the cache silently early-returned
+      // and we had to read source to figure out why.
+      logger.info({
+        module: "auto-persist",
+        action: "draft_credential.cache_skipped",
+        msg: "ask_user_form resolved but draft auth_type is unsupported by extractor",
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        auth_type: authType,
+        oauth_grant_type:
+          authType === "oauth2"
+            ? (((draft.connector?.config ?? {}) as { oauth?: { grant_type?: unknown } }).oauth
+                ?.grant_type ?? null)
+            : null,
+      });
+      return;
+    }
     // For oauth2/cognito the connector config carries region + client_id;
     // pass them as seed overrides so the extractor doesn't have to
     // re-parse them out of the form fields when they were already set.

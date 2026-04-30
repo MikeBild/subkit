@@ -118,6 +118,30 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
         (template ? defaultTemplateAuthType(template) : "none"));
     const resolvedDescription = args.description ?? template?.description;
     const resolvedBaseUrl = args.base_url ?? template?.base_url;
+    // Seed `config` from the template's oauth block when the template
+    // is OAuth2-driven. Without this, downstream code that needs to
+    // read `config.oauth.grant_type` (the form-cache helper, the
+    // refresh-worker, the probe path) gets undefined and the AppSync
+    // Cognito flow silently falls through to "credential_required" —
+    // exactly the regression in session 351518a2.
+    const seedConfig: Record<string, unknown> = {};
+    if (template?.oauth) {
+      const tmplOauth = template.oauth as Record<string, unknown>;
+      const oauthCfg: Record<string, unknown> = {};
+      if (typeof tmplOauth.client_id === "string") oauthCfg.client_id = tmplOauth.client_id;
+      if (typeof tmplOauth.grant_type === "string") oauthCfg.grant_type = tmplOauth.grant_type;
+      if (typeof tmplOauth.token_endpoint === "string")
+        oauthCfg.token_endpoint = tmplOauth.token_endpoint;
+      if (typeof tmplOauth.authorization_endpoint === "string")
+        oauthCfg.authorization_endpoint = tmplOauth.authorization_endpoint;
+      if (typeof tmplOauth.issuer_url === "string") oauthCfg.issuer_url = tmplOauth.issuer_url;
+      if (typeof tmplOauth.scopes === "string") oauthCfg.scopes = tmplOauth.scopes;
+      if (typeof tmplOauth.token_auth_method === "string")
+        oauthCfg.token_auth_method = tmplOauth.token_auth_method;
+      if (typeof tmplOauth.token_content_type === "string")
+        oauthCfg.token_content_type = tmplOauth.token_content_type;
+      if (Object.keys(oauthCfg).length > 0) seedConfig.oauth = oauthCfg;
+    }
     const connector: ConnectorDraftDocument = {
       name: args.name,
       slug: args.name
@@ -131,7 +155,7 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
       ...(resolvedBaseUrl ? { base_url: resolvedBaseUrl } : {}),
       ...(args.dsn ? { dsn: args.dsn } : {}),
       auth_type,
-      config: {},
+      config: seedConfig,
       docs: template?.ingestion_url ? [template.ingestion_url] : [],
       latest_probe: null,
       saved_connector_id: null,
@@ -160,6 +184,14 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
             driver: connector.driver,
             environment: connector.environment,
             auth_type: connector.auth_type,
+            // Surface the seeded `config.oauth` block so the LLM can
+            // see (and the tests assert) that the template's auth
+            // metadata landed on the draft. Pre-fix the LLM didn't
+            // know about config.oauth.grant_type and the cache
+            // helper couldn't resolve the Cognito flow.
+            ...(connector.config && Object.keys(connector.config).length > 0
+              ? { config: connector.config }
+              : {}),
             template_slug: connector.template_slug ?? null,
             template_name: connector.template_name ?? null,
             template_source: connector.template_source ?? null,
