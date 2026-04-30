@@ -246,6 +246,88 @@ describe("maybeCacheDraftCredentialFromElicitation", () => {
     });
     expect(getDraftCredential(conversation_id)).toBeNull();
   });
+
+  test("populates cache from oauth2 + cognito_user_password draft (AppSync flow)", async () => {
+    // Reproduces the bug from session f244b896. Draft is the
+    // appsync-cognito template shape: oauth2 + cognito_user_password.
+    // Form delivers username + password. Pre-fix the gate only let
+    // bearer/basic/header/query through; this asserts the new
+    // translation that maps oauth2 → cognito_user_password seed when
+    // the connector config carries `oauth.grant_type` accordingly.
+    const conversation_id = await seedConversation();
+    const cognitoDraft: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "AppSync",
+        slug: "appsync",
+        driver: "graphql",
+        environment: "dev",
+        auth_type: "oauth2",
+        base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+        config: {
+          aws_region: "eu-central-1",
+          oauth: { client_id: "client-abc", grant_type: "cognito_user_password" },
+        },
+      },
+      workflow: { name: "", steps: [] },
+    };
+    await appendSnapshot(tenant_id, conversation_id, cognitoDraft, ctx.db);
+
+    await maybeCacheDraftCredentialFromElicitation({
+      tenant_id,
+      conversation_id,
+      elicitation: { tool_name: "ask_user_form" },
+      elicitation_output: { username: "user@example.com", password: "hunter2" },
+      db: ctx.db,
+    });
+
+    const cached = getDraftCredential(conversation_id);
+    expect(cached).toEqual({
+      mode: "cognito_user_password",
+      username: "user@example.com",
+      password: "hunter2",
+      // Connector config seeds these so the bootstrap mint has them.
+      aws_region: "eu-central-1",
+      client_id: "client-abc",
+    });
+  });
+
+  test("populates cache from aws_sigv4 draft (AppSync IAM flow)", async () => {
+    const conversation_id = await seedConversation();
+    const sigv4Draft: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "AppSync IAM",
+        slug: "appsync-iam",
+        driver: "graphql",
+        environment: "dev",
+        auth_type: "aws_sigv4",
+        base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+        config: { aws_region: "eu-central-1", aws_service: "appsync" },
+      },
+      workflow: { name: "", steps: [] },
+    };
+    await appendSnapshot(tenant_id, conversation_id, sigv4Draft, ctx.db);
+
+    await maybeCacheDraftCredentialFromElicitation({
+      tenant_id,
+      conversation_id,
+      elicitation: { tool_name: "ask_user_form" },
+      elicitation_output: {
+        access_key_id: "AKIATEST",
+        secret_access_key: "shh",
+        session_token: "FwoGZXIvYXdz...",
+      },
+      db: ctx.db,
+    });
+
+    expect(getDraftCredential(conversation_id)).toEqual({
+      mode: "aws_sigv4",
+      access_key_id: "AKIATEST",
+      secret_access_key: "shh",
+      session_token: "FwoGZXIvYXdz...",
+    });
+  });
 });
 
 describe("probe_connector_draft + draft credential", () => {
