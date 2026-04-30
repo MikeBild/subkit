@@ -15,7 +15,12 @@
 // `request_body_schema` is a synthesised JSON-shaped object describing
 // the expected `{ query, variables }` payload.
 
-import { getIntrospectionQuery } from "graphql";
+import {
+  buildClientSchema,
+  getIntrospectionQuery,
+  type IntrospectionQuery,
+  printSchema,
+} from "graphql";
 import { log } from "../../logging/logger.ts";
 import { scrubUrl } from "../egress.ts";
 import {
@@ -254,10 +259,19 @@ export function looksLikeGraphQLUrl(url: string): boolean {
   }
 }
 
+interface IntrospectionFetchResult {
+  schema: IntrospectionSchema;
+  /** The full `data` envelope returned by the upstream — used to feed
+   *  `buildClientSchema` so we can emit SDL alongside the normalised
+   *  endpoints. Pre-fix only the truncated schema view (root fields)
+   *  was reachable, blocking deep-nested query authoring. */
+  rawData: IntrospectionQuery;
+}
+
 async function postIntrospection(
   url: string,
   opts: DiscoveryStrategyOptions,
-): Promise<IntrospectionSchema> {
+): Promise<IntrospectionFetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
   if (opts.signal) {
@@ -323,9 +337,30 @@ async function postIntrospection(
         `introspection response at ${scrubUrl(url)} missing data.__schema`,
       );
     }
-    return schema as IntrospectionSchema;
+    return {
+      schema: schema as IntrospectionSchema,
+      rawData: obj.data as unknown as IntrospectionQuery,
+    };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Render an introspection result as SDL. Returns null on failure (we
+ *  emit the normalised endpoints in any case). Failures are typically
+ *  caused by partial/malformed introspection responses; not worth
+ *  failing the whole discovery for. */
+function tryPrintSDL(introspection: IntrospectionQuery): string | null {
+  try {
+    const built = buildClientSchema(introspection);
+    return printSchema(built);
+  } catch (err) {
+    log.warn({
+      module: "connector",
+      action: "discovery.graphql.sdl_render_failed",
+      msg: err instanceof Error ? err.message : String(err),
+    });
+    return null;
   }
 }
 
@@ -344,7 +379,7 @@ class GraphQLIntrospectStrategy implements DiscoveryStrategy {
       url: scrubUrl(url),
     });
     try {
-      const schema = await postIntrospection(url, opts);
+      const { schema, rawData } = await postIntrospection(url, opts);
       const typesByName = new Map<string, NamedType>();
       for (const t of schema.types ?? []) {
         if (t?.name) typesByName.set(t.name, t);
@@ -380,6 +415,14 @@ class GraphQLIntrospectStrategy implements DiscoveryStrategy {
         endpoints.push(fieldToEndpoint(f, "subscription", typesByName, collisions));
       }
 
+      // Render the full schema as SDL so the LLM can see deep nested
+      // types when authoring queries. The normalised `endpoints` array
+      // only describes the top-level field args — without SDL the LLM
+      // has no way to know that e.g. `Issue.comments` exists or its
+      // shape, blocking nested-query authoring against APIs like
+      // GitHub / Linear / Monday.
+      const sdl = tryPrintSDL(rawData);
+
       log.info({
         module: "connector",
         action: "discovery.strategy.succeeded",
@@ -389,6 +432,7 @@ class GraphQLIntrospectStrategy implements DiscoveryStrategy {
         query_type: queryName,
         mutation_type: mutationName,
         subscription_type: subscriptionName,
+        sdl_bytes: sdl?.length ?? 0,
       });
 
       return {
@@ -401,7 +445,7 @@ class GraphQLIntrospectStrategy implements DiscoveryStrategy {
         auth_schemes: [],
         endpoints,
         warnings: [],
-        text_corpus: null,
+        text_corpus: sdl,
       };
     } catch (err) {
       const code = err instanceof DiscoveryError ? err.code : "fetch_failed";

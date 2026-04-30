@@ -299,6 +299,13 @@ describe("normalizeKnownHosts", () => {
     expect(normalizeKnownHosts(once)).toBe(once);
   });
 
+  test("rewrites SwaggerHub /apis-docs/ rendered-docs host to API path", () => {
+    // Operators frequently paste the docs URL when the spec URL is wanted.
+    expect(normalizeKnownHosts("https://app.swaggerhub.com/apis-docs/acme/widgets/1.0.0")).toBe(
+      "https://api.swaggerhub.com/apis/acme/widgets/1.0.0",
+    );
+  });
+
   test("leaves api.swaggerhub.com unchanged", () => {
     const url = "https://api.swaggerhub.com/apis/acme/widgets/1.0.0";
     expect(normalizeKnownHosts(url)).toBe(url);

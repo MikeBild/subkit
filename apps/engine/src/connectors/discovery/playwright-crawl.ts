@@ -27,6 +27,7 @@
 import { log } from "../../logging/logger.ts";
 import { envCsvOr } from "../../utils/env-config.ts";
 import { scrubUrl } from "../egress.ts";
+import { htmlToMarkdown } from "./html-to-markdown.ts";
 import {
   DiscoveryError,
   type DiscoveryResult,
@@ -518,9 +519,12 @@ class PlaywrightCrawlStrategy implements DiscoveryStrategy {
         throw failure;
       }
 
-      // 5. Merge.
+      // 5. Merge — convert each fragment to Markdown so the LLM gets
+      // clean prose instead of raw HTML noise. Mirrors the reference
+      // impl's HtmlMarkdownStrategy. Roughly 30-50% token savings on
+      // typical docs pages.
       const merged = clipCorpus(
-        kept.map((k) => `<!-- Source: ${k.url} -->\n${k.html}`).join("\n\n"),
+        kept.map((k) => `<!-- Source: ${k.url} -->\n${htmlToMarkdown(k.html)}`).join("\n\n"),
       );
 
       log.info({
