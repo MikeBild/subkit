@@ -610,6 +610,66 @@ export function extractCredentialFromFormOutput(
       if (!param || !value) return null;
       return { mode: "query", param, value };
     }
+    case "cognito_user_password": {
+      // Bootstrap shape for AppSync Cognito + AWS API Gateway Cognito
+      // authorizer. The form provides username + password; the engine
+      // exchanges them at cognito-idp.<region>.amazonaws.com for an
+      // IdToken inside `toDecryptedCredentialAsync`. region +
+      // client_id come from the connector config (or seed overrides).
+      const username =
+        (typeof seedOverrides.username === "string" && seedOverrides.username.length > 0
+          ? seedOverrides.username
+          : null) ?? pick(["username", "email", "user", "login"]);
+      const password =
+        (typeof seedOverrides.password === "string" && seedOverrides.password.length > 0
+          ? seedOverrides.password
+          : null) ?? pick(["password", "pass"]);
+      if (!username || !password) return null;
+      const out: Extract<AtomicCredentialInput, { mode: "cognito_user_password" }> = {
+        mode: "cognito_user_password",
+        username,
+        password,
+      };
+      const aws_region =
+        (typeof seedOverrides.aws_region === "string" && seedOverrides.aws_region.length > 0
+          ? seedOverrides.aws_region
+          : null) ?? pick(["aws_region", "region"]);
+      if (aws_region) out.aws_region = aws_region;
+      const client_id =
+        (typeof seedOverrides.client_id === "string" && seedOverrides.client_id.length > 0
+          ? seedOverrides.client_id
+          : null) ?? pick(["client_id", "cognito_client_id", "app_client_id"]);
+      if (client_id) out.client_id = client_id;
+      const client_secret =
+        (typeof seedOverrides.client_secret === "string" && seedOverrides.client_secret.length > 0
+          ? seedOverrides.client_secret
+          : null) ?? pick(["client_secret", "cognito_client_secret"]);
+      if (client_secret) out.client_secret = client_secret;
+      return out;
+    }
+    case "aws_sigv4": {
+      const access_key_id =
+        (typeof seedOverrides.access_key_id === "string" && seedOverrides.access_key_id.length > 0
+          ? seedOverrides.access_key_id
+          : null) ?? pick(["access_key_id", "aws_access_key_id"]);
+      const secret_access_key =
+        (typeof seedOverrides.secret_access_key === "string" &&
+        seedOverrides.secret_access_key.length > 0
+          ? seedOverrides.secret_access_key
+          : null) ?? pick(["secret_access_key", "aws_secret_access_key", "secret"]);
+      if (!access_key_id || !secret_access_key) return null;
+      const out: Extract<AtomicCredentialInput, { mode: "aws_sigv4" }> = {
+        mode: "aws_sigv4",
+        access_key_id,
+        secret_access_key,
+      };
+      const session_token =
+        (typeof seedOverrides.session_token === "string" && seedOverrides.session_token.length > 0
+          ? seedOverrides.session_token
+          : null) ?? pick(["session_token", "aws_session_token"]);
+      if (session_token) out.session_token = session_token;
+      return out;
+    }
     default:
       return null;
   }
