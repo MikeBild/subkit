@@ -56,6 +56,7 @@ import { BackgroundToolGroup, isBackgroundTool } from "./repl/background-tools.t
 import { classifyAttachment, readClipboard } from "./repl/clipboard-read.ts";
 import { DiffCard } from "./repl/diff-cell.tsx";
 import {
+  classifyEngineError,
   humanizeRequestError,
   humanizeValidationError,
   summarizeToolFailure,
@@ -3369,27 +3370,49 @@ export const InkApp: React.FC<InkAppProps> = ({
       {session.validationErrors.length > 0 &&
       (session.status === "error" ||
         session.status === "awaiting_input" ||
-        session.status === "completed") ? (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text color={session.status === "error" ? "red" : "yellow"} bold>
-            {session.status === "error" ? "validation errors" : "draft validation"}
-          </Text>
-          {session.validationErrors.map((e, idx) => {
-            const h = humanizeValidationError({
-              path: e.path,
-              message: typeof e.message === "string" ? e.message : JSON.stringify(e.message),
-            });
+        session.status === "completed")
+        ? (() => {
+            // Pick a header that matches the *kind* of error. Pre-fix
+            // every error landed under "validation errors" — so an
+            // upstream-Anthropic quota reset to "validation errors ·
+            // internal" left the operator hunting for a workflow bug
+            // that didn't exist.
+            const kinds = session.validationErrors.map((e) =>
+              classifyEngineError({
+                path: e.path,
+                message: typeof e.message === "string" ? e.message : JSON.stringify(e.message),
+              }),
+            );
+            const headerLabel = kinds.includes("provider_limit")
+              ? "LLM provider limit"
+              : kinds.includes("provider_unavailable")
+                ? "LLM provider unavailable"
+                : session.status === "error"
+                  ? "validation errors"
+                  : "draft validation";
             const tone = session.status === "error" ? "red" : "yellow";
             return (
-              <Box key={`err-${idx}`} flexDirection="column">
-                <Text color={tone}>× {h.label}</Text>
-                {h.hint ? <Text color="yellow"> ↳ {h.hint}</Text> : null}
-                {h.detail ? <Text dimColor> {h.detail}</Text> : null}
+              <Box flexDirection="column" marginBottom={1}>
+                <Text color={tone} bold>
+                  {headerLabel}
+                </Text>
+                {session.validationErrors.map((e, idx) => {
+                  const h = humanizeValidationError({
+                    path: e.path,
+                    message: typeof e.message === "string" ? e.message : JSON.stringify(e.message),
+                  });
+                  return (
+                    <Box key={`err-${idx}`} flexDirection="column">
+                      <Text color={tone}>× {h.label}</Text>
+                      {h.hint ? <Text color="yellow"> ↳ {h.hint}</Text> : null}
+                      {h.detail ? <Text dimColor> {h.detail}</Text> : null}
+                    </Box>
+                  );
+                })}
               </Box>
             );
-          })}
-        </Box>
-      ) : null}
+          })()
+        : null}
 
       {/* Thinking spinner — surfaces the in-flight tool name so the
           user sees concrete progress instead of just "thinking…" for

@@ -39,7 +39,72 @@ const STEP_KIND_PATH = /^steps\.(\d+)\.kind$/;
 const STEP_FIELD_PATH = /^steps\.(\d+)\.([\w_.-]+)$/;
 const STEP_ROOT_PATH = /^steps\.(\d+)$/;
 
+/** Engine-error codes / messages that mean "the LLM provider rejected
+ *  the call" rather than "the workflow definition is invalid". The CLI
+ *  routes both through the same `validation_error` channel
+ *  (ink-repl.ts) so this module is the single place that distinguishes
+ *  them. The panel header in `ink-app.tsx` keys off the same patterns
+ *  to swap "validation errors" for "engine error" / "provider limit". */
+const PROVIDER_LIMIT_RE =
+  /(specified api usage limits|usage limit|insufficient_quota|quota.{0,4}exhaust|quota.{0,4}exceed|credit balance|monthly spend|billing hard limit|monthly.?budget)/i;
+
+const PROVIDER_UNAVAILABLE_RE =
+  /(provider.{0,10}unavailable|model.{0,10}overloaded|service unavailable|temporarily unavailable|context_length|too many tokens|rate.?limit)/i;
+
+const RETRY_AT_RE = /regain access on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) ?utc/i;
+
+export type EngineErrorKind = "provider_limit" | "provider_unavailable" | "validation" | null;
+
+/** Identify the kind of error encoded as a synthetic validation row.
+ *  `path` is the engine error code (e.g. `internal`, `llm_provider_limited`);
+ *  `message` is the upstream prose. Used both by `humanizeValidationError`
+ *  AND the panel header — exporting so the UI can branch in one place. */
+export function classifyEngineError(e: RawValidationError): EngineErrorKind {
+  if (
+    e.path === "llm_provider_limited" ||
+    e.path === "quota_exhausted" ||
+    PROVIDER_LIMIT_RE.test(e.message)
+  ) {
+    return "provider_limit";
+  }
+  if (
+    e.path === "llm_provider_unavailable" ||
+    e.path === "llm_context_too_large" ||
+    PROVIDER_UNAVAILABLE_RE.test(e.message)
+  ) {
+    return "provider_unavailable";
+  }
+  if (e.path.startsWith("steps.") || e.path.startsWith("workflow.") || e.path === "validation") {
+    return "validation";
+  }
+  return null;
+}
+
 export function humanizeValidationError(e: RawValidationError): HumanizedValidationError {
+  // Provider-quota / -unavailable errors arrive on the same channel as
+  // workflow validation errors but are upstream-Anthropic concerns, not
+  // anything the operator can fix in their workflow. Recognise them and
+  // emit an actionable hint instead of leaving the operator staring at
+  // "internal".
+  const kind = classifyEngineError(e);
+  if (kind === "provider_limit") {
+    const m = RETRY_AT_RE.exec(e.message);
+    const retryAt = m?.[1] && m[2] ? `${m[1]} at ${m[2]} UTC` : null;
+    return {
+      label: "LLM provider usage limit reached",
+      detail: e.message,
+      hint: retryAt
+        ? `regains access ${retryAt} — raise your Anthropic console limit, switch the engine's model route, or wait`
+        : "raise your Anthropic console limit, switch the engine's model route, or wait for the reset window",
+    };
+  }
+  if (kind === "provider_unavailable") {
+    return {
+      label: "LLM provider temporarily unavailable",
+      detail: e.message,
+      hint: "retry in a moment, or switch the engine's configured model route",
+    };
+  }
   const stepKindMatch = STEP_KIND_PATH.exec(e.path);
   if (stepKindMatch) {
     const idx = Number(stepKindMatch[1]);

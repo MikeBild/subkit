@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "bun:test";
 import { SkEngineError, SkTransportError } from "../engine-client.ts";
 import {
+  classifyEngineError,
   findErrorHint,
   humanizeRequestError,
   humanizeValidationError,
@@ -14,6 +15,45 @@ describe("humanizeValidationError", () => {
     expect(r.detail).toContain("steps.0.kind");
     expect(r.hint).toContain("request");
     expect(r.hint).toContain("tool");
+  });
+
+  it("recognises an Anthropic quota error and surfaces a provider-specific label + retry hint", () => {
+    // Reproduces the issue from the screenshot: engine returns
+    // `code: "internal", message: "You have reached your specified
+    // API usage limits…"`. Pre-fix the CLI rendered this under
+    // "validation errors · internal" and the operator hunted for a
+    // workflow bug that didn't exist.
+    const r = humanizeValidationError({
+      path: "internal",
+      message:
+        "You have reached your specified API usage limits. You will regain access on 2026-05-01 at 00:00 UTC.",
+    });
+    expect(r.label).toBe("LLM provider usage limit reached");
+    expect(r.hint).toContain("regains access 2026-05-01 at 00:00 UTC");
+    expect(r.hint).toContain("Anthropic console");
+    expect(r.detail).toContain("usage limits");
+    expect(classifyEngineError({ path: "internal", message: r.detail! })).toBe("provider_limit");
+  });
+
+  it("recognises typed llm_provider_limited code", () => {
+    const r = humanizeValidationError({
+      path: "llm_provider_limited",
+      message: "rate limited",
+    });
+    expect(r.label).toBe("LLM provider usage limit reached");
+  });
+
+  it("recognises provider-unavailable / overloaded errors", () => {
+    const r = humanizeValidationError({
+      path: "internal",
+      message: "model temporarily unavailable",
+    });
+    expect(r.label).toBe("LLM provider temporarily unavailable");
+    expect(r.hint).toContain("retry");
+  });
+
+  it("classifyEngineError returns null for ordinary engine codes", () => {
+    expect(classifyEngineError({ path: "not_found", message: "missing" })).toBeNull();
   });
 
   it("handles a step-root error without losing the message", () => {
