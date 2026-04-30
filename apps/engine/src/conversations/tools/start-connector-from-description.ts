@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { listConnectors } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { matchTemplatesByUrl } from "../../connectors/template-url-match.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
@@ -37,6 +38,47 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
   category: "draft_write",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
+    // Reuse-existing-saved-connector: if the operator pasted a URL
+    // that already maps to a saved connector in the same environment,
+    // surface it instead of creating a new draft. Pre-fix the LLM
+    // would call this tool with `name: "AWS AppSync Discovery"`,
+    // generate a brand-new slug `aws-appsync-discovery`, and lose
+    // the working `aws-appsync-graphql` connector + cached credential.
+    // The user then re-typed credentials. This dedup keeps the prior
+    // session's work — same pattern as the reference impl's
+    // `findSystem(url)` short-circuit.
+    if (args.base_url) {
+      const existing = await listConnectors(
+        ctx.tenant_id,
+        { environment: args.environment },
+        ctx.db,
+      );
+      const reuse = existing.find(
+        (c) => c.base_url === args.base_url && (!args.driver || c.driver === args.driver),
+      );
+      if (reuse) {
+        return {
+          ok: true,
+          data: {
+            resource_kind: "connector",
+            reused_existing: true,
+            connector: {
+              id: reuse.id,
+              name: reuse.display_name,
+              slug: reuse.slug,
+              driver: reuse.driver,
+              environment: reuse.environment,
+              auth_type: reuse.auth_type,
+              base_url: reuse.base_url,
+              template_slug: reuse.template_slug ?? null,
+              template_name: reuse.template_name ?? null,
+            },
+            advice:
+              "An existing saved connector matches this URL. Reuse it (its credentials are already encrypted and the schema is already discovered). To make changes, call update_connector_draft against this connector_id, OR explicitly pass a different `name` to start_connector_from_description if you really want a separate connector.",
+          },
+        };
+      }
+    }
     const inferredDriver =
       args.driver ??
       (args.dsn
