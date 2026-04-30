@@ -8,6 +8,7 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
 import { debugLog } from "../debug.ts";
+import { describeConfirmationPayload } from "./approval/describe-confirmation.ts";
 
 type CardTone = "ok" | "warn" | "fail" | "pending" | "info";
 
@@ -768,12 +769,14 @@ const ApprovalCard: React.FC<CardProps> = memo(({ call }) => {
   const args = asRecord(call.args) ?? {};
   const d = unwrapData(call);
   const kind = typeof args.kind === "string" ? (args.kind as string) : call.name;
-  const summary = typeof args.summary === "string" ? (args.summary as string) : null;
   const question = typeof args.question === "string" ? (args.question as string) : null;
   const confirmed =
     d && typeof (d as Record<string, unknown>).confirmed === "boolean"
       ? Boolean((d as Record<string, unknown>).confirmed)
       : null;
+  const summaryPreview = describeConfirmationPayload(args);
+  const summary =
+    confirmed === null && question !== null && summaryPreview === question ? null : summaryPreview;
   const tone: CardTone =
     call.status === "running" || call.status === "pending"
       ? "pending"

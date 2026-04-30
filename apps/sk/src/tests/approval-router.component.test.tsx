@@ -47,7 +47,62 @@ describe("ApprovalRouter (component)", () => {
     );
     try {
       await ui.waitFor((t) => t.includes("external_write"));
-      expect(ui.text()).toContain("confirm: external_write");
+      const txt = ui.text();
+      expect(txt).toContain("confirm: external_write");
+      expect(txt).toContain("https://api.github.com/repos/x/y/issues");
+    } finally {
+      ui.unmount();
+    }
+  });
+
+  test("external_write renders structured tool targets", async () => {
+    const ui = renderInk(
+      <ApprovalRouter
+        approval={el({
+          summary: "Run the workflow in prod?",
+          input: {
+            kind: "external_write",
+            target: { tool: "run_workflow", args: { environment: "prod" } },
+          },
+        })}
+      />,
+    );
+    try {
+      await ui.waitFor((t) => t.includes("run_workflow"));
+      const txt = ui.text();
+      expect(txt).toContain("confirm: external_write");
+      expect(txt).toContain("target:");
+      expect(txt).toContain("run_workflow");
+      expect(txt).toContain("args:");
+      expect(txt).toContain("environment");
+      expect(txt).toContain("prod");
+    } finally {
+      ui.unmount();
+    }
+  });
+
+  test("falls back to the canonical payload summary when approval.summary is blank", async () => {
+    const ui = renderInk(
+      <ApprovalRouter
+        approval={el({
+          summary: "",
+          input: {
+            kind: "commit_draft",
+            question: "Save the workflow?",
+            commit_intent: {
+              kind: "commit_workflow_draft",
+              description: "Save the DigitalOcean projects workflow",
+              payload: {},
+            },
+          },
+        })}
+      />,
+    );
+    try {
+      await ui.waitFor((t) => t.includes("DigitalOcean projects workflow"));
+      const txt = ui.text();
+      expect(txt).toContain("input needed: confirm: commit_draft");
+      expect(txt).toContain("Save the DigitalOcean projects workflow");
     } finally {
       ui.unmount();
     }

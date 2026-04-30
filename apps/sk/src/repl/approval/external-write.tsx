@@ -10,10 +10,20 @@ interface Target {
   method?: string;
   workflow_id?: string;
   path?: string;
+  tool?: string;
+  args?: unknown;
 }
 
 function isTarget(v: unknown): v is Target {
   return typeof v === "object" && v !== null;
+}
+
+function hasHttpTarget(target: Target): boolean {
+  return typeof target.url === "string" || typeof target.path === "string";
+}
+
+function hasToolTarget(target: Target): boolean {
+  return typeof target.tool === "string";
 }
 
 function truncate(value: unknown, maxBytes = 400): string {
@@ -32,10 +42,18 @@ export interface ExternalWriteApprovalProps {
 }
 
 export const ExternalWriteApproval: React.FC<ExternalWriteApprovalProps> = ({ target, diff }) => {
+  const stringTarget = typeof target === "string" ? target : null;
   const tgt = isTarget(target) ? target : null;
   return (
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
-      {tgt ? (
+      {stringTarget ? (
+        <Text>
+          <Text dimColor>target:</Text>{" "}
+          <Text bold color="magenta">
+            {stringTarget}
+          </Text>
+        </Text>
+      ) : tgt && hasHttpTarget(tgt) ? (
         <Box flexDirection="column">
           <Text>
             <Text dimColor>target:</Text>{" "}
@@ -44,6 +62,26 @@ export const ExternalWriteApproval: React.FC<ExternalWriteApprovalProps> = ({ ta
             </Text>
           </Text>
           {tgt.workflow_id ? <Text dimColor>workflow: {tgt.workflow_id.slice(0, 8)}</Text> : null}
+        </Box>
+      ) : tgt && hasToolTarget(tgt) ? (
+        <Box flexDirection="column">
+          <Text>
+            <Text dimColor>target:</Text>{" "}
+            <Text bold color="magenta">
+              {tgt.tool}
+            </Text>
+          </Text>
+          {tgt.args !== undefined ? (
+            <Box flexDirection="column" marginTop={1}>
+              <Text dimColor>args:</Text>
+              <Text>{truncate(tgt.args)}</Text>
+            </Box>
+          ) : null}
+        </Box>
+      ) : tgt ? (
+        <Box flexDirection="column">
+          <Text dimColor>target:</Text>
+          <Text>{truncate(tgt)}</Text>
         </Box>
       ) : (
         <Text dimColor>(target not provided)</Text>

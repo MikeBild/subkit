@@ -60,6 +60,17 @@ describe("renderElicitAnswer — confirmation outputs", () => {
     expect(renderElicitAnswer({ confirmed: true }, input)).toBe("approve · commit_draft wf_123");
   });
 
+  test("falls back to target.tool + environment when there is no workflow id", () => {
+    const input = {
+      kind: "external_write",
+      target: {
+        tool: "run_workflow",
+        args: { environment: "prod" },
+      },
+    };
+    expect(renderElicitAnswer({ confirmed: true }, input)).toBe("approve · run_workflow env=prod");
+  });
+
   test("falls back to summary string when no commit_intent or target", () => {
     const input = { kind: "generic", summary: "Run health check?" };
     expect(renderElicitAnswer({ confirmed: true }, input)).toBe("approve · Run health check?");
