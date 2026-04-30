@@ -29,9 +29,16 @@ import {
   detectIntentSkills,
 } from "../llm/core/context-assembler.ts";
 import { resolveModelRoute, resolveLanguageModel as resolveSdkModel } from "../llm/core/invoke.ts";
+import { repairToolCall as repairToolCallHandler } from "../llm/core/repair-tool-call.ts";
+import {
+  prepareStep as routerPrepareStep,
+  type StepRouterSignals,
+  supportsExtendedThinking,
+} from "../llm/core/step-router.ts";
+import { type CriticArtifact, type CriticVerdict, runCritic } from "../llm/critic/index.ts";
 import { LlmQuotaExhausted } from "../llm/errors.ts";
 import { createMockLanguageModel } from "../llm/mock-stream.ts";
-import { runOutputGuard } from "../llm/output-guard/index.ts";
+import { runOutputGuard, runOutputGuardStream } from "../llm/output-guard/index.ts";
 import {
   classifyProviderError,
   isFallbackEligible,
@@ -48,7 +55,7 @@ import {
 } from "./abort.ts";
 import { startNewWorkflowDraft } from "./authoring-state.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
-import { setElicitationParentMessage } from "./elicitations.ts";
+import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
 import { detectUserIntent, inferStateDrivenFollowUpTool } from "./intent-detector.ts";
 import {
@@ -58,7 +65,7 @@ import {
   setToolCallParentMessage,
   updateMessageContent,
 } from "./persist.ts";
-import type { ToolContext } from "./tools/index.ts";
+import { listTools, type ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import { resolveExecutionMode } from "./tools/tool-policies.ts";
 import { synthesizeFallbackMessage, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
@@ -127,6 +134,14 @@ export interface RunLoopResult {
 // reference; the adaptive per-tool repeat detector and the
 // consecutive-failures cap remain the actual loop-protection layers.
 const DEFAULT_BUDGET = 50;
+
+/**
+ * Hard cap on `experimental_repairToolCall` invocations per turn.
+ * Beyond this the model is in a degenerate state and additional
+ * repair calls just burn budget — surface the failure to the loop so
+ * the next turn's prepareStep can escalate.
+ */
+const MAX_REPAIRS_PER_TURN = 2;
 
 /**
  * Resolve the SDK language model for this run. The mock provider
@@ -324,6 +339,18 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
 
   const route = await resolveModelRoute(p.tenant_id, p.db);
   const effectiveModel = p.model_override ?? route.primary;
+
+  // Step-router signals — refreshed per turn. The router never
+  // downgrades the tenant default; it only escalates upward when one
+  // of these flips true.
+  const stepRouterSignals: StepRouterSignals = {
+    hadRepairThisTurn: false,
+    strongRunIntent:
+      detectedIntent.forceTool === "run_workflow" ||
+      detectedIntent.forceTool === "build_workflow" ||
+      detectedIntent.forceTool === "commit_draft",
+    priorCriticFail: false,
+  };
 
   // Pre-check budget. Worst case: `budget` steps × ~1 K output each +
   // the assembled prompt. Matches the envelope `callWithFallback`
@@ -793,6 +820,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
    */
   async function runOnce(modelId: string): Promise<void> {
     let lastStepEnd = Date.now();
+    // Per-turn repair counter for experimental_repairToolCall. See
+    // MAX_REPAIRS_PER_TURN constant.
+    let turnRepairCount = 0;
     // Rebuild messages every attempt so a fallback retry picks up any
     // tool calls that the failed primary already persisted.
     const attemptMessages = await buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
@@ -846,6 +876,57 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       phase: "composing",
       label: "composing reply",
     });
+    // Build a name → ConversationTool map once for the step-router's
+    // activeTools narrowing decisions. Using the registry (not the
+    // wrappedTools map) so router logic reads `category` directly.
+    const toolsByName: Record<string, import("./tools/index.ts").ConversationTool> = {};
+    for (const t of listTools()) toolsByName[t.name] = t;
+
+    // Parallel tool calls stay DISABLED at the provider layer for the
+    // entire turn. We previously tried to flip this ON for stages that
+    // looked read-only, but the decision is fixed at streamText
+    // construction (AI SDK 6.x prepareStep cannot override
+    // providerOptions) and a turn that starts in `idle` can transition
+    // into `propose_step` / `commit_draft` mid-turn — at which point
+    // tenant_write tools could race. Keeping the disable on is the
+    // only correct setting until the SDK exposes per-step
+    // providerOptions overrides. The in-process serialisation mutex on
+    // `signals.toolChain` (sdk-wrap.ts) protects draft mutations
+    // regardless of provider batching, but the provider-side
+    // disable removes the head-of-line racing entirely.
+    const turnStageReadOnly = false;
+    // Extended thinking — turn-level providerOptions. AI SDK 6.x
+    // applies providerOptions for the entire streamText invocation;
+    // there is no per-step override. We grant the budget when the
+    // turn starts on a hard stage and the model supports it; the
+    // model uses (or ignores) it per step at the provider's
+    // discretion.
+    const turnEnableThinking = (() => {
+      const stage = draft.summary?.stage;
+      if (
+        stage !== "connector_validated" &&
+        stage !== "connector_persisted" &&
+        stage !== "workflow_validated" &&
+        stage !== "workflow_persisted" &&
+        stage !== "repairing"
+      ) {
+        return false;
+      }
+      return supportsExtendedThinking(route.provider, modelId);
+    })();
+    logger.debug({
+      module: "llm",
+      action: "turn.provider_options",
+      msg: "resolved per-turn provider gates",
+      conversation_id: p.conversation_id,
+      tenant_id: p.tenant_id,
+      provider: route.provider,
+      model: modelId,
+      stage: draft.summary?.stage ?? "idle",
+      parallel_tools_enabled: turnStageReadOnly,
+      extended_thinking_enabled: turnEnableThinking,
+      cache_supported: cacheSupported,
+    });
     const result = streamText({
       model: resolvedModel,
       system: systemMessages,
@@ -856,19 +937,140 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         : forceNoTools
           ? "none"
           : "auto",
-      // Disable parallel tool calls on Anthropic. The model used to
-      // emit 5+ run_workflow calls in one turn ("starte mit übermorgen"
-      // → 5 parallel run_workflow tool_use blocks, each producing its
-      // own confirm_before_execution elicitation, each contributing a
-      // loop-warning, all stopping with the synthesised "I stopped this
-      // turn early" fallback). The skill body says "ONE STATE-CHANGING
-      // TOOL PER TURN" but the model violated it because the AI SDK
-      // happily ran every tool_use block the model emitted in a single
-      // step. Disabling at the provider layer enforces it cleanly:
-      // Anthropic returns a single tool_use per assistant turn.
+      // Disable parallel tool calls on Anthropic for state-changing
+      // turns (the rationale at session "starte mit übermorgen" still
+      // holds). Read-heavy turns flip parallel ON so multiple
+      // tenant_read tools can run concurrently — they have no
+      // serialisation requirement.
       ...(cacheSupported
-        ? { providerOptions: { anthropic: { disableParallelToolUse: true } } }
+        ? {
+            providerOptions: {
+              anthropic: {
+                disableParallelToolUse: !turnStageReadOnly,
+                ...(turnEnableThinking
+                  ? { thinking: { type: "enabled", budgetTokens: 4000 } }
+                  : {}),
+              },
+            },
+          }
         : {}),
+      // experimental_repairToolCall — when the model emits a tool call
+      // whose JSON args fail validation (or names a non-existent tool),
+      // the SDK calls this hook to ask for a repaired call. Sets a
+      // step-router signal so the next step escalates one tier up.
+      // Capped at MAX_REPAIRS_PER_TURN (2) per the plan: a model that
+      // keeps emitting malformed calls is in a degenerate state and
+      // burning more LLM budget on repair won't help — surface the
+      // failure so the next turn escalates.
+      experimental_repairToolCall: ({
+        toolCall,
+        tools: callTools,
+        error,
+        messages: callMessages,
+        system: callSystem,
+      }) => {
+        if (turnRepairCount >= MAX_REPAIRS_PER_TURN) {
+          logger.warn({
+            module: "llm",
+            action: "repair_tool_call.capped",
+            msg: "per-turn repair cap reached — surfacing failure to the loop",
+            conversation_id: p.conversation_id,
+            tool: toolCall.toolName,
+            cap: MAX_REPAIRS_PER_TURN,
+          });
+          return Promise.resolve(null);
+        }
+        turnRepairCount += 1;
+        return repairToolCallHandler({
+          toolCall,
+          // biome-ignore lint/suspicious/noExplicitAny: ToolSet vs our wrapped map.
+          tools: callTools as any,
+          messages: callMessages,
+          system: callSystem,
+          error,
+          model: resolvedModel,
+          onRepair: () => {
+            stepRouterSignals.hadRepairThisTurn = true;
+          },
+        });
+      },
+      // prepareStep — per-step routing decisions: model escalation,
+      // activeTools narrowing, extended-thinking enablement. Returns
+      // undefined to mean "no override" so the loop's existing config
+      // wins on routine steps.
+      prepareStep: async ({ stepNumber, steps, messages: stepMessages, model: stepModel }) => {
+        const liveStage = draft.summary?.stage;
+        if (liveStage !== undefined) stepRouterSignals.stage = liveStage;
+        const decision = routerPrepareStep({
+          stepNumber,
+          steps,
+          messages: stepMessages,
+          model: stepModel,
+          tenantDefaultModelId: modelId,
+          provider: route.provider,
+          toolsByName,
+          signals: stepRouterSignals,
+        });
+        if (!decision) return {};
+        const result: Record<string, unknown> = {};
+        if (decision.modelId && decision.modelId !== modelId) {
+          try {
+            result.model = await resolveLanguageModel(route.provider, decision.modelId);
+            logger.info({
+              module: "llm",
+              action: "step_router.model_swapped",
+              msg: "per-step model upgraded",
+              conversation_id: p.conversation_id,
+              tenant_id: p.tenant_id,
+              step_number: stepNumber,
+              from_model: modelId,
+              to_model: decision.modelId,
+              stage: stepRouterSignals.stage ?? "idle",
+              had_repair: stepRouterSignals.hadRepairThisTurn === true,
+              prior_critic_fail: stepRouterSignals.priorCriticFail === true,
+              strong_run_intent: stepRouterSignals.strongRunIntent === true,
+              reason: decision.reason ?? null,
+            });
+          } catch (err) {
+            logger.warn({
+              module: "llm",
+              action: "step_router.resolve_failed",
+              msg: "could not resolve upgraded model — sticking with tenant default",
+              conversation_id: p.conversation_id,
+              tenant_id: p.tenant_id,
+              provider: route.provider,
+              target: decision.modelId,
+              fallback_model: modelId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+        if (decision.activeTools !== undefined) {
+          result.activeTools = decision.activeTools;
+          logger.debug({
+            module: "llm",
+            action: "step_router.tools_narrowed",
+            msg: "per-step tool palette restricted by stage",
+            conversation_id: p.conversation_id,
+            step_number: stepNumber,
+            stage: stepRouterSignals.stage ?? "idle",
+            active_tool_count: decision.activeTools.length,
+            full_tool_count: Object.keys(toolsByName).length,
+          });
+        }
+        if (decision.reason) {
+          logger.debug({
+            module: "llm",
+            action: "step_router.decision",
+            msg: "step router emitted a non-default decision",
+            conversation_id: p.conversation_id,
+            step_number: stepNumber,
+            target_model: decision.modelId ?? modelId,
+            reason: decision.reason,
+          });
+        }
+        return result;
+      },
       stopWhen: [
         stepCountIs(budget),
         hasToolCall("ask_user_choice"),
@@ -1053,13 +1255,33 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           events.push({ type: "text_delta", text: chunk });
           proseBuffer += chunk;
           const paragraphs = proseBuffer.split(/\n\s*\n/).length - 1;
-          if (paragraphs > paragraphsEmitted && paragraphs >= 2) {
+          if (paragraphs > paragraphsEmitted && paragraphs >= 1) {
             paragraphsEmitted = paragraphs;
-            events.push({
-              type: "activity",
-              phase: "composing",
-              label: `composing reply · ${paragraphs} paragraphs so far`,
-            });
+            if (paragraphs >= 2) {
+              events.push({
+                type: "activity",
+                phase: "composing",
+                label: `composing reply · ${paragraphs} paragraphs so far`,
+              });
+            }
+            // Overlapped scan: log violations on the latest completed
+            // paragraph as soon as it boundaries. The authoritative
+            // rewrite still happens at onStepFinish over the full
+            // step.text — this is purely an early-warning signal.
+            // Lower bound is `paragraphs >= 1` (not 2) so single-
+            // paragraph steps still get a streamed scan.
+            const segments = proseBuffer.split(/\n\s*\n/);
+            const latestParagraph = segments[Math.max(0, segments.length - 2)] ?? "";
+            if (latestParagraph) {
+              runOutputGuardStream(latestParagraph, {
+                ...(p.runtime_context?.engine_url
+                  ? { engine_url: p.runtime_context.engine_url }
+                  : {}),
+                ...(p.runtime_context?.tenant_slug
+                  ? { tenant_slug: p.runtime_context.tenant_slug }
+                  : {}),
+              });
+            }
           }
         }
       } catch {
@@ -1207,6 +1429,193 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           loop_warnings: signals.totalLoopWarnings,
         });
       }
+    }
+
+    // Critic / judge pass — terminal-step rubric over whatever the
+    // turn produced (commit, propose, or chat). The critic is
+    // deterministic (structural predicates against the artifact) so
+    // there is no second LLM call here. Verdict is logged + emitted
+    // as an event; a `priorCriticFail` signal flips on so the next
+    // turn's prepareStep escalates one tier up. Re-entry on the same
+    // turn is intentionally NOT done here — it would require
+    // restructuring the runOnce / fallback flow and is left as a
+    // follow-up.
+    let criticVerdict: CriticVerdict | undefined;
+    if (!cancelled && (signals.committed || signals.lastAssistantText)) {
+      // Resolve resource_kind from the draft's active_target. The
+      // earlier code defaulted "none" → "workflow" which gave the
+      // critic a false positive on commits with no active target. Now
+      // we explicitly skip critic dispatch for those.
+      const activeKind = draft.summary?.active_target.kind;
+      const resourceKind: "connector" | "workflow" | null =
+        activeKind === "connector" || activeKind === "workflow" ? activeKind : null;
+
+      // Count validated-checkpoint records that are ok=true. The
+      // checkpoints map lives on the AuthoringState alongside the draft
+      // and is updated by validate_draft / validate_connector_draft /
+      // dry_run_step etc.
+      const validatedStepCount = (() => {
+        const cps = draft.state?.checkpoints ?? {};
+        let n = 0;
+        for (const key of Object.keys(cps)) {
+          if (!/_validated$/.test(key)) continue;
+          const cp = (cps as Record<string, { ok?: boolean | null }>)[key];
+          if (cp?.ok === true) n += 1;
+        }
+        return n;
+      })();
+
+      // Connector-side: auth_type on the connector draft; this is the
+      // mode the persisted row will carry.
+      const connectorAuthMode =
+        resourceKind === "connector" ? (draft.connector?.auth_type ?? null) : null;
+
+      // Workflow-side: the first step's `kind` is the trigger semantic
+      // (subkit doesn't have a separate trigger field — the first step
+      // IS the entry point).
+      const workflowTriggerKind =
+        resourceKind === "workflow"
+          ? (() => {
+              const first = draft.workflow?.steps?.[0] as { kind?: unknown } | undefined;
+              return typeof first?.kind === "string" ? first.kind : null;
+            })()
+          : null;
+
+      const artifact: CriticArtifact | null = signals.committed
+        ? resourceKind === null
+          ? null
+          : {
+              kind: "commit_draft",
+              payload: {
+                resource_kind: resourceKind,
+                resource_id: signals.committed.workflow_id,
+                connector_auth_mode: connectorAuthMode,
+                workflow_trigger_kind: workflowTriggerKind,
+                validated_step_count: validatedStepCount,
+                committed_text: signals.lastAssistantText ?? "",
+                referenced_credentials: [],
+              },
+            }
+        : { kind: "chat", payload: signals.lastAssistantText };
+      if (artifact === null) {
+        // Fall through — no critic dispatch when the commit had no
+        // active target (treat as a no-op rather than mis-shape an
+        // artifact).
+      } else {
+        try {
+          criticVerdict = await runCritic({
+            artifact,
+            ...(p.runtime_context
+              ? {
+                  runtimeContext: {
+                    ...(p.runtime_context.engine_url
+                      ? { engine_url: p.runtime_context.engine_url }
+                      : {}),
+                    ...(p.runtime_context.tenant_slug
+                      ? { tenant_slug: p.runtime_context.tenant_slug }
+                      : {}),
+                  },
+                }
+              : {}),
+          });
+          if (criticVerdict.verdict === "fail") {
+            stepRouterSignals.priorCriticFail = true;
+          }
+          const failedChecks = criticVerdict.checks
+            ? Object.entries(criticVerdict.checks)
+                .filter(([, v]) => v === false)
+                .map(([k]) => k)
+            : [];
+          logger.info({
+            module: "llm",
+            action: "critic.verdict",
+            msg: `critic verdict: ${criticVerdict.verdict}`,
+            conversation_id: p.conversation_id,
+            tenant_id: p.tenant_id,
+            kind: artifact.kind,
+            verdict: criticVerdict.verdict,
+            confidence: criticVerdict.confidence,
+            reason: criticVerdict.reason,
+            failed_checks: failedChecks,
+            hint: criticVerdict.hint ?? null,
+            will_escalate_next_turn: criticVerdict.verdict === "fail",
+            will_abstain: criticVerdict.verdict === "fail" && criticVerdict.confidence < 0.6,
+          });
+          // Lever 15: confidence-based abstention. When the critic's
+          // confidence is below 0.6 AND the turn committed, surface an
+          // `ask_user_text` elicitation that the operator must answer
+          // before the conversation continues. This does NOT roll back
+          // the commit (the commit_draft tool already wrote the row by
+          // the time the critic runs); it forces the operator to
+          // explicitly confirm or revise. Rate-limited to ONE abstention
+          // per turn so a flaky critic cannot spam elicitations.
+          if (
+            criticVerdict.verdict === "fail" &&
+            criticVerdict.confidence < 0.6 &&
+            signals.committed
+          ) {
+            try {
+              const elicitation = await createElicitation(
+                {
+                  tenant_id: p.tenant_id,
+                  conversation_id: p.conversation_id,
+                  tool_call_id: null,
+                  tool_name: "ask_user_text",
+                  summary: `low-confidence commit: ${criticVerdict.reason}`,
+                  input: {
+                    question:
+                      "The critic flagged this commit with low confidence. " +
+                      `Reason: ${criticVerdict.reason}. ` +
+                      `${criticVerdict.hint ? `Suggested fix: ${criticVerdict.hint}. ` : ""}` +
+                      "Confirm the commit, or describe what should change.",
+                    placeholder: "confirm | describe a fix",
+                    metadata: {
+                      source: "critic.abstention",
+                      critic_kind: artifact.kind,
+                      confidence: criticVerdict.confidence,
+                      failed_checks: failedChecks,
+                    },
+                  },
+                  actor_id: p.actor_id,
+                },
+                p.db,
+              );
+              signals.pendingChildElicitationIds.push(elicitation.id);
+              events.push({
+                type: "activity",
+                phase: "idle",
+                label: `critic abstention · ${criticVerdict.reason}`,
+              });
+              logger.info({
+                module: "llm",
+                action: "critic.abstention.elicited",
+                msg: "low-confidence commit produced an ask_user_text follow-up",
+                conversation_id: p.conversation_id,
+                tenant_id: p.tenant_id,
+                elicitation_id: elicitation.id,
+                confidence: criticVerdict.confidence,
+                failed_checks: failedChecks,
+              });
+            } catch (err) {
+              logger.warn({
+                module: "llm",
+                action: "critic.abstention.elicit_failed",
+                msg: "could not create abstention elicitation — verdict still logged",
+                conversation_id: p.conversation_id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+        } catch (err) {
+          // Critic must not crash the loop — log and continue.
+          logger.warn({
+            module: "llm",
+            action: "critic.threw",
+            conversation_id: p.conversation_id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } // close `else` for artifact !== null
     }
 
     // Resolve final status.

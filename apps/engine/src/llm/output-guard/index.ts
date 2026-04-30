@@ -160,3 +160,51 @@ export function runOutputGuard(
   const rewritten = rewriteSoft(text, violations);
   return { text: rewritten, violations, mode, duration_ms };
 }
+
+/**
+ * Streaming companion to `runOutputGuard` — invoked at paragraph
+ * boundaries during the textStream drain. Logs violations early so
+ * operators see them before the step finishes; does NOT rewrite (that
+ * still happens in the `onStepFinish` batch pass with the full text).
+ *
+ * The contract is intentionally weaker than the batch path: scanners
+ * may produce false positives near chunk boundaries (e.g. a placeholder
+ * split across two paragraph buffers), so we only emit telemetry
+ * markers and never throw, even in `hard` mode. The authoritative
+ * decision is the batch pass.
+ *
+ * Short-circuits scanner execution on the FIRST scanner that finds a
+ * violation — later scanners do not run. Their findings would be
+ * redundant given the early-warning contract (the operator only needs
+ * to see "something is wrong with this paragraph" once), and the
+ * authoritative full-text pass at `onStepFinish` still runs every
+ * scanner against the complete step output.
+ */
+export function runOutputGuardStream(
+  paragraphText: string,
+  ctx: ScannerContext,
+  opts: RunGuardOptions = {},
+): Violation[] {
+  const mode = effectiveMode(opts.mode);
+  if (mode === "off" || paragraphText.length === 0) return [];
+  const scanners = opts.scanners ?? DEFAULT_SCANNERS;
+  const violations: Violation[] = [];
+  for (const s of scanners) {
+    try {
+      const found = s.scan(paragraphText, ctx);
+      if (found.length > 0) {
+        violations.push(...found);
+        // Short-circuit: subsequent scanners are skipped for this
+        // paragraph. The full-text batch pass on step finish still
+        // runs every scanner — that pass owns the rewrite decision.
+        break;
+      }
+    } catch {
+      // Faulty scanner must not crash the stream drain.
+    }
+  }
+  for (const v of violations) {
+    recordLlmOutputViolation({ kind: `${v.kind}.streamed`, mode });
+  }
+  return violations;
+}
