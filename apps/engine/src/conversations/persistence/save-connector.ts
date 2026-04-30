@@ -552,15 +552,24 @@ async function persistCredential(p: {
   if (cred.mode === "cognito_user_password") {
     const cfg = (p.connectorConfig ?? {}) as {
       aws_region?: unknown;
-      oauth?: { client_id?: unknown };
+      oauth?: { client_id?: unknown; aws_region?: unknown };
     };
-    const oauthCfg = (cfg.oauth ?? {}) as { client_id?: unknown };
-    const region = cred.aws_region ?? (typeof cfg.aws_region === "string" ? cfg.aws_region : null);
+    const oauthCfg = (cfg.oauth ?? {}) as { client_id?: unknown; aws_region?: unknown };
+    // Accept aws_region from either canonical slot — `config.aws_region`
+    // (template-seeded) or `config.oauth.aws_region` (LLM nesting).
+    const region =
+      cred.aws_region ??
+      (typeof cfg.aws_region === "string" ? cfg.aws_region : null) ??
+      (typeof oauthCfg.aws_region === "string" ? oauthCfg.aws_region : null);
     const client_id =
       cred.client_id ?? (typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null);
     if (!region || !client_id) {
+      const missing: string[] = [];
+      if (!region) missing.push("aws_region");
+      if (!client_id) missing.push("oauth.client_id");
       throw new Error(
-        `cognito_user_password persist requires aws_region + client_id (region=${region ?? "missing"}, client_id=${client_id ? "set" : "missing"})`,
+        `cognito_user_password connector is missing config.${missing.join("/config.")}. ` +
+          `Call update_connector_draft({ config: { aws_region, oauth: { client_id } } }) — the credential itself is fine.`,
       );
     }
     const grantParams: Parameters<typeof runCognitoUserPasswordGrant>[0] = {

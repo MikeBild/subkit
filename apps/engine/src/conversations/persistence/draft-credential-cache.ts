@@ -131,8 +131,16 @@ export async function toDecryptedCredentialAsync(
   const region = input.aws_region ?? ctx.aws_region ?? null;
   const client_id = input.client_id ?? ctx.client_id ?? null;
   if (!region || !client_id) {
+    // Surface which input slot is missing so the operator-facing
+    // error envelope can suggest the right next action: missing
+    // region → `update_connector_draft({config: {aws_region}})`,
+    // missing client_id → set `oauth.client_id` on the draft.
+    const missing: string[] = [];
+    if (!region) missing.push("aws_region (set config.aws_region or config.oauth.aws_region)");
+    if (!client_id) missing.push("client_id (set config.oauth.client_id)");
     throw new Error(
-      `cognito_user_password credential requires aws_region + client_id (region=${region ?? "missing"}, client_id=${client_id ? "set" : "missing"})`,
+      `cognito_user_password connector is missing config: ${missing.join(", ")}. ` +
+        `Call update_connector_draft({ config: { aws_region: '<region>', oauth: { client_id: '<client_id>' } } }) — the credential itself is fine.`,
     );
   }
   const params: Parameters<typeof runCognitoUserPasswordGrant>[0] = {

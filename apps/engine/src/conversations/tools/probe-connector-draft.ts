@@ -294,16 +294,26 @@ export const probeConnectorDraftTool: ConversationTool = {
       // username + password. We have to mint an IdToken via Cognito
       // InitiateAuth before the probe — that's what the async helper
       // does. Other modes round-trip through the sync converter.
+      //
+      // `aws_region` is accepted on either `config.aws_region` (the
+      // canonical slot the template seeds) OR `config.oauth.aws_region`
+      // (the LLM occasionally nests it there). Both are valid. Same
+      // for `client_id`.
       const draftCfg = (draftView.config ?? {}) as {
         aws_region?: unknown;
-        oauth?: { client_id?: unknown };
+        oauth?: { client_id?: unknown; aws_region?: unknown };
       };
-      const oauthCfg = (draftCfg.oauth ?? {}) as { client_id?: unknown };
+      const oauthCfg = (draftCfg.oauth ?? {}) as { client_id?: unknown; aws_region?: unknown };
+      const region =
+        (typeof draftCfg.aws_region === "string" && draftCfg.aws_region) ||
+        (typeof oauthCfg.aws_region === "string" && oauthCfg.aws_region) ||
+        null;
+      const clientId = typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null;
       const credentialOverride = draftCredential
         ? draftCredential.mode === "cognito_user_password"
           ? await toDecryptedCredentialAsync(draftCredential, {
-              aws_region: typeof draftCfg.aws_region === "string" ? draftCfg.aws_region : null,
-              client_id: typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null,
+              aws_region: region,
+              client_id: clientId,
             })
           : toDecryptedCredential(draftCredential)
         : null;
