@@ -22,6 +22,16 @@ function buildOverrideWarning(intent: CommitIntent | undefined): string | null {
   return null;
 }
 
+function defaultCommitIntent(args: z.infer<typeof inputSchema>): CommitIntent | undefined {
+  if (args.commit_intent) return args.commit_intent;
+  if (args.kind !== "commit_draft") return undefined;
+  return {
+    kind: "commit_workflow_draft",
+    payload: {},
+    description: args.summary ?? args.question,
+  };
+}
+
 const inputSchema = z
   .object({
     question: z.string().min(1),
@@ -56,6 +66,7 @@ export const askUserConfirmTool: ConversationTool = {
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
+    const effectiveCommitIntent = defaultCommitIntent(args);
     // Auto-resolve when the client is in `permission_mode=auto`. The
     // mode itself IS the governance signal — commit_draft, external
     // writes, run_workflow, save_connector_draft were all visible in
@@ -68,10 +79,11 @@ export const askUserConfirmTool: ConversationTool = {
     // out plus DANGEROUS_TOOLS in tool-policies.ts is the safety net.
     // "ask" and "plan" modes fall through to the normal pause path.
     //
-    // Note: when `commit_intent` is set, we still pause even in `auto`
-    // mode — the harness needs the explicit submit signal so the
-    // auto-persist dispatcher fires deterministically. The auto-mode
-    // shortcut is only valid for confirmations the LLM owns end-to-end.
+    // Note: when the CALLER explicitly set `commit_intent`, we still
+    // pause even in `auto` mode — the harness needs the explicit submit
+    // signal so the auto-persist dispatcher fires deterministically.
+    // The auto-mode shortcut stays valid for bare commit_draft confirms
+    // that the model owns end-to-end.
     if (
       ctx.permission_mode === "auto" &&
       args.destructive !== true &&
@@ -92,13 +104,19 @@ export const askUserConfirmTool: ConversationTool = {
     // gate. Without this, the LLM ended up narrating a confused
     // two-step retry ("blocked … now using force_commit") that
     // required a second "approve" from the user.
-    const overrideWarning = buildOverrideWarning(args.commit_intent);
+    const overrideWarning = buildOverrideWarning(effectiveCommitIntent);
     const baseSummary = args.summary ?? args.question;
     const summary = overrideWarning ? `${overrideWarning}\n\n${baseSummary}` : baseSummary;
     return pauseForUserInput(ctx, {
       tool_name: "ask_user_confirm",
       summary,
-      input: args,
+      input:
+        effectiveCommitIntent === undefined
+          ? args
+          : {
+              ...args,
+              commit_intent: effectiveCommitIntent,
+            },
     });
   },
 };

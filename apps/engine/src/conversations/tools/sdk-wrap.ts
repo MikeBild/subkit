@@ -80,12 +80,16 @@ export interface TurnSignals {
    */
   toolChain: Promise<void>;
   /**
+   * Current step's assistant anchor. Created lazily on the first
+   * child-row write so tool-only steps still get a stable parent
+   * message, then finalized by `onStepFinish`.
+   */
+  assistantMessageId?: string | null;
+  /**
    * Per-step buffer of child rows created by tool wrappers since the
-   * last `onStepFinish`. The loop's onStepFinish back-fills
-   * `parent_message_id` on these rows after inserting the step's
-   * assistant message, so the read path can interleave them
-   * deterministically under that message in the timeline. Reset to
-   * empty arrays after every step.
+   * last `onStepFinish`. Normal writes already stamp
+   * `parent_message_id`; the loop keeps this buffer so its end-of-step
+   * back-fill remains an idempotent safety net.
    */
   pendingChildToolCallIds: string[];
   pendingChildElicitationIds: string[];
@@ -700,9 +704,23 @@ function wrapOne(
 
         const step = signals.step++;
         const startedAt = Date.now();
+        const ensureAssistantMessageAnchor = async (): Promise<string> => {
+          if (signals.assistantMessageId) return signals.assistantMessageId;
+          const messageId = await appendMessage(
+            db,
+            ctx.tenant_id,
+            ctx.conversation_id,
+            "assistant",
+            {},
+          );
+          signals.assistantMessageId = messageId;
+          return messageId;
+        };
+        const assistantMessageId = await ensureAssistantMessageAnchor();
         const toolCallId = await insertToolCall(db, {
           tenant_id: ctx.tenant_id,
           conversation_id: ctx.conversation_id,
+          parent_message_id: assistantMessageId,
           tool: inner.name,
           input: rawArgs,
           approval_required: inner.name.startsWith("ask_user_"),
@@ -713,8 +731,14 @@ function wrapOne(
           call_id: toolCallId,
           tool: inner.name,
           input_partial: rawArgs,
+          parent_message_id: assistantMessageId,
         });
-        events.push({ type: "tool_call_end", call_id: toolCallId, input: rawArgs });
+        events.push({
+          type: "tool_call_end",
+          call_id: toolCallId,
+          input: rawArgs,
+          parent_message_id: assistantMessageId,
+        });
         // Single-line activity ticker: tell the operator WHAT the
         // engine is doing right now. The transcript already shows the
         // tool-call card; this just keeps the ticker accurate when
@@ -739,6 +763,7 @@ function wrapOne(
         const perCallCtx: ToolContext = {
           ...ctx,
           tool_call_id: toolCallId,
+          assistant_message_id: assistantMessageId,
           onLog: (level, message) => {
             events.push({
               type: "tool_log",
@@ -1021,6 +1046,7 @@ function wrapOne(
               call_id: toolCallId,
               tool: inner.name,
               output: dupOutput,
+              parent_message_id: assistantMessageId,
             });
             recordConversationToolCall({
               category: inner.category,
@@ -1082,6 +1108,7 @@ function wrapOne(
               tenant_id: ctx.tenant_id,
               conversation_id: ctx.conversation_id,
               tool_call_id: toolCallId,
+              parent_message_id: assistantMessageId,
               tool_name: "ask_user_confirm",
               summary: policyGateSummary,
               input: elicitationInput,
@@ -1130,6 +1157,7 @@ function wrapOne(
             call_id: toolCallId,
             tool: inner.name,
             output,
+            parent_message_id: assistantMessageId,
           });
           events.push({
             type: "elicit_request",
@@ -1138,6 +1166,7 @@ function wrapOne(
             tool_name: "ask_user_confirm",
             summary: elicitation.summary,
             input: elicitation.input,
+            parent_message_id: assistantMessageId,
             ...(pendingOutput ? { pending_output: pendingOutput } : {}),
           });
           signals.pendingElicitation = {
@@ -1191,6 +1220,7 @@ function wrapOne(
             call_id: toolCallId,
             tool: inner.name,
             output,
+            parent_message_id: assistantMessageId,
           });
           release();
           return { ok: false, data: output };
@@ -1266,6 +1296,7 @@ function wrapOne(
             call_id: toolCallId,
             tool: inner.name,
             output,
+            parent_message_id: assistantMessageId,
           });
           if (inner.category === "tenant_write") {
             await recordTransition(db, {
@@ -1377,6 +1408,7 @@ function wrapOne(
                 _note: truncated.note,
               }
             : resultPayload,
+          parent_message_id: assistantMessageId,
         });
         // Activity ticker: tool ended → switch to idle so the CLI
         // ticker stops showing the tool name. `last_completed` lets
@@ -1553,6 +1585,7 @@ function wrapOne(
             tool_name: result.pause.tool_name,
             summary: result.pause.summary,
             input: inputPayload,
+            parent_message_id: assistantMessageId,
             ...(pausePending ? { pending_output: pausePending } : {}),
           });
           log.conversation.approval.requested({
@@ -1604,6 +1637,7 @@ function wrapOne(
               tenant_id: ctx.tenant_id,
               conversation_id: ctx.conversation_id,
               tool_call_id: toolCallId,
+              parent_message_id: assistantMessageId,
               tool_name: "ask_user_confirm",
               summary: `Review result of ${inner.name}`,
               input: {
@@ -1629,6 +1663,7 @@ function wrapOne(
               question: `${inner.name} ran. Keep this result?`,
               target: { tool: inner.name, args: rawArgs },
             },
+            parent_message_id: assistantMessageId,
             pending_output: resultPayload as Record<string, unknown>,
           });
           log.conversation.approval.requested({

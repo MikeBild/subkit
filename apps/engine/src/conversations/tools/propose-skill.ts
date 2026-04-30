@@ -50,7 +50,8 @@ export const proposeSkillTool: ConversationTool = {
       {
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
-        tool_call_id: null,
+        tool_call_id: ctx.tool_call_id ?? null,
+        ...(ctx.assistant_message_id ? { parent_message_id: ctx.assistant_message_id } : {}),
         tool_name: "ask_user_confirm",
         summary,
         input,

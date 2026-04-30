@@ -36,6 +36,60 @@ describe("authoring-state", () => {
     expect(draft.workflow.steps[0]).toEqual({ id: "nested", kind: "wait", duration_ms: 2 });
   });
 
+  test("normalizeDraftDocument ignores top-level workflow fields without draft.workflow", () => {
+    const draft = normalizeDraftDocument({
+      name: "legacy-top-level",
+      steps: [{ id: "top", kind: "wait", duration_ms: 1 }],
+    });
+    expect(draft.workflow).toEqual({
+      name: "new-workflow",
+      steps: [],
+    });
+  });
+
+  test("normalizeDraftDocument ignores legacy connector.template_id aliases", () => {
+    const draft = normalizeDraftDocument({
+      connector: {
+        name: "legacy-template-id",
+        template_id: "old-template",
+      },
+    });
+    expect(draft.connector?.name).toBe("legacy-template-id");
+    expect(draft.connector?.template_slug).toBeUndefined();
+  });
+
+  test("normalizeDraftDocument does not synthesize checkpoints from legacy draft fields", () => {
+    const draft = normalizeDraftDocument({
+      connector: {
+        name: "legacy-connector",
+        environment: "dev",
+        saved_connector_id: "connector_123",
+        validation: { ok: true, missing_fields: [], errors: [] },
+        latest_probe: {
+          ok: true,
+          method: "GET",
+          path: "/health",
+          environment: "dev",
+          summary: "Probe ok.",
+        },
+      },
+      workflow: {
+        name: "legacy-workflow",
+        steps: [{ id: "fetch", kind: "request", url: "https://example.com" }],
+      },
+      latest_preview: {
+        ok: true,
+        step_id: "fetch",
+        summary: "Preview ok.",
+      },
+    });
+    expect(draft.state?.checkpoints).toEqual({});
+    expect(draft.summary?.checkpoints.every((checkpoint) => checkpoint.status === "missing")).toBe(
+      true,
+    );
+    expect(draft.summary?.persisted_resources).toEqual([]);
+  });
+
   test("withWorkflowDraft keeps the canonical nested shape", () => {
     const draft = withWorkflowDraft(createEmptyDraftDocument(), {
       name: "daily-sync",

@@ -29,10 +29,11 @@ describe("validateDiscoverDraft", () => {
     ).toBeNull();
   });
 
-  it("accepts a connector draft with legacy template_id instead of base_url", () => {
-    expect(
-      validateDiscoverDraft(mk("connector", { name: "X", template_id: "tpl-123" })),
-    ).toBeNull();
+  it("rejects a connector draft with legacy template_id instead of template_slug", () => {
+    const issues = validateDiscoverDraft(mk("connector", { name: "X", template_id: "tpl-123" }));
+    expect(issues).toContain(
+      "connector draft requires one of `base_url`, `template_slug`, `driver`",
+    );
   });
 
   it("rejects a connector draft missing name", () => {

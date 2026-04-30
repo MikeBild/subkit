@@ -125,7 +125,7 @@ describe("buildMessagesV2 with parent_message_id (engine migration 0032)", () =>
     ).toEqual(["c2"]);
   });
 
-  test("falls back to time-window for legacy rows with null parent_message_id", () => {
+  test("ignores unanchored legacy rows with null parent_message_id", () => {
     const messages: ConversationMessageRecord[] = [
       msg({
         id: "a1",
@@ -135,15 +135,15 @@ describe("buildMessagesV2 with parent_message_id (engine migration 0032)", () =>
       }),
       msg({ id: "u1", role: "user", content: "next", created_at: "2026-01-01T00:00:05Z" }),
     ];
-    // No parent_message_id — must hit the legacy time-window path.
+    // No parent_message_id — messages_v2 no longer guesses placement.
     const toolCalls: ConversationToolCallRecord[] = [
       call({ id: "c1", tool: "listSkills", created_at: "2026-01-01T00:00:02Z" }),
     ];
     const out = buildMessagesV2(messages, toolCalls);
-    expect(out[0]?.parts.filter((p) => p.type === "tool_call")).toHaveLength(1);
+    expect(out[0]?.parts.filter((p) => p.type === "tool_call")).toHaveLength(0);
   });
 
-  test("anchored and orphaned tool calls coexist on the same message", () => {
+  test("ignores orphaned calls even when an anchored sibling exists", () => {
     const messages: ConversationMessageRecord[] = [
       msg({
         id: "a1",
@@ -159,20 +159,19 @@ describe("buildMessagesV2 with parent_message_id (engine migration 0032)", () =>
         parent_message_id: "a1",
         created_at: "2026-01-01T00:00:02Z",
       }),
-      // Legacy row with no anchor but timestamp in a1's window — should
-      // also land on a1 via the fallback path.
+      // Legacy row with no anchor stays off messages_v2.
       call({ id: "c-legacy", tool: "searchKnowledge", created_at: "2026-01-01T00:00:03Z" }),
     ];
     const out = buildMessagesV2(messages, toolCalls);
     const ids = out[0]?.parts
       .filter((p) => p.type === "tool_call")
       .map((p) => (p as { call_id: string }).call_id);
-    expect(ids).toEqual(["c-anchored", "c-legacy"]);
+    expect(ids).toEqual(["c-anchored"]);
   });
 });
 
 describe("buildMessagesV2", () => {
-  test("windows tool calls between adjacent messages by created_at", () => {
+  test("keeps unanchored rows off user and assistant messages", () => {
     const messages: ConversationMessageRecord[] = [
       msg({ id: "u1", role: "user", content: "first", created_at: "2026-01-01T00:00:00Z" }),
       msg({
@@ -181,24 +180,13 @@ describe("buildMessagesV2", () => {
         content: { text: "running a tool" },
         created_at: "2026-01-01T00:00:01Z",
       }),
-      msg({ id: "u2", role: "user", content: "second", created_at: "2026-01-01T00:00:05Z" }),
-      msg({
-        id: "a2",
-        role: "assistant",
-        content: { text: "running another" },
-        created_at: "2026-01-01T00:00:06Z",
-      }),
     ];
     const toolCalls: ConversationToolCallRecord[] = [
       call({ id: "c1", tool: "listSkills", created_at: "2026-01-01T00:00:02Z" }),
-      call({ id: "c2", tool: "searchKnowledge", created_at: "2026-01-01T00:00:03Z" }),
-      call({ id: "c3", tool: "listSkills", created_at: "2026-01-01T00:00:07Z" }),
     ];
     const out = buildMessagesV2(messages, toolCalls);
-    expect(out).toHaveLength(4);
-    expect(out[1]?.parts.filter((p) => p.type === "tool_call")).toHaveLength(2);
-    expect(out[3]?.parts.filter((p) => p.type === "tool_call")).toHaveLength(1);
+    expect(out).toHaveLength(2);
     expect(out[0]?.parts.filter((p) => p.type === "tool_call")).toHaveLength(0);
-    expect(out[2]?.parts.filter((p) => p.type === "tool_call")).toHaveLength(0);
+    expect(out[1]?.parts.filter((p) => p.type === "tool_call")).toHaveLength(0);
   });
 });
