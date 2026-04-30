@@ -14,6 +14,7 @@ import {
   recordConnectorSavedOverride,
   recordConnectorUpdated,
 } from "../../audit/recorders/index.ts";
+import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { createConnector, getConnector } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { runCognitoUserPasswordGrant } from "../../credentials/oauth2/client.ts";
@@ -415,6 +416,62 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       source: "harness_auto_persist",
       credential_persisted,
       ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
+    });
+  }
+
+  // GraphQL connectors: kick off introspection-based discovery in the
+  // background so the LLM has the full schema available the next turn.
+  // Pre-fix the operator had to ask explicitly ("discover endpoints")
+  // before the LLM knew which queries existed — for AppSync-style APIs
+  // that's a wasted round-trip and burned tokens.
+  //
+  // Fire-and-forget. Three failure modes that are NOT fatal:
+  //   1. `introspection_disabled` — production-hardened APIs
+  //      (Shopify Admin, some SaaS) refuse `__schema`. Logged at
+  //      info, no audit row, no draft mutation. Operator can still
+  //      hand-author queries; the LLM is told to ask for sample
+  //      output instead via the skill content.
+  //   2. `all_strategies_failed` — endpoint refused both
+  //      introspection AND every fallback strategy (network, 4xx,
+  //      etc.). Same soft-fail path — the connector itself probed
+  //      green so it works, just without the schema corpus.
+  //   3. Any other thrown error — logged warn, swallowed.
+  if (saved.driver === "graphql" && saved.base_url) {
+    void runDiscoveryCached(
+      {
+        db: ctx.db as Db,
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.actor_id,
+      },
+      {
+        connector_id: saved.id,
+        base_url: saved.base_url,
+      },
+    ).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: unknown }).code)
+          : null;
+      // Differentiate the "schema is hidden by upstream" case from
+      // an unexpected discovery breakage — operators reading the
+      // log should see at a glance which one fired.
+      const introspectionDisabled =
+        code === "introspection_disabled" ||
+        /introspection.*not allowed|introspection.*disabled/i.test(message);
+      logger[introspectionDisabled ? "info" : "warn"]({
+        module: "conversation_persistence",
+        action: introspectionDisabled
+          ? "post_save.graphql_introspection_disabled"
+          : "post_save.graphql_discovery_failed",
+        msg: introspectionDisabled
+          ? "GraphQL connector saved without auto-discovery — upstream refuses introspection"
+          : "auto-discovery after GraphQL connector save failed (non-fatal)",
+        tenant_id: ctx.tenant_id,
+        connector_id: saved.id,
+        ...(code ? { code } : {}),
+        error: message,
+      });
     });
   }
 
