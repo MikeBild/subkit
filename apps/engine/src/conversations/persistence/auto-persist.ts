@@ -543,6 +543,33 @@ export function extractCredentialFromFormOutput(
   seedOverrides: Record<string, unknown>,
   output: unknown,
 ): AtomicCredentialInput | null {
+  // The LLM frequently emits `mode: "oauth2"` in the commit_intent —
+  // it sees the connector's `auth_type: "oauth2"` and copies it. But
+  // there is no concrete "oauth2" credential ROW shape — only the
+  // grant-specific bootstrap shapes (cognito_user_password, …) and the
+  // post-exchange `mode: "oauth2"` row that the engine produces
+  // internally. Pre-fix this fell through to `default → null` and the
+  // form output silently produced no credential, leading to a saved
+  // connector with no auth → 401 on every call (session bab50df1).
+  // Promote `oauth2` to the matching grant-specific bootstrap based on
+  // the seed override hints (or, when no hint is present, fall back to
+  // RFC 6749 password-grant which uses the same {username,password}
+  // shape).
+  if (seedMode === "oauth2") {
+    const grantHint =
+      typeof seedOverrides.grant_type === "string" ? seedOverrides.grant_type : null;
+    if (
+      grantHint === "cognito_user_password" ||
+      typeof seedOverrides.aws_region === "string" ||
+      typeof seedOverrides.cognito_client_id === "string"
+    ) {
+      seedMode = "cognito_user_password";
+    }
+    // Other grant_types (authorization_code, client_credentials, jwt_bearer,
+    // device_code) don't go through the form-submit credential path — they
+    // run their own dedicated flows. Falling through to default returns
+    // null which surfaces as `credential_required` to the caller.
+  }
   const out = (output ?? {}) as Record<string, unknown>;
   const values =
     typeof out.values === "object" && out.values !== null

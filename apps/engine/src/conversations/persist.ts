@@ -118,11 +118,23 @@ export async function appendMessage(
   return row.id;
 }
 
+export async function updateMessageContent(
+  db: Executor,
+  message_id: string,
+  content: unknown,
+): Promise<void> {
+  await db
+    .update(conversationMessages)
+    .set({ content: content as Record<string, unknown> })
+    .where(eq(conversationMessages.id, message_id));
+}
+
 export async function insertToolCall(
   db: Executor,
   params: {
     tenant_id: string;
     conversation_id: string;
+    parent_message_id?: string | null;
     tool: string;
     input: unknown;
     approval_required: boolean;
@@ -133,6 +145,7 @@ export async function insertToolCall(
     .values({
       tenant_id: params.tenant_id,
       conversation_id: params.conversation_id,
+      ...(params.parent_message_id ? { parent_message_id: params.parent_message_id } : {}),
       tool: params.tool,
       input: params.input as Record<string, unknown>,
       approval_required: params.approval_required,

@@ -584,7 +584,7 @@ export async function respondElicitation(
     },
     db: exec,
   });
-  await maybeAutoPersistFromElicitation({
+  const autoPersist = await maybeAutoPersistFromElicitation({
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
@@ -610,6 +610,33 @@ export async function respondElicitation(
       draft: conv.draft,
       permission_mode: explicitPermissionMode,
     });
+  }
+  if (
+    autoPersist.dispatched &&
+    conv.conversation.status === "committed" &&
+    conv.conversation.target_workflow_id
+  ) {
+    await auditAwait(
+      {
+        tenant_id: p.tenant_id,
+        actor_type: p.actor_id ? "user" : "system",
+        actor_id: p.actor_id,
+        action: AuditAction.CONVERSATION_COMMITTED,
+        resource_type: "conversation",
+        resource_id: p.conversation_id,
+        result: "success",
+        metadata: { workflow_id: conv.conversation.target_workflow_id },
+      },
+      exec,
+    );
+    return {
+      conversation: conv.conversation,
+      result: {
+        events: [{ type: "committed", workflow_id: conv.conversation.target_workflow_id }],
+        status: "committed",
+        committed_workflow_id: conv.conversation.target_workflow_id,
+      },
+    };
   }
 
   const result = await runLoop({

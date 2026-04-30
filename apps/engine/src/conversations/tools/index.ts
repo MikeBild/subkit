@@ -78,6 +78,8 @@ export interface ToolContext {
   actor_id: string | null;
   /** Current conversation_tool_calls.id for this tool execution. */
   tool_call_id?: string;
+  /** Assistant message id anchoring this tool step's child rows. */
+  assistant_message_id?: string | null;
   connector_id: string | null;
   workflow_id: string | null;
   engineClient: EngineClient;

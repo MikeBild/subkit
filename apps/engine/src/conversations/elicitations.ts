@@ -65,6 +65,7 @@ export async function createElicitation(
     tenant_id: string;
     conversation_id: string;
     tool_call_id: string | null;
+    parent_message_id?: string | null;
     tool_name: string;
     summary: string;
     input: unknown;
@@ -121,6 +122,7 @@ export async function createElicitation(
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
       tool_call_id: p.tool_call_id,
+      ...(p.parent_message_id ? { parent_message_id: p.parent_message_id } : {}),
       tool_name: p.tool_name,
       summary: p.summary,
       input: (p.input ?? {}) as Record<string, unknown>,

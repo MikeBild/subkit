@@ -1088,9 +1088,8 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
       // stream: for each message, emit it then immediately emit every
       // child row (tool_call lifecycle + tool_result + pending
       // elicitation) anchored to it via parent_message_id. Children
-      // without an anchor (legacy rows) fall through to the time-window
-      // grouping in parts.ts so they still land under the right
-      // assistant message.
+      // without an anchor (legacy rows) are emitted at the tail as raw
+      // orphans; `messages_v2` no longer guesses their placement.
       const childCalls = new Map<string, typeof detail.tool_calls>();
       for (const call of detail.tool_calls) {
         const anchor = call.parent_message_id ?? null;

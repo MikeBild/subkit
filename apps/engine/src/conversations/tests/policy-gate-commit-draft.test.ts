@@ -19,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
   conversationElicitations,
+  conversationMessages,
   conversations,
   conversationToolCalls,
   workflows,
@@ -164,6 +165,49 @@ describe("commit_draft — policy gate", () => {
     expect(commit_intent).toBeDefined();
     expect(commit_intent?.kind).toBe("commit_workflow_draft");
     expect(commit_intent?.payload).toBeDefined();
+
+    const startEvent = events.find((event) => event.type === "tool_call_start");
+    const endEvent = events.find((event) => event.type === "tool_call_end");
+    const resultEvent = events.find((event) => event.type === "tool_result");
+    expect(startEvent?.type).toBe("tool_call_start");
+    expect(endEvent?.type).toBe("tool_call_end");
+    expect(resultEvent?.type).toBe("tool_result");
+    const parentMessageId =
+      startEvent && startEvent.type === "tool_call_start" ? startEvent.parent_message_id : null;
+    expect(parentMessageId).toBeDefined();
+    if (
+      !parentMessageId ||
+      !endEvent ||
+      endEvent.type !== "tool_call_end" ||
+      !resultEvent ||
+      resultEvent.type !== "tool_result"
+    ) {
+      throw new Error("expected anchored tool lifecycle events");
+    }
+    expect(endEvent.parent_message_id).toBe(parentMessageId);
+    expect(resultEvent.parent_message_id).toBe(parentMessageId);
+    expect(elicit.parent_message_id).toBe(parentMessageId);
+    expect(persisted?.parent_message_id).toBe(parentMessageId);
+
+    const messageRows = await ctx.testDb.db
+      .select({
+        id: conversationMessages.id,
+        role: conversationMessages.role,
+        content: conversationMessages.content,
+      })
+      .from(conversationMessages)
+      .where(eq(conversationMessages.conversation_id, conversation_id));
+    const assistantMessage = messageRows.find((row) => row.role === "assistant");
+    expect(assistantMessage?.id).toBe(parentMessageId);
+    expect(assistantMessage?.content).toEqual({});
+
+    const [toolCallRow] = await ctx.testDb.db
+      .select({
+        parent_message_id: conversationToolCalls.parent_message_id,
+      })
+      .from(conversationToolCalls)
+      .where(eq(conversationToolCalls.id, elicit.tool_call_id ?? ""));
+    expect(toolCallRow?.parent_message_id).toBe(parentMessageId);
   });
 
   test("LLM-issued commit_draft with __policy_confirmed: true skips the policy gate", async () => {

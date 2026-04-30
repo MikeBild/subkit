@@ -58,9 +58,9 @@ export function toMessageParts(
 
 /**
  * Project every persisted message in a conversation. Tool calls are
- * attached to assistant messages in insertion order — the engine writes
- * them contiguously today, so a positional join matches reality without
- * needing a foreign-key column.
+ * attached to assistant messages via explicit `parent_message_id`.
+ * Unanchored legacy rows are ignored here and remain available only on
+ * the raw `tool_calls` detail surface.
  */
 export function buildMessagesV2(
   messages: ConversationMessageRecord[],
@@ -72,14 +72,9 @@ export function buildMessagesV2(
 
 /**
  * Walk the messages and group tool calls under their parent assistant
- * message. Prefers the explicit `parent_message_id` column (populated
- * by the loop for every new write since migration 0032) and falls
- * back to a time-window join for legacy rows where the column is null.
- *
- * Time-window fallback: for every assistant message, collect rows whose
- * `created_at` falls between that message and the next user/system
- * message. Robust as long as inserts happen in causal order, which the
- * loop guarantees. Always-O(n+m) on sorted input.
+ * message. Only explicit anchors are considered. Unanchored rows stay
+ * visible through the raw detail endpoint rather than being guessed
+ * into `messages_v2`.
  */
 function groupToolCallsByAssistantTurn(
   messages: ConversationMessageRecord[],
@@ -87,16 +82,8 @@ function groupToolCallsByAssistantTurn(
 ): Map<string, ConversationToolCallRecord[]> {
   const out = new Map<string, ConversationToolCallRecord[]>();
   const messageIds = new Set(messages.map((m) => m.id));
-  const anchored: ConversationToolCallRecord[] = [];
-  const orphaned: ConversationToolCallRecord[] = [];
   for (const tc of toolCalls) {
-    if (tc.parent_message_id && messageIds.has(tc.parent_message_id)) {
-      anchored.push(tc);
-    } else {
-      orphaned.push(tc);
-    }
-  }
-  for (const tc of anchored) {
+    if (!tc.parent_message_id || !messageIds.has(tc.parent_message_id)) continue;
     const list = out.get(tc.parent_message_id as string) ?? [];
     list.push(tc);
     out.set(tc.parent_message_id as string, list);
@@ -105,32 +92,6 @@ function groupToolCallsByAssistantTurn(
   // the same chronological order they were created.
   for (const list of out.values()) {
     list.sort((a, b) => a.created_at.localeCompare(b.created_at));
-  }
-  if (orphaned.length === 0) return out;
-
-  const sortedCalls = orphaned.sort((a, b) => a.created_at.localeCompare(b.created_at));
-  let callCursor = 0;
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i];
-    if (m === undefined || m.role !== "assistant") continue;
-    const next = messages[i + 1];
-    const windowEnd = next ? next.created_at : null;
-    const bucket: ConversationToolCallRecord[] = out.get(m.id) ?? [];
-    while (callCursor < sortedCalls.length) {
-      const tc = sortedCalls[callCursor];
-      if (tc === undefined) break;
-      if (tc.created_at < m.created_at) {
-        callCursor += 1;
-        continue;
-      }
-      if (windowEnd !== null && tc.created_at >= windowEnd) break;
-      bucket.push(tc);
-      callCursor += 1;
-    }
-    if (bucket.length > 0) {
-      bucket.sort((a, b) => a.created_at.localeCompare(b.created_at));
-      out.set(m.id, bucket);
-    }
   }
   return out;
 }
