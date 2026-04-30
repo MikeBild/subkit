@@ -19,6 +19,7 @@ import { Box, Text } from "ink";
 import type React from "react";
 import type { EngineClient } from "../../engine-client.ts";
 import { CommitDraftApproval } from "./commit-draft.tsx";
+import { describeConfirmationPayload } from "./describe-confirmation.ts";
 import { ExternalWriteApproval } from "./external-write.tsx";
 import { GenericApproval } from "./generic.tsx";
 
@@ -76,6 +77,8 @@ export const ApprovalRouter: React.FC<ApprovalRouterProps> = ({
     approval.tool_name === "ask_user_confirm" &&
     commitIntent != null &&
     STRUCTURED_DIFF_INTENT_KINDS.has(commitIntent.kind);
+  const summaryText =
+    approval.summary.trim() || describeConfirmationPayload(input) || approval.tool_name;
   const headerLabel =
     approval.tool_name === "ask_user_confirm" ? `confirm: ${kind}` : approval.tool_name;
   return (
@@ -89,7 +92,7 @@ export const ApprovalRouter: React.FC<ApprovalRouterProps> = ({
       <Text color="yellow" bold>
         input needed: {headerLabel}
       </Text>
-      <Text>{approval.summary}</Text>
+      <Text>{summaryText}</Text>
       {useStructuredDiff ? (
         <GenericApproval
           diff={diff}

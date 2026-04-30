@@ -2,8 +2,7 @@
 //
 // The `sk` config supports multiple named profiles up-front; switching
 // profiles is a single flag (`--profile <name>`) or the active one via
-// `/tenant` at runtime. A single legacy profile layout is also accepted
-// for interoperability when an operator imports their `~/.subkit/config.json`.
+// `/tenant` at runtime.
 //
 // runDeviceFlow + readSse + the TurnEvent reducer live under
 // packages/cli-core (@cli-core/*) and are imported by the shared `sk`
@@ -63,22 +62,21 @@ export function loadConfig(path: string = configPath()): SkConfig {
   if (!existsSync(path)) return defaultConfig();
   try {
     const raw = readFileSync(path, "utf8");
-    const parsed = JSON.parse(raw) as Partial<SkConfig> & Partial<Profile>;
-    // Accept a legacy single-profile shape too.
-    if (!parsed.profiles && (parsed.engine_url || parsed.api_key)) {
-      return {
-        active_profile: DEFAULT_PROFILE,
-        profiles: {
-          [DEFAULT_PROFILE]: {
-            engine_url: parsed.engine_url ?? DEFAULT_ENGINE_URL,
-            api_key: parsed.api_key ?? "",
-            active_tenant_id: parsed.active_tenant_id ?? null,
-          },
-        },
-      };
+    const parsed = JSON.parse(raw) as Partial<SkConfig>;
+    const active_profile =
+      typeof parsed.active_profile === "string" && parsed.active_profile.length > 0
+        ? parsed.active_profile
+        : DEFAULT_PROFILE;
+    const rawProfiles =
+      parsed.profiles && typeof parsed.profiles === "object" && !Array.isArray(parsed.profiles)
+        ? parsed.profiles
+        : null;
+    if (!rawProfiles) return defaultConfig();
+    const profiles =
+      Object.keys(rawProfiles).length > 0 ? rawProfiles : { [DEFAULT_PROFILE]: defaultProfile() };
+    if (!profiles[active_profile]) {
+      profiles[active_profile] = defaultProfile();
     }
-    const active_profile = parsed.active_profile ?? DEFAULT_PROFILE;
-    const profiles = parsed.profiles ?? { [active_profile]: defaultProfile() };
     return { active_profile, profiles };
   } catch {
     return defaultConfig();

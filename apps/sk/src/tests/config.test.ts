@@ -40,7 +40,7 @@ describe("sk config", () => {
     expect(loaded.profiles.staging?.persona_hint).toBe("member");
   });
 
-  test("legacy single-profile shape is accepted", () => {
+  test("non-profile shapes fall back to defaults", () => {
     writeFileSync(
       path,
       JSON.stringify({
@@ -51,8 +51,8 @@ describe("sk config", () => {
     );
     const cfg = loadConfig(path);
     expect(cfg.active_profile).toBe("default");
-    expect(cfg.profiles.default?.engine_url).toBe("http://localhost:9999");
-    expect(cfg.profiles.default?.api_key).toBe("legacy_key");
+    expect(cfg.profiles.default?.engine_url).toBe("http://localhost:3000");
+    expect(cfg.profiles.default?.api_key).toBe("");
   });
 
   test("resolveProfile precedence: flag > env > disk > default", () => {

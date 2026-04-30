@@ -1,5 +1,5 @@
 // E2E tests for `sk profile` — multi-profile CRUD, switching,
-// resolution precedence, backward compatibility, slash command handler.
+// resolution precedence, and slash command handler.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -64,11 +64,11 @@ describe("sk config shape", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Legacy backward compatibility
+// Config fallbacks
 // ---------------------------------------------------------------------------
 
-describe("sk legacy migration", () => {
-  test("flat config auto-wraps as default profile", () => {
+describe("sk config fallbacks", () => {
+  test("flat config shape falls back to the default profile set", () => {
     writeFileSync(
       path,
       JSON.stringify({
@@ -79,8 +79,8 @@ describe("sk legacy migration", () => {
     );
     const loaded = loadConfig(path);
     expect(loaded.active_profile).toBe("default");
-    expect(loaded.profiles.default?.engine_url).toBe("http://old-engine:8080");
-    expect(loaded.profiles.default?.api_key).toBe("old-key");
+    expect(loaded.profiles.default?.engine_url).toBe("http://localhost:3000");
+    expect(loaded.profiles.default?.api_key).toBe("");
   });
 
   test("corrupted JSON returns default config", () => {

@@ -217,5 +217,8 @@ describe("Ink journey — elicit_request flow (confirm_before_execution)", () =>
     // The ElicitRouter rendered the question text from the
     // ask_user_confirm pause payload.
     expect(frame).toContain("Policy requires confirmation");
+    expect(frame).toContain("run_workflow");
+    expect(frame).toContain("environment");
+    expect(frame).toContain("prod");
   });
 });
