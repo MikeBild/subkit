@@ -72,25 +72,31 @@ export function enrichConnectorFromTemplate(
 ): CreateConnectorInput {
   const cfg: Record<string, unknown> = { ...(draft.config ?? {}) };
 
-  // OAuth2 block from the template → config (non-destructive).
-  if (template.oauth) {
-    const o = template.oauth;
-    if (cfg.issuer_url === undefined) cfg.issuer_url = o.issuer_url;
-    if (cfg.authorization_endpoint === undefined && o.authorization_endpoint) {
-      cfg.authorization_endpoint = o.authorization_endpoint;
+  // OAuth2 block from the template → config.oauth (non-destructive).
+  // Only seeded for oauth2 connectors; bearer/header/basic/aws_sigv4/none
+  // never carry oauth metadata, even if the matched template advertises
+  // an oauth flow as one of its auth_options.
+  if (template.oauth && draft.auth_type === "oauth2") {
+    const t = template.oauth;
+    const existing = (cfg.oauth as Record<string, unknown> | undefined) ?? {};
+    const oauth: Record<string, unknown> = { ...existing };
+    if (oauth.issuer_url === undefined) oauth.issuer_url = t.issuer_url;
+    if (oauth.authorization_endpoint === undefined && t.authorization_endpoint) {
+      oauth.authorization_endpoint = t.authorization_endpoint;
     }
-    if (cfg.token_endpoint === undefined && o.token_endpoint) {
-      cfg.token_endpoint = o.token_endpoint;
+    if (oauth.token_endpoint === undefined && t.token_endpoint) {
+      oauth.token_endpoint = t.token_endpoint;
     }
-    if (cfg.scope === undefined && o.scopes) cfg.scope = o.scopes;
-    if (cfg.grant_type === undefined) cfg.grant_type = o.grant_type;
-    if (cfg.token_auth_method === undefined) cfg.token_auth_method = o.token_auth_method;
-    if (cfg.token_content_type === undefined) cfg.token_content_type = o.token_content_type;
-    if (cfg.use_pkce === undefined) cfg.use_pkce = o.use_pkce;
-    if (cfg.client_id === undefined && o.client_id !== null) cfg.client_id = o.client_id;
-    if (cfg.extra_token_headers === undefined && Object.keys(o.extra_headers).length > 0) {
-      cfg.extra_token_headers = { ...o.extra_headers };
+    if (oauth.scope === undefined && t.scopes) oauth.scope = t.scopes;
+    if (oauth.grant_type === undefined) oauth.grant_type = t.grant_type;
+    if (oauth.token_auth_method === undefined) oauth.token_auth_method = t.token_auth_method;
+    if (oauth.token_content_type === undefined) oauth.token_content_type = t.token_content_type;
+    if (oauth.use_pkce === undefined) oauth.use_pkce = t.use_pkce;
+    if (oauth.client_id === undefined && t.client_id !== null) oauth.client_id = t.client_id;
+    if (oauth.extra_token_headers === undefined && Object.keys(t.extra_headers).length > 0) {
+      oauth.extra_token_headers = { ...t.extra_headers };
     }
+    cfg.oauth = oauth;
   }
 
   // Runtime + authoring metadata.
@@ -113,6 +119,14 @@ export function enrichConnectorFromTemplate(
     config: cfg,
   };
   if (draft.dsn !== undefined) (result as CreateConnectorInput).dsn = draft.dsn;
-  if (draft.operator_notes !== undefined) result.operator_notes = draft.operator_notes;
+  // Operator notes: user input wins; template's note seeds the empty
+  // case. Templates carry endpoint-specific quirks (e.g. GitHub list-
+  // repos `type` vs `visibility`/`affiliation` mutual exclusion) that
+  // the LLM cannot infer from OpenAPI alone.
+  if (draft.operator_notes !== undefined) {
+    result.operator_notes = draft.operator_notes;
+  } else if (template.operator_notes) {
+    result.operator_notes = template.operator_notes;
+  }
   return result;
 }

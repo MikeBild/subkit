@@ -108,17 +108,30 @@ export function validateWorkflowDef(
       }
     }
     if (step.kind === "request") {
-      // A request step must either supply an absolute URL or reference a
-      // connector (plus an optional relative `path`).
+      // A request step's url field accepts three shapes:
+      //   1. absolute http(s)://...
+      //   2. ${connector.<slug>.base_url}/<path> — resolved by the
+      //      execution layer's resolveStringPlaceholders against the
+      //      named saved connector. Documented in
+      //      apps/engine/src/llm/substitution/parser.ts.
+      //   3. omitted, in which case `connector_id` (+ optional relative
+      //      `path`) is required.
+      // Pre-fix the validator only accepted shape 1 — sessions 18467df2
+      // hit `step_update_invalid` whenever the LLM wrote shape 2 even
+      // though substitution support was already there.
       if (step.url !== undefined) {
-        try {
-          if (!/^https?:\/\//.test(step.url)) {
-            throw new Error("url must start with http:// or https://");
-          }
-        } catch (e) {
+        const isAbsolute = /^https?:\/\//.test(step.url);
+        const isConnectorBaseUrlPlaceholder = /^\$\{connector\.[a-z0-9_-]+\.base_url\}(\/|$)/.test(
+          step.url,
+        );
+        if (!isAbsolute && !isConnectorBaseUrlPlaceholder) {
           errors.push({
             path: `steps.${step.id}.url`,
-            message: e instanceof Error ? e.message : String(e),
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: the
+            // operator-facing message must contain the literal placeholder
+            // syntax `${connector.<slug>.base_url}` — see substitution/parser.ts.
+            message:
+              "url must start with http(s):// OR with `${connector.<slug>.base_url}` — alternatively set `connector_id` and `path` so the driver merges base_url + path",
           });
         }
       } else if (step.connector_id === undefined) {

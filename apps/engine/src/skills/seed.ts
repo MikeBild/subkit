@@ -155,6 +155,10 @@ export async function loadSkillSeedsFromDisk(dir?: string): Promise<LoadResult> 
   const entries = await fs.readdir(resolved.resolved_dir);
   for (const name of entries) {
     if (!name.endsWith(".md")) continue;
+    // README.md (and any other doc-style file) is for humans, not the
+    // skill loader. Skip case-insensitively so contributors don't trip
+    // the missing_frontmatter parser by adding directory documentation.
+    if (name.toLowerCase() === "readme.md") continue;
     const file = path.join(resolved.resolved_dir, name);
     const raw = await fs.readFile(file, "utf8");
     const parsed = parseFrontmatter(raw, file);

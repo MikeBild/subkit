@@ -150,12 +150,13 @@ describe("connector draft tools", () => {
     expect(data.matched_template?.match_kind).toBe("url");
   });
 
-  test("URL-matched template seeds config.oauth (grant_type, client_id, token_endpoint)", async () => {
-    // Reproduces the silent break in session 351518a2: the URL match
-    // chose `appsync-cognito` (oauth2) but `connector.config` was
-    // empty `{}` — so `maybeCacheDraftCredentialFromElicitation`
-    // couldn't tell it was a Cognito flow and the form-cache helper
-    // returned null seedMode. Probe then went out unauthenticated.
+  test("URL-matched oauth2 template does NOT seed config.oauth in the draft and steers to authenticate_oauth", async () => {
+    // Post-fix (session 18467df2): start_connector_from_description
+    // no longer writes config.oauth — that's the job of the template
+    // snapshot at mint time. The bearer/PAT regression came from
+    // seeding oauth into a non-oauth2 draft and tripping strict-mode
+    // at save. The draft is now auth-shape-agnostic; the LLM is
+    // steered to authenticate_oauth via `next_phase`.
     const toolCtx = await createToolCtx();
     const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
       name: "AppSync GraphQL",
@@ -169,12 +170,41 @@ describe("connector draft tools", () => {
         auth_type: string;
         config?: Record<string, unknown>;
       };
+      next_phase?: { phase: string; next_suggested_tool: string };
     };
     expect(data.connector.template_slug).toBe("appsync-cognito");
-    const oauthCfg = data.connector.config?.oauth as Record<string, unknown> | undefined;
-    expect(oauthCfg).toBeDefined();
-    expect(oauthCfg?.grant_type).toBe("cognito_user_password");
-    expect(typeof oauthCfg?.token_endpoint).toBe("string");
+    expect(data.connector.auth_type).toBe("oauth2");
+    expect(data.connector.config?.oauth).toBeUndefined();
+    expect(data.next_phase?.phase).toBe("authenticate_connector");
+    expect(data.next_phase?.next_suggested_tool).toBe("authenticate_oauth");
+  });
+
+  test("bearer-auth GitHub draft has empty config and steers to ask_user_form", async () => {
+    // Regression guard for session 18467df2: pre-fix the GitHub
+    // template seeded config.oauth even when auth_type=bearer, and
+    // strict-mode HttpConnectorConfig rejected the persist with
+    // connector_config_invalid. Now config stays empty for bearer.
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "GitHub API",
+      description: "GitHub REST API for fetching repositories",
+      base_url: "https://api.github.com",
+      auth_type: "bearer",
+      environment: "dev",
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: {
+        template_slug: string | null;
+        auth_type: string;
+        config?: Record<string, unknown>;
+      };
+      next_phase?: { phase: string; next_suggested_tool: string };
+    };
+    expect(data.connector.template_slug).toBe("github");
+    expect(data.connector.auth_type).toBe("bearer");
+    expect(data.connector.config?.oauth).toBeUndefined();
+    expect(data.next_phase?.next_suggested_tool).toBe("ask_user_form");
   });
 
   test("start_connector_from_description short-circuits to a saved connector with the same base_url", async () => {
@@ -348,5 +378,32 @@ describe("connector draft tools", () => {
     const connector = (saved.data as { connector: { id: string; display_name: string } }).connector;
     expect(connector.display_name).toBe("Force Save API");
     expect(connector.id).toBeTruthy();
+  });
+
+  test("update_connector_draft rejects config.oauth mutation with auth_mutation_not_allowed", async () => {
+    // Regression guard: the LLM must not be able to hand-edit oauth
+    // metadata. config.oauth is owned by the template snapshot +
+    // OAuth2 client at mint time. Letting the LLM write here is what
+    // produced the bearer-with-oauth shape that strict-mode rejected.
+    const toolCtx = await createToolCtx();
+    await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "GitHub API",
+      base_url: "https://api.github.com",
+      auth_type: "bearer",
+      environment: "dev",
+    });
+    const { updateConnectorDraftTool } = await import("../update-connector-draft.ts");
+    const rejected = await updateConnectorDraftTool.execute(toolCtx.base, {
+      config: {
+        oauth: {
+          token_endpoint: "https://github.com/login/oauth/access_token",
+        },
+      },
+    });
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok === false) {
+      expect(rejected.error_code).toBe("auth_mutation_not_allowed");
+      expect(rejected.next_best_actions).toContain("authenticate_oauth");
+    }
   });
 });

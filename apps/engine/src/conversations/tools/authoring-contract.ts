@@ -9,6 +9,12 @@ function checkpointToolName(key: AuthoringCheckpointKey): string {
       return "inspect_connector_draft";
     case "connector_validated":
       return "validate_connector_draft";
+    case "connector_authenticated":
+      // The actual next-best tool depends on auth_type at runtime —
+      // use ask_user_form as the default surface; oauth2 paths get
+      // steered to authenticate_oauth via blocked_by directly in
+      // computeBlockedBy. The label here is just for stale lookups.
+      return "ask_user_form";
     case "connector_probed":
       return "probe_connector_draft";
     case "connector_persisted":

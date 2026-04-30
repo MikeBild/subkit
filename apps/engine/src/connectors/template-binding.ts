@@ -34,21 +34,30 @@ export function getConnectorCapabilities(
   return getConnectorTemplateSnapshot(connector)?.capabilities ?? null;
 }
 
+function configOAuthBlock(cfg: ConnectorConfig): Record<string, unknown> {
+  const block = cfg.oauth;
+  if (block && typeof block === "object" && !Array.isArray(block)) {
+    return block as Record<string, unknown>;
+  }
+  return {};
+}
+
 export async function resolveConnectorOAuthConfig(
   db: Db,
   tenant_id: string,
   connector: Pick<ConnectorView, "config" | "template_slug" | "template_snapshot">,
 ): Promise<OAuth2ClientConfig | null> {
   const cfg = connectorConfig(connector);
+  const o = configOAuthBlock(cfg);
   const snapshot = getConnectorTemplateSnapshot(connector);
   const templateOauth = snapshot?.oauth ?? null;
   const templateCreds = connector.template_slug
     ? await getTemplateOAuthCredentials(tenant_id, connector.template_slug, db)
     : null;
 
-  const issuer_url = nonEmptyString(cfg.issuer_url) ?? nonEmptyString(templateOauth?.issuer_url);
+  const issuer_url = nonEmptyString(o.issuer_url) ?? nonEmptyString(templateOauth?.issuer_url);
   const client_id =
-    nonEmptyString(cfg.client_id) ??
+    nonEmptyString(o.client_id) ??
     nonEmptyString(templateCreds?.client_id) ??
     nonEmptyString(templateOauth?.client_id);
   if (!issuer_url || !client_id) return null;
@@ -58,34 +67,34 @@ export async function resolveConnectorOAuthConfig(
     client_id,
   };
   const client_secret =
-    nonEmptyString(cfg.client_secret) ?? nonEmptyString(templateCreds?.client_secret);
+    nonEmptyString(o.client_secret) ?? nonEmptyString(templateCreds?.client_secret);
   if (client_secret) out.client_secret = client_secret;
   const authorization_endpoint =
-    nonEmptyString(cfg.authorization_endpoint) ??
+    nonEmptyString(o.authorization_endpoint) ??
     nonEmptyString(templateOauth?.authorization_endpoint);
   if (authorization_endpoint) out.authorization_endpoint = authorization_endpoint;
   const token_endpoint =
-    nonEmptyString(cfg.token_endpoint) ?? nonEmptyString(templateOauth?.token_endpoint);
+    nonEmptyString(o.token_endpoint) ?? nonEmptyString(templateOauth?.token_endpoint);
   if (token_endpoint) out.token_endpoint = token_endpoint;
-  const scope = nonEmptyString(cfg.scope) ?? nonEmptyString(templateOauth?.scopes);
+  const scope = nonEmptyString(o.scope) ?? nonEmptyString(templateOauth?.scopes);
   if (scope) out.scope = scope;
-  const redirect_uri = nonEmptyString(cfg.redirect_uri);
+  const redirect_uri = nonEmptyString(o.redirect_uri);
   if (redirect_uri) out.redirect_uri = redirect_uri;
-  const audience = nonEmptyString(cfg.audience);
+  const audience = nonEmptyString(o.audience);
   if (audience) out.audience = audience;
-  if (cfg.use_pkce !== undefined) out.use_pkce = cfg.use_pkce !== false;
+  if (o.use_pkce !== undefined) out.use_pkce = o.use_pkce !== false;
   else if (templateOauth) out.use_pkce = templateOauth.use_pkce;
   const token_auth_method =
-    nonEmptyString(cfg.token_auth_method) ?? nonEmptyString(templateOauth?.token_auth_method);
+    nonEmptyString(o.token_auth_method) ?? nonEmptyString(templateOauth?.token_auth_method);
   if (token_auth_method === "body" || token_auth_method === "basic_auth") {
     out.token_auth_method = token_auth_method;
   }
   const token_content_type =
-    nonEmptyString(cfg.token_content_type) ?? nonEmptyString(templateOauth?.token_content_type);
+    nonEmptyString(o.token_content_type) ?? nonEmptyString(templateOauth?.token_content_type);
   if (token_content_type === "form" || token_content_type === "json") {
     out.token_content_type = token_content_type;
   }
-  const extra_token_headers = cfg.extra_token_headers;
+  const extra_token_headers = o.extra_token_headers;
   if (
     extra_token_headers &&
     typeof extra_token_headers === "object" &&
@@ -98,7 +107,7 @@ export async function resolveConnectorOAuthConfig(
   // Grant type — drives which token-endpoint flow runs at mint /
   // refresh time. `cognito_user_password` switches the refresh-worker
   // to the AWS InitiateAuth path.
-  const grant_type = nonEmptyString(cfg.grant_type) ?? nonEmptyString(templateOauth?.grant_type);
+  const grant_type = nonEmptyString(o.grant_type) ?? nonEmptyString(templateOauth?.grant_type);
   if (
     grant_type === "authorization_code" ||
     grant_type === "client_credentials" ||

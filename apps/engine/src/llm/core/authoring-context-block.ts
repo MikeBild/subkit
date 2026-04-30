@@ -237,6 +237,7 @@ function checkpointKeysFor(summary: AuthoringSummary): AuthoringCheckpointKey[] 
     return [
       "connector_inspected",
       "connector_validated",
+      "connector_authenticated",
       "connector_probed",
       "connector_persisted",
     ];
@@ -317,11 +318,26 @@ function renderConnectorLines(draft: DraftDocument): string[] {
   return lines;
 }
 
+/**
+ * Two URL shapes are valid in a request step. The LLM picks one without
+ * guessing because both are listed up-front:
+ *   • absolute http(s)://...
+ *   • ${connector.<slug>.base_url}/<path> (resolved at execution time;
+ *     also accepted by the workflow validator)
+ * Or use `connector_id` + `path` — the driver merges base_url + path.
+ */
+const REQUEST_STEP_URL_HINT_LINES = [
+  "- Request step URL shapes (pick one, do not invent others):",
+  "  - `connector_id` + `path` (relative path, base_url merged from the connector)",
+  "  - `url: https://...` (absolute)",
+  "  - `url: ${connector.<slug>.base_url}/<path>` (resolved at execute time)",
+];
+
 function renderWorkflowLines(draft: DraftDocument): string[] {
   const workflow = draft.workflow;
   const workflowSteps = workflow.steps.length;
   if (workflowSteps === 0) {
-    return ['- Workflow draft: "(empty)" with 0 steps'];
+    return ['- Workflow draft: "(empty)" with 0 steps', ...REQUEST_STEP_URL_HINT_LINES];
   }
   const lines = [
     `- Workflow draft: "${workflow.name}"${workflow.slug ? ` (${workflow.slug})` : ""} with ${workflowSteps} step${
@@ -344,6 +360,7 @@ function renderWorkflowLines(draft: DraftDocument): string[] {
       `- Latest preview: ${preview.ok ? "ok" : "failed"}${preview.step_id ? ` (step=${preview.step_id})` : ""} — ${preview.summary}`,
     );
   }
+  lines.push(...REQUEST_STEP_URL_HINT_LINES);
   // P4: append a typed scope manifest so the LLM can cite real JSONata
   // paths instead of guessing them. Without this the assistant cycles
   // through `.data.resources`-style invented paths until the dry-run

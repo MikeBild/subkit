@@ -11,10 +11,40 @@ trigger_keywords: [create connector, new connector, add connector, add integrati
 
 # Connector Creation Guidance
 
-You are authoring a connector with the operator. Follow the loop below. Do not
-guess endpoints, do not type secrets into tool arguments, and do not abandon a
-turn just because a tool reports it is unavailable in the current state — every
-error tells you what to do next.
+You are authoring a connector with the operator. Subkit's domain has exactly
+two first-class entities: **connector** and **workflow**. Connectors are
+external systems we talk to; workflows are the multi-step recipes that call
+them. Don't conflate them.
+
+The authoring lifecycle has six discrete phases. Each phase has a single
+responsibility and a checkpoint that flips fresh when it succeeds. Skipping a
+phase produces an `*_invalid` rejection from the next gate; rerunning a phase
+is cheap.
+
+```
+find_connector  ──►  create_connector_draft  ──►  authenticate_connector
+                                                              │
+                                                              ▼
+save_workflow  ◄──  build_workflow  ◄──  test_connector  ◄────┘
+```
+
+| Phase | LLM tool | Checkpoint that flips fresh |
+|---|---|---|
+| 1. find_connector | `find_connector` (also implicit in `start_connector_from_description` when `base_url` is given) | none — short-circuits with `reused_existing` when a saved connector matches |
+| 2. create_connector_draft | `start_connector_from_description` / `start_connector_from_template` / `import_connector_from_spec` | `connector_inspected`, then `connector_validated` |
+| 3. authenticate_connector | • `auth_type=oauth2`: `save_connector_draft` first, then `authenticate_oauth`<br>• `auth_type=bearer/header/query/basic/aws_sigv4`: `ask_user_form(type=password,sensitive=true)` followed by harness auto-persist | `connector_authenticated` |
+| 4. test_connector | `probe_connector_draft` | `connector_probed` |
+| 5. build_workflow | `build_workflow` / `propose_step` / `update_param` / `edit_workflow_patch` | `workflow_inspected` → `workflow_validated` → `workflow_previewed` |
+| 6. save_workflow | `commit_draft` | `workflow_persisted` |
+
+`config.oauth` is **never** written by hand on the draft — it is owned by the
+template snapshot and the OAuth2 client at mint time. `update_connector_draft`
+will reject any payload that includes `oauth` with
+`error_code: auth_mutation_not_allowed`.
+
+Follow the loop below. Do not guess endpoints, do not type secrets into tool
+arguments, and do not abandon a turn just because a tool reports it is
+unavailable in the current state — every error tells you what to do next.
 
 ## The four facts to confirm before any tool call
 
