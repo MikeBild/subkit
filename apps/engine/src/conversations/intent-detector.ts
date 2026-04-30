@@ -78,6 +78,26 @@ const COMMIT_DRAFT_PATTERNS = [
   /\b(speichere|save|commit|persist|bewahre)\b.*\b(workflow|draft|änderungen?)/i,
 ];
 
+// "Multi-artifact" intent — the user asked for BOTH a connector AND a
+// workflow in one breath ("create a connector and a workflow ..."). When
+// the harness auto-persists the connector, the model often emits a
+// "Now let's build the workflow" closing sentence and ends the turn,
+// leaving the user to retype "yes" to continue. The step-router uses
+// this signal to force tool-calling on the step right after a
+// successful save_connector_draft auto-persist so the model proceeds
+// instead of hanging on the promise.
+const MULTI_ARTIFACT_PATTERNS = [
+  /\bconnectors?\b.{0,80}\b(and|und|plus|sowie|together with)\b.{0,40}\bworkflows?\b/i,
+  /\bworkflows?\b.{0,80}\b(and|und|plus|sowie|together with)\b.{0,40}\bconnectors?\b/i,
+];
+
+export function detectMultiArtifactIntent(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return MULTI_ARTIFACT_PATTERNS.some((p) => p.test(trimmed));
+}
+
 /** Parse the most recent user text for a strong tool intent. Returns
  *  a bare reason when no forceTool match was found. */
 export function detectUserIntent(latestUserText: string | null | undefined): DetectedIntent {

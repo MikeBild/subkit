@@ -195,3 +195,64 @@ describe("prepareStep — activeTools narrowing", () => {
     expect(decision?.activeTools).toBeUndefined();
   });
 });
+
+describe("prepareStep — multi-artifact continuation", () => {
+  // Synthesise the AI SDK step-shape the router reads — only the
+  // toolResults[].toolName / toolResults[].output.{source,ok} fields
+  // matter to `priorStepWasSuccessfulConnectorAutoPersist`.
+  function priorStep(toolName: string, output: unknown) {
+    return { toolResults: [{ toolName, output }] };
+  }
+
+  it("forces toolChoice='required' after a successful save_connector_draft auto-persist", () => {
+    const decision = prepareStep(
+      baseParams({
+        steps: [priorStep("save_connector_draft", { source: "harness_auto_persist", ok: true })],
+        signals: { multiArtifactIntent: true, stage: "connector_persisted" },
+      }),
+    );
+    expect(decision?.toolChoice).toBe("required");
+    expect(decision?.system).toMatch(/connector AND a workflow/i);
+    expect(decision?.reason).toContain("multi_artifact_continue");
+  });
+
+  it("does NOT force toolChoice when multiArtifactIntent is false", () => {
+    const decision = prepareStep(
+      baseParams({
+        steps: [priorStep("save_connector_draft", { source: "harness_auto_persist", ok: true })],
+        signals: { stage: "connector_persisted" },
+      }),
+    );
+    expect(decision?.toolChoice).toBeUndefined();
+  });
+
+  it("does NOT force toolChoice when the prior step's auto-persist FAILED", () => {
+    const decision = prepareStep(
+      baseParams({
+        steps: [priorStep("save_connector_draft", { source: "harness_auto_persist", ok: false })],
+        signals: { multiArtifactIntent: true, stage: "connector_persisted" },
+      }),
+    );
+    expect(decision?.toolChoice).toBeUndefined();
+  });
+
+  it("does NOT force toolChoice when the prior tool was an LLM-issued save (no harness source)", () => {
+    const decision = prepareStep(
+      baseParams({
+        steps: [priorStep("save_connector_draft", { ok: true })],
+        signals: { multiArtifactIntent: true, stage: "connector_persisted" },
+      }),
+    );
+    expect(decision?.toolChoice).toBeUndefined();
+  });
+
+  it("does NOT force toolChoice when there is no prior step (turn just started)", () => {
+    const decision = prepareStep(
+      baseParams({
+        steps: [],
+        signals: { multiArtifactIntent: true, stage: "idle" },
+      }),
+    );
+    expect(decision?.toolChoice).toBeUndefined();
+  });
+});

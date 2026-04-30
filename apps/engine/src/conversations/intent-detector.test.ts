@@ -11,10 +11,44 @@
 import { describe, expect, test } from "bun:test";
 import {
   detectEnvelopeResolution,
+  detectMultiArtifactIntent,
   detectUserIntent,
   inferStateDrivenFollowUpTool,
 } from "./intent-detector.ts";
 import type { AuthoringSummary } from "./types.ts";
+
+describe("detectMultiArtifactIntent", () => {
+  test("matches the canonical 'connector and a workflow' phrasing from session 1222158a", () => {
+    expect(
+      detectMultiArtifactIntent(
+        "create a connector and a workflow to by weather api without api-key for tomorrow weather forecast in berlin germany",
+      ),
+    ).toBe(true);
+  });
+
+  test("matches the reverse order ('workflow ... and a connector')", () => {
+    expect(detectMultiArtifactIntent("build a workflow and a connector for the GitHub API")).toBe(
+      true,
+    );
+  });
+
+  test("matches the German 'connector und einen workflow'", () => {
+    expect(
+      detectMultiArtifactIntent("erstelle einen connector und einen workflow für openweather"),
+    ).toBe(true);
+  });
+
+  test("returns false when only one artifact is mentioned", () => {
+    expect(detectMultiArtifactIntent("create a connector for github")).toBe(false);
+    expect(detectMultiArtifactIntent("build me a workflow that hits the API")).toBe(false);
+  });
+
+  test("returns false on empty / nullish input", () => {
+    expect(detectMultiArtifactIntent("")).toBe(false);
+    expect(detectMultiArtifactIntent(null)).toBe(false);
+    expect(detectMultiArtifactIntent(undefined)).toBe(false);
+  });
+});
 
 function summary(overrides: Partial<AuthoringSummary> = {}): AuthoringSummary {
   return {
