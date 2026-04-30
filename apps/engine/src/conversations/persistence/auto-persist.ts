@@ -38,7 +38,9 @@ import { appendSnapshot, loadDraft } from "../draft.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
 import { COMMIT_INTENT_KINDS, type CommitIntent } from "../tools/ask-user/commit-intent.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
+import { inspectConnectorDraftTool } from "../tools/inspect-connector-draft.ts";
 import { probeConnectorDraftTool } from "../tools/probe-connector-draft.ts";
+import { validateConnectorDraftTool } from "../tools/validate-connector-draft.ts";
 import { commitWorkflowAtomic } from "./commit-workflow.ts";
 import { setDraftCredential } from "./draft-credential-cache.ts";
 import { type AtomicCredentialInput, saveConnectorAtomic } from "./save-connector.ts";
@@ -179,6 +181,7 @@ export async function maybeAutoPersistFromElicitation(
         // was populated by `maybeCacheDraftCredentialFromElicitation`
         // before this dispatcher ran, so the probe sees auth.
         await maybeAutoProbeForSave(ctx, p.tenant_id);
+        await maybeAutoFreshenCheckpointsForSave(ctx);
         result = await saveConnectorAtomic({
           ctx,
           environment,
@@ -826,6 +829,44 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
  * any failure is encountered (the save will surface
  * `probe_failed`/`connector_not_ready` itself).
  */
+/**
+ * Refresh the `connector_inspected` and `connector_validated`
+ * checkpoints before save. Both are pure draft-side computations that
+ * stamp readiness onto the AuthoringState; the LLM is supposed to call
+ * them between proposing the connector and asking for save approval,
+ * but in practice it routinely skips one or both — we saw this in
+ * session 16a8f1c7 where the model went probe → ask_user_confirm and
+ * the auto-persist path bounced off `connector_not_ready` because
+ * `connector_validated` was still missing. The user then had to
+ * approve a SECOND time after the model retried through the
+ * tool-policy gate.
+ *
+ * The harness already auto-probes here; auto-inspect+auto-validate is
+ * the same idea: the operator's "yes save" click is the authority,
+ * and the engine should make sure it can act on it instead of
+ * deferring to LLM-discipline checkpoints.
+ *
+ * No-op when there is no connector draft. Failures fall through; the
+ * subsequent `saveConnectorAtomic` will surface the canonical
+ * structured error.
+ */
+async function maybeAutoFreshenCheckpointsForSave(ctx: ToolContext): Promise<void> {
+  try {
+    const draft = ctx.getDraft();
+    if (!draft.connector) return;
+    await inspectConnectorDraftTool.execute(ctx, {});
+    await validateConnectorDraftTool.execute(ctx, {});
+  } catch (err) {
+    logger.warn({
+      module: "auto-persist",
+      action: "auto_freshen_checkpoints_failed",
+      msg: "auto-inspect/validate before save failed — falling through to saveConnectorAtomic which will surface the gate error",
+      conversation_id: ctx.conversation_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function maybeAutoProbeForSave(ctx: ToolContext, tenant_id: string): Promise<void> {
   try {
     const draft = ctx.getDraft();
