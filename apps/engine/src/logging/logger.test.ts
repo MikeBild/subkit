@@ -45,4 +45,22 @@ describe("redact", () => {
     expect(out.note).not.toContain(jwt);
     expect(out.note).toContain("***REDACTED:jwt***");
   });
+
+  test("keeps the engine logger depth ceiling at 4", () => {
+    const input = {
+      level0: {
+        level1: {
+          level2: {
+            level3: {
+              level4: {
+                secret: "wf_live_very_secret_value",
+              },
+            },
+          },
+        },
+      },
+    };
+    const out = redact(input);
+    expect(JSON.stringify(out)).toContain("[depth-exceeded]");
+  });
 });
