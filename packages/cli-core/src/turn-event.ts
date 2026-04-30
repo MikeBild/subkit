@@ -424,41 +424,13 @@ function normalizeRowWidth(cells: string[], width: number): string[] {
   return [...cells, ...Array.from({ length: width - cells.length }, () => "")];
 }
 
-/**
- * Find the most recent assistant message ID — used as a fallback
- * causal anchor when a child event arrives without an explicit
- * `parent_message_id` (rare but possible in older replays).
- */
+/** Find the most recent assistant message ID. */
 function lastAssistantMessageId(state: SkSessionState): string | undefined {
   for (let i = state.messages.length - 1; i >= 0; i--) {
     const m = state.messages[i];
     if (m && m.role === "assistant" && m.id) return m.id;
   }
   return undefined;
-}
-
-function backfillAssistantAnchor(
-  state: SkSessionState,
-  assistantMessageId: string | undefined,
-): Pick<SkSessionState, "pendingElicitation" | "toolCalls"> {
-  if (!assistantMessageId) {
-    return {
-      pendingElicitation: state.pendingElicitation,
-      toolCalls: state.toolCalls,
-    };
-  }
-  return {
-    pendingElicitation:
-      state.pendingElicitation && !state.pendingElicitation.parent_message_id
-        ? {
-            ...state.pendingElicitation,
-            parent_message_id: assistantMessageId,
-          }
-        : state.pendingElicitation,
-    toolCalls: state.toolCalls.map((call) =>
-      call.parent_message_id ? call : { ...call, parent_message_id: assistantMessageId },
-    ),
-  };
 }
 
 /**
@@ -477,13 +449,6 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
         ...(parsed.parts.length > 0 ? { parts: parsed.parts } : {}),
         ...(ev.id ? { id: ev.id } : {}),
       };
-      const anchors =
-        ev.role === "assistant"
-          ? backfillAssistantAnchor(state, ev.id)
-          : {
-              pendingElicitation: state.pendingElicitation,
-              toolCalls: state.toolCalls,
-            };
       // Dedupe optimistic user echoes: when the CLI synthesised a
       // local `user` message before the engine round-trip (so the
       // operator sees their input immediately), the engine then
@@ -513,8 +478,6 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
       return {
         ...state,
         messages,
-        pendingElicitation: anchors.pendingElicitation,
-        toolCalls: anchors.toolCalls,
         streamingAssistantText: ev.role === "assistant" ? "" : state.streamingAssistantText,
       };
     }
@@ -550,7 +513,6 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
       const status: ToolStatus = isFailure ? "failed" : "done";
       const calls = [...state.toolCalls];
       const idx = calls.findIndex((c) => c.id === ev.call_id);
-      const anchor = ev.parent_message_id ?? lastAssistantMessageId(state);
       if (idx >= 0) {
         const existing = calls[idx];
         if (existing)
@@ -558,7 +520,7 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
             ...existing,
             status,
             result: ev.output,
-            ...(existing.parent_message_id ? {} : anchor ? { parent_message_id: anchor } : {}),
+            ...(existing.parent_message_id ? {} : {}),
           };
       } else {
         calls.push({
@@ -567,7 +529,7 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
           args: undefined,
           status,
           result: ev.output,
-          ...(anchor ? { parent_message_id: anchor } : {}),
+          ...(ev.parent_message_id ? { parent_message_id: ev.parent_message_id } : {}),
         });
       }
       return {
@@ -580,7 +542,6 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
       return { ...state, status: "error", validationErrors: ev.errors };
     }
     case "elicit_request": {
-      const anchor = ev.parent_message_id ?? lastAssistantMessageId(state);
       return {
         ...state,
         status: "awaiting_input",
@@ -590,13 +551,12 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
           ...(ev.tool_call_id ? { tool_call_id: ev.tool_call_id } : {}),
           summary: ev.summary,
           input: ev.input,
-          ...(anchor ? { parent_message_id: anchor } : {}),
+          ...(ev.parent_message_id ? { parent_message_id: ev.parent_message_id } : {}),
         },
       };
     }
     case "tool_call_start": {
       const input = ev.input_partial === undefined ? undefined : ev.input_partial;
-      const anchor = ev.parent_message_id ?? lastAssistantMessageId(state);
       // Starting a new tool call invalidates any stale top-level
       // validation errors emitted by the previous failed attempt. The
       // LLM is iterating; the previous draft's errors aren't the
@@ -614,7 +574,7 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
             name: ev.tool,
             args: input,
             status: "running",
-            ...(anchor ? { parent_message_id: anchor } : {}),
+            ...(ev.parent_message_id ? { parent_message_id: ev.parent_message_id } : {}),
           },
         ],
         validationErrors: [],
