@@ -102,6 +102,14 @@ export async function executeGraphQLRequest(p: {
    *  draft connector_id wouldn't resolve anyway. Mirrors the HTTP
    *  driver's `credential_override`. */
   credential_override?: DecryptedCredential | null;
+  /** Step-level headers from `request_step.headers`. Take precedence
+   *  over `cfg.default_headers` AND the connector's auth-applied
+   *  headers (so a workflow author who minted a token in step N can
+   *  forward it as `headers: { Authorization: "${scope.…}" }` to a
+   *  step N+1 graphql request). Pre-fix this slot didn't exist on the
+   *  GraphQL driver and the operator had to switch the connector
+   *  driver to `http` to work around (session 1b94070c). */
+  extra_headers?: Record<string, string>;
 }): Promise<GraphQLResponse | GraphQLNotImplementedError> {
   const start = Date.now();
   const operationName = extractOperationName(p.op.query, p.op.operation);
@@ -141,6 +149,20 @@ export async function executeGraphQLRequest(p: {
   };
   const query: Record<string, string | number | boolean> = {};
   applyAuthMaterial(p.connector, credential, headers, query);
+  // Step-level headers override the connector's auth-applied headers
+  // — same precedence as the HTTP driver's `buildRequestPlan`. The
+  // workflow author's explicit `Authorization` wins over a stale
+  // bearer token from the connector credential.
+  if (p.extra_headers) {
+    // Drop case-twin Authorization first to avoid sending two.
+    if ("Authorization" in p.extra_headers || "authorization" in p.extra_headers) {
+      delete headers.Authorization;
+      delete headers.authorization;
+    }
+    for (const [k, v] of Object.entries(p.extra_headers)) {
+      headers[k] = v;
+    }
+  }
 
   // Static query params on the connector apply to the URL too.
   const url = new URL(cfg.endpoint);
@@ -221,6 +243,7 @@ export async function query(p: {
   operation?: "query" | "mutation" | "subscription";
   fetchImpl?: typeof fetch;
   credential_override?: DecryptedCredential | null;
+  extra_headers?: Record<string, string>;
 }): Promise<GraphQLResponse | GraphQLNotImplementedError> {
   const op: GraphQLOperation = {
     operation: p.operation ?? "query",
@@ -233,6 +256,7 @@ export async function query(p: {
     connector: p.connector,
     op,
   };
+  if (p.extra_headers !== undefined) args.extra_headers = p.extra_headers;
   if (p.fetchImpl !== undefined) args.fetchImpl = p.fetchImpl;
   if (p.credential_override !== undefined) args.credential_override = p.credential_override;
   return await executeGraphQLRequest(args);

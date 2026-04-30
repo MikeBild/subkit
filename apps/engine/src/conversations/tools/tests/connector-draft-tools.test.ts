@@ -177,6 +177,47 @@ describe("connector draft tools", () => {
     expect(typeof oauthCfg?.token_endpoint).toBe("string");
   });
 
+  test("start_connector_from_description short-circuits to a saved connector with the same base_url", async () => {
+    // Reproduces session 1b94070c: operator already saved an
+    // appsync-graphql connector in a prior session; in a fresh
+    // session pastes the same URL. Pre-fix the LLM created a NEW
+    // draft (`aws-appsync-discovery`), lost the cached creds, and
+    // the operator re-typed the password. Now we surface the
+    // existing connector so the LLM reuses it.
+    const toolCtx = await createToolCtx();
+    // Persist a "prior session" connector at the same URL.
+    const { createConnector } = await import("../../../connectors/service.ts");
+    const saved = await createConnector(
+      {
+        tenant_id: toolCtx.base.tenant_id,
+        input: {
+          name: "Saved AppSync",
+          driver: "graphql",
+          environment: "dev",
+          base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+          auth_type: "oauth2",
+          config: {},
+        },
+        actor_id: null,
+      },
+      toolCtx.base.db,
+    );
+
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "AWS AppSync Discovery", // different name — but same URL
+      base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+      environment: "dev",
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      reused_existing: boolean;
+      connector: { id: string; slug: string };
+    };
+    expect(data.reused_existing).toBe(true);
+    expect(data.connector.id).toBe(saved.id);
+    expect(data.connector.slug).toBe("saved-appsync");
+  });
+
   test("URL match still wins when LLM mis-guesses auth_type as aws_sigv4", async () => {
     // Reproduces the regression in session 3f81fb2a. The LLM sees an
     // AppSync hostname and unconditionally guesses `aws_sigv4`. URL
@@ -190,7 +231,7 @@ describe("connector draft tools", () => {
     const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
       name: "AWS AppSync GraphQL",
       description: "AWS AppSync GraphQL endpoint",
-      base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+      base_url: "https://sigv4test.appsync-api.us-east-1.amazonaws.com/graphql",
       environment: "dev",
       auth_type: "aws_sigv4", // mis-guess — operator actually has user+pass
     });
@@ -215,7 +256,7 @@ describe("connector draft tools", () => {
     const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
       name: "AWS AppSync GraphQL",
       description: "AWS AppSync GraphQL endpoint",
-      base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+      base_url: "https://bearertest.appsync-api.ap-southeast-1.amazonaws.com/graphql",
       environment: "dev",
       auth_type: "bearer", // not in either appsync template's auth_options
     });

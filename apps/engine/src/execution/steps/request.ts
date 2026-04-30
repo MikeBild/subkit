@@ -602,6 +602,18 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           if (p.step.graphql.operation !== undefined) {
             args.operation = p.step.graphql.operation;
           }
+          // Step-level headers — placeholder-resolved upstream into
+          // `resolvedStepHeaders`. Pre-fix the GraphQL driver path
+          // ignored them entirely so a workflow that minted a token
+          // in step N and forwarded it as
+          // `headers: { Authorization: "${scope.…}" }` to step N+1
+          // saw the explicit header dropped silently. The operator
+          // had to switch the connector driver from `graphql` to
+          // `http` and rebuild the body shape (~5 extra preview
+          // rounds in session 1b94070c).
+          if (Object.keys(resolvedStepHeaders).length > 0) {
+            args.extra_headers = resolvedStepHeaders;
+          }
           const cfg = (connector.config ?? {}) as { endpoint?: unknown };
           const endpointUrl =
             typeof cfg.endpoint === "string" && cfg.endpoint.length > 0
