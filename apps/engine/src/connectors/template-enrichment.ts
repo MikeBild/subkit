@@ -41,7 +41,7 @@ function resolveBaseUrl(
   draftBaseUrl: string | null | undefined,
   template: ConnectorTemplate,
   opts: EnrichmentOptions | undefined,
-): string {
+): string | null {
   if (!isEmpty(draftBaseUrl)) return draftBaseUrl as string;
   const options = template.base_url_options;
   if (opts?.environment) {
@@ -50,6 +50,9 @@ function resolveBaseUrl(
   }
   const first = options[0];
   if (first) return first.base_url;
+  // template.base_url may legitimately be null for per-tenant templates
+  // (AppSync, GCP service accounts) — caller is expected to surface a
+  // missing-URL prompt to the operator.
   return template.base_url;
 }
 
@@ -96,12 +99,15 @@ export function enrichConnectorFromTemplate(
   if (cfg.capabilities === undefined) cfg.capabilities = template.capabilities;
   if (cfg.credential_hints === undefined) cfg.credential_hints = template.credential_hints;
 
+  const baseUrl = resolveBaseUrl(draft.base_url, template, opts);
   const result: CreateConnectorInput = {
     name: draft.name ?? template.name,
     slug: draft.slug ?? template.slug,
     driver: (draft.driver as DriverName | undefined) ?? template.driver,
     environment: draft.environment ?? "dev",
-    base_url: resolveBaseUrl(draft.base_url, template, opts),
+    // null → undefined so the optional field stays unset rather than
+    // serialising to a literal `"base_url": null` in the draft.
+    ...(baseUrl !== null ? { base_url: baseUrl } : {}),
     auth_type:
       (draft.auth_type as CreateConnectorInput["auth_type"] | undefined) ?? template.auth_type,
     config: cfg,

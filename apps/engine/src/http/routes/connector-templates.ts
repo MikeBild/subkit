@@ -470,11 +470,16 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
         slug: body.slug,
         name: body.name,
         driver: body.driver,
-        base_url: body.base_url,
+        // base_url / url_pattern / ingestion_source are nullable in the
+        // builtin-template Zod schema (per-tenant templates like AppSync
+        // don't ship a fixed URL); the DB column is still non-null today,
+        // so coalesce to empty string to keep tenant-template inserts
+        // working until the DB migration relaxes the constraint.
+        base_url: body.base_url ?? "",
         auth_type: body.auth_type,
         oauth: body.oauth ?? null,
         default_skill: body.default_skill ?? null,
-        ingestion_source: body.ingestion_source,
+        ingestion_source: body.ingestion_source ?? "unsupported",
         ingestion_url: body.ingestion_url ?? null,
         icon: body.icon,
         description: body.description,
@@ -484,7 +489,7 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
         setup_instructions: body.setup_instructions,
         auth_options: body.auth_options ?? [],
         version: 1,
-        url_pattern: body.url_pattern,
+        url_pattern: body.url_pattern ?? "",
         keywords: body.keywords ?? [],
         inline_schema: body.inline_schema ?? null,
         probe_endpoint: body.probe_endpoint ?? null,

@@ -16,8 +16,14 @@ describe("connector-template catalog — structural", () => {
     expect(templates.length).toBeGreaterThanOrEqual(10);
   });
 
-  test("ships 90 templates", () => {
-    expect(templates.length).toBe(90);
+  test("ships 94 templates", () => {
+    // Bump this counter when adding/removing built-in templates. Pre-fix
+    // we shipped four AppSync/AWS/GCP entries that the runtime
+    // ConnectorTemplateSchema rejected at first-tool-invocation
+    // (`templates.json validation failed: 90.base_url …`); the schema
+    // and JSON were drifting — startup `loadBuiltinTemplates()` is the
+    // canonical guard for that drift, exercised by this suite.
+    expect(templates.length).toBe(94);
   });
 
   test("every slug matches the lowercase-kebab regex", () => {
@@ -67,9 +73,10 @@ describe("connector-template catalog — cross-reference invariants", () => {
     }
   });
 
-  test("url_pattern compiles as a regex", () => {
+  test("url_pattern compiles as a regex when present", () => {
     for (const t of templates) {
-      expect(() => new RegExp(t.url_pattern)).not.toThrow();
+      if (t.url_pattern === null) continue; // per-tenant templates skip URL match
+      expect(() => new RegExp(t.url_pattern as string)).not.toThrow();
     }
   });
 

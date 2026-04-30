@@ -36,8 +36,8 @@ function compileTemplates(templates: ConnectorTemplate[]) {
     if (builtin && builtin.template.url_pattern === template.url_pattern) return builtin;
     return {
       template,
-      urlRe: new RegExp(template.url_pattern),
-      specificity: computeSpecificity(template.url_pattern),
+      urlRe: template.url_pattern ? new RegExp(template.url_pattern) : null,
+      specificity: template.url_pattern ? computeSpecificity(template.url_pattern) : 0,
     };
   });
 }
@@ -46,6 +46,8 @@ function rank(rawUrl: string, templates?: ConnectorTemplate[]): TemplateUrlMatch
   const compiled = templates ? compileTemplates(templates) : loadCompiledTemplates();
   const out: TemplateUrlMatch[] = [];
   for (const { template, urlRe, specificity } of compiled) {
+    // Templates without a url_pattern are unreachable via URL match.
+    if (!urlRe) continue;
     const m = urlRe.exec(rawUrl);
     if (!m) continue;
     out.push({
