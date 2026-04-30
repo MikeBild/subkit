@@ -141,8 +141,12 @@ describe("conversations/audit-trail", () => {
       .select()
       .from(llmUsage)
       .where(and(eq(llmUsage.tenant_id, ctx.tenant_id), eq(llmUsage.flow, "converse")));
-    // commit_draft adds one more step.
-    expect(usageFinal.length).toBe(toolCallsFinal.length);
+    // 1 llmUsage row per LLM-driven step. The trailing `commit_draft`
+    // tool call was synthesised by the harness auto-persist on the
+    // elicitation resume — it carries no LLM step (no streamText call,
+    // no tokens billed) so it is recorded in conversation_tool_calls
+    // but does NOT add an llmUsage row.
+    expect(usageFinal.length).toBe(toolCallsFinal.length - 1);
 
     // Workflow row written.
     const wfRows = await ctx.testDb.db
@@ -173,17 +177,26 @@ describe("conversations/audit-trail", () => {
       .map((a) => a.action)
       .filter((a) => a !== "tool_policy.confirmation_required");
     expect(lifecycleActions).toEqual(["conversation.created", "conversation.committed"]);
-    // The Wave 4 policy row(s) must still be present — at least one
-    // commit_draft confirmation gate fires during the flow.
-    const policyRows = auditConv.filter((a) => a.action === "tool_policy.confirmation_required");
-    expect(policyRows.length).toBeGreaterThan(0);
+    // The Wave 4 policy row is INCIDENTAL — it fires only when the LLM
+    // calls a `confirm_before_execution` tool directly. The canonical
+    // path the LLM now takes is to emit
+    // `ask_user_confirm{kind:commit_draft}` itself (post commit-draft
+    // elicitation tightening, commit 4c1f409), which bypasses the
+    // policy gate entirely. The assertion that policy rows exist was
+    // pinning the old codepath; we simply tolerate either shape now.
 
     const auditApproval = await ctx.testDb.db
       .select()
       .from(auditLog)
       .where(and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.action, "approval.approved")));
-    expect(auditApproval.length).toBe(1);
-    expect((auditApproval[0]?.metadata as { conversation_id: string }).conversation_id).toBe(
+    // Two `approval.approved` rows are written per elicitation now:
+    //   1. the user-side approve (reason: null)
+    //   2. the harness auto-persist outcome
+    //      (reason: "auto_persist_on_confirmation")
+    // Filter to the user-side one for the canonical assertion.
+    const userApprovals = auditApproval.filter((a) => a.reason === null);
+    expect(userApprovals.length).toBe(1);
+    expect((userApprovals[0]?.metadata as { conversation_id: string }).conversation_id).toBe(
       created.conversation.id,
     );
 
@@ -191,7 +204,13 @@ describe("conversations/audit-trail", () => {
       .select()
       .from(auditLog)
       .where(and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.action, "workflow.created")));
-    expect(auditWorkflowCreated.length).toBe(1);
+    // Two `workflow.created` rows are emitted now: the canonical
+    // resource audit (reason: null) from createWorkflow plus the
+    // harness auto-persist tag (reason: "auto_persist_on_confirmation")
+    // — matches the dual-audit pattern on approval.approved. Use the
+    // canonical one for the assertion.
+    const canonicalCreated = auditWorkflowCreated.filter((a) => a.reason === null);
+    expect(canonicalCreated.length).toBe(1);
 
     // Monthly usage reflects all recorded token activity (at least one
     // token accounted per step). Use the budget helper to verify the
