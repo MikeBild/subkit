@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "subkit engine",
-    "version": "3.2.0",
+    "version": "0.0.0-dev",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec."
   },
   "components": {
