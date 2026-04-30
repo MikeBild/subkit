@@ -138,6 +138,27 @@ export function validateWorkflowDef(
           message: "request step must specify url or connector_id",
         });
       }
+      // Redundant Authorization header check. When a request step has
+      // `connector_id` set, the driver injects auth from the saved
+      // connector at execution time. An explicit `Authorization`
+      // header in `step.headers` overrides that — and the LLM
+      // routinely fills it with a placeholder like
+      // `Bearer ${cred.<slug>.token}` (session 1222158a, repeatedly).
+      // Those placeholders don't expand reliably against the
+      // resolved-credential namespace, so the runtime sends the
+      // literal string and the upstream API returns 401. Catch it at
+      // authoring time so the LLM sees a typed error before dry_run.
+      if (step.connector_id !== undefined && step.headers && typeof step.headers === "object") {
+        const headerKeys = Object.keys(step.headers);
+        const authKey = headerKeys.find((k) => k.toLowerCase() === "authorization");
+        if (authKey !== undefined) {
+          errors.push({
+            path: `steps.${step.id}.headers.${authKey}`,
+            message:
+              "do not set an Authorization header on a request step that has connector_id — the connector injects auth from its saved credential. Remove the header (the connector's auth_type drives Authorization automatically).",
+          });
+        }
+      }
     }
     if (step.kind === "transform" && (step.language ?? "jsonata") === "jsonata") {
       try {
