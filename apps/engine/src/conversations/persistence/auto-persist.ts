@@ -704,15 +704,46 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
   try {
     const draft = await loadDraft(p.tenant_id, p.conversation_id, p.db);
     const authType = draft.connector?.auth_type ?? null;
+    // Translate the connector's auth_type into the seed-mode the
+    // extractor expects. Pre-fix this gate only let
+    // `bearer/basic/header/query` through, silently dropping the
+    // form submission for `oauth2 / cognito_user_password` and
+    // `aws_sigv4` drafts — that's why the AppSync probe in session
+    // f244b896 went out unauthenticated even after the operator
+    // submitted the form three times.
+    let seedMode: string | null = null;
     if (
-      authType !== "bearer" &&
-      authType !== "basic" &&
-      authType !== "header" &&
-      authType !== "query"
+      authType === "bearer" ||
+      authType === "basic" ||
+      authType === "header" ||
+      authType === "query"
     ) {
-      return;
+      seedMode = authType;
+    } else if (authType === "oauth2") {
+      const cfg = (draft.connector?.config ?? {}) as { oauth?: { grant_type?: unknown } };
+      const grantType = cfg.oauth?.grant_type;
+      if (grantType === "cognito_user_password") seedMode = "cognito_user_password";
+      else if (grantType === "password") seedMode = "basic"; // RFC 6749 §4.3 reuses basic shape
+    } else if (authType === "aws_sigv4") {
+      seedMode = "aws_sigv4";
     }
-    const credential = extractCredentialFromFormOutput(authType, {}, p.elicitation_output);
+    if (!seedMode) return;
+    // For oauth2/cognito the connector config carries region + client_id;
+    // pass them as seed overrides so the extractor doesn't have to
+    // re-parse them out of the form fields when they were already set.
+    const cfg = (draft.connector?.config ?? {}) as {
+      aws_region?: unknown;
+      oauth?: { client_id?: unknown };
+    };
+    const oauthCfg = (cfg.oauth ?? {}) as { client_id?: unknown };
+    const seedOverrides: Record<string, unknown> = {};
+    if (typeof cfg.aws_region === "string") seedOverrides.aws_region = cfg.aws_region;
+    if (typeof oauthCfg.client_id === "string") seedOverrides.client_id = oauthCfg.client_id;
+    const credential = extractCredentialFromFormOutput(
+      seedMode,
+      seedOverrides,
+      p.elicitation_output,
+    );
     if (!credential) return;
     setDraftCredential(p.conversation_id, credential);
     logger.info({
