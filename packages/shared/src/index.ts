@@ -7,6 +7,14 @@ export {
   ConnectorOperationError,
   isConnectorOperationError,
 } from "./connector-operation-error.ts";
+export type { SecretKind, SecretPattern } from "./redaction.ts";
+export {
+  redactWithMaxDepth,
+  SECRET_PATTERNS,
+  SENSITIVE_KEY_PATTERN,
+  scrubSecrets,
+  scrubString,
+} from "./redaction.ts";
 export type {
   RoundtripResult,
   ValidationIssue,
