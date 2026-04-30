@@ -4,14 +4,14 @@ scope: global
 title: Authoring-Time Error Recovery
 description: Canonical tool-error shape and recovery routine for errors that surface WHILE the assistant is building a connector or workflow in a conversation. For failures of workflows that have already been committed and run, see `troubleshooting-workflow-failures`.
 gates_tools: []
-version: 2
+version: 3
 auto_load: true
 trigger_keywords: [error, failed, failure, broken, debug, fix, http_4xx, http_5xx, 4xx, 5xx, 400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, placeholder_unresolved, permission_denied, validation_failed, step_timeout, filter_fail, connector_not_found, ok false, tool error]
 ---
 
 # Error Recovery
 
-Tools in subkit return a uniform error envelope when they fail. This skill is
+Tools in sk return a uniform error envelope when they fail. This skill is
 the playbook: how to read it, how to diagnose, and how to fix without
 thrashing.
 
@@ -61,7 +61,7 @@ or `details.body`.
 
 Based on the code:
 
-- `placeholder_unresolved` → `load_skill("subkit-concepts")` to re-check token
+- `placeholder_unresolved` → `load_skill("sk-concepts")` to re-check token
   shapes, or the relevant driver skill if the token refers to a connector.
 - `http_4xx` / `http_5xx` → `load_skill("http-connectors")`.
 - Postgres error → `load_skill("postgres-connectors")`.
@@ -158,7 +158,7 @@ have cost another round-trip guessing `closedate_unix` or similar.
 
 ## See also
 
-- `subkit-concepts.md` — placeholder tokens and scope paths.
+- `sk-concepts.md` — placeholder tokens and scope paths.
 - `workflow-authoring.md` — the six-phase authoring flow (probe is step 3).
 - `self-healing.md` — how repeated failures become patch candidates.
 - `rbac-and-scopes.md` — `permission_denied` recovery.

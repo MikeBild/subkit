@@ -9,6 +9,7 @@
 
 import type { FilePart, ImagePart, ModelMessage, TextPart } from "ai";
 import { asc, eq } from "drizzle-orm";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import {
   conversationAttachments,
@@ -113,7 +114,7 @@ export async function appendMessage(
     .insert(conversationMessages)
     .values({ tenant_id, conversation_id, role, content: content as Record<string, unknown> })
     .returning({ id: conversationMessages.id });
-  if (!row) throw new Error("conversation_messages insert returned no row");
+  assertInsertRow(row, "conversation_messages");
   return row.id;
 }
 
@@ -137,7 +138,7 @@ export async function insertToolCall(
       approval_required: params.approval_required,
     })
     .returning({ id: conversationToolCalls.id });
-  if (!row) throw new Error("conversation_tool_calls insert returned no row");
+  assertInsertRow(row, "conversation_tool_calls");
   return row.id;
 }
 

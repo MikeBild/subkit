@@ -5,6 +5,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
@@ -220,7 +221,7 @@ export async function createConnector(
       })
       .returning();
     const row = inserted[0];
-    if (!row) throw new Error("connectors insert returned no row");
+    assertInsertRow(row, "connectors");
     await auditAwait(
       {
         tenant_id: p.tenant_id,

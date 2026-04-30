@@ -9,7 +9,6 @@
 // languages — JSONata races against an abort signal; JavaScript races
 // against the QuickJS wall-clock budget plus the same abort signal.
 
-import jsonata from "jsonata";
 import { logger } from "../../logging/logger.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import {
@@ -21,6 +20,7 @@ import { extractStepIdReferences, suggestClosest } from "../../workflows/levensh
 import type { TransformStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
 import { buildJsonataBindings } from "../jsonata-bindings.ts";
+import { compile as compileJsonata, extractAst } from "../jsonata-engine.ts";
 import { TRANSFORM_TIMEOUT_DEFAULT_MS } from "../timeouts.ts";
 import type { StepResult, StepRunContext, StepWarning } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
@@ -285,13 +285,8 @@ function detectUnresolvedIdentifiers(
   scope: Record<string, unknown>,
   bindings: Record<string, unknown>,
 ): StepWarning[] {
-  let ast: AstNode;
-  try {
-    // biome-ignore lint/suspicious/noExplicitAny: jsonata's .ast() is untyped.
-    ast = (jsonata(expression) as any).ast() as AstNode;
-  } catch {
-    return [];
-  }
+  const ast = extractAst(expression) as AstNode | null;
+  if (!ast) return [];
   const known = new Set<string>();
   for (const k of Object.keys(scope)) known.add(k);
   for (const k of Object.keys(bindings)) known.add(`$${k}`);
@@ -371,7 +366,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
         duration_ms: Date.now() - start,
       };
     }
-    const expr = jsonata(p.step.expression);
+    const expr = compileJsonata(p.step.expression);
     // Bindings available inside the expression:
     //   $input     — the execution input (same object the workflow was
     //                invoked with).

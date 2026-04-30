@@ -19,7 +19,7 @@
 // narrow safe palette, so a successful projection is the last
 // signal the engine needs before auto-applying.
 
-import jsonata from "jsonata";
+import { evaluate as evaluateJsonata } from "../execution/jsonata-engine.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import type { DryRunFixture, DryRunResult, DryRunStep } from "./types.ts";
 
@@ -87,8 +87,7 @@ export async function runFixtureDryRun(p: FixtureRunParams): Promise<DryRunResul
     const expr = patched.expression;
     if (!expr) return { ok: false, error: "transform step has no expression" };
     try {
-      const compiled = jsonata(expr);
-      const value = await compiled.evaluate(body);
+      const value = await evaluateJsonata(expr, body);
       if (value === undefined) {
         return { ok: false, error: `transform expression '${expr}' resolved to undefined` };
       }
@@ -107,8 +106,7 @@ export async function runFixtureDryRun(p: FixtureRunParams): Promise<DryRunResul
     return { ok: true, value: body };
   }
   try {
-    const compiled = jsonata(selector);
-    const value = await compiled.evaluate(body);
+    const value = await evaluateJsonata(selector, body);
     if (value === undefined) {
       return { ok: false, error: `data_selector '${selector}' resolved to undefined` };
     }

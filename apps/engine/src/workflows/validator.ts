@@ -13,7 +13,7 @@
 // onto `RunResult.warnings` and trigger the `partial_success` gate in
 // `run-workflow.ts` that refuses the commit.
 
-import jsonata from "jsonata";
+import { compile as compileJsonata } from "../execution/jsonata-engine.ts";
 import { compileSelector } from "../execution/selectors.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
@@ -130,7 +130,7 @@ export function validateWorkflowDef(
     }
     if (step.kind === "transform" && (step.language ?? "jsonata") === "jsonata") {
       try {
-        jsonata(step.expression);
+        compileJsonata(step.expression);
       } catch (e) {
         errors.push({
           path: `steps.${step.id}.expression`,

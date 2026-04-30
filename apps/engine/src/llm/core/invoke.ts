@@ -43,6 +43,7 @@ import type { SubkitLlmMessage } from "./base-types.ts";
 import { toSystemMessages } from "./cache-blocks.ts";
 import { type AssembledContext, assembleContext } from "./context-assembler.ts";
 import { detectConfiguredProvider, initializeModel } from "./model-init.ts";
+import { safeParseJson } from "./safe-json.ts";
 import { account } from "./token-accountant.ts";
 
 /**
@@ -634,19 +635,18 @@ async function dispatchReal<T>(
 }
 
 function extractJson<T>(text: string): T | undefined {
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    // Fall through.
-  }
+  // 1) raw text via safeParseJson (raw parse → jsonrepair fallback).
+  const direct = safeParseJson<T>(text);
+  if (direct !== undefined) return direct;
+
+  // 2) fenced ```json ...``` block.
   const fenceMatch = text.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
   if (fenceMatch?.[1]) {
-    try {
-      return JSON.parse(fenceMatch[1]) as T;
-    } catch {
-      // Fall through.
-    }
+    const fenced = safeParseJson<T>(fenceMatch[1]);
+    if (fenced !== undefined) return fenced;
   }
+
+  // 3) brace / bracket-balanced slice — last resort for prose-wrapped JSON.
   const braceStart = text.indexOf("{");
   const bracketStart = text.indexOf("[");
   const start =
@@ -656,11 +656,8 @@ function extractJson<T>(text: string): T | undefined {
     const close = open === "{" ? "}" : "]";
     const end = text.lastIndexOf(close);
     if (end > start) {
-      try {
-        return JSON.parse(text.slice(start, end + 1)) as T;
-      } catch {
-        // Give up.
-      }
+      const sliced = safeParseJson<T>(text.slice(start, end + 1));
+      if (sliced !== undefined) return sliced;
     }
   }
   return undefined;

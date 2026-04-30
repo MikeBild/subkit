@@ -12,6 +12,7 @@ import type { PgBoss } from "pg-boss";
 import { audit, auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../../crypto/aes-gcm.ts";
+import { assertInsertRow } from "../../db/assert-insert.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { webhooksInbound, workflows } from "../../db/schema/index.ts";
 import { createExecution } from "../../execution/state.ts";
@@ -98,7 +99,7 @@ export async function createInbound(
       })
       .returning();
     const row = inserted[0];
-    if (!row) throw new Error("webhooks_inbound insert returned no row");
+    assertInsertRow(row, "webhooks_inbound");
     const payload = encryptSecret(input.secret, aadFor(input.tenant_id, row.id));
     const updated = await tx
       .update(webhooksInbound)

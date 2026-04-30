@@ -7,6 +7,7 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import {
   conversationElicitations,
@@ -21,6 +22,7 @@ import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { appendSnapshot, loadDraft, undoLastSnapshot } from "./draft.ts";
 import { type RunLoopResult, runLoop } from "./loop.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "./resume.ts";
+import { BASELINE_SKILLS } from "./skill-autoload.ts";
 import type {
   ConversationDetail,
   ConversationMessageRecord,
@@ -197,12 +199,17 @@ export async function createConversation(
       status: "active",
       draft: initialDraft,
       owner_id: p.actor_id ?? null,
+      // Seed every conversation with the baseline skills so the LLM
+      // has the core mental model (sk concepts + error recovery) on
+      // turn one. Per-tool autoload (`shouldAutoloadSkillsForTool`)
+      // appends domain-specific skills as the conversation evolves.
+      loaded_skills: [...BASELINE_SKILLS],
       ...(p.model ? { model: p.model } : {}),
       ...(p.title ? { title: p.title } : {}),
       ...(memory ? { memory } : {}),
     })
     .returning();
-  if (!row) throw new Error("conversations insert returned no row");
+  assertInsertRow(row, "conversations");
 
   log.conversation.created({
     conversation_id: row.id,

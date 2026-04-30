@@ -2,11 +2,11 @@
 // the chosen arm as the output. The engine consumer reads `output.arm` and
 // `output.next` to decide which downstream step ids to skip.
 
-import jsonata from "jsonata";
 import { logger } from "../../logging/logger.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { BranchStep } from "../../workflows/types.ts";
 import { buildJsonataBindings } from "../jsonata-bindings.ts";
+import { compile as compileJsonata } from "../jsonata-engine.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
 
@@ -17,7 +17,7 @@ export async function runBranchStep(p: {
 }): Promise<StepResult> {
   const start = Date.now();
   try {
-    const expr = jsonata(p.step.when);
+    const expr = compileJsonata(p.step.when);
     // Same binding surface as transform.expression and loop.over —
     // `$scope.<id>.data` reads identically across every author site.
     const bindings = buildJsonataBindings(p.scope, (p.scope as { $input?: unknown }).$input);

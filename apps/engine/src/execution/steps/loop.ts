@@ -2,12 +2,12 @@
 // In P3 we only support a `transform`-shaped body via JSONata —
 // engine.ts will call this driver and merge the results array.
 
-import jsonata from "jsonata";
 import { logger } from "../../logging/logger.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { LoopStep } from "../../workflows/types.ts";
 import { buildJsonataBindings } from "../jsonata-bindings.ts";
+import { compile as compileJsonata } from "../jsonata-engine.ts";
 import { applySelector } from "../selectors.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
@@ -91,7 +91,7 @@ export async function runLoopStep(p: {
         // skill-documented `$scope.<id>.data` contract every other
         // author-written JSONata site does.
         const bindings = buildJsonataBindings(p.scope, (p.scope as { $input?: unknown }).$input);
-        collection = await jsonata(p.step.over).evaluate(p.scope, bindings);
+        collection = await compileJsonata(p.step.over).evaluate(p.scope, bindings);
       }
     } else {
       // Schema refine prevents this, but keep a defensive branch.

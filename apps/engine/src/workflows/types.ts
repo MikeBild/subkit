@@ -654,6 +654,19 @@ const _baseWorkflowDefSchema = z.object({
    * `outputTransform` arrow-function form.
    */
   output_transform_function: z.string().min(1).optional(),
+  /**
+   * Optional response filters applied to the FINAL workflow output
+   * (post `output_transform` / `output_transform_function`). Mirrors
+   * the reference impl's workflow-level `responseFilters` — masks PII
+   * or strips internal-only fields from the payload that crosses the
+   * tenant boundary, regardless of which step produced them.
+   *
+   * Per-request filters declared on `RequestStep.response_filters`
+   * still operate at step-execution time (mid-pipeline cleanup);
+   * workflow-level filters are the last step before the public
+   * payload is returned to the caller.
+   */
+  response_filters: z.array(ResponseFilterSchema).optional(),
   steps: z.array(StepSchema).min(1).max(200),
   timeout_ms: z.number().int().positive().optional(),
   runtime: WorkflowRuntimeSchema.optional(),

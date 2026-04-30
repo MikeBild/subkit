@@ -4,7 +4,7 @@ scope: global
 title: Connector Creation Guidance
 description: Authoring contract for creating a NEW connector in a conversation. Covers the discover-before-probe loop, the masked-form credential path, the harness's auto-persist on confirmation, and the structured `next_best_actions` error envelope. Loaded on creation-intent keywords only — not on every mention of `api` or `http`. Driver-level detail still lives in the per-protocol skills (`http-connectors`, `graphql-connectors`, `postgres-connectors`, `s3-connectors`).
 gates_tools: []
-version: 3
+version: 4
 auto_load: true
 trigger_keywords: [create connector, new connector, add connector, add integration, new integration, set up integration, configure connector, start connector, start_connector_from_description, start_connector_from_template, wire up, hook up]
 ---
@@ -246,7 +246,7 @@ auth headers manually.
 
 ## See also
 
-- `subkit-concepts.md` — placeholder grammar, envelope shape.
+- `sk-concepts.md` — placeholder grammar, envelope shape.
 - `http-connectors.md` — driver specifics, pagination modes, retry semantics.
 - `oauth-flow.md` — the two-phase OAuth2 dance.
 - `error-recovery.md` — typed error codes beyond connector creation.

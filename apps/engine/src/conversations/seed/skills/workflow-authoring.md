@@ -2,9 +2,9 @@
 slug: workflow-authoring
 scope: global
 title: Authoring Workflows In A Conversation
-description: The canonical recipe for turning a user intent into a committed subkit workflow draft.
+description: The canonical recipe for turning a user intent into a committed sk workflow draft.
 gates_tools: []
-version: 1
+version: 2
 ---
 
 # Authoring Workflows In A Conversation
@@ -212,7 +212,7 @@ until every referenced id exists. Order matters for two reasons:
 
 If you find yourself thinking "I'll add the loop and fill in the body
 next," stop and write the body step first instead. The reference impl
-ships the whole tool at once via `build_tool`; subkit's incremental
+ships the whole tool at once via `build_tool`; sk's incremental
 flow now tolerates the dependency-inverted shape, but the author who
 writes body-then-loop is shorter by 1–2 round-trips and never sees a
 red `unknown loop body target` banner.
@@ -580,6 +580,6 @@ Prefer the stdlib over raw comparisons so hook + transform code stays uniform.
 
 ## See also
 
-- `subkit-concepts.md` — the envelope and placeholder tokens.
+- `sk-concepts.md` — the envelope and placeholder tokens.
 - `data-handling.md` — JSONata cheatsheet and reshaping patterns.
 - `error-recovery.md` — recovering from tool errors mid-conversation.

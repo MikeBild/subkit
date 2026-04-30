@@ -4,7 +4,7 @@ scope: global
 title: Postgres Connectors
 description: Driver specifics for Postgres — DSN, parametrised queries, and why workflow-level transactions don't exist.
 gates_tools: []
-version: 2
+version: 3
 ---
 
 # Postgres Connectors
@@ -315,6 +315,6 @@ after a migration.
 
 ## See also
 
-- `subkit-concepts.md` — envelope fields for SQL rows.
+- `sk-concepts.md` — envelope fields for SQL rows.
 - `rbac-and-scopes.md` — who can author workflows that write to production DBs.
 - `error-recovery.md` — handling Postgres errors (23505 unique violation, etc.).

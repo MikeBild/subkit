@@ -15,7 +15,6 @@
 // request_source='tool-chain' and depth+1.
 
 import { and, eq, isNull } from "drizzle-orm";
-import jsonata from "jsonata";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
@@ -34,10 +33,11 @@ import {
   type WorkflowDef,
   WorkflowDefSchema,
 } from "../workflows/types.ts";
-
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
+import { evaluate as evaluateJsonata } from "./jsonata-engine.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
+import { applyResponseFilters } from "./response-filter.ts";
 import {
   createExecution,
   finalizeExecution,
@@ -629,8 +629,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   if (lastOutput !== undefined && finalStatus === "succeeded") {
     if (def.output_transform) {
       try {
-        const expr = jsonata(def.output_transform);
-        const transformed = await expr.evaluate(lastOutput);
+        const transformed = await evaluateJsonata(def.output_transform, lastOutput);
         if (transformed !== undefined) lastOutput = transformed;
       } catch (err) {
         logger.warn({
@@ -674,6 +673,37 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     }
   }
 
+  // Workflow-level response filters. Run AFTER output_transform so the
+  // operator-defined transform shapes the payload first, then filters
+  // mask/redact/strip — same order as the reference impl's
+  // `applyResponseFilters` step at the end of `workflow-executor.ts`.
+  // Per-step filters on individual `RequestStep.response_filters`
+  // already cleaned each step's HTTP response inline; this layer is
+  // the last gate before the payload crosses the tenant boundary.
+  if (
+    def.response_filters &&
+    def.response_filters.length > 0 &&
+    lastOutput !== undefined &&
+    finalStatus === "succeeded"
+  ) {
+    try {
+      lastOutput = applyResponseFilters(def.response_filters, lastOutput);
+    } catch (err) {
+      logger.warn({
+        module: "execution",
+        action: "execution.response_filter_failed",
+        msg: "workflow-level response_filter raised — probably a FAIL filter matched",
+        execution_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      finalStatus = "failed";
+      validationError = {
+        code: "response_filter_failed",
+        message: `workflow-level response filter failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
   if (def.output_schema && lastOutput !== undefined) {
     const check = validateAgainstJsonSchema(lastOutput, def.output_schema, "$output");
     if (!check.valid) {
@@ -690,8 +720,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   // Mirrors the reference impl's optional `validationFunction`.
   if (def.validation_expression && lastOutput !== undefined && finalStatus === "succeeded") {
     try {
-      const expr = jsonata(def.validation_expression);
-      const verdict = await expr.evaluate(lastOutput);
+      const verdict = await evaluateJsonata(def.validation_expression, lastOutput);
       if (!verdict) {
         logger.warn({
           module: "execution",

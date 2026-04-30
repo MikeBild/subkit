@@ -77,6 +77,65 @@ per-step breakdown.
 If Postgres is not already listening on `localhost:5432`, start it first:
 `docker compose -f docker-compose.dev.yml up -d postgres`.
 
+## Architectural decisions worth recording
+
+These are choices that look arbitrary at first glance; documenting them once
+here saves a future maintainer the reverse-engineering trip.
+
+### Why subkit splits engine vs sk vs agent vs chat-ui
+
+The reference impl ships as a single monolithic core package. Subkit splits
+along three axes that each demand a separate runtime:
+
+- **`apps/engine/`** — HTTP / MCP / queue server. Multi-tenant, runs in a
+  Postgres-backed cluster, talks to LLMs, owns RBAC. Big, stateful, careful.
+- **`apps/sk/`** — CLI wrapper. Single-tenant, single-user, runs on an
+  operator's laptop. Talks to engine over HTTP only. Independent release
+  cadence; sk versions ≠ engine versions.
+- **`apps/agent/`** — Tunnel egress agent. Runs in the customer's network
+  to expose private resources (intranet APIs, on-prem databases) back to a
+  hosted engine. Different process, different security boundary, must be
+  shippable as a single static binary.
+- **`packages/chat-ui/`** — Browser-only React frontend. Different runtime,
+  different deploy target.
+
+A monolithic package would force every CLI install to ship the engine's
+Postgres + LLM + queue surface. The split lets each binary stay minimal.
+
+### Why subkit uses a queue (pg-boss) instead of a synchronous Deno subprocess
+
+The reference impl spawns a Deno child process per workflow run; subkit
+enqueues to pg-boss. The queue path costs a millisecond of latency in
+exchange for:
+
+- **Crash recovery** — a job in pg-boss survives engine restart; an in-flight
+  Deno subprocess does not. SLA targets demand the former.
+- **Backpressure** — pg-boss caps `team-size` so a flood of executions
+  doesn't OOM the engine. Deno subprocesses fork unbounded.
+- **Retry semantics** — pg-boss handles per-job retry / backoff / DLQ
+  uniformly; spawning subprocesses leaves retry to the caller.
+- **Observability** — a single queue-depth + lag metric covers every
+  workflow shape; subprocess-per-run requires per-spawn tracing.
+
+The cost is operational: pg-boss demands Postgres, and step execution can't
+be a pure function of the request anymore. Worth it for production, ignored
+for `sk eval` which runs in-process.
+
+### `ConnectorSystem` facade (see `connectors/system.ts`)
+
+Mirrors the reference impl's `SystemManager` read-side interface
+(`getCredentials`, `getDocumentation`) so the same mental model applies
+in both codebases. Sk-specific extensions: `tenantId` and
+`templateVersion` fields on the facade enforce tenant-isolation and
+self-healing drift correlation by construction. Every consumer of
+credentials + driver + docs should go through this facade rather than
+hand-rolling three lookups.
+
+Write-side enrichment (the reference impl's `enrichFromTemplate`)
+intentionally stays out of the facade — template merging is a
+write-time concern handled by `connectors/template-enrichment.ts` at
+connector-creation time, not by the read-side orchestrator.
+
 ## Determinism contract (test code)
 
 All test code follows a single determinism contract, enforced by

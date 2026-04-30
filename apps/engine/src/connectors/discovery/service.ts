@@ -18,6 +18,7 @@
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { recordKnowledgeSourceRefreshed } from "../../audit/recorders/index.ts";
+import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { logger } from "../../logging/logger.ts";
@@ -223,7 +224,7 @@ async function writeCache(
       last_refreshed_at: now,
     })
     .returning();
-  if (!inserted) throw new Error("knowledge_sources insert returned no row");
+  assertInsertRow(inserted, "knowledge_sources");
   await ctx.db.insert(knowledgeChunks).values({
     tenant_id: ctx.tenant_id,
     knowledge_source_id: inserted.id,

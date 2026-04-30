@@ -21,10 +21,11 @@
 // Returns the bytes the remote host wrote before closing the socket
 // (or timing out).
 //
-// Agent side: apps/agent/src/fetch.ts must learn to dispatch on
-// `protocol === "tcp"` before this helper produces useful results in
-// production. Until then the engine-side plumbing is landed but the
-// agent refuses tcp frames.
+// Agent side: apps/agent/src/client.ts handles `protocol === "tcp"`
+// frames and delegates to `apps/agent/src/tcp-relay.ts` which opens a
+// short-lived `net.connect`, writes the payload, reads the reply
+// until the remote side closes (or the socket times out), and
+// returns base64-encoded response bytes. End-to-end functional today.
 
 import { tunnelRegistry } from "./registry.ts";
 import type { TunnelResponse } from "./types.ts";

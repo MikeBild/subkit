@@ -23,9 +23,10 @@
 
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
-import jsonata from "jsonata";
+import type { Expression } from "jsonata";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { compile as compileJsonata } from "../../execution/jsonata-engine.ts";
 import { applySelector } from "../../execution/selectors.ts";
 import { resolveStringPlaceholders } from "../../llm/substitution/resolver.ts";
 import { recordExecutionDryRun } from "../../observability/instrumentation.ts";
@@ -63,9 +64,9 @@ async function evalJsonata(
   sample: unknown,
   timeout_ms: number,
 ): Promise<{ ok: true; value: unknown } | { ok: false; error: EvalError }> {
-  let expr: ReturnType<typeof jsonata>;
+  let expr: Expression;
   try {
-    expr = jsonata(expression);
+    expr = compileJsonata(expression);
   } catch (err) {
     const e = err as { message?: string; position?: number };
     return {

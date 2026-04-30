@@ -8,7 +8,7 @@ import {
   applyDiffsToConfig,
   partitionDiffs,
   type ToolDiff,
-} from "./diff-utils.ts";
+} from "./json-patch-apply.ts";
 
 describe("applyDiffsToConfig", () => {
   test("returns input unchanged when diffs is empty", () => {

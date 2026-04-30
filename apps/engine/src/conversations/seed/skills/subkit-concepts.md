@@ -1,15 +1,15 @@
 ---
 slug: subkit-concepts
 scope: global
-title: Subkit Core Concepts
-description: The minimum mental model an agent needs to author, run, and reason about subkit workflows.
+title: sk Core Concepts
+description: The minimum mental model an agent needs to author, run, and reason about sk workflows.
 gates_tools: []
-version: 1
+version: 2
 ---
 
-# Subkit Core Concepts
+# sk Core Concepts
 
-Subkit is a governance-first workflow engine. Every workflow is a list of **steps**
+sk is a governance-first workflow engine. Every workflow is a list of **steps**
 executed by the engine, backed by PostgreSQL, and scoped to a tenant. This document
 is the canonical primer for agents authoring or editing workflows.
 

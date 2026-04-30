@@ -12,7 +12,7 @@
 // or `null` when nothing references `input`. String is the safe default
 // — operators who want stricter typing declare `input_schema` on the DAG.
 
-import jsonata from "jsonata";
+import { extractAst } from "../execution/jsonata-engine.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
 import type { StepDef, WorkflowDef } from "./types.ts";
 
@@ -98,24 +98,14 @@ function collectFromStep(step: StepDef, into: Set<string>): void {
   if (step.kind === "transform") {
     const language = step.language ?? "jsonata";
     if (language !== "jsonata") return;
-    try {
-      // biome-ignore lint/suspicious/noExplicitAny: jsonata's .ast() is untyped.
-      const ast = (jsonata(step.expression) as any).ast() as AstNode;
-      if (ast) collectFromJsonataAst(ast, into);
-    } catch {
-      // Malformed expressions simply contribute nothing to the schema.
-    }
+    const ast = extractAst(step.expression) as AstNode | null;
+    if (ast) collectFromJsonataAst(ast, into);
     return;
   }
   if (step.kind === "branch" && step.when) {
     // `when` is typed as a jsonata expression string.
-    try {
-      // biome-ignore lint/suspicious/noExplicitAny: jsonata's .ast() is untyped.
-      const ast = (jsonata(step.when) as any).ast() as AstNode;
-      if (ast) collectFromJsonataAst(ast, into);
-    } catch {
-      // ignore
-    }
+    const ast = extractAst(step.when) as AstNode | null;
+    if (ast) collectFromJsonataAst(ast, into);
   }
 }
 

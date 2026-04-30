@@ -4,7 +4,7 @@ scope: global
 title: Redis Connectors
 description: Driver specifics for Redis — connection URL, GET/SET/DEL/PUBLISH operations.
 gates_tools: []
-version: 1
+version: 2
 ---
 
 # Redis Connectors
@@ -56,4 +56,4 @@ model — use a webhook or a dedicated worker.
 
 ## See also
 
-- `subkit-concepts.md` — envelope shape for Redis responses.
+- `sk-concepts.md` — envelope shape for Redis responses.

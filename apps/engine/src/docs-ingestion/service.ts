@@ -18,6 +18,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ConnectorTemplate } from "../connectors/templates.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { connectorDocumentChunks, connectorDocuments, connectors } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
@@ -259,7 +260,7 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
         chunk_count: accepted.length,
       })
       .returning();
-    if (!docRow) throw new Error("connector_documents insert returned no row");
+    assertInsertRow(docRow, "connector_documents");
 
     if (accepted.length > 0) {
       await tx.insert(connectorDocumentChunks).values(

@@ -2,26 +2,26 @@
 slug: mcp-tool-contract
 scope: global
 title: MCP Callable Contract
-description: Reference for subkit's MCP callable surface — how callable entries are named, how destructive calls flow through `_meta.sk_confirm`, when to trust the synthesized `inputSchema`, and how to read the `warnings[]` envelope. Consult this before driving subkit from any MCP client (Codex, Claude Desktop, Cursor, sk, etc.).
+description: Reference for sk's MCP callable surface — how callable entries are named, how destructive calls flow through `_meta.sk_confirm`, when to trust the synthesized `inputSchema`, and how to read the `warnings[]` envelope. Consult this before driving sk from any MCP client (Codex, Claude Desktop, Cursor, sk, etc.).
 gates_tools: []
-version: 1
+version: 2
 auto_load: true
 trigger_keywords: [mcp tool, mcp tools, tenant delete, confirm_required, sk_confirm, ask_user_confirm, unresolved_identifier, warnings, input schema, wf., tenant., conversation.]
 ---
 
-# Subkit MCP callable contract
+# sk MCP callable contract
 
-Subkit exposes three families of callable entries over MCP. Calling them correctly saves round-trips and avoids duplicate confirmations.
+sk exposes three families of callable entries over MCP. Calling them correctly saves round-trips and avoids duplicate confirmations.
 
 ## Callable families
 
 - **`tenant.<name>`** — operator surface. Reads (`tenant.list_workflows`, `tenant.get_connector`, …) and writes (`tenant.delete_workflow`, `tenant.revoke_api_key`, …). Use these for CRUD.
-- **`wf.<slug>`** — run a specific workflow. Arguments match the workflow's declared `input_schema`; when absent, subkit synthesises one from the DAG's `${input.X}` placeholders and jsonata `$input.X` references.
+- **`wf.<slug>`** — run a specific workflow. Arguments match the workflow's declared `input_schema`; when absent, sk synthesises one from the DAG's `${input.X}` placeholders and jsonata `$input.X` references.
 - **`conversation.*`** — multi-turn authoring sessions (`conversation.start`, `conversation.append`, `conversation.respond_elicitation`). Use these when the operator is **designing** a workflow or connector. Do NOT start a conversation for routine CRUD — the `tenant.*` surface is the cheap path.
 
-## Reading `_meta.subkit` on every callable entry
+## Reading `_meta.sk` on every callable entry
 
-Every subkit callable entry ships a `_meta.subkit` envelope:
+Every sk callable entry ships a `_meta.sk` envelope:
 
 ```json
 { "category": "tenant_write", "confirm_required": true, "destructive": true }
@@ -31,12 +31,12 @@ Every subkit callable entry ships a `_meta.subkit` envelope:
 - `confirm_required`: `true` → the first call returns a `pending` envelope and the callable entry does **not** execute until you re-issue with `_meta.sk_confirm: true`.
 - `destructive`: UI hint. Surface a warning to the human before asking.
 
-**Do not author your own `ask_user_confirm` before a callable entry whose `_meta.subkit.confirm_required` is already true.** The policy gate raises exactly one confirmation. Pre-empting it produces two elicitations and a stalled loop.
+**Do not author your own `ask_user_confirm` before a callable entry whose `_meta.sk.confirm_required` is already true.** The policy gate raises exactly one confirmation. Pre-empting it produces two elicitations and a stalled loop.
 
 ## Destructive-action flow (two MCP calls, one human confirmation)
 
 1. Call the callable entry normally, e.g. `tenant.delete_workflow({id: "abc"})`.
-2. Subkit replies with a structured envelope:
+2. sk replies with a structured envelope:
    ```json
    {
      "pending": true,
@@ -53,13 +53,13 @@ Every subkit callable entry ships a `_meta.subkit` envelope:
    ```json
    { "name": "tenant.delete_workflow", "arguments": {"id":"abc"}, "_meta": {"sk_confirm": true} }
    ```
-5. Subkit executes the callable entry, writes the `approval.approved` audit row, and returns the normal result.
+5. sk executes the callable entry, writes the `approval.approved` audit row, and returns the normal result.
 
 Aliases: setting `__policy_confirmed: true` inside the arguments has the same effect, kept for symmetry with the in-conversation authoring loop.
 
 ## `warnings[]` on workflow runs
 
-When a jsonata transform references an identifier that isn't in scope, subkit returns the partial output next to a `warnings` array:
+When a jsonata transform references an identifier that isn't in scope, sk returns the partial output next to a `warnings` array:
 
 ```json
 {
@@ -82,7 +82,7 @@ When a jsonata transform references an identifier that isn't in scope, subkit re
 
 ## Synthesised `inputSchema` for `wf.<slug>`
 
-When a workflow does not declare `input_schema`, subkit scans the DAG:
+When a workflow does not declare `input_schema`, sk scans the DAG:
 
 - `${input.foo}` placeholders in request URL / path / headers / query / body strings.
 - Jsonata `$input.foo` or bare `input.foo` references inside transforms and branch conditions.

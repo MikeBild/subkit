@@ -27,6 +27,7 @@ import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { recordKnowledgeSourceCandidatesSynthesized } from "../../audit/recorders/index.ts";
+import { assertInsertRow } from "../../db/assert-insert.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { invoke } from "../../llm/core/invoke.ts";
 import { logger } from "../../logging/logger.ts";
@@ -480,7 +481,7 @@ async function persistCandidates(
       last_refreshed_at: now,
     })
     .returning();
-  if (!inserted) throw new Error("knowledge_sources insert returned no row");
+  assertInsertRow(inserted, "knowledge_sources");
   await db.insert(knowledgeChunks).values({
     tenant_id: ctx.tenant_id,
     knowledge_source_id: inserted.id,

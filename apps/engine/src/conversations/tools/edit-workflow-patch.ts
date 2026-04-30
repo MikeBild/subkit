@@ -17,8 +17,8 @@ import {
 } from "../../workflows/reference-validator.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
-import { canonicalJson } from "../diff-util.ts";
-import { applyDiffsToConfig, type ToolDiff } from "../diff-utils.ts";
+import { applyDiffsToConfig, type ToolDiff } from "../json-patch-apply.ts";
+import { canonicalJson } from "../text-line-diff.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { evaluateLoopAuthoringGate } from "./loop-authoring-gate.ts";

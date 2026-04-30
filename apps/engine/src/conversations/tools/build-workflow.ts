@@ -31,7 +31,7 @@ import {
 import { sampleToSchema } from "../../workflows/sample-to-schema.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
-import { canonicalJson } from "../diff-util.ts";
+import { canonicalJson } from "../text-line-diff.ts";
 import type { DraftDocument, WorkflowDraftDocument } from "../types.ts";
 import { verifyWorkflow } from "../verifier.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";

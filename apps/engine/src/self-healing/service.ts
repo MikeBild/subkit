@@ -25,6 +25,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { audit, auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import {
@@ -471,7 +472,7 @@ export async function runSelfHealingLoop(
         status: "proposed",
       })
       .returning();
-    if (!candidate) throw new Error("patch_candidates insert returned no row");
+    assertInsertRow(candidate, "patch_candidates");
 
     // patch_candidate.proposed audit row.
     await auditAwait(

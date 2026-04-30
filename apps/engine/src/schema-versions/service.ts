@@ -8,6 +8,7 @@
 // LIMIT 1`.
 
 import { and, desc, eq } from "drizzle-orm";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { schemaVersions } from "../db/schema/index.ts";
 import type { SchemaShape } from "../self-healing/types.ts";
@@ -76,7 +77,7 @@ export async function recordSuccessShape(p: RecordShapeParams, exec?: Executor):
       schema: shape as unknown as Record<string, unknown>,
     })
     .returning({ id: schemaVersions.id });
-  if (!row) throw new Error("schema_versions insert returned no row");
+  assertInsertRow(row, "schema_versions");
   return row.id;
 }
 
