@@ -215,4 +215,29 @@ describe("update_connector_draft — clean updates pass", () => {
     });
     expect(getDraft().connector?.name).toBe("Updated Name");
   });
+
+  it("accepts OAuth2 metadata URLs that contain 'token'/'authorization' substrings", async () => {
+    // Reproduces the false positive from session 3f81fb2a. The
+    // credential-leak guard's `SENSITIVE_KEY_PATTERN` is substring-
+    // anchored, so `token_endpoint` and `authorization_endpoint`
+    // matched it and the AppSync Cognito config update was rejected
+    // with `credential_must_use_form` — even though those fields are
+    // public URLs, not secrets.
+    const { base } = await makeCtx();
+    const result = await updateConnectorDraftTool.execute(base, {
+      config: {
+        aws_region: "eu-central-1",
+        oauth: {
+          grant_type: "cognito_user_password",
+          client_id: "abc123",
+          token_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
+          authorization_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
+          token_auth_method: "body",
+          token_content_type: "json",
+          issuer_url: "https://cognito-idp.eu-central-1.amazonaws.com",
+        },
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
 });
