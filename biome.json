@@ -16,7 +16,8 @@
       "!**/bun.lock",
       "!**/bun.lockb",
       "!packages/cli-core/src/engine-api/openapi.d.ts",
-      "!packages/cli-core/src/engine-api/openapi.json"
+      "!packages/cli-core/src/engine-api/openapi.json",
+      "!apps/engine/eval/out"
     ]
   },
   "formatter": {
