@@ -227,6 +227,15 @@ export const ConnectorTemplateSchema = z
      * `/v2`, producing recurring `https://…/v2/v2/projects` 404s.
      */
     example_paths: z.array(z.string()).default([]),
+    /**
+     * Optional one-line operator hint propagated to every connector
+     * created from this template. Surfaces to the LLM whenever the
+     * connector is in scope (per CreateConnectorSchema.operator_notes)
+     * and is the right place for endpoint-specific quirks the model
+     * cannot infer from the OpenAPI spec — e.g. mutually-exclusive
+     * GitHub list-repos parameters that return HTTP 422 when combined.
+     */
+    operator_notes: z.string().max(4_000).nullable().default(null),
   })
   .superRefine((t, ctx) => {
     // Consistency gate: a template that offers BOTH a primary non-oauth auth

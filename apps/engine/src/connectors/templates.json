@@ -2890,6 +2890,7 @@
     "category": "devops",
     "tags": ["rest", "webhooks", "git"],
     "setup_instructions": "Create a PAT at github.com/settings/tokens, or register an OAuth App under Developer Settings.",
+    "operator_notes": "GET /user/repos: `type` is mutually exclusive with `visibility` and `affiliation`. To list private repos owned by the authenticated user, use `?visibility=private&affiliation=owner` (or `?type=owner` alone). Combining `type=private` with `affiliation=owner` returns HTTP 422.",
     "auth_options": [
       {
         "auth_type": "bearer",

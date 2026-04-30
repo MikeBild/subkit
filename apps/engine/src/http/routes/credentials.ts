@@ -62,17 +62,23 @@ const rotateRouteSpec = createRoute({
 });
 
 function connectorOauthCfg(cfg: Record<string, unknown>): OAuth2ClientConfig {
-  if (!cfg.issuer_url || !cfg.client_id) {
-    throw new BadRequestError("connector is missing oauth2 config (issuer_url + client_id)");
+  const oauth =
+    cfg.oauth && typeof cfg.oauth === "object" && !Array.isArray(cfg.oauth)
+      ? (cfg.oauth as Record<string, unknown>)
+      : {};
+  if (!oauth.issuer_url || !oauth.client_id) {
+    throw new BadRequestError(
+      "connector is missing oauth2 config (config.oauth.issuer_url + config.oauth.client_id)",
+    );
   }
   const out: OAuth2ClientConfig = {
-    issuer_url: String(cfg.issuer_url),
-    client_id: String(cfg.client_id),
+    issuer_url: String(oauth.issuer_url),
+    client_id: String(oauth.client_id),
   };
-  if (cfg.client_secret) out.client_secret = String(cfg.client_secret);
-  if (cfg.scope) out.scope = String(cfg.scope);
-  if (cfg.redirect_uri) out.redirect_uri = String(cfg.redirect_uri);
-  if (cfg.audience) out.audience = String(cfg.audience);
+  if (oauth.client_secret) out.client_secret = String(oauth.client_secret);
+  if (oauth.scope) out.scope = String(oauth.scope);
+  if (oauth.redirect_uri) out.redirect_uri = String(oauth.redirect_uri);
+  if (oauth.audience) out.audience = String(oauth.audience);
   return out;
 }
 

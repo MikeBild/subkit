@@ -146,6 +146,37 @@ export const AuthConfigSchema = z
 
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 
+// OAuth2-enrichment block. Templates seed connector.config.oauth with
+// the bits the OAuth2 client needs (issuer + endpoints + grant + auth
+// method). User-supplied connector overrides win in template-binding.ts
+// when assembling the OAuth2ClientConfig at mint / refresh time.
+const OAuthEnrichmentSchema = z
+  .object({
+    issuer_url: z.string().optional(),
+    authorization_endpoint: z.string().optional(),
+    token_endpoint: z.string().optional(),
+    scope: z.string().optional(),
+    grant_type: z
+      .enum([
+        "authorization_code",
+        "client_credentials",
+        "password",
+        "cognito_user_password",
+        "jwt_bearer",
+        "device_code",
+      ])
+      .optional(),
+    token_auth_method: z.enum(["body", "basic_auth"]).optional(),
+    token_content_type: z.enum(["form", "json"]).optional(),
+    use_pkce: z.boolean().optional(),
+    extra_token_headers: z.record(z.string(), z.string()).optional(),
+    client_id: z.string().nullable().optional(),
+    client_secret: z.string().optional(),
+    audience: z.string().optional(),
+    redirect_uri: z.string().optional(),
+  })
+  .strict();
+
 export const HttpConnectorConfig = z
   .object({
     static_headers: z.record(z.string(), z.string()).optional(),
@@ -162,20 +193,7 @@ export const HttpConnectorConfig = z
     credential_hints: z.array(z.record(z.string(), z.unknown())).optional(),
     imported_sample_endpoints: z.array(z.record(z.string(), z.unknown())).optional(),
     imported_source: z.string().optional(),
-    // OAuth2-enrichment fields (flattened into config for the OAuth2 client).
-    issuer_url: z.string().optional(),
-    authorization_endpoint: z.string().optional(),
-    token_endpoint: z.string().optional(),
-    scope: z.string().optional(),
-    grant_type: z.enum(["authorization_code", "client_credentials"]).optional(),
-    token_auth_method: z.enum(["body", "basic_auth"]).optional(),
-    token_content_type: z.enum(["form", "json"]).optional(),
-    use_pkce: z.boolean().optional(),
-    extra_token_headers: z.record(z.string(), z.string()).optional(),
-    client_id: z.string().optional(),
-    client_secret: z.string().optional(),
-    audience: z.string().optional(),
-    redirect_uri: z.string().optional(),
+    oauth: OAuthEnrichmentSchema.optional(),
   })
   .strict();
 

@@ -23,7 +23,11 @@ import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { analyzeConversationAttachments } from "../../llm/flows/analyze-conversation-attachments.ts";
 import { logger } from "../../logging/logger.ts";
-import { withConnectorPersisted, withConnectorValidation } from "../authoring-state.ts";
+import {
+  withConnectorAuthenticated,
+  withConnectorPersisted,
+  withConnectorValidation,
+} from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
 import {
   buildGateError,
@@ -493,8 +497,29 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     });
   }
 
+  // Bound credentials = the connector_authenticated checkpoint flips
+  // fresh atomically with the save. oauth2 connectors flip via
+  // authenticate_oauth instead — no credential is bound at save time
+  // for the authorization-code flow. Use the resolved `credential`
+  // (which honours the draft-credential cache) rather than just
+  // `p.credential`, so a cached credential collected via ask_user_form
+  // earlier in the conversation also flips the gate.
+  const credentialBound =
+    connector.auth_type !== "none" && connector.auth_type !== "oauth2" && credential != null;
+  let postSaveDraft = draft;
+  if (credentialBound) {
+    postSaveDraft = withConnectorAuthenticated(
+      postSaveDraft,
+      { ...connector, validation, saved_connector_id: saved.id },
+      true,
+      `Credential bound atomically with ${saved.slug} save.`,
+      "save_connector_draft",
+      "connector_saved",
+    );
+  }
+
   const nextDraft = withConnectorPersisted(
-    draft,
+    postSaveDraft,
     {
       ...connector,
       validation,

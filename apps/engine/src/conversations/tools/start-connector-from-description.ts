@@ -160,30 +160,21 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
         (template ? defaultTemplateAuthType(template) : "none"));
     const resolvedDescription = args.description ?? template?.description;
     const resolvedBaseUrl = args.base_url ?? template?.base_url;
-    // Seed `config` from the template's oauth block when the template
-    // is OAuth2-driven. Without this, downstream code that needs to
-    // read `config.oauth.grant_type` (the form-cache helper, the
-    // refresh-worker, the probe path) gets undefined and the AppSync
-    // Cognito flow silently falls through to "credential_required" —
-    // exactly the regression in session 351518a2.
+    // `config.oauth` is NOT seeded from the URL-matched template here.
+    // The draft is auth-shape-agnostic until the operator picks an auth
+    // path:
+    //   • auth_type === "oauth2" → the LLM is steered to call
+    //     `authenticate_oauth` after save. The OAuth2 client reads the
+    //     template's oauth metadata from the snapshot at mint time
+    //     (resolveConnectorOAuthConfig falls back to the snapshot when
+    //     config.oauth is absent), so no draft-time seed is needed.
+    //   • bearer / header / basic / aws_sigv4 / none → the operator
+    //     supplies a credential via `ask_user_form`; no oauth config
+    //     ever lands on the draft.
+    // Seeding oauth into a bearer draft (the pre-fix behaviour) caused
+    // strict-mode connector_config_invalid at save time — see session
+    // 18467df2.
     const seedConfig: Record<string, unknown> = {};
-    if (template?.oauth) {
-      const tmplOauth = template.oauth as Record<string, unknown>;
-      const oauthCfg: Record<string, unknown> = {};
-      if (typeof tmplOauth.client_id === "string") oauthCfg.client_id = tmplOauth.client_id;
-      if (typeof tmplOauth.grant_type === "string") oauthCfg.grant_type = tmplOauth.grant_type;
-      if (typeof tmplOauth.token_endpoint === "string")
-        oauthCfg.token_endpoint = tmplOauth.token_endpoint;
-      if (typeof tmplOauth.authorization_endpoint === "string")
-        oauthCfg.authorization_endpoint = tmplOauth.authorization_endpoint;
-      if (typeof tmplOauth.issuer_url === "string") oauthCfg.issuer_url = tmplOauth.issuer_url;
-      if (typeof tmplOauth.scopes === "string") oauthCfg.scopes = tmplOauth.scopes;
-      if (typeof tmplOauth.token_auth_method === "string")
-        oauthCfg.token_auth_method = tmplOauth.token_auth_method;
-      if (typeof tmplOauth.token_content_type === "string")
-        oauthCfg.token_content_type = tmplOauth.token_content_type;
-      if (Object.keys(oauthCfg).length > 0) seedConfig.oauth = oauthCfg;
-    }
     const connector: ConnectorDraftDocument = {
       name: args.name,
       slug: args.name
@@ -226,11 +217,6 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
             driver: connector.driver,
             environment: connector.environment,
             auth_type: connector.auth_type,
-            // Surface the seeded `config.oauth` block so the LLM can
-            // see (and the tests assert) that the template's auth
-            // metadata landed on the draft. Pre-fix the LLM didn't
-            // know about config.oauth.grant_type and the cache
-            // helper couldn't resolve the Cognito flow.
             ...(connector.config && Object.keys(connector.config).length > 0
               ? { config: connector.config }
               : {}),
@@ -239,6 +225,24 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
             template_source: connector.template_source ?? null,
             validation,
           },
+          next_phase:
+            connector.auth_type === "oauth2"
+              ? {
+                  phase: "authenticate_connector",
+                  next_suggested_tool: "authenticate_oauth",
+                  hint: "After save_connector_draft, call authenticate_oauth to start the authorization-code flow. The connector's saved template_snapshot already carries the oauth endpoints — no manual config needed.",
+                }
+              : connector.auth_type === "none"
+                ? {
+                    phase: "test_connector",
+                    next_suggested_tool: "probe_connector_draft",
+                    hint: "No credential needed. Probe the draft to verify base_url, then save.",
+                  }
+                : {
+                    phase: "authenticate_connector",
+                    next_suggested_tool: "ask_user_form",
+                    hint: `Collect the operator's credential for auth_type=${connector.auth_type} (token / api key / username+password) via ask_user_form, then save_connector_draft binds it atomically with the connector.`,
+                  },
           validation,
           matched_template: template
             ? {

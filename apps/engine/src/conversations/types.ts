@@ -76,8 +76,8 @@ export interface ConversationToolCallRecord {
   created_at: string;
   /**
    * Causal anchor to the assistant message that produced this tool
-   * call. Nullable for legacy rows; the read path falls back to a
-   * time-window join when null.
+   * call. Nullable only for legacy or synthetic rows; `messages_v2`
+   * ignores unanchored calls rather than guessing their placement.
    */
   parent_message_id?: string | null;
 }
@@ -96,6 +96,7 @@ export type AuthoringStage =
   | "connector_draft_started"
   | "connector_inspected"
   | "connector_validated"
+  | "connector_authenticated"
   | "connector_probed"
   | "connector_persisted"
   | "workflow_targeted"
@@ -113,6 +114,7 @@ export type AuthoringLifecycleState = "none" | "draft_only" | "persisted";
 export type AuthoringCheckpointKey =
   | "connector_inspected"
   | "connector_validated"
+  | "connector_authenticated"
   | "connector_probed"
   | "connector_persisted"
   | "workflow_inspected"

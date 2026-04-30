@@ -5,6 +5,7 @@ import { log } from "../../logging/logger.ts";
 import { SECRET_PATTERNS, SENSITIVE_KEY_PATTERN } from "../../logging/scrub-secrets.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
+import { getDraftCredential } from "../persistence/draft-credential-cache.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
 import { buildDraftMutationPayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -111,6 +112,23 @@ export const updateConnectorDraftTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
 
+    // Hard-reject any attempt to mutate the oauth block via this tool.
+    // `config.oauth` is owned by template-enrichment (at save time, gated
+    // on auth_type === "oauth2") plus the OAuth2 client snapshot fallback
+    // in resolveConnectorOAuthConfig. Letting the LLM hand-edit oauth
+    // creates two writers and reproduces session 18467df2 where bearer
+    // drafts ended up carrying oauth metadata that strict-mode then
+    // rejected at save.
+    if (args.config !== undefined && Object.hasOwn(args.config, "oauth")) {
+      return {
+        ok: false,
+        error_code: "auth_mutation_not_allowed",
+        message:
+          "config.oauth cannot be written via update_connector_draft. The OAuth2 client reads oauth metadata from the template snapshot at mint time; for a different auth shape, start a new draft. To begin the authorization-code flow on an oauth2 connector, save it first then call authenticate_oauth.",
+        next_best_actions: ["authenticate_oauth", "start_connector_from_description"],
+      };
+    }
+
     // Hard-reject any attempt to store a credential-shaped value in config.
     // The only correct path for credentials is ask_user_form(type: password,
     // sensitive: true) followed by save_connector_draft({credential}).
@@ -150,6 +168,37 @@ export const updateConnectorDraftTool: ConversationTool = {
     }
 
     const current = ctx.getDraft().connector ?? {};
+
+    // Guard against the LLM reasoning itself in circles by toggling
+    // auth_type back to "none" on a connector that already has a
+    // credential staged. The user's session bab50df1 looped exactly
+    // here: probe failed, the LLM "tried something else" by setting
+    // auth_type=none, which made the next probe credential_required,
+    // and the cycle repeated. The legitimate path to drop auth is to
+    // start a fresh draft, not flip auth_type on an existing one.
+    if (
+      args.auth_type === "none" &&
+      current.auth_type !== undefined &&
+      current.auth_type !== null &&
+      current.auth_type !== "none"
+    ) {
+      const cached = getDraftCredential(ctx.conversation_id);
+      if (cached || current.saved_connector_id) {
+        return {
+          ok: false,
+          error_code: "auth_type_downgrade_blocked",
+          message:
+            `Cannot downgrade auth_type from "${current.auth_type}" to "none" — the draft already has a ${cached ? "cached" : "persisted"} credential. ` +
+            `Start a new draft via start_connector_from_description if you need a different auth model, or rotate the credential via ask_user_form + save_connector_draft.`,
+          next_best_actions: [
+            "start_connector_from_description",
+            "ask_user_form",
+            "save_connector_draft",
+          ],
+        };
+      }
+    }
+
     const patch = Object.fromEntries(
       Object.entries(args).filter(([, value]) => value !== undefined),
     ) as Partial<ConnectorDraftDocument>;
