@@ -1,7 +1,7 @@
 // Pure-function tests for the line-diff utility.
 
 import { describe, expect, test } from "bun:test";
-import { canonicalJson, computeLineDiff } from "../diff-util.ts";
+import { canonicalJson, computeLineDiff } from "../text-line-diff.ts";
 
 describe("computeLineDiff", () => {
   test("flags an inserted line", () => {

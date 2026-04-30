@@ -87,6 +87,24 @@ function toBundle(
   };
 }
 
+/**
+ * Pre-expiry check. Returns `true` if the token is missing, has no expiry, or
+ * is within `bufferMs` of expiry. Callers should treat `true` as "refresh
+ * before use" to avoid mid-request 401 retries.
+ *
+ * Default buffer: 5 minutes. The reference impl ships the same value.
+ */
+export function isTokenExpired(
+  bundle: { expires_at?: Date | string | null } | null | undefined,
+  bufferMs = 5 * 60_000,
+): boolean {
+  if (!bundle?.expires_at) return true;
+  const expiresAt =
+    typeof bundle.expires_at === "string" ? new Date(bundle.expires_at) : bundle.expires_at;
+  if (Number.isNaN(expiresAt.getTime())) return true;
+  return expiresAt.getTime() - Date.now() <= bufferMs;
+}
+
 export interface StartAuthCodeResult {
   authorization_url: string;
   state: string;

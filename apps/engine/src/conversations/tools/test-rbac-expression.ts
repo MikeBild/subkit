@@ -15,9 +15,9 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import jsonata from "jsonata";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { roles, systemAccounts, users } from "../../db/schema/index.ts";
+import { compile as compileJsonata } from "../../execution/jsonata-engine.ts";
 import { can } from "../../rbac/evaluator.ts";
 import type { ConversationTool } from "./index.ts";
 
@@ -85,7 +85,11 @@ export const testRbacExpressionTool: ConversationTool = {
         };
       }
       try {
-        const expr = jsonata(args.expression);
+        // Bespoke binding: `$config` exposes the step config under test.
+        // Doesn't fit the engine's standard `EvalBindings` shape, so go
+        // through `compileJsonata` for the cache + structured errors,
+        // then evaluate directly with the bespoke binding.
+        const expr = compileJsonata(args.expression);
         const result = await expr.evaluate(args.step_config, {
           config: args.step_config,
         });

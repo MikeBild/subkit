@@ -2,6 +2,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { synthesizeInputSchema } from "../../workflows/input-schema-synth.ts";
 import * as svc from "../../workflows/service.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
@@ -15,12 +16,21 @@ const WorkflowSchema = z
     tenant_id: z.string(),
     slug: z.string(),
     name: z.string(),
+    description: z.string().nullable(),
     lifecycle: z.string(),
     current_version_id: z.string().nullable(),
     current_version: z.number().nullable(),
     created_at: z.string(),
     updated_at: z.string(),
     steps: z.array(z.unknown()),
+    input_schema: z.record(z.string(), z.unknown()).nullable(),
+    output_schema: z.record(z.string(), z.unknown()).nullable(),
+    output_transform: z.string().nullable(),
+    output_transform_function: z.string().nullable(),
+    response_filters: z.array(z.unknown()).nullable(),
+    validation_expression: z.string().nullable(),
+    validation_function: z.string().nullable(),
+    timeout_ms: z.number().nullable(),
   })
   .openapi("Workflow");
 
@@ -63,12 +73,27 @@ function serializeWorkflow(w: svc.WorkflowView) {
     tenant_id: w.tenant_id,
     slug: w.slug,
     name: w.name,
+    description: w.definition.description ?? null,
     lifecycle: w.lifecycle,
     current_version_id: w.current_version_id,
     current_version: w.current_version,
     created_at: w.created_at.toISOString(),
     updated_at: w.updated_at.toISOString(),
     steps: w.steps as unknown[],
+    // Schema fields surfaced for non-MCP HTTP callers (CI smoke tests,
+    // SDK clients, external orchestrators). MCP exposes them via the
+    // tool-definition surface; the bare HTTP GET previously omitted
+    // them, forcing callers to round-trip through MCP just to learn
+    // a workflow's input shape. Reference impl `GET /tools/:id` exposes
+    // `inputSchema` / `outputSchema` directly.
+    input_schema: w.definition.input_schema ?? null,
+    output_schema: w.definition.output_schema ?? null,
+    output_transform: w.definition.output_transform ?? null,
+    output_transform_function: w.definition.output_transform_function ?? null,
+    response_filters: w.definition.response_filters ?? null,
+    validation_expression: w.definition.validation_expression ?? null,
+    validation_function: w.definition.validation_function ?? null,
+    timeout_ms: w.definition.timeout_ms ?? null,
   };
 }
 
@@ -206,6 +231,32 @@ const validateRoute = createRoute({
   },
 });
 
+const InputSchemaResponse = z
+  .object({
+    /** "declared" when the workflow has an explicit `input_schema`,
+     *  "synthesized" when the schema was inferred from `${input.X}`
+     *  placeholders + JSONata `$input.X` references in the steps,
+     *  "none" when no inputs are referenced anywhere. */
+    source: z.enum(["declared", "synthesized", "none"]),
+    schema: z.record(z.string(), z.unknown()).nullable(),
+  })
+  .openapi("WorkflowInputSchemaResponse");
+
+const inputSchemaRoute = createRoute({
+  method: "get",
+  path: "/v1/workflows/{id}/input-schema",
+  tags: ["workflows"],
+  summary: "Get a workflow's input schema (declared or synthesized)",
+  description:
+    "Returns the workflow's declared `input_schema` when present, otherwise synthesizes one from `$input.X` placeholder and JSONata references discovered in the steps. Mirrors the convention used by the MCP tool surface so non-MCP HTTP callers can discover the input shape without round-tripping through MCP.",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: { description: "OK", content: { "application/json": { schema: InputSchemaResponse } } },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   // Pass-2 C5: RBAC gating. Every mutation + run goes through
   // `requirePermission` which calls the `can()` evaluator. Admin
@@ -285,6 +336,26 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const wf = await svc.getWorkflow(principal.tenant_id, id, db);
     if (!wf) throw new NotFoundError("workflow");
     return c.json(serializeWorkflow(wf), 200);
+  });
+
+  app.openapi(inputSchemaRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const wf = await svc.getWorkflow(principal.tenant_id, id, db);
+    if (!wf) throw new NotFoundError("workflow");
+
+    // Declared schema wins. When absent, synthesize from the steps —
+    // same code path the MCP tool listing uses, so the two surfaces
+    // stay in lockstep.
+    if (wf.definition.input_schema) {
+      return c.json({ source: "declared" as const, schema: wf.definition.input_schema }, 200);
+    }
+    const synthesized = synthesizeInputSchema(wf.definition);
+    if (synthesized) {
+      return c.json({ source: "synthesized" as const, schema: synthesized }, 200);
+    }
+    return c.json({ source: "none" as const, schema: null }, 200);
   });
 
   app.openapi(updateRoute, async (c) => {

@@ -6,6 +6,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import {
   apiKeys,
@@ -114,7 +115,7 @@ export async function createSystemAccount(input: CreateSystemAccountInput, exec?
         description: input.description ?? null,
       })
       .returning();
-    if (!row) throw new Error("system_accounts insert returned no row");
+    assertInsertRow(row, "system_accounts");
     await auditAwait(
       {
         tenant_id: input.tenant_id,
@@ -272,7 +273,7 @@ export async function issueApiKey(
         rotated_from_id: input.rotated_from_id ?? null,
       })
       .returning();
-    if (!row) throw new Error("api_keys insert returned no row");
+    assertInsertRow(row, "api_keys");
     await auditAwait(
       {
         tenant_id: input.tenant_id,
@@ -349,7 +350,7 @@ export async function rotateApiKey(
         rotated_from_id: existing.id,
       })
       .returning();
-    if (!created) throw new Error("api_keys insert returned no row");
+    assertInsertRow(created, "api_keys");
 
     // Schedule the old key to be phased out at now + overlap. We use the
     // dedicated `rotating_out_at` column so the original `expires_at`
@@ -535,7 +536,7 @@ export async function issuePortalToken(
         expires_at: new Date(Date.now() + ttlMs),
       })
       .returning();
-    if (!row) throw new Error("portal_tokens insert returned no row");
+    assertInsertRow(row, "portal_tokens");
     await auditAwait(
       {
         tenant_id: input.tenant_id,
@@ -670,7 +671,7 @@ export async function createSession(
         absolute_expires_at: absolute,
       })
       .returning();
-    if (!row) throw new Error("sessions insert returned no row");
+    assertInsertRow(row, "sessions");
     await auditAwait(
       {
         tenant_id: input.tenant_id,

@@ -6,6 +6,7 @@
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
 import { log } from "../logging/logger.ts";
@@ -322,7 +323,7 @@ async function upsertFromSignal(
       })
       .returning();
 
-    if (!row) throw new Error("skill_candidates insert returned no row");
+    assertInsertRow(row, "skill_candidates");
 
     // Insert evidence
     if (signal.evidence.length > 0) {

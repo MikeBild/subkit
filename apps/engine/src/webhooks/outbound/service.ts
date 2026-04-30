@@ -11,6 +11,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../../crypto/aes-gcm.ts";
+import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema/index.ts";
 
@@ -82,7 +83,7 @@ export async function createSubscription(
       })
       .returning();
     const row = inserted[0];
-    if (!row) throw new Error("subscription insert returned no row");
+    assertInsertRow(row, "subscription");
     const payload = encryptSecret(input.secret, aadFor(input.tenant_id, row.id));
     const updated = await tx
       .update(subscriptions)

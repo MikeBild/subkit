@@ -4,7 +4,7 @@ scope: global
 title: GraphQL Connectors
 description: Driver specifics for the GraphQL connector — queries, mutations, variables, batching.
 gates_tools: []
-version: 1
+version: 2
 ---
 
 # GraphQL Connectors
@@ -162,7 +162,7 @@ GraphQL endpoint), so `path` is ignored. Set auth once on the connector;
 reference credentials only if you need them inside variables (e.g. an API key
 as an input to the query).
 
-Common GraphQL auth conventions, mapped to subkit `auth_type`:
+Common GraphQL auth conventions, mapped to sk `auth_type`:
 
 | Provider                       | `auth_type` | Header / config                                  |
 |--------------------------------|-------------|--------------------------------------------------|
@@ -183,7 +183,7 @@ header **without** a scheme prefix:
 Authorization: eyJraWQiOiJ…
 ```
 
-Two ways to get this with subkit:
+Two ways to get this with sk:
 
 1. **Static token (`auth_type=header`)** — best when you have a long-lived
    ID token or a Lambda authorizer with a custom format. Store it as a

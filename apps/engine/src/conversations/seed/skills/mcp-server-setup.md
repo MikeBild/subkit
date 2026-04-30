@@ -2,19 +2,19 @@
 slug: mcp-server-setup
 scope: global
 title: MCP Server Setup
-description: Protocol-level facts for connecting any MCP client (Codex, Claude Desktop, Cursor, Continue, Zed, Goose, …) to subkit as an MCP server. Vendor-specific config shapes live in the VendorRecipeManifest and must be fetched via `get_vendor_recipe`, not reproduced in prose.
+description: Protocol-level facts for connecting any MCP client (Codex, Claude Desktop, Cursor, Continue, Zed, Goose, …) to sk as an MCP server. Vendor-specific config shapes live in the VendorRecipeManifest and must be fetched via `get_vendor_recipe`, not reproduced in prose.
 gates_tools: []
-version: 2
+version: 3
 auto_load: true
-trigger_keywords: [mcp, mcp server, mcp client, model context protocol, codex, claude code, claude desktop, cursor, continue, zed, goose, sk mcp, subkit mcp]
+trigger_keywords: [mcp, mcp server, mcp client, model context protocol, codex, claude code, claude desktop, cursor, continue, zed, goose, sk mcp, sk mcp]
 ---
 
-# Connecting a client to subkit as an MCP server
+# Connecting a client to sk as an MCP server
 
-Subkit exposes MCP at two transports:
+sk exposes MCP at two transports:
 
 - **Streamable HTTP** — `${engine_url}/mcp`, `Authorization: Bearer <api_key>`. Default for any modern MCP client.
-- **stdio proxy** — `sk mcp` on the user's machine. Reads `SUBKIT_API_KEY`, `SUBKIT_ENGINE_URL`, and the active profile from `~/.sk/config.json`. Use only when the client cannot speak Streamable HTTP.
+- **stdio proxy** — `sk mcp` on the user's machine. Reads `SK_API_KEY`, `SK_ENGINE_URL`, and the active profile from `~/.sk/config.json`. Use only when the client cannot speak Streamable HTTP.
 
 ## How to answer "how do I connect X?"
 
@@ -32,7 +32,7 @@ The base-prompt TURN-ONE DISCIPLINE rule applies in full: do not call `create_ap
 ## Refusals
 
 - Do not substitute this tool lookup with an inline JSON shape, even for well-known clients.
-- Do not emit `your-subkit-instance.com`, `<YOUR_API_KEY>`, `[rest-of-your-key]`, or any other placeholder host / key. The output guard will rewrite these; the user will reject them.
+- Do not emit `your-sk-instance.com`, `<YOUR_API_KEY>`, `[rest-of-your-key]`, or any other placeholder host / key. The output guard will rewrite these; the user will reject them.
 - Do not recommend a transport the recipe does not declare in its `transports` array.
 
 ## Example: get_vendor_recipe response (engine-side only)

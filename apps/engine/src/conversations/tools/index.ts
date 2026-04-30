@@ -343,6 +343,15 @@ import { getVendorRecipeTool } from "./get-vendor-recipe.ts";
 
 register(getVendorRecipeTool);
 
+// Draft-snapshot rollback tools — paired with the auto-snapshot side
+// effect in `sdk-wrap.ts`. Snapshots are LRU-capped at 10 per
+// conversation; the LLM lists them, then restores the chosen one.
+import { listDraftSnapshotsTool } from "./list-draft-snapshots.ts";
+import { restoreDraftSnapshotTool } from "./restore-draft-snapshot.ts";
+
+register(listDraftSnapshotsTool);
+register(restoreDraftSnapshotTool);
+
 // Auto-generated read tools covering every §5.10.1 domain:
 // workflows, connectors, executions, skills, skill-candidates,
 // patch-candidates, knowledge-sources, audit, metrics, identity

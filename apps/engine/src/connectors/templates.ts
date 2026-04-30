@@ -13,6 +13,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { HttpError } from "../http/errors.ts";
+import templateSkillsJson from "./template-skills.json" with { type: "json" };
 import builtinJson from "./templates.json" with { type: "json" };
 
 export const TemplateAuthTypeEnum = z.enum([
@@ -320,6 +321,11 @@ let compiledCache: CompiledTemplate[] | null = null;
  * parses + freezes the array; subsequent calls re-use the cached copy. Throws
  * a typed `Error` if any entry fails the schema — this is intentional: we
  * want a malformed edit to break startup, not silently ship a broken catalog.
+ *
+ * Also enforces template ↔ skill cross-reference integrity: every template's
+ * non-null `default_skill` must resolve to an entry in `template-skills.json`.
+ * Stale renames break startup instead of silently failing to seed the skill
+ * when a connector is later created from the template.
  */
 export function loadBuiltinTemplates(): ConnectorTemplate[] {
   if (cached) return cached;
@@ -333,8 +339,24 @@ export function loadBuiltinTemplates(): ConnectorTemplate[] {
       `templates.json must contain at least 10 templates, found ${parsed.data.length}`,
     );
   }
+  validateTemplateSkillReferences(parsed.data);
   cached = Object.freeze([...parsed.data]) as ConnectorTemplate[];
   return cached;
+}
+
+function validateTemplateSkillReferences(templates: ConnectorTemplate[]): void {
+  const knownSkills = new Set(Object.keys(templateSkillsJson as Record<string, unknown>));
+  const orphans: string[] = [];
+  for (const t of templates) {
+    if (t.default_skill && !knownSkills.has(t.default_skill)) {
+      orphans.push(`${t.slug} -> ${t.default_skill}`);
+    }
+  }
+  if (orphans.length > 0) {
+    throw new Error(
+      `templates.json references missing skills in template-skills.json: ${orphans.join(", ")}`,
+    );
+  }
 }
 
 /**

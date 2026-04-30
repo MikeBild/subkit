@@ -4,12 +4,12 @@ scope: global
 title: HTTP Connectors
 description: Driver specifics for the HTTP connector — methods, auth, pagination, retries.
 gates_tools: []
-version: 1
+version: 2
 ---
 
 # HTTP Connectors
 
-The `http` driver is the most commonly used connector in subkit. It speaks
+The `http` driver is the most commonly used connector in sk. It speaks
 REST/JSON over HTTPS, handles auth, retries, and pagination, and returns the
 standard envelope.
 
@@ -275,6 +275,6 @@ connector.
 
 ## See also
 
-- `subkit-concepts.md` — placeholder tokens and envelope shape.
+- `sk-concepts.md` — placeholder tokens and envelope shape.
 - `data-handling.md` — trimming HTTP responses with `data_selector`.
 - `error-recovery.md` — `http_4xx`, `http_5xx`, and `permission_denied` recovery.

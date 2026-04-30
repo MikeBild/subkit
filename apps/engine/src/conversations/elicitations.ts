@@ -10,6 +10,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import {
   conversationElicitations,
@@ -126,7 +127,7 @@ export async function createElicitation(
       status: "pending",
     })
     .returning();
-  if (!inserted) throw new Error("elicitation insert returned no row");
+  assertInsertRow(inserted, "elicitation");
   await exec
     .update(conversations)
     .set({ status: "awaiting_input", updated_at: new Date() })

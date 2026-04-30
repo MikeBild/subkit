@@ -4,12 +4,12 @@ scope: global
 title: Auth Flows
 description: Built-in auth modes plus the multi-step "login then call" pattern for upstreams without a first-class flow.
 gates_tools: []
-version: 1
+version: 2
 ---
 
 # Auth Flows
 
-Subkit supports a fixed catalog of first-class auth modes on the
+sk supports a fixed catalog of first-class auth modes on the
 connector itself plus the **multi-step pattern** for everything else
 (any "exchange creds for a token first, then call the API" recipe).
 
@@ -153,7 +153,7 @@ Connector config keys:
 
 ## `aws_sigv4` — generic AWS request signing
 
-For AWS services without a first-class subkit driver (AppSync IAM,
+For AWS services without a first-class sk driver (AppSync IAM,
 DynamoDB, API Gateway IAM, EventBridge, SES, SNS, SQS, ...), use
 `auth_type: "aws_sigv4"`. The driver signs each outbound request with
 the connector's AWS credentials right before dispatch. No token caching
@@ -180,7 +180,7 @@ Built-in templates: `appsync-iam` (GraphQL), `aws-apigw-iam` (REST).
 
 ## The multi-step pattern (everything else)
 
-When the upstream needs a custom dance subkit doesn't speak natively
+When the upstream needs a custom dance sk doesn't speak natively
 (SAML→JWT bridges, "POST creds to /login, then use cookie", legacy
 session tokens), author it as **two workflow steps**: one to mint the
 token, one to use it. This mirrors the pattern the reference

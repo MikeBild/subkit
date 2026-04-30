@@ -15,18 +15,25 @@ import { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { conversationElicitations, conversationMessages } from "../../db/schema/index.ts";
+import {
+  conversationElicitations,
+  conversationMessages,
+  conversations,
+} from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
 import {
   recordConversationToolCall,
   recordToolCircuitOpen,
 } from "../../observability/instrumentation.ts";
+import { startToolSpan } from "../../observability/langfuse-spans.ts";
 import { resolveAttachments } from "../attachments.ts";
 import { recordTransition } from "../confirmation.ts";
 import { isDangerousTool } from "../dangerous-tools.ts";
-import { computeLineDiff } from "../diff-util.ts";
+import { createDraftSnapshot } from "../draft-checkpoints.ts";
 import { createElicitation } from "../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
+import { shouldAutoloadSkillsForTool } from "../skill-autoload.ts";
+import { computeLineDiff } from "../text-line-diff.ts";
 import {
   buildPendingOutputForTool,
   type PermissionMode,
@@ -1190,10 +1197,67 @@ function wrapOne(
         }
         const resolvedArgs = attachmentResolved.value as Record<string, unknown>;
 
+        // Tool-driven skill autoload. Before dispatch, look up which
+        // skills the about-to-run tool implies (per `RULES` in
+        // `skill-autoload.ts`) and append any missing slugs to the
+        // conversation's `loaded_skills` column so the next context
+        // assembly sees their bodies. Idempotent — already-loaded
+        // slugs are filtered out by `shouldAutoloadSkillsForTool`.
+        try {
+          const convRow = await db
+            .select({ loaded_skills: conversations.loaded_skills })
+            .from(conversations)
+            .where(eq(conversations.id, ctx.conversation_id))
+            .limit(1);
+          const currentlyLoaded = (convRow[0]?.loaded_skills ?? []) as string[];
+          const additions = shouldAutoloadSkillsForTool(inner.name, rawArgs, currentlyLoaded);
+          if (additions.length > 0) {
+            await db
+              .update(conversations)
+              .set({ loaded_skills: [...currentlyLoaded, ...additions] })
+              .where(eq(conversations.id, ctx.conversation_id));
+            logger.debug({
+              module: "conversations.skill_autoload",
+              action: "skill_autoload.applied",
+              conversation_id: ctx.conversation_id,
+              tool: inner.name,
+              added_skills: additions,
+            });
+          }
+        } catch (err) {
+          // Autoload is best-effort: a DB blip must never block tool
+          // execution. The next turn will retry from the persisted
+          // state.
+          logger.warn({
+            module: "conversations.skill_autoload",
+            action: "skill_autoload.failed",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+
+        // Langfuse trace span around the tool execution. Inert no-op
+        // when LANGFUSE_PUBLIC_KEY/SECRET_KEY are unset; redacts any
+        // ${cred.*} placeholders + sensitive-looking values in input
+        // and output before they leave the process.
+        const langfuseSpan = await startToolSpan({
+          name: inner.name,
+          input: resolvedArgs,
+          metadata: {
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            category: inner.category,
+            session_id: ctx.conversation_id,
+          },
+        });
+
         let result: ToolResult;
         try {
           result = await inner.execute(perCallCtx, resolvedArgs);
         } catch (err) {
+          await langfuseSpan.finish({ status: "error", error: err });
           const msg = err instanceof Error ? err.message : String(err);
           const output = { error: msg };
           await updateToolCallOutput(db, toolCallId, output);
@@ -1260,7 +1324,46 @@ function wrapOne(
                   ? { next_best_actions: result.next_best_actions }
                   : {}),
               };
+        // Close the Langfuse span with the post-tool payload. `success`
+        // mirrors the structured `ok` flag: a tool that returns
+        // `{ ok: false }` is a recoverable result, not an error,
+        // but it lights up `level: WARNING` so operators can spot
+        // a high rate of `ok:false` returns in the dashboard.
+        await langfuseSpan.finish({
+          output: resultPayload,
+          status: result.ok ? "success" : "error",
+        });
         await updateToolCallOutput(db, toolCallId, resultPayload);
+
+        // Draft snapshot after every successful draft_write tool. Gives
+        // the operator a rollback target if the next edit goes wrong;
+        // LRU-capped at 10 per conversation so the table can't grow
+        // unbounded. Best-effort — a failure here logs but does not
+        // block the tool result from reaching the LLM.
+        if (result.ok && inner.category === "draft_write") {
+          try {
+            const draftAfter = ctx.getDraft();
+            await createDraftSnapshot(
+              {
+                tenant_id: ctx.tenant_id,
+                conversation_id: ctx.conversation_id,
+                turn_index: step,
+                draft: draftAfter,
+                label: inner.name,
+              },
+              db,
+            );
+          } catch (err) {
+            logger.warn({
+              module: "conversations.draft_snapshot",
+              action: "draft_snapshot.failed",
+              conversation_id: ctx.conversation_id,
+              tool: inner.name,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
         const truncated = truncateForLlm(resultPayload);
         events.push({
           type: "tool_result",

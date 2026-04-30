@@ -1,3 +1,4 @@
+import { isRecord } from "../utils/type-guards.ts";
 import { extractTemplatePlaceholders } from "./connector-template-intelligence.ts";
 import type {
   AuthoringCheckpointKey,
@@ -63,10 +64,6 @@ export function createEmptyDraftDocument(mode: AuthoringMode = "onboarding"): Dr
     latest_preview: null,
     state: createEmptyState(modeFromLegacy(mode)),
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {

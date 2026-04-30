@@ -5609,7 +5609,7 @@
         "x-amz-target": "AWSCognitoIdentityProviderService.InitiateAuth"
       }
     },
-    "default_skill": "auth-flows",
+    "default_skill": null,
     "ingestion_source": "graphql",
     "ingestion_url": null,
     "icon": "aws.svg",
@@ -5682,11 +5682,11 @@
     "base_url": null,
     "auth_type": "aws_sigv4",
     "oauth": null,
-    "default_skill": "auth-flows",
+    "default_skill": null,
     "ingestion_source": "graphql",
     "ingestion_url": null,
     "icon": "aws.svg",
-    "description": "AWS AppSync GraphQL API authenticated via IAM SigV4. Every request is signed with the connector's AWS credentials before dispatch — works with static IAM user keys or temporary STS credentials (AssumeRole / IAM Identity Center).",
+    "description": "AWS AppSync GraphQL API authenticated via IAM SigV4. Every request is signed with the connector's AWS credentials before dispatch \u2014 works with static IAM user keys or temporary STS credentials (AssumeRole / IAM Identity Center).",
     "category": "aws",
     "tags": ["graphql", "aws", "sigv4", "iam", "appsync"],
     "setup_instructions": "Set base_url to your AppSync GraphQL endpoint (https://<api-id>.appsync-api.<region>.amazonaws.com/graphql). Set config.aws_region to the region (e.g. eu-central-1) and config.aws_service to 'appsync'. Provide AWS access key + secret key (and optionally a session token from STS) as credentials.",
@@ -5701,7 +5701,10 @@
     "url_pattern": "^https:\\/\\/[a-z0-9]+\\.appsync-api\\.[a-z0-9-]+\\.amazonaws\\.com\\/graphql$",
     "keywords": ["sigv4", "iam", "appsync"],
     "inline_schema": null,
-    "probe_endpoint": { "method": "POST", "path": "/graphql" },
+    "probe_endpoint": {
+      "method": "POST",
+      "path": "/graphql"
+    },
     "credential_hints": [
       {
         "field": "access_key_id",
@@ -5741,7 +5744,7 @@
     "base_url": null,
     "auth_type": "aws_sigv4",
     "oauth": null,
-    "default_skill": "auth-flows",
+    "default_skill": null,
     "ingestion_source": null,
     "ingestion_url": null,
     "icon": "aws.svg",
@@ -5802,7 +5805,7 @@
       "client_id": null,
       "extra_headers": {}
     },
-    "default_skill": "auth-flows",
+    "default_skill": null,
     "ingestion_source": null,
     "ingestion_url": null,
     "icon": "gcp.svg",

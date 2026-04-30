@@ -4,7 +4,7 @@ scope: global
 title: S3 And MinIO Connectors
 description: Driver specifics for the S3-compatible object store — put, get, list, head, delete, plus content_type / metadata / parse_as.
 gates_tools: []
-version: 2
+version: 3
 ---
 
 # S3 And MinIO Connectors
@@ -233,7 +233,7 @@ Three advanced PUT/GET affordances:
 
 ## See also
 
-- `subkit-concepts.md` — envelope fields.
+- `sk-concepts.md` — envelope fields.
 - `http-connectors.md` — if your object store exposes presigned URLs, you can
   use the `http` driver for cross-cutting reads.
 - `error-recovery.md` — `s3_error` and `step_timeout` handling.

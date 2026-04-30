@@ -6,6 +6,7 @@
 import { and, asc, desc, eq, isNull, like, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
@@ -135,7 +136,7 @@ export async function createWorkflow(
         lifecycle: "active",
       })
       .returning();
-    if (!wf) throw new Error("workflows insert returned no row");
+    assertInsertRow(wf, "workflows");
     const [v] = await tx
       .insert(workflowVersions)
       .values({
@@ -146,7 +147,7 @@ export async function createWorkflow(
         ...(input.scope_index ? { scope_index: input.scope_index } : {}),
       })
       .returning();
-    if (!v) throw new Error("workflow_versions insert returned no row");
+    assertInsertRow(v, "workflow_versions");
     await tx.update(workflows).set({ current_version_id: v.id }).where(eq(workflows.id, wf.id));
     await auditAwait(
       {
@@ -237,7 +238,7 @@ export async function updateWorkflow(
         ...(input.scope_index ? { scope_index: input.scope_index } : {}),
       })
       .returning();
-    if (!v) throw new Error("workflow_versions insert returned no row");
+    assertInsertRow(v, "workflow_versions");
     await tx
       .update(workflows)
       .set({ name: def.name, current_version_id: v.id, updated_at: new Date() })
@@ -633,7 +634,7 @@ export async function restoreWorkflowVersion(
         note: `restored from v${version}`,
       })
       .returning();
-    if (!v) throw new Error("restore insert returned no row");
+    assertInsertRow(v, "restore");
     await tx
       .update(workflows)
       .set({ current_version_id: v.id, updated_at: new Date() })

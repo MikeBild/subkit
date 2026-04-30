@@ -4,7 +4,7 @@ scope: global
 title: Data Handling Between Steps
 description: The envelope, JSONata cheatsheet, data_selector vs transform vs outputTransform, and how to keep scope small.
 gates_tools: []
-version: 1
+version: 2
 ---
 
 # Data Handling Between Steps
@@ -34,7 +34,7 @@ Writing `$scope.list_orders.results` accesses `.results` on the envelope
 itself. That field doesn't exist. JSONata returns `undefined`, which silently
 propagates — your next `transform` gets `null`, your final output is empty,
 and nothing logs an error. This is the single most time-consuming authoring
-bug in subkit.
+bug in sk.
 
 The three envelope fields you actually use downstream:
 
@@ -289,6 +289,6 @@ and in `data_selector` / `transform` configs inside loop bodies.
 
 ## See also
 
-- `subkit-concepts.md` — envelope and placeholder tokens.
+- `sk-concepts.md` — envelope and placeholder tokens.
 - `workflow-authoring.md` — when to use each reshaping location.
 - `http-connectors.md` — pagination and the shape of concatenated responses.

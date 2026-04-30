@@ -6,6 +6,7 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { skills } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
@@ -109,7 +110,7 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
       })
       .returning();
     const row = inserted[0];
-    if (!row) throw new Error("skills insert returned no row");
+    assertInsertRow(row, "skills");
     await auditAwait(
       {
         tenant_id: p.tenant_id,
