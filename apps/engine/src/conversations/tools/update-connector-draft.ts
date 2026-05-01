@@ -98,7 +98,12 @@ const inputSchema = z
     template_slug: z.string().min(1).nullable().optional(),
     template_name: z.string().min(1).nullable().optional(),
     template_source: z.enum(["builtin", "tenant"]).nullable().optional(),
-    config: z.record(z.string(), z.unknown()).optional(),
+    config: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe(
+        "Driver options only (pagination, base_url overrides, static_headers, query_defaults, etc.). Template-derived blocks `config.oauth` and `config.aws_sigv4` are IMMUTABLE here — they're read from the template snapshot at save time. To change auth, call `start_connector_from_description` with a different `auth_type`. To run an authorization-code flow on an already-saved oauth2 connector, call `authenticate_oauth`. Never put credentials in `config` (token, password, api_key, client_secret, etc.) — collect them via `ask_user_form(sensitive: true)` and pass them through `save_connector_draft({credential})`.",
+      ),
     docs: z.array(z.string()).optional(),
   })
   .openapi("UpdateConnectorDraftToolInput");
@@ -106,7 +111,7 @@ const inputSchema = z
 export const updateConnectorDraftTool: ConversationTool = {
   name: "update_connector_draft",
   description:
-    "Update fields on the current connector draft. Use this after each user answer so the operator can inspect the evolving connector before probing or saving.",
+    "Update fields on the current connector draft. Use this after each user answer so the operator can inspect the evolving connector before probing or saving. `config` carries driver options only; `config.oauth` and `config.aws_sigv4` are template-owned and rejected here. Credentials never go in `config` — use `ask_user_form` + `save_connector_draft({credential})`.",
   inputSchema,
   category: "draft_write",
   async execute(ctx, rawArgs): Promise<ToolResult> {
