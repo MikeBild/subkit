@@ -31,6 +31,30 @@ export interface RunStepOutcome {
   raw_output?: unknown;
 }
 
+// Workstream A7: redact step output keys the recipe declared as
+// `outputs[k].secret = true`. The marker matches the shared
+// `isAlreadyRedacted` regex so downstream scrubber passes leave it
+// alone. Only request steps carry the `outputs` declaration today
+// (the only kind whose external response can contain credentials);
+// other step kinds bypass cleanly.
+function applyDeclaredSecrets(step: StepDef, value: unknown): unknown {
+  if (step.kind !== "request") return value;
+  const outputs = (step as { outputs?: Record<string, { secret?: boolean }> }).outputs;
+  if (!outputs) return value;
+  const secretKeys = Object.entries(outputs)
+    .filter(([, v]) => v?.secret === true)
+    .map(([k]) => k);
+  if (secretKeys.length === 0) return value;
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const out: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+  for (const key of secretKeys) {
+    if (key in out) out[key] = "***REDACTED:secret_output***";
+  }
+  return out;
+}
+
 export async function runStep(
   ctx: StepRunContext,
   scope: Record<string, unknown>,
@@ -121,12 +145,21 @@ export async function runStep(
     }
   }
 
+  // Workstream A7: scrub declared-secret outputs BEFORE offload + preview
+  // so the redacted payload reaches downstream readers (offload storage,
+  // step preview, audit log, structured logs). The recipe author marks
+  // `outputs[k].secret = true` (e.g. on Cognito IdToken / OAuth2
+  // access_token); the executor replaces those keys with the standard
+  // ***REDACTED:secret_output*** marker that already passes the
+  // existing scrubber's "isAlreadyRedacted" check.
+  const scrubbedScope = applyDeclaredSecrets(step, scope_value);
+
   // Offload + preview
   const offload = await maybeOffload(ctx.db, {
     tenant_id: ctx.tenant_id,
     execution_id: ctx.execution_id,
     step_id: ctx.step_row_id,
-    result: scope_value ?? result.output ?? null,
+    result: scrubbedScope ?? result.output ?? null,
   });
 
   // When the step produced non-fatal warnings, persist them alongside
@@ -136,11 +169,11 @@ export async function runStep(
   const output_preview = offload.storage_uri
     ? null
     : warnings
-      ? { value: scope_value ?? null, warnings }
-      : (scope_value ?? null);
+      ? { value: scrubbedScope ?? null, warnings }
+      : (scrubbedScope ?? null);
   await finalizeStepRow(ctx.db, ctx.step_row_id, result.status, result, {
     output_preview,
-    result_preview: offload.preview ?? previewOf(scope_value ?? null),
+    result_preview: offload.preview ?? previewOf(scrubbedScope ?? null),
     result_storage_uri: offload.storage_uri,
   });
 
