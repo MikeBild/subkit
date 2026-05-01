@@ -123,7 +123,7 @@ async function seedApprovedConfirm(conversationId: string): Promise<void> {
     conversation_id: conversationId,
     tool_name: "ask_user_confirm",
     summary: "commit",
-    input: { kind: "commit_draft", summary: "commit" },
+    input: { kind: "save_workflow_draft", summary: "commit" },
     output: { confirmed: true },
     status: "resolved",
   });

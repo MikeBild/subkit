@@ -1,17 +1,17 @@
-// Locks the no-silent-slug-adopt contract on commit_draft.
+// Locks the no-silent-slug-adopt contract on save_workflow_draft.
 //
 // Background: a user starts a brand-new workflow draft ("Berlin Weather
 // Tomorrow") in a conversation with no target_workflow_id. The LLM
 // emits draft.slug = "list-private-github-repos" (a slug that already
 // belongs to a different live workflow in the tenant). Old behaviour:
-// commit_draft silently adopted that workflow as the target and
+// save_workflow_draft silently adopted that workflow as the target and
 // overwrote its content. The user noticed only after listing workflows
 // and seeing "list-private-github-repos (active) — Berlin Weather
 // Tomorrow" — same id, content of a totally different workflow.
 //
 // New contract: a slug collision against a different live workflow id
 // returns slug_conflict_with_live_workflow with the conflict's id +
-// name. To overwrite, the LLM must call commit_draft again with
+// name. To overwrite, the LLM must call save_workflow_draft again with
 // target_workflow_id=<conflict.id> AFTER the user has confirmed in chat.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -27,8 +27,8 @@ import {
   withWorkflowInspection,
   withWorkflowValidation,
 } from "../authoring-state.ts";
-import { commitDraftTool } from "../tools/commit-draft.ts";
 import type { ToolContext } from "../tools/index.ts";
+import { saveWorkflowDraftTool } from "../tools/save-workflow-draft.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
@@ -69,7 +69,7 @@ async function seedApprovedConfirm(conversationId: string): Promise<void> {
     conversation_id: conversationId,
     tool_name: "ask_user_confirm",
     summary: "commit",
-    input: { kind: "commit_draft", summary: "commit" },
+    input: { kind: "save_workflow_draft", summary: "commit" },
     output: { confirmed: true },
     status: "resolved",
   });
@@ -130,7 +130,7 @@ async function seedLiveWorkflow(slug: string, name: string): Promise<{ id: strin
   return { id: wf.id };
 }
 
-describe("commit_draft — slug-conflict-with-live-workflow contract", () => {
+describe("save_workflow_draft — slug-conflict-with-live-workflow contract", () => {
   test("refuses to silently overwrite a different live workflow with the same slug", async () => {
     const existing = await seedLiveWorkflow(
       "list-private-github-repos",
@@ -155,7 +155,7 @@ describe("commit_draft — slug-conflict-with-live-workflow contract", () => {
       slug: "list-private-github-repos",
     });
 
-    const result = await commitDraftTool.execute(
+    const result = await saveWorkflowDraftTool.execute(
       toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
       {},
     );
@@ -213,7 +213,7 @@ describe("commit_draft — slug-conflict-with-live-workflow contract", () => {
 
     const draft = readyDraft({ name: "Invoices Export v2", slug: "invoices-export" });
 
-    const result = await commitDraftTool.execute(
+    const result = await saveWorkflowDraftTool.execute(
       toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
       { target_workflow_id: existing.id },
     );
@@ -252,7 +252,7 @@ describe("commit_draft — slug-conflict-with-live-workflow contract", () => {
 
     const draft = readyDraft({ name: "Phantom", slug: "phantom-target" });
 
-    const result = await commitDraftTool.execute(
+    const result = await saveWorkflowDraftTool.execute(
       toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
       // Valid UUID shape but no row in this tenant.
       { target_workflow_id: "00000000-0000-0000-0000-000000000000" },
@@ -277,7 +277,7 @@ describe("commit_draft — slug-conflict-with-live-workflow contract", () => {
 
     const draft = readyDraft({ name: "Fresh Start", slug: "fresh-start-unique" });
 
-    const result = await commitDraftTool.execute(
+    const result = await saveWorkflowDraftTool.execute(
       toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
       {},
     );

@@ -137,7 +137,7 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
       { name: "propose_step" },
       { name: "validate_draft" },
       { name: "dry_run_workflow" },
-      { name: "commit_draft" },
+      { name: "save_workflow_draft" },
       { name: "run_workflow" },
       { name: "diagnose_latest_execution" },
       { name: "save_connector_draft" }, // connector-only
@@ -145,7 +145,7 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
     const filtered = filterByAuthoringPalette(tools, draft, ONLY_WORKFLOW);
     const names = filtered.map((t) => t.name);
     expect(names).toContain("build_workflow");
-    expect(names).toContain("commit_draft");
+    expect(names).toContain("save_workflow_draft");
     expect(names).toContain("run_workflow");
     expect(names).toContain("diagnose_latest_execution");
     expect(names).not.toContain("save_connector_draft");

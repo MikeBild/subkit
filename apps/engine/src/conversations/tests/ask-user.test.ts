@@ -106,10 +106,10 @@ describe("ask_user_form schema", () => {
 });
 
 describe("ask_user_confirm schema", () => {
-  test("accepts commit_draft kind with diff", () => {
+  test("accepts save_workflow_draft kind with diff", () => {
     const parsed = askUserConfirmTool.inputSchema.safeParse({
       question: "Commit this workflow?",
-      kind: "commit_draft",
+      kind: "save_workflow_draft",
       summary: "Creates workflow `orders-sync`",
       diff: { before: null, after: { name: "orders-sync" } },
     });

@@ -39,7 +39,7 @@ describe("translateAutoPersistError", () => {
       "23505",
       'duplicate key value violates unique constraint "workflows_tenant_slug_active_key"',
     );
-    const out = translateAutoPersistError(err, "commit_workflow_draft");
+    const out = translateAutoPersistError(err, "save_workflow_draft");
     expect(out.error_code).toBe("slug_already_in_use");
     expect(out.message).toMatch(/workflow/);
     expect(out.next_best_actions).toContain("list_workflows");

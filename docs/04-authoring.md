@@ -77,7 +77,7 @@ The approval gate sits on top of additional hard quality gates:
 - A workflow run always targets a persisted workflow version, never an ambiguous draft.
 - The normal conversation surface no longer exposes force-style bypasses for save or commit. Operators can still use explicit admin or development paths where appropriate, but the guided flow itself is strict.
 - In `permission_mode=auto`, the engine skips non-dangerous confirmation prompts and continues directly to the underlying state-changing action. The user should never have to confirm the same save twice in different forms.
-- Ready save states carry a structured next tool in the draft summary (`save_connector_draft` or `commit_draft`). A short follow-up approval like "yes" in `permission_mode=auto` reuses that state instead of depending on transcript guesswork.
+- Ready save states carry a structured next tool in the draft summary (`save_connector_draft` or `save_workflow_draft`). A short follow-up approval like "yes" in `permission_mode=auto` reuses that state instead of depending on transcript guesswork.
 
 This matters because the approval is not meant to compensate for missing technical checks. It is the final human sign-off after the state machine has already established that the draft is internally coherent.
 
@@ -116,7 +116,7 @@ The `sk` CLI mirrors the conversational gates so operators get the same guarante
 |---|---|
 | `validate_draft` | `sk workflows validate <file.json>` |
 | `dry_run_workflow` / `dry_run_step` | `sk workflows preview <file.json>` (alias: `dry-run`) |
-| `commit_draft` | `sk workflows create <file.json>` |
+| `save_workflow_draft` | `sk workflows create <file.json>` |
 | `validate_connector_draft` (shape check) | — (use the conversational loop for structural checks) |
 | `probe_connector_draft` / `test` | `sk connectors probe <id>` (alias of `test`) |
 | `inspect_connector_draft` | `sk connectors inspect <id>` (alias of `get`) |

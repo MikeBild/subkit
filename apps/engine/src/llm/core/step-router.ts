@@ -282,7 +282,7 @@ function activeToolsForStage(
       return keep((t) => t.category === "tenant_read" || t.category === "draft_write");
     case "repairing":
       // Repair phase — same as propose but `tenant_write` is also
-      // available so a successful repair can land its `commit_draft` /
+      // available so a successful repair can land its `save_workflow_draft` /
       // `save_connector_draft` without a forced stage transition.
       return undefined;
     case "connector_persisted":

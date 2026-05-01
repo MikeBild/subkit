@@ -29,7 +29,7 @@ describe("isBackgroundTool", () => {
   });
 
   test("unrelated tool names are not background", () => {
-    expect(isBackgroundTool(call("commit_draft"))).toBe(false);
+    expect(isBackgroundTool(call("save_workflow_draft"))).toBe(false);
     expect(isBackgroundTool(call("dry_run_step"))).toBe(false);
   });
 });

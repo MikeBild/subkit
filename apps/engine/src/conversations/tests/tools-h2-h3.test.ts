@@ -16,7 +16,7 @@ describe("conversation tools — registration", () => {
     "build_workflow",
     "call_connector",
     "cannot_help",
-    "commit_draft",
+    "save_workflow_draft",
     "connect_steps",
     "discover_connector_endpoints",
     "discover_systems_from_files",

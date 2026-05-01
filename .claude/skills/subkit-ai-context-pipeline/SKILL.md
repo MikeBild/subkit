@@ -103,12 +103,12 @@ hits, and pagination edges — the user does not have to quote them back.
 ## Conversation tool-use loop
 
 Conversations expose a fixed set of structured-intent tools
-(`list_skills`, `fetch_connector_docs`, `propose_step`, `validate_draft`, `commit_draft`,
+(`list_skills`, `fetch_connector_docs`, `propose_step`, `validate_draft`, `save_workflow_draft`,
 etc.). When adding a tool:
 
 1. Define Zod schema for input and output.
 2. Register in the Conversation tool registry.
-3. **Dry-run first.** Tools that would mutate state (`commit_draft`, `approve_patch`)
+3. **Dry-run first.** Tools that would mutate state (`save_workflow_draft`, `approve_patch`)
    must have an explicit approval step; don't short-circuit.
 4. Audit the invocation.
 

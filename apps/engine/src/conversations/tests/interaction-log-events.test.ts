@@ -52,7 +52,7 @@ async function seedToolCall(tool: string): Promise<string> {
       tenant_id,
       conversation_id,
       tool,
-      input: { kind: "commit_draft" },
+      input: { kind: "save_workflow_draft" },
     })
     .returning();
   return row!.id;

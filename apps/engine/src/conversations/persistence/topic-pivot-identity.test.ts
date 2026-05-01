@@ -1,7 +1,7 @@
 // Regression for session 5b97ec58 (the Berlin-weather → GitHub-repos
 // pivot). Pre-fix the conversation row carried a sticky
 // `target_workflow_id` set on the first commit, and any subsequent
-// commit_draft — even one for a logically NEW workflow with a
+// save_workflow_draft — even one for a logically NEW workflow with a
 // different slug — silently `updateWorkflow`'d that same row. Engine
 // audit logs showed three `workflow.updated` events on the same id
 // because the engine never noticed the topic pivot.
@@ -96,13 +96,13 @@ async function seedApprovedConfirm(conversationId: string): Promise<void> {
     conversation_id: conversationId,
     tool_name: "ask_user_confirm",
     summary: "commit",
-    input: { kind: "commit_draft", summary: "commit" },
+    input: { kind: "save_workflow_draft", summary: "commit" },
     output: { confirmed: true },
     status: "resolved",
   });
 }
 
-describe("commit_draft · identity gate (session 5b97ec58)", () => {
+describe("save_workflow_draft · identity gate (session 5b97ec58)", () => {
   test("topic pivot creates a new workflow row instead of overwriting the previous one", async () => {
     const conversationId = await freshConversation();
 

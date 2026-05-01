@@ -18,13 +18,13 @@
 
 import type { SubkitLlm } from "../core/base-types.ts";
 import { chatRubric } from "./rubrics/chat.ts";
-import type { CommitDraftArtifact } from "./rubrics/commit-draft.ts";
-import { commitDraftRubric } from "./rubrics/commit-draft.ts";
+import type { SaveWorkflowDraftArtifact } from "./rubrics/save-workflow-draft.ts";
+import { saveWorkflowDraftRubric } from "./rubrics/save-workflow-draft.ts";
 
-export type CriticKind = "commit_draft" | "chat";
+export type CriticKind = "save_workflow_draft" | "chat";
 
 export type CriticArtifact =
-  | { kind: "commit_draft"; payload: CommitDraftArtifact }
+  | { kind: "save_workflow_draft"; payload: SaveWorkflowDraftArtifact }
   | { kind: "chat"; payload: string };
 
 export interface CriticVerdict {
@@ -57,7 +57,7 @@ function inSnapshot(snapshot: string | undefined, value: string): boolean {
 }
 
 function gradeCommitDraft(
-  payload: CommitDraftArtifact,
+  payload: SaveWorkflowDraftArtifact,
   snapshot: string | undefined,
 ): CriticVerdict {
   const checks = {
@@ -86,7 +86,7 @@ function gradeCommitDraft(
   return {
     verdict: "fail",
     confidence,
-    reason: `commit_draft rubric failed: ${failedKeys.join(", ")}`,
+    reason: `save_workflow_draft rubric failed: ${failedKeys.join(", ")}`,
     hint: hintForCommitDraft(failedKeys),
     checks,
   };
@@ -95,7 +95,7 @@ function gradeCommitDraft(
 function hintForCommitDraft(failed: string[]): string {
   const parts: string[] = [];
   if (failed.includes("saved"))
-    parts.push("call save_connector_draft / commit_draft to persist before signalling done");
+    parts.push("call save_connector_draft / save_workflow_draft to persist before signalling done");
   if (failed.includes("no_placeholder_markers"))
     parts.push("replace [guard:placeholder] markers with grounded values from runtime_context");
   if (failed.includes("credentials_exist"))
@@ -167,11 +167,11 @@ function gradeChat(
 export async function runCritic(params: RunCriticParams): Promise<CriticVerdict> {
   const { artifact, snapshot, runtimeContext } = params;
   switch (artifact.kind) {
-    case "commit_draft":
+    case "save_workflow_draft":
       return gradeCommitDraft(artifact.payload, snapshot);
     case "chat":
       return gradeChat(artifact.payload, snapshot, runtimeContext);
   }
 }
 
-export { chatRubric, commitDraftRubric };
+export { chatRubric, saveWorkflowDraftRubric };

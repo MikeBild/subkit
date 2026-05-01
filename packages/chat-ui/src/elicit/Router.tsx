@@ -168,5 +168,5 @@ export const ElicitRouter: React.FC<ElicitRouterProps> = ({
 };
 
 function isConfirmKind(v: unknown): v is ConfirmKind {
-  return v === "commit_draft" || v === "external_write" || v === "generic";
+  return v === "save_workflow_draft" || v === "external_write" || v === "generic";
 }

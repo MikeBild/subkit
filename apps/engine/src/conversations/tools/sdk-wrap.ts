@@ -235,8 +235,8 @@ export const MAX_VALIDATION_FINGERPRINT_REPEAT = 3;
  */
 function mapToolToCommitIntentKind(tool: string): string | null {
   switch (tool) {
-    case "commit_draft":
-      return "commit_workflow_draft";
+    case "save_workflow_draft":
+      return "save_workflow_draft";
     case "save_connector_draft":
       return "save_connector_draft";
     case "run_workflow":
@@ -350,10 +350,10 @@ function referencesProseConfirmation(asstText: string, toolName: string): boolea
 /**
  * Top-level `input.kind` to stamp on a policy-gate elicitation so the
  * tool's downstream prior-approval gate (e.g. `commit-workflow.ts`'s
- * SQL filter `(input ->> 'kind') = 'commit_draft'`) finds the resolved
+ * SQL filter `(input ->> 'kind') = 'save_workflow_draft'`) finds the resolved
  * row when the LLM re-issues the call with `__policy_confirmed: true`.
  *
- * For `commit_draft` we MUST use `"commit_draft"` (not `"external_write"`)
+ * For `save_workflow_draft` we MUST use `"save_workflow_draft"` (not `"external_write"`)
  * — without this the policy-gate elicitation would never satisfy the
  * inner `commitWorkflowAtomic` prior-approval check, and a re-issue
  * would loop indefinitely with `error: no_prior_approval`. Other
@@ -362,8 +362,8 @@ function referencesProseConfirmation(asstText: string, toolName: string): boolea
  */
 function topLevelElicitationKindForTool(
   tool: string,
-): "commit_draft" | "external_write" | "generic" {
-  if (tool === "commit_draft") return "commit_draft";
+): "save_workflow_draft" | "external_write" | "generic" {
+  if (tool === "save_workflow_draft") return "save_workflow_draft";
   return "external_write";
 }
 
@@ -382,12 +382,12 @@ function buildPolicyGateCommitIntent(
 ): Record<string, unknown> | null {
   const intentKind = mapToolToCommitIntentKind(tool);
   if (!intentKind) return null;
-  if (intentKind === "commit_workflow_draft") {
+  if (intentKind === "save_workflow_draft") {
     const targetId =
       typeof rawArgs.target_workflow_id === "string" ? rawArgs.target_workflow_id : undefined;
     const forceCommit = rawArgs.force_commit === true;
     return {
-      kind: "commit_workflow_draft",
+      kind: "save_workflow_draft",
       payload: {
         ...(targetId ? { target_workflow_id: targetId } : {}),
         ...(forceCommit ? { force_commit: true } : {}),
@@ -814,15 +814,15 @@ function wrapOne(
         // that elicitation was confirmed within the last 5 minutes.
         const intentKindForCurrentTool = mapToolToCommitIntentKind(inner.name);
         // Dedupe filter: the LLM-emitted ask_user_confirm uses the
-        // CONFIRM_KIND namespace (`"commit_draft" | "external_write" |
+        // CONFIRM_KIND namespace (`"save_workflow_draft" | "external_write" |
         // "generic"`) as `input.kind`, NOT the COMMIT_INTENT_KIND
-        // namespace (`"commit_workflow_draft" | …`) that the harness
+        // namespace (`"save_workflow_draft" | …`) that the harness
         // routes on. So when checking "did the LLM already prompt for
         // this same intent?" we must compare against the top-level
         // confirm kind, not the commit_intent kind. Pre-fix the
         // dedupe always missed because the SQL compared the wrong
         // namespaces; the bug only surfaced after the gate started
-        // firing for commit_draft (previously the category guard
+        // firing for save_workflow_draft (previously the category guard
         // suppressed the second pause entirely).
         const llmEmittedKindForCurrentTool = topLevelElicitationKindForTool(inner.name);
         let recentlyConfirmedByLLM = false;
@@ -919,7 +919,7 @@ function wrapOne(
         // filter conflated "needs confirmation" with "stages a
         // confirmation-state-machine row" and silently let `draft_write`
         // tools that demand confirm_before_execution (notably
-        // `commit_draft`) bypass the gate, where they then died with
+        // `save_workflow_draft`) bypass the gate, where they then died with
         // `no_prior_approval` because no elicitation was ever created.
         // The state-machine recording at `recordTransition` below stays
         // scoped to `tenant_write` — that part of the original guard
@@ -954,7 +954,7 @@ function wrapOne(
         // next "tool ran without confirmation" investigation can read
         // why directly from engine logs instead of bisecting the
         // wrapper. Pre-fix this exact failure mode silently swallowed
-        // a commit_draft call (session dca36b29 — `paused: false,
+        // a save_workflow_draft call (session dca36b29 — `paused: false,
         // committed: false, error: no_prior_approval`).
         if (resolvedMode === "confirm_before_execution" && !needsPreConfirmation) {
           const skipReason = policyMarker
@@ -1086,8 +1086,8 @@ function wrapOne(
             return `Confirm ${inner.name} (policy: ${resolvedMode})`;
           };
           const policyGateSummary = buildPolicyGateSummary();
-          // Top-level kind matters: `commit_draft` MUST stamp
-          // `kind: "commit_draft"` so the inner prior-approval gate in
+          // Top-level kind matters: `save_workflow_draft` MUST stamp
+          // `kind: "save_workflow_draft"` so the inner prior-approval gate in
           // commit-workflow.ts:54-89 finds the resolved row when the
           // LLM re-issues with __policy_confirmed: true.
           const topLevelKind = topLevelElicitationKindForTool(inner.name);
@@ -1137,7 +1137,7 @@ function wrapOne(
               : {}),
           });
           // Stamp `status: "awaiting_confirmation"` so any CLI card that
-          // dispatches on `tool: "run_workflow" | "commit_draft"` and
+          // dispatches on `tool: "run_workflow" | "save_workflow_draft"` and
           // reads `data.status` shows a meaningful pending state instead
           // of falling into the "Execution status missing" branch.
           // Pre-fix this output was status-less and the ExecutionDiagnosisCard

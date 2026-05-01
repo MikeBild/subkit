@@ -293,7 +293,7 @@ export function getMockProvider(): MockProvider {
 /**
  * Canned "list users" plan — the loop walks through this sequence when
  * the user asks to list users from an API. Covers propose_step →
- * validate_draft → ask_user_confirm → commit_draft with an intentional
+ * validate_draft → ask_user_confirm → save_workflow_draft with an intentional
  * first-pass validation-error (missing url) so the self-correct loop
  * is exercised. The preview step runs a pure transform over sample
  * input so the commit gate stays deterministic in hermetic CI.
@@ -352,13 +352,13 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
       tool: "ask_user_confirm",
       args: {
         question: "Commit this 2-step workflow?",
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         summary: "commit 2-step workflow",
       },
     },
     // Resume after the user answers — `__policy_confirmed:true` so the
     // post-rebuild tool-policy gate doesn't pause a second time.
-    { tool: "commit_draft", args: { __policy_confirmed: true } },
+    { tool: "save_workflow_draft", args: { __policy_confirmed: true } },
   ];
 }
 
@@ -370,7 +370,7 @@ export function resetMockProvider(): void {
  * Canned "open-meteo weather" authoring plan. Drives the conversation
  * loop through: get_engine_status → list_connectors → start_connector_from_description
  * → propose_step (Berlin forecast) → validate_draft → ask_user_confirm
- * → commit_draft. Intentionally grounded in the open-meteo forecast
+ * → save_workflow_draft. Intentionally grounded in the open-meteo forecast
  * endpoint which needs no API key:
  *   https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&daily=temperature_2m_max,temperature_2m_min&forecast_days=2
  * The final step filters tomorrow's row via a transform step.
@@ -419,22 +419,22 @@ export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
       },
     },
     { tool: "validate_draft", args: {} },
-    // Preview the transform output over the forecast scope so commit_draft
+    // Preview the transform output over the forecast scope so save_workflow_draft
     // clears the preview-before-commit gate.
     { tool: "dry_run_step", args: { step_id: "tomorrow-only" } },
     {
       tool: "ask_user_confirm",
       args: {
         question: "Commit the Berlin tomorrow-weather workflow?",
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         summary: "commit weather workflow",
       },
     },
-    // After the operator confirms (test-side or canned), commit_draft
+    // After the operator confirms (test-side or canned), save_workflow_draft
     // runs with __policy_confirmed:true so the post-rebuild tool-policy
     // gate does NOT pause again — otherwise turn-2 resume tests sit
     // in awaiting_input forever waiting on a phantom second confirm.
-    { tool: "commit_draft", args: { __policy_confirmed: true } },
+    { tool: "save_workflow_draft", args: { __policy_confirmed: true } },
   ];
 }
 
@@ -481,10 +481,10 @@ export function cannedConnectorWorkflowPlan(baseUrl: string): ConverseMockStep[]
       tool: "ask_user_confirm",
       args: {
         question: "Commit this engine health workflow?",
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         summary: "commit engine health workflow",
       },
     },
-    { tool: "commit_draft", args: {} },
+    { tool: "save_workflow_draft", args: {} },
   ];
 }

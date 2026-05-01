@@ -1,14 +1,14 @@
 // Validates the chat-first-repair contract: after a persisted workflow
-// has been edited and re-validated, commit_draft must appear in the
+// has been edited and re-validated, save_workflow_draft must appear in the
 // conversation tool palette. PR10/PR15 made this guarantee
-// unconditional — once `workflow-authoring` is loaded, `commit_draft`
+// unconditional — once `workflow-authoring` is loaded, `save_workflow_draft`
 // stays in the palette regardless of state, and wrong-state calls
 // return a structured `tool_unavailable_in_state` envelope from
 // `state-gate.ts` rather than disappearing from the palette.
 //
 // Session 95ccaa35 (2026-04-25, mike@mikebild.com) — the original bug
 // where the repair flow ended up with the agent suggesting a CLI
-// fallback because commit_draft was hidden by a stale checkpoint.
+// fallback because save_workflow_draft was hidden by a stale checkpoint.
 
 import {
   CONNECTOR_AUTHORING_SKILL,
@@ -64,7 +64,7 @@ const ALL_AUTHORING_SKILLS = new Set<string>([CONNECTOR_AUTHORING_SKILL, WORKFLO
 export function validate(fixture: FixtureRecord): ValidationResult {
   const input = fixture.input as Input;
 
-  // Case 1: validated repair on a persisted workflow → commit_draft must
+  // Case 1: validated repair on a persisted workflow → save_workflow_draft must
   // be in the palette so the LLM can take the repair-and-save path.
   const ready = summary({
     active_target: input.active_target,
@@ -81,18 +81,18 @@ export function validate(fixture: FixtureRecord): ValidationResult {
   const readyVisible = filterByAuthoringPalette(listTools(), readyDraft, ALL_AUTHORING_SKILLS).map(
     (tool) => tool.name,
   );
-  if (!readyVisible.includes("commit_draft")) {
+  if (!readyVisible.includes("save_workflow_draft")) {
     return {
       pass: false,
       reason:
-        "regressed chat-first repair contract: commit_draft missing from the palette even with workflow-authoring loaded",
+        "regressed chat-first repair contract: save_workflow_draft missing from the palette even with workflow-authoring loaded",
     };
   }
 
-  // Case 2: tools never silently disappear — commit_draft stays in the
+  // Case 2: tools never silently disappear — save_workflow_draft stays in the
   // palette even when validation is still pending. The wrong-state
   // recovery happens via the structured envelope returned by
-  // commit_draft itself, not by hiding the tool.
+  // save_workflow_draft itself, not by hiding the tool.
   const notValidated = summary({
     active_target: input.active_target,
     lifecycle_state: input.lifecycle_state,
@@ -108,11 +108,11 @@ export function validate(fixture: FixtureRecord): ValidationResult {
     notValidatedDraft,
     ALL_AUTHORING_SKILLS,
   ).map((tool) => tool.name);
-  if (!notValidatedVisible.includes("commit_draft")) {
+  if (!notValidatedVisible.includes("save_workflow_draft")) {
     return {
       pass: false,
       reason:
-        "regressed skill-gated palette: commit_draft must stay in the palette regardless of state — wrong-state calls are recovered via the tool's own structured envelope",
+        "regressed skill-gated palette: save_workflow_draft must stay in the palette regardless of state — wrong-state calls are recovered via the tool's own structured envelope",
     };
   }
   // The state-gate envelope is enforced by the unit tests in

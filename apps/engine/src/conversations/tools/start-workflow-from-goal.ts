@@ -52,7 +52,7 @@ export const startWorkflowFromGoalTool: ConversationTool = {
     "Replaces the one-shot build_workflow pattern when you are authoring a brand-new workflow iteratively. Propose individual steps with propose_step after calling this.",
   important_notes: [
     "Does not emit any steps — use propose_step / connect_steps to grow the draft step by step.",
-    "Writes to draft only; commit_draft is still required to persist the workflow.",
+    "Writes to draft only; save_workflow_draft is still required to persist the workflow.",
   ],
   inputSchema,
   category: "draft_write" as const,
@@ -68,7 +68,7 @@ export const startWorkflowFromGoalTool: ConversationTool = {
     };
     // Stash the goal + connector ids as draft-only metadata so later
     // tools (propose_step, inspect_workflow_draft) can reference them.
-    // These keys are ignored by the workflow validator until commit_draft
+    // These keys are ignored by the workflow validator until save_workflow_draft
     // strips the draft down to its WorkflowDef shape.
     const extra: Record<string, unknown> = {
       goal: args.goal,
@@ -79,7 +79,7 @@ export const startWorkflowFromGoalTool: ConversationTool = {
     await ctx.setDraft(nextDraft);
     // Detach from any previously-saved workflow target. The LLM is
     // explicitly seeding a fresh draft here; if the conversation row
-    // still pointed at an earlier workflow, commit_draft would silently
+    // still pointed at an earlier workflow, save_workflow_draft would silently
     // overwrite it. The identity gate in commit-workflow.ts also
     // protects against this, but resetting here means downstream tools
     // (inspect, dry_run) see a clean target_workflow_id state too.

@@ -26,7 +26,7 @@ function checkpointToolName(key: AuthoringCheckpointKey): string {
     case "workflow_previewed":
       return "dry_run_workflow";
     case "workflow_persisted":
-      return "commit_draft";
+      return "save_workflow_draft";
     case "workflow_executed":
       return "run_workflow";
     case "workflow_diagnosed":

@@ -89,7 +89,7 @@ describe("requireAuthoringStage", () => {
     const result = requireAuthoringStage(
       summary({ mode: "workflow", stage: "workflow_validated" }),
       "workflow_previewed",
-      "commit_draft",
+      "save_workflow_draft",
     );
     expect(result).not.toBeNull();
     if (result && !result.ok) {
@@ -185,11 +185,11 @@ describe("requireWorkflowDraft", () => {
         steps: [{ id: "s1", kind: "request" }],
       } as never,
     };
-    expect(requireWorkflowDraft(draft, "commit_draft")).toBeNull();
+    expect(requireWorkflowDraft(draft, "save_workflow_draft")).toBeNull();
   });
 
   test("returns envelope when the draft has no steps", () => {
-    const result = requireWorkflowDraft(EMPTY_DRAFT, "commit_draft");
+    const result = requireWorkflowDraft(EMPTY_DRAFT, "save_workflow_draft");
     expect(result).not.toBeNull();
     if (result && !result.ok) {
       expect(result.next_best_actions).toContain("propose_step");
@@ -240,7 +240,7 @@ describe("requirePersistedWorkflow", () => {
     const result = requirePersistedWorkflow(summary({}), "run_workflow");
     expect(result).not.toBeNull();
     if (result && !result.ok) {
-      expect(result.next_best_actions).toContain("commit_draft");
+      expect(result.next_best_actions).toContain("save_workflow_draft");
     }
   });
 });

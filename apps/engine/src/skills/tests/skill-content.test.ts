@@ -106,10 +106,10 @@ describe("subkit-concepts — mental model coverage", () => {
 });
 
 describe("workflow-authoring — recipe coverage", () => {
-  test("references the draft → commit_draft path", async () => {
+  test("references the draft → save_workflow_draft path", async () => {
     const skills = await loadAll();
     const body = skills.get("workflow-authoring")!.body;
-    expect(body).toContain("commit_draft");
+    expect(body).toContain("save_workflow_draft");
     // Either probe_connector or build_workflow (both new in this phase) should appear:
     const hasProbe = body.includes("probe_connector");
     const hasBuild = body.includes("build_workflow");

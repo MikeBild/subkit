@@ -185,7 +185,7 @@ export interface LatestExecutionSummary {
   diagnosis_available: boolean;
   /** Set when the execution had `unresolved_identifier` warnings or
    *  ran a `loop` step body that produced no output. The
-   *  `commit_workflow_draft` tool refuses to advance until this flag
+   *  `save_workflow_draft` tool refuses to advance until this flag
    *  is cleared (by repair) or explicitly suppressed via
    *  `acknowledge_warning`. */
   requires_repair?: boolean;

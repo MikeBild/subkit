@@ -205,7 +205,7 @@ describe("authoring-state", () => {
     expect(draft.summary?.next_suggested_tool).toBe("save_connector_draft");
   });
 
-  test("ready workflow drafts surface commit_draft as the next suggested tool", () => {
+  test("ready workflow drafts surface save_workflow_draft as the next suggested tool", () => {
     let draft = withWorkflowDraft(createEmptyDraftDocument(), {
       name: "daily-sync",
       slug: "daily-sync",
@@ -220,6 +220,6 @@ describe("authoring-state", () => {
     });
 
     expect(draft.summary?.next_action).toContain("Commit the workflow");
-    expect(draft.summary?.next_suggested_tool).toBe("commit_draft");
+    expect(draft.summary?.next_suggested_tool).toBe("save_workflow_draft");
   });
 });

@@ -6,7 +6,7 @@
 // then applies the write atomically when the operator submits — the
 // LLM's next turn sees a synthetic tool result describing the
 // persistence and does NOT need to call save_connector_draft /
-// commit_draft itself.
+// save_workflow_draft itself.
 //
 // This file owns the schema + types so both ask-user tools and the
 // resume-side dispatcher import the same shape.
@@ -15,7 +15,7 @@ import { z } from "@hono/zod-openapi";
 
 export const COMMIT_INTENT_KINDS = [
   "save_connector_draft",
-  "commit_workflow_draft",
+  "save_workflow_draft",
   "delete_connector",
   "delete_workflow",
   "rollback_after_execute",
@@ -38,7 +38,7 @@ export const commitIntentSchema = z
      *
      * For `delete_connector` / `delete_workflow` — `{ id, hard?: boolean }`.
      *
-     * For `commit_workflow_draft` — `{ target_workflow_id?: string }`.
+     * For `save_workflow_draft` — `{ target_workflow_id?: string }`.
      *
      * For `rollback_after_execute` — `{ execution_id }` (NOT
      * implemented yet; harness emits a no-op result).

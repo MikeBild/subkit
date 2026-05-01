@@ -15,7 +15,7 @@ export interface RecordToolPolicyConfirmationRequiredParams extends RecorderBase
   tool: string;
   /** Resolved execution mode — typically "confirm_before_execution". */
   mode: string;
-  /** Confirmation kind the resolver picked, if any (e.g. "commit_draft"). */
+  /** Confirmation kind the resolver picked, if any (e.g. "save_workflow_draft"). */
   confirmation_kind: string | null;
   /** Resolver's structured reason — pushes through to the audit row's reason. */
   resolver_reason: string | null;

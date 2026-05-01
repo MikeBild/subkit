@@ -74,7 +74,7 @@ export const conversationAttachments = pgTable(
 //
 // Recovery points taken automatically after each draft-writing tool call.
 // Crucially: NOT an auto-commit — just a rollback anchor. Explicit
-// `commit_draft` is still required to persist a workflow.
+// `save_workflow_draft` is still required to persist a workflow.
 //
 // LRU cap enforced at the service layer (max 10 per conversation).
 export const conversationDraftSnapshots = pgTable(

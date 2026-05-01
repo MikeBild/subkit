@@ -99,7 +99,7 @@ async function seedConversation(draft: DraftDocument): Promise<{
       tool_name: "ask_user_confirm",
       summary: "Save the connector",
       input: {
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         commit_intent: {
           kind: "save_connector_draft",
           payload: { environment: "dev" },
@@ -130,7 +130,7 @@ describe("auto-persist · save_connector_draft freshens stale checkpoints", () =
         id: elicitation_id,
         tool_name: "ask_user_confirm",
         input: {
-          kind: "commit_draft",
+          kind: "save_workflow_draft",
           commit_intent: {
             kind: "save_connector_draft",
             payload: { environment: "dev" },
@@ -174,7 +174,7 @@ describe("auto-persist · save_connector_draft freshens stale checkpoints", () =
         id: elicitation_id,
         tool_name: "ask_user_confirm",
         input: {
-          kind: "commit_draft",
+          kind: "save_workflow_draft",
           commit_intent: {
             kind: "save_connector_draft",
             payload: { environment: "dev" },

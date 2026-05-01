@@ -8,7 +8,7 @@
 //
 //   get_engine_status → list_connectors → start_connector_from_description(open-meteo)
 //   → propose_step(forecast-berlin) → propose_step(tomorrow-only)
-//   → validate_draft → ask_user_confirm → commit_draft
+//   → validate_draft → ask_user_confirm → save_workflow_draft
 //
 // The test asserts that the corresponding tool_call rows land in
 // `conversation_tool_calls` and that at least one audit entry exists for
@@ -64,7 +64,7 @@ describe("weather workflow (open-meteo, no API key)", () => {
     // Check the tool-call rows via the conversation detail endpoint —
     // tool_calls are embedded, not exposed on a separate path. We don't
     // require the exact full plan ran — the `ask_user_confirm` pause
-    // blocks the loop until a response, so the final `commit_draft`
+    // blocks the loop until a response, so the final `save_workflow_draft`
     // won't appear in headless mode.
     const detailResp = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
       headers: { Authorization: `Bearer ${env.personas.admin.apiKey}` },

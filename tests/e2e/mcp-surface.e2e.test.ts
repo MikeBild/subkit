@@ -126,7 +126,7 @@ describe("MCP tenant tool surface", () => {
   test("destructive tenant.* call returns confirm_required, then completes with _meta.sk_confirm", async () => {
     // Seed a workflow through the authoring surface so the delete has
     // a real target. `start_workflow_from_goal` is the draft-first
-    // path; we use `build_workflow` + `commit_draft` via a direct DB
+    // path; we use `build_workflow` + `save_workflow_draft` via a direct DB
     // insertion is out of scope for e2e, so we drive through a
     // throwaway workflow created via the API instead.
     const createRes = await fetch(`${env.baseUrl}/v1/workflows`, {

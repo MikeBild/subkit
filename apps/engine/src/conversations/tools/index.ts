@@ -20,7 +20,6 @@ import { authenticateOAuthTool } from "./authenticate-oauth.ts";
 import { buildWorkflowTool } from "./build-workflow.ts";
 import { callConnectorTool } from "./call-connector.ts";
 import { cannotHelpTool } from "./cannot-help.ts";
-import { commitDraftTool } from "./commit-draft.ts";
 import { connectStepsTool } from "./connect-steps.ts";
 import { diagnoseLatestExecutionTool } from "./diagnose-latest-execution.ts";
 import { discoverConnectorEndpointsTool } from "./discover-connector-endpoints.ts";
@@ -53,6 +52,7 @@ import { proposeSchemaMigrationTool } from "./propose-schema-migration.ts";
 import { proposeSkillTool } from "./propose-skill.ts";
 import { proposeStepTool } from "./propose-step.ts";
 import { saveConnectorDraftTool } from "./save-connector-draft.ts";
+import { saveWorkflowDraftTool } from "./save-workflow-draft.ts";
 import { searchDocsTool } from "./search-docs.ts";
 import { searchKnowledgeTool } from "./search-knowledge.ts";
 import { startConnectorFromDescriptionTool } from "./start-connector-from-description.ts";
@@ -142,10 +142,10 @@ export interface ToolResultPause {
   /**
    * Optional `kind` hint for `ask_user_confirm` — lets the client
    * pick the right sub-renderer (structured diff for
-   * `commit_draft`, target URL + payload for `external_write`,
+   * `save_workflow_draft`, target URL + payload for `external_write`,
    * generic JSON otherwise).
    */
-  kind?: "commit_draft" | "external_write" | "generic";
+  kind?: "save_workflow_draft" | "external_write" | "generic";
   summary: string;
   /** Row id in `conversation_elicitations`. */
   elicitation_id: string;
@@ -299,7 +299,7 @@ register(dryRunTransformTool);
 register(dryRunWorkflowTool);
 register(validateDraftTool);
 register(validateConnectorDraftTool);
-register(commitDraftTool);
+register(saveWorkflowDraftTool);
 register(askUserChoiceTool);
 register(askUserMultiTool);
 register(askUserTextTool);

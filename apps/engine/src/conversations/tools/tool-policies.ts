@@ -293,7 +293,7 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
     reason: "Persists draft + credential atomically",
   },
   {
-    name: "commit_draft",
+    name: "save_workflow_draft",
     defaultMode: "confirm_before_execution",
     confirmationKind: "schema_change",
     reason: "Persists workflow",

@@ -95,14 +95,14 @@ one to make the model "easier to drive".
   `probe_connector` to verify the credential resolves and the base URL responds. Skipping
   the probe is the largest single source of authoring-time errors.
 - **Dry-run before first commit.** A brand-new workflow draft must pass
-  `dry_run_workflow` or step-by-step `dry_run_step` before `commit_draft`. An in-place
+  `dry_run_workflow` or step-by-step `dry_run_step` before `save_workflow_draft`. An in-place
   re-commit on a persisted workflow needs a fresh `validate_draft`; a fresh dry-run is
   optional once the change is small and validated.
 - **Repair-in-chat is a first-class authoring phase.** When a persisted workflow fails,
   the conversation enters diagnosis mode (`diagnose_latest_execution` → edit → validate →
-  commit). The same `commit_draft` tool that creates a workflow also updates a persisted
+  commit). The same `save_workflow_draft` tool that creates a workflow also updates a persisted
   one in place. There is no separate repair tool and no CLI fallback.
-- **Approval gates are governance, not UX.** `ask_user_confirm(kind: "commit_draft")`,
+- **Approval gates are governance, not UX.** `ask_user_confirm(kind: "save_workflow_draft")`,
   `ask_user_confirm(kind: "external_write")`, and the patch-candidate approval flow are
   load-bearing. Do not invent escape hatches, `--skip-checks` flags, or "auto-commit if
   validated" shortcuts.

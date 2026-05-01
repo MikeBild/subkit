@@ -5,7 +5,7 @@
 // from the seed loader). The resolver in context-assembler must match
 // by slug first; the last-resort fetch must not pass a slug into a
 // uuid-typed `id` query. Pre-fix this caused HTTP 500 on every chat
-// turn that re-entered the loop after `commit_workflow_draft` approval.
+// turn that re-entered the loop after `save_workflow_draft` approval.
 //
 // The test pins:
 //   1. A bare slug resolves the seeded row (slug match on listSkills).

@@ -35,7 +35,7 @@ save_workflow  ◄──  build_workflow  ◄──  test_connector  ◄──�
 | 3. authenticate_connector | • `auth_type=oauth2`: `save_connector_draft` first, then `authenticate_oauth`<br>• `auth_type=bearer/header/query/basic/aws_sigv4`: `ask_user_form(type=password,sensitive=true)` followed by harness auto-persist | `connector_authenticated` |
 | 4. test_connector | `probe_connector_draft` | `connector_probed` |
 | 5. build_workflow | `build_workflow` / `propose_step` / `update_param` / `edit_workflow_patch` | `workflow_inspected` → `workflow_validated` → `workflow_previewed` |
-| 6. save_workflow | `commit_draft` | `workflow_persisted` |
+| 6. save_workflow | `save_workflow_draft` | `workflow_persisted` |
 
 `config.oauth` is **never** written by hand on the draft — it is owned by the
 template snapshot and the OAuth2 client at mint time. `update_connector_draft`

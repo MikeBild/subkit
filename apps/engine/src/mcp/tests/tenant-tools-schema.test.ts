@@ -28,7 +28,7 @@ describe("MCP tenant tool exposure", () => {
   it("hides draft_write tools from MCP", () => {
     const tools = listTenantTools({ allowWrites: false });
     expect(tools.map((t) => t.name)).not.toContain("tenant.propose_step");
-    expect(tools.map((t) => t.name)).not.toContain("tenant.commit_draft");
+    expect(tools.map((t) => t.name)).not.toContain("tenant.save_workflow_draft");
   });
 
   it("hides tenant_write tools when allowWrites=false", () => {

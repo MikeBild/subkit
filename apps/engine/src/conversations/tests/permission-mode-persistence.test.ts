@@ -31,7 +31,7 @@ describe("conversation permission mode persistence", () => {
     expect(created.result.status).toBe("active");
 
     // Under the new auto-mode contract, ask_user_confirm with
-    // kind=commit_draft auto-resolves; only `destructive=true`
+    // kind=save_workflow_draft auto-resolves; only `destructive=true`
     // signals fall through to a real pause. Drive the persistence
     // assertion through the destructive carve-out so we exercise the
     // resume path after a real pause.

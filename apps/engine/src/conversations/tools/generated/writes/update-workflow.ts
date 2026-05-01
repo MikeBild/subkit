@@ -128,7 +128,7 @@ export const updateWorkflowTool: ConversationTool = {
   description:
     "Patch a persisted workflow's metadata (slug, display name, lifecycle) without rewriting the dag or version history.",
   use_case:
-    "Use when the user asks to rename a workflow, change its display name, archive it, or reactivate it. Send only the fields that should change. Does NOT alter steps, input/output schema, or version count — for those, edit the draft and use commit_draft.",
+    "Use when the user asks to rename a workflow, change its display name, archive it, or reactivate it. Send only the fields that should change. Does NOT alter steps, input/output schema, or version count — for those, edit the draft and use save_workflow_draft.",
   important_notes: [
     "At least one of slug, name, or lifecycle is required.",
     "slug must be lowercase alphanumeric with hyphens; the service slugifies it again before the write.",
@@ -159,7 +159,7 @@ export const updateWorkflowTool: ConversationTool = {
       // / `in_use_by_dependent_rows` / `missing_required_field`
       // instead of a raw SQL string. Mirrors save-connector-draft.ts
       // and the auto-persist dispatcher.
-      const translated = translateAutoPersistError(err, "commit_workflow_draft");
+      const translated = translateAutoPersistError(err, "save_workflow_draft");
       return {
         ok: false,
         data: {

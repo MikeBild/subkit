@@ -29,7 +29,7 @@ describe("translateAutoPersistError · 23505 unique-violation", () => {
   for (const ctx of [
     "save_connector_draft",
     "update_connector",
-    "commit_workflow_draft",
+    "save_workflow_draft",
     "update_workflow",
     "delete_connector",
     "delete_workflow",
@@ -48,7 +48,7 @@ describe("translateAutoPersistError · 23505 unique-violation", () => {
       const isConnector =
         ctx === "save_connector_draft" || ctx === "update_connector" || ctx === "delete_connector";
       const isWorkflow =
-        ctx === "commit_workflow_draft" || ctx === "update_workflow" || ctx === "delete_workflow";
+        ctx === "save_workflow_draft" || ctx === "update_workflow" || ctx === "delete_workflow";
       if (isConnector) {
         expect(t.next_best_actions).toContain("list_connectors");
       } else if (isWorkflow) {

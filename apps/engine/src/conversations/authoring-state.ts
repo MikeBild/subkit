@@ -1041,7 +1041,7 @@ function computeNextSuggestedTool(
     return "start_workflow_from_goal";
   }
   if (active.kind === "workflow" && active.lifecycle_state === "draft_only") {
-    return "commit_draft";
+    return "save_workflow_draft";
   }
   if (
     active.kind === "workflow" &&
@@ -1446,7 +1446,7 @@ export function withWorkflowPersisted(
   last_action: string | null = "workflow_persisted",
 ): DraftDocument {
   return bindPersistedWorkflow(draft, resource, {
-    tool_name: "commit_draft",
+    tool_name: "save_workflow_draft",
     summary: `Workflow ${resource.name ?? resource.id} persisted.`,
     last_action,
   });

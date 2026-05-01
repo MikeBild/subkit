@@ -152,7 +152,7 @@ Connector creation through the conversational surface follows a single, observab
 4. When the operator submits the form, the conversation harness applies the connector + credential write atomically — DB row, encrypted credential, audit entry — BEFORE the agent's next turn. The agent does NOT need to call `save_connector_draft` for the normal commit path.
 5. The agent calls `probe_connector_draft` (or `call_connector` for richer iteration) to verify the persisted connector.
 
-The diagnostic tools `save_connector_draft` and `commit_draft` remain available for credential rotation, recovery from a partial write, or a force-save after a failed probe (`force_save: true`). They are idempotent — a re-issue against an already-persisted connector returns `{ ok: true, data: { already_persisted: true } }` without a double-write. Audit rows distinguish the two paths via `reason: "auto_persist_on_confirmation"` vs `reason: "manual_re_issue"`.
+The diagnostic tools `save_connector_draft` and `save_workflow_draft` remain available for credential rotation, recovery from a partial write, or a force-save after a failed probe (`force_save: true`). They are idempotent — a re-issue against an already-persisted connector returns `{ ok: true, data: { already_persisted: true } }` without a double-write. Audit rows distinguish the two paths via `reason: "auto_persist_on_confirmation"` vs `reason: "manual_re_issue"`.
 
 Credentials only flow through the masked form path. The `update_connector_draft` tool rejects any credential-shaped key in `config` with a structured `credential_must_use_form` envelope. Drivers no longer accept inline credentials from `connector.config` at probe time. There is no shortcut.
 

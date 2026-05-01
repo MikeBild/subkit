@@ -13,7 +13,7 @@ import { pauseForUserInput } from "./common.ts";
 function buildOverrideWarning(intent: CommitIntent | undefined): string | null {
   if (!intent) return null;
   const payload = intent.payload;
-  if (intent.kind === "commit_workflow_draft" && payload.force_commit === true) {
+  if (intent.kind === "save_workflow_draft" && payload.force_commit === true) {
     return "⚠ Override: this will commit the workflow despite a failed preview.";
   }
   if (intent.kind === "save_connector_draft" && payload.force_save === true) {
@@ -24,9 +24,9 @@ function buildOverrideWarning(intent: CommitIntent | undefined): string | null {
 
 function defaultCommitIntent(args: z.infer<typeof inputSchema>): CommitIntent | undefined {
   if (args.commit_intent) return args.commit_intent;
-  if (args.kind !== "commit_draft") return undefined;
+  if (args.kind !== "save_workflow_draft") return undefined;
   return {
-    kind: "commit_workflow_draft",
+    kind: "save_workflow_draft",
     payload: {},
     description: args.summary ?? args.question,
   };
@@ -35,9 +35,9 @@ function defaultCommitIntent(args: z.infer<typeof inputSchema>): CommitIntent | 
 const inputSchema = z
   .object({
     question: z.string().min(1),
-    kind: z.enum(["commit_draft", "external_write", "generic"]).default("generic"),
+    kind: z.enum(["save_workflow_draft", "external_write", "generic"]).default("generic"),
     summary: z.string().optional(),
-    /** Structured before/after JSON for commit_draft kinds. */
+    /** Structured before/after JSON for save_workflow_draft kinds. */
     diff: z.unknown().optional(),
     /** Free-form target descriptor for external_write kinds. */
     target: z.unknown().optional(),
@@ -51,7 +51,7 @@ const inputSchema = z
     /**
      * Optional commit intent. When set and the operator approves, the
      * harness applies the intended write atomically — the LLM does
-     * NOT need to call save_connector_draft / commit_draft / delete_*
+     * NOT need to call save_connector_draft / save_workflow_draft / delete_*
      * afterwards. See `./commit-intent.ts` for the schema.
      */
     commit_intent: commitIntentSchema.optional(),
@@ -68,7 +68,7 @@ export const askUserConfirmTool: ConversationTool = {
     const args = inputSchema.parse(rawArgs);
     const effectiveCommitIntent = defaultCommitIntent(args);
     // Auto-resolve when the client is in `permission_mode=auto`. The
-    // mode itself IS the governance signal — commit_draft, external
+    // mode itself IS the governance signal — save_workflow_draft, external
     // writes, run_workflow, save_connector_draft were all visible in
     // the chat as concrete next-step proposals before the model
     // emitted ask_user_confirm, so the user has already authored
@@ -82,7 +82,7 @@ export const askUserConfirmTool: ConversationTool = {
     // Note: when the CALLER explicitly set `commit_intent`, we still
     // pause even in `auto` mode — the harness needs the explicit submit
     // signal so the auto-persist dispatcher fires deterministically.
-    // The auto-mode shortcut stays valid for bare commit_draft confirms
+    // The auto-mode shortcut stays valid for bare save_workflow_draft confirms
     // that the model owns end-to-end.
     if (
       ctx.permission_mode === "auto" &&

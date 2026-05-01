@@ -32,12 +32,12 @@ produces drafts that fail at runtime or in review.
 6. **`ask_user_confirm` with `commit_intent`** — once all steps run green and
    the outputTransform shape matches the intent, surface a single
    `ask_user_confirm` carrying
-   `commit_intent: { kind: "commit_workflow_draft", payload: { … }, description: "Save this workflow." }`.
+   `commit_intent: { kind: "save_workflow_draft", payload: { … }, description: "Save this workflow." }`.
    The harness atomically persists on confirm and injects a synthetic
-   `commit_draft` tool-result tagged `source: "harness_auto_persist"`. **Do
-   NOT call `commit_draft` yourself afterward** — the underlying write has
+   `save_workflow_draft` tool-result tagged `source: "harness_auto_persist"`. **Do
+   NOT call `save_workflow_draft` yourself afterward** — the underlying write has
    already happened, and a second call only earns an `already_persisted: true`
-   round-trip. Reserve direct `commit_draft` invocations for the documented
+   round-trip. Reserve direct `save_workflow_draft` invocations for the documented
    recovery paths (revert + re-apply, slug-conflict adoption, force-commit
    after a failed dry-run).
 
@@ -57,7 +57,7 @@ chat; the same six tools repair in place:
 3. **Edit the offending step** — `update_param` for a single field, `propose_step` to replace a step body, `connect_steps` to retarget. For schema drift on a request step, `probe_connector` first; if the connector's response shape changed over time, call `propose_schema_migration` (returns a structured rename/add/remove/widen plan against the recorded shape ledger) before deciding how to patch the transform.
 4. **`validate_draft`** — re-runs structural checks.
 5. **`dry_run_workflow`** when the change is non-trivial; otherwise the auto-persist path accepts the update directly.
-6. **`ask_user_confirm` with `commit_intent: { kind: "commit_workflow_draft", payload: { target_workflow_id?: <id> } }`** — harness persists on confirm. Do NOT chain a separate `commit_draft` after.
+6. **`ask_user_confirm` with `commit_intent: { kind: "save_workflow_draft", payload: { target_workflow_id?: <id> } }`** — harness persists on confirm. Do NOT chain a separate `save_workflow_draft` after.
 
 Do not instruct the user to run `sk workflow commit` (no CLI fallback exists). Do not re-run the failed workflow before re-validating (overwrites the diagnosis). Do not skip failing steps with `if: false` unless the user asks for that behaviour. After three failed repair iterations on the same error, stop and ask the user.
 
@@ -154,7 +154,7 @@ faster for tenants with more than ~50 workflows or connectors and
 return ranked matches in one call.
 
 **`build_workflow` returns `persistence: "draft_only"` and
-`next_step: "commit_draft"`.** The build never auto-saves — the
+`next_step: "save_workflow_draft"`.** The build never auto-saves — the
 fields make this explicit so the LLM never assumes a workflow is
 committed after `build_workflow`.
 
@@ -199,7 +199,7 @@ and B, propose `A` and `B` **first**, then propose the loop. The
 incremental draft validator now accepts forward references on
 `loop.body` / `branch.then_steps` / `parallel.branches[]` (it returns
 them as `pending_forward_refs` so you can see what's missing), but
-`dry_run_workflow` and `commit_workflow_draft` still reject the draft
+`dry_run_workflow` and `save_workflow_draft` still reject the draft
 until every referenced id exists. Order matters for two reasons:
 
 1. The `loop` requires `${item.<field>}` placeholders inside its body
@@ -424,7 +424,7 @@ referenced. Common causes:
 - You used `$$` to "fix" the JSONata when you actually wanted
   `$scope.<step_id>.data` or the loop's item.
 
-The `commit_workflow_draft` tool refuses to advance until the warning is
+The `save_workflow_draft` tool refuses to advance until the warning is
 gone or the operator explicitly forces with `force_commit: true`. Do
 not tell the user "this is a false positive" — the engine surfaces these
 warnings precisely because they are not.
@@ -552,12 +552,12 @@ Prefer the stdlib over raw comparisons so hook + transform code stays uniform.
 - **Committing before every step has a green dry-run.** The
   `commit_intent` auto-persist path doesn't run the steps. Bad drafts commit
   cleanly and then fail at first invocation.
-- **Calling `commit_draft` directly instead of via `ask_user_confirm` +
-  `commit_intent`.** Direct `commit_draft` calls are policy-gated and the
+- **Calling `save_workflow_draft` directly instead of via `ask_user_confirm` +
+  `commit_intent`.** Direct `save_workflow_draft` calls are policy-gated and the
   inner prior-approval check rejects with `no_prior_approval` until a
-  resolved `ask_user_confirm{kind:"commit_draft", confirmed:true}` exists.
+  resolved `ask_user_confirm{kind:"save_workflow_draft", confirmed:true}` exists.
   Always go through `ask_user_confirm` with a `commit_intent` carrier;
-  reserve direct `commit_draft` for the recovery cases (revert + re-apply,
+  reserve direct `save_workflow_draft` for the recovery cases (revert + re-apply,
   slug-conflict adoption, force-commit after a failed dry-run).
 - **Force-committing without surfacing the override to the operator.** If the
   operator explicitly chooses to commit despite a failed `dry_run_workflow`,

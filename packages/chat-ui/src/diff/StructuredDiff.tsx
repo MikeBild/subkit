@@ -1,5 +1,5 @@
 // Structured diff renderer — takes a before/after JSON payload
-// (as emitted by `askUser.confirm { kind: commit_draft }`) and
+// (as emitted by `askUser.confirm { kind: save_workflow_draft }`) and
 // renders a hunk-style diff: + lines green, − lines red, unchanged
 // lines dim, with a path header. Mirrors Claude Code's
 // `StructuredDiff` component at a fraction of the complexity.

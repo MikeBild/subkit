@@ -2,7 +2,7 @@
 //
 // Writes a recovery point to `conversation_draft_snapshots` (migration
 // 0028) after every draft-mutating tool call. The snapshot is NOT a
-// commit — the workflow still needs explicit `commit_draft` to persist
+// commit — the workflow still needs explicit `save_workflow_draft` to persist
 // to `workflows`. It's a way to roll back a draft after a bad edit or
 // after a disconnect without losing the prior state.
 //

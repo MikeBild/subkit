@@ -80,9 +80,11 @@ describe("prerequisitesForTool", () => {
 });
 
 describe("buildPendingOutputForTool", () => {
-  test("commit_draft preview carries the kind plus optional slug", () => {
-    expect(buildPendingOutputForTool("commit_draft", { workflow_slug: "github-private" })).toEqual({
-      kind: "commit_draft",
+  test("save_workflow_draft preview carries the kind plus optional slug", () => {
+    expect(
+      buildPendingOutputForTool("save_workflow_draft", { workflow_slug: "github-private" }),
+    ).toEqual({
+      kind: "save_workflow_draft",
       workflow_slug: "github-private",
     });
   });

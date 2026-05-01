@@ -23,7 +23,7 @@ import { StructuredDiff } from "../diff/StructuredDiff.tsx";
 import { useTheme } from "../theme/Provider.tsx";
 import { ControlledTextField } from "./ControlledTextField.tsx";
 
-export type ConfirmKind = "commit_draft" | "external_write" | "generic";
+export type ConfirmKind = "save_workflow_draft" | "external_write" | "generic";
 
 export interface ConfirmPromptProps {
   question: string;

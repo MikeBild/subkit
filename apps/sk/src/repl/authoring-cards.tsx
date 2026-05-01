@@ -815,7 +815,7 @@ const CHAT_MILESTONE_TOOLS = new Set([
   "dry_run_step",
   "dry_run_workflow",
   "save_connector_draft",
-  "commit_draft",
+  "save_workflow_draft",
   "start_connector_from_description",
   "start_connector_from_template",
   "build_workflow",
@@ -917,7 +917,7 @@ export function renderAuthoringCard(
       return <StepPreviewCard key={`acc-${call.id}`} call={call} />;
     case "save_connector_draft":
       return <SaveResultCard key={`acc-${call.id}`} call={call} />;
-    case "commit_draft":
+    case "save_workflow_draft":
       return <CommitResultCard key={`acc-${call.id}`} call={call} />;
     case "run_workflow":
     case "diagnose_latest_execution":
