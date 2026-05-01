@@ -2080,6 +2080,139 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connector-templates/{slug}/recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List recipes shipped with a connector template */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorTemplateRecipeListResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connector-templates/{slug}/recipes/{recipe_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single recipe by slug */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    recipe_slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorTemplateRecipe"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/recipe-packs/{vertical}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a vertical recipe pack (computed from category + tags) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RecipePackResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connector-templates/{slug}/oauth-credentials": {
         parameters: {
             query?: never;
@@ -7421,6 +7554,10 @@ export interface components {
                 operator_quirks?: components["schemas"]["OperatorQuirks"];
                 /** @default [] */
                 recipes: components["schemas"]["ConnectorTemplateRecipe"][];
+                /** @default null */
+                aws_service: string | null;
+                /** @default null */
+                aws_region: string | null;
                 /** @enum {string} */
                 source: "builtin" | "tenant";
                 id: string | null;
@@ -7432,7 +7569,7 @@ export interface components {
             token_endpoint?: string;
             scopes?: string;
             /** @enum {string} */
-            grant_type: "authorization_code" | "client_credentials" | "password" | "cognito_user_password" | "jwt_bearer" | "device_code";
+            grant_type: "authorization_code" | "client_credentials" | "password" | "cognito_user_password";
             /** @enum {string} */
             token_auth_method: "body" | "basic_auth";
             /** @enum {string} */
@@ -7515,7 +7652,69 @@ export interface components {
             intent_keywords: string[];
             /** @default null */
             derived_from_skill: string | null;
+            /**
+             * @default other
+             * @enum {string}
+             */
+            category: "ai" | "analytics" | "aws" | "cloud" | "communication" | "crm" | "database" | "devops" | "ecommerce" | "enterprise" | "marketing" | "payments" | "productivity" | "project-management" | "protocol" | "scraping" | "storage" | "support" | "other";
+            /** @default [] */
+            tags: string[];
+            /**
+             * @default intermediate
+             * @enum {string}
+             */
+            difficulty: "beginner" | "intermediate" | "advanced";
+            /** @default 5 */
+            estimated_setup_minutes: number;
+            /** @default [] */
+            prerequisites: string[];
+            sample_input?: unknown;
+            expected_output_preview?: unknown;
+            /** @default [] */
+            required_connectors: components["schemas"]["RecipeRequiredConnector"][];
+            /** @default 1.0.0 */
+            version: string;
+            /**
+             * @default subkit-builtin
+             * @enum {string}
+             */
+            author: "subkit-builtin" | "community" | "tenant";
+            /**
+             * Format: date-time
+             * @default null
+             */
+            last_validated_at: string | null;
+            /** @default null */
+            deprecated: {
+                /** Format: date-time */
+                since: string;
+                replacement_slug: string;
+            } | null;
             workflow: Record<string, never>;
+        };
+        RecipeRequiredConnector: {
+            /** Format: uuid */
+            placeholder: string;
+            template: string;
+        };
+        ConnectorTemplateRecipeListResponse: {
+            template_slug: string;
+            template_name: string;
+            recipes: components["schemas"]["ConnectorTemplateRecipe"][];
+        };
+        RecipePackResponse: {
+            /** @enum {string} */
+            vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr";
+            outcome: string;
+            recipes: components["schemas"]["RecipePackEntry"][];
+        };
+        RecipePackEntry: {
+            template_slug: string;
+            recipe_slug: string;
+            title: string;
+            category: string;
+            tags: string[];
+            difficulty: string;
         };
         ConnectorTemplateRow: {
             /** @enum {number} */
@@ -7558,6 +7757,10 @@ export interface components {
             operator_quirks?: components["schemas"]["OperatorQuirks"];
             /** @default [] */
             recipes: components["schemas"]["ConnectorTemplateRecipe"][];
+            /** @default null */
+            aws_service: string | null;
+            /** @default null */
+            aws_region: string | null;
             id: string;
             /** @enum {string} */
             source: "tenant";
@@ -7603,6 +7806,10 @@ export interface components {
             operator_quirks?: components["schemas"]["OperatorQuirks"];
             /** @default [] */
             recipes: components["schemas"]["ConnectorTemplateRecipe"][];
+            /** @default null */
+            aws_service: string | null;
+            /** @default null */
+            aws_region: string | null;
         };
         TemplateOAuthCredentialResponse: {
             id: string;
@@ -8429,6 +8636,7 @@ export interface components {
                 ok: boolean;
                 summary: string | null;
                 failure_code: string | null;
+                probed_at: string | null;
             } | null;
             latest_preview: {
                 ok: boolean;

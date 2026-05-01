@@ -2577,6 +2577,18 @@
                   },
                   "default": []
                 },
+                "aws_service": {
+                  "type": "string",
+                  "nullable": true,
+                  "minLength": 1,
+                  "default": null
+                },
+                "aws_region": {
+                  "type": "string",
+                  "nullable": true,
+                  "minLength": 1,
+                  "default": null
+                },
                 "source": {
                   "type": "string",
                   "enum": [
@@ -2641,9 +2653,7 @@
               "authorization_code",
               "client_credentials",
               "password",
-              "cognito_user_password",
-              "jwt_bearer",
-              "device_code"
+              "cognito_user_password"
             ]
           },
           "token_auth_method": {
@@ -2970,6 +2980,114 @@
             "minLength": 1,
             "default": null
           },
+          "category": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "analytics",
+              "aws",
+              "cloud",
+              "communication",
+              "crm",
+              "database",
+              "devops",
+              "ecommerce",
+              "enterprise",
+              "marketing",
+              "payments",
+              "productivity",
+              "project-management",
+              "protocol",
+              "scraping",
+              "storage",
+              "support",
+              "other"
+            ],
+            "default": "other"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
+          },
+          "difficulty": {
+            "type": "string",
+            "enum": [
+              "beginner",
+              "intermediate",
+              "advanced"
+            ],
+            "default": "intermediate"
+          },
+          "estimated_setup_minutes": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "default": 5
+          },
+          "prerequisites": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
+          },
+          "sample_input": {
+            "nullable": true
+          },
+          "expected_output_preview": {
+            "nullable": true
+          },
+          "required_connectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipeRequiredConnector"
+            },
+            "default": []
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+$",
+            "default": "1.0.0"
+          },
+          "author": {
+            "type": "string",
+            "enum": [
+              "subkit-builtin",
+              "community",
+              "tenant"
+            ],
+            "default": "subkit-builtin"
+          },
+          "last_validated_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "default": null
+          },
+          "deprecated": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "since": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "replacement_slug": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "default": null,
+            "required": [
+              "since",
+              "replacement_slug"
+            ]
+          },
           "workflow": {
             "type": "object"
           }
@@ -2979,6 +3097,111 @@
           "title",
           "description",
           "workflow"
+        ]
+      },
+      "RecipeRequiredConnector": {
+        "type": "object",
+        "properties": {
+          "placeholder": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "template": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "placeholder",
+          "template"
+        ]
+      },
+      "ConnectorTemplateRecipeListResponse": {
+        "type": "object",
+        "properties": {
+          "template_slug": {
+            "type": "string"
+          },
+          "template_name": {
+            "type": "string"
+          },
+          "recipes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateRecipe"
+            }
+          }
+        },
+        "required": [
+          "template_slug",
+          "template_name",
+          "recipes"
+        ]
+      },
+      "RecipePackResponse": {
+        "type": "object",
+        "properties": {
+          "vertical": {
+            "type": "string",
+            "enum": [
+              "revops",
+              "customer-success",
+              "finance",
+              "data",
+              "devops",
+              "security",
+              "marketing",
+              "hr"
+            ]
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "recipes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipePackEntry"
+            }
+          }
+        },
+        "required": [
+          "vertical",
+          "outcome",
+          "recipes"
+        ]
+      },
+      "RecipePackEntry": {
+        "type": "object",
+        "properties": {
+          "template_slug": {
+            "type": "string"
+          },
+          "recipe_slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "difficulty": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_slug",
+          "recipe_slug",
+          "title",
+          "category",
+          "tags",
+          "difficulty"
         ]
       },
       "ConnectorTemplateRow": {
@@ -3154,6 +3377,18 @@
               "$ref": "#/components/schemas/ConnectorTemplateRecipe"
             },
             "default": []
+          },
+          "aws_service": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "default": null
+          },
+          "aws_region": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "default": null
           },
           "id": {
             "type": "string"
@@ -3362,6 +3597,18 @@
               "$ref": "#/components/schemas/ConnectorTemplateRecipe"
             },
             "default": []
+          },
+          "aws_service": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "default": null
+          },
+          "aws_region": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "default": null
           }
         },
         "required": [
@@ -6589,12 +6836,17 @@
               "failure_code": {
                 "type": "string",
                 "nullable": true
+              },
+              "probed_at": {
+                "type": "string",
+                "nullable": true
               }
             },
             "required": [
               "ok",
               "summary",
-              "failure_code"
+              "failure_code",
+              "probed_at"
             ]
           },
           "latest_preview": {
@@ -10831,6 +11083,152 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connector-templates/{slug}/recipes": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "List recipes shipped with a connector template",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorTemplateRecipeListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connector-templates/{slug}/recipes/{recipe_slug}": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Get a single recipe by slug",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "recipe_slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorTemplateRecipe"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recipe-packs/{vertical}": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Get a vertical recipe pack (computed from category + tags)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "revops",
+                "customer-success",
+                "finance",
+                "data",
+                "devops",
+                "security",
+                "marketing",
+                "hr"
+              ]
+            },
+            "required": true,
+            "name": "vertical",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipePackResponse"
                 }
               }
             }
