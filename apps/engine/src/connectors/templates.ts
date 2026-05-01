@@ -160,6 +160,49 @@ export const TemplateAuthOptionSchema = z
   })
   .openapi("ConnectorTemplateAuthOption");
 
+// Recipe category mirrors the connector category enum so authoring stays
+// anchored to the same vocabulary the rest of the catalog uses. `other`
+// is the escape hatch for cross-cutting recipes (multi-connector chains
+// where no single category dominates).
+export const RecipeCategoryEnum = z.enum([
+  "ai",
+  "analytics",
+  "aws",
+  "cloud",
+  "communication",
+  "crm",
+  "database",
+  "devops",
+  "ecommerce",
+  "enterprise",
+  "marketing",
+  "payments",
+  "productivity",
+  "project-management",
+  "protocol",
+  "scraping",
+  "storage",
+  "support",
+  "other",
+]);
+
+export const RecipeDifficultyEnum = z.enum(["beginner", "intermediate", "advanced"]);
+export const RecipeAuthorEnum = z.enum(["subkit-builtin", "community", "tenant"]);
+
+// Multi-connector binding. When a recipe spans more than one connector,
+// each `placeholder` UUID inside `recipe.workflow` (any step's
+// `connector_id` field carrying that UUID) is rebound by
+// `start_workflow_from_recipe` to a saved connector matching `template`.
+// The single-connector legacy path (placeholder UUID
+// `00000000-0000-0000-0000-000000000000` substituted for the `connector_id`
+// arg) still works when `required_connectors` is empty.
+export const RecipeRequiredConnectorSchema = z
+  .object({
+    placeholder: z.string().uuid(),
+    template: z.string().min(1),
+  })
+  .openapi("RecipeRequiredConnector");
+
 // Per-template executable workflow recipe. A recipe IS a workflow — the
 // `workflow` field runs through the same `WorkflowDefSchema` that gates
 // every saved workflow, so a recipe is guaranteed to be structurally
@@ -184,6 +227,76 @@ export const ConnectorRecipeSchema = z
      *  cloned workflow draft inherits `derived_from_skill_id` so the
      *  workflow validator can apply the proof-before-save gate. */
     derived_from_skill: z.string().min(1).nullable().default(null),
+    /** Discovery: which broad category the recipe serves. Mirrors the
+     *  connector category enum so the LLM and operator UI can group
+     *  recipes the same way they group connectors. */
+    category: RecipeCategoryEnum.default("other"),
+    /** Discovery: free-form labels (e.g. `"webhook"`, `"daily-digest"`,
+     *  `"notification"`) the LLM and search surfaces can rank against.
+     *  Distinct from `intent_keywords` — tags describe the SHAPE of the
+     *  recipe (trigger kind, pattern, vertical), keywords describe the
+     *  intent the operator might phrase. */
+    tags: z.array(z.string().min(1)).default([]),
+    /** Operator guidance: rough effort to take the cloned draft to a
+     *  saved, dry-run-green workflow. Defaults to `intermediate` when
+     *  auto-migrated from the legacy shape. */
+    difficulty: RecipeDifficultyEnum.default("intermediate"),
+    /** Operator guidance: estimated minutes to first successful save +
+     *  dry-run after cloning. Five minutes is the historical median for
+     *  the existing 190 recipes; raise for chained-auth or webhook
+     *  recipes that demand external setup. */
+    estimated_setup_minutes: z.number().int().positive().default(5),
+    /** Operator guidance: external prerequisites the operator must have
+     *  in place before the cloned draft can dry-run successfully (e.g.
+     *  `"Stripe API key with events:read"`, `"Slack channel write
+     *  permission"`). Not enforced at clone time — surfaced in
+     *  `inspect_recipe` so the operator can self-verify. */
+    prerequisites: z.array(z.string().min(1)).default([]),
+    /** Optional canonical input example. When set, must satisfy the
+     *  workflow's `input_schema` (lint enforces). The LLM uses this to
+     *  populate the cloned draft's first dry-run without prompting the
+     *  operator for shape. */
+    sample_input: z.unknown().nullable().default(null),
+    /** Optional redacted output preview. Operator sees this in
+     *  `inspect_recipe` to confirm the recipe matches the intent before
+     *  cloning. PII / secrets must be masked. */
+    expected_output_preview: z.unknown().nullable().default(null),
+    /** Multi-connector binding. Empty (default) means the recipe is
+     *  single-connector — the legacy
+     *  `00000000-0000-0000-0000-000000000000` placeholder substitution
+     *  still applies. When non-empty, every UUID listed must appear at
+     *  least once in `workflow.steps[*].connector_id`; lint enforces. */
+    required_connectors: z.array(RecipeRequiredConnectorSchema).default([]),
+    /** Recipe semver. Bump on shape changes that break cloned drafts;
+     *  bump minor on additive changes; bump patch on copy-only
+     *  changes. Operators see this in `inspect_recipe`. */
+    version: z
+      .string()
+      .regex(/^\d+\.\d+\.\d+$/)
+      .default("1.0.0"),
+    /** Provenance. `subkit-builtin` for everything in `templates.json`;
+     *  `community` reserved for a future contribution path; `tenant`
+     *  for tenant-authored recipes once the per-tenant authoring
+     *  surface lands. */
+    author: RecipeAuthorEnum.default("subkit-builtin"),
+    /** Quality marker: when this recipe was last dry-run successfully
+     *  against a vendor sandbox. Null means schema-only validation
+     *  only — operators should still trust the recipe but treat
+     *  vendor-specific quirks (rate limits, edge-case errors) as
+     *  unverified. The competitive page leads with this field, not
+     *  the raw recipe count. */
+    last_validated_at: z.string().datetime().nullable().default(null),
+    /** Deprecation marker. When set, `inspect_recipe` and
+     *  `start_workflow_from_recipe` emit a warning pointing the
+     *  operator at `replacement_slug`. The recipe still clones — no
+     *  silent breakage, no shim. */
+    deprecated: z
+      .object({
+        since: z.string().datetime(),
+        replacement_slug: z.string().min(1),
+      })
+      .nullable()
+      .default(null),
     // The workflow shape is validated through WorkflowDefSchema at
     // template load time (see `loadBuiltinTemplates` below). For the
     // OpenAPI surface we expose it as a generic object — recursing

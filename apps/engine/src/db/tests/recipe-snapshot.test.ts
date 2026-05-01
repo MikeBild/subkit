@@ -52,11 +52,26 @@ describe.skipIf(skip)("connectors.template_snapshot.recipes", () => {
     const recipes = (snap as { recipes?: unknown[] }).recipes;
     expect(Array.isArray(recipes)).toBe(true);
     expect((recipes as unknown[]).length).toBeGreaterThanOrEqual(12);
-    // Every snapshotted recipe carries a slug + workflow.
+    // Every snapshotted recipe carries the v2 schema (F1) — slug,
+    // workflow, plus the discovery + provenance fields the LLM and
+    // operator UI rank against.
     for (const r of recipes as Array<Record<string, unknown>>) {
       expect(typeof r.slug).toBe("string");
       expect(r.workflow).toBeDefined();
+      expect(typeof r.category).toBe("string");
+      expect(Array.isArray(r.tags)).toBe(true);
+      expect(["beginner", "intermediate", "advanced"]).toContain(r.difficulty as string);
+      expect(typeof r.estimated_setup_minutes).toBe("number");
+      expect(Array.isArray(r.prerequisites)).toBe(true);
+      expect(Array.isArray(r.required_connectors)).toBe(true);
+      expect(typeof r.version).toBe("string");
+      expect(["subkit-builtin", "community", "tenant"]).toContain(r.author as string);
     }
+    // Stripe recipes derive `category: "payments"` via the migration's
+    // template-category inference. Pin so accidental category drift in
+    // templates.json fails CI.
+    const sample = (recipes as Array<Record<string, unknown>>)[0];
+    expect(sample?.category).toBe("payments");
   });
 
   test("template_snapshot.operator_quirks lands too — github recipe carries quirk", async () => {

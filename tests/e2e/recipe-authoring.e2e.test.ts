@@ -78,7 +78,15 @@ describe("recipe-authoring e2e", () => {
       expect(typeof r.title).toBe("string");
       expect(typeof r.description).toBe("string");
       expect(r.workflow).toBeDefined();
+      // F1 schema fields persist into the snapshot too.
+      expect(typeof r.category).toBe("string");
+      expect(Array.isArray(r.tags)).toBe(true);
+      expect(typeof r.difficulty).toBe("string");
+      expect(typeof r.version).toBe("string");
+      expect(typeof r.author).toBe("string");
     }
+    // Stripe recipes derive `category: "payments"` via the F1 migration.
+    expect(recipes[0]?.category).toBe("payments");
   });
 
   test("creating a GitHub connector exposes the recategorized operator_quirks", async () => {
