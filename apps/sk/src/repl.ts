@@ -39,6 +39,7 @@ import {
 import { EngineClient, SkEngineError, SkTransportError } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
+import { handleSlash as handleSharedSlash } from "./repl/slash-handler.ts";
 import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";
 import { findSlashCommand, type PersonaProbe, renderHelp, SLASH_COMMANDS } from "./slash.ts";
@@ -89,6 +90,26 @@ async function resolvePersona(
 // callers that introspect the full list (e.g. /whoami debug). It is
 // not referenced inside this module.
 void PROBE_PERMISSIONS;
+
+function conversationPromptForSlash(raw: string): string | null {
+  const [head, ...rest] = raw.trim().split(/\s+/);
+  const name = (head ?? "").replace(/^\//, "");
+  const sub = (rest[0] ?? "").toLowerCase();
+  if (name === "probe" && sub !== "show" && sub !== "last") {
+    return [
+      "Run probe_connector_draft against the current connector draft now.",
+      "Use the default GET / path unless the draft implies otherwise.",
+      "Stream tool progress normally and summarise the result in one sentence.",
+    ].join(" ");
+  }
+  if (name === "preview" && sub !== "show" && sub !== "last") {
+    const stepArg = sub === "run" ? rest[1] : rest[0];
+    return stepArg
+      ? `Run dry_run_step against step \`${stepArg}\`. Stream tool progress normally and report the classification and one-line summary.`
+      : "Run dry_run_workflow against the current draft. Stream tool progress normally and report the classification of every step that executed.";
+  }
+  return null;
+}
 
 export async function runRepl(opts: ReplRunOptions): Promise<number> {
   const stdout = opts.stdout ?? process.stdout;
@@ -607,6 +628,26 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
 
   const handleSlash = async (name: string, raw: string): Promise<void> => {
     const args = raw.split(/\s+/).slice(1);
+    const conversationPrompt = conversationPromptForSlash(raw);
+    if (conversationPrompt) {
+      await runTurn(conversationPrompt);
+      return;
+    }
+    if (!new Set(["help", "exit", "quit", "approve", "reject", "respond"]).has(name)) {
+      const result = await handleSharedSlash(name, args, {
+        client,
+        profile: opts.profile,
+        session,
+        setConversationId: (next) => {
+          session = initialSessionState(next);
+        },
+        allowedPermissions: Array.from(persona.allowed),
+        statusSnapshot: await client.statusSummary().catch(() => null),
+        setupSnapshot: canReadSetup ? await client.setupValidation().catch(() => null) : null,
+      });
+      if (result) line(result);
+      return;
+    }
     switch (name) {
       case "help":
         line(renderHelp(persona.probe));

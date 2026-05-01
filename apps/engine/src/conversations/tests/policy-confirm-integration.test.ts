@@ -104,6 +104,11 @@ describe("policy confirm_before_execution wiring", () => {
     const elicitation = await getElicitation(ctx.tenant_id, elicit.elicitation_id, ctx.testDb.db);
     expect(elicitation?.tool_name).toBe("ask_user_confirm");
     expect(elicitation?.status).toBe("pending");
+    expect(elicit.input).toMatchObject({
+      risk_level: "high",
+      target_label: "run_workflow: 00000000-0000-0000-0000-000000000000",
+      reversible: true,
+    });
 
     // conversation_tool_calls row carries confirmation_state=proposed
     // with resolved_mode in confirmation_data.

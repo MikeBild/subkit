@@ -171,3 +171,24 @@ describe("ConfirmPrompt — inputDisabled", () => {
     expect(onResponse).not.toHaveBeenCalled();
   });
 });
+
+describe("ConfirmPrompt — decision metadata", () => {
+  test("renders risk, target label, and reversibility rows", () => {
+    const instance = render(
+      <ConfirmPrompt
+        question="Save draft?"
+        riskLevel="medium"
+        targetLabel="workflow: invoice-sync"
+        reversible={false}
+        onResponse={mock()}
+      />,
+    );
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("risk:");
+    expect(frame).toContain("medium");
+    expect(frame).toContain("target:");
+    expect(frame).toContain("workflow: invoice-sync");
+    expect(frame).toContain("reversible:");
+    expect(frame).toContain("no");
+  });
+});

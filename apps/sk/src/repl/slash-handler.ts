@@ -22,6 +22,7 @@ import type {
   SetupValidationResponse,
   StatusSummary,
 } from "../engine-client.ts";
+import { loadSettings, saveUserSettingsPatch } from "../settings.ts";
 import type {
   OnboardingProbeResult,
   OnboardingSaveResult,
@@ -36,6 +37,20 @@ import type {
  * the readline fallback's text mirror.
  */
 export type PaneSpec =
+  | {
+      kind: "config-form";
+      title: string;
+      fields: ReadonlyArray<{
+        name: string;
+        label: string;
+        type: "text" | "number" | "boolean";
+        default?: unknown;
+        help?: string;
+        group?: string;
+        required?: boolean;
+      }>;
+      onSave: (values: Record<string, unknown>) => Promise<string>;
+    }
   | {
       kind: "status";
       title?: string;
@@ -1478,7 +1493,76 @@ export async function handleSlash(
       }
     }
     case "config": {
-      return `edit ${join(homedir(), ".sk", "settings.json")}`;
+      if (ctx.openPane) {
+        const current = loadSettings(process.cwd()).merged;
+        ctx.openPane({
+          kind: "config-form",
+          title: "config",
+          fields: [
+            {
+              name: "model",
+              label: "Default model",
+              type: "text",
+              default: current.model ?? "",
+              group: "Conversation",
+              help: "Optional model id used for new conversations.",
+            },
+            {
+              name: "includeMemoryFile",
+              label: "Include SK.md memory",
+              type: "boolean",
+              default: current.includeMemoryFile !== false,
+              group: "Context",
+              help: "When enabled, SK.md is injected into new turns.",
+            },
+            {
+              name: "maxInlineMentionBytes",
+              label: "Max inline mention bytes",
+              type: "number",
+              default: current.maxInlineMentionBytes ?? 262144,
+              group: "Context",
+              help: "Large @file mentions above this size are truncated.",
+            },
+            {
+              name: "statusLineRefreshMs",
+              label: "Status refresh ms",
+              type: "number",
+              default: current.statusLine?.refreshMs ?? 500,
+              group: "Status line",
+              help: "Minimum interval for status-line refreshes.",
+            },
+          ],
+          onSave: async (values) => {
+            const patch: {
+              model?: string;
+              includeMemoryFile?: boolean;
+              maxInlineMentionBytes?: number;
+              statusLine?: { refreshMs?: number };
+            } = {};
+            const model = typeof values.model === "string" ? values.model.trim() : "";
+            if (model) patch.model = model;
+            if (typeof values.includeMemoryFile === "boolean") {
+              patch.includeMemoryFile = values.includeMemoryFile;
+            }
+            if (
+              typeof values.maxInlineMentionBytes === "number" &&
+              Number.isFinite(values.maxInlineMentionBytes)
+            ) {
+              patch.maxInlineMentionBytes = values.maxInlineMentionBytes;
+            }
+            if (
+              typeof values.statusLineRefreshMs === "number" &&
+              Number.isFinite(values.statusLineRefreshMs)
+            ) {
+              patch.statusLine = { refreshMs: values.statusLineRefreshMs };
+            }
+            const path = saveUserSettingsPatch(patch);
+            return `config saved to ${path}`;
+          },
+        });
+        return null;
+      }
+      return `edit ${join(homedir(), ".sk", "settings.json")} or run /config in the Ink REPL for a guided form`;
     }
     case "bug": {
       return "report issues at https://github.com/subkit/subkit/issues";

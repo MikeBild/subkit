@@ -22,7 +22,7 @@
 
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTheme } from "../theme/Provider.tsx";
 import { ControlledTextField } from "./ControlledTextField.tsx";
 
@@ -47,6 +47,11 @@ export interface FormField {
    */
   options?: FormFieldOption[] | string[] | undefined;
   placeholder?: string | undefined;
+  default?: unknown;
+  help?: string | undefined;
+  group?: string | undefined;
+  priority?: number | undefined;
+  rows?: number | undefined;
   required?: boolean | undefined;
   /**
    * When true, the rendered value is masked (bullet characters). `password`
@@ -93,7 +98,11 @@ function selectOptions(field: FormField): FormFieldOption[] {
 function initialValues(fields: FormField[]): FieldValues {
   const initial: FieldValues = {};
   for (const f of fields) {
-    if (f.type === "boolean") initial[f.name] = false;
+    if (f.default !== undefined) {
+      if (f.type === "multi") initial[f.name] = Array.isArray(f.default) ? f.default : [];
+      else if (f.type === "boolean") initial[f.name] = Boolean(f.default);
+      else initial[f.name] = String(f.default);
+    } else if (f.type === "boolean") initial[f.name] = false;
     else if (f.type === "select") {
       const opts = selectOptions(f);
       initial[f.name] = opts[0]?.value ?? "";
@@ -194,8 +203,17 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
   inputDisabled,
 }) => {
   const theme = useTheme();
+  const orderedFields = useMemo(
+    () =>
+      [...fields].sort((a, b) => {
+        const ap = typeof a.priority === "number" ? a.priority : 0;
+        const bp = typeof b.priority === "number" ? b.priority : 0;
+        return ap - bp;
+      }),
+    [fields],
+  );
   const [cursor, setCursor] = useState(0);
-  const [values, setValues] = useState<FieldValues>(() => initialValues(fields));
+  const [values, setValues] = useState<FieldValues>(() => initialValues(orderedFields));
   const [error, setError] = useState<string | null>(null);
   // Per-field local error pin (currently driven by the json parser).
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
@@ -209,14 +227,14 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
 
   useInput(
     (input, key) => {
-      if (fields.length === 0) return;
+      if (orderedFields.length === 0) return;
 
       if (key.escape) {
         onCancel?.();
         return;
       }
 
-      const f = fields[cursor];
+      const f = orderedFields[cursor];
 
       // Tab navigation; before leaving a `json` field we re-validate
       // so the operator sees the parse error pin without needing
@@ -229,7 +247,7 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
           setFieldError(f.name, parsed.ok ? null : parsed.message);
         }
         setCursor((i) => {
-          const n = fields.length;
+          const n = orderedFields.length;
           return key.shift ? (i - 1 + n) % n : (i + 1) % n;
         });
         return;
@@ -245,6 +263,14 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
       }
 
       if (key.return) {
+        if (f && f.type === "text" && typeof f.rows === "number" && f.rows > 1) {
+          setError(null);
+          setValues((v) => {
+            const cur = typeof v[f.name] === "string" ? (v[f.name] as string) : "";
+            return { ...v, [f.name]: `${cur}\n` };
+          });
+          return;
+        }
         // For json fields with non-empty content, Enter inserts a
         // newline rather than submitting — so the operator can write
         // multi-line JSON without prematurely committing.
@@ -257,9 +283,9 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
           setFieldError(f.name, null);
           return;
         }
-        const idx = firstInvalidIndex(fields, values);
+        const idx = firstInvalidIndex(orderedFields, values);
         if (idx >= 0) {
-          const failing = fields[idx];
+          const failing = orderedFields[idx];
           if (failing && failing.type === "json") {
             const buf =
               typeof values[failing.name] === "string" ? (values[failing.name] as string) : "";
@@ -270,7 +296,7 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
           setCursor(idx);
           return;
         }
-        onResponse({ values: coerce(fields, values) });
+        onResponse({ values: coerce(orderedFields, values) });
         return;
       }
 
@@ -368,7 +394,7 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
     { isActive: !inputDisabled },
   );
 
-  if (fields.length === 0) {
+  if (orderedFields.length === 0) {
     return (
       <Box
         flexDirection="column"
@@ -385,18 +411,44 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={theme.severity.info} paddingX={1}>
       <Text bold>{question}</Text>
-      {fields.map((f, i) => {
+      {orderedFields.map((f, i) => {
         const focused = i === cursor;
         const value = values[f.name];
         const fieldError = fieldErrors[f.name] ?? f.error_message ?? null;
+        const previous = orderedFields[i - 1];
+        const showGroup =
+          typeof f.group === "string" && f.group.trim() !== "" && f.group !== previous?.group;
         return (
           <Box key={f.name} flexDirection="column" marginTop={i === 0 ? 0 : 1}>
+            {showGroup ? (
+              <Text color={theme.severity.dim} bold>
+                {f.group}
+              </Text>
+            ) : null}
             <Text {...(focused ? { color: theme.role.user } : {})}>
               {focused ? "▶ " : "  "}
               {f.label}
               {f.required ? <Text color={theme.severity.error}> *</Text> : null}
             </Text>
-            {f.type === "text" || f.type === "number" || f.type === "password" ? (
+            {f.help ? <Text color={theme.severity.dim}>{f.help}</Text> : null}
+            {f.type === "text" && typeof f.rows === "number" && f.rows > 1 ? (
+              <Box flexDirection="column">
+                {(() => {
+                  const lines =
+                    typeof value === "string" && value.length > 0 ? value.split("\n") : [""];
+                  const minRows = Math.max(1, Math.min(12, Math.floor(f.rows)));
+                  while (lines.length < minRows) lines.push("");
+                  return lines.map((line, lineIdx) => (
+                    <Text key={`text-${f.name}-${lineIdx}`}>
+                      {line || (lineIdx === 0 && f.placeholder ? f.placeholder : " ")}
+                    </Text>
+                  ));
+                })()}
+                {focused ? (
+                  <Text color={theme.severity.dim}>Enter for newline · Tab to leave field</Text>
+                ) : null}
+              </Box>
+            ) : f.type === "text" || f.type === "number" || f.type === "password" ? (
               <ControlledTextField
                 value={
                   typeof value === "string"
