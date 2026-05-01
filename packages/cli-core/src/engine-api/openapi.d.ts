@@ -7968,7 +7968,7 @@ export interface components {
         };
         CredentialBody: {
             /** @enum {string} */
-            mode: "none" | "header" | "query" | "bearer" | "basic";
+            mode: "none" | "header" | "query" | "bearer" | "basic" | "aws_sigv4";
             headers?: {
                 [key: string]: string;
             };
@@ -7978,6 +7978,9 @@ export interface components {
             token?: string;
             username?: string;
             password?: string;
+            access_key_id?: string;
+            secret_access_key?: string;
+            session_token?: string;
         };
         EndUserCredentialBody: {
             enduser_ref: string;

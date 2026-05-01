@@ -138,14 +138,20 @@ export const importConnectorFromSpecTool: ConversationTool = {
     const baseUrl = parsed.base_url;
     // Reuse-existing-saved-connector: same dedup as
     // start_connector_from_description so two imports against the same
-    // upstream URL never produce two saved connectors.
-    const reuseEnvelope = await findReusableConnectorByUrl({
-      tenant_id: ctx.tenant_id,
-      environment: args.environment,
-      base_url: baseUrl,
-      driver: "http",
-      db: ctx.db,
-    });
+    // upstream URL never produce two saved connectors. Stateless
+    // callers (smoke tests that exercise the parser only) may pass a
+    // null context — skip the dedup in that case so the tool stays
+    // testable without a DB stub.
+    const reuseEnvelope =
+      ctx?.tenant_id && ctx.db
+        ? await findReusableConnectorByUrl({
+            tenant_id: ctx.tenant_id,
+            environment: args.environment,
+            base_url: baseUrl,
+            driver: "http",
+            db: ctx.db,
+          })
+        : null;
     if (reuseEnvelope) {
       return { ok: true, data: reuseEnvelope };
     }

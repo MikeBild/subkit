@@ -4208,7 +4208,8 @@
               "header",
               "query",
               "bearer",
-              "basic"
+              "basic",
+              "aws_sigv4"
             ]
           },
           "headers": {
@@ -4230,6 +4231,15 @@
             "type": "string"
           },
           "password": {
+            "type": "string"
+          },
+          "access_key_id": {
+            "type": "string"
+          },
+          "secret_access_key": {
+            "type": "string"
+          },
+          "session_token": {
             "type": "string"
           }
         },
