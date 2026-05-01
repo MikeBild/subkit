@@ -30,11 +30,19 @@ beforeAll(async () => {
       environment: "dev",
       auth_type: "oauth2",
       base_url: "https://example.test",
+      // resolveConnectorOAuthConfig (template-binding.ts) reads
+      // `config.oauth.*`, not the top-level config keys. The test
+      // setup originally put issuer_url / client_id / etc. at the
+      // top level — refresh-worker found no oauth config + skipped
+      // the refresh + the assertion that the access_token rotated
+      // failed. Nest the block correctly.
       config: {
-        issuer_url: mock.baseUrl,
-        client_id: "rt-client",
-        client_secret: "rt-secret",
-        scope: "read",
+        oauth: {
+          issuer_url: mock.baseUrl,
+          client_id: "rt-client",
+          client_secret: "rt-secret",
+          scope: "read",
+        },
       },
     })
     .returning();

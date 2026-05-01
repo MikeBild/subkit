@@ -30,7 +30,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 let ctx: JourneyCtx;
 

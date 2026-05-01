@@ -6,7 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { runTransformStep } from "../steps/transform.ts";
 import type { StepRunContext } from "../types.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 function mkCtx(): StepRunContext {
   return {

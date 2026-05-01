@@ -9,7 +9,7 @@ import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sou
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { detectChainedWorkflowPatterns } from "../detectors/chained-workflow-pattern.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 let ctx: TestDb;
 let tenant_id: string;

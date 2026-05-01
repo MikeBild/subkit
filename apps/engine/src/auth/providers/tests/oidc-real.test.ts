@@ -26,7 +26,7 @@ import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { createOidcProvider } from "../oidc.ts";
 import { type MockOidcHandle, startMockOidc } from "./fixtures/mock-oidc.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 let testDb: TestDb;
 let mock: MockOidcHandle;

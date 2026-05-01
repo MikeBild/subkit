@@ -11,7 +11,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 let ctx: TestDb;
 let tenant_id: string;

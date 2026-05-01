@@ -23,7 +23,7 @@ import type { defineCommand } from "citty";
 import { workflowsCommand } from "../../../../sk/src/commands/workflows.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 let ctx: JourneyCtx;
 

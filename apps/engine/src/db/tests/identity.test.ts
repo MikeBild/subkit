@@ -5,7 +5,7 @@ import { writeAudit } from "../audit.ts";
 import { apiKeys, auditLog, tenants, users } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "./setup.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 let ctx: TestDb;
 

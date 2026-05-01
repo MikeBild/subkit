@@ -11,7 +11,7 @@ import { describe, expect, test } from "bun:test";
 import { applyAuthMaterial } from "../drivers/http.ts";
 import type { ConnectorView } from "../types.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 function connector(over: Partial<ConnectorView>): ConnectorView {
   return {

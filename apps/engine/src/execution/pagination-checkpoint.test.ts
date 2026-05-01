@@ -23,7 +23,7 @@ import { runRequestStep } from "./steps/request.ts";
 import { createMockServer, jsonResponse, type MockServer } from "./tests/setup.ts";
 import type { StepRunContext } from "./types.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 let testDb: TestDb;
 let tenantId: string;
