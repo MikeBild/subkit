@@ -160,4 +160,5 @@ Credentials only flow through the masked form path. The `update_connector_draft`
 
 ## What to Read Next
 
+- [docs/05a-recipe-authoring.md](05a-recipe-authoring.md) — the contract for authoring recipes (pre-built workflows shipped on every connector template). Schema, conventions, multi-connector binding, quality gate, promotion checklist.
 - [docs/06-execution.md](06-execution.md) — how workflows that use Connectors actually run: the execution model, step kinds, triggers, versioning, and self-healing.
