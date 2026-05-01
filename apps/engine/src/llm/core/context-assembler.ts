@@ -258,11 +258,22 @@ export function formatOperatorQuirks(
 
 /**
  * Render a slim recipe roster from a connector's `template_snapshot`.
- * Surfaces only `slug + title + intent_keywords` per recipe — never
- * the workflow body, which the LLM fetches on demand by calling
- * `start_workflow_from_recipe(template_slug, recipe_slug)`. Returns
- * null when the snapshot ships no recipes so the assembler skips
- * emitting a dead header.
+ * Surfaces `slug + title + category + tags + difficulty + intent_keywords`
+ * per recipe — never the workflow body, sample_input, or
+ * expected_output_preview, which the LLM fetches on demand via
+ * `inspect_recipe(template_slug, recipe_slug)` after narrowing to
+ * 1-3 candidates. Cloning still goes through
+ * `start_workflow_from_recipe(template_slug, recipe_slug)`.
+ *
+ * Token budget (per converse-pipeline memory rule): the per-turn
+ * recipe block is shared with the tenant snapshot + skills index.
+ * Adding category/tags/difficulty costs ~10 extra tokens per recipe
+ * (≈5.7k catalog-wide), well within budget. Anything heavier
+ * (description, sample_input, workflow body) MUST stay behind
+ * `inspect_recipe`.
+ *
+ * Returns null when the snapshot ships no recipes so the assembler
+ * skips emitting a dead header.
  */
 export function formatConnectorRecipes(
   slug: string,
@@ -277,16 +288,30 @@ export function formatConnectorRecipes(
     const recipeSlug = typeof rec.slug === "string" ? rec.slug : null;
     const title = typeof rec.title === "string" ? rec.title : null;
     if (!recipeSlug || !title) continue;
+    const category = typeof rec.category === "string" ? rec.category : null;
+    const difficulty = typeof rec.difficulty === "string" ? rec.difficulty : null;
+    const tags = Array.isArray(rec.tags)
+      ? (rec.tags as unknown[]).filter((t): t is string => typeof t === "string")
+      : [];
     const kws = Array.isArray(rec.intent_keywords)
       ? (rec.intent_keywords as unknown[]).filter((k): k is string => typeof k === "string")
       : [];
-    const kwSuffix = kws.length > 0 ? ` — keywords: ${kws.join(", ")}` : "";
-    lines.push(`- \`${recipeSlug}\` — ${title}${kwSuffix}`);
+    // Order: meta first (compact), then keywords (variable length).
+    const metaParts: string[] = [];
+    if (category) metaParts.push(`category: ${category}`);
+    if (tags.length > 0) metaParts.push(`tags: ${tags.join(", ")}`);
+    if (difficulty && difficulty !== "intermediate") {
+      // Drop the default to save tokens — surface only when notable.
+      metaParts.push(`difficulty: ${difficulty}`);
+    }
+    if (kws.length > 0) metaParts.push(`keywords: ${kws.join(", ")}`);
+    const metaSuffix = metaParts.length > 0 ? ` — ${metaParts.join(" | ")}` : "";
+    lines.push(`- \`${recipeSlug}\` — ${title}${metaSuffix}`);
   }
   if (lines.length === 0) return null;
   return [
     `# Available recipes — connector \`${slug}\``,
-    "Clone via `start_workflow_from_recipe(template_slug, recipe_slug)` instead of authoring from scratch.",
+    "Clone via `start_workflow_from_recipe(template_slug, recipe_slug)`. For description / sample_input / workflow shape before cloning, call `inspect_recipe(template_slug, recipe_slug)`.",
     ...lines,
   ].join("\n");
 }
