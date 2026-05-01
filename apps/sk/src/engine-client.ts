@@ -1076,6 +1076,26 @@ export class EngineClient {
   deleteConnectorTemplate(id: string): Promise<void> {
     return this.request("DELETE", `/v1/connector-templates/${encodeURIComponent(id)}`);
   }
+  listConnectorTemplateRecipes(slug: string): Promise<{
+    template_slug: string;
+    template_name: string;
+    recipes: Record<string, unknown>[];
+  }> {
+    return this.request("GET", `/v1/connector-templates/${encodeURIComponent(slug)}/recipes`);
+  }
+  getConnectorTemplateRecipe(slug: string, recipeSlug: string): Promise<Record<string, unknown>> {
+    return this.request(
+      "GET",
+      `/v1/connector-templates/${encodeURIComponent(slug)}/recipes/${encodeURIComponent(recipeSlug)}`,
+    );
+  }
+  getRecipePack(vertical: string): Promise<{
+    vertical: string;
+    outcome: string;
+    recipes: Array<Record<string, unknown>>;
+  }> {
+    return this.request("GET", `/v1/recipe-packs/${encodeURIComponent(vertical)}`);
+  }
   createConnectorFromTemplate(
     slug: string,
     body: Record<string, unknown> = {},
