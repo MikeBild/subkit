@@ -21,6 +21,7 @@ import { logger } from "../../logging/logger.ts";
 import { runContainer } from "../../sandboxes/docker/runner.ts";
 import type { ToolStep } from "../../workflows/types.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
+import { buildStepErrorDetail } from "./error-detail.ts";
 
 export const TOOL_TIMEOUT_DEFAULT_MS = 120_000;
 
@@ -130,12 +131,11 @@ export async function runToolStep(p: RunToolParams): Promise<StepResult> {
     };
   } catch (err) {
     const duration_ms = Date.now() - start;
-    const message = err instanceof Error ? err.message : String(err);
     return {
       status: "failed",
       retry_count: 0,
       duration_ms,
-      error: { code: "tool_error", message },
+      error: buildStepErrorDetail({ code: "tool_error", err }),
     };
   } finally {
     p.ctx.signal.removeEventListener("abort", onAbort);

@@ -1,48 +1,37 @@
-// Queue definitions for the subkit engine.
+// Queue definitions for the sk engine.
 //
 // Each entry declares a queue name plus the defaults pg-boss should use
-// when creating the queue and when sending jobs into it. P4 only wires
-// handlers for `execution.run` and `apikey.last-used-flush` — the rest of
-// the queues are declared here so other phases can start handing work in
-// without touching bootstrap plumbing.
+// when creating the queue and when sending jobs into it. Every queue listed
+// here MUST have a registered handler in `queue/handlers/index.ts`; pass-6
+// of the cleanup audit removed seven dead declarations
+// (`execution.notify`, `workflow.generate`, `schema.extract`, `chat.event`,
+// `chat.deliver`, `conversation.tool-call`, `tunnel.heartbeat`) that pg-boss
+// was creating but nothing ever enqueued or consumed. Re-add as needed when
+// the consumer ships.
 
 import type { Queue, SendOptions } from "pg-boss";
 
 export type QueueName =
   | "execution.run"
-  | "execution.notify"
   | "connector.refresh-oauth"
   | "connector.ingest-docs"
   | "knowledge.ingest"
   | "skill-candidate.analyze"
   | "workflow.repair"
-  | "workflow.generate"
-  | "schema.extract"
   | "webhook.deliver"
   | "event.fanout"
-  | "chat.event"
-  | "chat.deliver"
-  | "apikey.last-used-flush"
-  | "conversation.tool-call"
-  | "tunnel.heartbeat";
+  | "apikey.last-used-flush";
 
 export const QUEUE_NAMES: QueueName[] = [
   "execution.run",
-  "execution.notify",
   "connector.refresh-oauth",
   "connector.ingest-docs",
   "knowledge.ingest",
   "skill-candidate.analyze",
   "workflow.repair",
-  "workflow.generate",
-  "schema.extract",
   "webhook.deliver",
   "event.fanout",
-  "chat.event",
-  "chat.deliver",
   "apikey.last-used-flush",
-  "conversation.tool-call",
-  "tunnel.heartbeat",
 ];
 
 export interface QueueConfig {
@@ -76,15 +65,6 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
       expireInSeconds: EXECUTION_RUN_VISIBILITY_SECONDS,
       deadLetter: "execution.run.dlq",
       retentionSeconds: DEFAULT_RETENTION_SECONDS,
-    },
-  },
-  "execution.notify": {
-    name: "execution.notify",
-    queue: {
-      retryLimit: 3,
-      retryDelay: 5,
-      retryBackoff: true,
-      retryDelayMax: 60,
     },
   },
   "connector.refresh-oauth": {
@@ -128,22 +108,6 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
       retryBackoff: true,
     },
   },
-  "workflow.generate": {
-    name: "workflow.generate",
-    queue: {
-      retryLimit: 3,
-      retryDelay: 5,
-      retryBackoff: true,
-    },
-  },
-  "schema.extract": {
-    name: "schema.extract",
-    queue: {
-      retryLimit: 3,
-      retryDelay: 5,
-      retryBackoff: true,
-    },
-  },
   "webhook.deliver": {
     name: "webhook.deliver",
     queue: {
@@ -162,44 +126,11 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
       retryBackoff: true,
     },
   },
-  "chat.event": {
-    name: "chat.event",
-    queue: {
-      retryLimit: 3,
-      retryDelay: 5,
-      retryBackoff: true,
-    },
-  },
-  "chat.deliver": {
-    name: "chat.deliver",
-    queue: {
-      retryLimit: 5,
-      retryDelay: 10,
-      retryBackoff: true,
-      retryDelayMax: 300,
-    },
-  },
   "apikey.last-used-flush": {
     name: "apikey.last-used-flush",
     queue: {
       retryLimit: 3,
       retryDelay: 5,
-      retryBackoff: true,
-    },
-  },
-  "conversation.tool-call": {
-    name: "conversation.tool-call",
-    queue: {
-      retryLimit: 3,
-      retryDelay: 5,
-      retryBackoff: true,
-    },
-  },
-  "tunnel.heartbeat": {
-    name: "tunnel.heartbeat",
-    queue: {
-      retryLimit: 3,
-      retryDelay: 2,
       retryBackoff: true,
     },
   },

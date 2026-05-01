@@ -6,6 +6,7 @@
 import { and, asc, desc, eq, isNull, like, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
@@ -95,6 +96,17 @@ export interface CreateWorkflowInput {
   tenant_id: string;
   def: unknown;
   actor_id: string | null;
+  /**
+   * Optional `step_id → scope_at_step` map captured from the most
+   * recent dry_run / run before commit. When supplied, persisted on
+   * `workflow_versions.scope_index` so a follow-up authoring session
+   * can populate `inspect_workflow` / `suggest_jsonata_paths` without
+   * re-running the workflow.
+   */
+  scope_index?: Record<
+    string,
+    { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
+  > | null;
 }
 
 export async function createWorkflow(
@@ -124,7 +136,7 @@ export async function createWorkflow(
         lifecycle: "active",
       })
       .returning();
-    if (!wf) throw new Error("workflows insert returned no row");
+    assertInsertRow(wf, "workflows");
     const [v] = await tx
       .insert(workflowVersions)
       .values({
@@ -132,9 +144,10 @@ export async function createWorkflow(
         workflow_id: wf.id,
         version: 1,
         dag: def,
+        ...(input.scope_index ? { scope_index: input.scope_index } : {}),
       })
       .returning();
-    if (!v) throw new Error("workflow_versions insert returned no row");
+    assertInsertRow(v, "workflow_versions");
     await tx.update(workflows).set({ current_version_id: v.id }).where(eq(workflows.id, wf.id));
     await auditAwait(
       {
@@ -169,6 +182,11 @@ export interface UpdateWorkflowInput {
   id: string;
   def: unknown;
   actor_id: string | null;
+  /** See `CreateWorkflowInput.scope_index`. */
+  scope_index?: Record<
+    string,
+    { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
+  > | null;
 }
 
 export async function updateWorkflow(
@@ -217,9 +235,10 @@ export async function updateWorkflow(
         workflow_id: wf.id,
         version: next,
         dag: def,
+        ...(input.scope_index ? { scope_index: input.scope_index } : {}),
       })
       .returning();
-    if (!v) throw new Error("workflow_versions insert returned no row");
+    assertInsertRow(v, "workflow_versions");
     await tx
       .update(workflows)
       .set({ name: def.name, current_version_id: v.id, updated_at: new Date() })
@@ -615,7 +634,7 @@ export async function restoreWorkflowVersion(
         note: `restored from v${version}`,
       })
       .returning();
-    if (!v) throw new Error("restore insert returned no row");
+    assertInsertRow(v, "restore");
     await tx
       .update(workflows)
       .set({ current_version_id: v.id, updated_at: new Date() })

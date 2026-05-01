@@ -123,7 +123,22 @@ export async function createSelfHealingCtx(label: string): Promise<SelfHealingTe
       step_index: 0,
       kind: "request",
       status: "failed",
-      request_meta: { method: "GET", path: "/users/1", data_selector: "data.id" },
+      request_meta: {
+        driver: "http",
+        method: "GET",
+        url: "/users/1",
+        connector: {
+          step_key: "req-1",
+          connector_id: "00000000-0000-0000-0000-000000000000",
+          connector_slug: "stub",
+          driver: "http",
+          requested_environment: "dev",
+          resolved_environment: "dev",
+          auth_method: "none",
+          base_url: null,
+          tunnel_target: null,
+        },
+      },
       error: {
         kind: "http",
         status: 404,

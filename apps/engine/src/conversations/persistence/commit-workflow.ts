@@ -13,6 +13,7 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { recordWorkflowCreated, recordWorkflowUpdated } from "../../audit/recorders/index.ts";
 import { conversationElicitations, conversations, workflows } from "../../db/schema/index.ts";
+import { logger } from "../../logging/logger.ts";
 import { createWorkflow, updateWorkflow } from "../../workflows/service.ts";
 import { getWorkflowDraft, withWorkflowPersisted } from "../authoring-state.ts";
 import {
@@ -72,6 +73,28 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       head.output !== null &&
       (head.output as { confirmed?: unknown }).confirmed === true;
     if (!head || !confirmed) {
+      // Forensic log: the gate denied the commit. Carries enough
+      // shape to distinguish "no elicitation at all" (head=null —
+      // typical when the LLM skipped ask_user_confirm) from "user
+      // declined" (head.confirmed=false) from "still awaiting input"
+      // (head.status=pending). Pre-fix this collapsed into a single
+      // "tool.failed: no_prior_approval" line which forced operators
+      // to bisect three different bugs.
+      logger.warn({
+        module: "conversation_persistence",
+        action: "commit_gate.denied",
+        msg: "commitWorkflowAtomic prior-approval gate denied — no resolved ask_user_confirm{kind:commit_draft, confirmed:true} found",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        permission_mode: ctx.permission_mode,
+        intent_kind_expected: "commit_draft",
+        latest_elicitation_id: head?.id ?? null,
+        latest_elicitation_status: head?.status ?? null,
+        latest_elicitation_confirmed:
+          head && typeof head.output === "object" && head.output !== null
+            ? (head.output as { confirmed?: unknown }).confirmed === true
+            : null,
+      });
       return {
         ok: false,
         data: buildGateError(ctx.getDraft(), {
@@ -93,18 +116,32 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   // The structural gates (inspect + validate) are non-overridable —
   // they reflect "the draft itself is broken", which `force_commit`
   // was never intended to bypass.
-  const staleCheckpoints = missingFreshCheckpoints(fullDraft, [
-    "workflow_inspected",
-    "workflow_validated",
-  ]);
-  const blocking_reasons = [
-    ...(fullDraft.summary?.blocked_by ?? []).filter(
-      (reason) =>
-        reason === "inspect_workflow_draft" ||
-        reason === "validate_draft" ||
-        reason.startsWith("missing:"),
-    ),
-  ];
+  //
+  // Exception: when a fresh `workflow_previewed` checkpoint exists
+  // AND the preview was successful, we treat that as subsuming
+  // `workflow_inspected` + `workflow_validated`. Reason: a successful
+  // dry_run necessarily walked + validated the draft and produced a
+  // real shape per step. Without this exemption, the auto-persist
+  // path failed the very first commit (session a128deba 15:18:31.506)
+  // because the LLM dry-ran but never explicitly inspected/validated,
+  // so the operator's approval click did nothing and they had to
+  // approve a SECOND time.
+  const previewedSeq = fullDraft.state?.checkpoints?.workflow_previewed?.mutation_seq ?? -1;
+  const draftSeq = fullDraft.state?.workflow_mutation_seq ?? 0;
+  const previewSatisfiesInspectValidate = latestPreview?.ok === true && previewedSeq === draftSeq;
+  const staleCheckpoints = previewSatisfiesInspectValidate
+    ? []
+    : missingFreshCheckpoints(fullDraft, ["workflow_inspected", "workflow_validated"]);
+  const blocking_reasons = previewSatisfiesInspectValidate
+    ? []
+    : [
+        ...(fullDraft.summary?.blocked_by ?? []).filter(
+          (reason) =>
+            reason === "inspect_workflow_draft" ||
+            reason === "validate_draft" ||
+            reason.startsWith("missing:"),
+        ),
+      ];
   if (staleCheckpoints.length > 0 || blocking_reasons.length > 0) {
     return {
       ok: false,
@@ -128,25 +165,73 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   // Partial-success gate — a recent execution that classified itself
   // as `partial_success` (e.g. unresolved_identifier warning, or a
   // loop step body that produced no rows) blocks the commit unless
-  // the operator explicitly forces. Without this gate the
-  // v1→v2→v3→v4→v5 broken-workflow stack can land because preview
-  // returns `ok` for empty output.
+  // the operator explicitly forces. The block is bypassed when a
+  // fresher preview has cleared `requires_repair` (the LLM re-ran
+  // dry_run with a fix); otherwise the v1→v2→v3 broken-workflow stack
+  // can land because preview returns `ok` for empty output.
   const latestExecution = fullDraft.state?.latest_execution ?? null;
-  if (latestExecution?.requires_repair === true && p.forceCommit !== true) {
+  const latestPreviewClearedRepair =
+    latestPreview?.ok === true && latestPreview.requires_repair !== true;
+  if (
+    latestExecution?.requires_repair === true &&
+    !latestPreviewClearedRepair &&
+    p.forceCommit !== true
+  ) {
     return {
       ok: false,
       error_code: "partial_success_not_acknowledged",
       message:
-        "the most recent run finished as partial_success — a loop body produced no rows or a transform referenced unresolved identifiers. Repair the workflow, run dry_run_workflow again, or call commit_draft with force_commit:true after the operator explicitly confirms",
+        "the most recent run finished as partial_success and the latest preview has not cleared it. Repair the workflow, run dry_run_workflow again, or call commit_draft with force_commit:true after the operator explicitly confirms",
       data: buildGateError(fullDraft, {
         error_code: "partial_success_not_acknowledged",
         message:
           "partial_success cannot be silently committed — repair the workflow or force the commit with operator confirmation",
         recommended_mode: "execution",
-        next_best_actions: ["diagnose_latest_execution", "propose_step", "dry_run_workflow"],
+        next_best_actions: ["diagnose_latest_execution", "inspect_workflow", "dry_run_workflow"],
         extra: {
           execution_id: latestExecution.execution_id,
           warnings_count: latestExecution.warnings_count,
+          force_commit_available: true,
+        },
+      }),
+    };
+  }
+
+  // Warnings-unacknowledged gate — even when the engine did not flag
+  // The gate fires only when the most recent execution carries the
+  // `requires_repair` flag — the engine sets this when the run shape
+  // suggests a real bug (empty extraction over non-empty source, loop
+  // body never executed, unresolved_identifier fired). Informational
+  // warnings (e.g. `transform_dropped_fields` for an intentional
+  // projection) do not carry `requires_repair: true` and therefore do
+  // not block commit. This matches the documented contract in
+  // workflow-authoring.md — "read requires_repair, not the warning
+  // count" — and unblocks auto-persist for runs that are correct but
+  // happen to surface informational warnings. The check is bypassed
+  // when forceCommit is set, or when a fresher preview has cleared the
+  // repair flag (the LLM has re-run dry_run after the offending
+  // execution). Reuses `latestPreviewClearedRepair` computed above for
+  // the partial_success gate — same predicate, different error_code.
+  if (
+    latestExecution?.requires_repair === true &&
+    !latestPreviewClearedRepair &&
+    p.forceCommit !== true
+  ) {
+    return {
+      ok: false,
+      error_code: "warnings_unacknowledged",
+      message:
+        "the most recent execution carries `requires_repair: true` and the latest preview has not cleared it. Re-run dry_run_workflow with the fixed expressions to confirm the repair flag is gone, or call commit_draft with force_commit:true after the operator explicitly confirms",
+      data: buildGateError(fullDraft, {
+        error_code: "warnings_unacknowledged",
+        message:
+          "the run shape suggests a real bug (requires_repair: true) — repair before committing or force_commit after explicit operator confirmation",
+        recommended_mode: "execution",
+        next_best_actions: ["diagnose_latest_execution", "inspect_workflow", "dry_run_workflow"],
+        extra: {
+          execution_id: latestExecution.execution_id,
+          warnings_count: latestExecution.warnings_count,
+          requires_repair: true,
           force_commit_available: true,
         },
       }),
@@ -238,6 +323,46 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     .limit(1);
   let targetWorkflowId = convRows[0]?.target_workflow_id ?? null;
 
+  // Identity gate: the draft's slug is the source of truth for what
+  // workflow row this commit targets. The conversation's stored
+  // target_workflow_id is just remembered context — when the draft has
+  // pivoted to a different slug, treating it as the upsert key would
+  // silently overwrite the previously-saved workflow with the new
+  // artifact's content (the bug seen on Berlin → GitHub topic
+  // pivots). Explicit p.target_workflow_id is the only override —
+  // that's the LLM signalling "yes, intentionally update this row"
+  // (e.g. a slug rename after the user confirmed overwrite).
+  if (targetWorkflowId && !p.target_workflow_id && def.slug) {
+    const targetSlugRows = await ctx.db
+      .select({ slug: workflows.slug })
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.tenant_id, ctx.tenant_id),
+          eq(workflows.id, targetWorkflowId),
+          isNull(workflows.deleted_at),
+        ),
+      )
+      .limit(1);
+    const targetSlug = targetSlugRows[0]?.slug ?? null;
+    if (targetSlug !== null && targetSlug !== def.slug) {
+      logger.info({
+        module: "conversation",
+        action: "commit_draft.target_pivot_detected",
+        msg: "draft slug diverged from conversation target_workflow_id — treating as new artifact",
+        conversation_id: ctx.conversation_id,
+        stale_target_workflow_id: targetWorkflowId,
+        stale_target_slug: targetSlug,
+        draft_slug: def.slug,
+      });
+      targetWorkflowId = null;
+      await ctx.db
+        .update(conversations)
+        .set({ target_workflow_id: null, updated_at: new Date() })
+        .where(eq(conversations.id, ctx.conversation_id));
+    }
+  }
+
   if (p.target_workflow_id) {
     const explicitRows = await ctx.db
       .select({ id: workflows.id })
@@ -303,16 +428,47 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     }
   }
 
+  // Per-step authoring vocabulary captured from the most recent
+  // dry_run / run on this draft. Persisted next to the DAG so a
+  // follow-up authoring session can call inspect_workflow /
+  // suggest_jsonata_paths without re-running the workflow. Empty
+  // map when no preview was recorded — never undefined, so the
+  // column distinguishes "no preview" from "scope explicitly empty".
+  const scopeIndex: Record<
+    string,
+    { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
+  > = {};
+  for (const trace of latestPreview?.step_traces ?? []) {
+    if (!trace?.scope_at_step) continue;
+    scopeIndex[trace.step_id] = {
+      available_paths: trace.scope_at_step.available_paths ?? [],
+      shape_summary: trace.scope_at_step.shape_summary ?? "unknown",
+      primary_data_path: trace.scope_at_step.primary_data_path ?? null,
+    };
+  }
+  const persistScopeIndex = Object.keys(scopeIndex).length > 0 ? scopeIndex : null;
+
   let result: Awaited<ReturnType<typeof createWorkflow>>;
   try {
     if (targetWorkflowId) {
       result = await updateWorkflow(
-        { tenant_id: ctx.tenant_id, id: targetWorkflowId, def, actor_id: ctx.actor_id },
+        {
+          tenant_id: ctx.tenant_id,
+          id: targetWorkflowId,
+          def,
+          actor_id: ctx.actor_id,
+          scope_index: persistScopeIndex,
+        },
         ctx.db,
       );
     } else {
       result = await createWorkflow(
-        { tenant_id: ctx.tenant_id, def, actor_id: ctx.actor_id },
+        {
+          tenant_id: ctx.tenant_id,
+          def,
+          actor_id: ctx.actor_id,
+          scope_index: persistScopeIndex,
+        },
         ctx.db,
       );
     }

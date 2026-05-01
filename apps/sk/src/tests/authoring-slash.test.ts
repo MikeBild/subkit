@@ -267,6 +267,56 @@ describe("authoring slash panes", () => {
     );
   });
 
+  test("/onboard without an interactive pane returns the REPL-only guidance", async () => {
+    const client = {
+      listConnectorTemplates: async () => ({
+        items: [{ slug: "stripe", name: "Stripe", driver: "http", auth_type: "bearer" }],
+      }),
+    } as unknown as EngineClient;
+    const { ctx } = mkCtx(client);
+    const { openPane: _openPane, ...ctxWithoutPane } = ctx;
+    const result = await handleSlash("onboard", [], ctxWithoutPane);
+    expect(result).toContain("requires the Ink REPL");
+  });
+
+  test("/onboard opens the onboarding wizard pane with mapped templates", async () => {
+    const client = {
+      listConnectorTemplates: async () => ({
+        items: [
+          {
+            slug: "stripe",
+            name: "Stripe",
+            driver: "http",
+            auth_type: "bearer",
+            description: "Payments",
+            setup_instructions: "Create a secret key",
+          },
+          {
+            slug: "github",
+            name: "GitHub",
+            driver: "http",
+            auth_type: "oauth2",
+            oauth: {
+              authorization_url: "https://github.com/login/oauth/authorize",
+              scopes: ["repo"],
+            },
+          },
+        ],
+      }),
+    } as unknown as EngineClient;
+    const { ctx, panes } = mkCtx(client);
+    const result = await handleSlash("onboard", [], ctx);
+    expect(result).toBeNull();
+    const pane = panes[0];
+    expect(pane?.kind).toBe("onboarding-wizard");
+    const wizard = pane as Extract<PaneSpec, { kind: "onboarding-wizard" }>;
+    expect(wizard.templates).toHaveLength(2);
+    expect(wizard.templates[1]?.oauth?.authorization_url).toContain("github.com");
+    expect(typeof wizard.onProbe).toBe("function");
+    expect(typeof wizard.onSave).toBe("function");
+    expect(typeof wizard.onComplete).toBe("function");
+  });
+
   test("/status includes cached setup summary when available", async () => {
     const client = {} as EngineClient;
     const { ctx, panes } = mkCtx(client);

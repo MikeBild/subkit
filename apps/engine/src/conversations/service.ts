@@ -7,6 +7,7 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import {
   conversationElicitations,
@@ -21,6 +22,7 @@ import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { appendSnapshot, loadDraft, undoLastSnapshot } from "./draft.ts";
 import { type RunLoopResult, runLoop } from "./loop.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "./resume.ts";
+import { BASELINE_SKILLS } from "./skill-autoload.ts";
 import type {
   ConversationDetail,
   ConversationMessageRecord,
@@ -101,6 +103,16 @@ export interface CreateConversationParams {
   title?: string | null;
   /** Client-supplied permission mode for the initial turn. */
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  /** Live-event emitter — enables SSE streaming for the initial turn. */
+  onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
+  /**
+   * Fired synchronously once the conversation row has been inserted
+   * but before the initial runLoop turn begins. Lets SSE callers emit
+   * a `conversation_started` frame so the client knows the
+   * conversation_id immediately, instead of waiting for the terminal
+   * `outcome` frame at the end of the turn.
+   */
+  onCreated?: (record: ConversationRecord) => void;
   /** Real runtime context (engine_url, tenant_slug, actor email/role) — see runtime-context.ts. */
   runtime_context?: {
     engine_url?: string;
@@ -187,12 +199,17 @@ export async function createConversation(
       status: "active",
       draft: initialDraft,
       owner_id: p.actor_id ?? null,
+      // Seed every conversation with the baseline skills so the LLM
+      // has the core mental model (sk concepts + error recovery) on
+      // turn one. Per-tool autoload (`shouldAutoloadSkillsForTool`)
+      // appends domain-specific skills as the conversation evolves.
+      loaded_skills: [...BASELINE_SKILLS],
       ...(p.model ? { model: p.model } : {}),
       ...(p.title ? { title: p.title } : {}),
       ...(memory ? { memory } : {}),
     })
     .returning();
-  if (!row) throw new Error("conversations insert returned no row");
+  assertInsertRow(row, "conversations");
 
   log.conversation.created({
     conversation_id: row.id,
@@ -240,6 +257,14 @@ export async function createConversation(
     );
   }
 
+  if (p.onCreated) {
+    try {
+      p.onCreated(rowToRecord(row));
+    } catch {
+      // Never block conversation creation on a callback error.
+    }
+  }
+
   // Seed the mock provider plan for known canned flows when the initial
   // message matches. In production this is a no-op because `LLM_PROVIDER`
   // isn't `mock` and the canned plan map stays empty. Tests flip the
@@ -272,6 +297,7 @@ export async function createConversation(
         user_message: p.initial_message,
         user_memory: memory,
         model_override: p.model ?? null,
+        ...(p.onEvent ? { onEvent: p.onEvent } : {}),
         ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
         ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
       })
@@ -411,6 +437,16 @@ export interface RespondElicitationParams {
   output: unknown;
   reason?: string;
   permission_mode?: ConversationPermissionMode | null;
+  /**
+   * Live event emitter. When the route is in SSE mode this fires for
+   * every TurnEvent the resumed runLoop produces, so the CLI sees
+   * real-time progress instead of a 1–2 minute spinner before the
+   * buffered JSON outcome arrives. Pre-fix the respond endpoint was
+   * JSON-only — the operator saw `summarising 28 tool results · 1m43s
+   * · 370886t` for the entire turn before any text or tool card
+   * rendered.
+   */
+  onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
 }
 
 /**
@@ -548,7 +584,7 @@ export async function respondElicitation(
     },
     db: exec,
   });
-  await maybeAutoPersistFromElicitation({
+  const autoPersist = await maybeAutoPersistFromElicitation({
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
@@ -575,6 +611,33 @@ export async function respondElicitation(
       permission_mode: explicitPermissionMode,
     });
   }
+  if (
+    autoPersist.dispatched &&
+    conv.conversation.status === "committed" &&
+    conv.conversation.target_workflow_id
+  ) {
+    await auditAwait(
+      {
+        tenant_id: p.tenant_id,
+        actor_type: p.actor_id ? "user" : "system",
+        actor_id: p.actor_id,
+        action: AuditAction.CONVERSATION_COMMITTED,
+        resource_type: "conversation",
+        resource_id: p.conversation_id,
+        result: "success",
+        metadata: { workflow_id: conv.conversation.target_workflow_id },
+      },
+      exec,
+    );
+    return {
+      conversation: conv.conversation,
+      result: {
+        events: [{ type: "committed", workflow_id: conv.conversation.target_workflow_id }],
+        status: "committed",
+        committed_workflow_id: conv.conversation.target_workflow_id,
+      },
+    };
+  }
 
   const result = await runLoop({
     db: exec,
@@ -585,6 +648,7 @@ export async function respondElicitation(
     workflow_id: conv.conversation.target_workflow_id,
     user_message: null,
     ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
+    ...(p.onEvent ? { onEvent: p.onEvent } : {}),
   });
   const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!updated) throw new Error("conversation disappeared");

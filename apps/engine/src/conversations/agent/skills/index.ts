@@ -89,3 +89,66 @@ export function loadAgentSkills(names: ReadonlyArray<AgentSkillName>): string {
 
 /** All agent skill names — stable order, used by the MAIN agent's preload list. */
 export const ALL_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = AGENT_SKILL_NAMES;
+
+/**
+ * Cross-cutting skills that apply to EVERY conversation regardless of
+ * authoring mode. The remainder live in `MODE_SPECIFIC_AGENT_SKILLS`
+ * and only ship when the matching mode is active.
+ *
+ * `conversational-authoring` is the only body large enough (~7.3KB / ~1.8k
+ * tokens) and authoring-specific enough that loading it for non-authoring
+ * chats (general help, MCP-only conversations, execution-mode debugging
+ * without a draft in flight) is wasted budget. Everything else
+ * (turn-rhythm, chat-first, confirmation, attachment, error-recovery,
+ * placeholder-rules, workflow-step-kinds, …) is small or universal
+ * enough that pinning it costs less than the test maintenance of
+ * splitting it.
+ *
+ * The other behaviour rules — workflow-step-kinds and placeholder-rules
+ * specifically — stay in always-loaded because base-prompt-step-kinds
+ * tests pin them as anti-Zapier-namespace guardrails that apply even
+ * when the user asks an off-topic question; trimming them invites the
+ * model to invent shapes.
+ */
+export const ALWAYS_LOADED_AGENT_SKILLS: ReadonlyArray<AgentSkillName> = AGENT_SKILL_NAMES.filter(
+  (n) => n !== "conversational-authoring",
+);
+
+/**
+ * Skills loaded only when the conversation is in a specific authoring
+ * mode (workflow / connector / execution / diagnosis). Adding a skill
+ * here drops it from the always-loaded core to keep the static prompt
+ * small for non-authoring chats. The lookup keys match
+ * `AuthoringSurfaceMode` from `conversations/types.ts`.
+ *
+ *   workflow / connector → conversational-authoring (the ideal-flow
+ *                          narrative + stage signals)
+ *   execution / diagnosis → none (always-loaded core only)
+ *   undefined / null     → none (always-loaded core only)
+ *
+ * If a future skill is too verbose to load universally and clearly maps
+ * to one mode, add it here rather than padding the always-loaded set.
+ */
+export const MODE_SPECIFIC_AGENT_SKILLS: Record<string, ReadonlyArray<AgentSkillName>> = {
+  workflow: ["conversational-authoring"],
+  connector: ["conversational-authoring"],
+  execution: [],
+  diagnosis: [],
+};
+
+/**
+ * Resolve the actual skill list for a given authoring mode. Returns
+ * the always-loaded core plus any mode-specific extras, deduped and
+ * preserving the canonical AGENT_SKILL_NAMES order so the prompt is
+ * deterministic. When `mode` is null/undefined, returns the
+ * always-loaded core only.
+ */
+export function resolveAgentSkillsForMode(
+  mode: string | null | undefined,
+): ReadonlyArray<AgentSkillName> {
+  const set = new Set<AgentSkillName>(ALWAYS_LOADED_AGENT_SKILLS);
+  const extras = mode ? MODE_SPECIFIC_AGENT_SKILLS[mode] : undefined;
+  if (extras) for (const name of extras) set.add(name);
+  // Preserve declaration order from AGENT_SKILL_NAMES.
+  return AGENT_SKILL_NAMES.filter((n) => set.has(n));
+}

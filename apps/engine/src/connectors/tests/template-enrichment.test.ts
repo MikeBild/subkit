@@ -36,7 +36,9 @@ describe("enrichConnectorFromTemplate — stripe (bearer, no oauth)", () => {
 
   test("base_url falls back to template base_url when not supplied", () => {
     const result = enrichConnectorFromTemplate({}, template);
-    expect(result.base_url).toBe(template.base_url);
+    // template.base_url is non-null in the Stripe fixture; otherwise the
+    // field is omitted from the enriched draft so the operator is asked.
+    expect(result.base_url).toBe(template.base_url as string);
   });
 
   test("user-supplied base_url wins", () => {
@@ -114,11 +116,19 @@ describe("enrichConnectorFromTemplate — paypal (base_url_options + oauth2)", (
     expect(result.base_url).toBe(prodOption!.base_url);
   });
 
-  test("oauth fields flow into config when template has oauth", () => {
+  test("oauth fields flow into config.oauth when auth_type=oauth2", () => {
     if (template.oauth) {
-      const result = enrichConnectorFromTemplate({}, template);
-      expect(result.config?.issuer_url).toBe(template.oauth.issuer_url);
-      expect(result.config?.grant_type).toBe(template.oauth.grant_type);
+      const result = enrichConnectorFromTemplate({ auth_type: "oauth2" }, template);
+      const oauth = result.config?.oauth as Record<string, unknown> | undefined;
+      expect(oauth?.issuer_url).toBe(template.oauth.issuer_url);
+      expect(oauth?.grant_type).toBe(template.oauth.grant_type);
+    }
+  });
+
+  test("oauth fields are NOT seeded when auth_type=bearer", () => {
+    if (template.oauth) {
+      const result = enrichConnectorFromTemplate({ auth_type: "bearer" }, template);
+      expect(result.config?.oauth).toBeUndefined();
     }
   });
 });

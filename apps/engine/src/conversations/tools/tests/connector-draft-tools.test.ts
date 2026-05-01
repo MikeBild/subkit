@@ -125,6 +125,181 @@ describe("connector draft tools", () => {
     expect(data.matched_template?.score).toBeGreaterThan(0);
   });
 
+  test("start_connector_from_description prefers URL-pattern match over text match (AppSync Cognito)", async () => {
+    // Pre-fix the LLM passing description="AWS AppSync GraphQL" + a
+    // matching url got handed a generic graphql template that hardcoded
+    // `auth_type=header`, forcing the operator through a credential
+    // dance: ask for username+password (Cognito), reject those because
+    // the draft says header-auth, ask for x-api-key. URL match now
+    // wins so the operator hits `appsync-cognito` (oauth2 +
+    // cognito_user_password) on the first turn.
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "AWS AppSync GraphQL",
+      description: "AWS AppSync GraphQL endpoint",
+      base_url: "https://qjzi627ik5b4xjya4cibaba6ai.appsync-api.eu-central-1.amazonaws.com/graphql",
+      environment: "dev",
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: { template_slug: string | null; auth_type: string };
+      matched_template: { slug: string; match_kind: "url" | "text" } | null;
+    };
+    expect(data.connector.template_slug).toBe("appsync-cognito");
+    expect(data.connector.auth_type).toBe("oauth2");
+    expect(data.matched_template?.match_kind).toBe("url");
+  });
+
+  test("URL-matched oauth2 template does NOT seed config.oauth in the draft and steers to authenticate_oauth", async () => {
+    // Post-fix (session 18467df2): start_connector_from_description
+    // no longer writes config.oauth — that's the job of the template
+    // snapshot at mint time. The bearer/PAT regression came from
+    // seeding oauth into a non-oauth2 draft and tripping strict-mode
+    // at save. The draft is now auth-shape-agnostic; the LLM is
+    // steered to authenticate_oauth via `next_phase`.
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "AppSync GraphQL",
+      base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+      environment: "dev",
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: {
+        template_slug: string | null;
+        auth_type: string;
+        config?: Record<string, unknown>;
+      };
+      next_phase?: { phase: string; next_suggested_tool: string };
+    };
+    expect(data.connector.template_slug).toBe("appsync-cognito");
+    expect(data.connector.auth_type).toBe("oauth2");
+    expect(data.connector.config?.oauth).toBeUndefined();
+    expect(data.next_phase?.phase).toBe("authenticate_connector");
+    expect(data.next_phase?.next_suggested_tool).toBe("authenticate_oauth");
+  });
+
+  test("bearer-auth GitHub draft has empty config and steers to ask_user_form", async () => {
+    // Regression guard for session 18467df2: pre-fix the GitHub
+    // template seeded config.oauth even when auth_type=bearer, and
+    // strict-mode HttpConnectorConfig rejected the persist with
+    // connector_config_invalid. Now config stays empty for bearer.
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "GitHub API",
+      description: "GitHub REST API for fetching repositories",
+      base_url: "https://api.github.com",
+      auth_type: "bearer",
+      environment: "dev",
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: {
+        template_slug: string | null;
+        auth_type: string;
+        config?: Record<string, unknown>;
+      };
+      next_phase?: { phase: string; next_suggested_tool: string };
+    };
+    expect(data.connector.template_slug).toBe("github");
+    expect(data.connector.auth_type).toBe("bearer");
+    expect(data.connector.config?.oauth).toBeUndefined();
+    expect(data.next_phase?.next_suggested_tool).toBe("ask_user_form");
+  });
+
+  test("start_connector_from_description short-circuits to a saved connector with the same base_url", async () => {
+    // Reproduces session 1b94070c: operator already saved an
+    // appsync-graphql connector in a prior session; in a fresh
+    // session pastes the same URL. Pre-fix the LLM created a NEW
+    // draft (`aws-appsync-discovery`), lost the cached creds, and
+    // the operator re-typed the password. Now we surface the
+    // existing connector so the LLM reuses it.
+    const toolCtx = await createToolCtx();
+    // Persist a "prior session" connector at the same URL.
+    const { createConnector } = await import("../../../connectors/service.ts");
+    const saved = await createConnector(
+      {
+        tenant_id: toolCtx.base.tenant_id,
+        input: {
+          name: "Saved AppSync",
+          driver: "graphql",
+          environment: "dev",
+          base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+          auth_type: "oauth2",
+          config: {},
+        },
+        actor_id: null,
+      },
+      toolCtx.base.db,
+    );
+
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "AWS AppSync Discovery", // different name — but same URL
+      base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+      environment: "dev",
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      reused_existing: boolean;
+      connector: { id: string; slug: string };
+    };
+    expect(data.reused_existing).toBe(true);
+    expect(data.connector.id).toBe(saved.id);
+    expect(data.connector.slug).toBe("saved-appsync");
+  });
+
+  test("URL match still wins when LLM mis-guesses auth_type as aws_sigv4", async () => {
+    // Reproduces the regression in session 3f81fb2a. The LLM sees an
+    // AppSync hostname and unconditionally guesses `aws_sigv4`. URL
+    // match returns BOTH `appsync-cognito` and `appsync-iam`. Pre-fix
+    // the guard "args.auth_type must be in URL-match's auth_options"
+    // disqualified cognito (no aws_sigv4 option), fell back to text
+    // match which picked `appsync-iam` — auth=aws_sigv4 baked into the
+    // draft. Now we bias-by-auth-type-hint among URL matches: pick the
+    // template whose auth_options accept the LLM's guess.
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "AWS AppSync GraphQL",
+      description: "AWS AppSync GraphQL endpoint",
+      base_url: "https://sigv4test.appsync-api.us-east-1.amazonaws.com/graphql",
+      environment: "dev",
+      auth_type: "aws_sigv4", // mis-guess — operator actually has user+pass
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: { template_slug: string | null; auth_type: string };
+      matched_template: { slug: string; match_kind: "url" | "text" } | null;
+    };
+    // SigV4-compatible URL match → appsync-iam wins (the auth_type
+    // hint biased the URL-match selection).
+    expect(data.connector.template_slug).toBe("appsync-iam");
+    expect(data.connector.auth_type).toBe("aws_sigv4");
+    expect(data.matched_template?.match_kind).toBe("url");
+  });
+
+  test("URL match falls back to first candidate when LLM auth_type matches no URL template", async () => {
+    // LLM mis-guesses again, this time with an auth_type that NO
+    // AppSync template supports. URL match should still win — first
+    // candidate (alphabetical: appsync-cognito), auth_type forced to
+    // template's primary (oauth2). Operator's URL is ground truth.
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "AWS AppSync GraphQL",
+      description: "AWS AppSync GraphQL endpoint",
+      base_url: "https://bearertest.appsync-api.ap-southeast-1.amazonaws.com/graphql",
+      environment: "dev",
+      auth_type: "bearer", // not in either appsync template's auth_options
+    });
+    expect(started.ok).toBe(true);
+    const data = started.data as {
+      connector: { template_slug: string | null; auth_type: string };
+      matched_template: { slug: string; match_kind: "url" | "text" } | null;
+    };
+    expect(data.connector.template_slug).toBe("appsync-cognito");
+    expect(data.connector.auth_type).toBe("oauth2"); // template wins, not LLM's bearer
+    expect(data.matched_template?.match_kind).toBe("url");
+  });
+
   test("start_connector_from_template reports unresolved endpoint placeholders as missing fields", async () => {
     const toolCtx = await createToolCtx();
     const started = await startConnectorFromTemplateTool.execute(toolCtx.base, {
@@ -203,5 +378,32 @@ describe("connector draft tools", () => {
     const connector = (saved.data as { connector: { id: string; display_name: string } }).connector;
     expect(connector.display_name).toBe("Force Save API");
     expect(connector.id).toBeTruthy();
+  });
+
+  test("update_connector_draft rejects config.oauth mutation with auth_mutation_not_allowed", async () => {
+    // Regression guard: the LLM must not be able to hand-edit oauth
+    // metadata. config.oauth is owned by the template snapshot +
+    // OAuth2 client at mint time. Letting the LLM write here is what
+    // produced the bearer-with-oauth shape that strict-mode rejected.
+    const toolCtx = await createToolCtx();
+    await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "GitHub API",
+      base_url: "https://api.github.com",
+      auth_type: "bearer",
+      environment: "dev",
+    });
+    const { updateConnectorDraftTool } = await import("../update-connector-draft.ts");
+    const rejected = await updateConnectorDraftTool.execute(toolCtx.base, {
+      config: {
+        oauth: {
+          token_endpoint: "https://github.com/login/oauth/access_token",
+        },
+      },
+    });
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok === false) {
+      expect(rejected.error_code).toBe("auth_mutation_not_allowed");
+      expect(rejected.next_best_actions).toContain("authenticate_oauth");
+    }
   });
 });

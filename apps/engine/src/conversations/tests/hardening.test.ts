@@ -80,7 +80,10 @@ describe("conversations/hardening", () => {
       pendingChildElicitationIds: [],
       toolInvocationCount: new Map(),
       toolLastErrorHash: new Map(),
+      toolArgsRepeat: new Map(),
+      toolValidationFingerprint: new Map(),
       totalLoopWarnings: 0,
+      consecutiveFailures: 0,
       lastAssistantText: "",
     };
     const events: TurnEvent[] = [];
@@ -114,7 +117,11 @@ describe("conversations/hardening", () => {
     // The step counter must have incremented monotonically, once per call.
     expect(signals.step).toBe(3);
     // Event order must be strictly: call, result, call, result, call, result.
-    const kinds = events.map((e) => e.type);
+    // Filter out `activity` frames — those are progress signals (e.g.
+    // "composing reply", "tool: <name>") that the loop interleaves
+    // around tool execution and are unrelated to the serialization
+    // contract being tested here.
+    const kinds = events.map((e) => e.type).filter((k) => k !== "activity");
     expect(kinds).toEqual([
       "tool_call_start",
       "tool_call_end",

@@ -1,0 +1,170 @@
+// Structured error detail builder shared by every driver path.
+//
+// Pre-fix the engine collapsed driver failures to `{ code, message }` and
+// `String(err)` produced `"[object Object]"` whenever the cause was a non-
+// Error value. The LLM author saw `http 404` or `[object Object]` in chat
+// and could not tell whether the path was wrong, the credential expired,
+// or a placeholder failed to substitute. Session f00b8d1c spent 19 of
+// its 109 DigitalOcean calls on that blind 404 → re-author cycle.
+//
+// `buildStepErrorDetail` extracts whatever the failure already knows
+// (resolved URL from request_meta, response body + status from
+// `RequestError.meta`, original `err.cause`) and returns a flat envelope
+// the dry-run / RunResult surface persists verbatim.
+//
+// Privacy: cookie / authorization / x-api-key / set-cookie headers are
+// dropped from `response_headers`. Credential placeholder previews are
+// always rendered as `***`.
+
+import type { RequestMeta, StepErrorDetail } from "../types.ts";
+
+const SAFE_HEADER_DENYLIST = new Set([
+  "authorization",
+  "cookie",
+  "set-cookie",
+  "proxy-authorization",
+  "x-api-key",
+  "x-auth-token",
+  "x-amz-security-token",
+]);
+
+/** First 4 KB of an opaque body, JSON-serialised when shaped, raw text otherwise. */
+function bodyExcerpt(body: unknown, maxBytes = 4096): string | undefined {
+  if (body === undefined || body === null) return undefined;
+  let text: string;
+  if (typeof body === "string") {
+    text = body;
+  } else {
+    try {
+      text = JSON.stringify(body);
+    } catch {
+      text = String(body);
+    }
+  }
+  if (text.length === 0) return undefined;
+  if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
+  // Fast path: byte-truncate then trim trailing partial UTF-8.
+  const buf = Buffer.from(text, "utf8");
+  return `${buf.subarray(0, maxBytes).toString("utf8")} …[truncated]`;
+}
+
+function safeHeaders(input: unknown): Record<string, string> | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    const lower = k.toLowerCase();
+    if (SAFE_HEADER_DENYLIST.has(lower)) continue;
+    if (typeof v === "string") out[lower] = v;
+    else if (typeof v === "number" || typeof v === "boolean") out[lower] = String(v);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function pickRequestErrorMeta(err: unknown): {
+  status?: number;
+  body?: unknown;
+  headers?: unknown;
+} | null {
+  if (!err || typeof err !== "object") return null;
+  const e = err as { status?: unknown; meta?: Record<string, unknown> };
+  const meta = e.meta ?? {};
+  const out: { status?: number; body?: unknown; headers?: unknown } = {};
+  if (typeof e.status === "number") out.status = e.status;
+  if ("body" in meta) out.body = (meta as Record<string, unknown>).body;
+  if ("headers" in meta) out.headers = (meta as Record<string, unknown>).headers;
+  return out.status === undefined && out.body === undefined && out.headers === undefined
+    ? null
+    : out;
+}
+
+function pickResolvedUrl(meta: RequestMeta | null | undefined): string | undefined {
+  if (!meta) return undefined;
+  if (meta.driver === "http" || meta.driver === "connectorless") {
+    return meta.url ?? undefined;
+  }
+  if (meta.driver === "s3") {
+    return meta.key ?? meta.prefix ?? undefined;
+  }
+  return undefined;
+}
+
+function pickUnresolvedPlaceholders(
+  meta: RequestMeta | null | undefined,
+): Array<{ name: string; preview: string }> | undefined {
+  if (!meta) return undefined;
+  if (meta.driver === "http" || meta.driver === "connectorless" || meta.driver === "error") {
+    const list = meta.unresolved_placeholders ?? [];
+    if (list.length === 0) return undefined;
+    return list.map((name) => ({ name, preview: "<unresolved>" }));
+  }
+  return undefined;
+}
+
+export interface BuildStepErrorOptions {
+  code: string;
+  /** Original thrown value. */
+  err: unknown;
+  /** Last `request_meta` snapshot the dispatcher published before the failure. */
+  request_meta?: RequestMeta | null;
+  /** Optional override message — used when the call site already has a
+   *  curated string (e.g. "request exceeded 60000ms"). When omitted the
+   *  helper prefers `err.message`, then `err.cause.message`, then a
+   *  driver-shaped fallback that NEVER returns `[object Object]`. */
+  message?: string;
+}
+
+/** Render a non-Error throwable into a useful string.
+ *  Replaces the historic `String(err)` → `"[object Object]"` fallback. */
+function safeMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message || fallback;
+  if (err === null || err === undefined) return fallback;
+  if (typeof err === "string") return err || fallback;
+  if (typeof err === "number" || typeof err === "boolean") return String(err);
+  if (typeof err === "object") {
+    const o = err as Record<string, unknown>;
+    if (typeof o.message === "string" && o.message.length > 0) return o.message;
+    try {
+      const json = JSON.stringify(o);
+      if (json && json !== "{}") return json;
+    } catch {
+      // fall through
+    }
+  }
+  return fallback;
+}
+
+export function buildStepErrorDetail(opts: BuildStepErrorOptions): StepErrorDetail {
+  const { code, err, request_meta, message } = opts;
+  const fallbackMessage = `${code} (no detail)`;
+  const detail: StepErrorDetail = {
+    code,
+    message: message ?? safeMessage(err, fallbackMessage),
+  };
+  const reqMeta = pickRequestErrorMeta(err);
+  if (reqMeta) {
+    if (reqMeta.status !== undefined) detail.upstream_status = reqMeta.status;
+    if (reqMeta.body !== undefined) {
+      const excerpt = bodyExcerpt(reqMeta.body);
+      if (excerpt !== undefined) detail.response_body_excerpt = excerpt;
+    }
+    const headers = safeHeaders(reqMeta.headers);
+    if (headers) detail.response_headers = headers;
+  }
+  const resolvedUrl = pickResolvedUrl(request_meta);
+  if (resolvedUrl) detail.resolved_url = resolvedUrl;
+  const unresolved = pickUnresolvedPlaceholders(request_meta);
+  if (unresolved) detail.resolved_placeholders = unresolved;
+  // Surface err.cause.message when the immediate `err.message` was generic
+  // (e.g. `"request_error"` or empty). Cause is a common Node.js convention
+  // for upstream connection failures.
+  if ((!detail.message || detail.message === fallbackMessage) && err && typeof err === "object") {
+    const cause = (err as { cause?: unknown }).cause;
+    if (cause && typeof cause === "object") {
+      const causeMsg = (cause as { message?: unknown }).message;
+      if (typeof causeMsg === "string" && causeMsg.length > 0) {
+        detail.message = causeMsg;
+      }
+    }
+  }
+  return detail;
+}

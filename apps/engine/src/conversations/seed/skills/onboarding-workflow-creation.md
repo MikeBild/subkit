@@ -49,3 +49,40 @@ Do NOT generate steps until these three questions are answered. One good questio
 6. Confirm and commit
 
 Show progress at each phase so the user always knows where they are.
+
+## Example: a first workflow from a single API
+
+The minimum useful workflow is one request step. Once the user has a probed
+connector and you know the endpoint, this is the shape `build_workflow`
+expects:
+
+```json
+{
+  "name": "Daily Stripe customers",
+  "slug": "stripe-daily-customers",
+  "description": "Fetches the most recent 100 customers from Stripe.",
+  "steps": [
+    {
+      "id": "list_customers",
+      "kind": "request",
+      "method": "GET",
+      "connector_id": "<stripe_connector_id>",
+      "path": "/v1/customers",
+      "query": { "limit": 100 }
+    }
+  ]
+}
+```
+
+After this lands, the next iteration usually adds a transform step:
+
+```json
+{
+  "id": "shape",
+  "kind": "transform",
+  "language": "jsonata",
+  "expression": "$scope.list_customers.data.data.{ 'id': id, 'email': email }"
+}
+```
+
+The two together — fetch + shape — cover ~80% of first workflows.

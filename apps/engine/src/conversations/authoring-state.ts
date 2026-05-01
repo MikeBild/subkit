@@ -1,3 +1,4 @@
+import { isRecord } from "../utils/type-guards.ts";
 import { extractTemplatePlaceholders } from "./connector-template-intelligence.ts";
 import type {
   AuthoringCheckpointKey,
@@ -21,6 +22,7 @@ import type {
 const CHECKPOINT_KEYS: readonly AuthoringCheckpointKey[] = [
   "connector_inspected",
   "connector_validated",
+  "connector_authenticated",
   "connector_probed",
   "connector_persisted",
   "workflow_inspected",
@@ -65,14 +67,10 @@ export function createEmptyDraftDocument(mode: AuthoringMode = "onboarding"): Dr
   });
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
   const fallback = createEmptyWorkflowDraft();
-  if (!isRecord(raw)) return fallback;
-  const base = isRecord(raw.workflow) ? raw.workflow : raw;
+  if (!isRecord(raw) || !isRecord(raw.workflow)) return fallback;
+  const base = raw.workflow;
   const pickString = (key: string): string | undefined => {
     const value = base[key];
     return typeof value === "string" && value.length > 0 ? value : undefined;
@@ -129,8 +127,6 @@ function normalizeConnectorDraft(raw: unknown): ConnectorDraftDocument | null {
   }
   if (typeof connector.template_slug === "string") next.template_slug = connector.template_slug;
   if (connector.template_slug === null) next.template_slug = null;
-  if (typeof connector.template_id === "string") next.template_slug = connector.template_id;
-  if (connector.template_id === null) next.template_slug = null;
   if (typeof connector.template_name === "string") next.template_name = connector.template_name;
   if (connector.template_name === null) next.template_name = null;
   if (typeof connector.template_source === "string") {
@@ -262,6 +258,7 @@ function normalizeLatestExecution(value: unknown): LatestExecutionSummary | null
     warnings_count: typeof value.warnings_count === "number" ? value.warnings_count : 0,
     recorded_at: typeof value.recorded_at === "string" ? value.recorded_at : nowIso(),
     diagnosis_available: value.diagnosis_available === true,
+    ...(value.requires_repair === true ? { requires_repair: true } : {}),
   };
 }
 
@@ -326,17 +323,9 @@ function modeFromLegacy(mode: AuthoringMode | undefined): AuthoringSurfaceMode {
   return "connector";
 }
 
-function normalizeState(
-  raw: unknown,
-  legacyMode: AuthoringMode | undefined,
-  connector: ConnectorDraftDocument | null,
-  workflow: WorkflowDraftDocument,
-  latest_preview: DraftDocument["latest_preview"],
-): AuthoringState {
+function normalizeState(raw: unknown, legacyMode: AuthoringMode | undefined): AuthoringState {
   const fallback = createEmptyState(modeFromLegacy(legacyMode));
-  if (!isRecord(raw) || !isRecord(raw.state)) {
-    return hydrateLegacyState(fallback, connector, workflow, latest_preview);
-  }
+  if (!isRecord(raw) || !isRecord(raw.state)) return fallback;
   const state = raw.state;
   const next: AuthoringState = {
     mode:
@@ -365,99 +354,6 @@ function normalizeState(
       const parsed = parseCheckpointRecord(key, state.checkpoints[key]);
       if (parsed) next.checkpoints[key] = parsed;
     }
-  }
-  return hydrateLegacyState(next, connector, workflow, latest_preview);
-}
-
-function hydrateLegacyState(
-  base: AuthoringState,
-  connector: ConnectorDraftDocument | null,
-  workflow: WorkflowDraftDocument,
-  latest_preview: DraftDocument["latest_preview"],
-): AuthoringState {
-  const next: AuthoringState = {
-    ...base,
-    checkpoints: { ...base.checkpoints },
-    persisted_resources: [...base.persisted_resources],
-  };
-  if (connector?.validation && !next.checkpoints.connector_validated) {
-    next.checkpoints.connector_validated = {
-      key: "connector_validated",
-      verified_at: nowIso(),
-      verified_by_tool: "legacy.connector.validation",
-      mutation_seq: next.connector_mutation_seq,
-      ok: connector.validation.ok,
-      summary: connector.validation.ok
-        ? "Legacy connector validation imported."
-        : "Legacy connector validation imported with errors.",
-      resource_ref: null,
-    };
-  }
-  if (connector?.latest_probe && !next.checkpoints.connector_probed) {
-    next.checkpoints.connector_probed = {
-      key: "connector_probed",
-      verified_at: nowIso(),
-      verified_by_tool: "legacy.connector.probe",
-      mutation_seq: next.connector_mutation_seq,
-      ok: connector.latest_probe.ok,
-      summary: connector.latest_probe.summary,
-      resource_ref: null,
-    };
-  }
-  if (typeof connector?.saved_connector_id === "string") {
-    if (!next.checkpoints.connector_persisted) {
-      next.checkpoints.connector_persisted = {
-        key: "connector_persisted",
-        verified_at: nowIso(),
-        verified_by_tool: "legacy.connector.save",
-        mutation_seq: next.connector_mutation_seq,
-        ok: true,
-        summary: "Legacy saved connector imported.",
-        resource_ref: {
-          kind: "connector",
-          id: connector.saved_connector_id,
-          version_id: null,
-        },
-      };
-    }
-    if (
-      !next.persisted_resources.some(
-        (item) => item.kind === "connector" && item.id === connector.saved_connector_id,
-      )
-    ) {
-      next.persisted_resources.unshift({
-        kind: "connector",
-        id: connector.saved_connector_id,
-        slug: connector.slug ?? null,
-        name: connector.name ?? null,
-        version_id: null,
-        version: null,
-        environment: connector.environment ?? null,
-        saved_at: nowIso(),
-      });
-    }
-  }
-  if (latest_preview && !next.checkpoints.workflow_previewed) {
-    next.checkpoints.workflow_previewed = {
-      key: "workflow_previewed",
-      verified_at: nowIso(),
-      verified_by_tool: "legacy.workflow.preview",
-      mutation_seq: next.workflow_mutation_seq,
-      ok: latest_preview.ok,
-      summary: latest_preview.summary,
-      resource_ref: null,
-    };
-  }
-  if (workflow.steps.length > 0 && !next.checkpoints.workflow_inspected) {
-    next.checkpoints.workflow_inspected = {
-      key: "workflow_inspected",
-      verified_at: nowIso(),
-      verified_by_tool: "legacy.workflow.inspect",
-      mutation_seq: next.workflow_mutation_seq,
-      ok: true,
-      summary: "Legacy workflow draft imported.",
-      resource_ref: null,
-    };
   }
   return next;
 }
@@ -663,6 +559,7 @@ function checkpointSeq(state: AuthoringState, key: AuthoringCheckpointKey): numb
   switch (key) {
     case "connector_inspected":
     case "connector_validated":
+    case "connector_authenticated":
     case "connector_probed":
     case "connector_persisted":
       return state.connector_mutation_seq;
@@ -913,6 +810,17 @@ function computeBlockedBy(
     ) {
       blocked.push("validate_connector_draft");
     }
+    // connector_authenticated gate: oauth2 connectors must run
+    // authenticate_oauth (post-save), other auth_types must collect a
+    // credential via ask_user_form. Surface the right next step in the
+    // blocking list before the operator can run the probe.
+    if (
+      connector &&
+      connector.auth_type !== "none" &&
+      checkpointStatus(state, "connector_authenticated") !== "fresh"
+    ) {
+      blocked.push(connector.auth_type === "oauth2" ? "authenticate_oauth" : "ask_user_form");
+    }
     if (
       checkpointStatus(state, "connector_probed") !== "fresh" ||
       connector?.latest_probe?.ok !== true
@@ -1004,6 +912,8 @@ function computeStage(
   if (active.kind === "connector") {
     if (checkpointStatus(state, "connector_persisted") === "fresh") return "connector_persisted";
     if (checkpointStatus(state, "connector_probed") === "fresh") return "connector_probed";
+    if (checkpointStatus(state, "connector_authenticated") === "fresh")
+      return "connector_authenticated";
     if (checkpointStatus(state, "connector_validated") === "fresh") return "connector_validated";
     if (checkpointStatus(state, "connector_inspected") === "fresh") return "connector_inspected";
     return "connector_draft_started";
@@ -1154,7 +1064,7 @@ export function refreshDraftSummary(draft: DraftDocument): DraftDocument {
   const connector = draft.connector ?? null;
   const mode = inferLegacyMode({ ...draft, workflow, connector });
   const existingSummary = normalizeSummary(draft) ?? undefined;
-  const state = normalizeState(draft, mode, connector, workflow, draft.latest_preview ?? null);
+  const state = normalizeState(draft, mode);
   const active_target = computeActiveTarget(state, connector, workflow);
   const blocked_by = computeBlockedBy(
     state,
@@ -1233,20 +1143,70 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
             ...(raw.latest_preview.preview !== undefined
               ? { preview: raw.latest_preview.preview }
               : {}),
+            ...(Array.isArray(raw.latest_preview.warnings)
+              ? { warnings: raw.latest_preview.warnings }
+              : {}),
+            ...(raw.latest_preview.requires_repair === true ? { requires_repair: true } : {}),
+            ...(raw.latest_preview.input !== undefined ? { input: raw.latest_preview.input } : {}),
+            ...(Array.isArray(raw.latest_preview.step_traces)
+              ? {
+                  step_traces: raw.latest_preview.step_traces
+                    .filter((entry: unknown): entry is Record<string, unknown> => isRecord(entry))
+                    .map((entry: Record<string, unknown>) => {
+                      const scope =
+                        isRecord(entry.scope_at_step) &&
+                        Array.isArray(
+                          (entry.scope_at_step as Record<string, unknown>).available_paths,
+                        )
+                          ? {
+                              available_paths: (
+                                (entry.scope_at_step as Record<string, unknown>)
+                                  .available_paths as unknown[]
+                              ).filter((s): s is string => typeof s === "string"),
+                              shape_summary:
+                                typeof (entry.scope_at_step as Record<string, unknown>)
+                                  .shape_summary === "string"
+                                  ? ((entry.scope_at_step as Record<string, unknown>)
+                                      .shape_summary as string)
+                                  : "unknown",
+                              primary_data_path:
+                                typeof (entry.scope_at_step as Record<string, unknown>)
+                                  .primary_data_path === "string"
+                                  ? ((entry.scope_at_step as Record<string, unknown>)
+                                      .primary_data_path as string)
+                                  : null,
+                            }
+                          : undefined;
+                      return {
+                        step_id: typeof entry.step_id === "string" ? entry.step_id : "(unknown)",
+                        kind: typeof entry.kind === "string" ? entry.kind : "unknown",
+                        status: typeof entry.status === "string" ? entry.status : "unknown",
+                        ...(typeof entry.duration_ms === "number"
+                          ? { duration_ms: entry.duration_ms }
+                          : {}),
+                        ...(entry.output_preview !== undefined
+                          ? { output_preview: entry.output_preview }
+                          : {}),
+                        ...(entry.raw_preview !== undefined
+                          ? { raw_preview: entry.raw_preview }
+                          : {}),
+                        ...(scope ? { scope_at_step: scope } : {}),
+                        ...(entry.request_meta !== undefined
+                          ? { request_meta: entry.request_meta }
+                          : {}),
+                        ...(typeof entry.error_code === "string"
+                          ? { error_code: entry.error_code }
+                          : {}),
+                      };
+                    }),
+                }
+              : {}),
           },
         }
       : {}),
     ...(isRecord(raw.state)
       ? {
-          state: normalizeState(
-            raw,
-            raw.mode as AuthoringMode,
-            connector,
-            workflow,
-            isRecord(raw.latest_preview)
-              ? (raw.latest_preview as unknown as DraftDocument["latest_preview"])
-              : null,
-          ),
+          state: normalizeState(raw, raw.mode as AuthoringMode),
         }
       : {}),
   };
@@ -1406,6 +1366,26 @@ export function withWorkflowValidation(
   state = recordCheckpoint(state, "workflow_validated", "validate_draft", ok, summary);
   return refreshDraftSummary({
     ...normalized,
+    state,
+    summary: { ...(normalized.summary ?? emptySummary()), last_action },
+  });
+}
+
+export function withConnectorAuthenticated(
+  draft: DraftDocument,
+  connector: ConnectorDraftDocument | null,
+  ok: boolean,
+  summary: string,
+  tool: string,
+  last_action: string | null = "connector_authenticated",
+): DraftDocument {
+  const normalized = normalizeDraftDocument(draft);
+  let state = cloneState(normalized.state ?? createEmptyState("connector"));
+  state.mode = "connector";
+  state = recordCheckpoint(state, "connector_authenticated", tool, ok, summary);
+  return refreshDraftSummary({
+    ...normalized,
+    connector,
     state,
     summary: { ...(normalized.summary ?? emptySummary()), last_action },
   });

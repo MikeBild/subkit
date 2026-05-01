@@ -29,7 +29,7 @@ import { connectors, credentials } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { rotateOAuth2Tokens } from "../service.ts";
 import type { DecryptedCredential } from "../types.ts";
-import { runRefreshTokenGrant } from "./client.ts";
+import { runCognitoRefreshTokenGrant, runRefreshTokenGrant } from "./client.ts";
 
 export const REFRESH_LEAD_MS = 60_000;
 
@@ -78,7 +78,39 @@ export async function refreshIfStale(
     return decrypted;
   }
   try {
-    const bundle = await runRefreshTokenGrant(cfg, decrypted.refresh_token);
+    // Branch on grant_type. Cognito's `InitiateAuth` (`USER_PASSWORD_AUTH`
+    // + `REFRESH_TOKEN_AUTH`) doesn't speak the OAuth2 spec — it has its
+    // own JSON shape and lives at `cognito-idp.<region>.amazonaws.com`.
+    // Username + region are required to compute SECRET_HASH on app
+    // clients with a secret; pulled from connector config.
+    let bundle: Awaited<ReturnType<typeof runRefreshTokenGrant>>;
+    if (cfg.grant_type === "cognito_user_password") {
+      const cogConfig = (connector.config as Record<string, unknown>) ?? {};
+      const region = typeof cogConfig.aws_region === "string" ? cogConfig.aws_region : null;
+      const username =
+        typeof cogConfig.cognito_username === "string" ? cogConfig.cognito_username : "";
+      const useAccessToken = cogConfig.cognito_use_access_token === true;
+      if (!region) {
+        logger.warn({
+          module: "oauth2",
+          action: "oauth2.refresh_skipped",
+          msg: "cognito connector missing config.aws_region; cannot refresh",
+          connector_id: connector.id,
+        });
+        return decrypted;
+      }
+      bundle = await runCognitoRefreshTokenGrant({
+        region,
+        client_id: cfg.client_id,
+        username,
+        password: "",
+        ...(cfg.client_secret ? { client_secret: cfg.client_secret } : {}),
+        use_access_token: useAccessToken,
+        refresh_token: decrypted.refresh_token,
+      });
+    } else {
+      bundle = await runRefreshTokenGrant(cfg, decrypted.refresh_token);
+    }
     await rotateOAuth2Tokens(
       {
         tenant_id,

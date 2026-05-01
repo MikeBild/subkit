@@ -4,28 +4,56 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
-import { conversations, conversationToolCalls } from "../../../../db/schema/index.ts";
+import {
+  conversations,
+  conversationToolCalls,
+  workflowVersions,
+} from "../../../../db/schema/index.ts";
 import { runExecution } from "../../../../execution/engine.ts";
 import { logger } from "../../../../logging/logger.ts";
-import { bindPersistedWorkflow, withWorkflowExecution } from "../../../authoring-state.ts";
+import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
+import { buildScopeAtStep } from "../../../../workflows/scope-shape.ts";
+import {
+  bindPersistedWorkflow,
+  withLatestPreview,
+  withWorkflowExecution,
+} from "../../../authoring-state.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
 
 /**
+ * Codes that count toward the repair-loop circuit breaker. Each one
+ * means "the JSONata path or template doesn't actually resolve to
+ * data the engine can use" — so a re-run with the same draft will
+ * produce the same warning. Three of any of these codes in the
+ * recent history (per-code, not summed) trips the breaker.
+ */
+const REPEATING_REPAIR_CODES = new Set([
+  "unresolved_identifier",
+  "loop_over_unresolved",
+  "transform_empty_extraction",
+]);
+
+/**
  * Circuit-breaker for repair loops. Walks the recent tool-call
  * history for this conversation and counts how many `run_workflow` /
- * `dry_run_workflow` invocations produced an `unresolved_identifier`
- * warning. Three identical occurrences in a row signal "the LLM is
- * stuck rewriting the same JSONata five different ways and every
- * attempt produces the same warning" — exactly the v3→v4→v5 spiral
- * the user reported. We refuse and surface a structured halt instead
- * of letting the LLM burn another 88k tokens.
+ * `dry_run_workflow` invocations produced an authoring-bug warning
+ * (see `REPEATING_REPAIR_CODES`). Three identical occurrences in a
+ * row signal "the LLM is stuck rewriting the same JSONata five
+ * different ways and every attempt produces the same warning" —
+ * exactly the v3→v4→v5 spiral the user reported. We refuse and
+ * surface a structured halt instead of letting the LLM burn another
+ * 88k tokens.
  */
 async function detectRepairLoop(
   db: ReturnType<typeof eq> extends never ? never : import("../../../../db/client.ts").Db,
   tenant_id: string,
   conversation_id: string,
-): Promise<{ tripped: boolean; recent_codes: string[] }> {
+): Promise<{
+  tripped: boolean;
+  recent_codes: string[];
+  tripped_codes: Array<{ code: string; count: number }>;
+}> {
   try {
     const rows = await db
       .select({ tool: conversationToolCalls.tool, output: conversationToolCalls.output })
@@ -39,19 +67,31 @@ async function detectRepairLoop(
       .orderBy(desc(conversationToolCalls.created_at))
       .limit(8);
     const codes: string[] = [];
+    const counts = new Map<string, number>();
     for (const r of rows) {
       if (r.tool !== "run_workflow" && r.tool !== "dry_run_workflow") continue;
       const data = r.output as { data?: { warnings?: Array<{ code?: unknown }> } } | null;
       const ws = data?.data?.warnings;
       if (!Array.isArray(ws)) continue;
       for (const w of ws) {
-        if (w && typeof w.code === "string") codes.push(w.code);
+        if (w && typeof w.code === "string") {
+          codes.push(w.code);
+          if (REPEATING_REPAIR_CODES.has(w.code)) {
+            counts.set(w.code, (counts.get(w.code) ?? 0) + 1);
+          }
+        }
       }
     }
-    const unresolvedCount = codes.filter((c) => c === "unresolved_identifier").length;
-    return { tripped: unresolvedCount >= 3, recent_codes: codes.slice(0, 8) };
+    const tripped_codes = [...counts.entries()]
+      .filter(([, n]) => n >= 3)
+      .map(([code, n]) => ({ code, count: n }));
+    return {
+      tripped: tripped_codes.length > 0,
+      recent_codes: codes.slice(0, 8),
+      tripped_codes,
+    };
   } catch {
-    return { tripped: false, recent_codes: [] };
+    return { tripped: false, recent_codes: [], tripped_codes: [] };
   }
 }
 
@@ -60,6 +100,15 @@ const Input = z
     workflow_id: z.string().uuid().optional(),
     input: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).default("dev"),
+    /**
+     * When true, the result envelope always includes a `step_trace`
+     * array (one entry per step: status, kind, duration_ms,
+     * request_meta, output_preview, error_code). Mirrors the reference
+     * impl's `includeStepResults: true`. Default behaviour still
+     * attaches the trace on failure / partial / warnings, so leaving
+     * this off costs nothing on the happy path.
+     */
+    include_step_trace: z.boolean().optional(),
   })
   .openapi("RunWorkflowToolInput");
 
@@ -134,10 +183,12 @@ export const runWorkflowTool: ConversationTool = {
       };
     }
 
-    // Circuit-breaker: refuse to run when the same `unresolved_identifier`
-    // warning has fired three times in this conversation. The LLM is
-    // chasing a fix that isn't working; another run won't tell it
-    // anything new and burns tokens.
+    // Circuit-breaker: refuse to run when any repeating authoring-bug
+    // warning code has fired three times in this conversation. The
+    // LLM is chasing a fix that isn't working; another run won't
+    // tell it anything new and burns tokens. Tracked codes:
+    // unresolved_identifier, loop_over_unresolved,
+    // transform_empty_extraction.
     const breaker = await detectRepairLoop(ctx.db, ctx.tenant_id, ctx.conversation_id);
     if (breaker.tripped) {
       logger.warn({
@@ -146,23 +197,27 @@ export const runWorkflowTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
         recent_codes: breaker.recent_codes,
+        tripped_codes: breaker.tripped_codes,
       });
+      recordAuthoringGateBlock({ code: "repair_loop_detected", tool: "run_workflow" });
+      const codesPretty = breaker.tripped_codes.map((c) => `\`${c.code}\` × ${c.count}`).join(", ");
       return {
         ok: false,
         data: withStatus(
           buildGateError(currentDraft, {
             error_code: "repair_loop_detected",
-            message:
-              "stop — three consecutive runs of this workflow surfaced the same `unresolved_identifier` warning. The current strategy is not working. Read `data-handling.md` and `workflow-authoring.md` for the loop+JSONata scope rules, ask the user what output they actually want, and propose a structurally different draft. Re-running this one will produce the same warning.",
+            message: `stop — three or more consecutive runs of this workflow surfaced the same authoring-bug warning(s): ${codesPretty}. The current strategy is not working. Read \`data-handling.md\` and \`workflow-authoring.md\` for the loop+JSONata scope rules, ask the user what output they actually want, and propose a structurally different draft. Re-running this one will produce the same warning.`,
             recommended_mode: "diagnosis",
             next_best_actions: [
               "ask_user_text",
               "diagnose_latest_execution",
+              "inspect_workflow_draft",
               "load_skill",
               "search_knowledge",
             ],
             extra: {
               recent_warning_codes: breaker.recent_codes,
+              tripped_codes: breaker.tripped_codes,
             },
           }),
           "failed",
@@ -254,6 +309,15 @@ export const runWorkflowTool: ConversationTool = {
       const hasUnresolvedIdentifierWarning = (result.warnings ?? []).some(
         (w) => w.code === "unresolved_identifier",
       );
+      const hasTransformEmptyExtractionWarning = (result.warnings ?? []).some(
+        (w) => w.code === "transform_empty_extraction",
+      );
+      const _hasTransformDroppedFieldsWarning = (result.warnings ?? []).some(
+        (w) => w.code === "transform_dropped_fields",
+      );
+      const hasLoopOverUnresolvedWarning = (result.warnings ?? []).some(
+        (w) => w.code === "loop_over_unresolved",
+      );
       // The engine emits `loop_body_empty` from inside the loop driver
       // when iterations > 0 produced no productive body output (P2).
       // Trust that warning over the legacy "top-level output is []"
@@ -268,13 +332,164 @@ export const runWorkflowTool: ConversationTool = {
         (result.steps.some((s) => s.kind === "loop" && s.status === "succeeded") &&
           Array.isArray(result.output) &&
           (result.output as unknown[]).length === 0);
+      // Partial-success: the run finished but signals that the LLM
+      // should look at the warnings before treating the output as
+      // final. `transform_dropped_fields` is informational (intentional
+      // projections legitimately narrow fields) and therefore does NOT
+      // tip the run into partial_success on its own — surfacing the
+      // warning is enough; blocking the commit gate would force the
+      // LLM into the patch loop the skill explicitly forbids.
       const isPartialSuccess =
         result.status === "succeeded" &&
-        (hasUnresolvedIdentifierWarning || loopStepRanWithEmptyBody);
+        (hasUnresolvedIdentifierWarning ||
+          loopStepRanWithEmptyBody ||
+          hasTransformEmptyExtractionWarning ||
+          hasLoopOverUnresolvedWarning);
       const payloadStatus = isPartialSuccess ? "partial_success" : result.status;
-      const requiresRepair = hasUnresolvedIdentifierWarning || isPartialSuccess;
+      // requires_repair gates the auto-persist commit. Mirrors the
+      // skill: only the warnings that ALWAYS indicate a real bug
+      // (unresolved identifier, empty extraction, loop body never ran)
+      // tip the flag. transform_dropped_fields is omitted on purpose —
+      // the warning still fires, but commit is not blocked.
+      const requiresRepair =
+        hasUnresolvedIdentifierWarning ||
+        hasTransformEmptyExtractionWarning ||
+        hasLoopOverUnresolvedWarning ||
+        isPartialSuccess;
       const diagnosisAvailable = hasWarnings || result.status !== "succeeded" || isPartialSuccess;
-      const boundDraft = bindPersistedWorkflow(currentDraft, {
+      // Per-step trace — same envelope shape dry_run_workflow returns
+      // so the LLM can pinpoint the failing step + see its driver
+      // metadata (status code, byte counts, connector resolution) in
+      // one read. Mirrors the reference impl's `run_tool({
+      // includeStepResults: true })`. Always populated when the run
+      // didn't succeed cleanly; omitted on success to save tokens
+      // (the user can still inspect_workflow if they want details).
+      const stepTraceEntries = result.steps.map((s) => {
+        const errorCode =
+          s.error && typeof s.error === "object" && s.error !== null
+            ? (s.error as { code?: unknown }).code
+            : undefined;
+        const scope =
+          s.output_preview !== undefined && s.output_preview !== null
+            ? buildScopeAtStep(s.output_preview)
+            : null;
+        return {
+          step_id: s.step_key,
+          kind: s.kind,
+          status: s.status,
+          ...(s.duration_ms != null ? { duration_ms: s.duration_ms } : {}),
+          ...(s.request_meta !== undefined && s.request_meta !== null
+            ? { request_meta: s.request_meta }
+            : {}),
+          ...(s.output_preview !== undefined && s.output_preview !== null
+            ? { output_preview: s.output_preview }
+            : {}),
+          ...(s.raw_preview !== undefined && s.raw_preview !== null
+            ? { raw_preview: s.raw_preview }
+            : {}),
+          ...(scope ? { scope_at_step: scope } : {}),
+          ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
+          ...(s.error ? { error: s.error } : {}),
+        };
+      });
+      const includeStepTrace =
+        args.include_step_trace === true ||
+        result.status !== "succeeded" ||
+        isPartialSuccess ||
+        hasWarnings;
+      // Persist a compact per-step preview slot so subsequent
+      // inspect_workflow / suggest_jsonata_paths / context-assembler
+      // calls see the most recent shape per step. Mirrors what
+      // dry_run_workflow does — the LLM reads from a single canonical
+      // location regardless of whether the last walk was a dry-run
+      // or a full run.
+      const persistedStepTraces = result.steps.map((s) => {
+        const errorCode =
+          s.error && typeof s.error === "object" && s.error !== null
+            ? (s.error as { code?: unknown }).code
+            : undefined;
+        const scope =
+          s.output_preview !== undefined && s.output_preview !== null
+            ? buildScopeAtStep(s.output_preview)
+            : undefined;
+        return {
+          step_id: s.step_key,
+          kind: s.kind,
+          status: s.status,
+          ...(s.duration_ms != null ? { duration_ms: s.duration_ms } : {}),
+          ...(s.output_preview !== undefined && s.output_preview !== null
+            ? { output_preview: s.output_preview }
+            : {}),
+          ...(s.raw_preview !== undefined && s.raw_preview !== null
+            ? { raw_preview: s.raw_preview }
+            : {}),
+          ...(scope ? { scope_at_step: scope } : {}),
+          ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
+        };
+      });
+      const previewedDraft = withLatestPreview(
+        currentDraft,
+        {
+          ok: result.status === "succeeded",
+          step_id:
+            result.steps.find((s) => s.status !== "succeeded")?.step_key ??
+            result.steps[result.steps.length - 1]?.step_key ??
+            "(end)",
+          summary: `run_workflow finished with status ${result.status}`,
+          ...(hasWarnings && result.warnings ? { warnings: result.warnings } : {}),
+          ...(requiresRepair ? { requires_repair: true } : {}),
+          step_traces: persistedStepTraces,
+          input: args.input ?? null,
+        },
+        "run_workflow",
+        "workflow_executed",
+      );
+      // Propagate the per-step scope vocabulary to the persisted
+      // workflow_versions row. The commit path writes scope_index at
+      // commit time, but a successful production run reveals new
+      // shapes (especially after schema drift) — refreshing the
+      // persisted vocabulary on every successful run keeps
+      // suggest_jsonata_paths and inspect_workflow accurate without
+      // requiring a re-commit. Only writes on full success to avoid
+      // poisoning the persisted shape with partial / aborted runs.
+      if (result.status === "succeeded" && !isPartialSuccess && wf.current_version_id) {
+        const persistedScopeIndex: Record<
+          string,
+          { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
+        > = {};
+        for (const trace of persistedStepTraces) {
+          if (trace.scope_at_step) {
+            persistedScopeIndex[trace.step_id] = {
+              available_paths: trace.scope_at_step.available_paths,
+              shape_summary: trace.scope_at_step.shape_summary,
+              primary_data_path: trace.scope_at_step.primary_data_path ?? null,
+            };
+          }
+        }
+        if (Object.keys(persistedScopeIndex).length > 0) {
+          try {
+            await ctx.db
+              .update(workflowVersions)
+              .set({ scope_index: persistedScopeIndex })
+              .where(
+                and(
+                  eq(workflowVersions.tenant_id, ctx.tenant_id),
+                  eq(workflowVersions.id, wf.current_version_id),
+                ),
+              );
+          } catch (err) {
+            logger.warn({
+              module: "conversation_tool",
+              action: "run_workflow.scope_index_persist_failed",
+              tenant_id: ctx.tenant_id,
+              workflow_id: workflowId,
+              workflow_version_id: wf.current_version_id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
+      const boundDraft = bindPersistedWorkflow(previewedDraft, {
         kind: "workflow",
         id: workflowId,
         slug: wf.slug,
@@ -310,7 +525,25 @@ export const runWorkflowTool: ConversationTool = {
             diagnosis_available: diagnosisAvailable,
             requires_repair: requiresRepair,
             recommended_next_tool: diagnosisAvailable ? "diagnose_latest_execution" : null,
+            // Banner-style warnings summary so the LLM can't miss
+            // signals on first read of the result envelope. Mirrors
+            // the dry_run_workflow surface.
+            ...(hasWarnings && result.warnings
+              ? {
+                  warnings_banner: {
+                    count: result.warnings.length,
+                    codes: Array.from(new Set(result.warnings.map((w) => w.code))).sort(),
+                    summary: `${result.warnings.length} warning(s): ${Array.from(
+                      new Set(result.warnings.map((w) => w.code)),
+                    )
+                      .sort()
+                      .join(", ")}`,
+                    entries: result.warnings,
+                  },
+                }
+              : {}),
             ...(hasWarnings ? { warnings: result.warnings } : {}),
+            ...(includeStepTrace ? { step_trace: stepTraceEntries } : {}),
           }),
           // payloadStatus is one of the three terminal values (already
           // narrowed above), but withStatus is a no-op when the inner

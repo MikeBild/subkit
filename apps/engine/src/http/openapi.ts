@@ -43,9 +43,23 @@ export function createOpenApiApp(): OpenAPIHono<AppEnv> {
   });
 }
 
+// Compile-time `VERSION` wins over runtime `ENGINE_VERSION` when the
+// build actually stamped a real version (anything other than the
+// `0.0.0-dev` placeholder). Pre-fix `process.env.ENGINE_VERSION` came
+// first, so a default `compose up` without an explicit `ENGINE_VERSION`
+// in the operator's shell injected `0.0.0-dev` and overrode the baked-
+// in value — the CLI's version-skew banner then fired against an
+// engine the operator had just rebuilt with the right version.
+function resolveEngineVersion(): string {
+  if (VERSION && VERSION !== "0.0.0-dev") return VERSION;
+  const env = process.env.ENGINE_VERSION;
+  if (env && env !== "0.0.0-dev") return env;
+  return VERSION ?? "0.0.0-dev";
+}
+
 export const OPENAPI_INFO = {
   title: "subkit engine",
-  version: process.env.ENGINE_VERSION ?? VERSION ?? "0.0.0-dev",
+  version: resolveEngineVersion(),
   description:
     "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec.",
 } as const;

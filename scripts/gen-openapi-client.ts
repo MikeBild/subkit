@@ -29,14 +29,21 @@ async function run(): Promise<void> {
   if (!res.ok) {
     throw new Error(`engine /openapi.json returned ${res.status}`);
   }
-  const doc = await res.json();
+  const doc = (await res.json()) as { info?: { version?: string } };
+  // Pin the version field to a stable placeholder so the committed
+  // snapshot does not drift between local builds (which embed the
+  // package.json version via BUILD_VERSION) and CI (which runs the
+  // script without a stamped version, falling back to "0.0.0-dev").
+  // The client doesn't consume this field — pinning keeps
+  // `check:openapi-drift` honest about real surface changes.
+  if (doc.info) doc.info.version = "0.0.0-dev";
   const pretty = `${JSON.stringify(doc, null, 2)}\n`;
   await writeFile(jsonPath, pretty, "utf8");
   console.log(`wrote ${jsonPath}`);
 
   // Invoke openapi-typescript's programmatic API.
   const { default: openapiTS, astToString } = await import("openapi-typescript");
-  const ast = await openapiTS(doc);
+  const ast = await openapiTS(doc as Parameters<typeof openapiTS>[0]);
   const types = astToString(ast);
   await writeFile(
     typesPath,

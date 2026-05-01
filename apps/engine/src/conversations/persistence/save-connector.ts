@@ -14,14 +14,20 @@ import {
   recordConnectorSavedOverride,
   recordConnectorUpdated,
 } from "../../audit/recorders/index.ts";
+import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { createConnector, getConnector } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
+import { runCognitoUserPasswordGrant } from "../../credentials/oauth2/client.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { analyzeConversationAttachments } from "../../llm/flows/analyze-conversation-attachments.ts";
 import { logger } from "../../logging/logger.ts";
-import { withConnectorPersisted, withConnectorValidation } from "../authoring-state.ts";
+import {
+  withConnectorAuthenticated,
+  withConnectorPersisted,
+  withConnectorValidation,
+} from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
 import {
   buildGateError,
@@ -31,12 +37,46 @@ import {
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { clearDraftCredential, getDraftCredential } from "./draft-credential-cache.ts";
 
-/** Shape of the optional credential collected via `ask_user_form(type:password)`. */
+/** Shape of the optional credential collected via `ask_user_form(type:password)`.
+ *
+ *  `cognito_user_password` is the bootstrap shape: the operator hands us
+ *  a Cognito email + password; the engine exchanges them at
+ *  `cognito-idp.<region>.amazonaws.com` for an IdToken + RefreshToken
+ *  before any probe runs. The persisted credential row ends up as
+ *  `mode: "oauth2"` with `token_type: "none"` so the raw JWT lands in
+ *  the `Authorization` header (AppSync rejects anything with a `Bearer`
+ *  prefix). Refresh-on-stale uses `REFRESH_TOKEN_AUTH` against the
+ *  same endpoint via `runCognitoRefreshTokenGrant`.
+ *
+ *  `aws_sigv4` is also a bootstrap shape — keys are persisted verbatim;
+ *  signing happens per-request inside the HTTP driver's
+ *  `executePlannedHttpRequest`.
+ */
 export type AtomicCredentialInput =
   | { mode: "bearer"; token: string }
   | { mode: "basic"; username: string; password: string }
   | { mode: "header"; header_name: string; header_value: string }
-  | { mode: "query"; param: string; value: string };
+  | { mode: "query"; param: string; value: string }
+  | {
+      mode: "cognito_user_password";
+      username: string;
+      password: string;
+      /** Override the `aws_region` from connector config when present. */
+      aws_region?: string;
+      /** Override the `client_id` from `oauth.client_id` when present. */
+      client_id?: string;
+      /** Optional Cognito app-client secret (apps with secret enabled). */
+      client_secret?: string;
+      /** Send AccessToken instead of IdToken (resource APIs that want
+       *  the access scope). Defaults to IdToken (AppSync convention). */
+      use_access_token?: boolean;
+    }
+  | {
+      mode: "aws_sigv4";
+      access_key_id: string;
+      secret_access_key: string;
+      session_token?: string;
+    };
 
 export interface SaveConnectorAtomicParams {
   ctx: ToolContext;
@@ -105,6 +145,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
           environment: p.environment,
           actor_id: ctx.actor_id,
           credential: p.credential,
+          connectorConfig: (existing.config ?? {}) as Record<string, unknown>,
           db: ctx.db as Db,
         });
         credential_persisted = true;
@@ -356,6 +397,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       environment: p.environment,
       actor_id: ctx.actor_id,
       credential,
+      connectorConfig: (saved.config ?? {}) as Record<string, unknown>,
       db: ctx.db as Db,
     });
     credential_persisted = true;
@@ -381,6 +423,62 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     });
   }
 
+  // GraphQL connectors: kick off introspection-based discovery in the
+  // background so the LLM has the full schema available the next turn.
+  // Pre-fix the operator had to ask explicitly ("discover endpoints")
+  // before the LLM knew which queries existed — for AppSync-style APIs
+  // that's a wasted round-trip and burned tokens.
+  //
+  // Fire-and-forget. Three failure modes that are NOT fatal:
+  //   1. `introspection_disabled` — production-hardened APIs
+  //      (Shopify Admin, some SaaS) refuse `__schema`. Logged at
+  //      info, no audit row, no draft mutation. Operator can still
+  //      hand-author queries; the LLM is told to ask for sample
+  //      output instead via the skill content.
+  //   2. `all_strategies_failed` — endpoint refused both
+  //      introspection AND every fallback strategy (network, 4xx,
+  //      etc.). Same soft-fail path — the connector itself probed
+  //      green so it works, just without the schema corpus.
+  //   3. Any other thrown error — logged warn, swallowed.
+  if (saved.driver === "graphql" && saved.base_url) {
+    void runDiscoveryCached(
+      {
+        db: ctx.db as Db,
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.actor_id,
+      },
+      {
+        connector_id: saved.id,
+        base_url: saved.base_url,
+      },
+    ).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: unknown }).code)
+          : null;
+      // Differentiate the "schema is hidden by upstream" case from
+      // an unexpected discovery breakage — operators reading the
+      // log should see at a glance which one fired.
+      const introspectionDisabled =
+        code === "introspection_disabled" ||
+        /introspection.*not allowed|introspection.*disabled/i.test(message);
+      logger[introspectionDisabled ? "info" : "warn"]({
+        module: "conversation_persistence",
+        action: introspectionDisabled
+          ? "post_save.graphql_introspection_disabled"
+          : "post_save.graphql_discovery_failed",
+        msg: introspectionDisabled
+          ? "GraphQL connector saved without auto-discovery — upstream refuses introspection"
+          : "auto-discovery after GraphQL connector save failed (non-fatal)",
+        tenant_id: ctx.tenant_id,
+        connector_id: saved.id,
+        ...(code ? { code } : {}),
+        error: message,
+      });
+    });
+  }
+
   // Force-save audit annotation — every probe-overridden save lands a
   // distinct `connector.saved_override` row so operators can see exactly
   // which connectors were persisted without a green probe and why.
@@ -399,8 +497,29 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     });
   }
 
+  // Bound credentials = the connector_authenticated checkpoint flips
+  // fresh atomically with the save. oauth2 connectors flip via
+  // authenticate_oauth instead — no credential is bound at save time
+  // for the authorization-code flow. Use the resolved `credential`
+  // (which honours the draft-credential cache) rather than just
+  // `p.credential`, so a cached credential collected via ask_user_form
+  // earlier in the conversation also flips the gate.
+  const credentialBound =
+    connector.auth_type !== "none" && connector.auth_type !== "oauth2" && credential != null;
+  let postSaveDraft = draft;
+  if (credentialBound) {
+    postSaveDraft = withConnectorAuthenticated(
+      postSaveDraft,
+      { ...connector, validation, saved_connector_id: saved.id },
+      true,
+      `Credential bound atomically with ${saved.slug} save.`,
+      "save_connector_draft",
+      "connector_saved",
+    );
+  }
+
   const nextDraft = withConnectorPersisted(
-    draft,
+    postSaveDraft,
     {
       ...connector,
       validation,
@@ -445,9 +564,87 @@ async function persistCredential(p: {
   environment: "dev" | "prod";
   actor_id: string | null;
   credential: AtomicCredentialInput;
+  /** Connector config — used for `cognito_user_password` to pull
+   *  `aws_region` + `client_id` when not on the credential itself. */
+  connectorConfig?: Record<string, unknown> | null;
   db: Db;
 }): Promise<void> {
   const cred = p.credential;
+  // Cognito bootstrap: mint an IdToken before persisting so the row
+  // ends up as a regular oauth2 credential (with refresh_token +
+  // expires_at). The refresh-worker later rotates via
+  // REFRESH_TOKEN_AUTH transparently.
+  if (cred.mode === "cognito_user_password") {
+    const cfg = (p.connectorConfig ?? {}) as {
+      aws_region?: unknown;
+      oauth?: { client_id?: unknown; aws_region?: unknown };
+    };
+    const oauthCfg = (cfg.oauth ?? {}) as { client_id?: unknown; aws_region?: unknown };
+    // Accept aws_region from either canonical slot — `config.aws_region`
+    // (template-seeded) or `config.oauth.aws_region` (LLM nesting).
+    const region =
+      cred.aws_region ??
+      (typeof cfg.aws_region === "string" ? cfg.aws_region : null) ??
+      (typeof oauthCfg.aws_region === "string" ? oauthCfg.aws_region : null);
+    const client_id =
+      cred.client_id ?? (typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null);
+    if (!region || !client_id) {
+      const missing: string[] = [];
+      if (!region) missing.push("aws_region");
+      if (!client_id) missing.push("oauth.client_id");
+      throw new Error(
+        `cognito_user_password connector is missing config.${missing.join("/config.")}. ` +
+          `Call update_connector_draft({ config: { aws_region, oauth: { client_id } } }) — the credential itself is fine.`,
+      );
+    }
+    const grantParams: Parameters<typeof runCognitoUserPasswordGrant>[0] = {
+      region,
+      client_id,
+      username: cred.username,
+      password: cred.password,
+      use_access_token: cred.use_access_token === true,
+    };
+    if (cred.client_secret) grantParams.client_secret = cred.client_secret;
+    const bundle = await runCognitoUserPasswordGrant(grantParams);
+    await upsertCredential(
+      {
+        tenant_id: p.tenant_id,
+        connector_id: p.connector_id,
+        environment: p.environment,
+        mode: "oauth2",
+        value: {
+          mode: "oauth2",
+          access_token: bundle.access_token,
+          token_type: bundle.token_type, // "none" — raw JWT in Authorization
+          ...(bundle.scope ? { scope: bundle.scope } : {}),
+        },
+        oauth2_refresh_token: bundle.refresh_token,
+        oauth2_expires_at: bundle.expires_at,
+        actor_id: p.actor_id,
+      },
+      p.db,
+    );
+    return;
+  }
+  if (cred.mode === "aws_sigv4") {
+    await upsertCredential(
+      {
+        tenant_id: p.tenant_id,
+        connector_id: p.connector_id,
+        environment: p.environment,
+        mode: "aws_sigv4",
+        value: {
+          mode: "aws_sigv4",
+          access_key_id: cred.access_key_id,
+          secret_access_key: cred.secret_access_key,
+          ...(cred.session_token ? { session_token: cred.session_token } : {}),
+        },
+        actor_id: p.actor_id,
+      },
+      p.db,
+    );
+    return;
+  }
   const value =
     cred.mode === "bearer"
       ? { mode: "bearer" as const, token: cred.token }

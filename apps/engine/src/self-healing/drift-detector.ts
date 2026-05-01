@@ -18,7 +18,7 @@ export interface FailingStepSnapshot {
   kind: string;
   status: string;
   error?: unknown;
-  request_meta?: unknown;
+  request_meta?: import("../execution/types.ts").RequestMeta | null;
   output_preview?: unknown;
   // `expression` is populated when the failing step is a transform.
   expression?: string;
@@ -27,6 +27,64 @@ export interface FailingStepSnapshot {
 function asObj(v: unknown): Record<string, unknown> | null {
   if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
   return null;
+}
+
+/**
+ * Per-variant narrowing of RequestMeta into the {method, url, path}
+ * triple the http-drift signal needs. Exhaustive switch — TS will
+ * fail to compile if a new RequestMeta variant lands without a case.
+ * Untagged shapes (legacy fixtures) fall through to a tolerant
+ * key-by-key read so the detector doesn't refuse to operate on old
+ * data.
+ */
+function extractRequestFromMeta(
+  meta: import("../execution/types.ts").RequestMeta | null | undefined,
+): { method?: string | undefined; url?: string | undefined; path?: string | undefined } {
+  if (!meta) return {};
+  const driver = (meta as { driver?: string }).driver;
+  switch (driver) {
+    case "http":
+    case "connectorless": {
+      const m = meta as { method?: string; url?: string | null };
+      return {
+        ...(typeof m.method === "string" ? { method: m.method } : {}),
+        ...(typeof m.url === "string" ? { url: m.url } : {}),
+      };
+    }
+    case "graphql": {
+      const m = meta as { method?: string };
+      return { ...(typeof m.method === "string" ? { method: m.method } : {}) };
+    }
+    case "s3": {
+      const m = meta as { method?: string };
+      return { ...(typeof m.method === "string" ? { method: m.method } : {}) };
+    }
+    case "postgres": {
+      // No URL/path/method on the postgres variant; query_preview is
+      // the closest analog. Surface it under `path` so the drift
+      // signal still tells the operator which statement misbehaved.
+      const m = meta as { query_preview?: string };
+      return {
+        ...(typeof m.query_preview === "string" ? { path: m.query_preview } : {}),
+      };
+    }
+    case "error": {
+      const m = meta as { method?: string; url?: string | null };
+      return {
+        ...(typeof m.method === "string" ? { method: m.method } : {}),
+        ...(typeof m.url === "string" ? { url: m.url } : {}),
+      };
+    }
+    default: {
+      // Untagged / legacy shape — read tolerantly without TS narrowing.
+      const obj = asObj(meta) ?? {};
+      return {
+        ...(typeof obj.method === "string" ? { method: obj.method as string } : {}),
+        ...(typeof obj.url === "string" ? { url: obj.url as string } : {}),
+        ...(typeof obj.path === "string" ? { path: obj.path as string } : {}),
+      };
+    }
+  }
 }
 
 /**
@@ -52,6 +110,24 @@ export function analyzeStepFailure(
 ): DriftSignal | null {
   const err = asObj(step.error);
   if (!err) return null;
+
+  // --- Workflow-level invariant violation --------------------------------
+  // The engine surfaces `validation_failed` on the run envelope when a
+  // workflow's `validation_expression` returned falsy. The shape is
+  // `{ code: "validation_failed", details: { expression, actual_value } }`.
+  // We funnel that into a typed drift signal so the repair flow can
+  // propose a patch that re-satisfies the invariant.
+  if (err.code === "validation_failed") {
+    const details = asObj(err.details);
+    const expression = typeof details?.expression === "string" ? details.expression : "";
+    if (expression) {
+      return {
+        kind: "validation_failed",
+        expression,
+        actual_value: details?.actual_value ?? null,
+      };
+    }
+  }
 
   // --- JSONata path miss --------------------------------------------------
   if (err.kind === "jsonata_miss" || err.kind === "jsonata_path_miss") {
@@ -80,15 +156,14 @@ export function analyzeStepFailure(
       // last known successful shape for this endpoint. A 500 that still
       // matches the known error envelope is not drift.
       if (lastKnownShape && !shapesEqual(lastKnownShape, after)) {
-        const reqMeta = asObj(step.request_meta) ?? {};
+        // Per-variant narrowing through the discriminated RequestMeta
+        // union. Each driver has its own canonical shape; the legacy
+        // untagged payload falls through to `asObj` for tolerance.
+        const request = extractRequestFromMeta(step.request_meta);
         return {
           kind: "http_status_new_shape",
           status,
-          request: {
-            method: typeof reqMeta.method === "string" ? (reqMeta.method as string) : undefined,
-            url: typeof reqMeta.url === "string" ? (reqMeta.url as string) : undefined,
-            path: typeof reqMeta.path === "string" ? (reqMeta.path as string) : undefined,
-          },
+          request,
           response_before: lastKnownShape,
           response_after: after,
         };
@@ -157,6 +232,12 @@ export function renderDriftDiff(signal: DriftSignal): string {
         `resource_id: ${signal.resource_id}`,
         `recorded_version: ${signal.recorded_version}`,
         `current_version: ${signal.current_version}`,
+      ].join("\n");
+    case "validation_failed":
+      return [
+        `kind: validation_failed`,
+        `expression: ${signal.expression}`,
+        `actual_value: ${JSON.stringify(signal.actual_value)}`,
       ].join("\n");
   }
 }

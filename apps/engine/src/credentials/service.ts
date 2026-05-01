@@ -21,6 +21,7 @@ import { logger } from "../logging/logger.ts";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 import type {
+  AwsSigV4CredentialValue,
   BasicCredentialValue,
   BearerCredentialValue,
   CredentialMode,
@@ -58,7 +59,8 @@ export type CredentialPlaintext =
       mode: "oauth2";
       refresh_token?: string | null;
       expires_at?: Date | null;
-    } & OAuth2CredentialValue);
+    } & OAuth2CredentialValue)
+  | ({ mode: "aws_sigv4" } & AwsSigV4CredentialValue);
 
 function serializePlain(value: CredentialPlaintext): string {
   switch (value.mode) {
@@ -77,6 +79,12 @@ function serializePlain(value: CredentialPlaintext): string {
         access_token: value.access_token,
         token_type: value.token_type ?? "Bearer",
         scope: value.scope,
+      });
+    case "aws_sigv4":
+      return JSON.stringify({
+        access_key_id: value.access_key_id,
+        secret_access_key: value.secret_access_key,
+        ...(value.session_token ? { session_token: value.session_token } : {}),
       });
   }
 }
@@ -105,6 +113,15 @@ function deserializePlain(mode: CredentialMode, raw: string): DecryptedCredentia
         scope: parsed.scope as string | undefined,
         refresh_token: null,
         expires_at: null,
+      };
+    case "aws_sigv4":
+      return {
+        mode: "aws_sigv4",
+        access_key_id: String(parsed.access_key_id ?? ""),
+        secret_access_key: String(parsed.secret_access_key ?? ""),
+        ...(typeof parsed.session_token === "string"
+          ? { session_token: parsed.session_token }
+          : {}),
       };
     default: {
       const exhaustive: never = mode;

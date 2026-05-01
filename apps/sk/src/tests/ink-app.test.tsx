@@ -358,8 +358,11 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     instance.unmount();
   });
 
-  test("AC3: validation_error frame renders the red errors panel", async () => {
-    const instance = renderApp({
+  test("AC3: validation_error frame renders the panel — copy and tone follow turn status", async () => {
+    // Active turn (status=completed, non-terminal-failure): the panel
+    // appears under "draft validation" (yellow) — informative, not
+    // alarming, since the next attempt may still recover.
+    const activeInstance = renderApp({
       onPrompt: async () => ({
         events: framesOf(
           {
@@ -371,19 +374,49 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
           },
           { type: "completed", status: "active" },
         ),
-        conversationId: "c-val",
+        conversationId: "c-val-active",
       }),
     });
     await tick();
-    await type(instance, "broken");
-    await pressEnter(instance);
+    await type(activeInstance, "broken");
+    await pressEnter(activeInstance);
     await tick(80);
-    const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("validation errors");
-    expect(frame).toContain("steps.0.connector_id");
-    expect(frame).toContain("required");
-    expect(frame).toContain("must start with /");
-    instance.unmount();
+    const activeFrame = activeInstance.lastFrame() ?? "";
+    expect(activeFrame).toContain("draft validation");
+    expect(activeFrame).not.toMatch(/^validation errors$/m);
+    expect(activeFrame).toContain("steps.0.connector_id");
+    expect(activeFrame).toContain("required");
+    expect(activeFrame).toContain("must start with /");
+    activeInstance.unmount();
+
+    // Mid-turn iteration: a tool_call_start AFTER a validation_error
+    // resets the panel — the LLM's next attempt either succeeds or
+    // emits a fresh validation_error. The panel should NOT linger.
+    const iteratingInstance = renderApp({
+      onPrompt: async () => ({
+        events: framesOf(
+          {
+            type: "validation_error",
+            errors: [{ path: "steps.0.connector_id", message: "required" }],
+          },
+          {
+            type: "tool_call_start",
+            call_id: "call-2",
+            tool: "build_workflow",
+          },
+          { type: "completed", status: "active" },
+        ),
+        conversationId: "c-val-iterating",
+      }),
+    });
+    await tick();
+    await type(iteratingInstance, "broken");
+    await pressEnter(iteratingInstance);
+    await tick(80);
+    const iteratingFrame = iteratingInstance.lastFrame() ?? "";
+    expect(iteratingFrame).not.toContain("draft validation");
+    expect(iteratingFrame).not.toContain("validation errors");
+    iteratingInstance.unmount();
   });
 });
 
@@ -1260,7 +1293,19 @@ describe("ink-app: journey 11 — approval hygiene", () => {
     instance.unmount();
   });
 
-  test("AC1b: bare-text 'approve' with no pending elicitation does not start a new turn", async () => {
+  test("AC1b: bare-text 'approve' with no pending elicitation is forwarded as a plain prompt (mirrors reference impl: no free-text classification of confirmation words)", async () => {
+    // Pre-c35ef1c-followup: a regex classifier intercepted bare
+    // "approve" / "confirm" / "yes" and rendered an info message
+    // ("no pending approval"). That classifier was the source of the
+    // dca36b29 silent-failure bug ("Reply yes" prose with no actual
+    // elicit_request → user typed "yes" → classifier shrugged → user
+    // saw nothing happen). Mirror the reference impl exactly: free
+    // text is NEVER auto-classified as a confirmation answer. The
+    // structured ConfirmPrompt component (Y/N/Enter/Esc keybinds) is
+    // the only confirmation pathway. Bare "approve" with no pending
+    // elicitation is just a regular user message — the LLM may ask
+    // what should be approved, but the CLI does not invent a
+    // "no pending approval" hint.
     let promptCalled = false;
     const instance = renderApp({
       onPrompt: async () => {
@@ -1278,9 +1323,7 @@ describe("ink-app: journey 11 — approval hygiene", () => {
     await type(instance, "approve");
     await pressEnter(instance);
     await tick(60);
-    expect(promptCalled).toBe(false);
-    const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("no pending approval");
+    expect(promptCalled).toBe(true);
     instance.unmount();
   });
 

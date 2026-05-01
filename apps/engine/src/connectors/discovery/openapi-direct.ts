@@ -31,10 +31,13 @@ const MAX_SIZE_BYTES = 16 * 1024 * 1024; // discovery specs can be larger than r
  * pass through unchanged.
  *
  * Currently handles:
- *   - SwaggerHub UI host (`app.swaggerhub.com`) → API host (`api.swaggerhub.com`),
- *     same `/apis/{owner}/{api}/{version}` path. The API host returns JSON by
- *     default; the UI host returns the rendered Swagger-UI page that would
- *     trip `unknown_spec_version`.
+ *   - SwaggerHub UI host (`app.swaggerhub.com/apis/`) → API host
+ *     (`api.swaggerhub.com/apis/`), same `/{owner}/{api}/{version}` path.
+ *   - SwaggerHub *rendered docs* host (`app.swaggerhub.com/apis-docs/`) →
+ *     API host (`api.swaggerhub.com/apis/`). Operators frequently paste
+ *     the docs URL when the API URL is what they want.
+ *   The API host returns JSON by default; the UI / docs hosts return
+ *   rendered HTML pages that would trip `unknown_spec_version`.
  */
 export function normalizeKnownHosts(rawUrl: string): string {
   let url: URL;
@@ -43,9 +46,16 @@ export function normalizeKnownHosts(rawUrl: string): string {
   } catch {
     return rawUrl;
   }
-  if (url.hostname === "app.swaggerhub.com" && url.pathname.startsWith("/apis/")) {
-    url.hostname = "api.swaggerhub.com";
-    return url.toString();
+  if (url.hostname === "app.swaggerhub.com") {
+    if (url.pathname.startsWith("/apis/")) {
+      url.hostname = "api.swaggerhub.com";
+      return url.toString();
+    }
+    if (url.pathname.startsWith("/apis-docs/")) {
+      url.hostname = "api.swaggerhub.com";
+      url.pathname = url.pathname.replace("/apis-docs/", "/apis/");
+      return url.toString();
+    }
   }
   return rawUrl;
 }

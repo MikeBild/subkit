@@ -4,17 +4,47 @@ scope: global
 title: Connector Creation Guidance
 description: Authoring contract for creating a NEW connector in a conversation. Covers the discover-before-probe loop, the masked-form credential path, the harness's auto-persist on confirmation, and the structured `next_best_actions` error envelope. Loaded on creation-intent keywords only — not on every mention of `api` or `http`. Driver-level detail still lives in the per-protocol skills (`http-connectors`, `graphql-connectors`, `postgres-connectors`, `s3-connectors`).
 gates_tools: []
-version: 3
+version: 4
 auto_load: true
 trigger_keywords: [create connector, new connector, add connector, add integration, new integration, set up integration, configure connector, start connector, start_connector_from_description, start_connector_from_template, wire up, hook up]
 ---
 
 # Connector Creation Guidance
 
-You are authoring a connector with the operator. Follow the loop below. Do not
-guess endpoints, do not type secrets into tool arguments, and do not abandon a
-turn just because a tool reports it is unavailable in the current state — every
-error tells you what to do next.
+You are authoring a connector with the operator. Subkit's domain has exactly
+two first-class entities: **connector** and **workflow**. Connectors are
+external systems we talk to; workflows are the multi-step recipes that call
+them. Don't conflate them.
+
+The authoring lifecycle has six discrete phases. Each phase has a single
+responsibility and a checkpoint that flips fresh when it succeeds. Skipping a
+phase produces an `*_invalid` rejection from the next gate; rerunning a phase
+is cheap.
+
+```
+find_connector  ──►  create_connector_draft  ──►  authenticate_connector
+                                                              │
+                                                              ▼
+save_workflow  ◄──  build_workflow  ◄──  test_connector  ◄────┘
+```
+
+| Phase | LLM tool | Checkpoint that flips fresh |
+|---|---|---|
+| 1. find_connector | `find_connector` (also implicit in `start_connector_from_description` when `base_url` is given) | none — short-circuits with `reused_existing` when a saved connector matches |
+| 2. create_connector_draft | `start_connector_from_description` / `start_connector_from_template` / `import_connector_from_spec` | `connector_inspected`, then `connector_validated` |
+| 3. authenticate_connector | • `auth_type=oauth2`: `save_connector_draft` first, then `authenticate_oauth`<br>• `auth_type=bearer/header/query/basic/aws_sigv4`: `ask_user_form(type=password,sensitive=true)` followed by harness auto-persist | `connector_authenticated` |
+| 4. test_connector | `probe_connector_draft` | `connector_probed` |
+| 5. build_workflow | `build_workflow` / `propose_step` / `update_param` / `edit_workflow_patch` | `workflow_inspected` → `workflow_validated` → `workflow_previewed` |
+| 6. save_workflow | `commit_draft` | `workflow_persisted` |
+
+`config.oauth` is **never** written by hand on the draft — it is owned by the
+template snapshot and the OAuth2 client at mint time. `update_connector_draft`
+will reject any payload that includes `oauth` with
+`error_code: auth_mutation_not_allowed`.
+
+Follow the loop below. Do not guess endpoints, do not type secrets into tool
+arguments, and do not abandon a turn just because a tool reports it is
+unavailable in the current state — every error tells you what to do next.
 
 ## The four facts to confirm before any tool call
 
@@ -162,6 +192,16 @@ call it as the normal commit step. Behaviour notes:
 - **OAuth2** — `load_skill("oauth-flow")`. Briefly: collect `client_id` +
   `client_secret` via masked form, save with `mode: "oauth2"`, then call
   `authenticate_oauth`. Access + refresh tokens never reach the agent.
+- **Cognito User-Password / JWT-Bearer / Device / SigV4** —
+  `load_skill("auth-flows")`. **Trust the matched_template** returned by
+  `start_connector_from_description` — when the URL pattern matches an
+  AWS / Cognito / GCP template, the engine pre-selects the correct
+  `auth_type` + `oauth.grant_type` and the credential_hints array tells
+  you exactly which fields to ask for (e.g. `username` + `password` for
+  Cognito, `jwt_private_key_pem` for GCP, `access_key_id` +
+  `secret_access_key` for SigV4). Don't override `auth_type` to
+  `"header"` because you recognise an `appsync-api.*.amazonaws.com`
+  hostname — that path forces the operator to re-enter creds twice.
 
 ## Connector config defaults
 
@@ -236,7 +276,7 @@ auth headers manually.
 
 ## See also
 
-- `subkit-concepts.md` — placeholder grammar, envelope shape.
+- `sk-concepts.md` — placeholder grammar, envelope shape.
 - `http-connectors.md` — driver specifics, pagination modes, retry semantics.
 - `oauth-flow.md` — the two-phase OAuth2 dance.
 - `error-recovery.md` — typed error codes beyond connector creation.

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -20,6 +21,7 @@ export const credentialModeEnum = pgEnum("credential_mode", [
   "bearer",
   "basic",
   "oauth2",
+  "aws_sigv4",
 ]);
 export const endUserCombineModeEnum = pgEnum("end_user_combine_mode", ["merge", "replace"]);
 export const connectorTemplateSourceEnum = pgEnum("connector_template_source", [
@@ -59,7 +61,18 @@ export const connectors = pgTable(
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [uniqueIndex("connectors_tenant_slug_env_key").on(t.tenant_id, t.slug, t.environment)],
+  (t) => [
+    // Partial unique: soft-deleted rows must NOT occupy the
+    // (tenant_id, slug, environment) namespace. Without the
+    // `WHERE deleted_at IS NULL` predicate the user pattern from
+    // session abeefb33 fails: delete_connector + re-create with the
+    // same slug → 23505 unique_violation, the LLM sees a vague
+    // "database error" and emits cannot_help. Mirrors the same
+    // partial-index pattern already in workflows.ts.
+    uniqueIndex("connectors_tenant_slug_env_key")
+      .on(t.tenant_id, t.slug, t.environment)
+      .where(sql`${t.deleted_at} IS NULL`),
+  ],
 );
 
 // ----- connector_oauth_states ----------------------------------------------

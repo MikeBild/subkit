@@ -21,6 +21,14 @@ export interface RunStepOutcome {
   result: StepResult;
   // The value to expose to downstream steps (after data_selector projection).
   scope_value: unknown;
+  /**
+   * Pre-data_selector raw output. Set only when the step actually
+   * declared a `data_selector` (so the value differs from
+   * `scope_value`); otherwise omitted to avoid duplicating the same
+   * preview twice. The engine surfaces this on `step_trace[i].raw_preview`
+   * so the LLM can see what the selector dropped without re-running.
+   */
+  raw_output?: unknown;
 }
 
 export async function runStep(
@@ -95,7 +103,9 @@ export async function runStep(
   }
 
   let scope_value = result.output;
+  let raw_output: unknown;
   if (result.status === "succeeded" && step.data_selector) {
+    raw_output = result.output;
     try {
       scope_value = applySelector(step.data_selector, result.output);
     } catch (err) {
@@ -147,5 +157,9 @@ export async function runStep(
     bytes_out: offload.size_bytes,
   });
 
-  return { result, scope_value };
+  return {
+    result,
+    scope_value,
+    ...(raw_output !== undefined ? { raw_output } : {}),
+  };
 }

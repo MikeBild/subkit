@@ -14,10 +14,12 @@
 // Replaces the prior `llm/context.ts` implementation entirely — all
 // callers now import from this module.
 
+import { and, desc, eq } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
 import { generateMainAgentSystemPrompt } from "../../conversations/agent/context.ts";
 import type { Db } from "../../db/client.ts";
 import { getDb } from "../../db/client.ts";
+import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { searchDocs } from "../../docs-ingestion/service.ts";
 import { searchKnowledge } from "../../knowledge/service.ts";
 import { logger } from "../../logging/logger.ts";
@@ -166,6 +168,48 @@ function formatSkill(s: Skill, runtime_context?: AssembleContextParams["runtime_
   return `# Skill: ${s.title} (${s.scope})\n${body}${bp}${pit}${refs}${ex}`;
 }
 
+/**
+ * Render a non-loaded skill in summary form. Used for ambient
+ * applicable skills (global / connector / workflow scope) that the
+ * LLM hasn't explicitly loaded yet — keep the title + 2-line
+ * description + load_skill hint, drop the body. Saves ~3-5k tokens
+ * per skill on every turn.
+ *
+ * Pre-fix every applicable skill rendered with its full body
+ * (~31k tokens of skills per turn in session a128deba). Post-fix
+ * only loaded_skills carry full bodies; ambient skills carry the
+ * load hint. The LLM still sees the catalog and can `load_skill`
+ * on demand.
+ */
+function formatSkillSummary(
+  s: Skill,
+  runtime_context?: AssembleContextParams["runtime_context"],
+): string {
+  const body = applyRuntimeTemplate(s.body, runtime_context);
+  // First non-empty content line as a 1-line summary. Skip the H1
+  // that most skills start with.
+  const firstLine =
+    body
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 0 && !l.startsWith("#")) ?? "";
+  const summary = firstLine.length > 160 ? `${firstLine.slice(0, 160)}…` : firstLine;
+  return `# Skill: ${s.title} (${s.scope}) — call \`load_skill('${s.id}')\` to load full body\n${summary}`;
+}
+
+/**
+ * Public token-counter for an individual skill body using the same
+ * formatter the assembler uses. Lets observability paths (e.g. the
+ * dialog.turn_end log's top_skills_by_tokens breakdown) report a
+ * per-skill weight without re-implementing formatSkill out-of-tree.
+ */
+export function countSkillTokens(
+  s: Skill,
+  runtime_context?: AssembleContextParams["runtime_context"],
+): number {
+  return countTokens(formatSkill(s, runtime_context));
+}
+
 function fetchedAtSuffix(fetched_at: string | null): string {
   if (!fetched_at) return "";
   // Trim to YYYY-MM-DD so the prompt header is compact and stable.
@@ -216,6 +260,199 @@ function formatFailure(f: PriorFailure): string {
 
 function formatUserMemory(s: string): string {
   return `# User memory\n${s}`;
+}
+
+interface InteractionLogEntry {
+  tool_name: string;
+  status: string;
+  decision: string;
+  decision_reason: string | null;
+  decided_at: Date | null;
+}
+
+/**
+ * Load the last N elicitations for a conversation in reverse-chronological
+ * order, then reverse to chronological for display. We only surface
+ * resolved/cancelled/timeout entries — pending elicitations are still
+ * waiting for the user, so reading them as "decisions" would be wrong.
+ *
+ * Returns at most `limit` entries; conservative because the LLM only
+ * needs the recent confirmation history, not the full audit trail.
+ */
+async function loadInteractionLog(
+  tenant_id: string,
+  conversation_id: string,
+  exec: Executor,
+  limit = 10,
+): Promise<InteractionLogEntry[]> {
+  try {
+    const rows = await exec
+      .select({
+        tool_name: conversationElicitations.tool_name,
+        status: conversationElicitations.status,
+        output: conversationElicitations.output,
+        decision_reason: conversationElicitations.decision_reason,
+        decided_at: conversationElicitations.decided_at,
+      })
+      .from(conversationElicitations)
+      .where(
+        and(
+          eq(conversationElicitations.tenant_id, tenant_id),
+          eq(conversationElicitations.conversation_id, conversation_id),
+        ),
+      )
+      .orderBy(desc(conversationElicitations.created_at))
+      .limit(limit);
+    const filtered = rows.filter((r) => r.status !== "pending");
+    return filtered.reverse().map((r) => {
+      const output = r.output as Record<string, unknown> | null;
+      const confirmed = output?.confirmed === true;
+      const partial = Array.isArray(output?.approved_indices);
+      const decision = partial
+        ? "partial"
+        : confirmed
+          ? "approved"
+          : r.status === "resolved"
+            ? "declined"
+            : r.status;
+      return {
+        tool_name: r.tool_name,
+        status: r.status,
+        decision,
+        decision_reason: r.decision_reason,
+        decided_at: r.decided_at,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Compact preview entry surfaced to the model. */
+interface LatestPreviewEntry {
+  step_id: string;
+  kind: string;
+  status: string;
+  shape_summary?: string;
+  primary_data_path?: string | null;
+  available_paths?: string[];
+  error_code?: string;
+}
+
+/**
+ * Read the most recent dry-run / run preview off the conversation's
+ * persisted draft (`conversations.draft.latest_preview.step_traces`).
+ * Compacted to step_id + kind + status + scope_at_step. The
+ * authoring loop will reach for this before guessing a JSONata path
+ * — no need to re-issue a dry_run just to remember the shape.
+ */
+async function loadLatestPreview(
+  tenant_id: string,
+  conversation_id: string,
+  exec: Executor,
+  limit = 12,
+): Promise<LatestPreviewEntry[]> {
+  try {
+    const rows = await exec
+      .select({ draft: conversations.draft })
+      .from(conversations)
+      .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
+      .limit(1);
+    const draft = rows[0]?.draft as
+      | {
+          latest_preview?: {
+            step_traces?: Array<Record<string, unknown>>;
+          };
+        }
+      | null
+      | undefined;
+    const traces = draft?.latest_preview?.step_traces;
+    if (!Array.isArray(traces)) return [];
+    const out: LatestPreviewEntry[] = [];
+    for (const t of traces.slice(0, limit)) {
+      if (!t || typeof t !== "object") continue;
+      const stepId = (t as { step_id?: unknown }).step_id;
+      const kind = (t as { kind?: unknown }).kind;
+      const status = (t as { status?: unknown }).status;
+      if (typeof stepId !== "string") continue;
+      const scope = (t as { scope_at_step?: Record<string, unknown> }).scope_at_step;
+      const errorCode = (t as { error_code?: unknown }).error_code;
+      out.push({
+        step_id: stepId,
+        kind: typeof kind === "string" ? kind : "unknown",
+        status: typeof status === "string" ? status : "unknown",
+        ...(scope && typeof scope.shape_summary === "string"
+          ? { shape_summary: scope.shape_summary }
+          : {}),
+        ...(scope &&
+        (typeof scope.primary_data_path === "string" || scope.primary_data_path === null)
+          ? { primary_data_path: scope.primary_data_path as string | null }
+          : {}),
+        ...(scope && Array.isArray(scope.available_paths)
+          ? {
+              available_paths: (scope.available_paths as unknown[])
+                .filter((s): s is string => typeof s === "string")
+                .slice(0, 8),
+            }
+          : {}),
+        ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Render the latest_preview slot. The model reads this to author the
+ * next transform / loop / branch path against real shapes instead of
+ * guessing. Lines are intentionally terse — the model just needs the
+ * shape vocabulary, not the full preview body (which lives on
+ * inspect_workflow_draft / suggest_jsonata_paths).
+ */
+function formatLatestPreview(entries: LatestPreviewEntry[]): string {
+  if (entries.length === 0) return "";
+  const lines = entries.map((e) => {
+    const parts: string[] = [`- ${e.step_id} (${e.kind}) → ${e.status}`];
+    if (e.shape_summary) parts.push(`shape=${e.shape_summary}`);
+    if (e.primary_data_path) parts.push(`primary=\`${e.primary_data_path}\``);
+    if (e.available_paths && e.available_paths.length > 0) {
+      parts.push(`paths=[${e.available_paths.map((p) => `\`${p}\``).join(", ")}]`);
+    }
+    if (e.error_code) parts.push(`error=${e.error_code}`);
+    return parts.join(" · ");
+  });
+  return [
+    "# Latest preview",
+    "Compact per-step view of the most recent dry_run / run for this conversation.",
+    "Author downstream `$scope.<step>.<path>` references against the listed `paths` — never guess.",
+    "Call `suggest_jsonata_paths` for full path candidates or `inspect_workflow_draft` for the per-step output_preview.",
+    "",
+    ...lines,
+  ].join("\n");
+}
+
+/**
+ * Render the interaction log as a markdown section. Mirrors the
+ * reference impl's `interactionLog` array — gives the model an
+ * append-only record of "what was tested vs. confirmed vs. declined"
+ * so it doesn't re-ask for already-resolved actions or treat a
+ * partial approval as full.
+ */
+function formatInteractionLog(entries: InteractionLogEntry[]): string {
+  if (entries.length === 0) return "";
+  const lines = entries.map((e) => {
+    const reason = e.decision_reason ? ` (${e.decision_reason})` : "";
+    return `- ${e.tool_name} → ${e.decision}${reason}`;
+  });
+  return [
+    "# Interaction log",
+    "Append-only record of the recent confirmations and elicitations in this conversation.",
+    "Read this before re-asking for any action: if a tool was already declined this turn, do NOT retry without explicit user guidance; if it was already confirmed, do NOT re-ask.",
+    "",
+    ...lines,
+  ].join("\n");
 }
 
 function buildQuery(turns: UserTurn[]): string {
@@ -408,6 +645,27 @@ export async function assembleEnhancedPrompt(
   let userMemory = typeof p.user_memory === "string" ? p.user_memory.trim() : "";
   let authoringContext = typeof p.authoring_context === "string" ? p.authoring_context.trim() : "";
 
+  // Interaction log — last N resolved elicitations for this
+  // conversation. Only loaded for the converse flow (one-shot flows
+  // don't have an interactive history to reference) and only when the
+  // caller threaded a conversation_id through. The trimmer treats
+  // this section the same as prior_failures: dropped early under
+  // pressure, but cheap when the budget allows.
+  let interactionLogEntries: InteractionLogEntry[] = [];
+  if (p.flow === "converse" && p.conversation_id) {
+    interactionLogEntries = await loadInteractionLog(p.tenant_id, p.conversation_id, db);
+  }
+
+  // Latest preview — compact per-step shape from the most recent
+  // dry_run / run on this conversation. Reads
+  // `conversations.draft.latest_preview.step_traces`; if no preview
+  // has been recorded the section is empty and trim is a no-op. Only
+  // for the converse flow, same as interaction_log.
+  let latestPreviewEntries: LatestPreviewEntry[] = [];
+  if (p.flow === "converse" && p.conversation_id) {
+    latestPreviewEntries = await loadLatestPreview(p.tenant_id, p.conversation_id, db);
+  }
+
   // Operator notes for the in-scope connector. Loaded once per assembly
   // and rendered as a stable cache block adjacent to connector skills.
   // The field is hard-capped at 4 KB by the route schema, so the worst-
@@ -468,14 +726,29 @@ export async function assembleEnhancedPrompt(
     if (tenantSummaryBlock) sections.push(tenantSummaryBlock);
     sections.push(baseSystem);
     if (runtimeBlock) sections.push(runtimeBlock);
-    for (const s of globalSkills) sections.push(formatSkill(s, p.runtime_context));
+    // Ambient skills (global / connector / workflow scope) render in
+    // SUMMARY form by default — title + 1-line description + the
+    // load_skill hint. The LLM uses load_skill to pull the full body
+    // when it actually needs the rules (which moves the skill into
+    // `loadedSkills` for subsequent turns). This trims a typical
+    // turn from ~31k → ~3k skill tokens (session a128deba peak was
+    // 285k turn tokens, mostly skill bodies).
+    for (const s of globalSkills) sections.push(formatSkillSummary(s, p.runtime_context));
     if (connectorOperatorNotesBlock) sections.push(connectorOperatorNotesBlock);
-    for (const s of connectorSkills) sections.push(formatSkill(s, p.runtime_context));
-    for (const s of workflowSkills) sections.push(formatSkill(s, p.runtime_context));
+    for (const s of connectorSkills) sections.push(formatSkillSummary(s, p.runtime_context));
+    for (const s of workflowSkills) sections.push(formatSkillSummary(s, p.runtime_context));
+    // Loaded skills carry the full body — the LLM explicitly opted
+    // in via load_skill, so the cost is justified.
     for (const s of loadedSkills) sections.push(formatSkill(s, p.runtime_context));
     for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
     if (userMemory) sections.push(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
+    if (latestPreviewEntries.length > 0) {
+      sections.push(formatLatestPreview(latestPreviewEntries));
+    }
+    if (interactionLogEntries.length > 0) {
+      sections.push(formatInteractionLog(interactionLogEntries));
+    }
     for (const f of failures) sections.push(formatFailure(f));
     if (tenantSummaryBlock) sections.push(tenantSummaryBlock);
     // Authoring context lives at the very tail so it stays in the
@@ -501,13 +774,55 @@ export async function assembleEnhancedPrompt(
   };
 
   const trimmed: string[] = [];
+  // Skill-body summary used as a fallback when we'd otherwise pop a
+  // whole skill. Keeps the skill name + scope visible to the model
+  // (so it can call `load_skill` to re-fetch the full body) while
+  // shedding the bulk of the markdown body. Saves ~70-90% per skill
+  // vs. dropping it entirely. Pre-fix the trim path popped the whole
+  // skill record, removing the title + scope hint from the model's
+  // context — losing the SIGNAL that the skill exists at all.
+  // 100-char summary keeps the title + first sentence visible (enough
+  // for the model to decide whether to call `load_skill`) without
+  // bloating the trimmed prompt. Lower than the original 200 so a
+  // 5-skill global bundle costs ~250 tokens after trim instead of ~500.
+  const SKILL_BODY_SUMMARY_LIMIT = 100;
+  const trimSkill = (s: import("../../skills/types.ts").Skill): typeof s => {
+    if (s.body.length <= SKILL_BODY_SUMMARY_LIMIT) return s;
+    return {
+      ...s,
+      body: `${s.body.slice(0, SKILL_BODY_SUMMARY_LIMIT).trim()}… [load_skill('${s.title ?? s.id}') for full body]`,
+    };
+  };
+  // Trim every loaded/global/connector/workflow skill BODY to a
+  // summary line FIRST before popping any of them. Saves the model's
+  // awareness that the skill exists + how to recover its full body
+  // (load_skill). Cursors are independent per category so each
+  // category gets its own progressive trim pass.
+  let trimmedLoadedCursor = 0;
+  let trimmedWorkflowCursor = 0;
+  let trimmedConnectorCursor = 0;
+  let trimmedGlobalCursor = 0;
   while (total > cap) {
-    if (failures.length > 0) {
+    if (interactionLogEntries.length > 0) {
+      // Drop interaction log first — same priority as failures (both
+      // are "recent conversation context" rather than load-bearing
+      // domain knowledge). The model can still see the recent tool
+      // calls in the message history; the log is a convenience.
+      interactionLogEntries = [];
+      trimmed.push("interaction_log");
+    } else if (failures.length > 0) {
       failures = [];
       trimmed.push("failures");
     } else if (chunks.length > 0) {
       chunks.pop();
       trimmed.push("docs");
+    } else if (latestPreviewEntries.length > 0) {
+      // Drop latest_preview before knowledge chunks: when the budget
+      // is this tight the model needs domain knowledge to recover,
+      // and the preview is recoverable on the next turn via
+      // dry_run_workflow / suggest_jsonata_paths.
+      latestPreviewEntries = [];
+      trimmed.push("latest_preview");
     } else if (knowledgeChunks.length > 0) {
       knowledgeChunks.pop();
       trimmed.push("knowledge");
@@ -517,6 +832,23 @@ export async function assembleEnhancedPrompt(
     } else if (authoringContext) {
       authoringContext = "";
       trimmed.push("authoring_context");
+    } else if (loadedSkills.length > 0 && trimmedLoadedCursor < loadedSkills.length) {
+      const idx = trimmedLoadedCursor++;
+      const cur = loadedSkills[idx];
+      if (cur && cur.body.length > SKILL_BODY_SUMMARY_LIMIT) {
+        loadedSkills[idx] = trimSkill(cur);
+        trimmed.push("loaded_skill_body_trimmed");
+      }
+    } else if (workflowSkills.length > 0 && trimmedWorkflowCursor < workflowSkills.length) {
+      // Ambient skills (workflow / connector / global) already
+      // render via formatSkillSummary, so further body trimming
+      // doesn't reduce their rendered size — skip directly to
+      // popping. Cursor still advances so we don't loop here.
+      trimmedWorkflowCursor = workflowSkills.length;
+    } else if (connectorSkills.length > 0 && trimmedConnectorCursor < connectorSkills.length) {
+      trimmedConnectorCursor = connectorSkills.length;
+    } else if (globalSkills.length > 0 && trimmedGlobalCursor < globalSkills.length) {
+      trimmedGlobalCursor = globalSkills.length;
     } else if (loadedSkills.length > 0) {
       loadedSkills.pop();
       trimmed.push("loaded_skill");

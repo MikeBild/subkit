@@ -7,6 +7,8 @@
 // "big-bang" failure mode that caused `propose_step` failure streaks.
 
 import { z } from "@hono/zod-openapi";
+import { and, eq } from "drizzle-orm";
+import { conversations } from "../../db/schema/index.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
 import { buildDraftMutationPayload } from "./authoring-contract.ts";
@@ -75,6 +77,18 @@ export const startWorkflowFromGoalTool: ConversationTool = {
     const merged = { ...nextWorkflow, ...extra } as WorkflowDraftDocument;
     const nextDraft = withWorkflowDraft(draft, merged, "workflow_seeded_from_goal");
     await ctx.setDraft(nextDraft);
+    // Detach from any previously-saved workflow target. The LLM is
+    // explicitly seeding a fresh draft here; if the conversation row
+    // still pointed at an earlier workflow, commit_draft would silently
+    // overwrite it. The identity gate in commit-workflow.ts also
+    // protects against this, but resetting here means downstream tools
+    // (inspect, dry_run) see a clean target_workflow_id state too.
+    await ctx.db
+      .update(conversations)
+      .set({ target_workflow_id: null, updated_at: new Date() })
+      .where(
+        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
+      );
     return {
       ok: true,
       data: buildDraftMutationPayload(nextDraft, {

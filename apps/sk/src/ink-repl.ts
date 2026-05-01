@@ -16,6 +16,7 @@ import {
   applyTurnEvent,
   initialSessionState,
   lastAssistantText,
+  readSse,
   type SkSessionState,
   type TurnEvent,
 } from "@cli-core/index.ts";
@@ -46,29 +47,11 @@ export interface InkReplOptions {
   noMemory?: boolean;
 }
 
-const PROBE_PERMISSIONS = [
-  "conversation:read",
-  "conversation:write",
-  "conversation:approve",
-  "conversation:cancel",
-  "conversation:commit",
-  "conversation:list",
-  "memory:write",
-  "mcp:read",
-  "skill:read",
-  "audit:read",
-  "identity:read",
-  // Operator / admin probes — used for top-level command visibility gating.
-  "workflow:read",
-  "workflow:write",
-  "connector:read",
-  "skill:write",
-  "execution:read",
-  "notification:read",
-  "rbac:read",
-  "api_key:read",
-  "portal_token:read",
-] as const;
+// Persona resolution lives in `./persona-probe.ts` so this REPL and
+// the readline REPL share one tier-filtered probe path. Pre-fix each
+// ran its own ~22 rbac:can calls; together that doubled to ~44
+// audit-log rows on every session start.
+import { resolvePersonaShared } from "./persona-probe.ts";
 
 interface ResolvedPersona {
   label: string;
@@ -84,46 +67,7 @@ async function resolvePersona(
   client: EngineClient,
   profile: ResolvedProfile,
 ): Promise<ResolvedPersona> {
-  const allowed = new Set<string>();
-  let label = profile.persona_hint ?? "user";
-  let tenant: string | null = profile.active_tenant_id ?? null;
-  let email: string | null = null;
-  try {
-    const who = await client.whoami().catch(() => null);
-    if (who) {
-      email = who.email ?? null;
-      tenant = who.tenant_slug ?? who.tenant_id ?? tenant;
-      // Seed label from the role_name the engine returned before any
-      // probe runs, so status line renders the right persona even if
-      // the RBAC check endpoint denies us later (e.g. on a fresh tenant
-      // with a restricted key).
-      if (who.role_name) label = who.role_name;
-      for (const p of PROBE_PERMISSIONS) {
-        try {
-          const d = await client.rbacCan({ principal_id: who.id, permission: p });
-          if (d.allow) allowed.add(p);
-        } catch {
-          /* ignore */
-        }
-      }
-      // Refine label if we got enough signal back from the RBAC probes.
-      if (allowed.has("audit:read")) label = "admin";
-      else if (allowed.has("workflow:write") && allowed.has("connector:read")) label = "operator";
-      else if (allowed.has("mcp:read") && allowed.has("skill:read")) label = "member";
-      else if (!allowed.has("conversation:list") && allowed.has("conversation:write"))
-        label = "portal";
-      else if (allowed.has("conversation:write")) label = "enduser";
-    }
-  } catch {
-    /* leave label as-is */
-  }
-  return {
-    label,
-    probe: { allows: (p: string) => allowed.has(p) },
-    allowed,
-    tenant,
-    email,
-  };
+  return resolvePersonaShared(client, profile);
 }
 
 export async function runInkRepl(opts: InkReplOptions): Promise<number> {
@@ -259,117 +203,261 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       for (const warning of resolved.warnings) {
         debugLog("dialog.warning", { warning }, baseCtx());
       }
-      // The POST responses from `/v1/conversations` + `/messages` each
-      // carry the complete `events[]` for THIS turn (user message +
-      // tool calls + assistant text + completed). We drive the reducer
-      // from those events directly — re-opening the SSE stream after
-      // each turn would replay the full conversation history and
-      // multiply messages, which was the v1 bug.
-      let outcome: {
-        conversation: { id: string; title: string | null; model: string | null };
-        events: unknown[];
+      // Drive the turn over a live SSE stream so the Ink app paints
+      // each tool_call_start / tool_result / text_delta the moment the
+      // engine emits it, instead of waiting ~10–30s for the entire
+      // turn (multi-tool authoring sessions) to flush as one JSON body.
+      //
+      // The engine's POST handlers content-negotiate on
+      // `Accept: text/event-stream`. Frames carry the same TurnEvent
+      // payloads as the JSON `events[]`; two SSE-only meta events
+      // (`conversation_started`, `outcome`) bracket the turn so the
+      // client learns the conversation_id up-front (on create) and
+      // captures the final status without re-reading any state.
+      const operation: "create_conversation" | "append_message" = currentConversationId
+        ? "append_message"
+        : "create_conversation";
+      const isCreate = operation === "create_conversation";
+      const stream = isCreate
+        ? await currentClient.createConversationStream(
+            {
+              initial_message: resolved.prompt,
+              ...(memory.content ? { memory: memory.content } : {}),
+              ...(settings.merged.model ? { model: settings.merged.model } : {}),
+              ...(promptOpts?.permission_mode
+                ? { permission_mode: promptOpts.permission_mode }
+                : {}),
+            },
+            baseCtx(),
+          )
+        : await currentClient.appendConversationMessageStream(
+            currentConversationId as string,
+            {
+              message: resolved.prompt,
+              ...(memory.content ? { memory: memory.content } : {}),
+              ...(promptOpts?.permission_mode
+                ? { permission_mode: promptOpts.permission_mode }
+                : {}),
+            },
+            baseCtx(),
+          );
+
+      // Buffer/queue handoff: readSse fires per-frame callbacks while
+      // the Ink app pulls events via async iterator. We push parsed
+      // TurnEvents (and surface the create-time conversation_id /
+      // terminal outcome) into a queue, then yield them in order.
+      type QueuedFrame =
+        | { kind: "event"; ev: TurnEvent }
+        | { kind: "outcome" }
+        | { kind: "error"; payload: { code: string; message: string; details?: unknown } };
+      const queue: QueuedFrame[] = [];
+      let waiter: (() => void) | null = null;
+      let closed = false;
+      const wakeWaiter = () => {
+        const w = waiter;
+        waiter = null;
+        if (w) w();
       };
-      let operation: "create_conversation" | "append_message";
-      if (!currentConversationId) {
-        const created = await currentClient.createConversation(
-          {
-            initial_message: resolved.prompt,
-            ...(memory.content ? { memory: memory.content } : {}),
-            ...(settings.merged.model ? { model: settings.merged.model } : {}),
-            ...(promptOpts?.permission_mode ? { permission_mode: promptOpts.permission_mode } : {}),
-          },
-          baseCtx(),
-        );
-        currentConversationId = created.conversation.id;
-        outcome = created;
-        operation = "create_conversation";
-        try {
-          const now = new Date().toISOString();
-          saveSessionMetadata({
-            conversation_id: currentConversationId,
-            engine_url: opts.profile.engine_url,
-            tenant_id: opts.profile.active_tenant_id,
-            title: created.conversation.title ?? null,
-            model: created.conversation.model ?? null,
-            created_at: now,
-            last_used_at: now,
-          });
-        } catch {
-          /* ignore */
-        }
-      } else {
-        outcome = await currentClient.appendConversationMessage(
-          currentConversationId,
-          {
-            message: resolved.prompt,
-            ...(memory.content ? { memory: memory.content } : {}),
-            ...(promptOpts?.permission_mode ? { permission_mode: promptOpts.permission_mode } : {}),
-          },
-          baseCtx(),
-        );
-        operation = "append_message";
-      }
+      // Resolved as soon as we know the conversation_id — immediately
+      // for an append turn (we already have it), after the
+      // `conversation_started` frame for a create turn. onPrompt awaits
+      // this so the Ink app sees the populated conversationId before
+      // it starts consuming events.
+      let resolveReadyInner: (() => void) | null = null;
+      const ready = new Promise<void>((res) => {
+        resolveReadyInner = res;
+      });
+      const fireReady = (): void => {
+        const r = resolveReadyInner;
+        resolveReadyInner = null;
+        if (r) r();
+      };
+      if (!isCreate) fireReady();
       const outcomeCtx = (): DebugCorrelationFields => ({
         mode: "ink",
         conversation_id: currentConversationId,
         turn_id,
       });
-      debugLog(
-        "conversation.turn_events",
-        {
-          operation,
-          response_status: "status" in outcome ? outcome.status : null,
-          events: outcome.events,
+
+      const pump = readSse(stream, (frame) => {
+        try {
+          if (frame.event === "conversation_started") {
+            const parsed = JSON.parse(frame.data) as {
+              conversation: { id: string; title: string | null; model: string | null };
+            };
+            currentConversationId = parsed.conversation.id;
+            try {
+              const now = new Date().toISOString();
+              saveSessionMetadata({
+                conversation_id: currentConversationId,
+                engine_url: opts.profile.engine_url,
+                tenant_id: opts.profile.active_tenant_id,
+                title: parsed.conversation.title ?? null,
+                model: parsed.conversation.model ?? null,
+                created_at: now,
+                last_used_at: now,
+              });
+            } catch {
+              /* ignore */
+            }
+            fireReady();
+            return;
+          }
+          if (frame.event === "outcome") {
+            queue.push({ kind: "outcome" });
+            wakeWaiter();
+            return;
+          }
+          if (frame.event === "error") {
+            const payload = JSON.parse(frame.data) as {
+              code: string;
+              message: string;
+              details?: unknown;
+            };
+            queue.push({ kind: "error", payload });
+            // Surface readiness even on early failure so onPrompt can
+            // proceed to the iterator (which yields the synthesised
+            // validation_error).
+            fireReady();
+            wakeWaiter();
+            return;
+          }
+          const ev = JSON.parse(frame.data) as TurnEvent;
+          queue.push({ kind: "event", ev });
+          wakeWaiter();
+        } catch (parseErr) {
+          debugLog(
+            "dialog.error",
+            {
+              input_kind: "prompt",
+              stage: "sse_frame_parse",
+              raw_frame: frame.data,
+              error: serializeDebugError(parseErr),
+            },
+            outcomeCtx(),
+          );
+        }
+      }).then(
+        () => {
+          closed = true;
+          fireReady();
+          wakeWaiter();
         },
-        outcomeCtx(),
+        (err) => {
+          closed = true;
+          queue.push({
+            kind: "error",
+            payload: {
+              code: "transport",
+              message: err instanceof Error ? err.message : String(err),
+            },
+          });
+          fireReady();
+          wakeWaiter();
+        },
       );
 
-      // Wrap the events array in an async iterable so the Ink app can
-      // consume them the same way it consumed streamConversationFrames.
-      // Tap `completed` at the tail so we can refresh the status snapshot
-      // (tokens_today, budget remaining) once the turn has settled.
+      await ready;
+
       async function* iterTurnEvents(): AsyncGenerator<TurnEvent, void, void> {
         let state = initialSessionState(currentConversationId);
-        for (const ev of outcome.events as TurnEvent[]) {
-          debugLog("dialog.turn_event", { event: ev }, outcomeCtx());
-          state = applyTurnEvent(state, ev);
-          yield ev;
-          if (ev.type === "completed") {
-            // Fire-and-forget — the next frame will pick up whatever new
-            // numbers the status listener pushed.
-            void refreshStatus();
+        let surfacedError = false;
+        // Coalesce-drain bookkeeping: text_delta and tool_call_*
+        // frames can arrive in tight bursts (~10ms apart). Yielding
+        // each one back-to-back keeps Ink stuck in the same React
+        // batch and the user sees no incremental paint between frames.
+        // After every yield we surrender the event loop with
+        // setImmediate so Ink can flush stdout for the previous
+        // setSession before we hand it the next one.
+        const yieldToEventLoop = () =>
+          new Promise<void>((resolve) => {
+            // setImmediate runs after I/O callbacks, giving Ink's
+            // render-then-write pipeline a turn before the next event.
+            // Falls back to setTimeout(0) on runtimes without it.
+            const schedule =
+              typeof setImmediate === "function"
+                ? setImmediate
+                : (cb: () => void) => setTimeout(cb, 0);
+            schedule(() => resolve());
+          });
+        try {
+          while (true) {
+            while (queue.length === 0 && !closed) {
+              await new Promise<void>((resolve) => {
+                waiter = resolve;
+              });
+            }
+            const next = queue.shift();
+            if (!next) {
+              if (closed) break;
+              continue;
+            }
+            if (next.kind === "outcome") {
+              break;
+            }
+            if (next.kind === "error") {
+              surfacedError = true;
+              const synthetic: TurnEvent = {
+                type: "validation_error",
+                errors: [
+                  {
+                    path: next.payload.code,
+                    message: next.payload.message,
+                  },
+                ],
+              };
+              state = applyTurnEvent(state, synthetic);
+              yield synthetic;
+              break;
+            }
+            const ev = next.ev;
+            debugLog("dialog.turn_event", { event: ev }, outcomeCtx());
+            state = applyTurnEvent(state, ev);
+            yield ev;
+            if (ev.type === "completed") {
+              void refreshStatus();
+            }
+            // Surrender the event loop so Ink can paint the setSession
+            // triggered by the consumer before we hand it the next
+            // frame. Without this, React batches a burst of frames
+            // into one render and the user sees the bubble appear
+            // pre-filled instead of growing token by token.
+            await yieldToEventLoop();
           }
+        } finally {
+          await pump.catch(() => undefined);
+          debugLog(
+            "dialog.render_output",
+            {
+              assistant_text: lastAssistantText(state),
+              messages: state.messages,
+              tool_calls: state.toolCalls,
+              pending_elicitation: state.pendingElicitation,
+              validation_errors: state.validationErrors,
+              usage: state.usage,
+            },
+            outcomeCtx(),
+          );
+          debugLog(
+            "dialog.turn_end",
+            {
+              input_kind: "prompt",
+              status: state.status,
+              message_count: state.messages.length,
+              tool_call_count: state.toolCalls.length,
+              validation_error_count: state.validationErrors.length,
+              assistant_text: lastAssistantText(state),
+              pending_elicitation: state.pendingElicitation,
+              usage: state.usage,
+              ...(surfacedError ? { transport_error: true } : {}),
+            },
+            outcomeCtx(),
+          );
         }
-        debugLog(
-          "dialog.render_output",
-          {
-            assistant_text: lastAssistantText(state),
-            messages: state.messages,
-            tool_calls: state.toolCalls,
-            pending_elicitation: state.pendingElicitation,
-            validation_errors: state.validationErrors,
-            usage: state.usage,
-          },
-          outcomeCtx(),
-        );
-        debugLog(
-          "dialog.turn_end",
-          {
-            input_kind: "prompt",
-            status: state.status,
-            message_count: state.messages.length,
-            tool_call_count: state.toolCalls.length,
-            validation_error_count: state.validationErrors.length,
-            assistant_text: lastAssistantText(state),
-            pending_elicitation: state.pendingElicitation,
-            usage: state.usage,
-          },
-          outcomeCtx(),
-        );
       }
       return {
         events: iterTurnEvents(),
-        conversationId: currentConversationId,
+        conversationId: currentConversationId ?? "",
       };
     } catch (err) {
       debugLog(
@@ -418,62 +506,144 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       ctx(),
     );
     try {
-      const outcome = await currentClient.respondElicitation(
+      // Stream the resumed turn over SSE so the operator sees each
+      // tool_call_start / tool_result / text_delta as it lands. Pre-fix
+      // this path used the JSON-only `respondElicitation` and the
+      // entire 1–2 minute resumed turn buffered server-side before
+      // anything painted — the user saw `summarising N tool results ·
+      // 1m43s` for the whole thing (session 927d0835).
+      const stream = await currentClient.respondElicitationStream(
         currentConversationId,
         elicitationId,
         output,
         reason,
         ctx(),
       );
-      debugLog(
-        "conversation.turn_events",
-        {
-          operation: "respond_elicitation",
-          response_status: outcome.status,
-          events: outcome.events,
+
+      type QueuedFrame =
+        | { kind: "event"; ev: TurnEvent }
+        | { kind: "outcome" }
+        | { kind: "error"; payload: { code: string; message: string; details?: unknown } };
+      const queue: QueuedFrame[] = [];
+      let waiter: (() => void) | null = null;
+      let closed = false;
+      const wakeWaiter = () => {
+        const w = waiter;
+        waiter = null;
+        if (w) w();
+      };
+
+      const pump = readSse(stream, (frame) => {
+        try {
+          if (frame.event === "outcome") {
+            queue.push({ kind: "outcome" });
+            wakeWaiter();
+            return;
+          }
+          if (frame.event === "error") {
+            const payload = JSON.parse(frame.data) as {
+              code: string;
+              message: string;
+              details?: unknown;
+            };
+            queue.push({ kind: "error", payload });
+            wakeWaiter();
+            return;
+          }
+          const ev = JSON.parse(frame.data) as TurnEvent;
+          queue.push({ kind: "event", ev });
+          wakeWaiter();
+        } catch (parseErr) {
+          debugLog(
+            "dialog.error",
+            {
+              input_kind: "elicitation",
+              stage: "sse_frame_parse",
+              raw_frame: frame.data,
+              error: serializeDebugError(parseErr),
+            },
+            ctx(),
+          );
+        }
+      }).then(
+        () => {
+          closed = true;
+          wakeWaiter();
         },
-        ctx(),
+        (err) => {
+          closed = true;
+          queue.push({
+            kind: "error",
+            payload: {
+              code: "transport",
+              message: err instanceof Error ? err.message : String(err),
+            },
+          });
+          wakeWaiter();
+        },
       );
 
       async function* iterTurnEvents(): AsyncGenerator<TurnEvent, void, void> {
-        let state = initialSessionState(outcome.conversation.id);
-        for (const ev of outcome.events as TurnEvent[]) {
-          debugLog("dialog.turn_event", { event: ev }, ctx());
-          state = applyTurnEvent(state, ev);
-          yield ev;
-          if (ev.type === "completed") void refreshStatus();
+        let state = initialSessionState(currentConversationId);
+        const yieldToEventLoop = () =>
+          new Promise<void>((resolve) => {
+            const schedule =
+              typeof setImmediate === "function"
+                ? setImmediate
+                : (cb: () => void) => setTimeout(cb, 0);
+            schedule(() => resolve());
+          });
+        try {
+          while (true) {
+            while (queue.length === 0 && !closed) {
+              await new Promise<void>((resolve) => {
+                waiter = resolve;
+              });
+            }
+            const next = queue.shift();
+            if (!next) {
+              if (closed) break;
+              continue;
+            }
+            if (next.kind === "outcome") break;
+            if (next.kind === "error") {
+              const synthetic: TurnEvent = {
+                type: "validation_error",
+                errors: [{ path: next.payload.code, message: next.payload.message }],
+              };
+              state = applyTurnEvent(state, synthetic);
+              yield synthetic;
+              break;
+            }
+            const ev = next.ev;
+            debugLog("dialog.turn_event", { event: ev }, ctx());
+            state = applyTurnEvent(state, ev);
+            yield ev;
+            if (ev.type === "completed") void refreshStatus();
+            await yieldToEventLoop();
+          }
+        } finally {
+          await pump.catch(() => undefined);
+          debugLog(
+            "dialog.turn_end",
+            {
+              input_kind: "elicitation",
+              status: state.status,
+              message_count: state.messages.length,
+              tool_call_count: state.toolCalls.length,
+              validation_error_count: state.validationErrors.length,
+              assistant_text: lastAssistantText(state),
+              pending_elicitation: state.pendingElicitation,
+              usage: state.usage,
+            },
+            ctx(),
+          );
         }
-        debugLog(
-          "dialog.render_output",
-          {
-            assistant_text: lastAssistantText(state),
-            messages: state.messages,
-            tool_calls: state.toolCalls,
-            pending_elicitation: state.pendingElicitation,
-            validation_errors: state.validationErrors,
-            usage: state.usage,
-          },
-          ctx(),
-        );
-        debugLog(
-          "dialog.turn_end",
-          {
-            input_kind: "elicitation",
-            status: state.status,
-            message_count: state.messages.length,
-            tool_call_count: state.toolCalls.length,
-            validation_error_count: state.validationErrors.length,
-            assistant_text: lastAssistantText(state),
-            pending_elicitation: state.pendingElicitation,
-            usage: state.usage,
-          },
-          ctx(),
-        );
       }
 
       return {
         events: iterTurnEvents(),
-        conversationId: outcome.conversation.id,
+        conversationId: currentConversationId,
       };
     } catch (err) {
       debugLog(
@@ -677,6 +847,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       onElicitResponse,
       onSlash,
       onSelectConversation,
+      onCancelConversation: (id: string) => currentClient.cancelConversation(id),
     });
   };
 

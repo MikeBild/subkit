@@ -23,11 +23,22 @@ import {
 import { checkAndDecrement, checkBudget, monthlyUsage, recordUsage } from "../llm/budgets.ts";
 import { renderAuthoringContextBlock } from "../llm/core/authoring-context-block.ts";
 import { splitPromptIntoBlocks, toSystemMessages } from "../llm/core/cache-blocks.ts";
-import { assembleEnhancedPrompt, detectIntentSkills } from "../llm/core/context-assembler.ts";
+import {
+  assembleEnhancedPrompt,
+  countSkillTokens,
+  detectIntentSkills,
+} from "../llm/core/context-assembler.ts";
 import { resolveModelRoute, resolveLanguageModel as resolveSdkModel } from "../llm/core/invoke.ts";
+import { repairToolCall as repairToolCallHandler } from "../llm/core/repair-tool-call.ts";
+import {
+  prepareStep as routerPrepareStep,
+  type StepRouterSignals,
+  supportsExtendedThinking,
+} from "../llm/core/step-router.ts";
+import { type CriticArtifact, type CriticVerdict, runCritic } from "../llm/critic/index.ts";
 import { LlmQuotaExhausted } from "../llm/errors.ts";
 import { createMockLanguageModel } from "../llm/mock-stream.ts";
-import { runOutputGuard } from "../llm/output-guard/index.ts";
+import { runOutputGuard, runOutputGuardStream } from "../llm/output-guard/index.ts";
 import {
   classifyProviderError,
   isFallbackEligible,
@@ -44,20 +55,25 @@ import {
 } from "./abort.ts";
 import { startNewWorkflowDraft } from "./authoring-state.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
-import { setElicitationParentMessage } from "./elicitations.ts";
+import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
 import { EventSink } from "./event-sink.ts";
-import { detectUserIntent, inferStateDrivenFollowUpTool } from "./intent-detector.ts";
+import {
+  detectMultiArtifactIntent,
+  detectUserIntent,
+  inferStateDrivenFollowUpTool,
+} from "./intent-detector.ts";
 import {
   appendMessage,
   buildModelMessages,
   buildUserContentParts,
   setToolCallParentMessage,
+  updateMessageContent,
 } from "./persist.ts";
-import type { ToolContext } from "./tools/index.ts";
+import { listTools, type ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import { resolveExecutionMode } from "./tools/tool-policies.ts";
 import { synthesizeFallbackMessage, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
-import type { DraftDocument, TurnEvent } from "./types.ts";
+import type { ConversationStatus, DraftDocument, TurnEvent } from "./types.ts";
 
 export interface RunLoopParams {
   db: Db;
@@ -115,7 +131,21 @@ export interface RunLoopResult {
   pending_elicitation_id?: string;
 }
 
-const DEFAULT_BUDGET = 20;
+// Per-turn step ceiling. Reference impl uses `stepCountIs(50)` and
+// trusts the model. Subkit's old budget of 20 was too tight for
+// incremental authoring (a 5-step workflow with dry_run + inspect +
+// commit flow easily exceeds 20). Raised to 50 to match the
+// reference; the adaptive per-tool repeat detector and the
+// consecutive-failures cap remain the actual loop-protection layers.
+const DEFAULT_BUDGET = 50;
+
+/**
+ * Hard cap on `experimental_repairToolCall` invocations per turn.
+ * Beyond this the model is in a degenerate state and additional
+ * repair calls just burn budget — surface the failure to the loop so
+ * the next turn's prepareStep can escalate.
+ */
+const MAX_REPAIRS_PER_TURN = 2;
 
 /**
  * Resolve the SDK language model for this run. The mock provider
@@ -314,6 +344,19 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const route = await resolveModelRoute(p.tenant_id, p.db);
   const effectiveModel = p.model_override ?? route.primary;
 
+  // Step-router signals — refreshed per turn. The router never
+  // downgrades the tenant default; it only escalates upward when one
+  // of these flips true.
+  const stepRouterSignals: StepRouterSignals = {
+    hadRepairThisTurn: false,
+    strongRunIntent:
+      detectedIntent.forceTool === "run_workflow" ||
+      detectedIntent.forceTool === "build_workflow" ||
+      detectedIntent.forceTool === "commit_draft",
+    multiArtifactIntent: detectMultiArtifactIntent(p.user_message),
+    priorCriticFail: false,
+  };
+
   // Pre-check budget. Worst case: `budget` steps × ~1 K output each +
   // the assembled prompt. Matches the envelope `callWithFallback`
   // used before A5.
@@ -347,16 +390,34 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       .limit(5);
     hasFailedExecution = failed.length > 0; // any prior execution counts as feedback context
   }
-  const intentSkillSlugs = await detectIntentSkills(
-    p.tenant_id,
-    {
-      attachmentMimeTypes,
-      userMessage: currentUserText,
-      hasFailedExecution,
-      hasMultipleConnectors: false,
-    },
-    p.db,
-  );
+  // Lazy-eval gate: skip the intent-skill keyword scan when this turn
+  // is a continuation rather than a new topical prompt. Elicitation
+  // responses (currentUserText empty) and short affirmations like
+  // "yes"/"approve" don't shift the conversation's topic, so the
+  // skill set already loaded on the conversation stays valid.
+  // Pre-fix the scan ran every turn including approval round-trips,
+  // burning tokens on a no-op keyword walk plus its DB lookup of
+  // skills by trigger — visible in long sessions where the same
+  // conversation paid the scan cost on every "approve" keystroke.
+  const trimmedUserText = currentUserText.trim();
+  const isContinuationTurn =
+    trimmedUserText.length < 8 ||
+    /^(yes|no|y|n|ok(ay)?|approve|reject|confirm|cancel|sure|please|thanks?)\b/i.test(
+      trimmedUserText,
+    );
+  const intentSkillSlugs =
+    isContinuationTurn && attachmentMimeTypes.length === 0
+      ? []
+      : await detectIntentSkills(
+          p.tenant_id,
+          {
+            attachmentMimeTypes,
+            userMessage: currentUserText,
+            hasFailedExecution,
+            hasMultipleConnectors: false,
+          },
+          p.db,
+        );
   const loadedSkillSlugs = [...new Set([...explicitSkillSlugs, ...intentSkillSlugs])];
 
   // Surface document-analysis registry summary for the active connector
@@ -511,6 +572,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ...(authoringContext ? { authoring_context: authoringContext } : {}),
       ...(authoringHint ? { authoring_hint: authoringHint } : {}),
       ...(combinedPriorFailures.length > 0 ? { prior_failures: combinedPriorFailures } : {}),
+      conversation_id: p.conversation_id,
       ...(p.runtime_context
         ? {
             runtime_context: {
@@ -615,11 +677,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const signals: TurnSignals = {
     step: 0,
     toolChain: Promise.resolve(),
+    assistantMessageId: null,
     pendingChildToolCallIds: [],
     pendingChildElicitationIds: [],
     toolInvocationCount: new Map(),
     toolLastErrorHash: new Map(),
+    toolArgsRepeat: new Map(),
+    toolValidationFingerprint: new Map(),
     totalLoopWarnings: 0,
+    consecutiveFailures: 0,
     lastAssistantText: "",
   };
   const wrappedTools = wrapTools(
@@ -759,6 +825,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
    */
   async function runOnce(modelId: string): Promise<void> {
     let lastStepEnd = Date.now();
+    // Per-turn repair counter for experimental_repairToolCall. See
+    // MAX_REPAIRS_PER_TURN constant.
+    let turnRepairCount = 0;
     // Rebuild messages every attempt so a fallback retry picks up any
     // tool calls that the failed primary already persisted.
     const attemptMessages = await buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
@@ -801,6 +870,68 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       enabled: cacheSupported,
       ttl: "1h",
     });
+    // Activity ticker: flip the CLI status line to "composing" before
+    // we hand off to the provider. Without this the user sees only
+    // the spinner for the LLM-generation phase (often 30–90s) with no
+    // hint that the engine is waiting on the model rather than stuck
+    // in a tool call. Model identifier intentionally NOT included —
+    // operators don't need provider/model details on the live ticker.
+    events.push({
+      type: "activity",
+      phase: "composing",
+      label: "composing reply",
+    });
+    // Build a name → ConversationTool map once for the step-router's
+    // activeTools narrowing decisions. Using the registry (not the
+    // wrappedTools map) so router logic reads `category` directly.
+    const toolsByName: Record<string, import("./tools/index.ts").ConversationTool> = {};
+    for (const t of listTools()) toolsByName[t.name] = t;
+
+    // Parallel tool calls stay DISABLED at the provider layer for the
+    // entire turn. We previously tried to flip this ON for stages that
+    // looked read-only, but the decision is fixed at streamText
+    // construction (AI SDK 6.x prepareStep cannot override
+    // providerOptions) and a turn that starts in `idle` can transition
+    // into `propose_step` / `commit_draft` mid-turn — at which point
+    // tenant_write tools could race. Keeping the disable on is the
+    // only correct setting until the SDK exposes per-step
+    // providerOptions overrides. The in-process serialisation mutex on
+    // `signals.toolChain` (sdk-wrap.ts) protects draft mutations
+    // regardless of provider batching, but the provider-side
+    // disable removes the head-of-line racing entirely.
+    const turnStageReadOnly = false;
+    // Extended thinking — turn-level providerOptions. AI SDK 6.x
+    // applies providerOptions for the entire streamText invocation;
+    // there is no per-step override. We grant the budget when the
+    // turn starts on a hard stage and the model supports it; the
+    // model uses (or ignores) it per step at the provider's
+    // discretion.
+    const turnEnableThinking = (() => {
+      const stage = draft.summary?.stage;
+      if (
+        stage !== "connector_validated" &&
+        stage !== "connector_persisted" &&
+        stage !== "workflow_validated" &&
+        stage !== "workflow_persisted" &&
+        stage !== "repairing"
+      ) {
+        return false;
+      }
+      return supportsExtendedThinking(route.provider, modelId);
+    })();
+    logger.debug({
+      module: "llm",
+      action: "turn.provider_options",
+      msg: "resolved per-turn provider gates",
+      conversation_id: p.conversation_id,
+      tenant_id: p.tenant_id,
+      provider: route.provider,
+      model: modelId,
+      stage: draft.summary?.stage ?? "idle",
+      parallel_tools_enabled: turnStageReadOnly,
+      extended_thinking_enabled: turnEnableThinking,
+      cache_supported: cacheSupported,
+    });
     const result = streamText({
       model: resolvedModel,
       system: systemMessages,
@@ -811,19 +942,140 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         : forceNoTools
           ? "none"
           : "auto",
-      // Disable parallel tool calls on Anthropic. The model used to
-      // emit 5+ run_workflow calls in one turn ("starte mit übermorgen"
-      // → 5 parallel run_workflow tool_use blocks, each producing its
-      // own confirm_before_execution elicitation, each contributing a
-      // loop-warning, all stopping with the synthesised "I stopped this
-      // turn early" fallback). The skill body says "ONE STATE-CHANGING
-      // TOOL PER TURN" but the model violated it because the AI SDK
-      // happily ran every tool_use block the model emitted in a single
-      // step. Disabling at the provider layer enforces it cleanly:
-      // Anthropic returns a single tool_use per assistant turn.
+      // Disable parallel tool calls on Anthropic for state-changing
+      // turns (the rationale at session "starte mit übermorgen" still
+      // holds). Read-heavy turns flip parallel ON so multiple
+      // tenant_read tools can run concurrently — they have no
+      // serialisation requirement.
       ...(cacheSupported
-        ? { providerOptions: { anthropic: { disableParallelToolUse: true } } }
+        ? {
+            providerOptions: {
+              anthropic: {
+                disableParallelToolUse: !turnStageReadOnly,
+                ...(turnEnableThinking
+                  ? { thinking: { type: "enabled", budgetTokens: 4000 } }
+                  : {}),
+              },
+            },
+          }
         : {}),
+      // experimental_repairToolCall — when the model emits a tool call
+      // whose JSON args fail validation (or names a non-existent tool),
+      // the SDK calls this hook to ask for a repaired call. Sets a
+      // step-router signal so the next step escalates one tier up.
+      // Capped at MAX_REPAIRS_PER_TURN (2) per the plan: a model that
+      // keeps emitting malformed calls is in a degenerate state and
+      // burning more LLM budget on repair won't help — surface the
+      // failure so the next turn escalates.
+      experimental_repairToolCall: ({
+        toolCall,
+        tools: callTools,
+        error,
+        messages: callMessages,
+        system: callSystem,
+      }) => {
+        if (turnRepairCount >= MAX_REPAIRS_PER_TURN) {
+          logger.warn({
+            module: "llm",
+            action: "repair_tool_call.capped",
+            msg: "per-turn repair cap reached — surfacing failure to the loop",
+            conversation_id: p.conversation_id,
+            tool: toolCall.toolName,
+            cap: MAX_REPAIRS_PER_TURN,
+          });
+          return Promise.resolve(null);
+        }
+        turnRepairCount += 1;
+        return repairToolCallHandler({
+          toolCall,
+          // biome-ignore lint/suspicious/noExplicitAny: ToolSet vs our wrapped map.
+          tools: callTools as any,
+          messages: callMessages,
+          system: callSystem,
+          error,
+          model: resolvedModel,
+          onRepair: () => {
+            stepRouterSignals.hadRepairThisTurn = true;
+          },
+        });
+      },
+      // prepareStep — per-step routing decisions: model escalation,
+      // activeTools narrowing, extended-thinking enablement. Returns
+      // undefined to mean "no override" so the loop's existing config
+      // wins on routine steps.
+      prepareStep: async ({ stepNumber, steps, messages: stepMessages, model: stepModel }) => {
+        const liveStage = draft.summary?.stage;
+        if (liveStage !== undefined) stepRouterSignals.stage = liveStage;
+        const decision = routerPrepareStep({
+          stepNumber,
+          steps,
+          messages: stepMessages,
+          model: stepModel,
+          tenantDefaultModelId: modelId,
+          provider: route.provider,
+          toolsByName,
+          signals: stepRouterSignals,
+        });
+        if (!decision) return {};
+        const result: Record<string, unknown> = {};
+        if (decision.modelId && decision.modelId !== modelId) {
+          try {
+            result.model = await resolveLanguageModel(route.provider, decision.modelId);
+            logger.info({
+              module: "llm",
+              action: "step_router.model_swapped",
+              msg: "per-step model upgraded",
+              conversation_id: p.conversation_id,
+              tenant_id: p.tenant_id,
+              step_number: stepNumber,
+              from_model: modelId,
+              to_model: decision.modelId,
+              stage: stepRouterSignals.stage ?? "idle",
+              had_repair: stepRouterSignals.hadRepairThisTurn === true,
+              prior_critic_fail: stepRouterSignals.priorCriticFail === true,
+              strong_run_intent: stepRouterSignals.strongRunIntent === true,
+              reason: decision.reason ?? null,
+            });
+          } catch (err) {
+            logger.warn({
+              module: "llm",
+              action: "step_router.resolve_failed",
+              msg: "could not resolve upgraded model — sticking with tenant default",
+              conversation_id: p.conversation_id,
+              tenant_id: p.tenant_id,
+              provider: route.provider,
+              target: decision.modelId,
+              fallback_model: modelId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+        if (decision.activeTools !== undefined) {
+          result.activeTools = decision.activeTools;
+          logger.debug({
+            module: "llm",
+            action: "step_router.tools_narrowed",
+            msg: "per-step tool palette restricted by stage",
+            conversation_id: p.conversation_id,
+            step_number: stepNumber,
+            stage: stepRouterSignals.stage ?? "idle",
+            active_tool_count: decision.activeTools.length,
+            full_tool_count: Object.keys(toolsByName).length,
+          });
+        }
+        if (decision.reason) {
+          logger.debug({
+            module: "llm",
+            action: "step_router.decision",
+            msg: "step router emitted a non-default decision",
+            conversation_id: p.conversation_id,
+            step_number: stepNumber,
+            target_model: decision.modelId ?? modelId,
+            reason: decision.reason,
+          });
+        }
+        return result;
+      },
       stopWhen: [
         stepCountIs(budget),
         hasToolCall("ask_user_choice"),
@@ -907,23 +1159,32 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                   : {}),
               })
             : { text: "", violations: [] };
-          const assistantMessageId = await appendMessage(
-            p.db,
-            p.tenant_id,
-            p.conversation_id,
-            "assistant",
-            {
-              text: guarded.text,
-              ...(guarded.violations.length > 0
-                ? {
-                    _violations: guarded.violations.map((v) => ({
-                      kind: v.kind,
-                      message: v.message,
-                    })),
-                  }
-                : {}),
-            },
-          );
+          const assistantContent =
+            hasText || guarded.violations.length > 0
+              ? {
+                  ...(hasText ? { text: guarded.text } : {}),
+                  ...(guarded.violations.length > 0
+                    ? {
+                        _violations: guarded.violations.map((v) => ({
+                          kind: v.kind,
+                          message: v.message,
+                        })),
+                      }
+                    : {}),
+                }
+              : {};
+          const assistantMessageId =
+            signals.assistantMessageId ??
+            (await appendMessage(
+              p.db,
+              p.tenant_id,
+              p.conversation_id,
+              "assistant",
+              assistantContent,
+            ));
+          if (signals.assistantMessageId) {
+            await updateMessageContent(p.db, assistantMessageId, assistantContent);
+          }
           // Back-fill parent_message_id on every child row created during
           // this step so the read path can interleave them under this
           // assistant message in chronological order.
@@ -935,31 +1196,103 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           );
           signals.pendingChildToolCallIds = [];
           signals.pendingChildElicitationIds = [];
+          signals.assistantMessageId = null;
           if (hasText) {
             signals.lastAssistantText = guarded.text;
-            events.push({
-              type: "message",
-              role: "assistant",
-              content: { text: guarded.text },
-              id: assistantMessageId,
-              parent_message_id: assistantMessageId,
-            });
           }
+          events.push({
+            type: "message",
+            role: "assistant",
+            content: assistantContent,
+            id: assistantMessageId,
+            parent_message_id: assistantMessageId,
+          });
         }
       },
     });
     try {
+      // Composing-phase heartbeat. The activity ticker would otherwise
+      // sit on the SAME label (`composing reply`) for the entire
+      // LLM-generation phase — operator can't tell if the engine is
+      // making progress or stuck. Refresh every 5s with just an
+      // elapsed-time suffix; the EventSink's `(phase, label)` throttle
+      // does NOT collapse these because the label string differs each
+      // tick. Cleared by the for-await drain below when text starts
+      // arriving (Layer B then carries visibility). Model identifier
+      // intentionally NOT included — operator doesn't need it.
+      const composingStart = Date.now();
+      let heartbeat: ReturnType<typeof setInterval> | null = setInterval(() => {
+        const elapsedSec = Math.round((Date.now() - composingStart) / 1000);
+        events.push({
+          type: "activity",
+          phase: "composing",
+          label: `composing reply · ${elapsedSec}s`,
+        });
+      }, 5_000);
+      const stopHeartbeat = () => {
+        if (heartbeat !== null) {
+          clearInterval(heartbeat);
+          heartbeat = null;
+        }
+      };
       // Drain the text stream so we can emit `text_delta` events as
       // assistant tokens arrive. The onStepFinish callback still runs
       // after the stream completes and appends the full assistant
       // message — text_delta is for live rendering, `message` is the
       // persisted record.
+      //
+      // Layer-B finalization signal: while prose is actively streaming
+      // refresh the activity ticker with a "X paragraphs so far"
+      // label every paragraph boundary. Keeps the ticker informative
+      // when text IS arriving (the operator sees the bottom-pane line
+      // tick alongside the streaming buffer above it). Paragraph
+      // boundaries are blank-line separated runs, the same shape the
+      // assistant naturally emits between tool-call narrations.
       try {
+        let proseBuffer = "";
+        let paragraphsEmitted = 0;
         for await (const chunk of result.textStream) {
-          if (chunk.length > 0) events.push({ type: "text_delta", text: chunk });
+          if (chunk.length === 0) continue;
+          // Once tokens arrive, the heartbeat is redundant — Layer B
+          // takes over visibility. Stop the timer so we never publish
+          // a stale "still composing" tick on top of live tokens.
+          stopHeartbeat();
+          events.push({ type: "text_delta", text: chunk });
+          proseBuffer += chunk;
+          const paragraphs = proseBuffer.split(/\n\s*\n/).length - 1;
+          if (paragraphs > paragraphsEmitted && paragraphs >= 1) {
+            paragraphsEmitted = paragraphs;
+            if (paragraphs >= 2) {
+              events.push({
+                type: "activity",
+                phase: "composing",
+                label: `composing reply · ${paragraphs} paragraphs so far`,
+              });
+            }
+            // Overlapped scan: log violations on the latest completed
+            // paragraph as soon as it boundaries. The authoritative
+            // rewrite still happens at onStepFinish over the full
+            // step.text — this is purely an early-warning signal.
+            // Lower bound is `paragraphs >= 1` (not 2) so single-
+            // paragraph steps still get a streamed scan.
+            const segments = proseBuffer.split(/\n\s*\n/);
+            const latestParagraph = segments[Math.max(0, segments.length - 2)] ?? "";
+            if (latestParagraph) {
+              runOutputGuardStream(latestParagraph, {
+                ...(p.runtime_context?.engine_url
+                  ? { engine_url: p.runtime_context.engine_url }
+                  : {}),
+                ...(p.runtime_context?.tenant_slug
+                  ? { tenant_slug: p.runtime_context.tenant_slug }
+                  : {}),
+              });
+            }
+          }
         }
       } catch {
         // Drain errors surface via onError/capturedError below; ignore here.
+      } finally {
+        stopHeartbeat();
       }
       await result.finishReason;
     } catch (err) {
@@ -1103,6 +1436,193 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       }
     }
 
+    // Critic / judge pass — terminal-step rubric over whatever the
+    // turn produced (commit, propose, or chat). The critic is
+    // deterministic (structural predicates against the artifact) so
+    // there is no second LLM call here. Verdict is logged + emitted
+    // as an event; a `priorCriticFail` signal flips on so the next
+    // turn's prepareStep escalates one tier up. Re-entry on the same
+    // turn is intentionally NOT done here — it would require
+    // restructuring the runOnce / fallback flow and is left as a
+    // follow-up.
+    let criticVerdict: CriticVerdict | undefined;
+    if (!cancelled && (signals.committed || signals.lastAssistantText)) {
+      // Resolve resource_kind from the draft's active_target. The
+      // earlier code defaulted "none" → "workflow" which gave the
+      // critic a false positive on commits with no active target. Now
+      // we explicitly skip critic dispatch for those.
+      const activeKind = draft.summary?.active_target.kind;
+      const resourceKind: "connector" | "workflow" | null =
+        activeKind === "connector" || activeKind === "workflow" ? activeKind : null;
+
+      // Count validated-checkpoint records that are ok=true. The
+      // checkpoints map lives on the AuthoringState alongside the draft
+      // and is updated by validate_draft / validate_connector_draft /
+      // dry_run_step etc.
+      const validatedStepCount = (() => {
+        const cps = draft.state?.checkpoints ?? {};
+        let n = 0;
+        for (const key of Object.keys(cps)) {
+          if (!/_validated$/.test(key)) continue;
+          const cp = (cps as Record<string, { ok?: boolean | null }>)[key];
+          if (cp?.ok === true) n += 1;
+        }
+        return n;
+      })();
+
+      // Connector-side: auth_type on the connector draft; this is the
+      // mode the persisted row will carry.
+      const connectorAuthMode =
+        resourceKind === "connector" ? (draft.connector?.auth_type ?? null) : null;
+
+      // Workflow-side: the first step's `kind` is the trigger semantic
+      // (subkit doesn't have a separate trigger field — the first step
+      // IS the entry point).
+      const workflowTriggerKind =
+        resourceKind === "workflow"
+          ? (() => {
+              const first = draft.workflow?.steps?.[0] as { kind?: unknown } | undefined;
+              return typeof first?.kind === "string" ? first.kind : null;
+            })()
+          : null;
+
+      const artifact: CriticArtifact | null = signals.committed
+        ? resourceKind === null
+          ? null
+          : {
+              kind: "commit_draft",
+              payload: {
+                resource_kind: resourceKind,
+                resource_id: signals.committed.workflow_id,
+                connector_auth_mode: connectorAuthMode,
+                workflow_trigger_kind: workflowTriggerKind,
+                validated_step_count: validatedStepCount,
+                committed_text: signals.lastAssistantText ?? "",
+                referenced_credentials: [],
+              },
+            }
+        : { kind: "chat", payload: signals.lastAssistantText };
+      if (artifact === null) {
+        // Fall through — no critic dispatch when the commit had no
+        // active target (treat as a no-op rather than mis-shape an
+        // artifact).
+      } else {
+        try {
+          criticVerdict = await runCritic({
+            artifact,
+            ...(p.runtime_context
+              ? {
+                  runtimeContext: {
+                    ...(p.runtime_context.engine_url
+                      ? { engine_url: p.runtime_context.engine_url }
+                      : {}),
+                    ...(p.runtime_context.tenant_slug
+                      ? { tenant_slug: p.runtime_context.tenant_slug }
+                      : {}),
+                  },
+                }
+              : {}),
+          });
+          if (criticVerdict.verdict === "fail") {
+            stepRouterSignals.priorCriticFail = true;
+          }
+          const failedChecks = criticVerdict.checks
+            ? Object.entries(criticVerdict.checks)
+                .filter(([, v]) => v === false)
+                .map(([k]) => k)
+            : [];
+          logger.info({
+            module: "llm",
+            action: "critic.verdict",
+            msg: `critic verdict: ${criticVerdict.verdict}`,
+            conversation_id: p.conversation_id,
+            tenant_id: p.tenant_id,
+            kind: artifact.kind,
+            verdict: criticVerdict.verdict,
+            confidence: criticVerdict.confidence,
+            reason: criticVerdict.reason,
+            failed_checks: failedChecks,
+            hint: criticVerdict.hint ?? null,
+            will_escalate_next_turn: criticVerdict.verdict === "fail",
+            will_abstain: criticVerdict.verdict === "fail" && criticVerdict.confidence < 0.6,
+          });
+          // Lever 15: confidence-based abstention. When the critic's
+          // confidence is below 0.6 AND the turn committed, surface an
+          // `ask_user_text` elicitation that the operator must answer
+          // before the conversation continues. This does NOT roll back
+          // the commit (the commit_draft tool already wrote the row by
+          // the time the critic runs); it forces the operator to
+          // explicitly confirm or revise. Rate-limited to ONE abstention
+          // per turn so a flaky critic cannot spam elicitations.
+          if (
+            criticVerdict.verdict === "fail" &&
+            criticVerdict.confidence < 0.6 &&
+            signals.committed
+          ) {
+            try {
+              const elicitation = await createElicitation(
+                {
+                  tenant_id: p.tenant_id,
+                  conversation_id: p.conversation_id,
+                  tool_call_id: null,
+                  tool_name: "ask_user_text",
+                  summary: `low-confidence commit: ${criticVerdict.reason}`,
+                  input: {
+                    question:
+                      "The critic flagged this commit with low confidence. " +
+                      `Reason: ${criticVerdict.reason}. ` +
+                      `${criticVerdict.hint ? `Suggested fix: ${criticVerdict.hint}. ` : ""}` +
+                      "Confirm the commit, or describe what should change.",
+                    placeholder: "confirm | describe a fix",
+                    metadata: {
+                      source: "critic.abstention",
+                      critic_kind: artifact.kind,
+                      confidence: criticVerdict.confidence,
+                      failed_checks: failedChecks,
+                    },
+                  },
+                  actor_id: p.actor_id,
+                },
+                p.db,
+              );
+              signals.pendingChildElicitationIds.push(elicitation.id);
+              events.push({
+                type: "activity",
+                phase: "idle",
+                label: `critic abstention · ${criticVerdict.reason}`,
+              });
+              logger.info({
+                module: "llm",
+                action: "critic.abstention.elicited",
+                msg: "low-confidence commit produced an ask_user_text follow-up",
+                conversation_id: p.conversation_id,
+                tenant_id: p.tenant_id,
+                elicitation_id: elicitation.id,
+                confidence: criticVerdict.confidence,
+                failed_checks: failedChecks,
+              });
+            } catch (err) {
+              logger.warn({
+                module: "llm",
+                action: "critic.abstention.elicit_failed",
+                msg: "could not create abstention elicitation — verdict still logged",
+                conversation_id: p.conversation_id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+        } catch (err) {
+          // Critic must not crash the loop — log and continue.
+          logger.warn({
+            module: "llm",
+            action: "critic.threw",
+            conversation_id: p.conversation_id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } // close `else` for artifact !== null
+    }
+
     // Resolve final status.
     let status: RunLoopResult["status"] = "active";
     let committedWorkflowId: string | undefined;
@@ -1117,17 +1637,18 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       cancelled ||
       persistedStatus === "abandoned" ||
       turnAbortCtrl.signal.reason === CONVERSATION_CANCELLED_REASON;
+    let completedStatus: ConversationStatus;
     if (conversationCancelled) {
       status = "abandoned";
-      events.push({ type: "completed", status: "abandoned" });
+      completedStatus = "abandoned";
     } else if (signals.committed) {
       status = "committed";
       committedWorkflowId = signals.committed.workflow_id;
-      events.push({ type: "completed", status: "committed" });
+      completedStatus = "committed";
     } else if (signals.pendingElicitation || persistedStatus === "awaiting_input") {
       status = "awaiting_input";
       pendingElicitationId = signals.pendingElicitation?.elicitation_id;
-      events.push({ type: "completed", status: "awaiting_input" });
+      completedStatus = "awaiting_input";
     } else {
       if (signals.step >= budget && !signals.pendingElicitation) {
         log.warn({
@@ -1138,14 +1659,18 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           step_budget: budget,
         });
       }
-      events.push({ type: "completed", status: "active" });
+      completedStatus = "active";
     }
 
-    // Attach turn usage to every `completed` frame (sk status-line
+    // Attach turn usage to the `completed` frame (sk status-line
     // reads `turn_tokens` + `remaining_monthly_budget_tokens`). The
     // optional `breakdown` carries the per-section token shape from
     // the assembled prompt so the spinner / `/cost` view can show
     // skills 4.2k · transcript 6.1k · docs 2.0k · total 14.5k.
+    //
+    // Compute usage BEFORE pushing the frame so live SSE emits the
+    // payload-complete event in one go. Mutating array entries after
+    // a buffered push doesn't re-fire the live emitter.
     const usageAfter = await monthlyUsage(p.tenant_id, p.db).catch(() => usageBefore);
     const turnTokens = Math.max(0, usageAfter - usageBefore);
     const remaining =
@@ -1161,25 +1686,59 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           total: prompt.token_counts.total,
         }
       : undefined;
-    for (let i = events.length - 1; i >= 0; i--) {
-      const ev = events[i];
-      if (ev && ev.type === "completed") {
-        events[i] = {
-          ...ev,
-          usage: {
-            turn_tokens: turnTokens,
-            remaining_monthly_budget_tokens: remaining,
-            ...(breakdown ? { breakdown } : {}),
-          },
-        };
-      }
-    }
+    events.push({
+      type: "completed",
+      status: completedStatus,
+      usage: {
+        turn_tokens: turnTokens,
+        remaining_monthly_budget_tokens: remaining,
+        ...(breakdown ? { breakdown } : {}),
+      },
+    });
 
     // P6: emit a per-turn token-usage log line so the operator can grep
     // engine logs alone (without enabling client-side debug output) to
     // see which validation/preview cycles burned how many tokens. The
     // CLI already gets the same breakdown via the `completed` event;
     // this is the symmetric server-side record.
+    //
+    // Additionally surface the top-N heaviest included skills so when
+    // a turn balloons past expectation (the dca36b29 session showed
+    // breakdown_skills=26661 — ~27k tokens of skill bodies — without
+    // a way to see WHICH skills) operators can identify the heavy
+    // contributors and trim them. Pre-fix this required reading the
+    // included_skill_ids list and looking up each skill body by hand.
+    const topSkillBreakdown = (() => {
+      if (!prompt) return null;
+      const skills = prompt.included_skills ?? [];
+      if (skills.length === 0) return null;
+      const weighed = skills.map((s) => ({
+        id: s.id,
+        slug: s.slug ?? null,
+        title: s.title ?? null,
+        tokens: prompt.token_counts ? Math.round(prompt.token_counts.skills / skills.length) : 0,
+      }));
+      // Recompute per-skill weights using countTokens so the report
+      // is accurate — the sum-divided-by-count above is just a fallback
+      // when a per-skill counter isn't wired up yet.
+      try {
+        for (const w of weighed) {
+          const skill = skills.find((s) => s.id === w.id);
+          if (skill) {
+            w.tokens = countSkillTokens(skill, p.runtime_context);
+          }
+        }
+      } catch {
+        // best-effort — token counter failures must not block turn end
+      }
+      return weighed
+        .sort((a, b) => b.tokens - a.tokens)
+        .slice(0, 5)
+        .map((w) => ({
+          ...(w.slug ? { slug: w.slug } : { id: w.id }),
+          tokens: w.tokens,
+        }));
+    })();
     logger.info({
       module: "conversation",
       action: "dialog.turn_end",
@@ -1199,6 +1758,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             breakdown_total: breakdown.total,
           }
         : {}),
+      ...(topSkillBreakdown ? { top_skills_by_tokens: topSkillBreakdown } : {}),
     });
 
     const out: RunLoopResult = { events, status };

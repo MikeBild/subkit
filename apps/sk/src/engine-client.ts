@@ -12,6 +12,52 @@ import {
   isDebugVerbose,
   serializeDebugError,
 } from "./debug.ts";
+import { isTransientSocketDrop } from "./repl/error-humanize.ts";
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Build a synthetic ConversationRunOutcome from a conversation detail
+ * after a transport-recovery path. Carries no events array — the UI
+ * surfaces the recovery as a one-line notice and replays state from
+ * the persisted conversation rows on the next render. The
+ * `__recovered` marker lets the caller distinguish "real outcome" from
+ * "we recovered, please re-render from getConversation" without
+ * depending on a missing field.
+ */
+function synthesizeRecoveredOutcome(detail: ConversationDetail): ConversationRunOutcome & {
+  __recovered: true;
+} {
+  // Emit a single synthesized `completed` event so the cli-core
+  // reducer transitions the session out of "running" and the spinner
+  // stops. We don't replay the lost text_deltas / tool events — the
+  // engine persisted the row, but reconstructing per-step events from
+  // the detail would risk drift. Forcing the user to send a prompt
+  // (or pull /status) to fully resync is acceptable; what matters is
+  // that the spinner stops and the UI doesn't pretend the engine is
+  // still mid-turn.
+  const status = detail.conversation.status;
+  const completedStatus =
+    status === "awaiting_input"
+      ? "awaiting_input"
+      : status === "completed"
+        ? "completed"
+        : "active";
+  return {
+    conversation: detail.conversation,
+    events: [
+      {
+        type: "completed",
+        status: completedStatus,
+        usage: null,
+      },
+    ],
+    status,
+    __recovered: true,
+  };
+}
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -361,6 +407,101 @@ export class EngineClient {
     }
   }
 
+  /**
+   * POST a JSON body and consume an SSE response. Used by the
+   * conversations create+append routes when the client wants live
+   * progress frames. The engine content-negotiates: callers that send
+   * `Accept: text/event-stream` get a stream; everyone else still gets
+   * the buffered JSON outcome.
+   */
+  async streamPost(
+    path: string,
+    body: unknown,
+    debugContext?: DebugCorrelationFields,
+  ): Promise<Response> {
+    const url = `${this.base}${path}`;
+    const traceId = debugContext?.trace_id ?? this.newClientTraceId();
+    const headers = this.headers({ accept: "text/event-stream" }, { traceId });
+    const verbose = isDebugVerbose();
+    const ctx = { ...this.debugContext(debugContext), trace_id: traceId };
+    const init: RequestInit = {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    };
+    debugLog(
+      "http.request",
+      {
+        method: "POST",
+        path,
+        url,
+        tenant: this.tenant,
+        query: null,
+        request_kind: "sse",
+        ...(verbose
+          ? { request_headers: normalizeHeaders(init.headers), request_body: body ?? null }
+          : {}),
+      },
+      ctx,
+    );
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, init);
+    } catch (cause) {
+      debugLog(
+        "sse.transport_error",
+        {
+          path,
+          url,
+          tenant: this.tenant,
+          query: null,
+          error: serializeDebugError(cause),
+        },
+        ctx,
+      );
+      throw new SkTransportError(cause);
+    }
+    const trace_id = extractTraceId(res.headers);
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      const parsed = parseResponseBody(errBody);
+      debugLog(
+        "http.response",
+        {
+          method: "POST",
+          path,
+          url,
+          tenant: this.tenant,
+          query: null,
+          status: res.status,
+          ok: false,
+          duration_ms: 0,
+          trace_id,
+          ...(verbose
+            ? { response_headers: normalizeHeaders(res.headers), response_body: parsed }
+            : {}),
+        },
+        { ...ctx, trace_id: ctx.trace_id ?? trace_id },
+      );
+      throw new SkEngineError(res.status, parsed);
+    }
+    debugLog(
+      "sse.open",
+      {
+        path,
+        url,
+        tenant: this.tenant,
+        query: null,
+        status: res.status,
+        ok: res.ok,
+        trace_id,
+        ...(verbose ? { response_headers: normalizeHeaders(res.headers) } : {}),
+      },
+      { ...ctx, trace_id: ctx.trace_id ?? trace_id },
+    );
+    return res;
+  }
+
   // --------------------------- Health + Health-like ---------------------------
   health(): Promise<{
     status: string;
@@ -447,6 +588,27 @@ export class EngineClient {
   ): Promise<ConversationRunOutcome> {
     return this.request("POST", "/v1/conversations", body, undefined, debugContext);
   }
+  /**
+   * Streaming variant of createConversation. Returns the live SSE
+   * response — frames must be consumed via `readSse`. The terminal
+   * `outcome` event carries the conversation row + status that
+   * `createConversation` returns in its JSON body; `events[]` is
+   * NOT repeated in `outcome` (everything already streamed live).
+   */
+  createConversationStream(
+    body: {
+      initial_message?: string;
+      connector_id?: string;
+      workflow_id?: string;
+      memory?: string;
+      model?: string;
+      title?: string;
+      permission_mode?: "auto" | "ask" | "plan" | "yolo";
+    },
+    debugContext?: DebugCorrelationFields,
+  ): Promise<Response> {
+    return this.streamPost("/v1/conversations", body, debugContext);
+  }
   getConversation(id: string): Promise<ConversationDetail> {
     return this.request("GET", `/v1/conversations/${id}`);
   }
@@ -460,6 +622,19 @@ export class EngineClient {
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
     return this.request("POST", `/v1/conversations/${id}/messages`, body, undefined, debugContext);
+  }
+  /** Streaming variant of appendConversationMessage. See
+   *  `createConversationStream` for terminal-event semantics. */
+  appendConversationMessageStream(
+    id: string,
+    body: {
+      message: string;
+      memory?: string;
+      permission_mode?: "auto" | "ask" | "plan" | "yolo";
+    },
+    debugContext?: DebugCorrelationFields,
+  ): Promise<Response> {
+    return this.streamPost(`/v1/conversations/${id}/messages`, body, debugContext);
   }
   patchConversation(
     id: string,
@@ -477,7 +652,30 @@ export class EngineClient {
   }> {
     return this.request("POST", `/v1/conversations/${id}/compact`, body);
   }
-  respondElicitation(
+  /** Streaming variant of respondElicitation. Returns the raw SSE
+   *  Response so the caller can read TurnEvents in real time exactly
+   *  like `createConversationStream` / `appendConversationMessageStream`.
+   *  Pre-fix the elicit-resume path was JSON-only — the CLI saw nothing
+   *  for the entire 1–2 minute resumed turn, then everything at once. */
+  respondElicitationStream(
+    conversationId: string,
+    elicitationId: string,
+    output: unknown,
+    reason?: string,
+    debugContext?: DebugCorrelationFields,
+    permission_mode?: "auto" | "ask" | "plan" | "yolo",
+  ): Promise<Response> {
+    const body: Record<string, unknown> = { output };
+    if (reason) body.reason = reason;
+    if (permission_mode) body.permission_mode = permission_mode;
+    return this.streamPost(
+      `/v1/conversations/${conversationId}/elicitations/${elicitationId}/respond`,
+      body,
+      debugContext,
+    );
+  }
+
+  async respondElicitation(
     conversationId: string,
     elicitationId: string,
     output: unknown,
@@ -489,7 +687,69 @@ export class EngineClient {
     const body: Record<string, unknown> = { output };
     if (reason) body.reason = reason;
     if (permission_mode) body.permission_mode = permission_mode;
-    return this.request("POST", path, body, undefined, debugContext);
+    try {
+      return await this.request<ConversationRunOutcome>(
+        "POST",
+        path,
+        body,
+        undefined,
+        debugContext,
+      );
+    } catch (err) {
+      // Long LLM turns (the engine streams text + multiple tool calls
+      // server-side) can exceed bun-fetch's keep-alive window, dropping
+      // the response side of the socket while the engine keeps writing.
+      // The engine persists turn state at every step, so we recover by
+      // (a) trying the POST once more — the engine's elicitation
+      // dedup raises 409 elicitation_already_resolved if the first
+      // POST landed, which is the explicit "your response was applied"
+      // signal — and (b) on 409, replaying from the conversation
+      // detail. This keeps the user out of the duplicate-prompt
+      // workaround that session f00b8d1c walked into.
+      if (!isTransientSocketDrop(err)) throw err;
+      debugLog(
+        "http.transport_recovery",
+        {
+          path,
+          strategy: "respond_elicitation_retry",
+          attempt: 1,
+        },
+        { ...this.debugContext(debugContext), conversation_id: conversationId },
+      );
+      await sleepMs(2000);
+      try {
+        return await this.request<ConversationRunOutcome>(
+          "POST",
+          path,
+          body,
+          undefined,
+          debugContext,
+        );
+      } catch (retryErr) {
+        if (
+          retryErr instanceof Error &&
+          retryErr.name === "SkEngineError" &&
+          (retryErr as SkEngineError).code === "elicitation_already_resolved"
+        ) {
+          // First POST already landed; the elicitation row moved on.
+          // Pull the latest detail and synthesize a recovered outcome.
+          // No SSE events to replay — the UI prints the recovery
+          // hint and re-renders messages/tool_calls from detail.
+          debugLog(
+            "http.transport_recovery",
+            {
+              path,
+              strategy: "respond_elicitation_replay_via_detail",
+              elicitation_id: elicitationId,
+            },
+            { ...this.debugContext(debugContext), conversation_id: conversationId },
+          );
+          const detail = await this.getConversation(conversationId);
+          return synthesizeRecoveredOutcome(detail);
+        }
+        throw retryErr;
+      }
+    }
   }
   cancelConversation(id: string): Promise<unknown> {
     return this.request("POST", `/v1/conversations/${id}/cancel`);
@@ -499,6 +759,25 @@ export class EngineClient {
   }
   streamConversation(id: string, debugContext?: DebugCorrelationFields): Promise<Response> {
     return this.stream(`/v1/conversations/${id}/stream`, undefined, debugContext);
+  }
+  // Per-tool execution-mode overrides (Bug RR). Empty `{policies}`
+  // GETs the current map; PUT merges the supplied entries (a `null`
+  // value clears that tool's override).
+  getConversationToolPolicies(id: string): Promise<{
+    policies: Record<string, "no_confirm" | "confirm_before_execution" | "confirm_after_execution">;
+  }> {
+    return this.request("GET", `/v1/conversations/${id}/tool-policies`);
+  }
+  setConversationToolPolicies(
+    id: string,
+    policies: Record<
+      string,
+      "no_confirm" | "confirm_before_execution" | "confirm_after_execution" | null
+    >,
+  ): Promise<{
+    policies: Record<string, "no_confirm" | "confirm_before_execution" | "confirm_after_execution">;
+  }> {
+    return this.request("PUT", `/v1/conversations/${id}/tool-policies`, { policies });
   }
 
   // --------------------------- Skills ---------------------------

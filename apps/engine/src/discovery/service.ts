@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { discoveryArtifacts, discoveryFiles, discoveryRuns } from "../db/schema/discovery.ts";
 import { detectFormat, parseFileToChunks } from "../knowledge/parsers.ts";
@@ -157,7 +158,7 @@ export async function createDiscoveryRun(
       })
       .returning();
 
-    if (!run) throw new Error("discovery_runs insert returned no row");
+    assertInsertRow(run, "discovery_runs");
 
     // Insert all pre-parsed files in a clean transaction
     for (const pf of parsedFiles) {

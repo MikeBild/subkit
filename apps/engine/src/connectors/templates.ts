@@ -13,6 +13,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { HttpError } from "../http/errors.ts";
+import templateSkillsJson from "./template-skills.json" with { type: "json" };
 import builtinJson from "./templates.json" with { type: "json" };
 
 export const TemplateAuthTypeEnum = z.enum([
@@ -22,6 +23,7 @@ export const TemplateAuthTypeEnum = z.enum([
   "bearer",
   "basic",
   "oauth2",
+  "aws_sigv4",
 ]);
 
 export const TemplateIngestionSourceEnum = z.enum([
@@ -44,7 +46,14 @@ export type TokenAuthMethod = z.infer<typeof TokenAuthMethodEnum>;
 export const TokenContentTypeEnum = z.enum(["form", "json"]);
 export type TokenContentType = z.infer<typeof TokenContentTypeEnum>;
 
-export const OAuth2GrantTypeEnum = z.enum(["authorization_code", "client_credentials"]);
+export const OAuth2GrantTypeEnum = z.enum([
+  "authorization_code",
+  "client_credentials",
+  "password",
+  "cognito_user_password",
+  "jwt_bearer",
+  "device_code",
+]);
 export type OAuth2GrantType = z.infer<typeof OAuth2GrantTypeEnum>;
 
 export const PaginationStrategyEnum = z.enum(["offset", "page", "cursor", "none"]);
@@ -64,7 +73,13 @@ export const ProbeEndpointSchema = z
     // Appended to base_url. Empty string means "probe base_url itself"
     // (useful for GraphQL endpoints where base_url already points at /graphql).
     path: z.string(),
-    expected_status: z.tuple([z.number().int().positive(), z.number().int().positive()]),
+    /** Inclusive [min, max] HTTP status range that counts as "probe
+     *  succeeded". Optional — when omitted, the probe accepts any 2xx.
+     *  Pre-fix this was required, which broke any template author
+     *  that legitimately wanted "2xx is fine, no need to be more
+     *  specific" — including all four AWS / GCP templates added
+     *  alongside the auth-flows feature. */
+    expected_status: z.tuple([z.number().int().positive(), z.number().int().positive()]).optional(),
     description: z.string().default(""),
   })
   .openapi("ConnectorTemplateProbeEndpoint");
@@ -171,11 +186,17 @@ export const ConnectorTemplateSchema = z
       "smb",
       "redis",
     ]),
-    base_url: z.string(),
+    /** Operator-supplied or template-default base URL. Nullable for
+     *  templates whose endpoint is per-tenant / per-region (e.g.
+     *  AppSync, API Gateway, GCP service-account-driven APIs). The
+     *  draft authoring flow asks the operator for the URL up front. */
+    base_url: z.string().nullable(),
     auth_type: TemplateAuthTypeEnum,
     oauth: TemplateOAuthSchema.nullable(),
     default_skill: z.string().nullable(),
-    ingestion_source: TemplateIngestionSourceEnum,
+    /** Ingestion strategy hint. Nullable for templates that don't
+     *  expose a discoverable spec (AWS IAM-signed services). */
+    ingestion_source: TemplateIngestionSourceEnum.nullable(),
     ingestion_url: z.string().nullable(),
     icon: z.string(),
     description: z.string(),
@@ -184,7 +205,10 @@ export const ConnectorTemplateSchema = z
     aliases: z.array(z.string()).default([]),
     setup_instructions: z.string().min(1),
     auth_options: z.array(TemplateAuthOptionSchema).default([]),
-    url_pattern: z.string().min(1),
+    /** Regex matched against connector base URLs to disambiguate
+     *  templates. Nullable when the template can't predict the URL
+     *  (per-tenant AppSync IDs, GCP-style API hosts). */
+    url_pattern: z.string().min(1).nullable(),
     keywords: z.array(z.string()).default([]),
     inline_schema: InlineSchemaSchema.nullable(),
     probe_endpoint: ProbeEndpointSchema.nullable(),
@@ -192,6 +216,26 @@ export const ConnectorTemplateSchema = z
     base_url_options: z.array(BaseUrlOptionSchema).default([]),
     pagination_defaults: PaginationDefaultsSchema.nullable(),
     capabilities: CapabilitiesSchema,
+    /**
+     * Optional list of canonical request paths surfaced to the LLM
+     * authoring agent so it does not have to guess `/v2` prefixes.
+     * Each entry is a path *relative to* `base_url` (i.e. paths must NOT
+     * include the segment already baked into `base_url`). The propose-step
+     * tool surfaces these in its response so the next round-trip carries
+     * the hint. Pre-fix the LLM in session f00b8d1c repeatedly authored
+     * `/v2/projects` against a connector whose base_url already ended in
+     * `/v2`, producing recurring `https://…/v2/v2/projects` 404s.
+     */
+    example_paths: z.array(z.string()).default([]),
+    /**
+     * Optional one-line operator hint propagated to every connector
+     * created from this template. Surfaces to the LLM whenever the
+     * connector is in scope (per CreateConnectorSchema.operator_notes)
+     * and is the right place for endpoint-specific quirks the model
+     * cannot infer from the OpenAPI spec — e.g. mutually-exclusive
+     * GitHub list-repos parameters that return HTTP 422 when combined.
+     */
+    operator_notes: z.string().max(4_000).nullable().default(null),
   })
   .superRefine((t, ctx) => {
     // Consistency gate: a template that offers BOTH a primary non-oauth auth
@@ -208,16 +252,19 @@ export const ConnectorTemplateSchema = z
           `array enumerating the primary + oauth2 paths, or remove the oauth block.`,
       });
     }
-    // url_pattern must compile to a valid RegExp. Invalid patterns would
-    // otherwise surface only at the first `matchTemplateByUrl` call.
-    try {
-      new RegExp(t.url_pattern);
-    } catch (e) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["url_pattern"],
-        message: `template "${t.slug}" has invalid url_pattern: ${String(e)}`,
-      });
+    // url_pattern must compile to a valid RegExp when present. Templates
+    // without a stable URL pattern (per-tenant AppSync IDs, GCP service
+    // accounts) leave it null and skip the URL-match path.
+    if (t.url_pattern !== null) {
+      try {
+        new RegExp(t.url_pattern);
+      } catch (e) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["url_pattern"],
+          message: `template "${t.slug}" has invalid url_pattern: ${String(e)}`,
+        });
+      }
     }
     // credential_hints.field must be unique per template.
     const fields = t.credential_hints.map((h) => h.field);
@@ -252,7 +299,11 @@ export type ConnectorTemplate = z.infer<typeof ConnectorTemplateSchema>;
 
 export interface CompiledTemplate {
   template: ConnectorTemplate;
-  urlRe: RegExp;
+  /** `null` when the template has no `url_pattern` (per-tenant URL
+   *  templates like AppSync / GCP). Such templates are unreachable
+   *  via `matchTemplateByUrl` — they're surfaced to the LLM via slug
+   *  lookup instead. */
+  urlRe: RegExp | null;
   specificity: number;
 }
 
@@ -279,6 +330,11 @@ let compiledCache: CompiledTemplate[] | null = null;
  * parses + freezes the array; subsequent calls re-use the cached copy. Throws
  * a typed `Error` if any entry fails the schema — this is intentional: we
  * want a malformed edit to break startup, not silently ship a broken catalog.
+ *
+ * Also enforces template ↔ skill cross-reference integrity: every template's
+ * non-null `default_skill` must resolve to an entry in `template-skills.json`.
+ * Stale renames break startup instead of silently failing to seed the skill
+ * when a connector is later created from the template.
  */
 export function loadBuiltinTemplates(): ConnectorTemplate[] {
   if (cached) return cached;
@@ -292,8 +348,24 @@ export function loadBuiltinTemplates(): ConnectorTemplate[] {
       `templates.json must contain at least 10 templates, found ${parsed.data.length}`,
     );
   }
+  validateTemplateSkillReferences(parsed.data);
   cached = Object.freeze([...parsed.data]) as ConnectorTemplate[];
   return cached;
+}
+
+function validateTemplateSkillReferences(templates: ConnectorTemplate[]): void {
+  const knownSkills = new Set(Object.keys(templateSkillsJson as Record<string, unknown>));
+  const orphans: string[] = [];
+  for (const t of templates) {
+    if (t.default_skill && !knownSkills.has(t.default_skill)) {
+      orphans.push(`${t.slug} -> ${t.default_skill}`);
+    }
+  }
+  if (orphans.length > 0) {
+    throw new Error(
+      `templates.json references missing skills in template-skills.json: ${orphans.join(", ")}`,
+    );
+  }
 }
 
 /**
@@ -306,8 +378,8 @@ export function loadCompiledTemplates(): CompiledTemplate[] {
   compiledCache = Object.freeze(
     templates.map((template) => ({
       template,
-      urlRe: new RegExp(template.url_pattern),
-      specificity: computeSpecificity(template.url_pattern),
+      urlRe: template.url_pattern ? new RegExp(template.url_pattern) : null,
+      specificity: template.url_pattern ? computeSpecificity(template.url_pattern) : 0,
     })),
   ) as CompiledTemplate[];
   return compiledCache;

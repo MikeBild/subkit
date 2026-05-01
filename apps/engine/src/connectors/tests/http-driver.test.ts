@@ -8,8 +8,9 @@ import {
   jsonResponse,
   type MockServer,
 } from "../../execution/tests/setup.ts";
-import { buildRequestPlan } from "../drivers/http.ts";
+import { applyAuthMaterial, buildRequestPlan, parseResponseBody } from "../drivers/http.ts";
 import { createConnector, getConnector } from "../service.ts";
+import type { ConnectorView } from "../types.ts";
 
 let ctx: EngineTestCtx;
 let mock: MockServer;
@@ -81,6 +82,55 @@ describe("http driver auth application", () => {
     expect(res.status).toBe(200);
     expect(lastRequest?.headers.authorization).toBe("Bearer bearer-xyz");
     expect(lastRequest?.url).toBe("/ping");
+  });
+
+  test("step-level Authorization header wins over the connector's bearer credential", async () => {
+    // Reproduces the regression in session 8de01f2f. The LLM minted
+    // a Cognito IdToken in step N and tried to forward it as
+    // `headers: { Authorization: "<id_token>" }` to step N+1. Pre-fix
+    // `applyAuthMaterial` unconditionally clobbered the explicit
+    // header with the connector's bearer credential. The LLM had to
+    // work around by switching `auth_type` to `none`.
+    const conn = await makeConnector({ auth_type: "bearer" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: conn.id,
+        environment: "dev",
+        mode: "bearer",
+        value: { mode: "bearer", token: "stale-token" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const fresh = await getConnector(ctx.tenantId, conn.id, ctx.testDb.db);
+    const plan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: fresh!,
+      path_or_url: "/ping",
+      headers: { Authorization: "eyJraWQiOiJ.id-token-from-prior-step" },
+    });
+    expect(plan.headers.Authorization).toBe("eyJraWQiOiJ.id-token-from-prior-step");
+    expect(plan.headers.Authorization).not.toContain("Bearer stale-token");
+  });
+
+  test("parseResponseBody parses application/x-amz-json-1.1 (AWS Cognito IDP)", () => {
+    const cognito = `{"AuthenticationResult":{"IdToken":"eyJ…","AccessToken":"eyJ…","ExpiresIn":3600}}`;
+    const parsed = parseResponseBody(cognito, "application/x-amz-json-1.1");
+    expect(typeof parsed).toBe("object");
+    expect(
+      (parsed as { AuthenticationResult: { IdToken: string } }).AuthenticationResult.IdToken,
+    ).toBe("eyJ…");
+  });
+
+  test("parseResponseBody parses any +json subtype (JSON:API, HAL, JSON-LD)", () => {
+    const body = `{"data":{"id":"1"}}`;
+    expect(parseResponseBody(body, "application/vnd.api+json")).toEqual({ data: { id: "1" } });
+    expect(parseResponseBody(body, "application/hal+json")).toEqual({ data: { id: "1" } });
+    expect(parseResponseBody(body, "application/ld+json; charset=utf-8")).toEqual({
+      data: { id: "1" },
+    });
   });
 
   test("header credential is applied as raw request headers", async () => {
@@ -250,5 +300,137 @@ describe("http driver auth application", () => {
       path_or_url: "/ba",
     });
     expect(basicPlan.auth_method).toBe("basic");
+  });
+});
+
+describe("applyAuthMaterial — oauth2 token_type handling", () => {
+  // Pure-function tests on applyAuthMaterial (no DB) — exercise every
+  // permutation of the `token_type` field that ships from real IdPs.
+  function makeOauth2Connector(): ConnectorView {
+    return {
+      id: "00000000-0000-0000-0000-000000000099",
+      tenant_id: "tenant-test",
+      slug: "test-oauth2",
+      driver: "http",
+      environment: "dev",
+      auth_type: "oauth2",
+      base_url: "https://api.example.test",
+      config: {},
+      template_slug: null,
+      template_snapshot: null,
+    } as unknown as ConnectorView;
+  }
+
+  test("token_type='Bearer' produces standard Bearer prefix", () => {
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "tok-1",
+        token_type: "Bearer",
+        refresh_token: null,
+        expires_at: null,
+      },
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("Bearer tok-1");
+  });
+
+  test("token_type=null defaults to no prefix (raw token)", () => {
+    // Pre-fix this defaulted to "Bearer ", which broke AppSync Cognito.
+    // The new contract: missing/empty/none token_type → raw token.
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "eyJraWQiOiJ.abc",
+        token_type: null,
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("eyJraWQiOiJ.abc");
+  });
+
+  test("token_type='' (empty string from IdP) emits raw token, not leading-space", () => {
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "raw-jwt",
+        token_type: "",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("raw-jwt");
+    expect(headers.Authorization?.startsWith(" ")).toBe(false);
+  });
+
+  test("token_type='none' (explicit opt-out) emits raw token", () => {
+    // AppSync Cognito User-Pool flow — operator stores credential with
+    // token_type: "none" so the driver knows to skip the scheme prefix.
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "id-token-here",
+        token_type: "none",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("id-token-here");
+  });
+
+  test("token_type='no_prefix' alias also emits raw token", () => {
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "another-jwt",
+        token_type: "no_prefix",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("another-jwt");
+  });
+
+  test("custom scheme (e.g. 'Token' for GitLab PAT) is preserved", () => {
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "glpat-xyz",
+        token_type: "Token",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("Token glpat-xyz");
   });
 });

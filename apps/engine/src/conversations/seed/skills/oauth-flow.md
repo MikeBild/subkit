@@ -60,3 +60,33 @@ When the template does not pre-fill `client_id` / `client_secret`:
 - **Never** ask the user to name the credential. The credential is keyed on `(tenant_id, connector_id, environment)` and is not user-named.
 - If `authenticate_oauth` returns `oauth_not_configured`, either the connector lacks OAuth metadata (missing template) or the credential mode wasn't set to `"oauth2"` at save time. Re-issue `save_connector_draft({ credential: { mode: "oauth2", ... } })` with the missing fields.
 - After a successful callback, the user can re-run `probe_connector_draft` (or `probe_connector` against the saved connector) to verify the new credential works.
+
+## Example: authenticate_oauth response
+
+The tool returns the authorization URL plus an opaque `state` token the
+engine uses to correlate the callback. The user opens the URL in their
+browser; the engine handles the rest.
+
+```json
+{
+  "authorization_url": "https://slack.com/oauth/v2/authorize?client_id=4815162342&redirect_uri=https%3A%2F%2Fengine.example%2Fv1%2Fconnectors%2Fa%2Foauth%2Fcallback&scope=chat%3Awrite&state=opaque-state-token",
+  "state": "opaque-state-token",
+  "expires_at": "2026-04-29T12:34:56Z"
+}
+```
+
+After the user completes the browser flow, a probe should succeed. Use the
+step shape below to reference the credential the engine just stored — the
+driver injects the access token automatically once `auth_type: oauth2` is
+on the connector.
+
+```json
+{
+  "id": "post_message",
+  "kind": "request",
+  "method": "POST",
+  "connector_id": "<slack_connector_id>",
+  "path": "/api/chat.postMessage",
+  "body": { "channel": "#alerts", "text": "OAuth wiring verified." }
+}
+```

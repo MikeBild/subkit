@@ -18,7 +18,7 @@
 // it's an invariant bug; otherwise it returns a structured
 // { errors, warnings, infos } tuple.
 
-import jsonata from "jsonata";
+import { compile as compileJsonata } from "../execution/jsonata-engine.ts";
 
 export type VerifierSeverity = "error" | "warning" | "info";
 
@@ -63,7 +63,7 @@ function addFinding(report: VerifierReport, finding: VerifierFinding): void {
 
 function tryJsonata(expression: string, path: string, report: VerifierReport): void {
   try {
-    jsonata(expression);
+    compileJsonata(expression);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     addFinding(report, {

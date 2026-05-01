@@ -13,6 +13,7 @@
 // at a glance what the payload looked like without resolving it.
 
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import { executionFixtures } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
@@ -134,7 +135,7 @@ export async function maybeOffload(db: Db, params: MaybeOffloadParams): Promise<
       byte_size: size,
     })
     .returning({ id: executionFixtures.id });
-  if (!row) throw new Error("offload insert returned no row");
+  assertInsertRow(row, "offload");
   return {
     storage_uri: `fixture://${row.id}`,
     preview: serialized.slice(0, STEP_RESULT_PREVIEW_BYTES),

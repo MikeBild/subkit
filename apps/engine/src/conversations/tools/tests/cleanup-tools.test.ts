@@ -124,20 +124,21 @@ describe("cleanup write conversation tools", () => {
     expect(await countAudit("conversation.delete_workflow", workflow.id)).toBe(1);
   });
 
-  test("delete_workflow denies a member and records policy.denied", async () => {
-    const workflow = await seedWorkflow("Protected Workflow", "protected-workflow");
+  test("delete_workflow now allowed for a member (members own the lifecycle of their workflows)", async () => {
+    // Pre-fix this test pinned `permission_denied:workflow:delete`
+    // for the member role. Session 0aed284f showed that was the
+    // actual product bug — operators couldn't delete the workflows
+    // they had just created. The member role now has
+    // `workflow:delete` and the test inverts: a member SHOULD be
+    // able to delete a workflow they have access to.
+    const workflow = await seedWorkflow("Member-Owned Workflow", "member-owned-workflow");
     const result = await deleteWorkflowTool.execute(makeToolContext(memberUserId), {
       id: workflow.id,
     });
-    expect(result.ok).toBe(false);
-    expect(result.data).toMatchObject({
-      error: "permission_denied",
-      permission: "workflow:delete",
-    });
-    const stillThere = await makeToolContext().engineClient.workflows.get(workflow.id);
-    expect(stillThere?.id).toBe(workflow.id);
-    expect(await countAudit("policy.denied", workflow.id)).toBe(1);
-    expect(await countAudit("workflow.deleted", workflow.id)).toBe(0);
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({ deleted: true });
+    expect(await countAudit("workflow.deleted", workflow.id)).toBe(1);
+    expect(await countAudit("conversation.delete_workflow", workflow.id)).toBe(1);
   });
 
   test("delete_connector soft-deletes the seeded connector", async () => {

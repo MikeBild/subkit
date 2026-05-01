@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { probeConnector } from "../drivers/index.ts";
-import { closeAllPools, pgQuery, probePgConnector } from "../drivers/postgres.ts";
+import { closeAllPools, pgQueryWithCount, probePgConnector } from "../drivers/postgres.ts";
 import { createConnector, getConnector } from "../service.ts";
 
 let ctx: TestDb;
@@ -54,10 +54,11 @@ describe("pg driver", () => {
     expect(dispatched.ok).toBe(true);
 
     // run an arbitrary query
-    const rows = await pgQuery<{ n: number }>({
+    const res = await pgQueryWithCount<{ n: number }>({
       connector: conn!,
       sql: "SELECT 1 as n",
     });
-    expect(rows[0]?.n).toBe(1);
+    expect(res.rows[0]?.n).toBe(1);
+    expect(res.row_count).toBe(1);
   });
 });

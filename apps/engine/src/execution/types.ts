@@ -52,7 +52,39 @@ export interface StepRunContext extends ExecutionContext {
   step_row_id: string;
 }
 
-export type StepWarningCode = "unresolved_identifier" | "loop_body_empty";
+export type StepWarningCode =
+  | "unresolved_identifier"
+  | "loop_body_empty"
+  // Emitted by runTransformStep when a transform produces empty/null
+  // result but upstream scope had non-empty data. Catches the silent
+  // failure mode where a JSONata projection over loop output extracts
+  // nothing because the path is wrong. The commit gate refuses
+  // unacknowledged warnings of this code without force_commit.
+  | "transform_empty_extraction"
+  // Emitted by runTransformStep when a transform that maps over a
+  // non-empty array produces an array of objects whose keys are a
+  // STRICT SUBSET of the source iteration's keys — a strong signal
+  // the projection silently dropped fields. Pre-fix this caused the
+  // session 3f6082d2 failure: format_output mapped over a loop output
+  // with body keys (extract, fetch_resources) and emitted
+  // [{project_id, project_name}] only — the resources field was
+  // silently dropped. The commit gate refuses unacknowledged warnings
+  // without force_commit.
+  | "transform_dropped_fields"
+  // Emitted by the loop driver when its `over` expression evaluates
+  // to a non-array (undefined, null, scalar, plain object). Pre-fix
+  // the loop silently returned [] and the LLM authored 9× variants
+  // of the same broken `over` path (session 86de186b). The warning
+  // names the resolved type + the scope keys so the LLM can fix the
+  // path on the next attempt.
+  | "loop_over_unresolved"
+  // Emitted by the branch driver when its `when` predicate resolved
+  // to undefined AND the expression named a `$scope.X` step id that
+  // doesn't exist in scope. Without this signal, branch silently
+  // picks "else" every run and the LLM never sees a typo. Carries
+  // `did_you_mean` candidates so the next retry can fix the
+  // reference.
+  | "branch_when_unresolved";
 
 export interface StepWarning {
   code: StepWarningCode;
@@ -67,13 +99,182 @@ export interface StepWarning {
   details?: Record<string, unknown>;
 }
 
+/**
+ * Driver-discriminated request metadata. Every dispatch branch in
+ * `request.ts` produces exactly one variant; consumers (drift
+ * detector, dry-run trace, observability) MUST switch on `.driver` to
+ * narrow.
+ *
+ * Driver-keyed variants (`http` / `graphql` / `postgres` / `s3`)
+ * carry a NON-optional `connector` whenever the step routed through
+ * a connector. The `connectorless` variant is the fall-through for
+ * steps that ran on a raw `url` (no connector_id) and the `error`
+ * variant is the fall-through for failures upstream of dispatch
+ * (placeholder unresolved, hook errors).
+ */
+/**
+ * Audit-safe digest of the request's headers + query (key names only,
+ * never values). Surfaced inline so consumers don't have to dig into
+ * an opaque bag.
+ */
+export interface RequestDigest {
+  /** Lowercase header names, sorted, deduped. Values never logged. */
+  header_keys: string[];
+  /** Query parameter names, sorted, deduped. Values never logged. */
+  query_keys: string[];
+  /** Coarse classification of the body for diagnostics — `"none"`,
+   *  `"array"`, `"object"`, `"string"`, etc. */
+  body_kind: string;
+}
+
+/**
+ * Persisted resume state for a paginated HTTP request. Promoted to a
+ * typed field on the http variant so the recovery path can find it
+ * without inspecting an opaque `extras` bag.
+ */
+export interface PaginationCheckpoint {
+  /** Logical page index that has been fully consumed. Resume picks
+   *  up at `page_idx + 1`. */
+  page_idx: number;
+  /** Total items accumulated across already-consumed pages. */
+  accumulated_count: number;
+  /** Hash of `{base_url, path_or_url, query}` so a future resume
+   *  rejects when the workflow mutated. */
+  signature: string;
+}
+
+/**
+ * Driver-discriminated request metadata. Every dispatch branch in
+ * `request.ts` emits one variant; consumers narrow on `.driver`.
+ *
+ * The `extras` slot remains for genuinely free-form diagnostic fields
+ * (driver-specific telemetry the OpenAPI surface doesn't formally
+ * publish). Canonical fields — header_keys digest, pagination state,
+ * page count — are first-class on the variants that need them.
+ */
+export type RequestMeta =
+  | {
+      driver: "http";
+      method: string;
+      url: string | null;
+      status?: number;
+      bytes_in?: number;
+      tunnel_target?: string | null;
+      idempotency_key?: string;
+      connector: ConnectorResolutionSummary;
+      unresolved_placeholders?: string[];
+      /** Audit-safe digest of headers + query + body kind. */
+      digest?: RequestDigest;
+      /** Number of pages walked during pagination. Absent on
+       *  non-paginated requests. */
+      pages_fetched?: number;
+      /** Logical page resumed-from when a checkpoint was honored. */
+      resumed_from_page?: number;
+      /** Item count carried over from the resume checkpoint. */
+      resumed_accumulated_count?: number;
+      /** Resume cursor persisted alongside this run for crash
+       *  recovery. */
+      pagination_checkpoint?: PaginationCheckpoint;
+      extras?: Record<string, unknown>;
+    }
+  | {
+      driver: "graphql";
+      method: string;
+      status: number;
+      connector: ConnectorResolutionSummary;
+      extras?: Record<string, unknown>;
+    }
+  | {
+      driver: "postgres";
+      query_preview: string;
+      row_count: number | null;
+      transaction: boolean;
+      cursor: boolean;
+      connector: ConnectorResolutionSummary;
+      /** Per-statement row counts (only set on transactional paths). */
+      row_count_per_statement?: Array<number | null>;
+      extras?: Record<string, unknown>;
+    }
+  | {
+      driver: "s3";
+      method: string;
+      status: number;
+      key?: string;
+      prefix?: string;
+      connector: ConnectorResolutionSummary;
+      extras?: Record<string, unknown>;
+    }
+  | {
+      // Raw `url`-driven HTTP request (no connector_id). Same fields
+      // as the `http` variant minus the connector resolution.
+      driver: "connectorless";
+      method: string;
+      url: string | null;
+      status?: number;
+      bytes_in?: number;
+      idempotency_key?: string;
+      unresolved_placeholders?: string[];
+      digest?: RequestDigest;
+      pages_fetched?: number;
+      resumed_from_page?: number;
+      resumed_accumulated_count?: number;
+      pagination_checkpoint?: PaginationCheckpoint;
+      extras?: Record<string, unknown>;
+    }
+  | {
+      // Pre-dispatch failures (placeholder unresolved, hook errors,
+      // schema rejections). Carries the same audit-safe digest the
+      // HTTP path produces so operators can trace step intent on
+      // failures upstream of the wire call.
+      driver: "error";
+      method?: string;
+      url?: string | null;
+      unresolved_placeholders?: string[];
+      digest?: RequestDigest;
+      extras?: Record<string, unknown>;
+    };
+
+/**
+ * Structured upstream-failure detail surfaced on `StepResult.error`.
+ *
+ * Pre-fix the engine collapsed every driver failure to `{ code, message }`,
+ * losing the response body, the resolved post-substitution URL, and the
+ * resolved-placeholder snapshot. The LLM author saw `http 404` or
+ * `[object Object]` in chat and could not tell whether the path was wrong,
+ * the credential expired, or a placeholder failed to substitute. These
+ * fields are populated by the request / graphql / postgres / s3 drivers
+ * on failure and surface verbatim in `RunResult.steps[].error` and the
+ * dry-run output the LLM consumes.
+ *
+ * Privacy: credential placeholders are replaced with `***` previews;
+ * cookie / authorization / x-api-key headers are dropped from
+ * `response_headers` before persistence.
+ */
+export interface StepErrorDetail {
+  code: string;
+  message: string;
+  details?: unknown;
+  /** Final URL after `${...}` substitution. Absent for non-HTTP drivers. */
+  resolved_url?: string;
+  /** Resolved placeholder snapshot. `preview` is `***` for `cred.*`. */
+  resolved_placeholders?: Array<{ name: string; preview: string }>;
+  /** Upstream HTTP status when the failure had a response. */
+  upstream_status?: number;
+  /** First 4 KB of the upstream response body, string-encoded. */
+  response_body_excerpt?: string;
+  /** Safe subset of upstream response headers (auth-bearing names dropped). */
+  response_headers?: Record<string, string>;
+}
+
 export interface StepResult {
   status: "succeeded" | "failed" | "aborted" | "timed_out";
   output?: unknown;
-  error?: { code: string; message: string; details?: unknown } | null;
+  error?: StepErrorDetail | null;
   retry_count: number;
   duration_ms: number;
-  request_meta?: Record<string, unknown> | null;
+  /** Driver-discriminated metadata. See RequestMeta. Strict union —
+   *  switch on `.driver` to narrow. */
+  request_meta?: RequestMeta | null;
   /** Non-fatal diagnostics that flow to `execution_steps.output_preview`
    *  and bubble onto the final `RunResult.warnings` for the executor
    *  that kicked the run off (MCP, CLI, HTTP). */
@@ -120,7 +321,8 @@ export type AppliedAuthMethod =
   | "query"
   | "basic"
   | "oauth2_static"
-  | "oauth2_refreshed";
+  | "oauth2_refreshed"
+  | "aws_sigv4";
 
 /** Per-connector rollup in `RunResult.connector_resolutions`. One entry per
  *  unique (step_key, connector_id) pair — lets debuggers see at a glance
@@ -150,7 +352,24 @@ export interface RunResult {
     duration_ms: number | null;
     retry_count: number;
     error: unknown;
-    request_meta?: Record<string, unknown> | null;
+    request_meta?: RequestMeta | null;
+    /**
+     * Truncated preview of the step's output. Populated by the
+     * execution engine for every step (the same value persisted to
+     * `execution_steps.output_preview`). Surfaces on dry_run_workflow
+     * responses so the LLM can author downstream transforms against
+     * REAL scope shapes — closes the blind-authoring gap that drove
+     * session 3f6082d2's silent format_output failures.
+     */
+    output_preview?: unknown;
+    /**
+     * Pre-data_selector raw envelope. Only present when the step had
+     * a `data_selector` and the resulting `output_preview` is the
+     * post-selector slice. Lets the LLM see what the selector
+     * dropped (so it can fix the path or remove the selector)
+     * without re-running. Truncated identically to `output_preview`.
+     */
+    raw_preview?: unknown;
   }>;
   /** One entry per unique connector used in this run. Deduped per
    *  connector_id, first occurrence wins. Absent when no request/graphql

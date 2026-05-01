@@ -153,6 +153,13 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.engine
+      args:
+        # Pass-through from the host so the compiled binary stamps the
+        # right version into /v1/health. Defaults to 0.0.0-dev when the
+        # caller did not export ENGINE_VERSION; the engine-rebuild
+        # script reads package.json and exports it before `docker
+        # compose build`.
+        ENGINE_VERSION: ${ENGINE_VERSION:-0.0.0-dev}
     image: subkit/engine:local
     restart: unless-stopped
     networks: [subkit]
@@ -167,6 +174,10 @@ services:
     environment:
       PORT: "3000"
       TUNNEL_PORT: "3001"
+      # Mirror the build-arg into runtime env so the binary's
+      # `process.env.ENGINE_VERSION` lookup wins over the bundled
+      # fallback. Stays in sync with the build-arg above.
+      ENGINE_VERSION: ${ENGINE_VERSION:-0.0.0-dev}
       DATABASE_URL: postgres://${POSTGRES_USER:-subkit}:${POSTGRES_PASSWORD:-subkit}@postgres:5432/${POSTGRES_DB:-subkit}
       MASTER_KEY: ${MASTER_KEY:?MASTER_KEY is required — set it in .env (openssl rand -hex 32)}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}

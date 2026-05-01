@@ -9,7 +9,6 @@
 // languages — JSONata races against an abort signal; JavaScript races
 // against the QuickJS wall-clock budget plus the same abort signal.
 
-import jsonata from "jsonata";
 import { logger } from "../../logging/logger.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import {
@@ -17,10 +16,14 @@ import {
   SandboxMemoryError,
   SandboxTimeoutError,
 } from "../../sandboxes/quickjs/types.ts";
+import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { TransformStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
+import { buildJsonataBindings } from "../jsonata-bindings.ts";
+import { compile as compileJsonata, extractAst } from "../jsonata-engine.ts";
 import { TRANSFORM_TIMEOUT_DEFAULT_MS } from "../timeouts.ts";
 import type { StepResult, StepRunContext, StepWarning } from "../types.ts";
+import { buildStepErrorDetail } from "./error-detail.ts";
 
 export interface RunTransformParams {
   ctx: StepRunContext;
@@ -282,13 +285,8 @@ function detectUnresolvedIdentifiers(
   scope: Record<string, unknown>,
   bindings: Record<string, unknown>,
 ): StepWarning[] {
-  let ast: AstNode;
-  try {
-    // biome-ignore lint/suspicious/noExplicitAny: jsonata's .ast() is untyped.
-    ast = (jsonata(expression) as any).ast() as AstNode;
-  } catch {
-    return [];
-  }
+  const ast = extractAst(expression) as AstNode | null;
+  if (!ast) return [];
   const known = new Set<string>();
   for (const k of Object.keys(scope)) known.add(k);
   for (const k of Object.keys(bindings)) known.add(`$${k}`);
@@ -368,7 +366,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
         duration_ms: Date.now() - start,
       };
     }
-    const expr = jsonata(p.step.expression);
+    const expr = compileJsonata(p.step.expression);
     // Bindings available inside the expression:
     //   $input     — the execution input (same object the workflow was
     //                invoked with).
@@ -384,17 +382,8 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
     //                is unpacked. Plain (non-`$`) keys remain
     //                addressable as bare path expressions against the
     //                root context object.
-    const bindings: Record<string, unknown> = {
-      input: p.input,
-      scope: p.scope,
-      steps: p.scope,
-    };
-    for (const [k, v] of Object.entries(p.scope)) {
-      if (k.startsWith("$") && k.length > 1) {
-        bindings[k.slice(1)] = v;
-      }
-    }
-    const warnings = detectUnresolvedIdentifiers(p.step.expression, p.scope, bindings);
+    const bindings = buildJsonataBindings(p.scope, p.input);
+    const parseTimeWarnings = detectUnresolvedIdentifiers(p.step.expression, p.scope, bindings);
     // race jsonata.evaluate against the abort signal
     const evalPromise = expr.evaluate(p.scope, bindings);
     const result = await Promise.race([
@@ -407,6 +396,157 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
         signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
       }),
     ]);
+    // Suppress parse-time `unresolved_identifier` warnings ONLY for
+    // the projection-iteration case where the LLM wrote a path like
+    // `fetch_projects.data.{ 'id': id, 'name': name }`. Inside that
+    // projection, `id`/`name` are implicit context-step paths against
+    // the iterator — valid at runtime, but the AST walker can't prove
+    // it statically. The signal that this case applied: the result is
+    // a non-empty array (the projection produced one record per
+    // iteration). Top-level object constructors like
+    // `{ "city": ..., "date": data.daily.time[1] }` (the "Berlin bug"
+    // shape) keep their warnings because a bare `data` there is a
+    // genuinely unresolved root identifier and the result happens to
+    // be an object, not an iteration array. The transform_empty_extraction
+    // detector below catches the dual case where the bare identifier
+    // DIDN'T resolve and the projection produced nothing.
+    const resultIsNonEmptyArray = Array.isArray(result) && (result as unknown[]).length > 0;
+    const warnings = resultIsNonEmptyArray
+      ? parseTimeWarnings.filter((w) => w.code !== "unresolved_identifier")
+      : [...parseTimeWarnings];
+    // Empty-extraction detector. Catches "JSONata produced []
+    // from a scope that contained data" — the silent failure mode
+    // observed in session a6440493 where the loop body succeeded with
+    // droplets but the post-loop projection extracted nothing because
+    // the path was wrong. This is heuristic (a legitimate filter that
+    // matches nothing also produces []) so we tag the warning as
+    // informational; the run_workflow lifecycle promotes it to
+    // requires_repair when paired with non-empty source data, which
+    // the commit gate then refuses without force_commit.
+    const isEmptyResult =
+      result === undefined ||
+      result === null ||
+      (Array.isArray(result) && (result as unknown[]).length === 0);
+    let scopeHadData = false;
+    if (isEmptyResult) {
+      for (const v of Object.values(p.scope)) {
+        const env = v as { data?: unknown } | null | undefined;
+        if (!env || typeof env !== "object") continue;
+        const data = env.data;
+        if (Array.isArray(data) && data.length > 0) {
+          scopeHadData = true;
+          break;
+        }
+        if (data && typeof data === "object" && Object.keys(data as object).length > 0) {
+          scopeHadData = true;
+          break;
+        }
+      }
+    }
+    if (isEmptyResult && scopeHadData) {
+      // did_you_mean post-processing — same shape as
+      // loop_over_unresolved / branch_when_unresolved. Walk the
+      // expression for $scope/$steps/${scope.X} refs, cross-check
+      // against the actual scope keys, and surface Levenshtein
+      // matches. Pre-fix the LLM had to guess from "available_scope_keys"
+      // alone; with did_you_mean it can copy the suggested step id
+      // directly into the next attempt.
+      const referenced = extractStepIdReferences(p.step.expression ?? "");
+      const scopeKeys = Object.keys(p.scope).filter((k) => !k.startsWith("$"));
+      const didYouMean: Array<{ from: string; to: string[] }> = [];
+      for (const ref of referenced) {
+        if (!scopeKeys.includes(ref)) {
+          const matches = suggestClosest(ref, scopeKeys, 3);
+          if (matches.length > 0) didYouMean.push({ from: ref, to: matches });
+        }
+      }
+      const dymHint =
+        didYouMean.length > 0
+          ? ` Did you mean ${didYouMean
+              .map((d) => `\`${d.to[0]}\` (closest match for \`${d.from}\`)`)
+              .join(", ")}? `
+          : "";
+      warnings.push({
+        code: "transform_empty_extraction" as const,
+        identifier: p.step.id,
+        message: `transform "${p.step.id}" produced an empty result, but upstream scope had non-empty data — the JSONata expression likely referenced the wrong path.${dymHint} Run dry_run_transform with the actual scope to inspect.`,
+        details: {
+          step_key: p.step.id,
+          available_scope_keys: Object.keys(p.scope),
+          ...(didYouMean.length > 0 ? { did_you_mean: didYouMean } : {}),
+        },
+      });
+    }
+    // Dropped-fields detector. When the transform produces an array of
+    // objects (a $map over loop output, the dominant aggregate
+    // pattern) AND there exists a non-empty source array in scope
+    // whose iteration objects carry MORE keys than the result
+    // objects, the projection silently dropped fields. Pre-fix this
+    // was exactly session 3f6082d2's symptom: format_output mapped
+    // over project_loop.data and emitted {project_id, project_name}
+    // only — the body step keys (extract, fetch_resources) were
+    // dropped. The LLM then wrote v2/v3 chasing the same bug because
+    // there was no signal pointing at the missing keys.
+    // Per-step opt-out for transforms whose authors have consciously
+    // acknowledged the projection. The detector's heuristics still fire
+    // by default — opt out via `silence_warnings: ["dropped_fields"]`
+    // when the omission is intentional (e.g. session f00b8d1c style
+    // derived projections that rename source keys wholesale).
+    const silenceWarnings = Array.isArray(
+      (p.step as { silence_warnings?: unknown }).silence_warnings,
+    )
+      ? ((p.step as { silence_warnings: unknown[] }).silence_warnings as unknown[])
+      : [];
+    const droppedFieldsSilenced = silenceWarnings.includes("dropped_fields");
+    if (
+      !droppedFieldsSilenced &&
+      Array.isArray(result) &&
+      (result as unknown[]).length > 0 &&
+      typeof (result as unknown[])[0] === "object" &&
+      (result as unknown[])[0] !== null &&
+      !Array.isArray((result as unknown[])[0])
+    ) {
+      const resultKeys = new Set(Object.keys((result as Array<Record<string, unknown>>)[0] ?? {}));
+      // Walk the scope for the most likely source array — any value
+      // whose `.data` is a non-empty array of objects whose first
+      // element has >= 2 keys (single-key arrays like [{ id }] are
+      // legit projections, not dropped-field cases).
+      for (const [scopeKey, value] of Object.entries(p.scope)) {
+        const env = value as { data?: unknown } | null | undefined;
+        if (!env || typeof env !== "object") continue;
+        const data = env.data;
+        if (!Array.isArray(data) || data.length === 0) continue;
+        const first = data[0] as Record<string, unknown> | null;
+        if (!first || typeof first !== "object" || Array.isArray(first)) continue;
+        const sourceKeys = new Set(Object.keys(first));
+        if (sourceKeys.size < 2) continue;
+        const droppedKeys: string[] = [];
+        for (const k of sourceKeys) {
+          if (!resultKeys.has(k)) droppedKeys.push(k);
+        }
+        // Heuristic threshold: only flag when more than half the
+        // source keys vanished. A projection that explicitly renames
+        // (e.g. id → project_id) legitimately drops the original
+        // names, but you typically rename a small subset. Wholesale
+        // dropping (here: 2/3 of body step keys gone) is the
+        // pathology.
+        if (droppedKeys.length >= 2 && droppedKeys.length >= sourceKeys.size / 2) {
+          warnings.push({
+            code: "transform_dropped_fields" as const,
+            identifier: p.step.id,
+            message: `transform "${p.step.id}" produced ${(result as unknown[]).length} objects with keys [${[...resultKeys].join(", ")}] but the source iteration "${scopeKey}.data[0]" had keys [${[...sourceKeys].join(", ")}] — the projection likely dropped fields. Use inspect_execution_step on the prior run to see the real source shape, then re-author. Suppress with \`silence_warnings: ["dropped_fields"]\` on the step when the omission is intentional.`,
+            details: {
+              step_key: p.step.id,
+              source_scope_key: scopeKey,
+              result_keys: [...resultKeys],
+              source_keys: [...sourceKeys],
+              dropped_keys: droppedKeys,
+            },
+          });
+          break;
+        }
+      }
+    }
     const out: StepResult = {
       status: "succeeded",
       output: result,
@@ -415,11 +555,18 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
     };
     if (warnings.length > 0) {
       out.warnings = warnings;
+      // Log the warning CODES, not the identifier. Pre-fix the
+      // identifier carried the step id (because `identifier` is
+      // populated as the offending step on parse-time warnings),
+      // so the log read like `warnings: ["format_output"]` instead
+      // of `warnings: ["transform_dropped_fields"]` — masking the
+      // actual diagnostic class.
       logger.info({
         module: "execution",
         action: "step.transform.warnings",
         step_id: p.step.id,
-        warnings: warnings.map((w) => w.identifier).filter(Boolean),
+        warnings: warnings.map((w) => w.code),
+        identifiers: warnings.map((w) => w.identifier).filter(Boolean),
       });
     }
     return out;
@@ -494,7 +641,7 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
       status: "failed",
       retry_count: 0,
       duration_ms,
-      error: { code: "transform_error", message },
+      error: buildStepErrorDetail({ code: "transform_error", err, message }),
     };
   } finally {
     clearTimeout(timer);

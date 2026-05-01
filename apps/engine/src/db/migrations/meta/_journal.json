@@ -15,6 +15,27 @@
       "when": 1777300000000,
       "tag": "0001_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777400000000,
+      "tag": "0002_connectors_partial_unique_slug",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777500000000,
+      "tag": "0003_workflow_versions_scope_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777600000000,
+      "tag": "0004_credential_mode_aws_sigv4",
+      "breakpoints": true
     }
   ]
 }

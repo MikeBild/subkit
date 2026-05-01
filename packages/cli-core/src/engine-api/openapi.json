@@ -911,6 +911,10 @@
           "name": {
             "type": "string"
           },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
           "lifecycle": {
             "type": "string"
           },
@@ -933,6 +937,47 @@
             "items": {
               "nullable": true
             }
+          },
+          "input_schema": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "output_transform": {
+            "type": "string",
+            "nullable": true
+          },
+          "output_transform_function": {
+            "type": "string",
+            "nullable": true
+          },
+          "response_filters": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "nullable": true
+            }
+          },
+          "validation_expression": {
+            "type": "string",
+            "nullable": true
+          },
+          "validation_function": {
+            "type": "string",
+            "nullable": true
+          },
+          "timeout_ms": {
+            "type": "number",
+            "nullable": true
           }
         },
         "required": [
@@ -940,12 +985,21 @@
           "tenant_id",
           "slug",
           "name",
+          "description",
           "lifecycle",
           "current_version_id",
           "current_version",
           "created_at",
           "updated_at",
-          "steps"
+          "steps",
+          "input_schema",
+          "output_schema",
+          "output_transform",
+          "output_transform_function",
+          "response_filters",
+          "validation_expression",
+          "validation_function",
+          "timeout_ms"
         ]
       },
       "CreateWorkflowBody": {
@@ -1064,6 +1118,30 @@
           "steps"
         ]
       },
+      "WorkflowInputSchemaResponse": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "declared",
+              "synthesized",
+              "none"
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "source",
+          "schema"
+        ]
+      },
       "WorkflowVersionListResponse": {
         "type": "object",
         "properties": {
@@ -1174,11 +1252,7 @@
             "nullable": true
           },
           "request_meta": {
-            "type": "object",
-            "nullable": true,
-            "additionalProperties": {
-              "nullable": true
-            }
+            "$ref": "#/components/schemas/RequestMeta"
           }
         },
         "required": [
@@ -1188,6 +1262,101 @@
           "status",
           "duration_ms",
           "retry_count"
+        ]
+      },
+      "RequestMeta": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/HttpRequestMeta"
+          },
+          {
+            "$ref": "#/components/schemas/GraphqlRequestMeta"
+          },
+          {
+            "$ref": "#/components/schemas/PostgresRequestMeta"
+          },
+          {
+            "$ref": "#/components/schemas/S3RequestMeta"
+          },
+          {
+            "$ref": "#/components/schemas/ConnectorlessRequestMeta"
+          },
+          {
+            "$ref": "#/components/schemas/ErrorRequestMeta"
+          },
+          {
+            "nullable": true
+          }
+        ]
+      },
+      "HttpRequestMeta": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string",
+            "enum": [
+              "http"
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer"
+          },
+          "bytes_in": {
+            "type": "integer"
+          },
+          "tunnel_target": {
+            "type": "string",
+            "nullable": true
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "connector": {
+            "$ref": "#/components/schemas/ConnectorResolutionSummary"
+          },
+          "digest": {
+            "$ref": "#/components/schemas/RequestDigest"
+          },
+          "pages_fetched": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "resumed_from_page": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "resumed_accumulated_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pagination_checkpoint": {
+            "$ref": "#/components/schemas/PaginationCheckpoint"
+          },
+          "unresolved_placeholders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "driver",
+          "method",
+          "url",
+          "connector"
         ]
       },
       "ConnectorResolutionSummary": {
@@ -1248,6 +1417,268 @@
           "requested_environment",
           "resolved_environment",
           "auth_method"
+        ]
+      },
+      "RequestDigest": {
+        "type": "object",
+        "properties": {
+          "header_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "query_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "body_kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "header_keys",
+          "query_keys",
+          "body_kind"
+        ]
+      },
+      "PaginationCheckpoint": {
+        "type": "object",
+        "properties": {
+          "page_idx": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "accumulated_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_idx",
+          "accumulated_count",
+          "signature"
+        ]
+      },
+      "GraphqlRequestMeta": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string",
+            "enum": [
+              "graphql"
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "connector": {
+            "$ref": "#/components/schemas/ConnectorResolutionSummary"
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "driver",
+          "method",
+          "status",
+          "connector"
+        ]
+      },
+      "PostgresRequestMeta": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string",
+            "enum": [
+              "postgres"
+            ]
+          },
+          "query_preview": {
+            "type": "string"
+          },
+          "row_count": {
+            "type": "integer",
+            "nullable": true
+          },
+          "transaction": {
+            "type": "boolean"
+          },
+          "cursor": {
+            "type": "boolean"
+          },
+          "connector": {
+            "$ref": "#/components/schemas/ConnectorResolutionSummary"
+          },
+          "row_count_per_statement": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "nullable": true
+            }
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "driver",
+          "query_preview",
+          "row_count",
+          "transaction",
+          "cursor",
+          "connector"
+        ]
+      },
+      "S3RequestMeta": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string",
+            "enum": [
+              "s3"
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "connector": {
+            "$ref": "#/components/schemas/ConnectorResolutionSummary"
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "driver",
+          "method",
+          "status",
+          "connector"
+        ]
+      },
+      "ConnectorlessRequestMeta": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string",
+            "enum": [
+              "connectorless"
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer"
+          },
+          "bytes_in": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "unresolved_placeholders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "digest": {
+            "$ref": "#/components/schemas/RequestDigest"
+          },
+          "pages_fetched": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "resumed_from_page": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "resumed_accumulated_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pagination_checkpoint": {
+            "$ref": "#/components/schemas/PaginationCheckpoint"
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "driver",
+          "method",
+          "url"
+        ]
+      },
+      "ErrorRequestMeta": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "unresolved_placeholders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "digest": {
+            "$ref": "#/components/schemas/RequestDigest"
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "driver"
         ]
       },
       "ExecutionRunSavedBody": {
@@ -1605,6 +2036,101 @@
           "finished_at"
         ]
       },
+      "ExecutionRunTransformResponse": {
+        "type": "object",
+        "properties": {
+          "output": {
+            "nullable": true
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "duration_ms"
+        ]
+      },
+      "ExecutionRunTransformBody": {
+        "type": "object",
+        "properties": {
+          "output_transform": {
+            "type": "string",
+            "minLength": 1
+          },
+          "output_transform_function": {
+            "type": "string",
+            "minLength": 1
+          },
+          "response_filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResponseFilter"
+            }
+          },
+          "payload": {
+            "nullable": true
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "maximum": 60000
+          }
+        }
+      },
+      "ResponseFilter": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "KEYS",
+              "VALUES",
+              "BOTH"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "REMOVE",
+              "MASK",
+              "FAIL"
+            ]
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "mask": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "FIELD",
+              "ITEM",
+              "ENTRY"
+            ]
+          }
+        },
+        "required": [
+          "target",
+          "action",
+          "pattern"
+        ]
+      },
       "ConnectorSpecImportResponse": {
         "type": "object",
         "properties": {
@@ -1917,7 +2443,8 @@
                   ]
                 },
                 "base_url": {
-                  "type": "string"
+                  "type": "string",
+                  "nullable": true
                 },
                 "auth_type": {
                   "type": "string",
@@ -1927,7 +2454,8 @@
                     "query",
                     "bearer",
                     "basic",
-                    "oauth2"
+                    "oauth2",
+                    "aws_sigv4"
                   ]
                 },
                 "oauth": {
@@ -1939,6 +2467,7 @@
                 },
                 "ingestion_source": {
                   "type": "string",
+                  "nullable": true,
                   "enum": [
                     "openapi",
                     "markdown",
@@ -1950,7 +2479,8 @@
                     "grpc_reflection",
                     "asyncapi",
                     "caldav_discovery",
-                    "unsupported"
+                    "unsupported",
+                    null
                   ]
                 },
                 "ingestion_url": {
@@ -1994,6 +2524,7 @@
                 },
                 "url_pattern": {
                   "type": "string",
+                  "nullable": true,
                   "minLength": 1
                 },
                 "keywords": {
@@ -2028,6 +2559,19 @@
                 },
                 "capabilities": {
                   "$ref": "#/components/schemas/ConnectorTemplateCapabilities"
+                },
+                "example_paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                },
+                "operator_notes": {
+                  "type": "string",
+                  "nullable": true,
+                  "maxLength": 4000,
+                  "default": null
                 },
                 "source": {
                   "type": "string",
@@ -2091,7 +2635,11 @@
             "type": "string",
             "enum": [
               "authorization_code",
-              "client_credentials"
+              "client_credentials",
+              "password",
+              "cognito_user_password",
+              "jwt_bearer",
+              "device_code"
             ]
           },
           "token_auth_method": {
@@ -2143,7 +2691,8 @@
               "query",
               "bearer",
               "basic",
-              "oauth2"
+              "oauth2",
+              "aws_sigv4"
             ]
           },
           "label": {
@@ -2215,8 +2764,7 @@
         },
         "required": [
           "method",
-          "path",
-          "expected_status"
+          "path"
         ]
       },
       "ConnectorTemplateCredentialHint": {
@@ -2398,7 +2946,8 @@
             ]
           },
           "base_url": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "auth_type": {
             "type": "string",
@@ -2408,7 +2957,8 @@
               "query",
               "bearer",
               "basic",
-              "oauth2"
+              "oauth2",
+              "aws_sigv4"
             ]
           },
           "oauth": {
@@ -2420,6 +2970,7 @@
           },
           "ingestion_source": {
             "type": "string",
+            "nullable": true,
             "enum": [
               "openapi",
               "markdown",
@@ -2431,7 +2982,8 @@
               "grpc_reflection",
               "asyncapi",
               "caldav_discovery",
-              "unsupported"
+              "unsupported",
+              null
             ]
           },
           "ingestion_url": {
@@ -2475,6 +3027,7 @@
           },
           "url_pattern": {
             "type": "string",
+            "nullable": true,
             "minLength": 1
           },
           "keywords": {
@@ -2509,6 +3062,19 @@
           },
           "capabilities": {
             "$ref": "#/components/schemas/ConnectorTemplateCapabilities"
+          },
+          "example_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "operator_notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000,
+            "default": null
           },
           "id": {
             "type": "string"
@@ -2584,7 +3150,8 @@
             ]
           },
           "base_url": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "auth_type": {
             "type": "string",
@@ -2594,7 +3161,8 @@
               "query",
               "bearer",
               "basic",
-              "oauth2"
+              "oauth2",
+              "aws_sigv4"
             ]
           },
           "oauth": {
@@ -2606,6 +3174,7 @@
           },
           "ingestion_source": {
             "type": "string",
+            "nullable": true,
             "enum": [
               "openapi",
               "markdown",
@@ -2617,7 +3186,8 @@
               "grpc_reflection",
               "asyncapi",
               "caldav_discovery",
-              "unsupported"
+              "unsupported",
+              null
             ]
           },
           "ingestion_url": {
@@ -2661,6 +3231,7 @@
           },
           "url_pattern": {
             "type": "string",
+            "nullable": true,
             "minLength": 1
           },
           "keywords": {
@@ -2695,6 +3266,19 @@
           },
           "capabilities": {
             "$ref": "#/components/schemas/ConnectorTemplateCapabilities"
+          },
+          "example_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "operator_notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000,
+            "default": null
           }
         },
         "required": [
@@ -3029,7 +3613,8 @@
               "query",
               "bearer",
               "basic",
-              "oauth2"
+              "oauth2",
+              "aws_sigv4"
             ],
             "default": "none"
           },
@@ -3087,7 +3672,8 @@
               "query",
               "bearer",
               "basic",
-              "oauth2"
+              "oauth2",
+              "aws_sigv4"
             ]
           },
           "config": {
@@ -3446,6 +4032,8 @@
         "enum": [
           "openapi-direct",
           "graphql-introspect",
+          "postgres-introspect",
+          "mssql-introspect",
           "swagger-ui-scrape",
           "llms-txt",
           "html-scrape",
@@ -5692,6 +6280,46 @@
             "nullable": true
           }
         }
+      },
+      "ToolPoliciesResponse": {
+        "type": "object",
+        "properties": {
+          "policies": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "no_confirm",
+                "confirm_before_execution",
+                "confirm_after_execution"
+              ]
+            }
+          }
+        },
+        "required": [
+          "policies"
+        ]
+      },
+      "ToolPoliciesPatchBody": {
+        "type": "object",
+        "properties": {
+          "policies": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "nullable": true,
+              "enum": [
+                "no_confirm",
+                "confirm_before_execution",
+                "confirm_after_execution",
+                null
+              ]
+            }
+          }
+        },
+        "required": [
+          "policies"
+        ]
       },
       "ConversationAttachment": {
         "type": "object",
@@ -9108,6 +9736,53 @@
         }
       }
     },
+    "/v1/workflows/{id}/input-schema": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Get a workflow's input schema (declared or synthesized)",
+        "description": "Returns the workflow's declared `input_schema` when present, otherwise synthesizes one from `$input.X` placeholder and JSONata references discovered in the steps. Mirrors the convention used by the MCP tool surface so non-MCP HTTP callers can discover the input shape without round-tripping through MCP.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInputSchemaResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workflows/{id}/history": {
       "get": {
         "tags": [
@@ -9475,6 +10150,61 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/executions/transform": {
+      "post": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "Execute a transform / filter pipeline against a payload (no run row)",
+        "description": "Stateless transform pipeline: apply `output_transform` (JSONata) or `output_transform_function` (JS) to `payload`, then run `response_filters`. Mirrors the reference impl's `POST /tools/transform/run`. Does not create an execution row — useful for CI smoke tests, transform debugging, and external probes.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecutionRunTransformBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transform completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionRunTransformResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Transform / filter raised",
             "content": {
               "application/json": {
                 "schema": {
@@ -12549,6 +13279,70 @@
         }
       }
     },
+    "/v1/conversations/{id}/tool-calls/{tool_call_id}/respond": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Resolve the pending ask_user_* elicitation linked to the given tool_call (resumeToolCallId alias)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "tool_call_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RespondElicitationBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationRunOutcome"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found — no elicitation links to that tool_call",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/conversations/{id}/compact": {
       "post": {
         "tags": [
@@ -12587,6 +13381,105 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CompactConversationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/tool-policies": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Read per-tool execution-mode overrides for this conversation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolPoliciesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Set per-tool execution-mode overrides. Pass `null` for a tool to clear its override and fall back to the default policy.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolPoliciesPatchBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolPoliciesResponse"
                 }
               }
             }

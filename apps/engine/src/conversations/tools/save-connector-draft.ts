@@ -28,6 +28,7 @@ import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { translateAutoPersistError } from "../persistence/auto-persist.ts";
 import { type AtomicCredentialInput, saveConnectorAtomic } from "../persistence/save-connector.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -50,6 +51,28 @@ const queryCredentialInput = z.object({
   param: z.string().min(1),
   value: z.string().min(1),
 });
+// Cognito User-Password bootstrap. `region` and `client_id` may be
+// omitted when the connector config already carries them
+// (config.aws_region + config.oauth.client_id) — saveConnectorAtomic
+// will fall back to those slots before calling InitiateAuth.
+const cognitoCredentialInput = z.object({
+  mode: z.literal("cognito_user_password"),
+  username: z.string().min(1),
+  password: z.string().min(1),
+  aws_region: z.string().min(1).optional(),
+  client_id: z.string().min(1).optional(),
+  client_secret: z.string().min(1).optional(),
+  use_access_token: z.boolean().optional(),
+});
+// AWS SigV4 — for diagnostic re-issue against AppSync IAM, DynamoDB,
+// API Gateway IAM, etc. The auto-persist path covers the normal
+// flow; this slot keeps the tool symmetric.
+const awsSigV4CredentialInput = z.object({
+  mode: z.literal("aws_sigv4"),
+  access_key_id: z.string().min(1),
+  secret_access_key: z.string().min(1),
+  session_token: z.string().min(1).optional(),
+});
 
 const credentialInput = z
   .discriminatedUnion("mode", [
@@ -57,9 +80,11 @@ const credentialInput = z
     basicCredentialInput,
     headerCredentialInput,
     queryCredentialInput,
+    cognitoCredentialInput,
+    awsSigV4CredentialInput,
   ])
   .describe(
-    "Optional credential to (re-)attach. Sourced verbatim from a masked `ask_user_form(type: password, sensitive: true)` submission — never typed in chat.",
+    "Optional credential to (re-)attach. Sourced verbatim from a masked `ask_user_form(type: password, sensitive: true)` submission — never typed in chat. `cognito_user_password` triggers an InitiateAuth exchange before persisting; the row ends up as a regular oauth2 credential with refresh_token + expires_at.",
   );
 
 const inputSchema = z
@@ -199,13 +224,43 @@ export const saveConnectorDraftTool: ConversationTool = {
       connector?.driver === "s3";
     const probeFailed = Boolean(connector) && requiresProbe && connector?.latest_probe?.ok !== true;
 
-    const atomicResult = await saveConnectorAtomic({
-      ctx,
-      environment: args.environment,
-      forceSave: args.force_save,
-      reason: "manual_re_issue",
-      ...(supplied ? { credential: supplied as AtomicCredentialInput } : {}),
-    });
+    let atomicResult: ToolResult;
+    try {
+      atomicResult = await saveConnectorAtomic({
+        ctx,
+        environment: args.environment,
+        forceSave: args.force_save,
+        reason: "manual_re_issue",
+        ...(supplied ? { credential: supplied as AtomicCredentialInput } : {}),
+      });
+    } catch (err) {
+      // Translate Postgres errors (23505 unique_violation, 23503 fk
+      // violation, 23502 not-null, 22P02 invalid uuid/enum) into the
+      // same typed error_codes the auto-persist path uses.
+      // Pre-fix (session 975a64b0 16:37:21) the raw `Failed query:
+      // insert into "connectors" ...` SQL was passed verbatim to the
+      // LLM, which then spent 90s of "summarising 5 tool results"
+      // trying to make sense of it. Post-fix the LLM gets
+      // `slug_already_in_use` + `next_best_actions: [list_connectors,
+      // get_connector, update_connector]` and can recover in one turn.
+      const translated = translateAutoPersistError(err, "save_connector_draft");
+      logger.warn({
+        module: "conversation_tool",
+        action: "save_connector_draft.atomic_threw",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        error_code: translated.error_code,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return {
+        ok: false,
+        data: {
+          error_code: translated.error_code,
+          message: translated.message,
+          next_best_actions: translated.next_best_actions,
+        },
+      };
+    }
     if (!atomicResult.ok) {
       // probe_failed / connector_not_ready etc — the helper already
       // populated next_best_actions and force_save_available.
@@ -335,9 +390,19 @@ async function existingCredentialMatches(p: {
     p.db,
   );
   if (!existing) return false;
-  if (existing.value.mode !== p.supplied.mode) return false;
   const supplied = p.supplied;
   const stored = existing.value as { mode: string } & Record<string, unknown>;
+  // Cognito bootstrap persists as `mode: "oauth2"` (post-exchange). The
+  // idempotency check can't compare passwords against an opaque JWT, so
+  // we treat any pre-existing oauth2 row as "already credentialed" — a
+  // re-issue with the same username + password is a no-op from the
+  // operator's perspective. Operators rotating creds should call the
+  // tool with a different password (which still re-runs InitiateAuth via
+  // saveConnectorAtomic since that path always re-exchanges).
+  if (supplied.mode === "cognito_user_password" && stored.mode === "oauth2") {
+    return true;
+  }
+  if (existing.value.mode !== supplied.mode) return false;
   if (supplied.mode === "bearer" && stored.mode === "bearer") {
     return stored.token === supplied.token;
   }
@@ -351,6 +416,13 @@ async function existingCredentialMatches(p: {
   if (supplied.mode === "query" && stored.mode === "query") {
     const query = (stored.query as Record<string, string> | undefined) ?? {};
     return query[supplied.param] === supplied.value;
+  }
+  if (supplied.mode === "aws_sigv4" && stored.mode === "aws_sigv4") {
+    return (
+      stored.access_key_id === supplied.access_key_id &&
+      stored.secret_access_key === supplied.secret_access_key &&
+      (stored.session_token ?? null) === (supplied.session_token ?? null)
+    );
   }
   return false;
 }

@@ -3,6 +3,8 @@ import { graphqlIntrospectStrategy, looksLikeGraphQLUrl } from "./graphql-intros
 import { DiscoveryError } from "./types.ts";
 
 // A small GitHub-shaped introspection result: 2 query fields + 1 mutation.
+// `interfaces: []` is required on OBJECT types for `buildClientSchema` to
+// accept the introspection in the SDL-render path.
 const SAMPLE_SCHEMA = {
   data: {
     __schema: {
@@ -13,6 +15,7 @@ const SAMPLE_SCHEMA = {
         {
           kind: "OBJECT",
           name: "Query",
+          interfaces: [],
           fields: [
             {
               name: "viewer",
@@ -50,6 +53,7 @@ const SAMPLE_SCHEMA = {
         {
           kind: "OBJECT",
           name: "Mutation",
+          interfaces: [],
           fields: [
             {
               name: "createIssue",
@@ -72,6 +76,7 @@ const SAMPLE_SCHEMA = {
         {
           kind: "OBJECT",
           name: "User",
+          interfaces: [],
           fields: [
             {
               name: "login",
@@ -88,6 +93,7 @@ const SAMPLE_SCHEMA = {
         {
           kind: "OBJECT",
           name: "Repository",
+          interfaces: [],
           fields: [
             {
               name: "name",
@@ -104,6 +110,7 @@ const SAMPLE_SCHEMA = {
         {
           kind: "OBJECT",
           name: "CreateIssuePayload",
+          interfaces: [],
           fields: [
             {
               name: "issueId",
@@ -256,5 +263,29 @@ describe("graphqlIntrospectStrategy", () => {
       if (e instanceof DiscoveryError) caught = e;
     }
     expect(caught?.code).toBe("http_404");
+  });
+
+  test("emits SDL text_corpus alongside normalised endpoints", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify(SAMPLE_SCHEMA), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const result = await graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {});
+
+    // SDL is required for the LLM to author deep-nested queries — the
+    // normalised `endpoints` only describe top-level field args, not the
+    // selection set. Pre-fix this was thrown away.
+    expect(typeof result.text_corpus).toBe("string");
+    const sdl = result.text_corpus ?? "";
+    expect(sdl).toContain("type Query");
+    expect(sdl).toContain("type Mutation");
+    expect(sdl).toContain("repository(owner: String!, name: String!): Repository");
+    expect(sdl).toContain("input CreateIssueInput");
+    expect(sdl).toContain("repositoryId: ID!");
+    // Endpoints still come through.
+    expect(result.endpoints).toHaveLength(3);
   });
 });

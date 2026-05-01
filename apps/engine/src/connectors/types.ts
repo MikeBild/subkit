@@ -38,7 +38,15 @@ export type Environment = z.infer<typeof EnvironmentEnum>;
 export const ConnectorTemplateSourceEnum = z.enum(["builtin", "tenant"]);
 export type ConnectorTemplateSource = z.infer<typeof ConnectorTemplateSourceEnum>;
 
-export const AuthTypeEnum = z.enum(["none", "header", "query", "bearer", "basic", "oauth2"]);
+export const AuthTypeEnum = z.enum([
+  "none",
+  "header",
+  "query",
+  "bearer",
+  "basic",
+  "oauth2",
+  "aws_sigv4",
+]);
 export type AuthType = z.infer<typeof AuthTypeEnum>;
 
 export const HeaderAuthConfigSchema = z
@@ -75,7 +83,14 @@ export const OAuth2AuthConfigSchema = z
     token_endpoint: z.string().url().optional(),
     client_id: z.string(),
     client_secret: z.string().optional(),
-    grant_type: z.enum(["authorization_code", "client_credentials"]),
+    grant_type: z.enum([
+      "authorization_code",
+      "client_credentials",
+      "password",
+      "cognito_user_password",
+      "jwt_bearer",
+      "device_code",
+    ]),
     token_auth_method: z.enum(["body", "basic_auth"]).default("body"),
     token_content_type: z.enum(["form", "json"]).default("form"),
     use_pkce: z.boolean().default(true),
@@ -83,8 +98,35 @@ export const OAuth2AuthConfigSchema = z
     scope: z.string().optional(),
     redirect_uri: z.string().optional(),
     audience: z.string().optional(),
+    /** AWS Cognito-specific config (only meaningful when
+     *  `grant_type === "cognito_user_password"`). */
+    aws_region: z.string().optional(),
+    cognito_username: z.string().optional(),
+    cognito_use_access_token: z.boolean().optional(),
+    /** JWT Bearer config (only meaningful when `grant_type === "jwt_bearer"`).
+     *  PEM-encoded private key, default RS256. Subject is the user/SA the
+     *  assertion grants access to; issuer is typically the SA email or
+     *  client_id. */
+    jwt_private_key_pem: z.string().optional(),
+    jwt_algorithm: z.enum(["RS256", "ES256"]).optional(),
+    jwt_subject: z.string().optional(),
+    jwt_audience: z.string().optional(),
+    jwt_key_id: z.string().optional(),
+    /** Device-flow config (only meaningful when `grant_type === "device_code"`). */
+    device_authorization_endpoint: z.string().url().optional(),
   })
   .openapi("OAuth2AuthConfig");
+
+export const AwsSigV4AuthConfigSchema = z
+  .object({
+    auth_type: z.literal("aws_sigv4"),
+    /** AWS region — e.g. `eu-central-1`. Defaults to `us-east-1`. */
+    aws_region: z.string().optional(),
+    /** AWS service short-name — e.g. `appsync`, `execute-api`,
+     *  `dynamodb`, `s3`. **Required** — sigv4 canonical request needs it. */
+    aws_service: z.string().min(1),
+  })
+  .openapi("AwsSigV4AuthConfig");
 
 export const NoneAuthConfigSchema = z
   .object({ auth_type: z.literal("none") })
@@ -98,10 +140,42 @@ export const AuthConfigSchema = z
     BearerAuthConfigSchema,
     BasicAuthConfigSchema,
     OAuth2AuthConfigSchema,
+    AwsSigV4AuthConfigSchema,
   ])
   .openapi("AuthConfig");
 
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
+
+// OAuth2-enrichment block. Templates seed connector.config.oauth with
+// the bits the OAuth2 client needs (issuer + endpoints + grant + auth
+// method). User-supplied connector overrides win in template-binding.ts
+// when assembling the OAuth2ClientConfig at mint / refresh time.
+const OAuthEnrichmentSchema = z
+  .object({
+    issuer_url: z.string().optional(),
+    authorization_endpoint: z.string().optional(),
+    token_endpoint: z.string().optional(),
+    scope: z.string().optional(),
+    grant_type: z
+      .enum([
+        "authorization_code",
+        "client_credentials",
+        "password",
+        "cognito_user_password",
+        "jwt_bearer",
+        "device_code",
+      ])
+      .optional(),
+    token_auth_method: z.enum(["body", "basic_auth"]).optional(),
+    token_content_type: z.enum(["form", "json"]).optional(),
+    use_pkce: z.boolean().optional(),
+    extra_token_headers: z.record(z.string(), z.string()).optional(),
+    client_id: z.string().nullable().optional(),
+    client_secret: z.string().optional(),
+    audience: z.string().optional(),
+    redirect_uri: z.string().optional(),
+  })
+  .strict();
 
 export const HttpConnectorConfig = z
   .object({
@@ -119,20 +193,7 @@ export const HttpConnectorConfig = z
     credential_hints: z.array(z.record(z.string(), z.unknown())).optional(),
     imported_sample_endpoints: z.array(z.record(z.string(), z.unknown())).optional(),
     imported_source: z.string().optional(),
-    // OAuth2-enrichment fields (flattened into config for the OAuth2 client).
-    issuer_url: z.string().optional(),
-    authorization_endpoint: z.string().optional(),
-    token_endpoint: z.string().optional(),
-    scope: z.string().optional(),
-    grant_type: z.enum(["authorization_code", "client_credentials"]).optional(),
-    token_auth_method: z.enum(["body", "basic_auth"]).optional(),
-    token_content_type: z.enum(["form", "json"]).optional(),
-    use_pkce: z.boolean().optional(),
-    extra_token_headers: z.record(z.string(), z.string()).optional(),
-    client_id: z.string().optional(),
-    client_secret: z.string().optional(),
-    audience: z.string().optional(),
-    redirect_uri: z.string().optional(),
+    oauth: OAuthEnrichmentSchema.optional(),
   })
   .strict();
 

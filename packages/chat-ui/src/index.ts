@@ -35,6 +35,11 @@ export {
   type MultiChoicePromptProps,
 } from "./elicit/MultiChoicePrompt.tsx";
 export {
+  PartialApprovalPrompt,
+  type PartialApprovalPromptProps,
+  type PartialDiffEntry,
+} from "./elicit/PartialApprovalPrompt.tsx";
+export {
   type ElicitationResponse,
   ElicitRouter,
   type ElicitRouterProps,

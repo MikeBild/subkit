@@ -26,8 +26,10 @@ import { getBuiltinTemplate } from "../templates.ts";
 import { graphqlIntrospectStrategy } from "./graphql-introspect.ts";
 import { htmlScrapeStrategy } from "./html-scrape.ts";
 import { llmsTxtStrategy } from "./llms-txt.ts";
+import { mssqlIntrospectStrategy } from "./mssql-introspect.ts";
 import { openApiDirectStrategy } from "./openapi-direct.ts";
 import { playwrightCrawlStrategy } from "./playwright-crawl.ts";
+import { postgresIntrospectStrategy } from "./postgres-introspect.ts";
 import { swaggerUiScrapeStrategy } from "./swagger-ui-scrape.ts";
 import {
   DiscoveryError,
@@ -40,6 +42,11 @@ import {
 export { graphqlIntrospectStrategy, looksLikeGraphQLUrl } from "./graphql-introspect.ts";
 export { extractSpecHrefs, htmlScrapeStrategy } from "./html-scrape.ts";
 export { llmsTxtStrategy } from "./llms-txt.ts";
+export {
+  looksLikeMssqlUrl,
+  mssqlIntrospectStrategy,
+  renderMssqlSchemaMarkdown,
+} from "./mssql-introspect.ts";
 export { normalizeSpec, openApiDirectStrategy } from "./openapi-direct.ts";
 export {
   jaccardSimilarity,
@@ -48,6 +55,11 @@ export {
   scoreCandidate,
   setChromiumProviderForTesting,
 } from "./playwright-crawl.ts";
+export {
+  looksLikePostgresUrl,
+  postgresIntrospectStrategy,
+  renderSchemaMarkdown,
+} from "./postgres-introspect.ts";
 export { extractEmbeddedSpecUrl, swaggerUiScrapeStrategy } from "./swagger-ui-scrape.ts";
 export * from "./types.ts";
 
@@ -63,6 +75,11 @@ export interface DiscoverConnectorEndpointsInput {
 }
 
 const DEFAULT_STRATEGIES: DiscoveryStrategy[] = [
+  // {postgres,mssql}-introspect run first when the URL is a database
+  // protocol (`postgres://` / `mssql://`) — every other strategy will
+  // fail on the unusual protocol so it's a quick win to skip them.
+  postgresIntrospectStrategy,
+  mssqlIntrospectStrategy,
   openApiDirectStrategy,
   graphqlIntrospectStrategy,
   swaggerUiScrapeStrategy,

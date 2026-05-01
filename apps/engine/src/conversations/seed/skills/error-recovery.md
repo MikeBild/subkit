@@ -4,14 +4,14 @@ scope: global
 title: Authoring-Time Error Recovery
 description: Canonical tool-error shape and recovery routine for errors that surface WHILE the assistant is building a connector or workflow in a conversation. For failures of workflows that have already been committed and run, see `troubleshooting-workflow-failures`.
 gates_tools: []
-version: 2
+version: 3
 auto_load: true
 trigger_keywords: [error, failed, failure, broken, debug, fix, http_4xx, http_5xx, 4xx, 5xx, 400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, placeholder_unresolved, permission_denied, validation_failed, step_timeout, filter_fail, connector_not_found, ok false, tool error]
 ---
 
 # Error Recovery
 
-Tools in subkit return a uniform error envelope when they fail. This skill is
+Tools in sk return a uniform error envelope when they fail. This skill is
 the playbook: how to read it, how to diagnose, and how to fix without
 thrashing.
 
@@ -61,7 +61,7 @@ or `details.body`.
 
 Based on the code:
 
-- `placeholder_unresolved` → `load_skill("subkit-concepts")` to re-check token
+- `placeholder_unresolved` → `load_skill("sk-concepts")` to re-check token
   shapes, or the relevant driver skill if the token refers to a connector.
 - `http_4xx` / `http_5xx` → `load_skill("http-connectors")`.
 - Postgres error → `load_skill("postgres-connectors")`.
@@ -106,6 +106,7 @@ Re-dry-run the specific step before moving on.
 | `placeholder_unresolved` on `${cred.foo.bar}` | Credential either doesn't exist in this env, or the field name is wrong. Ask the user to create/rotate. |
 | `filter_fail` | Almost always a scope path error. Reread the upstream envelope. |
 | Same error three turns in a row | Stop. Ask the user for guidance; do not thrash. |
+| Five consecutive failed tool calls (any tool, any code) | Stop. Emit `ask_user_choice` with three concrete options derived from the failure shape. Do not continue patching. The counter resets on the first successful tool call. |
 
 ## Worked example
 
@@ -143,8 +144,10 @@ have cost another round-trip guessing `closedate_unix` or similar.
   retrying the same request gets the same error. Fix first.
 - **Ignoring `details.body`.** The vendor's error message is the shortest
   path to a fix. Read it.
-- **Re-running `commit_draft` after a dry-run error.** Commit doesn't re-run
-  the step. You'll commit a known-broken draft.
+- **Re-running the commit path after a dry-run error.** Neither the
+  `ask_user_confirm`+`commit_intent` auto-persist nor a direct `commit_draft`
+  re-runs the failing step. Repair the step + re-`dry_run` first, then commit.
+  You'll otherwise persist a known-broken draft.
 - **Assuming `permission_denied` is a bug.** It's the correct outcome until
   RBAC changes. Surface it; don't work around it.
 - **Looping through retries without bounds.** Three failed turns on the same
@@ -155,7 +158,7 @@ have cost another round-trip guessing `closedate_unix` or similar.
 
 ## See also
 
-- `subkit-concepts.md` — placeholder tokens and scope paths.
+- `sk-concepts.md` — placeholder tokens and scope paths.
 - `workflow-authoring.md` — the six-phase authoring flow (probe is step 3).
 - `self-healing.md` — how repeated failures become patch candidates.
 - `rbac-and-scopes.md` — `permission_denied` recovery.

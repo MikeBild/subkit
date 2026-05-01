@@ -4,7 +4,7 @@ scope: global
 title: GraphQL Connectors
 description: Driver specifics for the GraphQL connector — queries, mutations, variables, batching.
 gates_tools: []
-version: 1
+version: 2
 ---
 
 # GraphQL Connectors
@@ -130,28 +130,82 @@ steps only when:
 GraphQL servers return HTTP 200 with an `errors` array on partial failures.
 The driver lifts that into the envelope:
 
-- If `response.data` is non-null and `response.errors` is present, envelope
-  has both `data` (the partial payload) and `error` (the first error's message
-  plus `details: { all_errors: [...] }`). `onError` triggers.
-- If `response.data` is null, envelope `data` is null, `error` is set.
+- If `response.data` is non-null and `response.errors` is present, the
+  envelope has both `data` (the partial payload) and `error` (the first
+  error's message plus `details: { all_errors: [...] }`). The step is
+  marked failed; `on_error` decides whether to abort or continue.
+- If `response.data` is null, envelope `data` is null and `error` is set.
 
-Handle with `onError.mode: "fallback"` if partial data is acceptable:
+If partial data is acceptable, set `on_error: "continue"` directly on the
+step so the run keeps going past the failure. Add `max_retries` /
+`retry_backoff_ms` for transient infrastructure issues:
 
 ```json
 {
-  "onError": {
-    "mode": "fallback",
-    "fallback_value": { "nodes": [] }
-  }
+  "id": "list_repos_lenient",
+  "kind": "request",
+  "connector_id": "<github_graphql_connector_id>",
+  "graphql": {
+    "query": "query { viewer { repositories(first: 10) { nodes { name } } } }"
+  },
+  "on_error": "continue",
+  "max_retries": 2,
+  "retry_backoff_ms": 500
 }
 ```
 
 ## Auth
 
-GraphQL connectors typically use `bearer` or `header` auth just like `http`.
-The driver posts to a single `base_url` (the GraphQL endpoint), so `path` is
-ignored. Set auth once on the connector; reference credentials only if you
-need them inside variables (e.g. an API key as an input to the query).
+GraphQL connectors use the same auth modes as `http` — `bearer`, `header`,
+`query`, `basic`, and `oauth2`. The driver posts to a single `base_url` (the
+GraphQL endpoint), so `path` is ignored. Set auth once on the connector;
+reference credentials only if you need them inside variables (e.g. an API key
+as an input to the query).
+
+Common GraphQL auth conventions, mapped to sk `auth_type`:
+
+| Provider                       | `auth_type` | Header / config                                  |
+|--------------------------------|-------------|--------------------------------------------------|
+| GitHub GraphQL, Linear, Monday | `bearer`    | `Authorization: Bearer <PAT or OAuth token>`     |
+| Hasura admin secret            | `header`    | `x-hasura-admin-secret: <secret>`                |
+| AppSync API_KEY                | `header`    | `x-api-key: <key>`                               |
+| AppSync Cognito User-Pool      | `header`    | `Authorization: <id_token>` (raw JWT, no prefix) |
+| AppSync Lambda authorizer      | `header`    | `Authorization: <token>` (custom shape)          |
+| Auth0 Management GraphQL       | `oauth2`    | client-credentials grant; refreshed inline       |
+| Internal services              | `basic`     | base64-encoded `username:password`               |
+
+### AppSync Cognito JWT — raw `Authorization` (no "Bearer ")
+
+AppSync Cognito User-Pool auth expects the ID token in the `Authorization`
+header **without** a scheme prefix:
+
+```
+Authorization: eyJraWQiOiJ…
+```
+
+Two ways to get this with sk:
+
+1. **Static token (`auth_type=header`)** — best when you have a long-lived
+   ID token or a Lambda authorizer with a custom format. Store it as a
+   header credential:
+   ```json
+   { "mode": "header", "headers": { "Authorization": "eyJ…" } }
+   ```
+
+2. **Refreshable JWT (`auth_type=oauth2`)** — when the IdP rotates the
+   token. Set `token_type: "none"` on the credential (or leave it empty);
+   the driver emits the access token verbatim instead of `Bearer …`.
+
+   Inline-refresh still runs — only the scheme prefix is suppressed.
+
+For `oauth2`, the driver runs the inline-refresh path before every request —
+a stale `access_token` is rotated automatically using the persisted
+`refresh_token`. The applied auth method is observable on
+`request_meta.connector.auth_method`: `"oauth2_refreshed"` if the token was
+just rotated, `"oauth2_static"` if the cached token was still fresh.
+
+AppSync IAM (SigV4) is **not** supported today — open an issue if you need
+it. For now, stand up an API_KEY or Cognito user-pool path.
 
 ## Common pitfalls
 

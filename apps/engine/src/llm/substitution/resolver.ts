@@ -154,6 +154,82 @@ export async function resolvePlaceholders<T>(
   return { value: resolved, unresolved: allUnresolved, placeholders_used: dedup };
 }
 
+/**
+ * Type-preserving variant. When a string leaf is *exactly* one full
+ * placeholder token (e.g. `"${input.limit}"` — no surrounding text and
+ * no other tokens), the resolver returns the placeholder's NATIVE
+ * resolved value (number / boolean / object / array / null) rather
+ * than its string stringification.
+ *
+ * Used by the GraphQL step driver and any other path where the
+ * upstream API distinguishes JSON types. Pre-fix every GraphQL
+ * variable arrived at AppSync as a string literal `"${input.limit}"`
+ * because the shared `resolvePlaceholders` walker stringified every
+ * leaf — session 820c1664 spent 30 minutes debugging "Variable
+ * 'limit' has an invalid value" caused entirely by this loss.
+ *
+ * Mixed strings (`"prefix-${input.suffix}"`, `"hi ${input.name}!"`)
+ * still resolve as strings — they have to.
+ */
+export async function resolvePlaceholdersTypePreserving<T>(
+  value: T,
+  ctx: ResolverContext,
+): Promise<ResolveResult<T>> {
+  const allUnresolved: Unresolved[] = [];
+  const allPlaceholders: string[] = [];
+
+  async function walk(v: unknown): Promise<unknown> {
+    if (typeof v === "string") {
+      // Detect "single full placeholder" — the whole string is exactly
+      // one `${...}` token with no other characters around it.
+      const trimmed = v.trim();
+      if (trimmed.startsWith("${") && trimmed.endsWith("}") && !trimmed.startsWith("$${")) {
+        const { tokens, errors } = parsePlaceholders(trimmed);
+        if (errors.length === 0 && tokens.length === 1) {
+          const tok = tokens[0]!;
+          if (tok.span.start === 0 && tok.span.end === trimmed.length) {
+            allPlaceholders.push(tok.raw);
+            const native = await resolveOneRaw(tok, ctx);
+            if (native.ok) {
+              return native.value; // ← native typed value, no String() / JSON.stringify
+            }
+            allUnresolved.push({ token: tok.raw, code: native.code, message: native.message });
+            return v; // leave literal in place on unresolved
+          }
+        }
+      }
+      // Mixed string or non-placeholder — fall back to string resolution.
+      const r = await resolveStringPlaceholders(v, ctx);
+      allUnresolved.push(...r.unresolved);
+      allPlaceholders.push(...r.placeholders_used);
+      return r.value;
+    }
+    if (Array.isArray(v)) {
+      const out: unknown[] = new Array(v.length);
+      for (let i = 0; i < v.length; i++) {
+        out[i] = await walk(v[i]);
+      }
+      return out;
+    }
+    if (v && typeof v === "object") {
+      const src = v as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(src)) {
+        out[k] = await walk(src[k]);
+      }
+      return out;
+    }
+    return v;
+  }
+
+  const resolved = (await walk(value)) as T;
+  return {
+    value: resolved,
+    unresolved: allUnresolved,
+    placeholders_used: Array.from(new Set(allPlaceholders)),
+  };
+}
+
 /** List the placeholder token names available for a connector slug in the
  *  current tenant + environment. Used by `get_connector` to help the LLM
  *  author workflows without guessing credential field names. */
@@ -179,6 +255,81 @@ export async function describeConnectorPlaceholders(
 // ---------------------------------------------------------------------------
 
 type OneResult = { ok: true; value: string } | { ok: false; code: UnresolvedCode; message: string };
+
+type OneRawResult =
+  | { ok: true; value: unknown }
+  | { ok: false; code: UnresolvedCode; message: string };
+
+/**
+ * Type-preserving counterpart of `resolveOne`. Returns the native
+ * resolved value (number / boolean / object / array / null) for
+ * input/scope/item/connector_config tokens. Cred + connector_url
+ * remain string (cred values are always string, base_url is a URL).
+ */
+async function resolveOneRaw(tok: Placeholder, ctx: ResolverContext): Promise<OneRawResult> {
+  switch (tok.kind) {
+    case "cred":
+      return resolveCred(tok, ctx);
+    case "connector_url":
+      return resolveConnectorUrl(tok, ctx);
+    case "connector_config": {
+      if (!tok.slug || tok.path.length === 0) {
+        return { ok: false, code: "path_empty", message: "connector config token incomplete" };
+      }
+      const row = await fetchConnector(ctx, tok.slug);
+      if (!row) {
+        return {
+          ok: false,
+          code: "slug_not_found",
+          message: `no connector with slug '${tok.slug}' in ${ctx.environment}`,
+        };
+      }
+      if (!(await checkRbac(ctx, row.id, tok))) {
+        return { ok: false, code: "rbac_denied", message: "connector:read denied" };
+      }
+      return resolveJsonPathRaw(row.config ?? {}, tok.path, `connector.${tok.slug}.config`);
+    }
+    case "input":
+      return resolveJsonPathRaw(ctx.input, tok.path, "input");
+    case "scope":
+      if (!tok.stepId) {
+        return { ok: false, code: "path_empty", message: "scope requires step_id" };
+      }
+      return resolveJsonPathRaw(ctx.scope?.[tok.stepId], tok.path, `scope.${tok.stepId}`);
+    case "item":
+      return resolveJsonPathRaw(ctx.scope?.$item, tok.path, "item");
+  }
+}
+
+/** Walk a JSON path and return the raw typed value at the leaf. */
+function resolveJsonPathRaw(root: unknown, path: string[], diagnosticRoot: string): OneRawResult {
+  if (root === undefined || root === null) {
+    return {
+      ok: false,
+      code: "path_empty",
+      message: `${diagnosticRoot} is not present`,
+    };
+  }
+  let cur: unknown = root;
+  for (const segment of path) {
+    if (cur === null || typeof cur !== "object") {
+      return {
+        ok: false,
+        code: "key_not_found",
+        message: `${diagnosticRoot}.${path.join(".")} — cannot descend into non-object`,
+      };
+    }
+    cur = (cur as Record<string, unknown>)[segment];
+    if (cur === undefined) {
+      return {
+        ok: false,
+        code: "key_not_found",
+        message: `${diagnosticRoot}.${path.join(".")} — segment '${segment}' missing`,
+      };
+    }
+  }
+  return { ok: true, value: cur };
+}
 
 async function resolveOne(tok: Placeholder, ctx: ResolverContext): Promise<OneResult> {
   switch (tok.kind) {
@@ -429,6 +580,15 @@ export function flattenCredential(
     case "oauth2": {
       const d = decrypted as { access_token: string };
       return { access_token: d.access_token };
+    }
+    case "aws_sigv4": {
+      // SigV4 credentials are NOT meant to be referenced via
+      // `${cred.<slug>.<field>}` — signing happens at the driver
+      // layer with the URL + method + body in scope. Expose just the
+      // access_key_id so audit / debugging can correlate; never
+      // expose the secret_access_key or session_token.
+      const d = decrypted as { access_key_id: string };
+      return { access_key_id: d.access_key_id };
     }
     case "none":
       return {};

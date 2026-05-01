@@ -122,6 +122,15 @@ function _classify(proposal: PatchProposal, signal: DriftSignal | null): PatchDe
     );
     return { classification: "unsafe", reasons };
   }
+  if (signal && signal.kind === "validation_failed") {
+    // Workflow-level invariant violation. The patch needs to bring
+    // the output back inside the operator-defined invariant
+    // (`validation_expression`) — a domain-specific constraint that
+    // the classifier has no way to reason about structurally. Park
+    // for review rather than auto-apply.
+    reasons.push(`validation_failed: invariant '${signal.expression}' did not hold`);
+    return { classification: "unsafe", reasons };
+  }
   reasons.push("rename/widening/optional-only patch");
   return { classification: "safe", reasons };
 }

@@ -10,9 +10,11 @@ import { toCreateConnectorInput, validateConnectorDraft } from "../connector-dra
 import {
   getDraftCredential,
   toDecryptedCredential,
+  toDecryptedCredentialAsync,
 } from "../persistence/draft-credential-cache.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { pickProbeRecoveryActions as pickFromShared } from "./probe-recovery.ts";
 import { truncateForLlm } from "./truncate.ts";
 
 const inputSchema = z
@@ -288,6 +290,33 @@ export const probeConnectorDraftTool: ConversationTool = {
     let requestUrl = "";
 
     try {
+      // For `cognito_user_password` the cached credential is the raw
+      // username + password. We have to mint an IdToken via Cognito
+      // InitiateAuth before the probe — that's what the async helper
+      // does. Other modes round-trip through the sync converter.
+      //
+      // `aws_region` is accepted on either `config.aws_region` (the
+      // canonical slot the template seeds) OR `config.oauth.aws_region`
+      // (the LLM occasionally nests it there). Both are valid. Same
+      // for `client_id`.
+      const draftCfg = (draftView.config ?? {}) as {
+        aws_region?: unknown;
+        oauth?: { client_id?: unknown; aws_region?: unknown };
+      };
+      const oauthCfg = (draftCfg.oauth ?? {}) as { client_id?: unknown; aws_region?: unknown };
+      const region =
+        (typeof draftCfg.aws_region === "string" && draftCfg.aws_region) ||
+        (typeof oauthCfg.aws_region === "string" && oauthCfg.aws_region) ||
+        null;
+      const clientId = typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null;
+      const credentialOverride = draftCredential
+        ? draftCredential.mode === "cognito_user_password"
+          ? await toDecryptedCredentialAsync(draftCredential, {
+              aws_region: region,
+              client_id: clientId,
+            })
+          : toDecryptedCredential(draftCredential)
+        : null;
       const execution = await executeConnectorHttpRequest({
         db: ctx.db,
         tenant_id: ctx.tenant_id,
@@ -299,7 +328,7 @@ export const probeConnectorDraftTool: ConversationTool = {
         ...(args.body !== undefined ? { body: args.body } : {}),
         timeout_ms: args.timeout_ms,
         ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
-        ...(draftCredential ? { credential_override: toDecryptedCredential(draftCredential) } : {}),
+        ...(credentialOverride ? { credential_override: credentialOverride } : {}),
       });
       requestUrl = execution.url;
       status = execution.status;
@@ -367,12 +396,22 @@ export const probeConnectorDraftTool: ConversationTool = {
       ctx.db,
     );
     if (errorDetail) {
+      // Probe failure with structured next-best-actions so the LLM
+      // doesn't have to guess the recovery move. Pre-fix a 404 left
+      // the LLM to manually decide whether to call search_docs,
+      // discover_connector_endpoints, or update the path — the
+      // session ebd66982 trace showed the LLM pivoting to "let me
+      // check the DigitalOcean API documentation" without prompting,
+      // costing extra turns. The hint maps the HTTP status to the
+      // most likely fix.
+      const nextBestActions = pickProbeRecoveryActions(latest_probe);
       return {
         ok: false,
         data: buildLifecyclePayload(nextDraft, {
           error: errorDetail,
           error_code: latest_probe.failure_code ?? "probe_failed",
           latest_probe,
+          next_best_actions: nextBestActions,
         }),
       };
     }
@@ -391,3 +430,13 @@ export const probeConnectorDraftTool: ConversationTool = {
     };
   },
 };
+
+/**
+ * Backwards-compatible re-export. The mapping itself lives in
+ * `./probe-recovery.ts` so probe_connector / dry_run_step share the
+ * same surface. Kept here for the existing test that imports from
+ * this file.
+ *
+ * @internal Exported for unit tests.
+ */
+export const pickProbeRecoveryActions = pickFromShared;

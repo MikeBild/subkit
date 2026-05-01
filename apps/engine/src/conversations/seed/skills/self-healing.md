@@ -4,13 +4,13 @@ scope: global
 title: Self-Healing And Patch Candidates
 description: How the engine detects drift, proposes bounded repairs, and gates their promotion via classification and approval.
 gates_tools: []
-version: 1
+version: 2
 ---
 
 # Self-Healing And Patch Candidates
 
 When a step fails repeatedly in ways that match known drift patterns — a field
-was renamed upstream, a schema moved, a new required header appeared — subkit's
+was renamed upstream, a schema moved, a new required header appeared — sk's
 repair loop proposes a **patch candidate**. A candidate is *never* auto-applied.
 It's a structured proposal, classified, durably stored, and promoted only when
 it proves itself or a human approves.
@@ -155,4 +155,4 @@ Contrast with an unsafe example:
 
 - `rbac-and-scopes.md` — `patch:approve` permission semantics.
 - `error-recovery.md` — the error shapes that feed the drift detector.
-- `subkit-concepts.md` — step and envelope shapes being patched.
+- `sk-concepts.md` — step and envelope shapes being patched.

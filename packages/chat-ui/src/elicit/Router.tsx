@@ -14,6 +14,7 @@ import { type ChoiceOption, ChoicePrompt } from "./ChoicePrompt.tsx";
 import { type ConfirmKind, ConfirmPrompt } from "./ConfirmPrompt.tsx";
 import { type FormField, FormPrompt } from "./FormPrompt.tsx";
 import { MultiChoicePrompt } from "./MultiChoicePrompt.tsx";
+import { PartialApprovalPrompt, type PartialDiffEntry } from "./PartialApprovalPrompt.tsx";
 import { TextPrompt } from "./TextPrompt.tsx";
 
 export type ElicitationResponse =
@@ -21,7 +22,16 @@ export type ElicitationResponse =
   | { values: string[] }
   | { text: string }
   | { values: Record<string, unknown> }
-  | { confirmed: boolean; decision_reason?: string };
+  | { confirmed: boolean; decision_reason?: string }
+  | {
+      // Partial-diff approval response (Bug TT). When `partial` is
+      // true, the engine applies only the diffs at `approved_indices`;
+      // when false, treat as a binary confirm/reject.
+      confirmed: boolean;
+      partial?: boolean;
+      approved_indices?: number[];
+      decision_reason?: string;
+    };
 
 export interface ElicitRouterProps {
   elicitation: PendingElicitation;
@@ -97,6 +107,20 @@ export const ElicitRouter: React.FC<ElicitRouterProps> = ({
       );
     }
     case "ask_user_confirm": {
+      // Per-patch partial approval (Bug TT). When the gated tool
+      // emitted a list of JSON-Patch ops with kind:"partial_diff_approval",
+      // route to the per-row picker instead of the binary ConfirmPrompt
+      // so the operator can accept some patches and reject others.
+      if (input.kind === "partial_diff_approval" && Array.isArray(input.diffs)) {
+        return (
+          <PartialApprovalPrompt
+            question={question}
+            diffs={input.diffs as PartialDiffEntry[]}
+            onResponse={onResponse}
+            inputDisabled={inputDisabled}
+          />
+        );
+      }
       const kind: ConfirmKind = isConfirmKind(input.kind) ? input.kind : "generic";
       const summary = typeof input.summary === "string" ? input.summary : elicitation.summary;
       const destructive = input.destructive === true;

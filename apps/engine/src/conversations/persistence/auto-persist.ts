@@ -38,7 +38,9 @@ import { appendSnapshot, loadDraft } from "../draft.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
 import { COMMIT_INTENT_KINDS, type CommitIntent } from "../tools/ask-user/commit-intent.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
+import { inspectConnectorDraftTool } from "../tools/inspect-connector-draft.ts";
 import { probeConnectorDraftTool } from "../tools/probe-connector-draft.ts";
+import { validateConnectorDraftTool } from "../tools/validate-connector-draft.ts";
 import { commitWorkflowAtomic } from "./commit-workflow.ts";
 import { setDraftCredential } from "./draft-credential-cache.ts";
 import { type AtomicCredentialInput, saveConnectorAtomic } from "./save-connector.ts";
@@ -97,7 +99,33 @@ export async function maybeAutoPersistFromElicitation(
   p: AutoPersistInput,
 ): Promise<AutoPersistDispatch> {
   const intent = extractCommitIntent(p.elicitation.input);
-  if (!intent) return { dispatched: false };
+  if (!intent) {
+    // Forensic log: the elicitation resolved but carried no
+    // commit_intent so the harness has nothing to dispatch. Pre-fix
+    // this branch was completely silent — operators triaging "I
+    // approved but nothing got saved" had to grep for the absence
+    // of a workflow.created row to even notice the harness no-op.
+    // We surface the elicitation kind so the next investigation can
+    // immediately tell whether the LLM forgot to attach commit_intent
+    // (kind=external_write/generic) or whether we were called with
+    // an unrelated elicitation type (kind=ask_user_text/etc).
+    const elicitationInputKind =
+      p.elicitation.input && typeof p.elicitation.input === "object" && p.elicitation.input !== null
+        ? ((p.elicitation.input as { kind?: unknown }).kind ?? null)
+        : null;
+    logger.info({
+      module: "conversation_persistence",
+      action: "auto_persist.skipped",
+      msg: "elicitation resolved without commit_intent — no harness write dispatched",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      elicitation_id: p.elicitation.id,
+      elicitation_tool_name: p.elicitation.tool_name,
+      elicitation_input_kind:
+        typeof elicitationInputKind === "string" ? elicitationInputKind : null,
+    });
+    return { dispatched: false };
+  }
 
   const declineCheck = checkDecline(p.elicitation.tool_name, p.elicitation_output);
   if (declineCheck) {
@@ -153,6 +181,7 @@ export async function maybeAutoPersistFromElicitation(
         // was populated by `maybeCacheDraftCredentialFromElicitation`
         // before this dispatcher ran, so the probe sees auth.
         await maybeAutoProbeForSave(ctx, p.tenant_id);
+        await maybeAutoFreshenCheckpointsForSave(ctx);
         result = await saveConnectorAtomic({
           ctx,
           environment,
@@ -202,6 +231,8 @@ export async function maybeAutoPersistFromElicitation(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // biome-ignore lint/suspicious/noExplicitAny: pg errors carry .code / .constraint
+    const pgErr = err as any;
     logger.error({
       module: "auto-persist",
       action: "dispatch.threw",
@@ -210,14 +241,24 @@ export async function maybeAutoPersistFromElicitation(
       conversation_id: p.conversation_id,
       elicitation_id: p.elicitation.id,
       commit_intent_kind: intent.kind,
+      pg_code: pgErr?.code ?? null,
+      pg_constraint: pgErr?.constraint ?? null,
+      pg_detail: pgErr?.detail ?? null,
       error: msg,
     });
+    // Translate Postgres errors into actionable error_codes so the
+    // LLM has a concrete recovery path instead of throwing
+    // `cannot_help` and dead-ending the chat (session abeefb33: a
+    // 23505 unique_violation on `connectors_tenant_slug_env_key`
+    // surfaced as "database error" → cannot_help → conversation
+    // ended on a colon with no question for the user).
+    const translated = translateAutoPersistError(err, intent.kind);
     const synthetic: SyntheticToolResult = {
       tool: intentToolName(intent.kind),
       ok: false,
-      error_code: "auto_persist_failed",
-      message: msg,
-      next_best_actions: ["ask_user", "cannot_help"],
+      error_code: translated.error_code,
+      message: translated.message,
+      next_best_actions: translated.next_best_actions,
       source: "harness_auto_persist",
     };
     const callId = await injectSyntheticToolCall({
@@ -350,6 +391,94 @@ function buildSyntheticFromResult(toolName: string, result: ToolResult): Synthet
   };
 }
 
+/**
+ * Map a thrown Postgres / runtime error to a structured envelope the
+ * LLM can act on. Without this every dispatch failure surfaced as the
+ * vague "database error" prose (session abeefb33) and the LLM fell
+ * back to `cannot_help`, leaving the user staring at a colon with no
+ * recovery path. The mapping uses Postgres SQLSTATE codes when
+ * available (`pg` exposes them via `err.code`) plus regex fallbacks
+ * on the message.
+ */
+/** Label hint passed to `translateAutoPersistError` so it can pick
+ *  resource-specific recovery actions. Accepts the canonical
+ *  CommitIntent kinds plus the bare resource labels used by direct
+ *  tool paths (`update_connector`, `update_workflow`). When the
+ *  caller's tool doesn't fit any of these, the translator falls
+ *  back to a generic resource label. */
+export type ErrorTranslationContext = CommitIntent["kind"] | "update_connector" | "update_workflow";
+
+export function translateAutoPersistError(
+  err: unknown,
+  intentKind: ErrorTranslationContext,
+): { error_code: string; message: string; next_best_actions: string[] } {
+  const msg = err instanceof Error ? err.message : String(err);
+  // biome-ignore lint/suspicious/noExplicitAny: pg errors carry .code
+  const code = (err as any)?.code;
+  const detail =
+    typeof (err as { detail?: unknown })?.detail === "string"
+      ? ((err as { detail: string }).detail as string)
+      : null;
+  const lower = msg.toLowerCase();
+  // 23505 — unique_violation. The dominant cause for re-create after
+  // soft-delete (`connectors_tenant_slug_env_key` /
+  // `workflows_tenant_slug_active_key`) and for genuine slug
+  // collisions on a still-active row.
+  if (code === "23505" || /unique constraint|duplicate key|already exists/i.test(lower)) {
+    const isConnector =
+      intentKind === "save_connector_draft" ||
+      intentKind === "update_connector" ||
+      intentKind === "delete_connector";
+    const isWorkflow =
+      intentKind === "commit_workflow_draft" ||
+      intentKind === "update_workflow" ||
+      intentKind === "delete_workflow";
+    const resource = isConnector ? "connector" : isWorkflow ? "workflow" : "resource";
+    return {
+      error_code: "slug_already_in_use",
+      message: `A ${resource} with this slug already exists in the tenant. List existing ${resource}s (\`list_${resource === "connector" ? "connectors" : "workflows"}\`) and either choose a different slug, restore the existing row, or update it in place. Detail: ${detail ?? msg}`,
+      next_best_actions:
+        resource === "connector"
+          ? ["list_connectors", "get_connector", "update_connector"]
+          : ["list_workflows", "get_workflow", "update_workflow"],
+    };
+  }
+  // 23503 — foreign_key_violation. Common when deleting something
+  // that's still referenced.
+  if (code === "23503" || /foreign key|violates foreign key/i.test(lower)) {
+    return {
+      error_code: "in_use_by_dependent_rows",
+      message: `Cannot complete the operation because the resource is still referenced by another row. Detail: ${detail ?? msg}`,
+      next_best_actions: ["list_executions", "list_workflows", "list_connectors", "ask_user_text"],
+    };
+  }
+  // 23502 — not_null_violation. Authoring layer bug; surface to LLM
+  // with the column name so it can repair the draft.
+  if (code === "23502" || /null value|violates not-null/i.test(lower)) {
+    return {
+      error_code: "missing_required_field",
+      message: `A required field is missing on the draft. Detail: ${detail ?? msg}`,
+      next_best_actions: ["inspect_connector_draft", "inspect_workflow_draft", "validate_draft"],
+    };
+  }
+  // 22P02 — invalid_text_representation (often "uuid syntax").
+  if (code === "22P02" || /invalid input syntax/i.test(lower)) {
+    return {
+      error_code: "invalid_input_format",
+      message: `An input value has the wrong format (likely a malformed uuid or enum). Detail: ${detail ?? msg}`,
+      next_best_actions: ["inspect_authoring_context", "inspect_connector_draft"],
+    };
+  }
+  // Fallback — truly unexpected. Keep `auto_persist_failed` as the
+  // signal but include the verbatim message so the LLM can paraphrase
+  // SOMETHING actionable to the user instead of dead-ending.
+  return {
+    error_code: "auto_persist_failed",
+    message: `Unexpected error while persisting the ${intentKind} write. ${msg}. Surface this as a clear question for the user: report what failed and ask whether to retry, change inputs, or escalate.`,
+    next_best_actions: ["ask_user_text", "cannot_help"],
+  };
+}
+
 function intentToolName(kind: CommitIntent["kind"]): string {
   switch (kind) {
     case "save_connector_draft":
@@ -417,6 +546,33 @@ export function extractCredentialFromFormOutput(
   seedOverrides: Record<string, unknown>,
   output: unknown,
 ): AtomicCredentialInput | null {
+  // The LLM frequently emits `mode: "oauth2"` in the commit_intent —
+  // it sees the connector's `auth_type: "oauth2"` and copies it. But
+  // there is no concrete "oauth2" credential ROW shape — only the
+  // grant-specific bootstrap shapes (cognito_user_password, …) and the
+  // post-exchange `mode: "oauth2"` row that the engine produces
+  // internally. Pre-fix this fell through to `default → null` and the
+  // form output silently produced no credential, leading to a saved
+  // connector with no auth → 401 on every call (session bab50df1).
+  // Promote `oauth2` to the matching grant-specific bootstrap based on
+  // the seed override hints (or, when no hint is present, fall back to
+  // RFC 6749 password-grant which uses the same {username,password}
+  // shape).
+  if (seedMode === "oauth2") {
+    const grantHint =
+      typeof seedOverrides.grant_type === "string" ? seedOverrides.grant_type : null;
+    if (
+      grantHint === "cognito_user_password" ||
+      typeof seedOverrides.aws_region === "string" ||
+      typeof seedOverrides.cognito_client_id === "string"
+    ) {
+      seedMode = "cognito_user_password";
+    }
+    // Other grant_types (authorization_code, client_credentials, jwt_bearer,
+    // device_code) don't go through the form-submit credential path — they
+    // run their own dedicated flows. Falling through to default returns
+    // null which surfaces as `credential_required` to the caller.
+  }
   const out = (output ?? {}) as Record<string, unknown>;
   const values =
     typeof out.values === "object" && out.values !== null
@@ -484,6 +640,66 @@ export function extractCredentialFromFormOutput(
       if (!param || !value) return null;
       return { mode: "query", param, value };
     }
+    case "cognito_user_password": {
+      // Bootstrap shape for AppSync Cognito + AWS API Gateway Cognito
+      // authorizer. The form provides username + password; the engine
+      // exchanges them at cognito-idp.<region>.amazonaws.com for an
+      // IdToken inside `toDecryptedCredentialAsync`. region +
+      // client_id come from the connector config (or seed overrides).
+      const username =
+        (typeof seedOverrides.username === "string" && seedOverrides.username.length > 0
+          ? seedOverrides.username
+          : null) ?? pick(["username", "email", "user", "login"]);
+      const password =
+        (typeof seedOverrides.password === "string" && seedOverrides.password.length > 0
+          ? seedOverrides.password
+          : null) ?? pick(["password", "pass"]);
+      if (!username || !password) return null;
+      const out: Extract<AtomicCredentialInput, { mode: "cognito_user_password" }> = {
+        mode: "cognito_user_password",
+        username,
+        password,
+      };
+      const aws_region =
+        (typeof seedOverrides.aws_region === "string" && seedOverrides.aws_region.length > 0
+          ? seedOverrides.aws_region
+          : null) ?? pick(["aws_region", "region"]);
+      if (aws_region) out.aws_region = aws_region;
+      const client_id =
+        (typeof seedOverrides.client_id === "string" && seedOverrides.client_id.length > 0
+          ? seedOverrides.client_id
+          : null) ?? pick(["client_id", "cognito_client_id", "app_client_id"]);
+      if (client_id) out.client_id = client_id;
+      const client_secret =
+        (typeof seedOverrides.client_secret === "string" && seedOverrides.client_secret.length > 0
+          ? seedOverrides.client_secret
+          : null) ?? pick(["client_secret", "cognito_client_secret"]);
+      if (client_secret) out.client_secret = client_secret;
+      return out;
+    }
+    case "aws_sigv4": {
+      const access_key_id =
+        (typeof seedOverrides.access_key_id === "string" && seedOverrides.access_key_id.length > 0
+          ? seedOverrides.access_key_id
+          : null) ?? pick(["access_key_id", "aws_access_key_id"]);
+      const secret_access_key =
+        (typeof seedOverrides.secret_access_key === "string" &&
+        seedOverrides.secret_access_key.length > 0
+          ? seedOverrides.secret_access_key
+          : null) ?? pick(["secret_access_key", "aws_secret_access_key", "secret"]);
+      if (!access_key_id || !secret_access_key) return null;
+      const out: Extract<AtomicCredentialInput, { mode: "aws_sigv4" }> = {
+        mode: "aws_sigv4",
+        access_key_id,
+        secret_access_key,
+      };
+      const session_token =
+        (typeof seedOverrides.session_token === "string" && seedOverrides.session_token.length > 0
+          ? seedOverrides.session_token
+          : null) ?? pick(["session_token", "aws_session_token"]);
+      if (session_token) out.session_token = session_token;
+      return out;
+    }
     default:
       return null;
   }
@@ -518,15 +734,64 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
   try {
     const draft = await loadDraft(p.tenant_id, p.conversation_id, p.db);
     const authType = draft.connector?.auth_type ?? null;
+    // Translate the connector's auth_type into the seed-mode the
+    // extractor expects. Pre-fix this gate only let
+    // `bearer/basic/header/query` through, silently dropping the
+    // form submission for `oauth2 / cognito_user_password` and
+    // `aws_sigv4` drafts — that's why the AppSync probe in session
+    // f244b896 went out unauthenticated even after the operator
+    // submitted the form three times.
+    let seedMode: string | null = null;
     if (
-      authType !== "bearer" &&
-      authType !== "basic" &&
-      authType !== "header" &&
-      authType !== "query"
+      authType === "bearer" ||
+      authType === "basic" ||
+      authType === "header" ||
+      authType === "query"
     ) {
+      seedMode = authType;
+    } else if (authType === "oauth2") {
+      const cfg = (draft.connector?.config ?? {}) as { oauth?: { grant_type?: unknown } };
+      const grantType = cfg.oauth?.grant_type;
+      if (grantType === "cognito_user_password") seedMode = "cognito_user_password";
+      else if (grantType === "password") seedMode = "basic"; // RFC 6749 §4.3 reuses basic shape
+    } else if (authType === "aws_sigv4") {
+      seedMode = "aws_sigv4";
+    }
+    if (!seedMode) {
+      // Forensic log so future regressions are debuggable from the
+      // engine log alone — pre-fix the cache silently early-returned
+      // and we had to read source to figure out why.
+      logger.info({
+        module: "auto-persist",
+        action: "draft_credential.cache_skipped",
+        msg: "ask_user_form resolved but draft auth_type is unsupported by extractor",
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        auth_type: authType,
+        oauth_grant_type:
+          authType === "oauth2"
+            ? (((draft.connector?.config ?? {}) as { oauth?: { grant_type?: unknown } }).oauth
+                ?.grant_type ?? null)
+            : null,
+      });
       return;
     }
-    const credential = extractCredentialFromFormOutput(authType, {}, p.elicitation_output);
+    // For oauth2/cognito the connector config carries region + client_id;
+    // pass them as seed overrides so the extractor doesn't have to
+    // re-parse them out of the form fields when they were already set.
+    const cfg = (draft.connector?.config ?? {}) as {
+      aws_region?: unknown;
+      oauth?: { client_id?: unknown };
+    };
+    const oauthCfg = (cfg.oauth ?? {}) as { client_id?: unknown };
+    const seedOverrides: Record<string, unknown> = {};
+    if (typeof cfg.aws_region === "string") seedOverrides.aws_region = cfg.aws_region;
+    if (typeof oauthCfg.client_id === "string") seedOverrides.client_id = oauthCfg.client_id;
+    const credential = extractCredentialFromFormOutput(
+      seedMode,
+      seedOverrides,
+      p.elicitation_output,
+    );
     if (!credential) return;
     setDraftCredential(p.conversation_id, credential);
     logger.info({
@@ -564,6 +829,44 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
  * any failure is encountered (the save will surface
  * `probe_failed`/`connector_not_ready` itself).
  */
+/**
+ * Refresh the `connector_inspected` and `connector_validated`
+ * checkpoints before save. Both are pure draft-side computations that
+ * stamp readiness onto the AuthoringState; the LLM is supposed to call
+ * them between proposing the connector and asking for save approval,
+ * but in practice it routinely skips one or both — we saw this in
+ * session 16a8f1c7 where the model went probe → ask_user_confirm and
+ * the auto-persist path bounced off `connector_not_ready` because
+ * `connector_validated` was still missing. The user then had to
+ * approve a SECOND time after the model retried through the
+ * tool-policy gate.
+ *
+ * The harness already auto-probes here; auto-inspect+auto-validate is
+ * the same idea: the operator's "yes save" click is the authority,
+ * and the engine should make sure it can act on it instead of
+ * deferring to LLM-discipline checkpoints.
+ *
+ * No-op when there is no connector draft. Failures fall through; the
+ * subsequent `saveConnectorAtomic` will surface the canonical
+ * structured error.
+ */
+async function maybeAutoFreshenCheckpointsForSave(ctx: ToolContext): Promise<void> {
+  try {
+    const draft = ctx.getDraft();
+    if (!draft.connector) return;
+    await inspectConnectorDraftTool.execute(ctx, {});
+    await validateConnectorDraftTool.execute(ctx, {});
+  } catch (err) {
+    logger.warn({
+      module: "auto-persist",
+      action: "auto_freshen_checkpoints_failed",
+      msg: "auto-inspect/validate before save failed — falling through to saveConnectorAtomic which will surface the gate error",
+      conversation_id: ctx.conversation_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function maybeAutoProbeForSave(ctx: ToolContext, tenant_id: string): Promise<void> {
   try {
     const draft = ctx.getDraft();

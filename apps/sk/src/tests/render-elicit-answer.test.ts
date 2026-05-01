@@ -19,7 +19,7 @@ import { describe, expect, test } from "bun:test";
 import { renderElicitAnswer } from "../ink-app.tsx";
 
 describe("renderElicitAnswer — confirmation outputs", () => {
-  test("approve / reject from confirm tools", () => {
+  test("approve / reject from confirm tools (no payload)", () => {
     expect(renderElicitAnswer({ confirmed: true })).toBe("approve");
     expect(renderElicitAnswer({ confirmed: false })).toBe("reject");
     expect(renderElicitAnswer({ declined: true })).toBe("reject");
@@ -29,6 +29,72 @@ describe("renderElicitAnswer — confirmation outputs", () => {
     expect(renderElicitAnswer({ confirmed: false }, undefined, "too risky")).toBe(
       "reject — too risky",
     );
+  });
+
+  // Fix #4 — confirmation transcript shows the proposed payload so the
+  // user can scroll back and audit WHAT they approved. Without this the
+  // history was 5× `you approve` lines with zero context (session
+  // a6440493).
+  test("appends commit_intent.description as payload preview", () => {
+    const input = {
+      kind: "commit_draft",
+      commit_intent: {
+        kind: "commit_workflow_draft",
+        description: "Save the DigitalOcean projects workflow",
+        payload: {},
+      },
+    };
+    expect(renderElicitAnswer({ confirmed: true }, input)).toBe(
+      "approve · Save the DigitalOcean projects workflow",
+    );
+  });
+
+  test("falls back to target.tool + workflow id when description missing", () => {
+    const input = {
+      kind: "external_write",
+      target: {
+        tool: "commit_draft",
+        args: { target_workflow_id: "wf_123" },
+      },
+    };
+    expect(renderElicitAnswer({ confirmed: true }, input)).toBe("approve · commit_draft wf_123");
+  });
+
+  test("falls back to target.tool + environment when there is no workflow id", () => {
+    const input = {
+      kind: "external_write",
+      target: {
+        tool: "run_workflow",
+        args: { environment: "prod" },
+      },
+    };
+    expect(renderElicitAnswer({ confirmed: true }, input)).toBe("approve · run_workflow env=prod");
+  });
+
+  test("falls back to summary string when no commit_intent or target", () => {
+    const input = { kind: "generic", summary: "Run health check?" };
+    expect(renderElicitAnswer({ confirmed: true }, input)).toBe("approve · Run health check?");
+  });
+
+  test("reject also gets the payload preview, with reason after", () => {
+    const input = {
+      commit_intent: { description: "Save workflow v2" },
+    };
+    expect(renderElicitAnswer({ confirmed: false }, input, "too risky")).toBe(
+      "reject · Save workflow v2 — too risky",
+    );
+  });
+
+  test("truncates long descriptions for transcript safety", () => {
+    const input = {
+      commit_intent: {
+        description: "x".repeat(200),
+      },
+    };
+    const out = renderElicitAnswer({ confirmed: true }, input);
+    // truncateForTranscript keeps it under 80 chars + ellipsis suffix.
+    expect(out.length).toBeLessThan(120);
+    expect(out.startsWith("approve · ")).toBe(true);
   });
 });
 

@@ -121,7 +121,10 @@ describe("request step", () => {
     expect(typeof (rm as Record<string, unknown>).url).toBe("string");
     expect(String((rm as Record<string, unknown>).url)).toContain(`${mock.baseUrl}/missing`);
     expect((rm as Record<string, unknown>).method).toBe("GET");
-    expect(Array.isArray((rm as Record<string, unknown>).header_keys)).toBe(true);
+    // header_keys lives under request_meta.digest (typed first-class
+    // field on http / connectorless / error variants).
+    const digest = (rm as Record<string, unknown>).digest as Record<string, unknown> | undefined;
+    expect(Array.isArray(digest?.header_keys)).toBe(true);
   });
 
   test("setup failure (placeholder_unresolved) records request_meta.unresolved_placeholders", async () => {

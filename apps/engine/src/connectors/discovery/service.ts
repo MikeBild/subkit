@@ -18,9 +18,12 @@
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { recordKnowledgeSourceRefreshed } from "../../audit/recorders/index.ts";
+import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { logger } from "../../logging/logger.ts";
+import { applyAuthMaterial, resolveConnectorCredential } from "../drivers/http.ts";
+import { getConnectorForEnvironment } from "../service.ts";
 import { type DiscoverConnectorEndpointsInput, discoverConnectorEndpoints } from "./index.ts";
 import { DiscoveryError, type DiscoveryResult } from "./types.ts";
 
@@ -38,6 +41,11 @@ export interface DiscoveryServiceArgs {
   base_url?: string;
   ingestion_url?: string;
   force_refresh?: boolean;
+  /** When set, the discovery flow loads the connector's persisted credential
+   *  (with inline OAuth2 refresh) and injects auth headers into the
+   *  introspection / spec fetch. Required for upstreams that gate
+   *  introspection behind a token (GitHub GraphQL, Linear, Monday). */
+  connector_id?: string;
 }
 
 export interface DiscoveryServiceContext {
@@ -216,7 +224,7 @@ async function writeCache(
       last_refreshed_at: now,
     })
     .returning();
-  if (!inserted) throw new Error("knowledge_sources insert returned no row");
+  assertInsertRow(inserted, "knowledge_sources");
   await ctx.db.insert(knowledgeChunks).values({
     tenant_id: ctx.tenant_id,
     knowledge_source_id: inserted.id,
@@ -297,11 +305,51 @@ export async function runDiscoveryCached(
   );
 
   try {
+    // Resolve auth headers from the connector's persisted credential when
+    // a connector_id was supplied. Without this, introspecting GitHub /
+    // Linear / Monday GraphQL schemas required the operator to manually
+    // pass headers — most APIs gate introspection behind a token.
+    let authHeaders: Record<string, string> | null = null;
+    if (args.connector_id) {
+      try {
+        const connector = await getConnectorForEnvironment(
+          ctx.tenant_id,
+          args.connector_id,
+          "dev",
+          ctx.db,
+        );
+        if (connector) {
+          const { credential } = await resolveConnectorCredential({
+            db: ctx.db,
+            tenant_id: ctx.tenant_id,
+            connector,
+          });
+          if (credential) {
+            const headers: Record<string, string> = {};
+            const query: Record<string, string | number | boolean> = {};
+            applyAuthMaterial(connector, credential, headers, query);
+            authHeaders = headers;
+          }
+        }
+      } catch (err) {
+        // Failure to resolve auth is a soft-fail: we attempt unauth'd
+        // discovery and let the strategy return a typed error if the
+        // upstream rejects. Pre-fix this path didn't exist at all.
+        logger.warn({
+          module: "connector_service",
+          action: "discover_connector_endpoints.auth_resolve_failed",
+          tenant_id: ctx.tenant_id,
+          connector_id: args.connector_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
     const input: DiscoverConnectorEndpointsInput = {
       signal: controller.signal,
       ...(args.template_id ? { template_id: args.template_id } : {}),
       ...(args.ingestion_url ? { ingestion_url: args.ingestion_url } : {}),
       ...(args.base_url ? { base_url: args.base_url } : {}),
+      ...(authHeaders ? { headers: authHeaders } : {}),
     };
     const result = await discoverConnectorEndpoints(input);
     await writeCache(ctx, cache, result);

@@ -22,6 +22,7 @@ import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { startAuthorizationCode } from "../../credentials/oauth2/client.ts";
 import { connectorOauthStates } from "../../db/schema/index.ts";
+import { withConnectorAuthenticated } from "../authoring-state.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -116,6 +117,21 @@ export const authenticateOAuthTool: ConversationTool = {
       redirect_uri: cfgWithScope.redirect_uri ?? cfg.redirect_uri,
       expires_at: expires,
     });
+    // Mark the connector_authenticated checkpoint fresh — the operator
+    // has been handed the authorization URL and the callback route will
+    // persist tokens via upsertCredential when they finish in the
+    // browser. This unblocks `probe_connector_draft` for the workflow.
+    const draft = ctx.getDraft();
+    if (draft.connector) {
+      const next = withConnectorAuthenticated(
+        draft,
+        draft.connector,
+        true,
+        `Authorization URL issued for ${connector.display_name ?? connector.slug}.`,
+        "authenticate_oauth",
+      );
+      await ctx.setDraft(next);
+    }
     // The redacted config payload mirrors the MCP authenticate handler —
     // never echoes client_secret. Surfaced in the tool result so the CLI
     // can render a "open this URL to finish authentication" affordance

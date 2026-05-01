@@ -11,7 +11,15 @@
 
 import { z } from "zod";
 
-export const CredentialMode = z.enum(["none", "header", "query", "bearer", "basic", "oauth2"]);
+export const CredentialMode = z.enum([
+  "none",
+  "header",
+  "query",
+  "bearer",
+  "basic",
+  "oauth2",
+  "aws_sigv4",
+]);
 export type CredentialMode = z.infer<typeof CredentialMode>;
 
 // Header + query credentials store a flat string->string map.
@@ -43,6 +51,23 @@ export const OAuth2CredentialValue = z.object({
 });
 export type OAuth2CredentialValue = z.infer<typeof OAuth2CredentialValue>;
 
+// AWS SigV4 — sign every outbound request with these credentials. Used
+// by AppSync IAM mode, DynamoDB, API Gateway IAM auth, every other
+// AWS service that doesn't have a first-class auth mode.
+//
+// `region` and `service` come from the connector config (not the
+// credential) since they vary per endpoint, not per identity. The
+// credential carries only the identity material.
+export const AwsSigV4CredentialValue = z.object({
+  access_key_id: z.string().min(1),
+  secret_access_key: z.string().min(1),
+  /** Optional STS session token — present for AssumeRole / IAM Identity
+   *  Center / EC2 instance-profile credentials, absent for static IAM
+   *  user keys. */
+  session_token: z.string().optional(),
+});
+export type AwsSigV4CredentialValue = z.infer<typeof AwsSigV4CredentialValue>;
+
 export type DecryptedCredential =
   | { mode: "none" }
   | ({ mode: "header" } & HeaderCredentialValue)
@@ -53,4 +78,5 @@ export type DecryptedCredential =
       mode: "oauth2";
       refresh_token: string | null;
       expires_at: Date | null;
-    } & OAuth2CredentialValue);
+    } & OAuth2CredentialValue)
+  | ({ mode: "aws_sigv4" } & AwsSigV4CredentialValue);

@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
@@ -145,7 +146,7 @@ export async function createKnowledgeSource(
       })
       .returning();
 
-    if (!row) throw new Error("knowledge_sources insert returned no row");
+    assertInsertRow(row, "knowledge_sources");
 
     // Insert chunks
     if (accepted.length > 0) {

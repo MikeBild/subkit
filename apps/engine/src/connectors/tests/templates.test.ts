@@ -51,8 +51,9 @@ describe("connector templates", () => {
     const rows = loadBuiltinTemplates();
     for (const row of rows) {
       expect(row.version).toBe(1);
-      expect(row.url_pattern).toBeTruthy();
-      expect(() => new RegExp(row.url_pattern)).not.toThrow();
+      if (row.url_pattern !== null) {
+        expect(() => new RegExp(row.url_pattern as string)).not.toThrow();
+      }
       expect(Array.isArray(row.keywords)).toBe(true);
       expect(Array.isArray(row.credential_hints)).toBe(true);
       expect(Array.isArray(row.base_url_options)).toBe(true);
@@ -72,7 +73,14 @@ describe("connector templates", () => {
     expect(withOauth.length).toBeGreaterThanOrEqual(30);
     for (const row of withOauth) {
       const o = row.oauth!;
-      expect(["authorization_code", "client_credentials"]).toContain(o.grant_type);
+      expect([
+        "authorization_code",
+        "client_credentials",
+        "password",
+        "cognito_user_password",
+        "jwt_bearer",
+        "device_code",
+      ]).toContain(o.grant_type);
       expect(["body", "basic_auth"]).toContain(o.token_auth_method);
       expect(["form", "json"]).toContain(o.token_content_type);
       expect(typeof o.use_pkce).toBe("boolean");

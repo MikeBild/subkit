@@ -1475,6 +1475,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/{id}/input-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a workflow's input schema (declared or synthesized)
+         * @description Returns the workflow's declared `input_schema` when present, otherwise synthesizes one from `$input.X` placeholder and JSONata references discovered in the steps. Mirrors the convention used by the MCP tool surface so non-MCP HTTP callers can discover the input shape without round-tripping through MCP.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowInputSchemaResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows/{id}/history": {
         parameters: {
             query?: never;
@@ -1779,6 +1829,67 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/executions/transform": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute a transform / filter pipeline against a payload (no run row)
+         * @description Stateless transform pipeline: apply `output_transform` (JSONata) or `output_transform_function` (JS) to `payload`, then run `response_filters`. Mirrors the reference impl's `POST /tools/transform/run`. Does not create an execution row — useful for CI smoke tests, transform debugging, and external probes.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ExecutionRunTransformBody"];
+                };
+            };
+            responses: {
+                /** @description Transform completed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExecutionRunTransformResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Transform / filter raised */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -4332,6 +4443,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/conversations/{id}/tool-calls/{tool_call_id}/respond": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve the pending ask_user_* elicitation linked to the given tool_call (resumeToolCallId alias) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    tool_call_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RespondElicitationBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConversationRunOutcome"];
+                    };
+                };
+                /** @description Not found — no elicitation links to that tool_call */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/conversations/{id}/compact": {
         parameters: {
             query?: never;
@@ -4377,6 +4540,88 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/tool-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read per-tool execution-mode overrides for this conversation */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ToolPoliciesResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Set per-tool execution-mode overrides. Pass `null` for a tool to clear its override and fall back to the default policy. */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ToolPoliciesPatchBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ToolPoliciesResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6732,12 +6977,25 @@ export interface components {
             tenant_id: string;
             slug: string;
             name: string;
+            description: string | null;
             lifecycle: string;
             current_version_id: string | null;
             current_version: number | null;
             created_at: string;
             updated_at: string;
             steps: unknown[];
+            input_schema: {
+                [key: string]: unknown;
+            } | null;
+            output_schema: {
+                [key: string]: unknown;
+            } | null;
+            output_transform: string | null;
+            output_transform_function: string | null;
+            response_filters: unknown[] | null;
+            validation_expression: string | null;
+            validation_function: string | null;
+            timeout_ms: number | null;
         };
         CreateWorkflowBody: {
             name: string;
@@ -6776,6 +7034,13 @@ export interface components {
             }[];
             timeout_ms?: number;
         };
+        WorkflowInputSchemaResponse: {
+            /** @enum {string} */
+            source: "declared" | "synthesized" | "none";
+            schema: {
+                [key: string]: unknown;
+            } | null;
+        };
         WorkflowVersionListResponse: {
             items: components["schemas"]["WorkflowVersion"][];
         };
@@ -6804,9 +7069,28 @@ export interface components {
             duration_ms: number | null;
             retry_count: number;
             error?: unknown;
-            request_meta?: {
+            request_meta?: components["schemas"]["RequestMeta"];
+        };
+        RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | unknown;
+        HttpRequestMeta: {
+            /** @enum {string} */
+            driver: "http";
+            method: string;
+            url: string | null;
+            status?: number;
+            bytes_in?: number;
+            tunnel_target?: string | null;
+            idempotency_key?: string;
+            connector: components["schemas"]["ConnectorResolutionSummary"];
+            digest?: components["schemas"]["RequestDigest"];
+            pages_fetched?: number;
+            resumed_from_page?: number;
+            resumed_accumulated_count?: number;
+            pagination_checkpoint?: components["schemas"]["PaginationCheckpoint"];
+            unresolved_placeholders?: string[];
+            extras?: {
                 [key: string]: unknown;
-            } | null;
+            };
         };
         ConnectorResolutionSummary: {
             step_key: string;
@@ -6821,6 +7105,80 @@ export interface components {
             auth_method: "none" | "bearer" | "header" | "query" | "basic" | "oauth2_static" | "oauth2_refreshed";
             tunnel_target?: string | null;
             base_url?: string | null;
+        };
+        RequestDigest: {
+            header_keys: string[];
+            query_keys: string[];
+            body_kind: string;
+        };
+        PaginationCheckpoint: {
+            page_idx: number;
+            accumulated_count: number;
+            signature: string;
+        };
+        GraphqlRequestMeta: {
+            /** @enum {string} */
+            driver: "graphql";
+            method: string;
+            status: number;
+            connector: components["schemas"]["ConnectorResolutionSummary"];
+            extras?: {
+                [key: string]: unknown;
+            };
+        };
+        PostgresRequestMeta: {
+            /** @enum {string} */
+            driver: "postgres";
+            query_preview: string;
+            row_count: number | null;
+            transaction: boolean;
+            cursor: boolean;
+            connector: components["schemas"]["ConnectorResolutionSummary"];
+            row_count_per_statement?: (number | null)[];
+            extras?: {
+                [key: string]: unknown;
+            };
+        };
+        S3RequestMeta: {
+            /** @enum {string} */
+            driver: "s3";
+            method: string;
+            status: number;
+            key?: string;
+            prefix?: string;
+            connector: components["schemas"]["ConnectorResolutionSummary"];
+            extras?: {
+                [key: string]: unknown;
+            };
+        };
+        ConnectorlessRequestMeta: {
+            /** @enum {string} */
+            driver: "connectorless";
+            method: string;
+            url: string | null;
+            status?: number;
+            bytes_in?: number;
+            idempotency_key?: string;
+            unresolved_placeholders?: string[];
+            digest?: components["schemas"]["RequestDigest"];
+            pages_fetched?: number;
+            resumed_from_page?: number;
+            resumed_accumulated_count?: number;
+            pagination_checkpoint?: components["schemas"]["PaginationCheckpoint"];
+            extras?: {
+                [key: string]: unknown;
+            };
+        };
+        ErrorRequestMeta: {
+            /** @enum {string} */
+            driver: "error";
+            method?: string;
+            url?: string | null;
+            unresolved_placeholders?: string[];
+            digest?: components["schemas"]["RequestDigest"];
+            extras?: {
+                [key: string]: unknown;
+            };
         };
         ExecutionRunSavedBody: {
             /**
@@ -6925,6 +7283,33 @@ export interface components {
             started_at: string | null;
             finished_at: string | null;
         };
+        ExecutionRunTransformResponse: {
+            output?: unknown;
+            duration_ms: number;
+        };
+        ExecutionRunTransformBody: {
+            output_transform?: string;
+            output_transform_function?: string;
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            payload?: unknown;
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            output_schema?: {
+                [key: string]: unknown;
+            };
+            timeout_ms?: number;
+        };
+        ResponseFilter: {
+            /** @enum {string} */
+            target: "KEYS" | "VALUES" | "BOTH";
+            /** @enum {string} */
+            action: "REMOVE" | "MASK" | "FAIL";
+            pattern: string;
+            mask?: string;
+            /** @enum {string} */
+            scope?: "FIELD" | "ITEM" | "ENTRY";
+        };
         ConnectorSpecImportResponse: {
             draft: components["schemas"]["ConnectorSpecImportDraft"];
             template_match: {
@@ -7002,13 +7387,13 @@ export interface components {
                 name: string;
                 /** @enum {string} */
                 driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp" | "sftp" | "smb" | "redis";
-                base_url: string;
+                base_url: string | null;
                 /** @enum {string} */
-                auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2";
+                auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
                 oauth: components["schemas"]["ConnectorTemplateOAuth"];
                 default_skill: string | null;
-                /** @enum {string} */
-                ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported";
+                /** @enum {string|null} */
+                ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
                 ingestion_url: string | null;
                 icon: string;
                 description: string;
@@ -7020,7 +7405,7 @@ export interface components {
                 setup_instructions: string;
                 /** @default [] */
                 auth_options: components["schemas"]["ConnectorTemplateAuthOption"][];
-                url_pattern: string;
+                url_pattern: string | null;
                 /** @default [] */
                 keywords: string[];
                 inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
@@ -7031,6 +7416,10 @@ export interface components {
                 base_url_options: components["schemas"]["ConnectorTemplateBaseUrlOption"][];
                 pagination_defaults: components["schemas"]["ConnectorTemplatePaginationDefaults"];
                 capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
+                /** @default [] */
+                example_paths: string[];
+                /** @default null */
+                operator_notes: string | null;
                 /** @enum {string} */
                 source: "builtin" | "tenant";
                 id: string | null;
@@ -7042,7 +7431,7 @@ export interface components {
             token_endpoint?: string;
             scopes?: string;
             /** @enum {string} */
-            grant_type: "authorization_code" | "client_credentials";
+            grant_type: "authorization_code" | "client_credentials" | "password" | "cognito_user_password" | "jwt_bearer" | "device_code";
             /** @enum {string} */
             token_auth_method: "body" | "basic_auth";
             /** @enum {string} */
@@ -7056,7 +7445,7 @@ export interface components {
         } | null;
         ConnectorTemplateAuthOption: {
             /** @enum {string} */
-            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2";
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
             label: string;
             description: string;
             oauth?: components["schemas"]["ConnectorTemplateOAuth"];
@@ -7070,7 +7459,7 @@ export interface components {
             /** @enum {string} */
             method: "GET" | "HEAD" | "POST";
             path: string;
-            expected_status: number[];
+            expected_status?: number[];
             /** @default  */
             description: string;
         } | null;
@@ -7115,13 +7504,13 @@ export interface components {
             name: string;
             /** @enum {string} */
             driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp" | "sftp" | "smb" | "redis";
-            base_url: string;
+            base_url: string | null;
             /** @enum {string} */
-            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2";
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
             oauth: components["schemas"]["ConnectorTemplateOAuth"];
             default_skill: string | null;
-            /** @enum {string} */
-            ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported";
+            /** @enum {string|null} */
+            ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
             ingestion_url: string | null;
             icon: string;
             description: string;
@@ -7133,7 +7522,7 @@ export interface components {
             setup_instructions: string;
             /** @default [] */
             auth_options: components["schemas"]["ConnectorTemplateAuthOption"][];
-            url_pattern: string;
+            url_pattern: string | null;
             /** @default [] */
             keywords: string[];
             inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
@@ -7144,6 +7533,10 @@ export interface components {
             base_url_options: components["schemas"]["ConnectorTemplateBaseUrlOption"][];
             pagination_defaults: components["schemas"]["ConnectorTemplatePaginationDefaults"];
             capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
+            /** @default [] */
+            example_paths: string[];
+            /** @default null */
+            operator_notes: string | null;
             id: string;
             /** @enum {string} */
             source: "tenant";
@@ -7155,13 +7548,13 @@ export interface components {
             name: string;
             /** @enum {string} */
             driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp" | "sftp" | "smb" | "redis";
-            base_url: string;
+            base_url: string | null;
             /** @enum {string} */
-            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2";
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
             oauth: components["schemas"]["ConnectorTemplateOAuth"];
             default_skill: string | null;
-            /** @enum {string} */
-            ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported";
+            /** @enum {string|null} */
+            ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
             ingestion_url: string | null;
             icon: string;
             description: string;
@@ -7173,7 +7566,7 @@ export interface components {
             setup_instructions: string;
             /** @default [] */
             auth_options: components["schemas"]["ConnectorTemplateAuthOption"][];
-            url_pattern: string;
+            url_pattern: string | null;
             /** @default [] */
             keywords: string[];
             inline_schema: components["schemas"]["ConnectorTemplateInlineSchema"];
@@ -7184,6 +7577,10 @@ export interface components {
             base_url_options: components["schemas"]["ConnectorTemplateBaseUrlOption"][];
             pagination_defaults: components["schemas"]["ConnectorTemplatePaginationDefaults"];
             capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
+            /** @default [] */
+            example_paths: string[];
+            /** @default null */
+            operator_notes: string | null;
         };
         TemplateOAuthCredentialResponse: {
             id: string;
@@ -7268,7 +7665,7 @@ export interface components {
              * @default none
              * @enum {string}
              */
-            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2";
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
             config?: {
                 [key: string]: unknown;
             };
@@ -7284,7 +7681,7 @@ export interface components {
             base_url?: string;
             dsn?: string;
             /** @enum {string} */
-            auth_type?: "none" | "header" | "query" | "bearer" | "basic" | "oauth2";
+            auth_type?: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
             config?: {
                 [key: string]: unknown;
             };
@@ -7381,7 +7778,7 @@ export interface components {
             text_corpus?: string | null;
         };
         /** @enum {string} */
-        DiscoveryStrategyName: "openapi-direct" | "graphql-introspect" | "swagger-ui-scrape" | "llms-txt" | "html-scrape" | "playwright-crawl";
+        DiscoveryStrategyName: "openapi-direct" | "graphql-introspect" | "postgres-introspect" | "mssql-introspect" | "swagger-ui-scrape" | "llms-txt" | "html-scrape" | "playwright-crawl";
         DiscoveredAuthScheme: {
             name: string;
             /** @enum {string} */
@@ -7921,6 +8318,16 @@ export interface components {
         PatchConversationBody: {
             model?: string | null;
             title?: string | null;
+        };
+        ToolPoliciesResponse: {
+            policies: {
+                [key: string]: "no_confirm" | "confirm_before_execution" | "confirm_after_execution";
+            };
+        };
+        ToolPoliciesPatchBody: {
+            policies: {
+                [key: string]: "no_confirm" | "confirm_before_execution" | "confirm_after_execution" | null;
+            };
         };
         ConversationAttachment: {
             slug: string;

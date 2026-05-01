@@ -16,7 +16,22 @@ describe("self-healing/drift-detector", () => {
           status: 404,
           body: { error: { code: "not_found", detail: "User not found" } },
         },
-        request_meta: { method: "GET", url: "/users/99" },
+        request_meta: {
+          driver: "http",
+          method: "GET",
+          url: "/users/99",
+          connector: {
+            step_key: "step-1",
+            connector_id: "00000000-0000-0000-0000-000000000000",
+            connector_slug: "stub",
+            driver: "http",
+            requested_environment: "dev",
+            resolved_environment: "dev",
+            auth_method: "none",
+            base_url: null,
+            tunnel_target: null,
+          },
+        },
       },
       lastKnown,
     );
@@ -115,5 +130,58 @@ describe("self-healing/drift-detector", () => {
       expect(text).toContain("kind: jsonata_path_miss");
       expect(text).toContain("data.id");
     }
+  });
+
+  test("validation_failed step error becomes validation_failed drift signal", () => {
+    const signal = analyzeStepFailure(
+      {
+        // The engine surfaces validation_failed at the run-result
+        // level, but the self-healing flow inspects step rows. To
+        // route the invariant violation through the same drift path
+        // the run-finalisation persists a synthetic step entry; this
+        // test exercises the detector directly with the same shape.
+        id: "$validation",
+        kind: "transform",
+        status: "failed",
+        error: {
+          code: "validation_failed",
+          message: "validation_expression `count > 5` returned false",
+          details: {
+            expression: "count > 5",
+            actual_value: { count: 0 },
+          },
+        },
+      },
+      null,
+    );
+    expect(signal?.kind).toBe("validation_failed");
+    if (signal?.kind === "validation_failed") {
+      expect(signal.expression).toBe("count > 5");
+      expect(signal.actual_value).toEqual({ count: 0 });
+      const text = renderDriftDiff(signal);
+      expect(text).toContain("kind: validation_failed");
+      expect(text).toContain("count > 5");
+      expect(text).toContain('"count":0');
+    }
+  });
+
+  test("validation_failed without expression text returns null", () => {
+    // Defensive: a malformed validation_failed error envelope (no
+    // expression) should not produce a useless drift signal — fall
+    // through to null so the retry path handles it.
+    const signal = analyzeStepFailure(
+      {
+        id: "$validation",
+        kind: "transform",
+        status: "failed",
+        error: {
+          code: "validation_failed",
+          message: "no expression",
+          details: {},
+        },
+      },
+      null,
+    );
+    expect(signal).toBeNull();
   });
 });

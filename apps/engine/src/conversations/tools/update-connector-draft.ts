@@ -5,6 +5,7 @@ import { log } from "../../logging/logger.ts";
 import { SECRET_PATTERNS, SENSITIVE_KEY_PATTERN } from "../../logging/scrub-secrets.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
+import { getDraftCredential } from "../persistence/draft-credential-cache.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
 import { buildDraftMutationPayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -17,6 +18,27 @@ import type { ConversationTool, ToolResult } from "./index.ts";
  */
 const CREDENTIAL_KEY_RE =
   /^(token|api[_-]?key|password|credential|secret|.*_token|authorization|access[_-]?token|client[_-]?secret|private[_-]?key)$/i;
+
+/**
+ * OAuth2 / Cognito metadata fields that *contain* the substring "token"
+ * or "authorization" but are NOT secrets. These are public URLs that
+ * the LLM legitimately needs to write to `update_connector_draft.config`
+ * when wiring an OAuth2 connector.
+ *
+ * Pre-fix the credential-leak guard fired on `token_endpoint` (matched
+ * `SENSITIVE_KEY_PATTERN.token`) and refused the update — the LLM then
+ * couldn't fix the AppSync Cognito config and the operator was stuck.
+ */
+const NON_SECRET_KEYS = new Set<string>([
+  "token_endpoint",
+  "authorization_endpoint",
+  "token_url",
+  "authorization_url",
+  "device_authorization_endpoint",
+  "issuer_url",
+  "token_auth_method",
+  "token_content_type",
+]);
 
 /**
  * Walk `value` recursively and return the key path of the first credential-shaped
@@ -47,10 +69,15 @@ function containsCredentialShape(value: unknown, path: string, depth: number): s
 
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     const childPath = path ? `${path}.${key}` : key;
-    // Key name check — uses the scrubber's SENSITIVE_KEY_PATTERN as the broad
-    // net, plus our stricter CREDENTIAL_KEY_RE for full-word anchoring.
-    if (SENSITIVE_KEY_PATTERN.test(key) || CREDENTIAL_KEY_RE.test(key)) {
-      return childPath;
+    // Allow-list: well-known OAuth2 / Cognito *metadata* keys that
+    // happen to contain "token" / "authorization" as a substring but
+    // carry public URLs / enums, not secrets.
+    if (!NON_SECRET_KEYS.has(key.toLowerCase())) {
+      // Key name check — uses the scrubber's SENSITIVE_KEY_PATTERN as the broad
+      // net, plus our stricter CREDENTIAL_KEY_RE for full-word anchoring.
+      if (SENSITIVE_KEY_PATTERN.test(key) || CREDENTIAL_KEY_RE.test(key)) {
+        return childPath;
+      }
     }
     const hit = containsCredentialShape(child, childPath, depth + 1);
     if (hit !== null) return hit;
@@ -84,6 +111,23 @@ export const updateConnectorDraftTool: ConversationTool = {
   category: "draft_write",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
+
+    // Hard-reject any attempt to mutate the oauth block via this tool.
+    // `config.oauth` is owned by template-enrichment (at save time, gated
+    // on auth_type === "oauth2") plus the OAuth2 client snapshot fallback
+    // in resolveConnectorOAuthConfig. Letting the LLM hand-edit oauth
+    // creates two writers and reproduces session 18467df2 where bearer
+    // drafts ended up carrying oauth metadata that strict-mode then
+    // rejected at save.
+    if (args.config !== undefined && Object.hasOwn(args.config, "oauth")) {
+      return {
+        ok: false,
+        error_code: "auth_mutation_not_allowed",
+        message:
+          "config.oauth cannot be written via update_connector_draft. The OAuth2 client reads oauth metadata from the template snapshot at mint time; for a different auth shape, start a new draft. To begin the authorization-code flow on an oauth2 connector, save it first then call authenticate_oauth.",
+        next_best_actions: ["authenticate_oauth", "start_connector_from_description"],
+      };
+    }
 
     // Hard-reject any attempt to store a credential-shaped value in config.
     // The only correct path for credentials is ask_user_form(type: password,
@@ -124,6 +168,37 @@ export const updateConnectorDraftTool: ConversationTool = {
     }
 
     const current = ctx.getDraft().connector ?? {};
+
+    // Guard against the LLM reasoning itself in circles by toggling
+    // auth_type back to "none" on a connector that already has a
+    // credential staged. The user's session bab50df1 looped exactly
+    // here: probe failed, the LLM "tried something else" by setting
+    // auth_type=none, which made the next probe credential_required,
+    // and the cycle repeated. The legitimate path to drop auth is to
+    // start a fresh draft, not flip auth_type on an existing one.
+    if (
+      args.auth_type === "none" &&
+      current.auth_type !== undefined &&
+      current.auth_type !== null &&
+      current.auth_type !== "none"
+    ) {
+      const cached = getDraftCredential(ctx.conversation_id);
+      if (cached || current.saved_connector_id) {
+        return {
+          ok: false,
+          error_code: "auth_type_downgrade_blocked",
+          message:
+            `Cannot downgrade auth_type from "${current.auth_type}" to "none" — the draft already has a ${cached ? "cached" : "persisted"} credential. ` +
+            `Start a new draft via start_connector_from_description if you need a different auth model, or rotate the credential via ask_user_form + save_connector_draft.`,
+          next_best_actions: [
+            "start_connector_from_description",
+            "ask_user_form",
+            "save_connector_draft",
+          ],
+        };
+      }
+    }
+
     const patch = Object.fromEntries(
       Object.entries(args).filter(([, value]) => value !== undefined),
     ) as Partial<ConnectorDraftDocument>;

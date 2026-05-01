@@ -210,7 +210,7 @@ describe("applyTurnEvent — streaming frames", () => {
     expect(next.toolCalls[0]?.parent_message_id).toBe("msg-7");
   });
 
-  test("tool_call_start without parent_message_id falls back to last assistant message id", () => {
+  test("tool_call_start without parent_message_id stays unanchored", () => {
     let s = initialSessionState("conv-fallback");
     s = applyTurnEvent(s, {
       type: "message",
@@ -223,10 +223,10 @@ describe("applyTurnEvent — streaming frames", () => {
       call_id: "call-x",
       tool: "list_workflows",
     });
-    expect(s.toolCalls[0]?.parent_message_id).toBe("asst-99");
+    expect(s.toolCalls[0]?.parent_message_id).toBeUndefined();
   });
 
-  test("elicit_request inherits parent_message_id from the last assistant message", () => {
+  test("elicit_request without parent_message_id stays unanchored", () => {
     let s = initialSessionState("conv-elicit");
     s = applyTurnEvent(s, {
       type: "message",
@@ -241,10 +241,10 @@ describe("applyTurnEvent — streaming frames", () => {
       summary: "Confirm save",
       input: { question: "Save the workflow?" },
     });
-    expect(s.pendingElicitation?.parent_message_id).toBe("asst-42");
+    expect(s.pendingElicitation?.parent_message_id).toBeUndefined();
   });
 
-  test("a later assistant message backfills anchors for pending tool calls and elicitations", () => {
+  test("a later assistant message does not backfill missing anchors", () => {
     let s = initialSessionState("conv-live");
     s = applyTurnEvent(s, {
       type: "tool_call_start",
@@ -267,8 +267,8 @@ describe("applyTurnEvent — streaming frames", () => {
       content: { text: "Here's the secure form." },
       id: "asst-live-1",
     });
-    expect(s.toolCalls[0]?.parent_message_id).toBe("asst-live-1");
-    expect(s.pendingElicitation?.parent_message_id).toBe("asst-live-1");
+    expect(s.toolCalls[0]?.parent_message_id).toBeUndefined();
+    expect(s.pendingElicitation?.parent_message_id).toBeUndefined();
   });
 
   test("message events with id are stored on the MessageState", () => {

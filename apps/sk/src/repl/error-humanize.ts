@@ -39,7 +39,72 @@ const STEP_KIND_PATH = /^steps\.(\d+)\.kind$/;
 const STEP_FIELD_PATH = /^steps\.(\d+)\.([\w_.-]+)$/;
 const STEP_ROOT_PATH = /^steps\.(\d+)$/;
 
+/** Engine-error codes / messages that mean "the LLM provider rejected
+ *  the call" rather than "the workflow definition is invalid". The CLI
+ *  routes both through the same `validation_error` channel
+ *  (ink-repl.ts) so this module is the single place that distinguishes
+ *  them. The panel header in `ink-app.tsx` keys off the same patterns
+ *  to swap "validation errors" for "engine error" / "provider limit". */
+const PROVIDER_LIMIT_RE =
+  /(specified api usage limits|usage limit|insufficient_quota|quota.{0,4}exhaust|quota.{0,4}exceed|credit balance|monthly spend|billing hard limit|monthly.?budget)/i;
+
+const PROVIDER_UNAVAILABLE_RE =
+  /(provider.{0,10}unavailable|model.{0,10}overloaded|service unavailable|temporarily unavailable|context_length|too many tokens|rate.?limit)/i;
+
+const RETRY_AT_RE = /regain access on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) ?utc/i;
+
+export type EngineErrorKind = "provider_limit" | "provider_unavailable" | "validation" | null;
+
+/** Identify the kind of error encoded as a synthetic validation row.
+ *  `path` is the engine error code (e.g. `internal`, `llm_provider_limited`);
+ *  `message` is the upstream prose. Used both by `humanizeValidationError`
+ *  AND the panel header — exporting so the UI can branch in one place. */
+export function classifyEngineError(e: RawValidationError): EngineErrorKind {
+  if (
+    e.path === "llm_provider_limited" ||
+    e.path === "quota_exhausted" ||
+    PROVIDER_LIMIT_RE.test(e.message)
+  ) {
+    return "provider_limit";
+  }
+  if (
+    e.path === "llm_provider_unavailable" ||
+    e.path === "llm_context_too_large" ||
+    PROVIDER_UNAVAILABLE_RE.test(e.message)
+  ) {
+    return "provider_unavailable";
+  }
+  if (e.path.startsWith("steps.") || e.path.startsWith("workflow.") || e.path === "validation") {
+    return "validation";
+  }
+  return null;
+}
+
 export function humanizeValidationError(e: RawValidationError): HumanizedValidationError {
+  // Provider-quota / -unavailable errors arrive on the same channel as
+  // workflow validation errors but are upstream-Anthropic concerns, not
+  // anything the operator can fix in their workflow. Recognise them and
+  // emit an actionable hint instead of leaving the operator staring at
+  // "internal".
+  const kind = classifyEngineError(e);
+  if (kind === "provider_limit") {
+    const m = RETRY_AT_RE.exec(e.message);
+    const retryAt = m?.[1] && m[2] ? `${m[1]} at ${m[2]} UTC` : null;
+    return {
+      label: "LLM provider usage limit reached",
+      detail: e.message,
+      hint: retryAt
+        ? `regains access ${retryAt} — raise your Anthropic console limit, switch the engine's model route, or wait`
+        : "raise your Anthropic console limit, switch the engine's model route, or wait for the reset window",
+    };
+  }
+  if (kind === "provider_unavailable") {
+    return {
+      label: "LLM provider temporarily unavailable",
+      detail: e.message,
+      hint: "retry in a moment, or switch the engine's configured model route",
+    };
+  }
   const stepKindMatch = STEP_KIND_PATH.exec(e.path);
   if (stepKindMatch) {
     const idx = Number(stepKindMatch[1]);
@@ -167,6 +232,54 @@ export function findErrorHint(message: string): string | null {
   return null;
 }
 
+// The bun-fetch implementation appends a verbose-suggestion suffix to
+// transport errors:
+//   "The socket connection was closed unexpectedly. For more
+//    information, pass `verbose: true` in the second argument to fetch()"
+// That suffix is implementation noise — the operator can't act on it
+// (we already control the fetch call, and `/debug on` is the
+// user-facing toggle for verbose). Strip it at the boundary so neither
+// the transcript banner nor /debug log includes it.
+const BUN_FETCH_VERBOSE_SUFFIX =
+  /\.?\s*For more information,\s*pass\s*`verbose:\s*true`\s*in the second argument to fetch\(\)\.?/i;
+
+export function stripFetchVerboseHint(message: string): string {
+  return message.replace(BUN_FETCH_VERBOSE_SUFFIX, "").trim();
+}
+
+/**
+ * Recognise the family of transport errors that mean "the request was
+ * mid-flight when the socket dropped" rather than "the engine is
+ * down". Critical for the elicitation respond flow: an LLM turn can
+ * legitimately exceed bun-fetch's keep-alive window, the server-side
+ * turn keeps running, and re-polling the conversation recovers the
+ * latest state. Keeping the two cases distinct lets the UI render
+ * "engine reconnecting…" instead of a red error block.
+ */
+export function isTransientSocketDrop(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const cause = (err as { cause?: unknown }).cause;
+  const codeFromErr =
+    typeof (err as { code?: unknown }).code === "string" ? (err as { code: string }).code : null;
+  const codeFromCause =
+    cause && typeof cause === "object" && typeof (cause as { code?: unknown }).code === "string"
+      ? (cause as { code: string }).code
+      : null;
+  const code = codeFromErr ?? codeFromCause;
+  if (code === "ECONNRESET" || code === "EPIPE" || code === "UND_ERR_SOCKET") return true;
+  const msg =
+    typeof (err as { message?: unknown }).message === "string"
+      ? (err as { message: string }).message
+      : "";
+  if (!msg) return false;
+  return (
+    /socket connection was closed unexpectedly/i.test(msg) ||
+    /\bECONNRESET\b/.test(msg) ||
+    /socket hang up/i.test(msg) ||
+    /other side closed/i.test(msg)
+  );
+}
+
 function readRetryAt(details: unknown): string | null {
   if (!details || typeof details !== "object") return null;
   const retryAt = (details as { retry_at?: unknown }).retry_at;
@@ -241,10 +354,20 @@ export function humanizeRequestError(err: unknown): string {
     return `${head}${trace}${hint}`;
   }
   if (err instanceof Error && err.name === "SkTransportError") {
-    const matched = findErrorHint(err.message);
+    // Strip the bun-fetch verbose suffix unconditionally — it's noise
+    // for every transport error, not just the socket-drop family.
+    const cleanedMessage = stripFetchVerboseHint(err.message);
+    if (isTransientSocketDrop(err)) {
+      // The socket dropped mid-turn (typical with long LLM turns that
+      // exceed keep-alive). The engine kept running on its side; the
+      // CLI re-polls to recover. Render as a single neutral hint, not
+      // a red "cannot reach engine" block.
+      return `sk: engine connection dropped mid-turn — recovering.\n  ↳ the engine kept running; re-pull state with /status if the next turn doesn't refresh on its own`;
+    }
+    const matched = findErrorHint(cleanedMessage);
     const hint =
       matched ?? "check the engine URL with /status, or switch profile via /profile <name>";
-    return `sk: cannot reach engine — ${err.message}\n  ↳ ${hint}`;
+    return `sk: cannot reach engine — ${cleanedMessage}\n  ↳ ${hint}`;
   }
   if (err instanceof Error) {
     const matched = findErrorHint(err.message);

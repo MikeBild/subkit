@@ -2,9 +2,9 @@
 slug: workflow-authoring
 scope: global
 title: Authoring Workflows In A Conversation
-description: The canonical recipe for turning a user intent into a committed subkit workflow draft.
+description: The canonical recipe for turning a user intent into a committed sk workflow draft.
 gates_tools: []
-version: 1
+version: 2
 ---
 
 # Authoring Workflows In A Conversation
@@ -29,8 +29,17 @@ produces drafts that fail at runtime or in review.
 5. **`propose_step`** (incremental) or **`build_workflow`** (one-shot) — emit step
    drafts. Each `propose_step` returns a dry-run result you can inspect; if a
    step's envelope doesn't match what downstream expects, edit before moving on.
-6. **`commit_draft`** — once all steps run green and the outputTransform shape
-   matches the intent, commit. Commits are cheap; runs are where governance kicks in.
+6. **`ask_user_confirm` with `commit_intent`** — once all steps run green and
+   the outputTransform shape matches the intent, surface a single
+   `ask_user_confirm` carrying
+   `commit_intent: { kind: "commit_workflow_draft", payload: { … }, description: "Save this workflow." }`.
+   The harness atomically persists on confirm and injects a synthetic
+   `commit_draft` tool-result tagged `source: "harness_auto_persist"`. **Do
+   NOT call `commit_draft` yourself afterward** — the underlying write has
+   already happened, and a second call only earns an `already_persisted: true`
+   round-trip. Reserve direct `commit_draft` invocations for the documented
+   recovery paths (revert + re-apply, slug-conflict adoption, force-commit
+   after a failed dry-run).
 
 For request steps, use the current flattened shape: `connector_id`, `method`,
 `path`, `query`, `headers`, `body`, and `graphql` live directly on the step.
@@ -38,49 +47,19 @@ Do not wrap them in `config`.
 
 ## Repair-in-chat: failed run → diagnose → recommit
 
-A persisted workflow that fails on its next run does NOT need a new draft from
-scratch. The conversation enters diagnosis mode and the same six tools repair
-it in place — the operator never leaves chat.
+A persisted workflow that fails does NOT need a new draft. Stay in
+chat; the same six tools repair in place:
 
-1. **Read the failure** — the `run_workflow` result carries `ok: false` plus a
-   structured error envelope (`error.code`, `error.message`, the failing
-   `step_id`, captured response shape). Do not paraphrase the error away; the
-   user needs to see the actual code so they understand what changed.
-2. **`diagnose_latest_execution`** — pulls the run's full causal trace and
-   surfaces a `latest_diagnosis` block on the draft. This is the source of
-   truth for repair targets; do not guess from the bare error.
-3. **Edit the offending step** — use `update_param` for a single field
-   (connector swap, header rename, response_schema tweak), `propose_step` to
-   replace a step body, or `connect_steps` to retarget references. For a
-   schema drift on a request step, run `probe_connector` first to capture the
-   current shape, then update the step's `response_schema` / `data_selector`.
-4. **`validate_draft`** — re-runs the structural checks. Skipping this is the
-   most common reason a re-commit fails: a fix that compiles but breaks
-   another reference upstream is invisible until validation re-runs.
-5. **`dry_run_workflow`** (or `dry_run_step` for the touched step only) — only
-   needed before the FIRST commit of a brand-new draft; for an in-place
-   re-commit after `validate_draft` is fresh, the palette already exposes
-   `commit_draft` and the engine accepts the update without a fresh preview.
-   Use a dry-run when the change is non-trivial enough that the operator
-   should see the new shape before committing.
-6. **`ask_user_confirm(kind: "commit_draft")` → `commit_draft`** — confirm,
-   then save. `commit_draft` updates the persisted workflow in place when the
-   conversation already targets one (it appends a new version; the slug stays
-   authoritative). There is no separate "commit a repair" tool and there is
-   no CLI fallback — the chat path is the only path.
+1. **Read the failure** — the `run_workflow` result has `error.code`,
+   `error.message`, failing `step_id`, captured response shape. Do not
+   paraphrase the error away.
+2. **`diagnose_latest_execution`** — pulls causal trace; do not guess from the bare error.
+3. **Edit the offending step** — `update_param` for a single field, `propose_step` to replace a step body, `connect_steps` to retarget. For schema drift on a request step, `probe_connector` first; if the connector's response shape changed over time, call `propose_schema_migration` (returns a structured rename/add/remove/widen plan against the recorded shape ledger) before deciding how to patch the transform.
+4. **`validate_draft`** — re-runs structural checks.
+5. **`dry_run_workflow`** when the change is non-trivial; otherwise the auto-persist path accepts the update directly.
+6. **`ask_user_confirm` with `commit_intent: { kind: "commit_workflow_draft", payload: { target_workflow_id?: <id> } }`** — harness persists on confirm. Do NOT chain a separate `commit_draft` after.
 
-Hard rules during repair:
-- Do NOT instruct the user to run `sk workflow commit` or any other CLI
-  command. The same `commit_draft` tool that creates new workflows also
-  updates persisted ones.
-- Do NOT re-run the failed workflow before re-validating. The diagnosis is
-  pinned to the prior run; re-running first overwrites it and you lose the
-  cheapest source of repair signal.
-- Do NOT silently skip failing steps with `if: false` or fallback values
-  unless the user explicitly asks for that behaviour. Repair the step.
-
-After three failed repair iterations on the same error code, stop and ask
-the user. You have probably misread the failure mode.
+Do not instruct the user to run `sk workflow commit` (no CLI fallback exists). Do not re-run the failed workflow before re-validating (overwrites the diagnosis). Do not skip failing steps with `if: false` unless the user asks for that behaviour. After three failed repair iterations on the same error, stop and ask the user.
 
 ## `propose_step` vs `build_workflow`
 
@@ -95,62 +74,22 @@ Rule of thumb: **default to `propose_step`**. The round-trip of seeing each
 envelope prevents compounding errors. Reserve `build_workflow` for trivial
 linear 2–4 step workflows where the user has given you an example payload.
 
-## `data_selector` vs transform step vs `outputTransform`
+## Reshape locations
 
-Three places you can reshape data. Each has a different purpose:
+Three places to reshape data — pick the smallest one that fits:
 
-| Where | Scope | When to use |
-|---|---|---|
-| Step-level `data_selector` | Trims what this step's `.data` looks like to **downstream** | Drop heavy fields (full HTML bodies, base64 blobs) early so scope stays small |
-| Dedicated `transform` step | Produces a new step with its own envelope | Reshape across multiple upstream steps, or compute derived values |
-| Workflow-level `outputTransform` | The final payload the caller sees | Hide internal plumbing, expose only the contract |
+- **Step-level `data_selector`** — trim a step's `.data` for downstream consumers (drop heavy fields).
+- **`transform` step** — reshape across multiple upstream steps, or compute derived values.
+- **`output_transform`** (JSONata) or **`output_transform_function`** (JS) — workflow-level final payload the caller sees (hide internals). Pick exactly one — the schema rejects setting both. JSONata is the default; reach for the JS form via QuickJS sandbox only when the reshape needs imperative logic, mutation, or multi-pass scans JSONata can't express. Same affordance pattern as `validation_expression` (JSONata) vs `validation_function` (JS).
 
-Example combining all three:
-
-```json
-{
-  "steps": [
-    {
-      "id": "fetch_orders",
-      "kind": "request",
-      "connector_id": "00000000-0000-0000-0000-000000000001",
-      "method": "GET",
-      "path": "/admin/api/2024-04/orders.json",
-      "data_selector": "$.orders.{ 'id': id, 'total': total_price, 'customer_email': email }"
-    },
-    {
-      "id": "fetch_customers",
-      "kind": "request",
-      "connector_id": "00000000-0000-0000-0000-000000000002",
-      "method": "GET",
-      "path": "/crm/v3/objects/contacts",
-      "data_selector": "$.results.{ 'email': properties.email, 'lifecycle': properties.lifecyclestage }"
-    },
-    {
-      "id": "merge",
-      "kind": "transform",
-      "expression": "$scope.fetch_orders.data.{ 'order_id': id, 'total': total, 'lifecycle': $scope.fetch_customers.data[email = $$.customer_email].lifecycle }",
-      "language": "jsonata"
-    }
-  ],
-  "output_transform": "{ 'report': $scope.merge.data, 'generated_at': $now() }"
-}
-```
-
-`data_selector` trimmed the Shopify response from ~40 fields to 3, keeping scope
-small. The `merge` transform joined the two lists by email. `outputTransform`
-added a timestamp envelope for the caller.
+See `data-handling.md` for full examples.
 
 ## `input_schema` vs `input_schema_sample`
 
-- **`input_schema`** — a JSON Schema. The engine validates workflow input against
-  it before the first step runs. Use when the shape is stable and the caller is
-  a trusted connector boundary (another workflow, a webhook with a known contract).
-- **`input_schema_sample`** — a literal example payload. Used for dev-time
-  dry-runs and LLM context; **not** enforced at runtime. Use when the shape is
-  still evolving and over-constraining would slow down iteration.
+- **`input_schema`** — JSON Schema, enforced at runtime. Use for stable contracts (another workflow, a known webhook).
+- **`input_schema_sample`** — literal example payload, used by dry-run + LLM context. Not enforced.
 
-Both can coexist. A common pattern:
+Both can coexist:
 
 ```json
 {
@@ -175,11 +114,108 @@ item under two scope keys: `$item` (canonical, used by `${item.…}`) and the
 loop's `item_var` (used by JSONata transforms). The item is NOT
 envelope-wrapped.
 
+**Mandatory: dry-run before authoring a loop.** `propose_step`,
+`build_workflow`, `edit_workflow_patch`, and `update_param` all
+refuse a loop step that reads `$scope.<X>` (or the equivalent bare
+form `<X>.data`) until a dry-run has recorded X's actual output
+shape (error code `loop_authoring_requires_inspect`). The fix: call
+`dry_run_workflow` first so the engine publishes `scope_at_step` for
+every prior step. Then call `suggest_jsonata_paths` (returns ranked
+path candidates against the recorded preview, with fallback to the
+last committed version's `scope_index` and the most recent execution
+when no fresh draft preview exists) or `inspect_workflow_draft`
+(returns each step's preview side-by-side with config). Authoring a
+loop's `over` against the LLM's mental model of the API instead of
+the recorded preview is how 4–9× retry spirals start; the gate
+exists to break that loop deterministically.
+
+**Bare-path step refs are validated.** Forms like `fetch_users.data`
+(no `$scope.` prefix) are equivalent to `$scope.fetch_users.data`
+and are validated identically. A typo in the leading identifier is
+rejected at authoring time with `workflow_unresolved_step_reference`.
+
+**`output_transform` / `output_transform_function` references are
+validated too.** Same rule: every `$scope.<id>...` and bare
+`<id>....` reference in the workflow-level transform must point at a
+real step.
+
+**`authoring_scope_changed` warning fires when consecutive dry-runs
+lose paths.** If a step previously published `data.results[*].email`
+and the next dry-run no longer surfaces that path (e.g. an upstream
+API silently dropped a field), the warning lists every removed path
+so downstream transforms / loops can be re-checked before re-
+committing. The check is skipped when the workflow draft was
+structurally rewritten between dry-runs (mutation_seq guard).
+
+**Catalog discovery.** Use `find_workflow` / `find_connector` /
+`find_skill` (free-text keyword search across the saved catalogs)
+before reaching for `list_workflows` / `list_connectors`. They are
+faster for tenants with more than ~50 workflows or connectors and
+return ranked matches in one call.
+
+**`build_workflow` returns `persistence: "draft_only"` and
+`next_step: "commit_draft"`.** The build never auto-saves — the
+fields make this explicit so the LLM never assumes a workflow is
+committed after `build_workflow`.
+
+**Scope vocabulary survives commits.** After every successful run
+the engine writes `step_id → scope_at_step` to
+`workflow_versions.scope_index`. Repair-author sessions opening
+months later have `suggest_jsonata_paths` populated from this
+persisted vocabulary even before the first dry-run.
+
+**`loop.over`** is JSONata evaluated with the same bindings as
+`transform.expression`: `$input`, `$scope`, `$steps`, and unpacked
+`$<key>` bindings. Both forms below are equivalent — pick whichever
+reads better:
+
+- `over: "$scope.<step_id>.data"` (matches the skill's documented
+  envelope path; symmetric with transform expressions)
+- `over: "<step_id>.data"` (bare path against the root scope object)
+
+**`branch.when`** is the same surface — `$scope.<step_id>.data.field`
+or bare `<step_id>.data.field` both resolve.
+
 **HTTP / placeholder substitution** (path, url, headers, query, body): use
 `${item.<path>}`. This is the only form the runtime placeholder resolver
 accepts — `${user.field}` or `${project.id}` will fail with
 `placeholder_unresolved` because `user` / `project` are not registered
 placeholder kinds.
+
+**NEVER write Mustache `{{ ... }}` anywhere.** It is not a placeholder
+syntax; the engine ships the literal string upstream and the URL gets
+percent-encoded (you get `%7B%7B%20$item.id%20%7D%7D` in the request and
+the API answers 404). `{{ $item.id }}`, `{{ $loop.item.id }}`,
+`{{ project.id }}` are all wrong — the only correct form for the loop
+item inside a string field is `${item.id}`. The draft validator rejects
+Mustache shapes with code `workflow_unsupported_placeholder` and a
+concrete `did_you_mean` rewrite, so never propose a Mustache
+placeholder.
+
+### Authoring order — body steps before the loop
+
+When you add a `loop` step whose `body: ["A", "B"]` references steps A
+and B, propose `A` and `B` **first**, then propose the loop. The
+incremental draft validator now accepts forward references on
+`loop.body` / `branch.then_steps` / `parallel.branches[]` (it returns
+them as `pending_forward_refs` so you can see what's missing), but
+`dry_run_workflow` and `commit_workflow_draft` still reject the draft
+until every referenced id exists. Order matters for two reasons:
+
+1. The `loop` requires `${item.<field>}` placeholders inside its body
+   step's URL / path / headers / body. Author the body step with the
+   real placeholders so the loop's `item_var` semantics surface
+   immediately on the next preview — no second authoring round-trip.
+2. Body-first matches the data-flow direction: the body fetches a
+   resource, the loop iterates the parent collection. Reading the
+   workflow top-down should follow producer → consumer.
+
+If you find yourself thinking "I'll add the loop and fill in the body
+next," stop and write the body step first instead. The reference impl
+ships the whole tool at once via `build_tool`; sk's incremental
+flow now tolerates the dependency-inverted shape, but the author who
+writes body-then-loop is shorter by 1–2 round-trips and never sees a
+red `unknown loop body target` banner.
 
 **JSONata transforms** (`expression`): use the bare `item_var` name —
 JSONata reads it from the scope object, e.g. `user.email` or
@@ -209,6 +245,21 @@ Body step referencing the item via the placeholder resolver:
 
 `$loop_index` (zero-based) is also available inside the loop body.
 
+### Loop output shape
+
+`$scope.<loop_id>.data` is an array of iteration objects, each keyed
+by body step id with a full ScopeEnvelope inside. Path to a body field:
+`$scope.<loop_id>.data.<body_step_id>.data.<field>`.
+
+To project across iterations, use `$map(loop_id.data, function($iter, $i) {...})`
+inside a transform; `$iter.<body_step_id>.data` is the response payload. If
+fewer keys come out than went in, a `transform_dropped_fields` warning fires
+(informational only — see "Repair signal" below).
+
+Debugging — call `inspect_workflow` (multi-step) or
+`inspect_execution_step` (single step from a prior run) to read the real
+shape before authoring the next projection. Do not guess at JSONata.
+
 ### Worked example: list DigitalOcean projects + their resources
 
 This is the canonical pattern when a user asks for "list every X with its
@@ -232,7 +283,7 @@ resources / children / details." Copy-paste it; do not invent variants.
   {
     "id": "fetch_resources",
     "kind": "loop",
-    "over": "$scope.extract_projects",
+    "over": "$scope.extract_projects.data",
     "item_var": "project",
     "body": ["get_project_resources"]
   },
@@ -247,30 +298,114 @@ resources / children / details." Copy-paste it; do not invent variants.
     "id": "format_output",
     "kind": "transform",
     "language": "jsonata",
-    "expression": "$scope.fetch_resources.{ \"project\": project.name, \"resources\": $.resources }"
+    "expression": "$scope.fetch_resources.data.{ \"project\": project.name, \"resources\": get_project_resources.data.resources }"
   }
 ]
 ```
 
-Four things this example gets right that the LLM frequently gets wrong:
-1. The inner step (`get_project_resources`) **uses `${item.id}`** (NOT
-   `${project.id}`) in the path. The placeholder resolver only accepts the
-   six registered kinds — `cred`, `connector`, `input`, `scope`, `item` — so
-   `${project.id}` parses as `unknown_kind` and the runtime returns
-   `placeholder_unresolved`. `${item.…}` always means "the current loop
-   item" regardless of what `item_var` happens to be named.
-2. The loop iterates over a **plain array** (the output of
-   `extract_projects`), not a step envelope. `$scope.extract_projects.data`
-   would be wrong — `extract_projects` is a transform, its raw return value
-   IS the scope value.
-3. The final transform reads from `$scope.fetch_resources` (an array of
-   per-iteration outputs). It uses `project.name` (not `${item.name}`)
-   because JSONata reads bare names from the scope, not via the placeholder
-   resolver.
-4. `${item.…}` is for path / url / headers / query / body strings (the
-   placeholder pipeline); `item_var` (`project`, `user`, …) is for JSONata
-   `expression` fields (the transform pipeline). Mixing them will surface
-   as `placeholder_unresolved` (HTTP) or `unresolved_identifier` (JSONata).
+Four rules this example encodes:
+1. Loop body uses `${item.id}` in HTTP placeholders (NOT `${project.id}`). The placeholder resolver only accepts `cred|connector|input|scope|item`; `${project.id}` becomes `placeholder_unresolved`.
+2. **EVERY step output is uniformly enveloped** as `{data, status_code?, headers?, duration_ms, error}` — including `transform` and `loop`. The loop's `over` reads `$scope.extract_projects.data` (the array), not `$scope.extract_projects` (the envelope). See `data-handling.md`.
+3. Loop output is at `$scope.<loop_id>.data.<body_step_id>.data` (envelope-in-envelope). JSONata reads `project.name` (the bare loop item) directly from scope, not via placeholder resolver.
+4. `${item.…}` for path/url/headers/query/body strings; `item_var` (e.g. `project`) for JSONata expressions. Mixing surfaces as `placeholder_unresolved` or `unresolved_identifier`.
+
+### Worked example: HATEOAS link expansion (follow `links.self`)
+
+When a list endpoint returns resources with a `links.self` URL pointing
+at the full record (DigitalOcean, GitHub, Stripe, JSON:API services),
+the natural author shape is **two flat loops** — one to fetch the IDs,
+a second one to flatten and re-fetch each `links.self`. Do NOT try to
+nest loops; the body of a `loop` step is an array of step ids, not
+another loop.
+
+```json
+[
+  {
+    "id": "fetch_projects",
+    "kind": "request",
+    "method": "GET",
+    "connector_id": "<digitalocean_connector_id>",
+    "path": "/v2/projects"
+  },
+  {
+    "id": "fetch_resources",
+    "kind": "loop",
+    "over": "$scope.fetch_projects.data.projects",
+    "item_var": "project",
+    "body": ["get_project_resources"]
+  },
+  {
+    "id": "get_project_resources",
+    "kind": "request",
+    "method": "GET",
+    "connector_id": "<digitalocean_connector_id>",
+    "path": "/v2/projects/${item.id}/resources"
+  },
+  {
+    "id": "flatten_links",
+    "kind": "transform",
+    "language": "jsonata",
+    "expression": "$scope.fetch_resources.data.get_project_resources.data.resources.{ \"urn\": urn, \"path\": $substring(links.self, $length('https://api.digitalocean.com')) }"
+  },
+  {
+    "id": "expand_resource",
+    "kind": "loop",
+    "over": "$scope.flatten_links.data",
+    "item_var": "resource",
+    "body": ["fetch_resource_detail"]
+  },
+  {
+    "id": "fetch_resource_detail",
+    "kind": "request",
+    "method": "GET",
+    "connector_id": "<digitalocean_connector_id>",
+    "path": "${item.path}"
+  },
+  {
+    "id": "merge_full_details",
+    "kind": "transform",
+    "language": "jsonata",
+    "expression": "$scope.expand_resource.data.{ \"urn\": resource.urn, \"details\": fetch_resource_detail.data }"
+  }
+]
+```
+
+Three rules this encodes:
+1. **Strip the connector base URL before reusing `links.self`.** The
+   connector's `base_url` already includes the path prefix (e.g.
+   `/v2`). If you write `${item.url}` against a connector with
+   `base_url: https://api.digitalocean.com/v2`, the URL resolver pastes
+   the full self URL on top and you double the host. Use `${item.path}`
+   where `path` was extracted by stripping the host in the previous
+   transform.
+2. **Flatten before the second loop.** A loop body cannot recursively
+   loop; the body field is an array of step ids. Project the parent
+   loop output into a flat array of `{ ...parent_keys, path }` objects
+   before the second loop runs.
+3. **Use `${item.path}` not `${item.links.self}`.** The path is what
+   the connector expects relative to its base_url. The full self URL
+   (host included) is rejected with `404` because the host is fixed by
+   the connector definition.
+
+Alternative — **`expand_links` directive** (when the API consistently
+uses `links.self` and you want to skip the manual flatten):
+
+```json
+{
+  "id": "fetch_resources_expanded",
+  "kind": "request",
+  "method": "GET",
+  "connector_id": "<digitalocean_connector_id>",
+  "path": "/v2/projects/${item.id}/resources",
+  "expand_links": ["links.self"]
+}
+```
+
+The HTTP driver follows every `links.self` URL in the response (capped
+at 50 per request) and embeds each fetched body under `_resolved` next
+to the original entry. Use the manual two-loop pattern when you need
+control (rate limits, conditional expansion); use `expand_links` when
+the shape is consistent.
 
 ### Unresolved-identifier warnings are never false positives
 
@@ -279,19 +414,80 @@ If `dry_run_workflow` or `run_workflow` returns a warning of code
 runtime parsed your JSONata and could not bind one of the names you
 referenced. Common causes:
 
-- You used `$scope.fetch_X.data` for a `transform` step's output — but
-  transforms don't envelope. Drop the `.data`.
+- You wrote `$scope.fetch_X` (no `.data`) — that is the envelope, not the
+  payload. Add `.data`. **Every step has the same envelope shape, including
+  transforms and loops.**
 - You referenced `id` / `name` as bare names but no prior step is named
   `id` or `name` and you are not inside a loop body where `item_var` is
   one of those.
 - You typo'd a step id (`$scope.fetcch_projects`).
 - You used `$$` to "fix" the JSONata when you actually wanted
-  `$scope.<step_id>` or the loop's item.
+  `$scope.<step_id>.data` or the loop's item.
 
 The `commit_workflow_draft` tool refuses to advance until the warning is
 gone or the operator explicitly forces with `force_commit: true`. Do
 not tell the user "this is a false positive" — the engine surfaces these
 warnings precisely because they are not.
+
+## Authoring recipe (mandatory order before `build_workflow` / `propose_step`)
+
+Skipping any of these steps produces a draft authored against a guessed
+shape that fails at runtime. Follow the order:
+
+1. **Load skills.** `load_skill` for `data-handling` plus the relevant
+   protocol skill(s) (`http-connectors`, `postgres-connectors`,
+   `s3-connectors`, `graphql-connectors`) and any domain skill the tenant
+   has seeded.
+2. **`list_connectors`.** Note `id`, `slug`, `base_url`, stored credentials.
+3. **`probe_connector`.** Verify credential resolves and base URL responds.
+4. **`search_docs` and `search_knowledge`.** Look up endpoints, auth,
+   pagination, response structure. Do not guess paths from the URL.
+5. **`call_connector`.** Execute one or two primary endpoints and
+   capture the real response shape. Author against THAT shape, not what
+   you remember from another vendor.
+6. **Only then** call `build_workflow` or `propose_step`. Reference
+   captured fields by `$scope.<step>.data.<path>`.
+
+When in doubt, load more skills rather than fewer.
+
+## Five consecutive failures → ask the user
+
+Never make more than **five failed tool calls in a row** without asking
+the user. A "failed tool call" is any `tool_result` with `ok: false`,
+or `dry_run_workflow` / `run_workflow` whose `status` is `failed` or
+whose `requires_repair` is `true`. The counter resets on the first
+successful tool call.
+
+When the cap is reached, emit `ask_user_choice` with three concrete
+options derived from the failure shape (e.g. "commit anyway", "revert
+the last patch", "hand-edit the workflow JSON"). Do not continue patching.
+
+## Repair signal: read `requires_repair`, not the warning count
+
+`run_workflow` and `dry_run_workflow` return a top-level
+`requires_repair: boolean` separately from `warnings`. The flag drives
+the repair loop; warnings alone do not. `transform_dropped_fields` is
+informational when a projection intentionally narrows fields.
+
+| `status` | `requires_repair` | What you do |
+|---|---|---|
+| `succeeded` | `false` | Show the output. The run is correct. |
+| `succeeded` | `true` | Read warnings, repair, re-validate. |
+| `partial_success` | `false` | Show the output — it is the answer. |
+| `partial_success` | `true` | Same as `succeeded + requires_repair: true`. |
+| `failed` | (any) | Read `error.code`, repair the offending step. |
+
+When the user has a working result on screen, never propose a "fix" or
+a "simpler version" because of warnings alone.
+
+## Inspect before patching
+
+When a step's output looks wrong, do NOT guess at JSONata. Call
+`inspect_workflow` to read the captured shape of every step from the
+most recent run, then author the next patch against the returned shape.
+Use this BEFORE the third `update_param` on the same field —
+`inspect_workflow` returns the path that actually exists, not the one
+you assumed. Shape: `{ sections: [...], steps: [{ stepId, include }] }`.
 
 ### Branches
 
@@ -333,49 +529,36 @@ steps that finished before the `parallel`.
 
 ## sk-Stdlib in the sandbox
 
-Every `transform` step with `language: "javascript"` and every before-request
-hook runs inside QuickJS with a curated `sk` global already installed. Use it
-instead of re-implementing the same helpers inline — the surface is frozen,
-versioned, and deterministic (no `Date.now`, no `Math.random`, no host I/O).
+`transform` steps with `language: "javascript"` and before-request hooks
+run inside QuickJS with a curated `sk` global pre-installed. Frozen
+surface, deterministic (no `Date.now`, no `Math.random`, no host I/O).
+Available calls:
 
-| Call | Purpose |
-|---|---|
-| `sk.http.isMutating(method)` / `sk.http.isSafe(method)` | Classify HTTP methods without typo-prone string lists |
-| `sk.http.METHODS.READ` / `sk.http.METHODS.WRITE` | Pre-baked method arrays |
-| `sk.get(obj, "a.b.c", fallback)` / `sk.has(obj, path)` | Null-safe property access |
-| `sk.allow()` / `sk.deny(reason)` | Canonical decision shapes for hooks |
-| `sk.pick(obj, keys)` / `sk.omit(obj, keys)` | Shape-preserving subset / exclusion |
-| `sk.pluck(arr, key)` / `sk.groupBy(arr, keyOrFn)` / `sk.uniq(arr)` | Common array reshapers |
-| `sk.isString / isNumber / isArray / isObject / isNil` | Type guards |
-| `sk.version` | Stdlib version — persisted on workflows for drift detection |
+- `sk.http.isMutating(method)` / `sk.http.isSafe(method)` — method classification
+- `sk.http.METHODS.READ` / `WRITE` — pre-baked method arrays
+- `sk.get(obj, "a.b.c", fallback)` / `sk.has(obj, path)` — null-safe access
+- `sk.allow()` / `sk.deny(reason)` — canonical hook decisions
+- `sk.pick(obj, keys)` / `sk.omit(obj, keys)` — subset / exclusion
+- `sk.pluck(arr, key)` / `sk.groupBy(arr, keyOrFn)` / `sk.uniq(arr)` — array reshapers
+- `sk.isString / isNumber / isArray / isObject / isNil` — type guards
+- `sk.version` — stdlib version (persisted for drift detection)
 
-Prefer the stdlib over raw comparisons so hook and transform code stays
-uniform. Example: write
-
-```js
-return sk.http.isMutating(sk.get(input, "request.method", ""))
-  ? sk.deny("mutating_denied")
-  : sk.allow();
-```
-
-rather than
-
-```js
-var m = (input && input.request && input.request.method) || "";
-if (m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE") {
-  return { allow: false, reason: "mutating_denied" };
-}
-return { allow: true };
-```
-
-Both are correct; the stdlib form is the one the authoring layer proposes.
+Prefer the stdlib over raw comparisons so hook + transform code stays uniform.
 
 ## Common pitfalls
 
 - **Skipping `probe_connector`.** You'll spend five turns debugging a credential
   that never existed. Probe first, every time.
-- **Committing before every step has a green dry-run.** `commit_draft` doesn't
-  run the steps. Bad drafts commit cleanly and then fail at first invocation.
+- **Committing before every step has a green dry-run.** The
+  `commit_intent` auto-persist path doesn't run the steps. Bad drafts commit
+  cleanly and then fail at first invocation.
+- **Calling `commit_draft` directly instead of via `ask_user_confirm` +
+  `commit_intent`.** Direct `commit_draft` calls are policy-gated and the
+  inner prior-approval check rejects with `no_prior_approval` until a
+  resolved `ask_user_confirm{kind:"commit_draft", confirmed:true}` exists.
+  Always go through `ask_user_confirm` with a `commit_intent` carrier;
+  reserve direct `commit_draft` for the recovery cases (revert + re-apply,
+  slug-conflict adoption, force-commit after a failed dry-run).
 - **Force-committing without surfacing the override to the operator.** If the
   operator explicitly chooses to commit despite a failed `dry_run_workflow`,
   emit `ask_user_confirm` with
@@ -397,6 +580,6 @@ Both are correct; the stdlib form is the one the authoring layer proposes.
 
 ## See also
 
-- `subkit-concepts.md` — the envelope and placeholder tokens.
+- `sk-concepts.md` — the envelope and placeholder tokens.
 - `data-handling.md` — JSONata cheatsheet and reshaping patterns.
 - `error-recovery.md` — recovering from tool errors mid-conversation.

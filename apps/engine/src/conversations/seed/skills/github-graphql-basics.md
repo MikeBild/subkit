@@ -4,7 +4,7 @@ scope: connector
 title: GitHub GraphQL API Basics
 description: How to author workflows against the github-graphql connector — query structure, pagination, rate-limit costs.
 gates_tools: []
-version: 1
+version: 2
 auto_load: false
 trigger_keywords: [github graphql, github-graphql, github v4, graphql query, pageInfo, endCursor]
 ---
@@ -27,7 +27,7 @@ A request step against a GraphQL connector uses the `graphql` sub-object rather 
   "graphql": {
     "operation": "query",
     "query": "query IssuesWithComments($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ issues(last:20,states:OPEN){ nodes { number title comments(last:5){ nodes { body } } labels(first:10){ nodes { name } } } } } }",
-    "variables": { "owner": "subkit", "name": "subkit" }
+    "variables": { "owner": "sk", "name": "sk" }
   }
 }
 ```
@@ -42,7 +42,7 @@ GraphQL pagination uses `pageInfo.endCursor` + `first: 50`. Example:
 
 ```graphql
 query($after: String) {
-  repository(owner: "subkit", name: "subkit") {
+  repository(owner: "sk", name: "sk") {
     issues(first: 50, after: $after, states: OPEN) {
       nodes { number title }
       pageInfo { endCursor hasNextPage }
@@ -65,6 +65,6 @@ A workflow that polls every minute with `cost=30` will exhaust the 5000/h budget
 
 ## Pitfalls
 
-- Subscriptions are not supported by the subkit `graphql` driver. Use webhooks for push.
+- Subscriptions are not supported by the sk `graphql` driver. Use webhooks for push.
 - Under-requested fields can break downstream steps silently — explicitly list every field the workflow consumes.
 - Variables are stricter than REST query strings: type them in the query header (`$owner: String!`) or the request fails before the wire.

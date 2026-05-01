@@ -5,8 +5,10 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
+import { closePoolForConnector } from "./drivers/postgres.ts";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import { buildTemplateBindingFields, resolveConnectorTemplate } from "./template-resolver.ts";
 import {
@@ -133,6 +135,69 @@ export async function createConnector(
     const environment = effective.environment ?? "dev";
     const auth_type = effective.auth_type ?? "none";
     validateHttpConfig(effective.driver, effective.config);
+    // Upsert semantics on (tenant_id, environment, slug): when a
+    // connector with the same slug already exists in the same
+    // environment, treat the call as an update rather than letting the
+    // unique-constraint throw. Mirrors the reference impl's
+    // `upsertSystem ON CONFLICT (id, environment, org_id) DO UPDATE`.
+    // Pre-fix the LLM authoring flow looped here: re-running
+    // start_connector_from_description with the same URL produced the
+    // same slug, the insert threw `duplicate key violates …
+    // connectors_tenant_environment_slug_idx`, and the LLM started
+    // recreating workflows from scratch.
+    const existingRows = await tx
+      .select()
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.tenant_id, p.tenant_id),
+          eq(connectors.slug, slug),
+          eq(connectors.environment, environment),
+          isNull(connectors.deleted_at),
+        ),
+      )
+      .limit(1);
+    const existing = existingRows[0];
+    if (existing) {
+      const updated = await tx
+        .update(connectors)
+        .set({
+          display_name: effective.name,
+          driver: effective.driver,
+          auth_type,
+          base_url: effective.base_url ?? existing.base_url,
+          dsn: effective.dsn ?? existing.dsn,
+          config: effective.config ?? existing.config,
+          operator_notes: effective.operator_notes ?? existing.operator_notes,
+          ...(resolved.binding ?? {}),
+          updated_at: new Date(),
+        })
+        .where(eq(connectors.id, existing.id))
+        .returning();
+      const row = updated[0] ?? existing;
+      await auditAwait(
+        {
+          tenant_id: p.tenant_id,
+          actor_type: p.actor_id ? "user" : "system",
+          actor_id: p.actor_id,
+          action: AuditAction.CONNECTOR_UPDATED,
+          resource_type: "connector",
+          resource_id: row.id,
+          result: "success",
+          reason: "upsert_on_slug_conflict",
+          metadata: {
+            slug,
+            driver: effective.driver,
+            environment,
+            auth_type,
+            template_slug: row.template_slug ?? null,
+            template_source: row.template_source ?? null,
+          },
+        },
+        tx,
+      );
+      return toView(row);
+    }
     const inserted = await tx
       .insert(connectors)
       .values({
@@ -156,7 +221,7 @@ export async function createConnector(
       })
       .returning();
     const row = inserted[0];
-    if (!row) throw new Error("connectors insert returned no row");
+    assertInsertRow(row, "connectors");
     await auditAwait(
       {
         tenant_id: p.tenant_id,
@@ -365,7 +430,17 @@ export async function deleteConnector(
   exec?: Executor,
 ): Promise<boolean> {
   const db = exec ?? getDb();
-  const ok = await db.transaction(async (tx) => {
+  // The transaction returns the row to evict (when one matches the
+  // postgres-eviction policy). This avoids a side-channel `let` that
+  // TS struggles to narrow across the async boundary.
+  type EvictRow = {
+    id: string;
+    environment: "dev" | "prod";
+    dsn: string | null;
+    driver: string;
+  };
+  type DeleteResult = { ok: boolean; evict: EvictRow | null };
+  const result: DeleteResult = await db.transaction(async (tx) => {
     const existing = await tx
       .select()
       .from(connectors)
@@ -377,7 +452,8 @@ export async function deleteConnector(
         ),
       )
       .limit(1);
-    if (!existing[0]) return false;
+    if (!existing[0]) return { ok: false, evict: null };
+    const evict = existing[0].driver === "postgres" ? (existing[0] as unknown as EvictRow) : null;
     await tx
       .update(connectors)
       .set({ deleted_at: new Date(), updated_at: new Date() })
@@ -395,7 +471,13 @@ export async function deleteConnector(
       },
       tx,
     );
-    return true;
+    return { ok: true, evict };
   });
+  const ok = result.ok;
+  // After the row is soft-deleted, evict the postgres pool so the
+  // connector's connection pool doesn't linger until process restart.
+  if (ok && result.evict) {
+    await closePoolForConnector(result.evict as never).catch(() => {});
+  }
   return ok;
 }

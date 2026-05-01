@@ -2,6 +2,7 @@
 // Keeps the engine.ts file focused on control flow.
 
 import { eq } from "drizzle-orm";
+import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionSteps, executions } from "../db/schema/index.ts";
@@ -45,7 +46,7 @@ export async function createExecution(db: Db, params: CreateExecutionParams): Pr
         parent_execution_id: params.parent_execution_id ?? null,
       })
       .returning({ id: executions.id });
-    if (!row) throw new Error("executions insert returned no row");
+    assertInsertRow(row, "executions");
     await writeEvent(tx, {
       tenant_id: params.tenant_id,
       channel: "execution.status",
@@ -177,7 +178,7 @@ export async function insertStepRow(
       started_at: new Date(),
     })
     .returning({ id: executionSteps.id });
-  if (!row) throw new Error("execution_steps insert returned no row");
+  assertInsertRow(row, "execution_steps");
   return row.id;
 }
 

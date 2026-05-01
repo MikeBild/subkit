@@ -12,8 +12,9 @@
 //      produce a duplicate key.
 //
 //   3. seedDevFixtures — the legacy local-dev fixtures: `default` tenant,
-//      admin@local user, default-bot system account, a dummy HTTP connector,
-//      and a starter global skill. Runs only when NODE_ENV !== "production".
+//      admin@local user, default-bot system account, and a starter
+//      global skill. No demo connectors or workflows — fresh tenants
+//      start empty. Runs only when NODE_ENV !== "production".
 //
 // Every created row writes an audit entry. Issued API keys are printed
 // to stdout exactly once with a bright warning — they cannot be recovered.
@@ -25,22 +26,13 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { newTraceId, withContext } from "../logging/context.ts";
 import { logger } from "../logging/logger.ts";
-import { seedOnboardingDemo } from "../onboarding/demo-seed.ts";
 import {
   backfillRoleIds,
   type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
 } from "../rbac/seed.ts";
 import { closeDb, type Db, getDb } from "./client.ts";
-import {
-  apiKeys,
-  connectorEnvironments,
-  connectors,
-  skills,
-  systemAccounts,
-  tenants,
-  users,
-} from "./schema/index.ts";
+import { apiKeys, skills, systemAccounts, tenants, users } from "./schema/index.ts";
 
 const DEFAULT_TENANT_SLUG = "default";
 const BOOTSTRAP_SYS_ACCOUNT_NAME = "bootstrap-admin";
@@ -524,39 +516,11 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       tx,
     );
 
-    // --- dummy HTTP connector + environment ---
-    const [connector] = await tx
-      .insert(connectors)
-      .values({
-        tenant_id: tenant.id,
-        slug: "dummy-http",
-        display_name: "Dummy HTTP",
-        driver: "http",
-        base_url: "https://example.com",
-      })
-      .returning();
-    if (!connector) throw new Error("seed: connector insert returned no row");
-    await tx.insert(connectorEnvironments).values({
-      tenant_id: tenant.id,
-      connector_id: connector.id,
-      environment: "dev",
-      overrides: {},
-    });
-    await auditAwait(
-      {
-        tenant_id: tenant.id,
-        actor_type: "system",
-        action: AuditAction.CONNECTOR_CREATED,
-        resource_type: "connector",
-        resource_id: connector.id,
-        result: "success",
-        metadata: { slug: connector.slug, driver: connector.driver },
-      },
-      tx,
-    );
-
-    // --- onboarding demo workflows (3 public-API examples) ---
-    await seedOnboardingDemo({ tenant_id: tenant.id }, tx);
+    // No demo workflows or connectors — fresh tenants start empty.
+    // Operators consistently asked "why always 'demo-' prefix? I never
+    // used something like that"; the prior `dummy-http` connector and
+    // three `demo-*` workflows seeded surprise data the operator never
+    // authored. The greenfield convenience wasn't worth the confusion.
 
     logger.info({
       module: "db",
@@ -567,7 +531,6 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       system_account_id: sysAcct.id,
       api_key_id: apiKey.id,
       skill_id: skill.id,
-      connector_id: connector.id,
     });
 
     return [

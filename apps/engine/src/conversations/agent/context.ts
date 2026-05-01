@@ -9,14 +9,49 @@
 // behaviour body, which is identical across turns for a given agent.
 
 import type { AuthoringPromptHint } from "../../llm/types.ts";
+import type { AuthoringSurfaceMode } from "../types.ts";
 import {
+  AUTHORING_PERSONA,
+  CLI_HEADLESS_PERSONA,
+  DIAGNOSIS_PERSONA,
+  EXECUTION_PERSONA,
   GENERAL_RULES,
-  MAIN_AGENT_SYSTEM_PROMPT,
+  RBAC_EDITING_PERSONA,
   SKILL_LOADING_INSTRUCTIONS,
   verbosityFor,
 } from "./prompts.ts";
-import { ALL_AGENT_SKILLS, loadAgentSkills } from "./skills/index.ts";
+import { loadAgentSkills, resolveAgentSkillsForMode } from "./skills/index.ts";
 import type { AgentSystemPromptInput, AgentSystemPromptResult } from "./types.ts";
+
+/**
+ * Pick the persona variant for the current turn. Headless surface wins
+ * over mode (the user is parsing output programmatically, regardless
+ * of what authoring stage we're in). Otherwise the authoring mode
+ * decides: workflow/connector → AUTHORING, execution → EXECUTION,
+ * diagnosis → DIAGNOSIS. Default falls back to AUTHORING (the historical
+ * shape — no behaviour change for chats without a mode hint).
+ */
+function personaFor(
+  surface: AgentSystemPromptInput["surface"],
+  mode: AuthoringSurfaceMode | null | undefined,
+  scope?: "rbac" | undefined,
+): string {
+  // RBAC sub-mode wins over the primary mode — when the operator is
+  // editing a role policy the persona must emphasise propose-don't-
+  // apply and the test_rbac_expression preview loop, regardless of
+  // whether the conversation is otherwise in workflow / connector
+  // / execution mode.
+  if (scope === "rbac") return RBAC_EDITING_PERSONA;
+  if (surface === "sk_headless") return CLI_HEADLESS_PERSONA;
+  switch (mode) {
+    case "execution":
+      return EXECUTION_PERSONA;
+    case "diagnosis":
+      return DIAGNOSIS_PERSONA;
+    default:
+      return AUTHORING_PERSONA;
+  }
+}
 
 function summarizeCheckpoints(hint: AuthoringPromptHint, keys: string[]): string {
   const parts = keys.map((key) => {
@@ -139,17 +174,21 @@ function authoringFocusPrompt(hint?: AuthoringPromptHint): string {
 export async function generateMainAgentSystemPrompt(
   input: AgentSystemPromptInput,
 ): Promise<AgentSystemPromptResult> {
+  const mode = input.authoring_hint?.mode ?? null;
+  const scope = input.authoring_hint?.scope;
   const sections: string[] = [
-    MAIN_AGENT_SYSTEM_PROMPT,
+    personaFor(input.surface, mode, scope),
     GENERAL_RULES,
     SKILL_LOADING_INSTRUCTIONS,
     `VERBOSITY:\n- ${verbosityFor(input.surface)}`,
   ];
   const focusBlock = authoringFocusPrompt(input.authoring_hint);
   if (focusBlock) sections.push(focusBlock);
-  // Behaviour skills follow the literal so the model reads the
-  // structural rules first and the detailed behaviour bodies as
-  // grounding context after.
-  sections.push(loadAgentSkills(ALL_AGENT_SKILLS));
+  // Mode-aware behaviour skill loading: always-load core + the
+  // mode-specific bodies for the current authoring mode (workflow /
+  // connector / execution / diagnosis). conversational-authoring is
+  // the only body large enough to be worth gating; everything else
+  // is universal.
+  sections.push(loadAgentSkills(resolveAgentSkillsForMode(mode)));
   return { content: sections.join("\n\n") };
 }

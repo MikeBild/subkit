@@ -285,7 +285,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
       "config.access_token",
       "config.auth_value",
       "config.password",
-      "config.client_secret",
+      "config.oauth.client_secret",
     ],
   },
   validate_connector_draft: { defaultMode: "no_confirm" },
@@ -348,7 +348,14 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   // identity provider". Pending output surfaces the connector_id; the
   // authorization_url is only visible after confirmation lands.
   authenticate_oauth: {
-    defaultMode: "confirm_before_execution",
+    // Mirrors reference impl: post-execution confirmation. The OAuth
+    // flow runs end-to-end, the staged credential is recorded, and
+    // the operator reviews the captured scopes / expiry / token kind
+    // BEFORE the loop continues. Pre-fix this was confirm_before_execution
+    // which had the operator approve a flow they couldn't see the
+    // result of yet — confirm_after_execution surfaces the actual
+    // scopes the IdP granted, which is what matters for trust.
+    defaultMode: "confirm_after_execution",
     buildPendingOutput: (input) => {
       const connectorId = asObj(input).connector_id;
       return {
@@ -450,3 +457,34 @@ export function resolveToolMode(args: {
   if (def?.defaultMode) return def.defaultMode;
   return defaultModeForCategory(category);
 }
+
+/**
+ * Approval-mode badge for the discoverable `/policy` panel. Mirrors
+ * reference impl's `getApprovalMode` + `APPROVAL_LABELS`. Distinct
+ * from `resolveToolMode` (which reads runtime state); this one is a
+ * pure static signal: "what does the policy SAY about this tool's
+ * default behaviour, ignoring per-conversation overrides and current
+ * permission_mode?". Used by the panel to render a stable
+ * "Runs automatically" / "Asks before running" / "Review after run"
+ * badge that the operator can audit before they invoke a tool.
+ */
+export type ApprovalMode = "auto" | "approval_before" | "approval_after";
+
+export function getApprovalMode(toolName: string): ApprovalMode {
+  const def = TOOL_POLICIES[toolName];
+  if (!def) return "auto";
+  if (def.defaultMode === "confirm_before_execution") return "approval_before";
+  if (def.defaultMode === "confirm_after_execution") return "approval_after";
+  // Tools whose mode is computed dynamically (computeModeFromInput)
+  // surface as "approval_before" because the worst-case input could
+  // upgrade them — better the badge over-promises a confirmation
+  // gate than under-promises and surprises the operator.
+  if (def.computeModeFromInput) return "approval_before";
+  return "auto";
+}
+
+export const APPROVAL_LABELS: Readonly<Record<ApprovalMode, string>> = {
+  auto: "Runs automatically",
+  approval_before: "Asks before running",
+  approval_after: "Review after run",
+};

@@ -10,14 +10,18 @@
 // `query()` with `operation: "subscription"` returns a typed
 // `not_implemented` error envelope.
 
-import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
 import type { ConnectorView } from "../types.ts";
-import { applyAuthMaterial } from "./http.ts";
+import {
+  type AppliedAuthMethod,
+  applyAuthMaterial,
+  deriveAppliedAuthMethod,
+  resolveConnectorCredential,
+} from "./http.ts";
 
 export interface GraphQLConnectorConfig {
   endpoint: string;
@@ -41,6 +45,10 @@ export interface GraphQLResponse<T = unknown> {
    *  connector is `auth_type=none`. Surfaces through to the egress
    *  audit (`CREDENTIAL_ACCESSED`). */
   credential_id: string | null;
+  /** What auth was actually applied — same vocabulary as the HTTP
+   *  driver. `oauth2_refreshed` means a stale token was rotated inline
+   *  before this request went out. */
+  auth_method: AppliedAuthMethod;
 }
 
 export interface GraphQLNotImplementedError {
@@ -51,6 +59,7 @@ export interface GraphQLNotImplementedError {
   duration_ms: number;
   operation_name: string;
   credential_id: null;
+  auth_method: "none";
 }
 
 function parseConfig(connector: ConnectorView): GraphQLConnectorConfig {
@@ -67,16 +76,6 @@ function parseConfig(connector: ConnectorView): GraphQLConnectorConfig {
     out.default_headers = cfg.default_headers as Record<string, string>;
   }
   return out;
-}
-
-async function resolveCredential(
-  db: Db,
-  tenant_id: string,
-  connector: ConnectorView,
-): Promise<{ value: DecryptedCredential | null; credential_id: string | null }> {
-  if (connector.auth_type === "none") return { value: null, credential_id: null };
-  const row = await getCredentialForConnector(tenant_id, connector.id, connector.environment, db);
-  return { value: row?.value ?? null, credential_id: row?.row.id ?? null };
 }
 
 /**
@@ -98,6 +97,19 @@ export async function executeGraphQLRequest(p: {
   connector: ConnectorView;
   op: GraphQLOperation;
   fetchImpl?: typeof fetch;
+  /** Draft-time override: caller already holds the credential in memory
+   *  (see draft-credential-cache.ts). Skip the DB lookup — the synthetic
+   *  draft connector_id wouldn't resolve anyway. Mirrors the HTTP
+   *  driver's `credential_override`. */
+  credential_override?: DecryptedCredential | null;
+  /** Step-level headers from `request_step.headers`. Take precedence
+   *  over `cfg.default_headers` AND the connector's auth-applied
+   *  headers (so a workflow author who minted a token in step N can
+   *  forward it as `headers: { Authorization: "${scope.…}" }` to a
+   *  step N+1 graphql request). Pre-fix this slot didn't exist on the
+   *  GraphQL driver and the operator had to switch the connector
+   *  driver to `http` to work around (session 1b94070c). */
+  extra_headers?: Record<string, string>;
 }): Promise<GraphQLResponse | GraphQLNotImplementedError> {
   const start = Date.now();
   const operationName = extractOperationName(p.op.query, p.op.operation);
@@ -115,14 +127,21 @@ export async function executeGraphQLRequest(p: {
       duration_ms: Date.now() - start,
       operation_name: operationName,
       credential_id: null,
+      auth_method: "none",
     };
   }
   const cfg = parseConfig(p.connector);
-  const { value: credential, credential_id } = await resolveCredential(
-    p.db,
-    p.tenant_id,
-    p.connector,
-  );
+  const resolveOpts: Parameters<typeof resolveConnectorCredential>[0] = {
+    db: p.db,
+    tenant_id: p.tenant_id,
+    connector: p.connector,
+  };
+  if (p.credential_override !== undefined) {
+    resolveOpts.override = p.credential_override;
+  }
+  const { credential, credential_id, oauth2_refreshed } =
+    await resolveConnectorCredential(resolveOpts);
+  const auth_method = deriveAppliedAuthMethod(credential, oauth2_refreshed);
   const headers: Record<string, string> = {
     "content-type": "application/json",
     accept: "application/json",
@@ -130,6 +149,20 @@ export async function executeGraphQLRequest(p: {
   };
   const query: Record<string, string | number | boolean> = {};
   applyAuthMaterial(p.connector, credential, headers, query);
+  // Step-level headers override the connector's auth-applied headers
+  // — same precedence as the HTTP driver's `buildRequestPlan`. The
+  // workflow author's explicit `Authorization` wins over a stale
+  // bearer token from the connector credential.
+  if (p.extra_headers) {
+    // Drop case-twin Authorization first to avoid sending two.
+    if ("Authorization" in p.extra_headers || "authorization" in p.extra_headers) {
+      delete headers.Authorization;
+      delete headers.authorization;
+    }
+    for (const [k, v] of Object.entries(p.extra_headers)) {
+      headers[k] = v;
+    }
+  }
 
   // Static query params on the connector apply to the URL too.
   const url = new URL(cfg.endpoint);
@@ -151,6 +184,8 @@ export async function executeGraphQLRequest(p: {
     url_host: new URL(cfg.endpoint).host,
     url: scrubUrl(url),
     has_credential: credential !== null,
+    auth_method,
+    oauth2_refreshed,
   });
   const fetchImpl = p.fetchImpl ?? fetch;
   injectTraceContext(headers);
@@ -190,6 +225,7 @@ export async function executeGraphQLRequest(p: {
     duration_ms: Date.now() - start,
     operation_name: operationName,
     credential_id,
+    auth_method,
   };
 }
 
@@ -206,6 +242,8 @@ export async function query(p: {
   variables?: Record<string, unknown>;
   operation?: "query" | "mutation" | "subscription";
   fetchImpl?: typeof fetch;
+  credential_override?: DecryptedCredential | null;
+  extra_headers?: Record<string, string>;
 }): Promise<GraphQLResponse | GraphQLNotImplementedError> {
   const op: GraphQLOperation = {
     operation: p.operation ?? "query",
@@ -218,7 +256,9 @@ export async function query(p: {
     connector: p.connector,
     op,
   };
+  if (p.extra_headers !== undefined) args.extra_headers = p.extra_headers;
   if (p.fetchImpl !== undefined) args.fetchImpl = p.fetchImpl;
+  if (p.credential_override !== undefined) args.credential_override = p.credential_override;
   return await executeGraphQLRequest(args);
 }
 
@@ -239,8 +279,12 @@ export async function probeGraphQLConnector(p: {
     // Without one the request would go out unauthenticated and surface a
     // misleading error indistinguishable from a real connectivity failure.
     if (p.connector.auth_type !== "none") {
-      const { value: credValue } = await resolveCredential(p.db, p.tenant_id, p.connector);
-      if (!credValue) {
+      const { credential } = await resolveConnectorCredential({
+        db: p.db,
+        tenant_id: p.tenant_id,
+        connector: p.connector,
+      });
+      if (!credential) {
         return {
           ok: false,
           latency_ms: 0,

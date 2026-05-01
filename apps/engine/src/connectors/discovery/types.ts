@@ -21,6 +21,55 @@
 //
 // This module is pure compute — no DB writes, no caching. The conversation
 // tool wrapper persists results.
+//
+// ─── Strategy parity vs the reference impl ─────────────────────────────────
+//
+// The reference impl ships 12 documentation strategies under
+// `packages/core/documentation/strategies/` (13 files counting the
+// orchestrator). Subkit's coverage is mapped per-strategy below;
+// entries marked "intentionally not adopted" require an explicit
+// decision rather than silent absence.
+//
+//   reference-impl strategy          subkit equivalent / decision
+//   ───────────────────────────────  ────────────────────────────────────────
+//   openapi-direct                   ✅ implemented as `openapi-direct.ts`
+//   fetching-graphql                 ✅ implemented as `graphql-introspect.ts`
+//   fetching-playwright              ✅ implemented as `playwright-crawl.ts`
+//   openapi-swaggerui                ✅ implemented as `swagger-ui-scrape.ts`
+//   fetching-llms-txt                ✅ implemented as `llms-txt.ts`
+//   processing-html-markdown         ✅ implemented as `html-to-markdown.ts`
+//   processing-postgresql            ✅ implemented as `postgres-introspect.ts`
+//                                      + `mssql-introspect.ts` (subkit covers
+//                                      both engines; ref impl postgres only)
+//
+//   fetching-axios                   ⊘  not adopted: subkit uses native `fetch`
+//                                      throughout. Equivalent capability
+//                                      already covered.
+//   processing-raw-content           ⊘  not adopted: HTML fallback handled
+//                                      inline by `html-scrape.ts`; a generic
+//                                      raw-content stage adds no signal.
+//   openapi-link-extractor           ⊖  pending: would let subkit follow
+//                                      `<link rel="describedby">` headers to
+//                                      OpenAPI specs. Implement when a real
+//                                      template needs it.
+//   openapi-html-link-extractor      ⊖  pending: scrape `<a href>` for spec
+//                                      URLs in the page body. Same trigger
+//                                      criterion as above.
+//   openapi-swaggerhub               ⊖  pending: SwaggerHub-hosted specs.
+//                                      Low priority — most enterprise APIs
+//                                      self-host their OpenAPI now.
+//
+// Subkit-only strategies (no reference-impl equivalent — these are wins):
+//   - `endpoint-scorer.ts`           heuristic ranking of discovered
+//                                    endpoints by relevance to a probe
+//                                    intent. Disambiguates noisy responses
+//                                    from large APIs.
+//
+// Driver-side parity (`drivers/`): subkit has 10 protocol drivers (HTTP,
+// GraphQL, Postgres, MSSQL, Redis, FTP, SFTP, SMB, S3 + AWS-SigV4 helper);
+// ref impl ships 7 (drops S3, SFTP, GraphQL). Subkit also exposes
+// `transform` semantics inside `execution/steps/transform.ts` rather than
+// a dedicated driver.
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
@@ -83,6 +132,8 @@ export interface DiscoveryWarning {
 export type DiscoveryStrategyName =
   | "openapi-direct"
   | "graphql-introspect"
+  | "postgres-introspect"
+  | "mssql-introspect"
   | "swagger-ui-scrape"
   | "llms-txt"
   | "html-scrape"
