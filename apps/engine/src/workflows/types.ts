@@ -364,6 +364,13 @@ export const RequestStepSchema = z
       ])
       .optional(),
     idempotency_key: z.string().optional(),
+    /** Per-output secret marking — wired through the step-runner's
+     *  `applyDeclaredSecrets` pass. Keys correspond to top-level
+     *  paths inside the step's output. When `secret: true` the value
+     *  is replaced with the redaction marker BEFORE offload, preview,
+     *  audit, and downstream scope. Used by chained-auth recipes
+     *  (Cognito IdToken, OAuth2 access_token / refresh_token). */
+    outputs: z.record(z.string().min(1), z.object({ secret: z.boolean().optional() })).optional(),
   })
   .refine((s) => s.url !== undefined || s.connector_id !== undefined || s.sql !== undefined, {
     message:
