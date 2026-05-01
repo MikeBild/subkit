@@ -15,6 +15,8 @@ import { isCronDue, SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { ingestDocs } from "../service.ts";
 import { createDocsTestCtx, type DocsTestCtx, stubFetch } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 const SPEC_V1 = {
   openapi: "3.0.0",
   info: { title: "Refresh", version: "1.0.0" },
@@ -100,9 +102,9 @@ describe("docs-ingestion/refresh", () => {
   });
 
   test("isCronDue treats a never-fired connector as due", () => {
-    expect(isCronDue("every:60", null, new Date())).toBe(true);
+    expect(isCronDue("every:60", null, new Date(TEST_NOW_MS))).toBe(true);
     // Half a second after a 1-second-period firing is not due yet.
-    const justFired = new Date();
+    const justFired = new Date(TEST_NOW_MS);
     expect(isCronDue("every:1", justFired, new Date(justFired.getTime() + 500))).toBe(false);
     // Two seconds after a 1-second-period firing IS due.
     expect(isCronDue("every:1", justFired, new Date(justFired.getTime() + 2000))).toBe(true);

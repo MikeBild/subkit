@@ -32,7 +32,8 @@ import { isDangerousTool } from "../dangerous-tools.ts";
 import { createDraftSnapshot } from "../draft-checkpoints.ts";
 import { createElicitation } from "../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
-import { shouldAutoloadSkillsForTool } from "../skill-autoload.ts";
+import { resolveScopeFactsForConversation } from "../scope-facts.ts";
+import { autoloadForToolCall, loadActivationCatalog } from "../skill-autoload.ts";
 import { computeLineDiff } from "../text-line-diff.ts";
 import {
   buildPendingOutputForTool,
@@ -1227,12 +1228,12 @@ function wrapOne(
         }
         const resolvedArgs = attachmentResolved.value as Record<string, unknown>;
 
-        // Tool-driven skill autoload. Before dispatch, look up which
-        // skills the about-to-run tool implies (per `RULES` in
-        // `skill-autoload.ts`) and append any missing slugs to the
-        // conversation's `loaded_skills` column so the next context
-        // assembly sees their bodies. Idempotent — already-loaded
-        // slugs are filtered out by `shouldAutoloadSkillsForTool`.
+        // Tool-driven skill autoload. Before dispatch, ask the
+        // data-driven matcher (skill-autoload.ts) which active skills'
+        // `activates_when` rules match the about-to-run tool and the
+        // conversation's connector scope, then append any missing
+        // slugs to `loaded_skills` so the next context assembly sees
+        // their bodies. Idempotent — already-loaded slugs are filtered.
         try {
           const convRow = await db
             .select({ loaded_skills: conversations.loaded_skills })
@@ -1240,7 +1241,15 @@ function wrapOne(
             .where(eq(conversations.id, ctx.conversation_id))
             .limit(1);
           const currentlyLoaded = (convRow[0]?.loaded_skills ?? []) as string[];
-          const additions = shouldAutoloadSkillsForTool(inner.name, rawArgs, currentlyLoaded);
+          const [catalog, scope] = await Promise.all([
+            loadActivationCatalog(ctx.tenant_id, db),
+            resolveScopeFactsForConversation(db, ctx.tenant_id, ctx.conversation_id, rawArgs),
+          ]);
+          const additions = autoloadForToolCall(
+            { tool: inner.name, input: rawArgs, ...scope },
+            catalog,
+            currentlyLoaded,
+          );
           if (additions.length > 0) {
             await db
               .update(conversations)

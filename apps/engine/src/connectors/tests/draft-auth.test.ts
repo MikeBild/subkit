@@ -11,6 +11,8 @@ import { describe, expect, test } from "bun:test";
 import { applyAuthMaterial } from "../drivers/http.ts";
 import type { ConnectorView } from "../types.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 function connector(over: Partial<ConnectorView>): ConnectorView {
   return {
     id: "draft-c",
@@ -29,8 +31,8 @@ function connector(over: Partial<ConnectorView>): ConnectorView {
     template_source: null,
     template_version: null,
     template_snapshot: null,
-    created_at: new Date(),
-    updated_at: new Date(),
+    created_at: new Date(TEST_NOW_MS),
+    updated_at: new Date(TEST_NOW_MS),
     circuit_state: "closed",
     circuit_opened_at: null,
     circuit_failure_count: 0,

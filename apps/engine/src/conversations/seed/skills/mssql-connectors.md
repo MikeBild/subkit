@@ -3,8 +3,12 @@ slug: mssql-connectors
 scope: global
 title: MSSQL Connectors
 description: Driver specifics for Microsoft SQL Server / Azure SQL — DSN, parametrised queries, schema introspection.
-gates_tools: []
-version: 1
+activates_when: [{"kind":"connector_driver","driver":"mssql"}]
+side_effects: write
+idempotency: key_required
+maturity: stable
+tags: [driver, sql, mssql]
+version: 2
 ---
 
 # MSSQL Connectors

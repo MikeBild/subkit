@@ -12,6 +12,8 @@ import { runRequestStep } from "./steps/request.ts";
 import { createMockServer, jsonResponse, type MockServer } from "./tests/setup.ts";
 import type { StepRunContext } from "./types.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let testDb: TestDb;
 let tenantId: string;
 let mock: MockServer;
@@ -88,7 +90,7 @@ async function createExecutionRow(): Promise<{ execution_id: string; step_row_id
       step_index: 0,
       kind: "request",
       status: "running",
-      started_at: new Date(),
+      started_at: new Date(TEST_NOW_MS),
     })
     .returning({ id: executionSteps.id });
   if (!stepRow) throw new Error("step row insert failed");
@@ -111,7 +113,7 @@ function makeStepRunCtx(input: {
     depth: 0,
     signal: new AbortController().signal,
     scope: {},
-    started_at: new Date(),
+    started_at: new Date(TEST_NOW_MS),
     workflow_slug: "test",
     trace_id: null,
     principal: null,

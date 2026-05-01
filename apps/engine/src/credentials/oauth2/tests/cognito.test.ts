@@ -6,6 +6,8 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { runCognitoRefreshTokenGrant, runCognitoUserPasswordGrant } from "../client.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 describe("Cognito User-Password (InitiateAuth)", () => {
   let fetchSpy: ReturnType<typeof spyOn>;
 
@@ -62,7 +64,7 @@ describe("Cognito User-Password (InitiateAuth)", () => {
     expect(bundle.token_type).toBe("none");
     expect(bundle.refresh_token).toBe("rt-1");
     expect(bundle.expires_at).toBeInstanceOf(Date);
-    expect(bundle.expires_at!.getTime()).toBeGreaterThan(Date.now());
+    expect(bundle.expires_at!.getTime()).toBeGreaterThan(TEST_NOW_MS);
   });
 
   test("computes SECRET_HASH when client_secret is provided", async () => {

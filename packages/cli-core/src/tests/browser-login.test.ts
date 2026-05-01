@@ -113,6 +113,7 @@ describe("browser-login", () => {
   });
 
   test("times out when no callback received", async () => {
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const start = Date.now();
     try {
       await runBrowserLogin({
@@ -125,6 +126,7 @@ describe("browser-login", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(Error);
       expect((err as Error).message).toContain("timed out");
+      // allow-wall-clock: this test exercises real-time polling or freshness windows.
       const elapsed = Date.now() - start;
       expect(elapsed).toBeGreaterThanOrEqual(900);
       expect(elapsed).toBeLessThan(5_000);

@@ -30,6 +30,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: JourneyCtx;
 
 // Seeded resources shared across ACs so each mutation has the right
@@ -70,7 +72,7 @@ afterAll(async () => {
 
 describe("journey: audit completeness over mutation routes", () => {
   test("AC1: POST /v1/workflows → workflow.created", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, "/v1/workflows", {
       method: "POST",
       body: JSON.stringify({
@@ -85,7 +87,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC2: PUT /v1/workflows/:id → workflow.updated", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/workflows/${workflowId}`, {
       method: "PUT",
       body: JSON.stringify({
@@ -99,7 +101,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC3: DELETE /v1/workflows/:id → workflow.deleted", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/workflows/${workflowId}`, {
       method: "DELETE",
     });
@@ -108,7 +110,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC4: POST /v1/connectors → connector.created", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, "/v1/connectors", {
       method: "POST",
       body: JSON.stringify({
@@ -126,7 +128,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC5: PATCH /v1/connectors/:id → connector.updated", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/connectors/${connectorId}`, {
       method: "PATCH",
       body: JSON.stringify({ base_url: "http://127.0.0.1:2" }),
@@ -138,7 +140,7 @@ describe("journey: audit completeness over mutation routes", () => {
   test("AC7: POST /v1/connectors/:id/credentials → credential.created", async () => {
     // AC6 (DELETE connector) is deferred until after AC7 so the
     // credential insert has a live connector to attach to.
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/connectors/${connectorId}/credentials`, {
       method: "POST",
       body: JSON.stringify({ mode: "bearer", token: "t-e-s-t" }),
@@ -191,7 +193,7 @@ describe("journey: audit completeness over mutation routes", () => {
     expect(attach.status).toBe(201);
     const { id: credentialId } = (await attach.json()) as { id: string };
 
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/credentials/${credentialId}/rotate`, {
       method: "POST",
       body: JSON.stringify({}),
@@ -212,7 +214,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC6: DELETE /v1/connectors/:id → connector.deleted", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/connectors/${connectorId}`, {
       method: "DELETE",
     });
@@ -221,7 +223,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC9: POST /v1/skills → skill.created", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     // Create three skills up-front so AC10/AC11/AC12 each get a
     // dedicated row to mutate without stepping on each other.
     for (const label of ["activate", "archive", "delete"] as const) {
@@ -244,7 +246,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC10: POST /v1/skills/:id/activate → skill.activated", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/skills/${skillActivateId}/activate`, {
       method: "POST",
     });
@@ -253,7 +255,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC11: POST /v1/skills/:id/archive → skill.archived", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/skills/${skillArchiveId}/archive`, {
       method: "POST",
     });
@@ -262,7 +264,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC12: DELETE /v1/skills/:id → skill.deleted", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/skills/${skillDeleteId}`, {
       method: "DELETE",
     });
@@ -271,7 +273,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC13: POST /v1/identity/api-keys → api_key.issued", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, "/v1/identity/api-keys", {
       method: "POST",
       body: JSON.stringify({
@@ -286,7 +288,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC14: POST /v1/identity/api-keys/:id/rotate → api_key.rotated", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/identity/api-keys/${apiKeyId}/rotate`, {
       method: "POST",
       body: JSON.stringify({}),
@@ -298,7 +300,7 @@ describe("journey: audit completeness over mutation routes", () => {
   test("AC15: DELETE /v1/identity/api-keys/:id → api_key.revoked", async () => {
     // The engine exposes the revoke path as DELETE, not a dedicated
     // POST /revoke — documented deviation from the plan's wording.
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/identity/api-keys/${apiKeyId}`, {
       method: "DELETE",
     });
@@ -319,7 +321,7 @@ describe("journey: audit completeness over mutation routes", () => {
     });
     const wfId = ((await wfRes.json()) as { id: string }).id;
 
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, "/v1/identity/portal-tokens", {
       method: "POST",
       body: JSON.stringify({
@@ -333,7 +335,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC17: POST /v1/identity/system-accounts → system_account.created", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, "/v1/identity/system-accounts", {
       method: "POST",
       body: JSON.stringify({ name: "ac17-bot", description: "audit completeness bot" }),
@@ -343,7 +345,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC18: POST /v1/rbac/roles → rbac.role_created", async () => {
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, "/v1/rbac/roles", {
       method: "POST",
       body: JSON.stringify({ name: "ac18-role", description: "audit completeness role" }),
@@ -372,7 +374,7 @@ describe("journey: audit completeness over mutation routes", () => {
     });
     const wfId = ((await wfRes.json()) as { id: string }).id;
 
-    const start = new Date().toISOString();
+    const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, "/v1/rbac/grants", {
       method: "POST",
       body: JSON.stringify({

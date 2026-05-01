@@ -4,9 +4,12 @@ scope: global
 title: OAuth2 Authorization Flow
 description: How to wire an OAuth2 connector in chat. Loaded on demand when a connector template advertises `auth_type: oauth2` or when the user asks to authenticate a saved OAuth2 connector. Covers both template-provided OAuth (where client_id/secret come from the template) and custom OAuth (where the user provides client_id/secret in a masked form).
 gates_tools: [authenticate_oauth]
-version: 1
-auto_load: false
-trigger_keywords: [oauth, oauth2, authenticate, authorization code, refresh token, client credentials, sso, single sign-on]
+activates_when: [{"kind":"intent_keyword","word":"oauth"},{"kind":"intent_keyword","word":"oauth2"},{"kind":"intent_keyword","word":"authenticate"},{"kind":"intent_keyword","word":"authorization code"},{"kind":"intent_keyword","word":"refresh token"},{"kind":"intent_keyword","word":"client credentials"},{"kind":"intent_keyword","word":"sso"},{"kind":"intent_keyword","word":"single sign-on"}]
+side_effects: write
+idempotency: key_required
+maturity: stable
+tags: [auth, oauth]
+version: 2
 ---
 
 # OAuth2 Authorization Flow

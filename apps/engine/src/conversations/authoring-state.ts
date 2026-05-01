@@ -79,10 +79,12 @@ function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
   const slug = pickString("slug");
   const description = pickString("description");
   const outputTransform = pickString("output_transform");
+  const derivedFromSkillId = pickString("derived_from_skill_id");
   return {
     name,
     ...(slug ? { slug } : {}),
     ...(description ? { description } : {}),
+    ...(derivedFromSkillId ? { derived_from_skill_id: derivedFromSkillId } : {}),
     steps: Array.isArray(base.steps)
       ? base.steps.filter((step): step is Record<string, unknown> => isRecord(step))
       : [],

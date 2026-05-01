@@ -87,7 +87,9 @@ async function startMinio(): Promise<MinioHandle> {
   if (!port) throw new Error("Failed to determine MinIO mapped port");
 
   // Wait for MinIO to be healthy.
+  // allow-wall-clock: this test exercises real-time polling or freshness windows.
   const deadline = Date.now() + 30_000;
+  // allow-wall-clock: this test exercises real-time polling or freshness windows.
   while (Date.now() < deadline) {
     try {
       const res = await fetch(`http://127.0.0.1:${port}/minio/health/live`);

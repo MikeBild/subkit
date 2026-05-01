@@ -3,10 +3,12 @@ slug: document-analysis-guidance
 scope: global
 title: Document Analysis Guidance
 description: Guides the LLM when analyzing uploaded API specification files (OpenAPI, Postman, HAR, GraphQL, PDF, image).
-gates_tools: []
-version: 1
-auto_load: true
-trigger_keywords: [openapi, swagger, yaml, postman, har, graphql, pdf, image, screenshot, upload, specification, spec, api-doc]
+activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"openapi"},{"kind":"intent_keyword","word":"swagger"},{"kind":"intent_keyword","word":"yaml"},{"kind":"intent_keyword","word":"postman"},{"kind":"intent_keyword","word":"har"},{"kind":"intent_keyword","word":"graphql"},{"kind":"intent_keyword","word":"pdf"},{"kind":"intent_keyword","word":"image"},{"kind":"intent_keyword","word":"screenshot"},{"kind":"intent_keyword","word":"upload"},{"kind":"intent_keyword","word":"specification"},{"kind":"intent_keyword","word":"spec"},{"kind":"intent_keyword","word":"api-doc"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [discovery, openapi, attachments]
+version: 2
 ---
 
 # Document Analysis Guidance

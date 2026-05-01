@@ -23,6 +23,8 @@ import {
 } from "../execution/tests/setup.ts";
 import { SchedulerReconciler } from "./reconciler.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: EngineTestCtx;
 
 beforeAll(async () => {
@@ -86,7 +88,7 @@ describe("reconciler workflow-schedule dedup", () => {
       slug: "dedup-skip-wf",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
-    const now = new Date();
+    const now = new Date(TEST_NOW_MS);
     const scheduleId = await insertSchedule(
       workflow_id,
       "* * * * *",
@@ -121,7 +123,7 @@ describe("reconciler workflow-schedule dedup", () => {
       slug: "dedup-fire-wf",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
-    const now = new Date();
+    const now = new Date(TEST_NOW_MS);
     const scheduleId = await insertSchedule(
       workflow_id,
       "* * * * *",
@@ -163,7 +165,7 @@ describe("reconciler workflow-schedule dedup", () => {
       slug: "dedup-null-wf",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
-    const now = new Date();
+    const now = new Date(TEST_NOW_MS);
     await insertSchedule(workflow_id, "* * * * *", null);
 
     const reconciler = new SchedulerReconciler({ boss, db: ctx.testDb.db, intervalMs: 60_000 });
@@ -182,7 +184,7 @@ describe("reconciler workflow-schedule dedup", () => {
       slug: "dedup-paused-wf",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
-    const now = new Date();
+    const now = new Date(TEST_NOW_MS);
     const [row] = await ctx.testDb.db
       .insert(workflowsSchedules)
       .values({

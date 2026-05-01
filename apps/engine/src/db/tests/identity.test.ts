@@ -5,6 +5,8 @@ import { writeAudit } from "../audit.ts";
 import { apiKeys, auditLog, tenants, users } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: TestDb;
 
 beforeAll(async () => {
@@ -75,7 +77,7 @@ describe("identity schema", () => {
     await writeAudit(
       {
         id,
-        ts: new Date(),
+        ts: new Date(TEST_NOW_MS),
         tenant_id: tenant!.id,
         actor_type: "system",
         actor_id: null,

@@ -3,8 +3,12 @@ slug: subkit-concepts
 scope: global
 title: sk Core Concepts
 description: The minimum mental model an agent needs to author, run, and reason about sk workflows.
-gates_tools: []
-version: 2
+activates_when: [{"kind":"baseline"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [foundations, concepts]
+version: 3
 ---
 
 # sk Core Concepts

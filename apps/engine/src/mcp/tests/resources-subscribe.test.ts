@@ -3,6 +3,8 @@ import { ResourceUpdatedNotificationSchema } from "@modelcontextprotocol/sdk/typ
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let suite: McpTestSuite;
 
 beforeAll(async () => {
@@ -35,12 +37,14 @@ describe("mcp resources/subscribe live updates", () => {
       channel: "connector.oauth",
       type: "connector.oauth.refreshed",
       payload: { connector_id: id },
-      created_at: new Date(),
+      created_at: new Date(TEST_NOW_MS),
     });
 
     // Short poll loop — the notification arrives asynchronously over the
     // streamable HTTP SSE channel.
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const deadline = Date.now() + 5_000;
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (received.length === 0 && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: legacy; review before changing
     }
@@ -65,7 +69,7 @@ describe("mcp resources/subscribe live updates", () => {
       channel: "connector.oauth",
       type: "connector.oauth.refreshed",
       payload: { connector_id: ignoredId },
-      created_at: new Date(),
+      created_at: new Date(TEST_NOW_MS),
     });
 
     // Give the (non-)delivery a moment.

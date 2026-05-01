@@ -96,7 +96,7 @@ describe("connectors/service", () => {
     expect(gone).toBeNull();
   });
 
-  test("operator_notes round-trips through create + patch + null clear", async () => {
+  test("operator_quirks round-trip through create + patch + clear", async () => {
     const tenant_id = await seedTenant();
     const created = await createConnector(
       {
@@ -107,32 +107,32 @@ describe("connectors/service", () => {
           environment: "dev",
           base_url: "https://notes.example.test",
           auth_type: "none",
-          operator_notes: "treat 422 as success on /upsert",
+          operator_quirks: { error_handling: "treat 422 as success on /upsert" },
         },
         actor_id: null,
       },
       ctx.db,
     );
-    expect(created.operator_notes).toBe("treat 422 as success on /upsert");
+    expect(created.operator_quirks.error_handling).toBe("treat 422 as success on /upsert");
 
     const patched = await updateConnector(
       tenant_id,
       created.id,
-      { operator_notes: "always send ?api-version=2025-01-01" },
+      { operator_quirks: { auth: "always send ?api-version=2025-01-01" } },
       null,
       ctx.db,
     );
-    expect(patched?.operator_notes).toBe("always send ?api-version=2025-01-01");
+    expect(patched?.operator_quirks.auth).toBe("always send ?api-version=2025-01-01");
 
-    // Explicit null clears the field; undefined would leave it untouched.
+    // Empty object clears every category in one go.
     const cleared = await updateConnector(
       tenant_id,
       created.id,
-      { operator_notes: null },
+      { operator_quirks: {} },
       null,
       ctx.db,
     );
-    expect(cleared?.operator_notes).toBeNull();
+    expect(cleared?.operator_quirks).toEqual({});
   });
 
   test("createConnector persists template binding metadata and snapshot", async () => {

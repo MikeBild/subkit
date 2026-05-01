@@ -6,6 +6,8 @@ import { describe, expect, it } from "bun:test";
 import { runTransformStep } from "../steps/transform.ts";
 import type { StepRunContext } from "../types.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 function mkCtx(): StepRunContext {
   return {
     db: undefined as unknown as StepRunContext["db"],
@@ -18,7 +20,7 @@ function mkCtx(): StepRunContext {
     depth: 0,
     signal: new AbortController().signal,
     scope: {},
-    started_at: new Date(),
+    started_at: new Date(TEST_NOW_MS),
     workflow_slug: "s",
     trace_id: null,
     principal: null,

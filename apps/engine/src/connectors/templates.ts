@@ -13,8 +13,10 @@
 
 import { z } from "@hono/zod-openapi";
 import { HttpError } from "../http/errors.ts";
+import { type WorkflowDef, WorkflowDefSchema } from "../workflows/types.ts";
 import templateSkillsJson from "./template-skills.json" with { type: "json" };
 import builtinJson from "./templates.json" with { type: "json" };
+import { OperatorQuirksSchema } from "./types.ts";
 
 export const TemplateAuthTypeEnum = z.enum([
   "none",
@@ -160,6 +162,50 @@ export const TemplateAuthOptionSchema = z
   })
   .openapi("ConnectorTemplateAuthOption");
 
+// Per-template executable workflow recipe. A recipe IS a workflow — the
+// `workflow` field runs through the same `WorkflowDefSchema` that gates
+// every saved workflow, so a recipe is guaranteed to be structurally
+// valid (id uniqueness, JSONata parse, loop bodies, etc.). Recipes cover
+// the gap between a markdown skill (which describes the connector) and a
+// working draft the operator can clone and edit. Surfaced to the LLM via
+// `start_workflow_from_recipe(template_slug, recipe_slug)` and via
+// `connector-template-intelligence` when a connector is in scope.
+export const ConnectorRecipeSchema = z
+  .object({
+    slug: z
+      .string()
+      .min(1)
+      .regex(/^[a-z0-9][a-z0-9-]*$/),
+    title: z.string().min(1),
+    description: z.string().min(1),
+    /** Words/phrases the conversation pipeline matches against the user
+     *  intent to surface this recipe ahead of others. Lowercased before
+     *  match. Empty list = recipe is only reachable by explicit slug. */
+    intent_keywords: z.array(z.string().min(1)).default([]),
+    /** Optional pointer to a `template-skills.json` slug. When set, the
+     *  cloned workflow draft inherits `derived_from_skill_id` so the
+     *  workflow validator can apply the proof-before-save gate. */
+    derived_from_skill: z.string().min(1).nullable().default(null),
+    // The workflow shape is validated through WorkflowDefSchema at
+    // template load time (see `loadBuiltinTemplates` below). For the
+    // OpenAPI surface we expose it as a generic object — recursing
+    // into the full discriminated-union step schema crashed
+    // @asteasolutions/zod-to-openapi's `isNullableSchema` detection
+    // on the superRefine wrapper. The TypeScript type stays exact:
+    // every parser invocation goes through WorkflowDefSchema, so the
+    // runtime shape is identical; the static type is `WorkflowDef`
+    // via the cast below.
+    workflow: z
+      .unknown()
+      .refine((v) => WorkflowDefSchema.safeParse(v).success, {
+        message: "recipe.workflow must satisfy WorkflowDefSchema",
+      })
+      .transform((v) => v as WorkflowDef)
+      .openapi({ type: "object" }),
+  })
+  .openapi("ConnectorTemplateRecipe");
+export type ConnectorRecipe = z.infer<typeof ConnectorRecipeSchema>;
+
 export const ConnectorTemplateSchema = z
   .object({
     version: z.literal(1),
@@ -228,14 +274,25 @@ export const ConnectorTemplateSchema = z
      */
     example_paths: z.array(z.string()).default([]),
     /**
-     * Optional one-line operator hint propagated to every connector
-     * created from this template. Surfaces to the LLM whenever the
-     * connector is in scope (per CreateConnectorSchema.operator_notes)
-     * and is the right place for endpoint-specific quirks the model
-     * cannot infer from the OpenAPI spec — e.g. mutually-exclusive
-     * GitHub list-repos parameters that return HTTP 422 when combined.
+     * Categorized operator quirks propagated to every connector created
+     * from this template. The context assembler picks only the
+     * relevant categories per turn — `auth + pagination + rate_limit`
+     * for `propose_step kind=request`, `schema` for `kind=transform`,
+     * `error_handling` after a failed envelope, `general` otherwise.
+     * Each slot caps at 2K characters; the whole block lives in the
+     * stable cached prompt section.
      */
-    operator_notes: z.string().max(4_000).nullable().default(null),
+    operator_quirks: OperatorQuirksSchema.default({}),
+    /**
+     * Per-template executable workflow recipes. Each recipe IS a
+     * workflow validated through `WorkflowDefSchema`, so recipes are
+     * structurally guaranteed to load and run. The conversation tool
+     * `start_workflow_from_recipe` clones a recipe into a draft the
+     * operator can edit. Empty array means the template ships no
+     * starter workflows (LLM must author from scratch using the
+     * markdown skill + ingested docs).
+     */
+    recipes: z.array(ConnectorRecipeSchema).default([]),
   })
   .superRefine((t, ctx) => {
     // Consistency gate: a template that offers BOTH a primary non-oauth auth
@@ -290,6 +347,17 @@ export const ConnectorTemplateSchema = z
         code: z.ZodIssueCode.custom,
         path: ["aliases"],
         message: `template "${t.slug}" has duplicate aliases`,
+      });
+    }
+    // Recipe slug uniqueness per template — the recipe slug is a stable
+    // identifier the LLM passes to `start_workflow_from_recipe` and must
+    // be unambiguous within the template.
+    const recipeSlugs = t.recipes.map((r) => r.slug);
+    if (new Set(recipeSlugs).size !== recipeSlugs.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recipes"],
+        message: `template "${t.slug}" has duplicate recipe slugs`,
       });
     }
   })
@@ -359,6 +427,11 @@ function validateTemplateSkillReferences(templates: ConnectorTemplate[]): void {
   for (const t of templates) {
     if (t.default_skill && !knownSkills.has(t.default_skill)) {
       orphans.push(`${t.slug} -> ${t.default_skill}`);
+    }
+    for (const recipe of t.recipes) {
+      if (recipe.derived_from_skill && !knownSkills.has(recipe.derived_from_skill)) {
+        orphans.push(`${t.slug}.recipes.${recipe.slug} -> ${recipe.derived_from_skill}`);
+      }
     }
   }
   if (orphans.length > 0) {

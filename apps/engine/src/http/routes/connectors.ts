@@ -33,6 +33,7 @@ import {
   ConnectorTemplateSourceEnum,
   type ConnectorView,
   CreateConnectorSchema,
+  OperatorQuirksSchema,
   UpdateConnectorSchema,
 } from "../../connectors/types.ts";
 import {
@@ -62,7 +63,7 @@ const ConnectorSchema = z
     base_url: z.string().nullable(),
     dsn: z.string().nullable(),
     config: z.record(z.string(), z.unknown()),
-    operator_notes: z.string().nullable(),
+    operator_quirks: OperatorQuirksSchema,
     template_slug: z.string().nullable(),
     template_name: z.string().nullable(),
     template_source: ConnectorTemplateSourceEnum.nullable(),
@@ -131,7 +132,7 @@ function serialize(c: ConnectorView) {
     base_url: c.base_url,
     dsn: c.dsn,
     config: c.config,
-    operator_notes: c.operator_notes,
+    operator_quirks: c.operator_quirks,
     template_slug: c.template_slug,
     template_name: c.template_name,
     template_source: c.template_source,

@@ -23,6 +23,8 @@ import type { defineCommand } from "citty";
 import { workflowsCommand } from "../../../../sk/src/commands/workflows.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: JourneyCtx;
 
 // ---------- stdout capture ----------
@@ -199,7 +201,7 @@ const fixture = {
   slug: "test-wf",
   steps: [{ kind: "request", id: "step1", method: "GET", url: "https://example.com" }],
 };
-const tmpFile = path.join(tmpdir(), `35-cli-wf-${Date.now()}.json`);
+const tmpFile = path.join(tmpdir(), `35-cli-wf-${TEST_NOW_MS}.json`);
 
 let createdId = "";
 

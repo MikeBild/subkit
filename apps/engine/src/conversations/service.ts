@@ -22,7 +22,7 @@ import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { appendSnapshot, loadDraft, undoLastSnapshot } from "./draft.ts";
 import { type RunLoopResult, runLoop } from "./loop.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "./resume.ts";
-import { BASELINE_SKILLS } from "./skill-autoload.ts";
+import { listBaselineSlugs, loadActivationCatalog } from "./skill-autoload.ts";
 import type {
   ConversationDetail,
   ConversationMessageRecord,
@@ -190,6 +190,12 @@ export async function createConversation(
   if (initialPermissionMode) {
     initialDraft.session = { permission_mode: initialPermissionMode };
   }
+  // Seed every conversation with the baseline skills (those with a
+  // `kind:"baseline"` activation rule) so the LLM has the core mental
+  // model on turn one. Per-tool autoload appends domain-specific
+  // skills as the conversation evolves.
+  const catalog = await loadActivationCatalog(p.tenant_id, exec);
+  const baselineSlugs = listBaselineSlugs(catalog);
   const [row] = await exec
     .insert(conversations)
     .values({
@@ -199,11 +205,7 @@ export async function createConversation(
       status: "active",
       draft: initialDraft,
       owner_id: p.actor_id ?? null,
-      // Seed every conversation with the baseline skills so the LLM
-      // has the core mental model (sk concepts + error recovery) on
-      // turn one. Per-tool autoload (`shouldAutoloadSkillsForTool`)
-      // appends domain-specific skills as the conversation evolves.
-      loaded_skills: [...BASELINE_SKILLS],
+      loaded_skills: baselineSlugs,
       ...(p.model ? { model: p.model } : {}),
       ...(p.title ? { title: p.title } : {}),
       ...(memory ? { memory } : {}),

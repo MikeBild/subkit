@@ -150,6 +150,7 @@ describe("journey: AI chat authoring", () => {
         ts: "1700000000.000100",
       },
     });
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const ts = String(Math.floor(Date.now() / 1000));
     const goodSig = signSlack(ts, body);
     const ok = await fetch(`${ctx.baseUrl}/v1/chat/slack/events`, {

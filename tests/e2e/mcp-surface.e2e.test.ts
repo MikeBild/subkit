@@ -7,6 +7,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let env: E2EEnv;
 beforeAll(async () => {
   // The mode-split MCP catalog hides conversation.* and tenant.* from
@@ -40,7 +42,7 @@ class McpSession {
       headers,
       body: JSON.stringify({
         jsonrpc: "2.0",
-        id: `${method}-${Date.now()}`,
+        id: `${method}-${TEST_NOW_MS}`,
         method,
         params,
       }),
@@ -136,7 +138,7 @@ describe("MCP tenant tool surface", () => {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        slug: `doomed-${Date.now()}`,
+        slug: `doomed-${TEST_NOW_MS}`,
         name: "doomed",
         steps: [
           {

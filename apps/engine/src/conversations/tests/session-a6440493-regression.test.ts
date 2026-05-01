@@ -36,6 +36,8 @@ import type { ToolContext, ToolResult } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: ConversationTestCtx;
 
 beforeAll(async () => {
@@ -81,7 +83,7 @@ function readyDraft(
       status: "succeeded",
       environment: "dev",
       warnings_count: latestExecutionWarnings,
-      recorded_at: new Date().toISOString(),
+      recorded_at: new Date(TEST_NOW_MS).toISOString(),
       diagnosis_available: true,
       ...(latestExecutionRequiresRepair ? { requires_repair: true } : {}),
     });
@@ -224,7 +226,7 @@ describe("runTransformStep · transform_empty_extraction warning", () => {
       parent_execution_id: null,
       depth: 0,
       scope: {},
-      started_at: new Date(),
+      started_at: new Date(TEST_NOW_MS),
       workflow_slug: "test-wf",
       trace_id: null,
       execution_mode: "dev",
@@ -320,7 +322,7 @@ describe("runTransformStep · unresolved_identifier suppression", () => {
       parent_execution_id: null,
       depth: 0,
       scope: {},
-      started_at: new Date(),
+      started_at: new Date(TEST_NOW_MS),
       workflow_slug: "test-wf",
       trace_id: null,
       execution_mode: "dev",
@@ -458,7 +460,7 @@ describe("runTransformStep · transform_dropped_fields warning", () => {
       parent_execution_id: null,
       depth: 0,
       scope: {},
-      started_at: new Date(),
+      started_at: new Date(TEST_NOW_MS),
       workflow_slug: "test-wf",
       trace_id: null,
       execution_mode: "dev",

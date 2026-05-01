@@ -3,8 +3,12 @@ slug: rbac-and-scopes
 scope: global
 title: RBAC And Scopes
 description: How sk authorizes workflow authoring, connector changes, and run invocation across subjects.
-gates_tools: []
-version: 2
+activates_when: [{"kind":"tool","tool":"test_rbac_expression"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [security, rbac]
+version: 3
 ---
 
 # RBAC And Scopes

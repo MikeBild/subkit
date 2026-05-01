@@ -108,6 +108,7 @@ describe("outbound: retry ladder (integration)", () => {
     // attempt and writes a row.
     const refTimes: number[] = [];
     for (let attempt = 1; attempt <= 4; attempt += 1) {
+      // allow-wall-clock: this test exercises real-time polling or freshness windows.
       const before = Date.now();
       const job: WebhookDeliverJob = {
         tenant_id: ctx.tenantId,
@@ -116,6 +117,7 @@ describe("outbound: retry ladder (integration)", () => {
         event_type: "execution.succeeded",
         body,
         webhook_id: `msg_flaky_${attempt}`,
+        // allow-wall-clock: this test exercises real-time polling or freshness windows.
         timestamp: Math.floor(Date.now() / 1000),
         attempt_number: attempt,
       };
@@ -184,6 +186,7 @@ describe("outbound: retry ladder (integration)", () => {
         event_type: "execution.succeeded",
         body,
         webhook_id: `msg_exhaust_${attempt}`,
+        // allow-wall-clock: this test exercises real-time polling or freshness windows.
         timestamp: Math.floor(Date.now() / 1000),
         attempt_number: attempt,
       };

@@ -34,6 +34,7 @@ describe("clock", () => {
   });
 
   it("getTestNow defaults to real Date.now when no override is installed", () => {
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const before = Date.now();
     const now = getTestNow();
     expect(now).toBeGreaterThanOrEqual(before);

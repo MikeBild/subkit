@@ -175,6 +175,7 @@ describe("notifications: dispatchEvent", () => {
     adapter.alwaysFail = true;
 
     // Drive failures up to the threshold.
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const t0 = Date.now();
     for (let i = 0; i < FAILURE_THRESHOLD; i += 1) {
       const r = await dispatchEvent(

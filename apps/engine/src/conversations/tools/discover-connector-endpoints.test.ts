@@ -21,6 +21,8 @@ import {
 } from "./discover-connector-endpoints.ts";
 import type { ToolContext } from "./index.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: TestDb;
 let tenant_id: string;
 let other_tenant_id: string;
@@ -203,7 +205,7 @@ describe("discover_connector_endpoints — cache hit", () => {
 
   test("expired cache (older than TTL) re-fetches", async () => {
     // Seed an expired cache row directly.
-    const stale = new Date(Date.now() - KNOWLEDGE_SOURCE_TTL_MS - 1000);
+    const stale = new Date(TEST_NOW_MS - KNOWLEDGE_SOURCE_TTL_MS - 1000);
     const [row] = await ctx.db
       .insert(knowledgeSources)
       .values({

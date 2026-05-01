@@ -41,9 +41,11 @@ async function collectFrames(
   const decoder = new TextDecoder();
   const frames: SSEFrame[] = [];
   let buffer = "";
+  // allow-wall-clock: this test exercises real-time polling or freshness windows.
   const deadline = Date.now() + timeoutMs;
 
   try {
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (Date.now() < deadline) {
       if (until(frames)) break;
       const chunkPromise = reader.read();

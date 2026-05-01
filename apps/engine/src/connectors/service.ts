@@ -44,7 +44,8 @@ function toView(row: typeof connectors.$inferSelect): ConnectorView {
     base_url: row.base_url ?? null,
     dsn: row.dsn ?? null,
     config: (row.config as Record<string, unknown>) ?? {},
-    operator_notes: row.operator_notes ?? null,
+    operator_quirks: ((row.operator_quirks as ConnectorView["operator_quirks"]) ??
+      {}) as ConnectorView["operator_quirks"],
     template_slug: row.template_slug ?? null,
     template_name: row.template_name ?? null,
     template_source: row.template_source ?? null,
@@ -104,7 +105,7 @@ async function resolveCreateTemplateBinding(
       dsn: input.dsn,
       auth_type: input.auth_type,
       config: input.config,
-      operator_notes: input.operator_notes,
+      operator_quirks: input.operator_quirks,
     },
     resolved.template,
     input.template_base_url_environment
@@ -168,7 +169,7 @@ export async function createConnector(
           base_url: effective.base_url ?? existing.base_url,
           dsn: effective.dsn ?? existing.dsn,
           config: effective.config ?? existing.config,
-          operator_notes: effective.operator_notes ?? existing.operator_notes,
+          operator_quirks: effective.operator_quirks ?? existing.operator_quirks,
           ...(resolved.binding ?? {}),
           updated_at: new Date(),
         })
@@ -210,7 +211,7 @@ export async function createConnector(
         base_url: effective.base_url ?? null,
         dsn: effective.dsn ?? null,
         config: effective.config ?? {},
-        operator_notes: effective.operator_notes ?? null,
+        operator_quirks: effective.operator_quirks ?? {},
         ...(resolved.binding ?? {
           template_slug: null,
           template_name: null,
@@ -352,7 +353,7 @@ export async function updateConnector(
     if (patch.dsn !== undefined) set.dsn = patch.dsn;
     if (patch.auth_type !== undefined) set.auth_type = patch.auth_type;
     if (patch.config !== undefined) set.config = patch.config;
-    if (patch.operator_notes !== undefined) set.operator_notes = patch.operator_notes;
+    if (patch.operator_quirks !== undefined) set.operator_quirks = patch.operator_quirks;
     if (patch.clear_template_binding) {
       set.template_slug = null;
       set.template_name = null;

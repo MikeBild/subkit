@@ -64,8 +64,10 @@ describe("scheduler reconciler", () => {
 
     try {
       // Wait for at least one execution row to appear for this workflow.
+      // allow-wall-clock: this test exercises real-time polling or freshness windows.
       const deadline = Date.now() + 5_000;
       let rowCount = 0;
+      // allow-wall-clock: this test exercises real-time polling or freshness windows.
       while (Date.now() < deadline) {
         const rows = await ctx.engine.testDb.db
           .select()

@@ -16,6 +16,8 @@ import {
   writeCache,
 } from "../updater.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 // ── Helpers ──
 
 let tmpDir: string;
@@ -233,7 +235,7 @@ describe("cache management", () => {
   test("writeCache creates directory recursively", () => {
     const dir = join(makeCacheDir(), "deep", "nested");
     const cache: UpdateCache = {
-      last_check: Date.now(),
+      last_check: TEST_NOW_MS,
       latest_version: "1.0.0",
       latest_tag: "v1.0.0",
       current_version_at_check: "0.9.0",
@@ -274,7 +276,7 @@ describe("checkForUpdate", () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
     // Pre-seed cache with same version, recent timestamp
     writeCache(cfg.cacheDir, {
-      last_check: Date.now(),
+      last_check: TEST_NOW_MS,
       latest_version: "1.0.0",
       latest_tag: "v1.0.0",
       current_version_at_check: "1.0.0",
@@ -289,7 +291,7 @@ describe("checkForUpdate", () => {
   test("returns UpdateInfo from cache when newer version cached", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
     writeCache(cfg.cacheDir, {
-      last_check: Date.now(),
+      last_check: TEST_NOW_MS,
       latest_version: "2.0.0",
       latest_tag: "v2.0.0",
       current_version_at_check: "1.0.0",
@@ -306,7 +308,7 @@ describe("checkForUpdate", () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
     // Seed an old cache
     writeCache(cfg.cacheDir, {
-      last_check: Date.now() - 100_000_000, // way past 24h
+      last_check: TEST_NOW_MS - 100_000_000, // way past 24h
       latest_version: "1.0.0",
       latest_tag: "v1.0.0",
       current_version_at_check: "1.0.0",
@@ -326,7 +328,7 @@ describe("checkForUpdate", () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
     // Seed a fresh cache
     writeCache(cfg.cacheDir, {
-      last_check: Date.now(),
+      last_check: TEST_NOW_MS,
       latest_version: "1.0.0",
       latest_tag: "v1.0.0",
       current_version_at_check: "1.0.0",

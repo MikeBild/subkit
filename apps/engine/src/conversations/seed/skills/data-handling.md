@@ -3,8 +3,12 @@ slug: data-handling
 scope: global
 title: Data Handling Between Steps
 description: The envelope, JSONata cheatsheet, data_selector vs transform vs outputTransform, and how to keep scope small.
-gates_tools: []
-version: 2
+activates_when: [{"kind":"tool_arg","tool":"propose_step","path":"step.kind","equals":"transform"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [authoring, transforms, jsonata]
+version: 3
 ---
 
 # Data Handling Between Steps

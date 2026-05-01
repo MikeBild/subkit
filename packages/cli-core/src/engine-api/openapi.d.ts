@@ -7418,8 +7418,9 @@ export interface components {
                 capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
                 /** @default [] */
                 example_paths: string[];
-                /** @default null */
-                operator_notes: string | null;
+                operator_quirks?: components["schemas"]["OperatorQuirks"];
+                /** @default [] */
+                recipes: components["schemas"]["ConnectorTemplateRecipe"][];
                 /** @enum {string} */
                 source: "builtin" | "tenant";
                 id: string | null;
@@ -7497,6 +7498,25 @@ export interface components {
             burst_size: number;
             recommended_backoff_ms: number;
         } | null;
+        /** @default {} */
+        OperatorQuirks: {
+            auth?: string;
+            pagination?: string;
+            rate_limit?: string;
+            schema?: string;
+            error_handling?: string;
+            general?: string;
+        };
+        ConnectorTemplateRecipe: {
+            slug: string;
+            title: string;
+            description: string;
+            /** @default [] */
+            intent_keywords: string[];
+            /** @default null */
+            derived_from_skill: string | null;
+            workflow: Record<string, never>;
+        };
         ConnectorTemplateRow: {
             /** @enum {number} */
             version: 1;
@@ -7535,8 +7555,9 @@ export interface components {
             capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
             /** @default [] */
             example_paths: string[];
-            /** @default null */
-            operator_notes: string | null;
+            operator_quirks?: components["schemas"]["OperatorQuirks"];
+            /** @default [] */
+            recipes: components["schemas"]["ConnectorTemplateRecipe"][];
             id: string;
             /** @enum {string} */
             source: "tenant";
@@ -7579,8 +7600,9 @@ export interface components {
             capabilities: components["schemas"]["ConnectorTemplateCapabilities"];
             /** @default [] */
             example_paths: string[];
-            /** @default null */
-            operator_notes: string | null;
+            operator_quirks?: components["schemas"]["OperatorQuirks"];
+            /** @default [] */
+            recipes: components["schemas"]["ConnectorTemplateRecipe"][];
         };
         TemplateOAuthCredentialResponse: {
             id: string;
@@ -7636,7 +7658,7 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
-            operator_notes: string | null;
+            operator_quirks: components["schemas"]["OperatorQuirks"];
             template_slug: string | null;
             template_name: string | null;
             /** @enum {string|null} */
@@ -7669,7 +7691,7 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
-            operator_notes?: string | null;
+            operator_quirks?: components["schemas"]["OperatorQuirks"];
             template_slug?: string;
             /** @enum {string} */
             template_source?: "builtin" | "tenant";
@@ -7685,7 +7707,7 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
-            operator_notes?: string | null;
+            operator_quirks?: components["schemas"]["OperatorQuirks"];
             template_slug?: string;
             /** @enum {string} */
             template_source?: "builtin" | "tenant";
@@ -7912,6 +7934,35 @@ export interface components {
             pitfalls: string[];
             /** @default [] */
             doc_refs: string[];
+            /** @default [] */
+            gates_tools: string[];
+            /** @default [] */
+            activates_when: components["schemas"]["SkillActivation"][];
+            /** @default null */
+            input_schema: {
+                [key: string]: unknown;
+            } | null;
+            /** @default null */
+            output_schema: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * @default read
+             * @enum {string}
+             */
+            side_effects: "none" | "read" | "write" | "destructive";
+            /**
+             * @default none
+             * @enum {string}
+             */
+            idempotency: "none" | "naturally" | "key_required";
+            /**
+             * @default stable
+             * @enum {string}
+             */
+            maturity: "experimental" | "stable";
+            /** @default [] */
+            tags: string[];
             /** @enum {string} */
             status: "draft" | "active" | "archived";
             /** @enum {string} */
@@ -7919,6 +7970,64 @@ export interface components {
             version: number;
             created_at: string;
             updated_at: string;
+        };
+        SkillActivation: components["schemas"]["SkillActivationBaseline"] | components["schemas"]["SkillActivationTool"] | components["schemas"]["SkillActivationToolArg"] | components["schemas"]["SkillActivationConnectorDriver"] | components["schemas"]["SkillActivationConnectorTemplate"] | components["schemas"]["SkillActivationConnectorRecipeMatch"] | components["schemas"]["SkillActivationIntentKeyword"];
+        SkillActivationBaseline: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "baseline";
+        };
+        SkillActivationTool: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "tool";
+            tool: string;
+        };
+        SkillActivationToolArg: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "tool_arg";
+            tool: string;
+            path: string;
+            equals: string | boolean | number;
+        };
+        SkillActivationConnectorDriver: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "connector_driver";
+            driver: string;
+        };
+        SkillActivationConnectorTemplate: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "connector_template";
+            slug: string;
+        };
+        SkillActivationConnectorRecipeMatch: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "connector_recipe_match";
+            template: string;
+        };
+        SkillActivationIntentKeyword: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "intent_keyword";
+            word: string;
         };
         CreateSkillBody: {
             /** @enum {string} */
@@ -7933,6 +8042,21 @@ export interface components {
             best_practices?: string[];
             pitfalls?: string[];
             doc_refs?: string[];
+            gates_tools?: string[];
+            activates_when?: components["schemas"]["SkillActivation"][];
+            input_schema?: {
+                [key: string]: unknown;
+            } | null;
+            output_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /** @enum {string} */
+            side_effects?: "none" | "read" | "write" | "destructive";
+            /** @enum {string} */
+            idempotency?: "none" | "naturally" | "key_required";
+            /** @enum {string} */
+            maturity?: "experimental" | "stable";
+            tags?: string[];
             /** @enum {string} */
             status?: "draft" | "active" | "archived";
             /** @enum {string} */
@@ -7945,6 +8069,21 @@ export interface components {
             best_practices?: string[];
             pitfalls?: string[];
             doc_refs?: string[];
+            gates_tools?: string[];
+            activates_when?: components["schemas"]["SkillActivation"][];
+            input_schema?: {
+                [key: string]: unknown;
+            } | null;
+            output_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /** @enum {string} */
+            side_effects?: "none" | "read" | "write" | "destructive";
+            /** @enum {string} */
+            idempotency?: "none" | "naturally" | "key_required";
+            /** @enum {string} */
+            maturity?: "experimental" | "stable";
+            tags?: string[];
             /** @enum {string} */
             status?: "draft" | "active" | "archived";
         };

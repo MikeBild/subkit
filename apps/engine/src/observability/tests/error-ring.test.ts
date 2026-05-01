@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import { type CapturedError, createErrorRing } from "../error-ring.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 function mk(overrides: Partial<CapturedError> = {}): CapturedError {
   return {
     trace_id: "t-default",
-    ts: new Date().toISOString(),
+    ts: new Date(TEST_NOW_MS).toISOString(),
     tenant_id: "tenant-a",
     method: "POST",
     path: "/v1/conversations",

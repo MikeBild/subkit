@@ -18,6 +18,16 @@ export interface TemplateUrlMatch {
   template: ConnectorTemplate;
   score: number;
   matched_segment: string;
+  /** Slim recipe summary surfaced into the LLM context when this match
+   *  wins. Just the slug + title + intent_keywords — never the full
+   *  workflow, which is fetched on demand by `start_workflow_from_recipe`.
+   *  Empty when the template ships no recipes. */
+  recipes: ReadonlyArray<{
+    slug: string;
+    title: string;
+    description: string;
+    intent_keywords: ReadonlyArray<string>;
+  }>;
 }
 
 function computeSpecificity(pattern: string): number {
@@ -54,6 +64,12 @@ function rank(rawUrl: string, templates?: ConnectorTemplate[]): TemplateUrlMatch
       template,
       score: specificity + m[0].length,
       matched_segment: m[0],
+      recipes: template.recipes.map((r) => ({
+        slug: r.slug,
+        title: r.title,
+        description: r.description,
+        intent_keywords: r.intent_keywords,
+      })),
     });
   }
   out.sort((a, b) => {

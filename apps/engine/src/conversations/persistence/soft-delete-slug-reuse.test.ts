@@ -11,6 +11,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: TestDb;
 let tenant_id: string;
 
@@ -49,7 +51,7 @@ describe("connectors · soft-delete + slug reuse", () => {
     // deleted_at; we mirror that here directly).
     await ctx.db
       .update(connectors)
-      .set({ deleted_at: new Date() })
+      .set({ deleted_at: new Date(TEST_NOW_MS) })
       .where(eq(connectors.id, first!.id));
 
     // Step 3: re-create with the same (tenant_id, slug, environment).

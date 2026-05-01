@@ -30,6 +30,8 @@ import {
 import { auditLog } from "../../db/schema/index.ts";
 import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: JourneyCtx;
 let scratchHome: string;
 let prevSkHome: string | undefined;
@@ -97,8 +99,8 @@ describe("journey: sk-cli continue-session cache", () => {
       tenant_id: "prod-tenant",
       title: null,
       model: null,
-      created_at: new Date().toISOString(),
-      last_used_at: new Date().toISOString(),
+      created_at: new Date(TEST_NOW_MS).toISOString(),
+      last_used_at: new Date(TEST_NOW_MS).toISOString(),
     });
     const devLatest = mostRecentSession({
       engine_url: ctx.baseUrl,

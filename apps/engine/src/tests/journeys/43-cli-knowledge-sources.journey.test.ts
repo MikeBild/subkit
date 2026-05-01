@@ -20,6 +20,8 @@ import path from "node:path";
 import { knowledgeSourcesCommand } from "../../../../sk/src/commands/knowledge-sources.ts";
 import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: JourneyCtx;
 let tmpFile: string;
 
@@ -193,7 +195,7 @@ let createdId = "";
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("cli-knowledge-sources");
-  tmpFile = path.join(tmpdir(), `ks-test-${Date.now()}.txt`);
+  tmpFile = path.join(tmpdir(), `ks-test-${TEST_NOW_MS}.txt`);
   writeFileSync(
     tmpFile,
     "The quick brown fox jumps over the lazy dog. This is a test document for knowledge source ingestion.",

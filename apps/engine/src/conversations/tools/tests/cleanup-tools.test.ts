@@ -25,6 +25,8 @@ import {
 } from "../generated/writes/cleanup.ts";
 import type { ToolContext } from "../index.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: ConversationTestCtx;
 let memberUserId: string;
 
@@ -260,7 +262,7 @@ describe("cleanup write conversation tools", () => {
         prefix: "pt_cleanup_token",
         token_sha256: "sha256-portal-token",
         allowed_workflows: [],
-        expires_at: new Date(Date.now() + 60_000),
+        expires_at: new Date(TEST_NOW_MS + 60_000),
       })
       .returning();
     const result = await revokePortalTokenTool.execute(makeToolContext(), { id: portalToken!.id });

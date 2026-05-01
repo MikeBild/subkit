@@ -11,6 +11,8 @@ import { describe, expect, test } from "bun:test";
 import { runLoopStep } from "../steps/loop.ts";
 import type { StepRunContext } from "../types.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 function ctx(scope: Record<string, unknown>): StepRunContext {
   return {
     // biome-ignore lint/suspicious/noExplicitAny: minimal stub
@@ -23,7 +25,7 @@ function ctx(scope: Record<string, unknown>): StepRunContext {
     parent_execution_id: null,
     depth: 0,
     scope,
-    started_at: new Date(),
+    started_at: new Date(TEST_NOW_MS),
     workflow_slug: "test-wf",
     trace_id: null,
     execution_mode: "dev",

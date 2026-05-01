@@ -52,6 +52,7 @@ describe("journey: inbound webhook triggers execution", () => {
   test("AC1: valid signature accepted and execution enqueued", async () => {
     const body = JSON.stringify({ invoice: { id: 1, amount: 100 } });
     const webhookId = randomUUID(); // allow-random: legacy; review before changing
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const ts = Math.floor(Date.now() / 1000);
     const res = await fetch(`${ctx.baseUrl}/v1/hooks/invoice-trigger`, {
       method: "POST",
@@ -80,6 +81,7 @@ describe("journey: inbound webhook triggers execution", () => {
   test("AC2: stale timestamp denied", async () => {
     const body = JSON.stringify({ stale: true });
     const webhookId = randomUUID(); // allow-random: legacy; review before changing
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const ts = Math.floor(Date.now() / 1000) - 10 * 60;
     const res = await fetch(`${ctx.baseUrl}/v1/hooks/invoice-trigger`, {
       method: "POST",
@@ -99,6 +101,7 @@ describe("journey: inbound webhook triggers execution", () => {
   test("AC3: duplicate webhook-id deduped", async () => {
     const body = JSON.stringify({ replay: "yes" });
     const webhookId = randomUUID(); // allow-random: legacy; review before changing
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const ts = Math.floor(Date.now() / 1000);
     const sig = sign(webhookId, ts, body);
     const headers = {

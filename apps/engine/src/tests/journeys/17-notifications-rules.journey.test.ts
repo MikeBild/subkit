@@ -155,6 +155,7 @@ describe("journey 17: notifications rules", () => {
     });
 
     const adapter = new RecordingAdapter();
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const t0 = Date.now();
 
     let dropped = 0;
@@ -197,6 +198,7 @@ describe("journey 17: notifications rules", () => {
 
     // Drive FAILURE_THRESHOLD back-to-back failures. Every outcome
     // should be `failed` until the breaker opens.
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const t0 = Date.now();
     for (let i = 0; i < FAILURE_THRESHOLD; i += 1) {
       const r = await dispatchEvent(

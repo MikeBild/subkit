@@ -9,6 +9,8 @@ import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sou
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { detectChainedWorkflowPatterns } from "../detectors/chained-workflow-pattern.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: TestDb;
 let tenant_id: string;
 
@@ -66,7 +68,7 @@ async function seedEnvelope(envelope: Envelope, slugSuffix: string): Promise<str
       version: `v-${slugSuffix}`,
       bytes_total: json.length,
       chunk_count: 1,
-      last_refreshed_at: new Date(),
+      last_refreshed_at: new Date(TEST_NOW_MS),
     })
     .returning();
   await ctx.db.insert(knowledgeChunks).values({

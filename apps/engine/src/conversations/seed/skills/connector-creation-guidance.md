@@ -3,10 +3,12 @@ slug: connector-creation-guidance
 scope: global
 title: Connector Creation Guidance
 description: Authoring contract for creating a NEW connector in a conversation. Covers the discover-before-probe loop, the masked-form credential path, the harness's auto-persist on confirmation, and the structured `next_best_actions` error envelope. Loaded on creation-intent keywords only — not on every mention of `api` or `http`. Driver-level detail still lives in the per-protocol skills (`http-connectors`, `graphql-connectors`, `postgres-connectors`, `s3-connectors`).
-gates_tools: []
-version: 4
-auto_load: true
-trigger_keywords: [create connector, new connector, add connector, add integration, new integration, set up integration, configure connector, start connector, start_connector_from_description, start_connector_from_template, wire up, hook up]
+activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"create connector"},{"kind":"intent_keyword","word":"new connector"},{"kind":"intent_keyword","word":"add connector"},{"kind":"intent_keyword","word":"add integration"},{"kind":"intent_keyword","word":"new integration"},{"kind":"intent_keyword","word":"set up integration"},{"kind":"intent_keyword","word":"configure connector"},{"kind":"intent_keyword","word":"start connector"},{"kind":"intent_keyword","word":"start_connector_from_description"},{"kind":"intent_keyword","word":"start_connector_from_template"},{"kind":"intent_keyword","word":"wire up"},{"kind":"intent_keyword","word":"hook up"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [authoring, connector, onboarding]
+version: 5
 ---
 
 # Connector Creation Guidance

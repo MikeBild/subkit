@@ -23,6 +23,8 @@ import { runRequestStep } from "./steps/request.ts";
 import { createMockServer, jsonResponse, type MockServer } from "./tests/setup.ts";
 import type { StepRunContext } from "./types.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let testDb: TestDb;
 let tenantId: string;
 let mock: MockServer;
@@ -88,7 +90,7 @@ async function createExecutionRow(): Promise<{ execution_id: string; step_row_id
       step_index: 0,
       kind: "request",
       status: "running",
-      started_at: new Date(),
+      started_at: new Date(TEST_NOW_MS),
     })
     .returning({ id: executionSteps.id });
   if (!stepRow) throw new Error("step row insert failed");
@@ -114,7 +116,7 @@ function makeStepRunCtx(input: {
     depth: 0,
     signal: new AbortController().signal,
     scope: {},
-    started_at: new Date(),
+    started_at: new Date(TEST_NOW_MS),
     workflow_slug: "test",
     trace_id: null,
     principal: null,
@@ -133,7 +135,7 @@ describe("pagination checkpoint", () => {
       page_idx: 50,
       accumulated_count: 2500,
       signature: "sig-abc",
-      written_at: new Date().toISOString(),
+      written_at: new Date(TEST_NOW_MS).toISOString(),
     };
     await writePaginationCheckpoint(step_row_id, cp, testDb.db);
     const round = await readPaginationCheckpoint(step_row_id, testDb.db);
@@ -155,7 +157,7 @@ describe("pagination checkpoint", () => {
       page_idx: 2,
       accumulated_count: 200,
       signature: "sig-1",
-      written_at: new Date().toISOString(),
+      written_at: new Date(TEST_NOW_MS).toISOString(),
     };
     await writePaginationCheckpoint(step_row_id, cp, testDb.db);
     const rows = await testDb.db
@@ -250,7 +252,7 @@ describe("pagination checkpoint", () => {
       page_idx: 5,
       accumulated_count: 5 * PAGE_SIZE,
       signature: "sig-from-an-old-workflow-shape",
-      written_at: new Date().toISOString(),
+      written_at: new Date(TEST_NOW_MS).toISOString(),
     };
     await writePaginationCheckpoint(step_row_id, stale, testDb.db);
 

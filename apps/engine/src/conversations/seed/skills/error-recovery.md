@@ -3,10 +3,12 @@ slug: error-recovery
 scope: global
 title: Authoring-Time Error Recovery
 description: Canonical tool-error shape and recovery routine for errors that surface WHILE the assistant is building a connector or workflow in a conversation. For failures of workflows that have already been committed and run, see `troubleshooting-workflow-failures`.
-gates_tools: []
-version: 3
-auto_load: true
-trigger_keywords: [error, failed, failure, broken, debug, fix, http_4xx, http_5xx, 4xx, 5xx, 400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, placeholder_unresolved, permission_denied, validation_failed, step_timeout, filter_fail, connector_not_found, ok false, tool error]
+activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"error"},{"kind":"intent_keyword","word":"failed"},{"kind":"intent_keyword","word":"failure"},{"kind":"intent_keyword","word":"broken"},{"kind":"intent_keyword","word":"debug"},{"kind":"intent_keyword","word":"fix"},{"kind":"intent_keyword","word":"http_4xx"},{"kind":"intent_keyword","word":"http_5xx"},{"kind":"intent_keyword","word":"4xx"},{"kind":"intent_keyword","word":"5xx"},{"kind":"intent_keyword","word":"400"},{"kind":"intent_keyword","word":"401"},{"kind":"intent_keyword","word":"403"},{"kind":"intent_keyword","word":"404"},{"kind":"intent_keyword","word":"409"},{"kind":"intent_keyword","word":"422"},{"kind":"intent_keyword","word":"429"},{"kind":"intent_keyword","word":"500"},{"kind":"intent_keyword","word":"502"},{"kind":"intent_keyword","word":"503"},{"kind":"intent_keyword","word":"504"},{"kind":"intent_keyword","word":"placeholder_unresolved"},{"kind":"intent_keyword","word":"permission_denied"},{"kind":"intent_keyword","word":"validation_failed"},{"kind":"intent_keyword","word":"step_timeout"},{"kind":"intent_keyword","word":"filter_fail"},{"kind":"intent_keyword","word":"connector_not_found"},{"kind":"intent_keyword","word":"ok false"},{"kind":"intent_keyword","word":"tool error"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [authoring, errors, recovery]
+version: 4
 ---
 
 # Error Recovery

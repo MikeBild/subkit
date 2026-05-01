@@ -229,19 +229,119 @@ function fetchedAtSuffix(fetched_at: string | null): string {
 }
 
 /**
- * Operator-supplied per-connector notes — short, imperative hints the
- * operator wants the model to treat as authoritative ("treat 422 as
- * success on /upsert", "always send `?api-version=2025-01-01`"). Lives
- * in `connectors.operator_notes`. The block is opt-in (only rendered
- * when the connector row carries a non-empty value) and stays in the
- * stable head so it caches alongside skills.
+ * Categorized operator quirks — short, imperative hints the operator
+ * wants the model to treat as authoritative ("treat 422 as success on
+ * /upsert", "always send `?api-version=2025-01-01`"). Lives in
+ * `connectors.operator_quirks`. The block is opt-in (only rendered
+ * when at least one selected category has content). Per-turn category
+ * selection is a string concat outside the cached prefix so the cache
+ * key stays stable across category swaps.
  *
  * Format keeps the connector slug + name visible so the model never
- * confuses notes from two connectors that ended up in scope on the
+ * confuses quirks from two connectors that ended up in scope on the
  * same turn.
  */
-function formatOperatorNotes(slug: string, name: string, notes: string): string {
-  return `# Operator notes — connector \`${slug}\` (${name})\n${notes}`;
+export function formatOperatorQuirks(
+  slug: string,
+  name: string,
+  quirks: import("../../connectors/types.ts").OperatorQuirks,
+  categories: ReadonlyArray<import("../../connectors/types.ts").OperatorQuirkCategory>,
+): string | null {
+  const lines: string[] = [];
+  for (const cat of categories) {
+    const v = quirks[cat]?.trim();
+    if (v) lines.push(`## ${cat}\n${v}`);
+  }
+  if (lines.length === 0) return null;
+  return [`# Operator quirks — connector \`${slug}\` (${name})`, ...lines].join("\n");
+}
+
+/**
+ * Render a slim recipe roster from a connector's `template_snapshot`.
+ * Surfaces only `slug + title + intent_keywords` per recipe — never
+ * the workflow body, which the LLM fetches on demand by calling
+ * `start_workflow_from_recipe(template_slug, recipe_slug)`. Returns
+ * null when the snapshot ships no recipes so the assembler skips
+ * emitting a dead header.
+ */
+export function formatConnectorRecipes(
+  slug: string,
+  snapshot: Record<string, unknown>,
+): string | null {
+  const raw = snapshot.recipes;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const lines: string[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const rec = r as Record<string, unknown>;
+    const recipeSlug = typeof rec.slug === "string" ? rec.slug : null;
+    const title = typeof rec.title === "string" ? rec.title : null;
+    if (!recipeSlug || !title) continue;
+    const kws = Array.isArray(rec.intent_keywords)
+      ? (rec.intent_keywords as unknown[]).filter((k): k is string => typeof k === "string")
+      : [];
+    const kwSuffix = kws.length > 0 ? ` — keywords: ${kws.join(", ")}` : "";
+    lines.push(`- \`${recipeSlug}\` — ${title}${kwSuffix}`);
+  }
+  if (lines.length === 0) return null;
+  return [
+    `# Available recipes — connector \`${slug}\``,
+    "Clone via `start_workflow_from_recipe(template_slug, recipe_slug)` instead of authoring from scratch.",
+    ...lines,
+  ].join("\n");
+}
+
+/**
+ * Pick which operator-quirk categories to surface this turn. Heuristic
+ * driven by the structured `AuthoringPromptHint` (the only scoped
+ * authoring signal the assembler reliably has) plus a `prior_failures`
+ * boost. The plan's per-turn rules:
+ *   - `propose_step kind=request` (workflow drafting/inspecting) →
+ *     auth + pagination + rate_limit + general
+ *   - `propose_step kind=transform` (workflow validating/previewing) →
+ *     pagination + schema + general
+ *   - error envelope received → error_handling + schema + general
+ *   - everything else → general
+ *
+ * Rendering only the relevant slice trims ~40-90% of the legacy 4 KB
+ * `operator_notes` blob on connectors with rich text.
+ */
+export function selectOperatorQuirkCategories(
+  hint: import("../../llm/types.ts").AuthoringPromptHint | undefined,
+  hasFailures: boolean,
+): ReadonlyArray<import("../../connectors/types.ts").OperatorQuirkCategory> {
+  if (hasFailures) return ["error_handling", "schema", "general"];
+  const stage = hint?.stage ?? "idle";
+  switch (stage) {
+    case "connector_targeted":
+    case "connector_draft_started":
+    case "connector_inspected":
+    case "connector_validated":
+    case "connector_authenticated":
+    case "connector_probed":
+      return ["auth", "general"];
+    case "workflow_targeted":
+    case "workflow_draft_started":
+    case "workflow_inspected":
+      return ["auth", "pagination", "rate_limit", "general"];
+    case "workflow_validated":
+    case "workflow_previewed":
+      // Transform-shaped stage — only `schema` matters; pagination /
+      // auth / rate_limit are irrelevant once the request graph is
+      // fixed and the LLM is shaping the output. Pinned by the
+      // quirk-token-budget eval.
+      return ["schema", "general"];
+    case "diagnosing":
+    case "repairing":
+      return ["error_handling", "schema", "general"];
+    case "workflow_executed":
+    case "workflow_persisted":
+    case "connector_persisted":
+    case "idle":
+      return ["general"];
+    default:
+      return ["general"];
+  }
 }
 
 function formatChunk(chunk: IncludedChunk): string {
@@ -677,28 +777,48 @@ export async function assembleEnhancedPrompt(
     latestPreviewEntries = await loadLatestPreview(p.tenant_id, p.conversation_id, db);
   }
 
-  // Operator notes for the in-scope connector. Loaded once per assembly
-  // and rendered as a stable cache block adjacent to connector skills.
-  // The field is hard-capped at 4 KB by the route schema, so the worst-
-  // case token cost is small and we drop it only after every other
-  // optional connector context block is gone.
-  let connectorOperatorNotesBlock: string | null = null;
+  // Operator quirks for the in-scope connector. Loaded once per
+  // assembly; the picker `selectOperatorQuirkCategories` reads the
+  // structured authoring hint to render only the categories relevant
+  // to the current turn shape. Per-category cap is 2 KB so even all
+  // six rendered together is bounded; per-turn selection typically
+  // drops 40-90% of the volume vs the legacy `operator_notes` blob.
+  //
+  // Recipe surfacing: when the connector was created from a template
+  // that ships executable recipes, the template snapshot carries a
+  // `recipes` array. We surface a slim summary (slug + title +
+  // intent_keywords — never the workflow body) so the LLM can offer
+  // `start_workflow_from_recipe(slug)` instead of authoring from
+  // scratch on the next turn.
+  let connectorOperatorQuirksBlock: string | null = null;
+  let connectorRecipesBlock: string | null = null;
   if (p.connector_id) {
     try {
       const connector = await getConnector(p.tenant_id, p.connector_id, db);
-      const trimmed = connector?.operator_notes?.trim() ?? "";
-      if (connector && trimmed) {
-        connectorOperatorNotesBlock = formatOperatorNotes(
+      const quirks = connector?.operator_quirks ?? {};
+      const categories = selectOperatorQuirkCategories(
+        p.authoring_hint,
+        (failures?.length ?? 0) > 0,
+      );
+      if (connector && Object.keys(quirks).length > 0) {
+        connectorOperatorQuirksBlock = formatOperatorQuirks(
           connector.slug,
           connector.display_name,
-          trimmed,
+          quirks,
+          categories,
+        );
+      }
+      if (connector?.template_snapshot) {
+        connectorRecipesBlock = formatConnectorRecipes(
+          connector.slug,
+          connector.template_snapshot as Record<string, unknown>,
         );
       }
     } catch (err) {
       logger.debug({
         module: "llm",
-        action: "llm.context.operator_notes_skipped",
-        msg: "operator_notes load failed during context assembly",
+        action: "llm.context.operator_quirks_skipped",
+        msg: "operator_quirks load failed during context assembly",
         tenant_id: p.tenant_id,
         connector_id: p.connector_id,
         error: err instanceof Error ? err.message : String(err),
@@ -749,7 +869,8 @@ export async function assembleEnhancedPrompt(
     const connectorIndexBlock = formatSkillIndex("Connector", connectorSkills, p.runtime_context);
     const workflowIndexBlock = formatSkillIndex("Workflow", workflowSkills, p.runtime_context);
     if (globalIndexBlock) sections.push(globalIndexBlock);
-    if (connectorOperatorNotesBlock) sections.push(connectorOperatorNotesBlock);
+    if (connectorOperatorQuirksBlock) sections.push(connectorOperatorQuirksBlock);
+    if (connectorRecipesBlock) sections.push(connectorRecipesBlock);
     if (connectorIndexBlock) sections.push(connectorIndexBlock);
     if (workflowIndexBlock) sections.push(workflowIndexBlock);
     // Loaded skills carry the full body — the LLM explicitly opted
@@ -863,12 +984,18 @@ export async function assembleEnhancedPrompt(
     } else if (connectorSkills.length > 0) {
       connectorSkills.length = 0;
       trimmed.push("connector_skill_index");
-    } else if (connectorOperatorNotesBlock) {
-      // operator_notes is the operator's direct, imperative instruction
+    } else if (connectorRecipesBlock) {
+      // Recipes are a navigation aid — dropping them just means the
+      // LLM falls back to authoring from scratch. Trim before quirks
+      // (which are operator-authored, more authoritative).
+      connectorRecipesBlock = null;
+      trimmed.push("connector_recipes");
+    } else if (connectorOperatorQuirksBlock) {
+      // operator_quirks is the operator's direct, imperative instruction
       // for this connector — drop it only when nothing else remains
       // except global skills and the base prompt.
-      connectorOperatorNotesBlock = null;
-      trimmed.push("connector_operator_notes");
+      connectorOperatorQuirksBlock = null;
+      trimmed.push("connector_operator_quirks");
     } else if (globalSkills.length > 0) {
       globalSkills.length = 0;
       trimmed.push("global_skill_index");

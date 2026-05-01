@@ -13,6 +13,8 @@ import {
   MAX_HISTORY,
 } from "../repl/history-store.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 const dirs: string[] = [];
 function tmpHistoryPath(): string {
   const dir = mkdtempSync(join(tmpdir(), "sk-hist-"));
@@ -73,7 +75,7 @@ describe("history-store: load + append", () => {
     const path = tmpHistoryPath();
     writeFileSync(
       path,
-      ["not valid json", JSON.stringify({ t: Date.now(), p: "good" }), "", "{broken"].join("\n"),
+      ["not valid json", JSON.stringify({ t: TEST_NOW_MS, p: "good" }), "", "{broken"].join("\n"),
     );
     const entries = loadHistory(path);
     expect(entries.length).toBe(1);

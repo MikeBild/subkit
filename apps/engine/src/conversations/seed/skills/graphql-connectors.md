@@ -3,8 +3,12 @@ slug: graphql-connectors
 scope: global
 title: GraphQL Connectors
 description: Driver specifics for the GraphQL connector — queries, mutations, variables, batching.
-gates_tools: []
-version: 2
+activates_when: [{"kind":"connector_driver","driver":"graphql"}]
+side_effects: read
+idempotency: naturally
+maturity: stable
+tags: [driver, graphql]
+version: 3
 ---
 
 # GraphQL Connectors

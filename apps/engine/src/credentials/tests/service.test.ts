@@ -9,6 +9,8 @@ import {
   upsertCredential,
 } from "../service.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: TestDb;
 
 beforeAll(async () => {
@@ -92,7 +94,7 @@ describe("credentials/service", () => {
           token_type: "Bearer",
         },
         oauth2_refresh_token: "refresh-1",
-        oauth2_expires_at: new Date(Date.now() + 60_000),
+        oauth2_expires_at: new Date(TEST_NOW_MS + 60_000),
         actor_id: null,
       },
       ctx.db,
@@ -104,7 +106,7 @@ describe("credentials/service", () => {
         credential_id: created.id,
         access_token: "access-2",
         refresh_token: "refresh-2",
-        expires_at: new Date(Date.now() + 90_000),
+        expires_at: new Date(TEST_NOW_MS + 90_000),
         actor_id: null,
       },
       ctx.db,

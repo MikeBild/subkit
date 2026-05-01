@@ -45,6 +45,7 @@ describe("outbound: delivery happy path", () => {
       event_type: "execution.succeeded",
       body: '{"type":"execution.succeeded","data":{"ok":true}}',
       webhook_id: "msg_test_delivery",
+      // allow-wall-clock: this test exercises real-time polling or freshness windows.
       timestamp: Math.floor(Date.now() / 1000),
       attempt_number: 1,
     };

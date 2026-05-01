@@ -51,6 +51,16 @@ function rowToSkill(row: SkillRow): Skill {
     best_practices: fields.best_practices,
     pitfalls: fields.pitfalls,
     doc_refs: fields.doc_refs,
+    gates_tools: Array.isArray(row.gates_tools) ? (row.gates_tools as string[]) : [],
+    activates_when: Array.isArray(row.activates_when)
+      ? (row.activates_when as Skill["activates_when"])
+      : [],
+    input_schema: row.input_schema ?? null,
+    output_schema: row.output_schema ?? null,
+    side_effects: row.side_effects as Skill["side_effects"],
+    idempotency: row.idempotency as Skill["idempotency"],
+    maturity: row.maturity as Skill["maturity"],
+    tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
     status: row.lifecycle as SkillLifecycle,
     source: row.source as SkillSource,
     version: row.version,
@@ -107,6 +117,14 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
         lifecycle: p.input.status ?? "active",
         source: p.input.source ?? "manual",
         version: 1,
+        gates_tools: p.input.gates_tools ?? [],
+        activates_when: p.input.activates_when ?? [],
+        input_schema: p.input.input_schema ?? null,
+        output_schema: p.input.output_schema ?? null,
+        side_effects: p.input.side_effects ?? "read",
+        idempotency: p.input.idempotency ?? "none",
+        maturity: p.input.maturity ?? "stable",
+        tags: p.input.tags ?? [],
       })
       .returning();
     const row = inserted[0];
@@ -230,6 +248,14 @@ export async function updateSkill(
     if (patch.title !== undefined) set.title = patch.title;
     if (patch.body !== undefined) set.body = patch.body;
     if (patch.status !== undefined) set.lifecycle = patch.status;
+    if (patch.gates_tools !== undefined) set.gates_tools = patch.gates_tools;
+    if (patch.activates_when !== undefined) set.activates_when = patch.activates_when;
+    if (patch.input_schema !== undefined) set.input_schema = patch.input_schema;
+    if (patch.output_schema !== undefined) set.output_schema = patch.output_schema;
+    if (patch.side_effects !== undefined) set.side_effects = patch.side_effects;
+    if (patch.idempotency !== undefined) set.idempotency = patch.idempotency;
+    if (patch.maturity !== undefined) set.maturity = patch.maturity;
+    if (patch.tags !== undefined) set.tags = patch.tags;
     const [row] = await tx.update(skills).set(set).where(eq(skills.id, id)).returning();
     if (!row) return null;
     await auditAwait(
@@ -454,9 +480,15 @@ export async function retrieveApplicableSkills(
 }
 
 /**
- * Returns active skills with `auto_load = true` whose `trigger_keywords`
- * overlap with the supplied keyword list. When no keywords are given,
- * returns all auto-load active skills for the tenant.
+ * Returns active stable skills whose `activates_when` rules contain
+ * either a `kind:"baseline"` rule or a `kind:"intent_keyword"` rule
+ * matching any of the supplied keywords (case-insensitive substring
+ * via lowercased equality on the configured `word`).
+ *
+ * Used by `apps/engine/src/llm/core/context-assembler.ts` to surface
+ * topical skills into the assembled prompt based on the user's intent
+ * vocabulary on the current turn. `maturity:"experimental"` skills are
+ * excluded — they are only reachable via explicit `load_skill(slug)`.
  */
 export async function listAutoLoadSkills(
   tenant_id: string,
@@ -467,20 +499,22 @@ export async function listAutoLoadSkills(
   const rows = await db
     .select()
     .from(skills)
-    .where(
-      and(
-        eq(skills.tenant_id, tenant_id),
-        eq(skills.lifecycle, "active"),
-        eq(skills.auto_load, true),
-      ),
-    )
+    .where(and(eq(skills.tenant_id, tenant_id), eq(skills.lifecycle, "active")))
     .orderBy(desc(skills.version), desc(skills.created_at));
-  if (keywords.length === 0) return rows.map(rowToSkill);
   const keySet = new Set(keywords.map((k) => k.toLowerCase()));
   return rows
     .filter((row) => {
-      const kws = Array.isArray(row.trigger_keywords) ? row.trigger_keywords : [];
-      return kws.length === 0 || kws.some((kw) => keySet.has(String(kw).toLowerCase()));
+      if (row.maturity === "experimental") return false;
+      const acts = Array.isArray(row.activates_when) ? row.activates_when : [];
+      for (const rule of acts) {
+        if (!rule || typeof rule !== "object") continue;
+        const r = rule as { kind?: string; word?: string };
+        if (r.kind === "baseline") return true;
+        if (r.kind === "intent_keyword" && typeof r.word === "string") {
+          if (keySet.has(r.word.toLowerCase())) return true;
+        }
+      }
+      return false;
     })
     .map(rowToSkill);
 }

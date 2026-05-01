@@ -104,7 +104,7 @@ const RULES: Rule[] = [
   },
   {
     name: "no-new-date-in-tests",
-    pattern: /\bnew\s+Date\s*\(/,
+    pattern: /\bnew\s+Date\s*\(\s*\)/,
     severity: "warn",
     reason: "Prefer getTestNow / FROZEN_NOW from test-helpers/determinism/clock.",
     allowWallClock: true,

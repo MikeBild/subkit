@@ -5,6 +5,8 @@ import type { ConverseMockStep } from "../../apps/engine/src/llm/mock-provider.t
 import { getMockProvider } from "../../apps/engine/src/llm/mock-provider.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let env: E2EEnv;
 let httpServer: ReturnType<typeof Bun.serve>;
 let graphqlServer: ReturnType<typeof Bun.serve>;
@@ -240,7 +242,7 @@ describe("authoring regressions", () => {
   });
 
   test("workflow history restore promotes an old version back to current", async () => {
-    const slug = `restore-e2e-${Date.now()}`;
+    const slug = `restore-e2e-${TEST_NOW_MS}`;
     const created = await fetch(`${env.baseUrl}/v1/workflows`, {
       method: "POST",
       headers: adminHeaders(),
@@ -434,7 +436,7 @@ describe("authoring regressions", () => {
         tool: "build_workflow",
         args: {
           name: "preview-cancel",
-          slug: `preview-cancel-${Date.now()}`,
+          slug: `preview-cancel-${TEST_NOW_MS}`,
           steps: [
             {
               id: "fetch",
@@ -472,7 +474,7 @@ describe("authoring regressions", () => {
   test("tenant isolation blocks reading a foreign conversation id", async () => {
     const [foreignTenant] = await env.db
       .insert(tenants)
-      .values({ slug: `foreign-${Date.now()}`, display_name: "Foreign tenant" })
+      .values({ slug: `foreign-${TEST_NOW_MS}`, display_name: "Foreign tenant" })
       .returning();
     expect(foreignTenant).toBeDefined();
     const [foreignConversation] = await env.db

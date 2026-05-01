@@ -27,6 +27,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let env: E2EEnv;
 beforeAll(async () => {
   env = await boot("tier3-subkit");
@@ -121,7 +123,7 @@ describe("Tier 3 — write surfaces (CRUD round-trip)", () => {
   test("POST /v1/connectors → create + GET back + DELETE", async () => {
     const created = await jpost("/v1/connectors", {
       name: "Tier3-Test",
-      slug: `tier3-${Date.now()}`,
+      slug: `tier3-${TEST_NOW_MS}`,
       driver: "http",
       auth_type: "none",
       base_url: "https://example.com",
@@ -138,7 +140,7 @@ describe("Tier 3 — write surfaces (CRUD round-trip)", () => {
   test("POST /v1/workflows → create + history + DELETE", async () => {
     const created = await jpost("/v1/workflows", {
       name: "tier3-wf",
-      slug: `tier3-wf-${Date.now()}`,
+      slug: `tier3-wf-${TEST_NOW_MS}`,
       steps: [{ id: "fetch", kind: "request", method: "GET", url: "https://example.com" }],
     });
     expect(created.status).toBe(201);
@@ -192,7 +194,7 @@ describe("Tier 3 — write surfaces (CRUD round-trip)", () => {
 
   test("POST /v1/webhooks/inbound → create + DELETE", async () => {
     const created = await jpost("/v1/webhooks/inbound", {
-      slug: `tier3-hook-${Date.now()}`,
+      slug: `tier3-hook-${TEST_NOW_MS}`,
       target_workflow_id: null,
     });
     expect([201, 400]).toContain(created.status);
