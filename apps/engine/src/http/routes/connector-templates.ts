@@ -26,6 +26,7 @@ import {
 import templateSkillsJson from "../../connectors/template-skills.json" with { type: "json" };
 import { matchTemplatesByUrl, type TemplateUrlMatch } from "../../connectors/template-url-match.ts";
 import {
+  ConnectorRecipeSchema,
   type ConnectorTemplate,
   ConnectorTemplateSchema,
   UnsupportedIngestionSourceError,
@@ -149,6 +150,179 @@ const TemplateOAuthCredentialBody = z
 const TemplateOAuthCredentialResponse = z
   .object({ id: z.string() })
   .openapi("TemplateOAuthCredentialResponse");
+
+// Workstream E1 — read-only recipe browse routes. Recipes are global
+// catalog data (no tenant body), but the routes still RBAC-gate on
+// `connector:read` so portal tokens with read-only scope cannot
+// trivially exfiltrate the catalog roster of paying tenants without
+// at least passing auth.
+const RecipeListResponseSchema = z
+  .object({
+    template_slug: z.string(),
+    template_name: z.string(),
+    recipes: z.array(ConnectorRecipeSchema),
+  })
+  .openapi("ConnectorTemplateRecipeListResponse");
+
+const RecipeSlugParam = z.object({
+  slug: z.string().min(1),
+  recipe_slug: z.string().min(1),
+});
+
+const recipeListRoute = createRoute({
+  method: "get",
+  path: "/v1/connector-templates/{slug}/recipes",
+  tags: ["connectors"],
+  summary: "List recipes shipped with a connector template",
+  security: [{ bearerAuth: [] }],
+  request: { params: TemplateSlugParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: RecipeListResponseSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const recipeGetRoute = createRoute({
+  method: "get",
+  path: "/v1/connector-templates/{slug}/recipes/{recipe_slug}",
+  tags: ["connectors"],
+  summary: "Get a single recipe by slug",
+  security: [{ bearerAuth: [] }],
+  request: { params: RecipeSlugParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: ConnectorRecipeSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+// Workstream E2 — recipe packs (vertical groupings).
+//
+// Packs are not stored anywhere; they are computed at request time from
+// recipe `category` + `tags`. Each pack matches recipes whose category
+// or tag set intersects the pack's predicate set. The route returns
+// the curated roster (slug-only references — operators read details
+// via the per-template recipe routes / inspect_recipe MCP tool).
+//
+// Per the enterprise-business-value-first memory rule, pack copy leads
+// with outcome ("revoke a departing employee's access in <60s"), not
+// the connector list. Pack names + outcome strings pass the
+// terminology gate (the banned-words list in
+// `scripts/terminology.banned.txt` enforces this).
+
+const RECIPE_PACK_VERTICALS = [
+  "revops",
+  "customer-success",
+  "finance",
+  "data",
+  "devops",
+  "security",
+  "marketing",
+  "hr",
+] as const;
+type RecipePackVertical = (typeof RECIPE_PACK_VERTICALS)[number];
+
+interface PackPredicate {
+  outcome: string;
+  // A recipe matches when ANY of its categories OR tags appears in the
+  // predicate's set.
+  match_categories: string[];
+  match_tags: string[];
+}
+
+const RECIPE_PACK_PREDICATES: Record<RecipePackVertical, PackPredicate> = {
+  revops: {
+    outcome:
+      "Stand up the lead → opportunity → close loop with the LLM doing routing, enrichment, and Slack hand-off in real time.",
+    match_categories: ["crm", "marketing"],
+    match_tags: ["revops", "lead", "deal"],
+  },
+  "customer-success": {
+    outcome:
+      "Detect health-score regressions and route them to the right CSM playbook before churn lands on the renewal call.",
+    match_categories: ["enterprise", "support"],
+    match_tags: ["customer-success", "health", "churn", "playbook"],
+  },
+  finance: {
+    outcome:
+      "Catch failed charges, dunning windows, and high-risk payments while they still have a recovery path.",
+    match_categories: ["payments"],
+    match_tags: ["finance", "dunning", "billing", "risk"],
+  },
+  data: {
+    outcome:
+      "Move rows between systems-of-record on a schedule with idempotent upserts and watermark state — reverse-ETL without the bespoke vendor.",
+    match_categories: ["database", "analytics"],
+    match_tags: ["reverse-etl", "sync", "warehouse", "data"],
+  },
+  devops: {
+    outcome:
+      "Page on-call from the right alarm tier, post the AI postmortem, open the ticket — every incident with the same first 60 seconds.",
+    match_categories: ["devops", "analytics"],
+    match_tags: ["devops", "incident", "deploy", "release"],
+  },
+  security: {
+    outcome:
+      "Audit IAM drift, rotate stale keys, and require human approval on the operations a single Slack message would otherwise execute.",
+    match_categories: ["enterprise"],
+    match_tags: ["security", "audit", "approval"],
+  },
+  marketing: {
+    outcome:
+      "Run trial nurture and campaign QA across ESP + CRM + warehouse without the seven-tab manual spreadsheet.",
+    match_categories: ["marketing"],
+    match_tags: ["marketing", "nurture", "campaign", "utm"],
+  },
+  hr: {
+    outcome:
+      "Onboard a new hire across Okta + Workspace + BambooHR + Slack atomically; offboard the same way without leaving an orphaned account.",
+    match_categories: ["enterprise"],
+    match_tags: ["hr", "onboarding", "offboarding"],
+  },
+};
+
+const RecipePackVerticalParam = z.object({
+  vertical: z.enum(RECIPE_PACK_VERTICALS),
+});
+
+const RecipePackEntrySchema = z
+  .object({
+    template_slug: z.string(),
+    recipe_slug: z.string(),
+    title: z.string(),
+    category: z.string(),
+    tags: z.array(z.string()),
+    difficulty: z.string(),
+  })
+  .openapi("RecipePackEntry");
+
+const RecipePackResponseSchema = z
+  .object({
+    vertical: z.enum(RECIPE_PACK_VERTICALS),
+    outcome: z.string(),
+    recipes: z.array(RecipePackEntrySchema),
+  })
+  .openapi("RecipePackResponse");
+
+const recipePackRoute = createRoute({
+  method: "get",
+  path: "/v1/recipe-packs/{vertical}",
+  tags: ["connectors"],
+  summary: "Get a vertical recipe pack (computed from category + tags)",
+  security: [{ bearerAuth: [] }],
+  request: { params: RecipePackVerticalParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: RecipePackResponseSchema } },
+    },
+  },
+});
 
 const listRoute = createRoute({
   method: "get",
@@ -376,6 +550,18 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
     if (c.req.method === "POST") return requirePermission("connector:write")(c, next);
     return next();
   });
+  app.use("/v1/connector-templates/:slug/recipes", async (c, next) => {
+    if (c.req.method === "GET") return requirePermission("connector:read")(c, next);
+    return next();
+  });
+  app.use("/v1/connector-templates/:slug/recipes/:recipe_slug", async (c, next) => {
+    if (c.req.method === "GET") return requirePermission("connector:read")(c, next);
+    return next();
+  });
+  app.use("/v1/recipe-packs/:vertical", async (c, next) => {
+    if (c.req.method === "GET") return requirePermission("connector:read")(c, next);
+    return next();
+  });
 
   app.openapi(importRoute, async (c) => {
     requireAuth(c);
@@ -456,6 +642,76 @@ export function registerConnectorTemplateRoutes(app: OpenAPIHono<AppEnv>): void 
       serializeResolvedTemplate,
     );
     return c.json({ items }, 200);
+  });
+
+  app.openapi(recipeListRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { slug } = c.req.valid("param");
+    const resolved = await resolveConnectorTemplate({
+      db,
+      tenant_id: principal.tenant_id,
+      slug,
+    });
+    if (!resolved) throw new NotFoundError("connector_template");
+    return c.json(
+      {
+        template_slug: resolved.template.slug,
+        template_name: resolved.template.name,
+        recipes: resolved.template.recipes,
+      },
+      200,
+    );
+  });
+
+  app.openapi(recipeGetRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { slug, recipe_slug } = c.req.valid("param");
+    const resolved = await resolveConnectorTemplate({
+      db,
+      tenant_id: principal.tenant_id,
+      slug,
+    });
+    if (!resolved) throw new NotFoundError("connector_template");
+    const recipe = resolved.template.recipes.find((r) => r.slug === recipe_slug);
+    if (!recipe) throw new NotFoundError("connector_recipe");
+    return c.json(recipe, 200);
+  });
+
+  app.openapi(recipePackRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { vertical } = c.req.valid("param");
+    const predicate = RECIPE_PACK_PREDICATES[vertical];
+    const allTemplates = await listResolvedConnectorTemplates(db, principal.tenant_id);
+    const matchedCategories = new Set(predicate.match_categories);
+    const matchedTags = new Set(predicate.match_tags);
+    const entries: z.infer<typeof RecipePackEntrySchema>[] = [];
+    for (const { template } of allTemplates) {
+      for (const r of template.recipes) {
+        const categoryHit = matchedCategories.has(r.category);
+        const tagHit = r.tags.some((t) => matchedTags.has(t));
+        if (categoryHit || tagHit) {
+          entries.push({
+            template_slug: template.slug,
+            recipe_slug: r.slug,
+            title: r.title,
+            category: r.category,
+            tags: r.tags,
+            difficulty: r.difficulty,
+          });
+        }
+      }
+    }
+    return c.json(
+      {
+        vertical,
+        outcome: predicate.outcome,
+        recipes: entries,
+      },
+      200,
+    );
   });
 
   app.openapi(createRouteSpec, async (c) => {

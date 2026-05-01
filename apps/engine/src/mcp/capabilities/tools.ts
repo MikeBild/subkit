@@ -61,6 +61,16 @@ import {
   matchConnectorTemplateByUrlMcpTool,
 } from "../tools/match-connector-template-by-url.ts";
 import {
+  handleInspectRecipe,
+  handleListRecipes,
+  INSPECT_RECIPE_TOOL_NAME,
+  type InspectRecipeArgs,
+  inspectRecipeMcpTool,
+  LIST_RECIPES_TOOL_NAME,
+  type ListRecipesArgs,
+  listRecipesMcpTool,
+} from "../tools/recipes.ts";
+import {
   handleTestConnector,
   TEST_CONNECTOR_TOOL_NAME,
   type TestConnectorArgs,
@@ -271,6 +281,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     tools.push(matchConnectorTemplateByUrlMcpTool);
     tools.push(importConnectorFromSpecMcpTool);
     tools.push(testConnectorMcpTool);
+    tools.push(listRecipesMcpTool);
+    tools.push(inspectRecipeMcpTool);
     if (flags.showConversationTools) tools.push(...listConversationTools());
     if (flags.showTenantReads || flags.showTenantWrites) {
       tools.push(...listTenantTools({ allowWrites: flags.showTenantWrites }));
@@ -333,6 +345,44 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           module: "mcp",
           action: "mcp.tool.result",
           msg: "mcp match_connector_template_by_url completed",
+          tool: name,
+          duration_ms: Date.now() - started,
+          is_error: !result.ok,
+        });
+        return {
+          isError: !result.ok,
+          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
+        };
+      }
+
+      if (name === LIST_RECIPES_TOOL_NAME) {
+        const result = await handleListRecipes(
+          { db, principal },
+          args as unknown as ListRecipesArgs,
+        );
+        logger.info({
+          module: "mcp",
+          action: "mcp.tool.result",
+          msg: "mcp list_recipes completed",
+          tool: name,
+          duration_ms: Date.now() - started,
+          is_error: !result.ok,
+        });
+        return {
+          isError: !result.ok,
+          content: [{ type: "text" as const, text: JSON.stringify(result.data) }],
+        };
+      }
+
+      if (name === INSPECT_RECIPE_TOOL_NAME) {
+        const result = await handleInspectRecipe(
+          { db, principal },
+          args as unknown as InspectRecipeArgs,
+        );
+        logger.info({
+          module: "mcp",
+          action: "mcp.tool.result",
+          msg: "mcp inspect_recipe completed",
           tool: name,
           duration_ms: Date.now() - started,
           is_error: !result.ok,
