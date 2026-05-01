@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.1](https://github.com/MikeBild/subkit/compare/subkit-v3.2.0...subkit-v3.2.1) (2026-04-28)
+
+
+### Documentation
+
+* drop the orphan German end-to-end sequences doc ([2c3edfe](https://github.com/MikeBild/subkit/commit/2c3edfe69f6f24923447b9303da052c32d0c1ce2))
+
 ## [3.2.0](https://github.com/MikeBild/subkit/compare/subkit-v3.1.0...subkit-v3.2.0) (2026-04-28)
 
 
