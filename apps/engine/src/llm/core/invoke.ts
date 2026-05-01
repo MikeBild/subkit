@@ -199,7 +199,7 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     fallback_provider,
     context_cap: contextCapFor(primary),
     monthly_budget,
-    enable_prompt_cache: settings?.enable_prompt_cache ?? false,
+    enable_prompt_cache: settings?.enable_prompt_cache ?? true,
   };
 }
 

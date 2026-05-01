@@ -36,6 +36,13 @@
       "when": 1777600000000,
       "tag": "0004_credential_mode_aws_sigv4",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777700000000,
+      "tag": "0005_enable_prompt_cache_default_true",
+      "breakpoints": true
     }
   ]
 }
