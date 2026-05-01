@@ -282,11 +282,25 @@ export function parseRenderableMessageContent(content: unknown): {
   const text =
     extracted.length > 0
       ? extracted.join("\n\n")
-      : content === null || content === undefined
+      : isEffectivelyEmpty(content)
         ? ""
         : safeStringify(content);
   if (text.length === 0) return { text, parts: [] };
   return { text, parts: splitRenderableParts(text) };
+}
+
+// Engine assistant rows for tool-only steps carry `content: {}` (empty
+// object) — they exist as a parent-id anchor for child tool calls but
+// have no displayable text. Without this guard, `safeStringify({})`
+// would emit the literal "{}" string into the transcript and the
+// downstream empty-stub suppression in ink-app would miss because
+// `parts` is non-empty.
+function isEffectivelyEmpty(content: unknown): boolean {
+  if (content === null || content === undefined) return true;
+  if (typeof content === "string") return content.length === 0;
+  if (Array.isArray(content)) return content.length === 0;
+  if (typeof content === "object") return Object.keys(content as object).length === 0;
+  return false;
 }
 
 function safeStringify(value: unknown): string {
