@@ -37,7 +37,7 @@ export const tenantLlmSettings = pgTable(
     llm_provider_credentials_iv: bytea("llm_provider_credentials_iv"),
     llm_provider_credentials_auth_tag: bytea("llm_provider_credentials_auth_tag"),
     llm_monthly_token_budget: integer("llm_monthly_token_budget"),
-    enable_prompt_cache: boolean("enable_prompt_cache").notNull().default(false),
+    enable_prompt_cache: boolean("enable_prompt_cache").notNull().default(true),
     // Conversation-quality extensions (migration 0028).
     //   system_prompt_additions — appended to the stable prompt block (cache-friendly).
     //   default_environment    — the environment (dev|prod) the LLM assumes when the
