@@ -240,6 +240,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Switch transcript view — `/view chat` or `/view inspect`",
     category: "util",
   },
+  {
+    name: "actions",
+    aliases: ["tasks"],
+    help: "Open the persona-aware action launcher",
+    category: "util",
+  },
   // operator list commands
   {
     name: "connectors",

@@ -456,7 +456,7 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     await tick();
     await type(instance, "please commit");
     await pressEnter(instance);
-    await tick(100);
+    await tick(500);
     const frame = instance.lastFrame() ?? "";
     // ConfirmPrompt renders `confirm: <kind>` as the title line; the
     // full diff body follows. Lines up with the ElicitRouter dispatch
@@ -910,6 +910,32 @@ describe("ink-app: journey 10 — onSlash callback dispatch", () => {
     expect(captured.current?.raw).toContain("anthropic:claude-opus-4-6");
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("model switched to anthropic:claude-opus-4-6");
+    instance.unmount();
+  });
+
+  test("AC4: /actions launcher filters and dispatches a catalog prompt", async () => {
+    let submitted = "";
+    const instance = renderApp({
+      onPrompt: async (prompt) => {
+        submitted = prompt;
+        return {
+          events: framesOf({ type: "completed", status: "active" }),
+          conversationId: "c0-00000000-0000-0000-0000-000000000000",
+        };
+      },
+    });
+    await tick();
+    await type(instance, "/actions");
+    await pressEnter(instance);
+    await tick(30);
+    expect(stripAnsi(instance.lastFrame() ?? "")).toContain("actions");
+    await type(instance, "diagnose");
+    await tick(50);
+    expect(stripAnsi(instance.lastFrame() ?? "")).toContain("Repair latest failure");
+    await type(instance, "1");
+    await tick(100);
+    expect(stripAnsi(instance.lastFrame() ?? "")).toContain("Diagnose");
+    expect(submitted).toContain("Diagnose the latest failed workflow execution");
     instance.unmount();
   });
 });

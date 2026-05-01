@@ -185,3 +185,61 @@ describe("FormPrompt — multi (rich type)", () => {
     expect(frame).toContain("Please fill");
   });
 });
+
+describe("FormPrompt — field metadata", () => {
+  test("renders group/help text and submits defaults when unchanged", async () => {
+    const onResponse = mock();
+    const fields: FormField[] = [
+      {
+        name: "environment",
+        label: "Environment",
+        type: "select",
+        group: "Target",
+        help: "Pick the target deployment environment.",
+        default: "prod",
+        options: [
+          { value: "dev", label: "Development" },
+          { value: "prod", label: "Production" },
+        ],
+      },
+      {
+        name: "enabled",
+        label: "Enabled",
+        type: "boolean",
+        default: true,
+      },
+    ];
+    const instance = render(
+      <FormPrompt question="Configure connector" fields={fields} onResponse={onResponse} />,
+    );
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("Target");
+    expect(frame).toContain("Pick the target deployment environment.");
+    expect(frame).toContain("[Production]");
+    await writeKeys(instance, [KEY.enter]);
+    expect(onResponse.mock.calls[0]?.[0]).toEqual({
+      values: { environment: "prod", enabled: true },
+    });
+  });
+
+  test("orders fields by priority and renders multi-row text fields", async () => {
+    const fields: FormField[] = [
+      { name: "second", label: "Second", type: "text", priority: 2 },
+      {
+        name: "first",
+        label: "First",
+        type: "text",
+        priority: 1,
+        rows: 3,
+        placeholder: "multi-line",
+      },
+    ];
+    const instance = render(
+      <FormPrompt question="Configure" fields={fields} onResponse={mock()} />,
+    );
+    const frame = instance.lastFrame() ?? "";
+    expect(frame.indexOf("First")).toBeLessThan(frame.indexOf("Second"));
+    expect(frame).toContain("multi-line");
+    expect(frame).toContain("Enter for newline");
+  });
+});

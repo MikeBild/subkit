@@ -1,33 +1,37 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+import { starterTaskActionsForPersona, TASK_ACTIONS, type TaskAction } from "./task-actions.ts";
 
 export interface StarterAction {
   key: string;
   label: string;
   detail: string;
+  actionId?: string | undefined;
+}
+
+function starterActionFromTask(action: TaskAction): StarterAction {
+  return {
+    key: action.key ?? "",
+    label: action.label,
+    detail: action.detail,
+    actionId: action.id,
+  };
 }
 
 export const DEFAULT_STARTER_ACTIONS: readonly StarterAction[] = [
-  { key: "1", label: "Resume recent", detail: "/resume" },
-  { key: "2", label: "Create a connector", detail: "guided setup" },
-  { key: "3", label: "Build a workflow", detail: "guided authoring" },
-  { key: "4", label: "Inspect tenant state", detail: "workflows · connectors · runs" },
-  { key: "5", label: "API / MCP / chat help", detail: "surface guidance" },
-] as const;
+  "resume-recent",
+  "create-connector",
+  "build-workflow",
+  "inspect-tenant",
+  "surface-help",
+]
+  .map((id) => TASK_ACTIONS.find((action) => action.id === id))
+  .filter((action): action is TaskAction => Boolean(action))
+  .map(starterActionFromTask);
 
 export function starterActionsForPersona(persona: string): readonly StarterAction[] {
-  const label = persona.trim().toLowerCase();
-  if (label === "portal" || label === "enduser") {
-    return [
-      DEFAULT_STARTER_ACTIONS[0]!,
-      DEFAULT_STARTER_ACTIONS[1]!,
-      DEFAULT_STARTER_ACTIONS[2]!,
-      { key: "4", label: "Check accessible work", detail: "status · workflows · runs" },
-      { key: "5", label: "API / MCP / chat help", detail: "surface guidance" },
-    ] as const;
-  }
-  return DEFAULT_STARTER_ACTIONS;
+  return starterTaskActionsForPersona(persona).map(starterActionFromTask);
 }
 
 interface StarterActionsProps {

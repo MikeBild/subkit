@@ -55,6 +55,30 @@ import {
 } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
 
+function confirmationMetadataForTool(
+  toolName: string,
+  input: unknown,
+): {
+  risk_level: "low" | "medium" | "high" | "critical";
+  target_label?: string;
+  reversible: boolean;
+} {
+  const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const slug = typeof obj.slug === "string" ? obj.slug : null;
+  const workflowId = typeof obj.workflow_id === "string" ? obj.workflow_id : null;
+  const connectorId = typeof obj.connector_id === "string" ? obj.connector_id : null;
+  const environment = typeof obj.environment === "string" ? obj.environment : null;
+  const target = slug ?? workflowId ?? connectorId ?? null;
+  const isDelete = toolName.startsWith("delete_") || toolName.startsWith("revoke_");
+  const isProd = environment === "prod";
+  const riskLevel = isDelete ? "critical" : isProd ? "high" : "medium";
+  return {
+    risk_level: riskLevel,
+    ...(target ? { target_label: `${toolName}: ${target}` } : {}),
+    reversible: !isDelete,
+  };
+}
+
 export interface TurnSignals {
   pendingElicitation?: {
     elicitation_id: string;
@@ -1101,6 +1125,7 @@ function wrapOne(
             kind: topLevelKind,
             question: `Policy requires confirmation before running ${inner.name}. Proceed?`,
             target: { tool: inner.name, args: rawArgs },
+            ...confirmationMetadataForTool(inner.name, rawArgs),
             ...(pendingOutput ? { pending_output: pendingOutput } : {}),
             ...(policyCommitIntent ? { commit_intent: policyCommitIntent } : {}),
           };
@@ -1578,6 +1603,13 @@ function wrapOne(
                   ...(result.pause.diff !== undefined ? { diff: result.pause.diff } : {}),
                   ...(result.pause.target !== undefined ? { target: result.pause.target } : {}),
                 };
+          const enrichedInputPayload =
+            inputPayload && typeof inputPayload === "object"
+              ? {
+                  ...confirmationMetadataForTool(inner.name, rawArgs),
+                  ...(inputPayload as Record<string, unknown>),
+                }
+              : inputPayload;
           signals.pendingChildElicitationIds.push(result.pause.elicitation_id);
           // Tool-emitted pause may carry its own pending_output; if
           // not, derive one from the wrapping tool's policy hook so
@@ -1593,7 +1625,7 @@ function wrapOne(
             tool_call_id: toolCallId,
             tool_name: result.pause.tool_name,
             summary: result.pause.summary,
-            input: inputPayload,
+            input: enrichedInputPayload,
             parent_message_id: assistantMessageId,
             ...(pausePending ? { pending_output: pausePending } : {}),
           });
@@ -1606,7 +1638,7 @@ function wrapOne(
             elicitation_id: result.pause.elicitation_id,
             tool_name: result.pause.tool_name,
             summary: result.pause.summary,
-            input: inputPayload,
+            input: enrichedInputPayload,
           };
         }
 
@@ -1653,6 +1685,7 @@ function wrapOne(
                 kind: "review_after_execution",
                 summary: `Review result of ${inner.name}`,
                 target: { tool: inner.name, args: rawArgs },
+                ...confirmationMetadataForTool(inner.name, rawArgs),
                 pending_output: resultPayload,
               },
               actor_id: ctx.actor_id,
@@ -1671,6 +1704,7 @@ function wrapOne(
               kind: "review_after_execution",
               question: `${inner.name} ran. Keep this result?`,
               target: { tool: inner.name, args: rawArgs },
+              ...confirmationMetadataForTool(inner.name, rawArgs),
             },
             parent_message_id: assistantMessageId,
             pending_output: resultPayload as Record<string, unknown>,
@@ -1689,6 +1723,7 @@ function wrapOne(
               kind: "review_after_execution",
               question: `${inner.name} ran. Keep this result?`,
               target: { tool: inner.name, args: rawArgs },
+              ...confirmationMetadataForTool(inner.name, rawArgs),
             },
           };
           logger.info({

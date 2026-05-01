@@ -22,6 +22,7 @@ import {
   type ElicitationResponse,
   ElicitRouter,
   ExitFlow,
+  FormPrompt,
   HistorySearch,
   Pane,
   ScrollView,
@@ -97,6 +98,13 @@ import { createQueue } from "./repl/queue.ts";
 import type { PaneSpec } from "./repl/slash-handler.ts";
 import { Spinner } from "./repl/spinner.tsx";
 import { StarterActions, starterActionsForPersona } from "./repl/starter-actions.tsx";
+import {
+  resolveTaskActionSuggestion,
+  starterTaskActionsForPersona,
+  type TaskAction,
+  taskActionsForContext,
+} from "./repl/task-actions.ts";
+import { TaskLauncher } from "./repl/task-launcher.tsx";
 import { type PagerEntry, TranscriptPager } from "./repl/transcript-pager.tsx";
 import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { classifyVersionSkew, VersionMismatchBanner } from "./repl/version-mismatch-banner.tsx";
@@ -519,12 +527,16 @@ const NextBestActionsChips: React.FC<NextBestActionsChipsProps> = memo(({ action
   return (
     <Box>
       <Text color={theme.severity.dim}> suggested next: </Text>
-      {actions.map((action, idx) => (
-        <Box key={`chip-${idx}-${action}`}>
-          <Text inverse>{` [${idx + 1}] ${action} `}</Text>
-          <Text> </Text>
-        </Box>
-      ))}
+      {actions.map((action, idx) => {
+        const mapped = resolveTaskActionSuggestion(action);
+        const label = mapped ? mapped.label : action;
+        return (
+          <Box key={`chip-${idx}-${action}`}>
+            <Text inverse>{` [${idx + 1}] ${label} `}</Text>
+            <Text> </Text>
+          </Box>
+        );
+      })}
     </Box>
   );
 });
@@ -782,30 +794,25 @@ SuggestionList.displayName = "SuggestionList";
 
 type TranscriptMode = "chat" | "inspect";
 
-const WORKFLOW_STARTER_PROMPT = [
-  "I want to build a workflow.",
-  "Guide me one question at a time.",
-  "Ask first which connectors are involved, what should trigger it, and what success looks like.",
-  "Preview before commit.",
-].join("\n");
-
-const CONNECTOR_STARTER_PROMPT = [
-  "I want to create a connector.",
-  "Suggest a template only if it clearly helps, but do not require one.",
-  "Ask me one high-signal question at a time and probe before saving.",
-].join("\n");
-
-const MANAGE_STARTER_PROMPT = [
-  "I want to inspect or manage existing tenant resources.",
-  "Ground me in the workflows, connectors, runs, or credentials that actually exist first.",
-  "If a matching write action exists, use it with confirmation instead of inventing off-surface fallbacks.",
-].join("\n");
-
-const SURFACE_HELP_STARTER_PROMPT = [
-  "I want help using sk surfaces — the CLI, MCP, the HTTP API, schedules, or Google Chat.",
-  "Answer from actual engine behavior and exposed routes only.",
-  "If something is not exposed in this conversation surface, say that plainly.",
-].join("\n");
+function conversationPromptForSlash(raw: string): string | null {
+  const [head, ...rest] = raw.trim().split(/\s+/);
+  const name = (head ?? "").replace(/^\//, "");
+  const sub = (rest[0] ?? "").toLowerCase();
+  if (name === "probe" && sub !== "show" && sub !== "last") {
+    return [
+      "Run probe_connector_draft against the current connector draft now.",
+      "Use the default GET / path unless the draft implies otherwise.",
+      "Stream tool progress normally and summarise the result in one sentence.",
+    ].join(" ");
+  }
+  if (name === "preview" && sub !== "show" && sub !== "last") {
+    const stepArg = sub === "run" ? rest[1] : rest[0];
+    return stepArg
+      ? `Run dry_run_step against step \`${stepArg}\`. Stream tool progress normally and report the classification and one-line summary.`
+      : "Run dry_run_workflow against the current draft. Stream tool progress normally and report the classification of every step that executed.";
+  }
+  return null;
+}
 
 interface TranscriptNotice extends NoticeItem {
   expires_at?: number | undefined;
@@ -838,6 +845,33 @@ const TemplatePickerPane: React.FC<{
   </Pane>
 ));
 TemplatePickerPane.displayName = "TemplatePickerPane";
+
+const ConfigFormPane: React.FC<{
+  pane: Extract<PaneSpec, { kind: "config-form" }>;
+  onDismiss: () => void;
+  onSaved: (message: string) => void;
+  onError: (message: string) => void;
+  inputDisabled?: boolean | undefined;
+}> = memo(({ pane, onDismiss, onSaved, onError, inputDisabled }) => (
+  <FormPrompt
+    question="Configure sk defaults"
+    fields={pane.fields.map((field) => ({ ...field }))}
+    inputDisabled={inputDisabled}
+    onCancel={onDismiss}
+    onResponse={(out) => {
+      void pane
+        .onSave(out.values)
+        .then((message) => {
+          onSaved(message);
+          onDismiss();
+        })
+        .catch((err) => {
+          onError(err instanceof Error ? err.message : String(err));
+        });
+    }}
+  />
+));
+ConfigFormPane.displayName = "ConfigFormPane";
 
 const ConnectorDraftPane: React.FC<{
   pane: Extract<PaneSpec, { kind: "connector-draft" }>;
@@ -1247,6 +1281,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   const [statusLine, setStatusLine] = useState<string>("");
   const [notices, setNotices] = useState<TranscriptNotice[]>([]);
   const [pane, setPane] = useState<PaneSpec | null>(null);
+  const [launcherOpen, setLauncherOpen] = useState(false);
   const setupBannerShownRef = useRef(false);
   // Latest `next_best_actions` list rendered to the operator. The
   // digit-key handler reads this when the composer is empty so 1..9
@@ -1280,6 +1315,18 @@ export const InkApp: React.FC<InkAppProps> = ({
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("chat");
   const tip = useRef<string>(pickTip());
   const starterActions = useMemo(() => starterActionsForPersona(persona.label), [persona.label]);
+  const starterTaskActions = useMemo(
+    () => starterTaskActionsForPersona(persona.label, persona.probe),
+    [persona.label, persona.probe],
+  );
+  const availableTaskActions = useMemo(
+    () =>
+      taskActionsForContext(
+        persona.probe,
+        resumeSummary === undefined ? undefined : { resumeSummary },
+      ),
+    [persona.probe, resumeSummary],
+  );
 
   // -------- Persistent prompt history --------
   // Load ~/.sk/history.jsonl on mount so ↑/↓ works across sessions.
@@ -1656,6 +1703,10 @@ export const InkApp: React.FC<InkAppProps> = ({
         showInfo(`/view: ${sub}`);
         return true;
       }
+      if (name === "actions" || name === "tasks") {
+        setLauncherOpen(true);
+        return true;
+      }
       return false;
     },
     [cwd, effectiveHistoryPath, showError, showInfo, syncPendingAttachments, transcriptMode],
@@ -1905,6 +1956,11 @@ export const InkApp: React.FC<InkAppProps> = ({
             subtitle: persona.label,
             lines: body,
           });
+          return;
+        }
+        const conversationPrompt = conversationPromptForSlash(trimmed);
+        if (conversationPrompt) {
+          await handleSubmit(conversationPrompt);
           return;
         }
         if (cmd.name === "approve" || cmd.name === "reject") {
@@ -2194,6 +2250,25 @@ export const InkApp: React.FC<InkAppProps> = ({
     ],
   );
 
+  const invokeTaskAction = useCallback(
+    (action: TaskAction, mode: "prefill" | "submit" = "submit"): void => {
+      if (action.invoke.kind === "builtin") {
+        if (action.invoke.name === "launcher") setLauncherOpen(true);
+        return;
+      }
+      if (action.invoke.kind === "slash") {
+        void handleSubmit(action.invoke.command);
+        return;
+      }
+      if (mode === "prefill") {
+        setInput(buffer(action.invoke.prompt));
+        return;
+      }
+      void handleSubmit(action.invoke.prompt);
+    },
+    [handleSubmit],
+  );
+
   // Gate the main composer input while an elicit prompt is open or a
   // modal pane is capturing keys. Without this, each keystroke fires
   // multiple useInput listeners (composer + pane + elicit children)
@@ -2217,7 +2292,8 @@ export const InkApp: React.FC<InkAppProps> = ({
   // approve/reject chooser, producing the "approve / approve / still-
   // waiting" UX bug from session 84d06d81. Slash commands keep working
   // because /approve and /reject are dispatched here directly.
-  const composerActive = pane === null && !historyOpen && !inlineSearchOpen && !elicitOpen;
+  const composerActive =
+    pane === null && !launcherOpen && !historyOpen && !inlineSearchOpen && !elicitOpen;
   const slashMode = input.value.startsWith("/");
   // Slash autocomplete is "navigable" only while the user is still
   // typing the command name (no space yet). Once they add an arg
@@ -2243,7 +2319,7 @@ export const InkApp: React.FC<InkAppProps> = ({
     [composerActive, input.value, input.cursor],
   );
   const showWelcomeActions =
-    session.messages.length === 0 && input.value.length === 0 && pane === null;
+    session.messages.length === 0 && input.value.length === 0 && pane === null && !launcherOpen;
   useInput(
     (char, key) => {
       // --- Global shortcuts (active even under modal / busy) ----------
@@ -2359,30 +2435,17 @@ export const InkApp: React.FC<InkAppProps> = ({
         const chipIdx = char.charCodeAt(0) - "1".charCodeAt(0);
         const action = latestChipsRef.current[chipIdx];
         if (action) {
-          void handleSubmit(`please run ${action}`);
+          const mapped = resolveTaskActionSuggestion(action);
+          if (mapped) invokeTaskAction(mapped, "submit");
+          else void handleSubmit(`please run ${action}`);
           return;
         }
       }
 
       if (showWelcomeActions && char && !key.ctrl && !key.meta) {
-        if (char === starterActions[0]?.key) {
-          void handleSubmit("/resume");
-          return;
-        }
-        if (char === starterActions[1]?.key) {
-          setInput(buffer(CONNECTOR_STARTER_PROMPT));
-          return;
-        }
-        if (char === starterActions[2]?.key) {
-          setInput(buffer(WORKFLOW_STARTER_PROMPT));
-          return;
-        }
-        if (char === starterActions[3]?.key) {
-          setInput(buffer(MANAGE_STARTER_PROMPT));
-          return;
-        }
-        if (char === starterActions[4]?.key) {
-          setInput(buffer(SURFACE_HELP_STARTER_PROMPT));
+        const picked = starterTaskActions.find((action) => action.key === char);
+        if (picked) {
+          invokeTaskAction(picked, "prefill");
           return;
         }
       }
@@ -2842,7 +2905,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       <ElicitRouter
         key={`elicit-${pendingElicit.id}`}
         elicitation={pendingElicit}
-        inputDisabled={pane !== null || slashMode}
+        inputDisabled={pane !== null || launcherOpen || slashMode}
         onResponse={(out) => {
           const resp = out as ElicitationResponse;
           const reason =
@@ -3036,7 +3099,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           <ChoicePrompt
             question={detected.question}
             options={detected.options.map((o) => ({ value: o.value, label: o.label }))}
-            inputDisabled={pane !== null || slashMode}
+            inputDisabled={pane !== null || launcherOpen || slashMode}
             onResponse={(out) => {
               // Belt-and-braces double-fire guard. ChoicePrompt's
               // useInput hook can fire twice in rapid succession
@@ -3175,7 +3238,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       {session.pendingElicitation && elicitAnchor === null ? (
         <ElicitRouter
           elicitation={session.pendingElicitation}
-          inputDisabled={pane !== null || slashMode}
+          inputDisabled={pane !== null || launcherOpen || slashMode}
           onResponse={(out) => {
             const resp = out as ElicitationResponse;
             const reason =
@@ -3236,6 +3299,15 @@ export const InkApp: React.FC<InkAppProps> = ({
       {pane?.kind === "setup-diagnostics" ? (
         <SetupDiagnosticsPane pane={pane} onDismiss={() => setPane(null)} />
       ) : null}
+      {pane?.kind === "config-form" ? (
+        <ConfigFormPane
+          pane={pane}
+          onDismiss={() => setPane(null)}
+          onSaved={showInfo}
+          onError={showError}
+          inputDisabled={launcherOpen}
+        />
+      ) : null}
       {pane?.kind === "onboarding-wizard" ? (
         <OnboardingWizard
           templates={pane.templates}
@@ -3257,6 +3329,17 @@ export const InkApp: React.FC<InkAppProps> = ({
               showInfo("onboarding cancelled");
             }
           }}
+        />
+      ) : null}
+      {launcherOpen ? (
+        <TaskLauncher
+          actions={availableTaskActions}
+          onSelect={(action) => {
+            setLauncherOpen(false);
+            invokeTaskAction(action, "submit");
+          }}
+          onDismiss={() => setLauncherOpen(false)}
+          inputDisabled={pane !== null}
         />
       ) : null}
       {pane?.kind === "text" ? (
@@ -3511,7 +3594,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       ) : null}
 
       {/* Fuzzy slash-command suggestions (hidden while a pane is open) */}
-      {pane === null && !mentionSpec ? (
+      {pane === null && !launcherOpen && !mentionSpec ? (
         <SuggestionList
           query={input.value}
           probe={persona.probe}

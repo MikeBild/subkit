@@ -10,7 +10,7 @@
 // to extension so we can land new features without teaching every
 // user to update their files.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -70,6 +70,19 @@ function readJson(path: string): Record<string, unknown> | null {
   }
 }
 
+export function userSettingsPath(): string {
+  return join(homedir(), ".sk", "settings.json");
+}
+
+export function saveUserSettingsPatch(patch: SkSettings): string {
+  const path = userSettingsPath();
+  const current = readJson(path) ?? {};
+  const next = deepMerge(current as SkSettings, patch);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  return path;
+}
+
 function findProjectSettings(cwd: string): string | null {
   // Walk upward from cwd looking for a `.sk/settings.json`. Stops at
   // filesystem root or the home dir (whichever comes first).
@@ -103,7 +116,7 @@ export function loadSettings(cwd: string = process.cwd()): LoadSettingsResult {
   const sources: string[] = [];
   let merged: SkSettings = { ...DEFAULTS };
 
-  const userPath = join(homedir(), ".sk", "settings.json");
+  const userPath = userSettingsPath();
   const userJson = readJson(userPath);
   if (userJson) {
     sources.push(userPath);

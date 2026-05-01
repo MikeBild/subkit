@@ -124,6 +124,19 @@ export const ElicitRouter: React.FC<ElicitRouterProps> = ({
       const kind: ConfirmKind = isConfirmKind(input.kind) ? input.kind : "generic";
       const summary = typeof input.summary === "string" ? input.summary : elicitation.summary;
       const destructive = input.destructive === true;
+      const riskLevel =
+        typeof input.risk_level === "string"
+          ? input.risk_level
+          : typeof input.riskLevel === "string"
+            ? input.riskLevel
+            : undefined;
+      const targetLabel =
+        typeof input.target_label === "string"
+          ? input.target_label
+          : typeof input.targetLabel === "string"
+            ? input.targetLabel
+            : undefined;
+      const reversible = typeof input.reversible === "boolean" ? input.reversible : undefined;
       const defaultChoice =
         input.default === "approve" || input.default === "reject" ? input.default : undefined;
       // pending_output may live either on the elicitation input
@@ -144,6 +157,9 @@ export const ElicitRouter: React.FC<ElicitRouterProps> = ({
           target={input.target}
           destructive={destructive}
           defaultChoice={defaultChoice}
+          riskLevel={riskLevel}
+          targetLabel={targetLabel}
+          reversible={reversible}
           pendingOutput={pendingOutput}
           onResponse={onResponse}
           inputDisabled={inputDisabled}

@@ -34,6 +34,9 @@ export interface ConfirmPromptProps {
   destructive?: boolean | undefined;
   /** Pre-selected answer if the user just presses Enter. */
   defaultChoice?: "approve" | "reject" | undefined;
+  riskLevel?: "low" | "medium" | "high" | "critical" | string | undefined;
+  targetLabel?: string | undefined;
+  reversible?: boolean | undefined;
   /**
    * Structured "what will happen" preview produced by the gated tool's
    * `buildPendingOutput` policy hook. When present, the prompt renders
@@ -72,6 +75,9 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
   target,
   destructive,
   defaultChoice,
+  riskLevel,
+  targetLabel,
+  reversible,
   pendingOutput,
   onResponse,
   inputDisabled,
@@ -145,6 +151,28 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
       </Text>
       <Text bold>{question}</Text>
       {summary && summary.trim() !== question.trim() ? <Text>{summary}</Text> : null}
+      {riskLevel || targetLabel || reversible !== undefined ? (
+        <Box flexDirection="column" marginTop={1}>
+          {riskLevel ? (
+            <Text>
+              <Text color={theme.severity.dim}>risk: </Text>
+              {riskLevel}
+            </Text>
+          ) : null}
+          {targetLabel ? (
+            <Text>
+              <Text color={theme.severity.dim}>target: </Text>
+              {targetLabel}
+            </Text>
+          ) : null}
+          {reversible !== undefined ? (
+            <Text>
+              <Text color={theme.severity.dim}>reversible: </Text>
+              {reversible ? "yes" : "no"}
+            </Text>
+          ) : null}
+        </Box>
+      ) : null}
       {pendingOutput && Object.keys(pendingOutput).length > 0 ? (
         <Box flexDirection="column" marginTop={1}>
           {Object.entries(pendingOutput).map(([key, value]) => (
