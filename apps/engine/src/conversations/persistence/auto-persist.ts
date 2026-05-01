@@ -3,7 +3,7 @@
 // When an `ask_user_form` or `ask_user_confirm` carries a
 // `commit_intent`, the harness applies the proposed write atomically
 // once the operator submits. The LLM does NOT need to call the
-// underlying tool (save_connector_draft / commit_draft / delete_*)
+// underlying tool (save_connector_draft / save_workflow_draft / delete_*)
 // afterwards — the synthetic tool result the harness injects has
 // `source: "harness_auto_persist"`, so the LLM's next turn sees the
 // persistence as a normal tool-result message.
@@ -192,15 +192,15 @@ export async function maybeAutoPersistFromElicitation(
         });
         break;
       }
-      case "commit_workflow_draft": {
-        toolName = "commit_draft";
+      case "save_workflow_draft": {
+        toolName = "save_workflow_draft";
         const targetId = readString(intent.payload, "target_workflow_id");
         // The LLM declares force_commit in the commit_intent payload
         // when proposing to commit despite a failed preview. Honour it
         // here so a single operator confirmation suffices — without
         // this, the preview gate in commitWorkflowAtomic blocks the
         // auto-persist and the LLM has to retry through a separate
-        // commit_draft call (the "approve twice" symptom).
+        // save_workflow_draft call (the "approve twice" symptom).
         const forceCommit = intent.payload.force_commit === true;
         result = await commitWorkflowAtomic({
           ctx,
@@ -430,7 +430,7 @@ export function translateAutoPersistError(
       intentKind === "update_connector" ||
       intentKind === "delete_connector";
     const isWorkflow =
-      intentKind === "commit_workflow_draft" ||
+      intentKind === "save_workflow_draft" ||
       intentKind === "update_workflow" ||
       intentKind === "delete_workflow";
     const resource = isConnector ? "connector" : isWorkflow ? "workflow" : "resource";
@@ -483,8 +483,8 @@ function intentToolName(kind: CommitIntent["kind"]): string {
   switch (kind) {
     case "save_connector_draft":
       return "save_connector_draft";
-    case "commit_workflow_draft":
-      return "commit_draft";
+    case "save_workflow_draft":
+      return "save_workflow_draft";
     case "delete_connector":
       return "delete_connector";
     case "delete_workflow":
@@ -734,6 +734,43 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
   try {
     const draft = await loadDraft(p.tenant_id, p.conversation_id, p.db);
     const authType = draft.connector?.auth_type ?? null;
+    // Template-enrichment lands `config.oauth` / `config.aws_region`
+    // into the draft only at save time (saveConnectorAtomic), so during
+    // the credential-cache phase the draft's config block is usually
+    // empty for oauth2/aws_sigv4 templates. Fall back to the bound
+    // template's metadata. Without this fallback session a2292e7a hit
+    // the cache_skipped path with `oauth_grant_type:null` even though
+    // the appsync-cognito template declares `grant_type:
+    // cognito_user_password` — and the AppSync connector never
+    // persisted because the probe ran unauthenticated.
+    const draftCfg = (draft.connector?.config ?? {}) as {
+      aws_region?: unknown;
+      oauth?: { grant_type?: unknown; client_id?: unknown };
+    };
+    const draftOauthCfg = (draftCfg.oauth ?? {}) as {
+      grant_type?: unknown;
+      client_id?: unknown;
+    };
+    const templateSlug = draft.connector?.template_slug ?? null;
+    let templateOauth: { grant_type?: unknown; client_id?: unknown } | null = null;
+    let templateAwsRegion: unknown = null;
+    if (templateSlug && (authType === "oauth2" || authType === "aws_sigv4")) {
+      const templates = await listResolvedConnectorTemplates(p.db, p.tenant_id);
+      const tmpl = templates.find((t) => t.template.slug === templateSlug)?.template;
+      if (tmpl) {
+        templateOauth = (tmpl.oauth ?? null) as {
+          grant_type?: unknown;
+          client_id?: unknown;
+        } | null;
+        // aws_region lives under the auth_options.aws_sigv4 hint when
+        // the template is sigv4-shaped; keep this lookup defensive
+        // because not all sigv4 templates declare it.
+        const sigv4Opt = (tmpl.auth_options ?? []).find(
+          (o: { auth_type?: string }) => o?.auth_type === "aws_sigv4",
+        ) as { aws_region?: unknown } | undefined;
+        templateAwsRegion = sigv4Opt?.aws_region ?? null;
+      }
+    }
     // Translate the connector's auth_type into the seed-mode the
     // extractor expects. Pre-fix this gate only let
     // `bearer/basic/header/query` through, silently dropping the
@@ -750,8 +787,7 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
     ) {
       seedMode = authType;
     } else if (authType === "oauth2") {
-      const cfg = (draft.connector?.config ?? {}) as { oauth?: { grant_type?: unknown } };
-      const grantType = cfg.oauth?.grant_type;
+      const grantType = draftOauthCfg.grant_type ?? templateOauth?.grant_type ?? null;
       if (grantType === "cognito_user_password") seedMode = "cognito_user_password";
       else if (grantType === "password") seedMode = "basic"; // RFC 6749 §4.3 reuses basic shape
     } else if (authType === "aws_sigv4") {
@@ -770,23 +806,22 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
         auth_type: authType,
         oauth_grant_type:
           authType === "oauth2"
-            ? (((draft.connector?.config ?? {}) as { oauth?: { grant_type?: unknown } }).oauth
-                ?.grant_type ?? null)
+            ? (draftOauthCfg.grant_type ?? templateOauth?.grant_type ?? null)
             : null,
+        template_slug: templateSlug,
       });
       return;
     }
     // For oauth2/cognito the connector config carries region + client_id;
     // pass them as seed overrides so the extractor doesn't have to
     // re-parse them out of the form fields when they were already set.
-    const cfg = (draft.connector?.config ?? {}) as {
-      aws_region?: unknown;
-      oauth?: { client_id?: unknown };
-    };
-    const oauthCfg = (cfg.oauth ?? {}) as { client_id?: unknown };
+    // Template fallback covers drafts whose config has not yet been
+    // template-enriched (the common case at form-submit time).
     const seedOverrides: Record<string, unknown> = {};
-    if (typeof cfg.aws_region === "string") seedOverrides.aws_region = cfg.aws_region;
-    if (typeof oauthCfg.client_id === "string") seedOverrides.client_id = oauthCfg.client_id;
+    const region = draftCfg.aws_region ?? templateAwsRegion;
+    if (typeof region === "string") seedOverrides.aws_region = region;
+    const clientId = draftOauthCfg.client_id ?? templateOauth?.client_id;
+    if (typeof clientId === "string") seedOverrides.client_id = clientId;
     const credential = extractCredentialFromFormOutput(
       seedMode,
       seedOverrides,
