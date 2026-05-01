@@ -292,6 +292,50 @@ describe("maybeCacheDraftCredentialFromElicitation", () => {
     });
   });
 
+  test("falls back to template snapshot when draft.config.oauth is empty (real AppSync flow)", async () => {
+    // Reproduces the actual session a2292e7a bug: the draft is bound
+    // to the appsync-cognito builtin template but config.oauth is null
+    // because template-enrichment only runs at save time. Pre-fix the
+    // extractor read draft.config.oauth.grant_type → null → seedMode
+    // null → cache_skipped → probe ran unauthenticated → connector
+    // never persisted. The fallback now consults the template's
+    // oauth.grant_type.
+    const conversation_id = await seedConversation();
+    const draftBeforeEnrichment: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "AppSync Chargers API",
+        slug: "appsync-chargers",
+        driver: "graphql",
+        environment: "dev",
+        auth_type: "oauth2",
+        base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
+        template_slug: "appsync-cognito",
+        // config.oauth deliberately absent — template-enrichment runs
+        // only at saveConnectorAtomic time.
+        config: {},
+      },
+      workflow: { name: "", steps: [] },
+    };
+    await appendSnapshot(tenant_id, conversation_id, draftBeforeEnrichment, ctx.db);
+
+    await maybeCacheDraftCredentialFromElicitation({
+      tenant_id,
+      conversation_id,
+      elicitation: { tool_name: "ask_user_form" },
+      elicitation_output: { username: "ops@example.com", password: "pw-123" },
+      db: ctx.db,
+    });
+
+    const cached = getDraftCredential(conversation_id);
+    expect(cached).not.toBeNull();
+    expect(cached?.mode).toBe("cognito_user_password");
+    if (cached?.mode === "cognito_user_password") {
+      expect(cached.username).toBe("ops@example.com");
+      expect(cached.password).toBe("pw-123");
+    }
+  });
+
   test("populates cache from aws_sigv4 draft (AppSync IAM flow)", async () => {
     const conversation_id = await seedConversation();
     const sigv4Draft: DraftDocument = {
