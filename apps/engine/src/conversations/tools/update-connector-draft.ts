@@ -34,7 +34,6 @@ const NON_SECRET_KEYS = new Set<string>([
   "authorization_endpoint",
   "token_url",
   "authorization_url",
-  "device_authorization_endpoint",
   "issuer_url",
   "token_auth_method",
   "token_content_type",
@@ -94,7 +93,9 @@ const inputSchema = z
     environment: z.enum(["dev", "prod"]).optional(),
     base_url: z.string().optional(),
     dsn: z.string().optional(),
-    auth_type: z.enum(["none", "header", "query", "bearer", "basic", "oauth2"]).optional(),
+    auth_type: z
+      .enum(["none", "header", "query", "bearer", "basic", "oauth2", "aws_sigv4"])
+      .optional(),
     template_slug: z.string().min(1).nullable().optional(),
     template_name: z.string().min(1).nullable().optional(),
     template_source: z.enum(["builtin", "tenant"]).nullable().optional(),
@@ -102,7 +103,7 @@ const inputSchema = z
       .record(z.string(), z.unknown())
       .optional()
       .describe(
-        "Driver options only (pagination, base_url overrides, static_headers, query_defaults, etc.). Template-derived blocks `config.oauth` and `config.aws_sigv4` are IMMUTABLE here — they're read from the template snapshot at save time. To change auth, call `start_connector_from_description` with a different `auth_type`. To run an authorization-code flow on an already-saved oauth2 connector, call `authenticate_oauth`. Never put credentials in `config` (token, password, api_key, client_secret, etc.) — collect them via `ask_user_form(sensitive: true)` and pass them through `save_connector_draft({credential})`.",
+        "Driver options only (pagination, base_url overrides, static_headers, query_defaults, etc.). The template-derived `config.oauth` block is IMMUTABLE here EXCEPT for the public `client_id` field — write `{ config: { oauth: { client_id } } }` when a template (e.g. cognito_user_password, GitHub App) doesn't seed a default and the operator must supply one. Every other oauth key (token_endpoint, scopes, grant_type, client_secret, ...) is rejected — those are template-owned. For aws_sigv4 connectors, `config.aws_region` and `config.aws_service` are top-level config keys (template-seeded; writeable by the operator only when the template doesn't ship a default). To change auth shape, call `start_connector_from_description` with a different `auth_type`. To run an authorization-code flow on an already-saved oauth2 connector, call `authenticate_oauth`. Never put credentials in `config` (token, password, api_key, client_secret, ...) — collect them via `ask_user_form(sensitive: true)` and pass them through `save_connector_draft({credential})`.",
       ),
     docs: z.array(z.string()).optional(),
   })
@@ -117,20 +118,43 @@ export const updateConnectorDraftTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
 
-    // Hard-reject any attempt to mutate the oauth block via this tool.
-    // `config.oauth` is owned by template-enrichment (at save time, gated
-    // on auth_type === "oauth2") plus the OAuth2 client snapshot fallback
-    // in resolveConnectorOAuthConfig. Letting the LLM hand-edit oauth
-    // creates two writers and reproduces session 18467df2 where bearer
-    // drafts ended up carrying oauth metadata that strict-mode then
-    // rejected at save.
+    // The oauth block is owned by template-enrichment (at save time) plus
+    // the OAuth2 client snapshot fallback in resolveConnectorOAuthConfig.
+    // The LLM cannot rewrite it from scratch — letting that happen creates
+    // two writers and reproduces session 18467df2 where bearer drafts
+    // ended up carrying oauth metadata that strict-mode then rejected at
+    // save. The single carve-out is `config.oauth.client_id`: it's a
+    // public id (not a secret), and the cognito_user_password flow needs
+    // the operator to provide it when the matched template doesn't seed
+    // a default. Every other oauth key is rejected.
     if (args.config !== undefined && Object.hasOwn(args.config, "oauth")) {
-      return {
-        ok: false,
-        error_code: "auth_mutation_not_allowed",
-        message:
-          "config.oauth cannot be written via update_connector_draft. The OAuth2 client reads oauth metadata from the template snapshot at mint time; for a different auth shape, start a new draft. To begin the authorization-code flow on an oauth2 connector, save it first then call authenticate_oauth.",
-        next_best_actions: ["authenticate_oauth", "start_connector_from_description"],
+      const oauthPatch = (args.config as { oauth?: unknown }).oauth;
+      const isClientIdOnlyPatch =
+        oauthPatch !== null &&
+        typeof oauthPatch === "object" &&
+        !Array.isArray(oauthPatch) &&
+        Object.keys(oauthPatch as Record<string, unknown>).length === 1 &&
+        Object.hasOwn(oauthPatch as Record<string, unknown>, "client_id") &&
+        typeof (oauthPatch as { client_id?: unknown }).client_id === "string";
+      if (!isClientIdOnlyPatch) {
+        return {
+          ok: false,
+          error_code: "auth_mutation_not_allowed",
+          message:
+            "config.oauth cannot be written via update_connector_draft except for the public field `client_id`. The OAuth2 client reads oauth metadata from the template snapshot at mint time; for a different auth shape, start a new draft. To begin the authorization-code flow on an oauth2 connector, save it first then call authenticate_oauth.",
+          next_best_actions: ["authenticate_oauth", "start_connector_from_description"],
+        };
+      }
+      // Merge the client_id patch into the existing config.oauth so the
+      // template-seeded keys (token_endpoint, grant_type, scopes, ...)
+      // survive. The patch object is replaced below in the spread; we
+      // mutate args.config so the rest of the flow sees the merged shape.
+      const draftSoFar = ctx.getDraft().connector ?? {};
+      const existingOauth =
+        (draftSoFar.config as { oauth?: Record<string, unknown> } | undefined)?.oauth ?? {};
+      (args.config as Record<string, unknown>).oauth = {
+        ...existingOauth,
+        client_id: (oauthPatch as { client_id: string }).client_id,
       };
     }
 

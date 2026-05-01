@@ -79,10 +79,10 @@ describe("extractCredentialFromFormOutput — oauth2 → cognito routing", () =>
   });
 
   it("returns null for plain oauth2 without any cognito hint (caller surfaces credential_required)", () => {
-    // Authorization-code, client-credentials, jwt-bearer, and
-    // device-code grants don't go through the form-submit path —
-    // they have dedicated flows. Plain oauth2 with no Cognito hint
-    // should NOT silently land as some other mode.
+    // Authorization-code and client-credentials grants don't go through
+    // the form-submit path — authentication runs through
+    // `authenticate_oauth` and the refresh worker. Plain oauth2 with no
+    // Cognito hint should NOT silently land as some other mode.
     const out = extractCredentialFromFormOutput(
       "oauth2",
       {},
@@ -168,6 +168,53 @@ describe("extractCredentialFromFormOutput — aws_sigv4", () => {
     expect(
       extractCredentialFromFormOutput("aws_sigv4", {}, { values: { access_key_id: "AKIA..." } }),
     ).toBeNull();
+  });
+});
+
+describe("extractCredentialFromFormOutput — mustache placeholder rejection", () => {
+  // The LLM occasionally hands us mustache-shaped seed values
+  // (`{{password}}`, `{{secret_access_key}}`) that mean "form will
+  // fill this slot". Pre-fix the seedString helper only stripped
+  // whole-value matches; an embedded placeholder like
+  // `"Bearer {{token}}"` would persist verbatim and every request
+  // 401. Pass D3 widened the reject to any embedded `{{…}}`.
+
+  it("cognito: form password wins over a whole-value mustache seed", () => {
+    const out = extractCredentialFromFormOutput(
+      "cognito_user_password",
+      { username: "u@x.com", password: "{{password}}", aws_region: "eu-central-1" },
+      { values: { password: "real-pw" } },
+    );
+    expect(out?.mode).toBe("cognito_user_password");
+    if (out?.mode === "cognito_user_password") {
+      expect(out.password).toBe("real-pw");
+      expect(out.username).toBe("u@x.com");
+    }
+  });
+
+  it("cognito: form password wins over an embedded mustache seed", () => {
+    const out = extractCredentialFromFormOutput(
+      "cognito_user_password",
+      { username: "u@x.com", password: "Bearer {{password}}", aws_region: "eu-central-1" },
+      { values: { password: "real-pw" } },
+    );
+    expect(out?.mode).toBe("cognito_user_password");
+    if (out?.mode === "cognito_user_password") {
+      expect(out.password).toBe("real-pw");
+    }
+  });
+
+  it("aws_sigv4: form secret_access_key wins over a mustache seed", () => {
+    const out = extractCredentialFromFormOutput(
+      "aws_sigv4",
+      { access_key_id: "{{access_key_id}}", secret_access_key: "{{secret_access_key}}" },
+      { values: { access_key_id: "AKIAREAL", secret_access_key: "secretREAL" } },
+    );
+    expect(out?.mode).toBe("aws_sigv4");
+    if (out?.mode === "aws_sigv4") {
+      expect(out.access_key_id).toBe("AKIAREAL");
+      expect(out.secret_access_key).toBe("secretREAL");
+    }
   });
 });
 

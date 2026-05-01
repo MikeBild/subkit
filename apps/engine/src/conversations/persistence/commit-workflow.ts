@@ -241,7 +241,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   // No-meaningful-change gate — when the latest preview output is
   // structurally equivalent to the prior committed version's last
   // preview output AND the workflow def is hash-equivalent, the
-  // already_persisted shortcut in commit-draft.ts catches it. Here we
+  // already_persisted shortcut in save-workflow-draft.ts catches it. Here we
   // additionally refuse a commit when the preview output is the
   // empty-array shape that signaled `partial_success` on the last
   // execution. The LLM otherwise commits v4, runs, hits warnings,

@@ -60,6 +60,14 @@ describe("save_workflow_draft vocabulary rename — repo-wide residue scan", () 
     "commit_workflow_draft",
     "force_commit_override",
     "commit_via_tool",
+    // Pass-A audit: critic surfaces flow into log lines + audit metadata,
+    // operator-visible. Lock the rename invariant.
+    "gradeCommitDraft",
+    "hintForCommitDraft",
+    "CommitDraftVerdictSchema",
+    "\\bCommitDraftVerdict\\b",
+    "CommitDraftApproval",
+    "CommitDraftApprovalProps",
   ];
 
   test("no commit-verb residue across .ts/.tsx/.md/.json/.sql", () => {

@@ -265,8 +265,11 @@ Common codes you will see while authoring a connector:
 - `credential_required` — probe ran without a credential. Run `ask_user_form` first.
 - `tool_unavailable_in_state` — the tool is skill-gated; `next_best_actions[0]` is the `load_skill` slug.
 - `discovery_unavailable` — template has no curated endpoint index; ask for one canonical path.
-- `oauth_not_configured` — connector saved without OAuth metadata; re-issue `save_connector_draft` with `credential.mode: "oauth2"` and the missing fields.
+- `oauth_not_configured` — connector saved without OAuth metadata; re-issue `save_connector_draft({ credential: { mode: "oauth2", client_id, client_secret? } })` so the operator's client_id/secret land in `config.oauth`, then call `authenticate_oauth`. The credential row is created by the OAuth callback.
 - `placeholder_connector_missing` — slug typo or wrong environment.
+- `auth_mutation_not_allowed` — you tried to write `config.oauth` via `update_connector_draft`. Only `config.oauth.client_id` is writable (public id). For client_secret + endpoints, use `save_connector_draft({ credential: { mode: "oauth2", ... } })`. To change the auth shape entirely, call `start_connector_from_description` with a different `auth_type`.
+- `force_save_cooldown` — a force_save was requested while the failed probe is still fresh (within 60s). Collect a new credential via `ask_user_form`, re-probe, and retry. The cooldown protects you from persisting the credential a probe just rejected.
+- `reserved_auth_header_present` — a workflow step with `connector_id` carries `Authorization` / `Cookie` / `Proxy-Authorization`. The connector injects auth from its saved credential — remove the header. The only legitimate exception is the multi-step token-mint pattern where the connector's `auth_type` is `"none"`; see `auth-flows.md`.
 
 ## After save: iterate with call_connector
 

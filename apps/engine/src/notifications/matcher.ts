@@ -23,9 +23,16 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { type NotificationRuleRow, notificationRules } from "../db/schema/notifications.ts";
+import type { RequestSource } from "../execution/types.ts";
 
 export type NotificationSeverity = "debug" | "info" | "warn" | "error" | "critical";
-export type NotificationRequestSource = "api" | "mcp" | "chat" | "webhook" | string;
+/**
+ * Notification matcher uses the canonical `RequestSource` enum from
+ * the execution layer. Pre-fix this was typed `... | string` which
+ * silently accepted any value and broke filtering. The canonical enum
+ * is the lead — narrowing here keeps the contract tight.
+ */
+export type NotificationRequestSource = RequestSource;
 
 export interface NotificationEvent {
   tenant_id: string;

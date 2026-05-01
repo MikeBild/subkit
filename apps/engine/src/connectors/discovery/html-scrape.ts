@@ -10,6 +10,7 @@
 
 import { log } from "../../logging/logger.ts";
 import { scrubUrl } from "../egress.ts";
+import { assertEgressAllowed } from "../egress-guard.ts";
 import { openApiDirectStrategy } from "./openapi-direct.ts";
 import {
   DiscoveryError,
@@ -60,6 +61,7 @@ async function fetchHtml(url: string, opts: DiscoveryStrategyOptions): Promise<s
       accept: "text/html, */*",
       ...(opts.headers ?? {}),
     };
+    assertEgressAllowed(url, {});
     const res = await fetch(url, { method: "GET", headers, signal: controller.signal });
     if (!res.ok) return null;
     const buf = await res.arrayBuffer();

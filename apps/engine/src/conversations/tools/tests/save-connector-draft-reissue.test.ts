@@ -326,6 +326,11 @@ describe("save_connector_draft — diagnostic re-issue", () => {
           duration_ms: 1,
           summary: "Probe reached the system but returned HTTP 500.",
           response_preview: "boom",
+          // Probe ran 2 minutes ago — outside the 60s cooldown
+          // window, so force_save is allowed. The cooldown gate
+          // (Pass D4) rejects fresh failed probes; this test
+          // covers the stale-probe override path.
+          probed_at: new Date(Date.now() - 120_000).toISOString(),
         },
       },
       false,

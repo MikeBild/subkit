@@ -48,12 +48,29 @@ const TICKS_PER_OPCODE_BATCH = 8;
 let _mod: QuickJSWASMModule | null = null;
 
 /**
+ * Test override for the QuickJS WASM loader. Production code never
+ * touches this — it exists only so the fail-closed regression test
+ * can simulate "WASM module unavailable" and verify the sandbox
+ * never falls back to a host `eval`.
+ */
+let _moduleProviderForTesting: (() => Promise<QuickJSWASMModule>) | null = null;
+
+export function setQuickJsModuleProviderForTesting(
+  provider: (() => Promise<QuickJSWASMModule>) | null,
+): void {
+  _moduleProviderForTesting = provider;
+  if (provider) _mod = null;
+}
+
+/**
  * Lazy singleton — the WASM module costs ~a few hundred ms to instantiate
- * once and is then reusable across every VM we spawn.
+ * once and is then reusable across every VM we spawn. There is NO
+ * host-eval fallback; if QuickJS fails to load, `runJs` throws
+ * (fail-closed).
  */
 async function loadModule(): Promise<QuickJSWASMModule> {
   if (_mod) return _mod;
-  _mod = await getQuickJS();
+  _mod = _moduleProviderForTesting ? await _moduleProviderForTesting() : await getQuickJS();
   return _mod;
 }
 

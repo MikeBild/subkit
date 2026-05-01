@@ -46,6 +46,12 @@ export interface DiscoveryServiceArgs {
    *  introspection / spec fetch. Required for upstreams that gate
    *  introspection behind a token (GitHub GraphQL, Linear, Monday). */
   connector_id?: string;
+  /** Connector environment used for the credential lookup. Defaults to
+   *  "dev" — caller is responsible for passing "prod" when running
+   *  discovery for a production connector. Without this, a prod
+   *  GraphQL connector would resolve no credential (dev row missing)
+   *  and the strategy chain would warn-log "discovery failed" forever. */
+  environment?: "dev" | "prod";
 }
 
 export interface DiscoveryServiceContext {
@@ -315,7 +321,7 @@ export async function runDiscoveryCached(
         const connector = await getConnectorForEnvironment(
           ctx.tenant_id,
           args.connector_id,
-          "dev",
+          args.environment ?? "dev",
           ctx.db,
         );
         if (connector) {

@@ -53,8 +53,6 @@ export const OAuth2GrantTypeEnum = z.enum([
   "client_credentials",
   "password",
   "cognito_user_password",
-  "jwt_bearer",
-  "device_code",
 ]);
 export type OAuth2GrantType = z.infer<typeof OAuth2GrantTypeEnum>;
 
@@ -293,6 +291,23 @@ export const ConnectorTemplateSchema = z
      * markdown skill + ingested docs).
      */
     recipes: z.array(ConnectorRecipeSchema).default([]),
+    /**
+     * AWS SigV4 service identifier (e.g. `lambda`, `dynamodb`,
+     * `cognito-idp`, `appsync`, `execute-api`). Required for templates
+     * with `auth_type: "aws_sigv4"` so the http driver can sign
+     * requests; null otherwise. The enrichment pipeline copies this
+     * into `config.aws_service` at draft mint time.
+     */
+    aws_service: z.string().min(1).nullable().default(null),
+    /**
+     * AWS region default for templates with a region-specific endpoint
+     * (e.g. `us-east-1`). Optional even on aws_sigv4 templates because
+     * per-tenant endpoints (AppSync IDs, API Gateway custom domains)
+     * carry the region in `base_url` instead. Enrichment seeds
+     * `config.aws_region` from this value when present, then from
+     * `base_url` parsing as a fallback.
+     */
+    aws_region: z.string().min(1).nullable().default(null),
   })
   .superRefine((t, ctx) => {
     // Consistency gate: a template that offers BOTH a primary non-oauth auth
@@ -358,6 +373,17 @@ export const ConnectorTemplateSchema = z
         code: z.ZodIssueCode.custom,
         path: ["recipes"],
         message: `template "${t.slug}" has duplicate recipe slugs`,
+      });
+    }
+    // aws_sigv4 templates must declare the SigV4 service so the http
+    // driver knows what to sign for. aws_region may be null for
+    // per-tenant endpoints — drivers fall back to URL parsing or
+    // explicit operator config in that case.
+    if (t.auth_type === "aws_sigv4" && t.aws_service === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["aws_service"],
+        message: `template "${t.slug}" has auth_type=aws_sigv4 but no aws_service`,
       });
     }
   })

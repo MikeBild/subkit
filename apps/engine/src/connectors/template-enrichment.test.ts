@@ -35,6 +35,8 @@ const baseTemplate: ConnectorTemplate = {
   example_paths: [],
   operator_quirks: { error_handling: "template default error note" },
   recipes: [],
+  aws_service: null,
+  aws_region: null,
 };
 
 describe("enrichConnectorFromTemplate — operator_quirks propagation", () => {

@@ -336,6 +336,13 @@ export const METRIC_NAMES = {
   // dashboard show flapping tools the same way the connector
   // circuit metric shows flapping connectors.
   TOOL_CIRCUIT_OPEN_TOTAL: "subkit_tool_circuit_open_total",
+  // G15 (lock the LLM-token-accountant lead): the token accountant
+  // reconciles tiktoken estimates against SDK-reported usage already;
+  // exporting the absolute drift percentage as a histogram surfaces
+  // estimate quality at provider granularity. Operators can chart it
+  // to spot a drift regression after a model swap before it shows up
+  // as a billing surprise.
+  LLM_TOKEN_DRIFT_PCT: "llm_token_drift_pct",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -521,6 +528,15 @@ function buildRegistry(): MetricsRegistry {
     help: "Total prompt tokens emitted from context-assembly per call (pre-completion).",
     labels: ["flow"],
     buckets: HISTOGRAM_DURATION_BUCKETS_MS,
+  });
+  reg.registerHistogram({
+    name: METRIC_NAMES.LLM_TOKEN_DRIFT_PCT,
+    help: "Absolute percentage drift between tiktoken-estimated tokens and SDK-reported usage, per provider.",
+    labels: ["provider", "model", "kind"],
+    // 0% to 50% in five-percent steps — drift in the high single
+    // digits is normal; anything past ~15% is a strong signal that a
+    // tokenizer assumption is stale.
+    buckets: [0, 1, 2, 5, 10, 15, 20, 30, 50],
   });
 
   return reg;

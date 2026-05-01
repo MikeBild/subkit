@@ -443,7 +443,7 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     },
   };
 
-  test("AC1: elicit_request renders the commit-draft router body", async () => {
+  test("AC1: elicit_request renders the save-workflow-draft router body", async () => {
     const instance = renderApp({
       onPrompt: async () => ({
         events: framesOf(approvalFrame, {

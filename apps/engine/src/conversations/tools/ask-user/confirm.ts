@@ -1,7 +1,7 @@
 // ask_user_confirm — ask the user to approve or reject a specific
 // action. Unifies the legacy `request_human_approval` surface. The
 // `kind` field lets the client pick the right sub-renderer
-// (commit-draft diff, external-write target, generic fallback).
+// (save-workflow-draft diff, external-write target, generic fallback).
 //
 // PR 2 migrates commit + external-write callers to emit this tool.
 

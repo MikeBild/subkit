@@ -182,10 +182,17 @@ export async function maybeAutoPersistFromElicitation(
         // before this dispatcher ran, so the probe sees auth.
         await maybeAutoProbeForSave(ctx, p.tenant_id);
         await maybeAutoFreshenCheckpointsForSave(ctx);
+        // Honour `force_save` from the commit_intent payload so a single
+        // operator confirmation overrides the failed-probe / cooldown
+        // gates symmetric to `save_workflow_draft.force_commit`. Without
+        // this, the LLM had to bounce through a second `save_connector_draft`
+        // tool call — the "approve twice" symptom on the connector path.
+        const forceSave = intent.payload.force_save === true;
         result = await saveConnectorAtomic({
           ctx,
           environment,
           ...(credential ? { credential } : {}),
+          ...(forceSave ? { forceSave: true } : {}),
           reason: "auto_persist_on_confirmation",
           emitAutoPersistAudit: true,
           commitIntentKind: intent.kind,
@@ -546,6 +553,14 @@ const SECRET_SEED_FIELDS = new Set([
   "secret_access_key",
   "session_token",
   "client_secret",
+  // Additional secret-shaped slots the LLM legitimately routes through
+  // `ask_user_form(sensitive: true)` and that historic commit_intent
+  // payloads don't include — but a future template could surface as a
+  // form field. Stripping them here matches the CREDENTIAL_KEY_RE
+  // surface in `update-connector-draft.ts`.
+  "private_key",
+  "passphrase",
+  "api_key",
 ]);
 
 function mergeFormIntoCredential(
@@ -602,10 +617,11 @@ export function extractCredentialFromFormOutput(
     ) {
       seedMode = "cognito_user_password";
     }
-    // Other grant_types (authorization_code, client_credentials, jwt_bearer,
-    // device_code) don't go through the form-submit credential path — they
-    // run their own dedicated flows. Falling through to default returns
-    // null which surfaces as `credential_required` to the caller.
+    // Other grant_types (authorization_code, client_credentials) don't go
+    // through the form-submit credential path — authorization_code is run
+    // by `authenticate_oauth`, client_credentials runs in the refresh
+    // worker. Falling through to default returns null which surfaces as
+    // `credential_required` to the caller.
   }
   const out = (output ?? {}) as Record<string, unknown>;
   const values =
@@ -619,7 +635,13 @@ export function extractCredentialFromFormOutput(
   const seedString = (key: string): string | null => {
     const v = seedOverrides[key];
     if (typeof v !== "string" || v.length === 0) return null;
-    if (/^\{\{[^}]+\}\}$/.test(v)) return null;
+    // Reject any embedded `{{…}}` placeholder, not just whole-value
+    // matches. The LLM occasionally authors `"Bearer {{token}}"`-style
+    // composed strings; that form is just as broken as a bare
+    // `"{{token}}"` and would persist verbatim, leaving every request
+    // 401. The form output is the only legitimate source of secret
+    // values; an embedded placeholder means the form never won.
+    if (/\{\{[^}]+\}\}/.test(v)) return null;
     return v;
   };
   const pick = (keys: string[]): string | null => {

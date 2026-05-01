@@ -213,6 +213,52 @@ describe("journey: audit completeness over mutation routes", () => {
     expect(auditBody.items.some((r) => r.action === "credential.rotated")).toBe(false);
   });
 
+  test("AC7b: credential.created with mode=aws_sigv4 records a credential digest, never raw keys", async () => {
+    // Lock-the-lead invariant: every credential.created audit row for
+    // the new (post-738c0fc) credential modes must record a digest of
+    // the value, never the value itself. Without this pin a future
+    // recorder change could leak access keys / passwords into the
+    // audit log.
+    const mk = await journeyFetch(ctx, "/v1/connectors", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "AC7b",
+        slug: "ac7b-sigv4",
+        driver: "http",
+        environment: "dev",
+        auth_type: "aws_sigv4",
+        base_url: "http://127.0.0.1:1",
+        config: { aws_region: "us-east-1", aws_service: "execute-api" },
+      }),
+    });
+    expect(mk.status).toBe(201);
+    const target = ((await mk.json()) as { id: string }).id;
+    const start = new Date(TEST_NOW_MS).toISOString();
+    const attach = await journeyFetch(ctx, `/v1/connectors/${target}/credentials`, {
+      method: "POST",
+      body: JSON.stringify({
+        mode: "aws_sigv4",
+        access_key_id: "AKIAFAKE0000000FAKE",
+        secret_access_key: "secretFAKE/0000000FAKE000000FAKE/000000FAKE",
+      }),
+    });
+    expect(attach.status).toBe(201);
+    await expectAuditRow("credential.created", start);
+    const auditRes = await journeyFetch(
+      ctx,
+      `/v1/audit-log?action=${encodeURIComponent("credential.created")}&ts_from=${encodeURIComponent(start)}&limit=10`,
+    );
+    expect(auditRes.status).toBe(200);
+    const auditBody = (await auditRes.json()) as {
+      items: Array<{ action: string; metadata: { mode?: string }; details_json?: unknown }>;
+    };
+    const sigv4Row = auditBody.items.find((r) => r.metadata?.mode === "aws_sigv4");
+    expect(sigv4Row).toBeDefined();
+    // The audit row's serialized form must NOT contain the raw secret.
+    const serialised = JSON.stringify(sigv4Row);
+    expect(serialised.includes("secretFAKE/0000000FAKE000000FAKE/000000FAKE")).toBe(false);
+  });
+
   test("AC6: DELETE /v1/connectors/:id → connector.deleted", async () => {
     const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/connectors/${connectorId}`, {

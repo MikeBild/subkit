@@ -115,6 +115,14 @@ export function toDecryptedCredential(input: AtomicCredentialInput): DecryptedCr
       throw new Error(
         "cognito_user_password requires a network token exchange — use toDecryptedCredentialAsync(input, ctx) instead",
       );
+    case "oauth2":
+      // OAuth2 seed updates `connector.config.oauth` so a subsequent
+      // `authenticate_oauth` call can run the dance — it never produces
+      // a credential row directly. There is no decrypted-credential
+      // shape to return here.
+      throw new Error(
+        "oauth2 seed updates config.oauth only — no DecryptedCredential is available until authenticate_oauth completes the dance",
+      );
   }
 }
 

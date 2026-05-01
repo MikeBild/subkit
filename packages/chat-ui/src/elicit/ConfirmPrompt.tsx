@@ -1,8 +1,8 @@
-// askUser.confirm prompt — unified replacement for the legacy
-// `ApprovalPrompt` / `ApprovalRouter` pair. Digit keybinds (1
-// Approve / 3 Reject), arrow+Enter fallback, Tab reveals a
-// reason text area for a `decision_reason`. The `kind` input picks
-// the sub-body (commit-draft diff, external-write target, generic).
+// askUser.confirm prompt — single source of truth for confirmation
+// rendering. Digit keybinds (1 Approve / 3 Reject), arrow+Enter
+// fallback, Tab reveals a reason text area for a `decision_reason`.
+// The `kind` input picks the sub-body (save-workflow-draft diff,
+// external-write target, generic).
 //
 // `destructive: true` flips the default selection to Reject and
 // colors the title red.

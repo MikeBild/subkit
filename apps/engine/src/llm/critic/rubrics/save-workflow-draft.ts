@@ -1,4 +1,4 @@
-// commit-draft critic rubric.
+// save-workflow-draft critic rubric.
 //
 // Triggered when the loop terminates on `save_workflow_draft` (workflow
 // commit) or `save_connector_draft` (connector save). The artifact
@@ -36,7 +36,7 @@ export const SaveWorkflowDraftArtifactSchema = z.object({
 
 export type SaveWorkflowDraftArtifact = z.infer<typeof SaveWorkflowDraftArtifactSchema>;
 
-export const CommitDraftVerdictSchema = z.object({
+export const SaveWorkflowDraftVerdictSchema = z.object({
   verdict: z.enum(["pass", "fail"]),
   confidence: z.number().min(0).max(1),
   reason: z.string(),
@@ -54,9 +54,9 @@ export const CommitDraftVerdictSchema = z.object({
     .default({}),
 });
 
-export type CommitDraftVerdict = z.infer<typeof CommitDraftVerdictSchema>;
+export type SaveWorkflowDraftVerdict = z.infer<typeof SaveWorkflowDraftVerdictSchema>;
 
 export const saveWorkflowDraftRubric = {
   kind: "save_workflow_draft" as const,
-  schema: CommitDraftVerdictSchema,
+  schema: SaveWorkflowDraftVerdictSchema,
 };

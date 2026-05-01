@@ -768,6 +768,10 @@ export interface ContextSnapshot {
     ok: boolean;
     summary: string | null;
     failure_code: string | null;
+    /** ISO-8601 timestamp the probe ran. Operators reading the
+     *  `/context` snapshot use this with the cooldown gate
+     *  (save-connector.ts) to see how stale a failed probe is. */
+    probed_at: string | null;
   } | null;
   latest_preview: {
     ok: boolean;
@@ -858,6 +862,7 @@ export async function getContextSnapshot(
         ok: latestProbeRaw.ok === true,
         summary: latestProbeRaw.summary ?? null,
         failure_code: latestProbeRaw.failure_code ?? null,
+        probed_at: latestProbeRaw.probed_at ?? null,
       }
     : null;
   const latestPreviewRaw = detail.draft?.latest_preview ?? null;

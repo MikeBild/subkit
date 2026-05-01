@@ -24,6 +24,7 @@ import { connectors as connectorsTable, conversations } from "../../db/schema/in
 import { describeConnectorPlaceholders, parsePlaceholders } from "../../llm/substitution/index.ts";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
+import { detectReservedAuthHeaders } from "../../workflows/header-policy.ts";
 import {
   validateStepReferences,
   validateUnsupportedPlaceholders,
@@ -230,43 +231,37 @@ export const buildWorkflowTool: ConversationTool = {
     // An explicit `Authorization` / `Cookie` / `Proxy-Authorization`
     // header overrides that and the LLM routinely fills it with a
     // placeholder string that doesn't expand against the resolved
-    // credential namespace. Refuse at build time so the draft never
-    // reaches preview in a state that will fail (conversation 730c568a).
-    const reservedAuthHeaderErrors: Array<{ path: string; message: string }> = [];
+    // credential namespace. Skipped for connectors whose saved
+    // `auth_type === "none"` — auth-flows.md documents the multi-step
+    // token-mint pattern where step-level Authorization on a none-auth
+    // connector_id step IS the entire point. Single source of truth in
+    // `workflows/header-policy.ts`; the validator runs the same check
+    // for mutation paths.
+    const referencedConnectorIds = new Set<string>();
     for (const rawStep of args.steps) {
       const step = rawStep as Record<string, unknown>;
-      if (step.kind !== "request") continue;
-      if (typeof step.connector_id !== "string") continue;
-      const headers = step.headers;
-      if (!headers || typeof headers !== "object" || Array.isArray(headers)) continue;
-      for (const headerName of Object.keys(headers as Record<string, unknown>)) {
-        const lower = headerName.toLowerCase();
-        if (lower === "authorization" || lower === "cookie" || lower === "proxy-authorization") {
-          reservedAuthHeaderErrors.push({
-            path: `steps.${typeof step.id === "string" ? step.id : "?"}.headers.${headerName}`,
-            message: `do not set a ${headerName} header on a request step that has connector_id — the connector injects auth from its saved credential. Remove the header (the connector's auth_type drives Authorization automatically).`,
-          });
+      if (step.kind === "request" && typeof step.connector_id === "string") {
+        referencedConnectorIds.add(step.connector_id);
+      }
+    }
+    const noneAuthConnectorIds = new Set<string>();
+    if (referencedConnectorIds.size > 0) {
+      const rows = await ctx.db
+        .select({
+          id: connectorsTable.id,
+          auth_type: connectorsTable.auth_type,
+        })
+        .from(connectorsTable)
+        .where(eq(connectorsTable.tenant_id, ctx.tenant_id));
+      for (const row of rows) {
+        if (referencedConnectorIds.has(row.id) && row.auth_type === "none") {
+          noneAuthConnectorIds.add(row.id);
         }
       }
     }
-    if (reservedAuthHeaderErrors.length > 0) {
-      recordAuthoringGateBlock({
-        code: "reserved_auth_header_present",
-        tool: "build_workflow",
-      });
-      return {
-        ok: false,
-        data: buildGateError(currentDraft, {
-          error_code: "reserved_auth_header_present",
-          message: `workflow steps with connector_id must not declare reserved auth headers: ${reservedAuthHeaderErrors.map((e) => e.path).join(", ")}`,
-          recommended_mode: "workflow",
-          next_best_actions: ["update_param", "edit_workflow_patch"],
-          extra: {
-            errors: reservedAuthHeaderErrors,
-          },
-        }),
-      };
-    }
+    const reservedAuthHeaderViolations = detectReservedAuthHeaders(args.steps, {
+      noneAuthConnectorIds,
+    });
 
     // Placeholder reference-integrity. Scan every string leaf across
     // steps + output_transform for `${cred.*}` / `${connector.*}`.
@@ -343,16 +338,59 @@ export const buildWorkflowTool: ConversationTool = {
       }
     }
 
-    if (problems.length > 0) {
-      const firstCode = problems[0]?.code ?? "placeholder_connector_missing";
-      const gateError = buildGateError(currentDraft, {
-        error_code: firstCode,
-        message:
+    // Return reserved-auth-header errors and placeholder problems
+    // together — operators fixing one then re-submitting only to see
+    // the other was a known papercut (Pass F2). When both fire we
+    // surface `reserved_auth_header_present` as the primary error_code
+    // (it's the gate the LLM must clear first; placeholders cannot
+    // resolve until the bogus Authorization header is removed) and
+    // include the placeholder problems under `extra.placeholder_problems`.
+    if (reservedAuthHeaderViolations.length > 0 || problems.length > 0) {
+      if (reservedAuthHeaderViolations.length > 0) {
+        recordAuthoringGateBlock({
+          code: "reserved_auth_header_present",
+          tool: "build_workflow",
+        });
+      }
+      const primaryCode =
+        reservedAuthHeaderViolations.length > 0
+          ? "reserved_auth_header_present"
+          : (problems[0]?.code ?? "placeholder_connector_missing");
+      const messageParts: string[] = [];
+      if (reservedAuthHeaderViolations.length > 0) {
+        messageParts.push(
+          `workflow steps with connector_id must not declare reserved auth headers: ${reservedAuthHeaderViolations.map((e) => e.path).join(", ")}`,
+        );
+      }
+      if (problems.length > 0) {
+        messageParts.push(
           "one or more placeholder references are unresolved against the current environment",
+        );
+      }
+      const nextBestActions: string[] =
+        reservedAuthHeaderViolations.length > 0
+          ? ["update_param", "edit_workflow_patch"]
+          : ["list_connectors", "get_connector"];
+      const gateError = buildGateError(currentDraft, {
+        error_code: primaryCode,
+        message: messageParts.join("; "),
         recommended_mode: "workflow",
-        next_best_actions: ["list_connectors", "get_connector"],
+        next_best_actions: nextBestActions,
         extra: {
-          problems,
+          // Match the legacy field names so existing LLM-side error
+          // recovery + audit consumers don't have to learn a new
+          // schema. Both `problems` (placeholder integrity) and
+          // `errors` (reserved-auth-header) are surfaced; whichever
+          // was empty is omitted.
+          ...(reservedAuthHeaderViolations.length > 0
+            ? {
+                errors: reservedAuthHeaderViolations.map(({ path, message }) => ({
+                  path,
+                  message,
+                })),
+              }
+            : {}),
+          ...(problems.length > 0 ? { problems } : {}),
         },
       });
       return {

@@ -16,6 +16,7 @@
 
 import { log } from "../../logging/logger.ts";
 import { scrubUrl } from "../egress.ts";
+import { assertEgressAllowed } from "../egress-guard.ts";
 import {
   DiscoveryError,
   type DiscoveryResult,
@@ -104,6 +105,7 @@ async function fetchText(
       accept: "text/plain, text/markdown, */*",
       ...(opts.headers ?? {}),
     };
+    assertEgressAllowed(url, {});
     const res = await fetch(url, { method: "GET", headers, signal: controller.signal });
     if (!res.ok) return null;
     const buf = await res.arrayBuffer();

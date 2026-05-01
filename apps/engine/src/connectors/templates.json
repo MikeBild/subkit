@@ -456,7 +456,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -528,7 +530,9 @@
       "webhooks": true,
       "webhook_events": ["CHECKOUT.ORDER.COMPLETED", "PAYMENT.SALE.COMPLETED"],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -956,7 +960,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -1104,7 +1110,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -1181,7 +1189,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -1581,7 +1591,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -1660,7 +1672,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -1716,7 +1730,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -1796,7 +1812,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -2119,7 +2137,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -2502,7 +2522,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -2809,7 +2831,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -2847,7 +2871,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -2920,7 +2946,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -3343,7 +3371,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -3416,7 +3446,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -3722,7 +3754,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -4025,7 +4059,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -4322,7 +4358,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -4736,7 +4774,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -5072,7 +5112,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -5152,7 +5194,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -5226,7 +5270,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -5282,7 +5328,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -5372,7 +5420,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -5462,7 +5512,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -5552,7 +5604,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -5642,7 +5696,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -5732,7 +5788,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -5822,7 +5880,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -5912,7 +5972,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -6002,7 +6064,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -6092,7 +6156,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -6182,7 +6248,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -6272,7 +6340,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -6362,7 +6432,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -6452,7 +6524,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -6908,7 +6982,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -7200,7 +7276,9 @@
       "rate_limit": "GraphQL responses can include rateLimit { cost remaining resetAt }. Also inspect x-ratelimit-* headers; some rate-limit failures arrive with HTTP 200 plus an errors array.",
       "schema": "GraphQL driver responses are enveloped as body.data and body.errors. Do not read top-level data directly from the step output.",
       "error_handling": "Treat a non-empty body.errors array as a failed logical call even when HTTP status is 200."
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -7273,7 +7351,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -7353,7 +7433,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -7391,7 +7473,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -7587,7 +7671,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -7711,7 +7797,9 @@
     "operator_quirks": {
       "pagination": "Many Vercel list endpoints return pagination cursors; preserve pagination metadata in transforms instead of flattening it away.",
       "auth": "Team-scoped calls usually need teamId in query parameters. Do not bake team ids into recipes; keep them as workflow input."
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -7749,7 +7837,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -7937,7 +8027,9 @@
     ],
     "operator_quirks": {
       "general": "S3 recipes use connector_id so the S3 driver can resolve bucket/region/credentials. PUT and DELETE are external writes and must stay behind the existing confirmation path."
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -8040,7 +8132,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": "lambda",
+    "aws_region": "us-east-1"
   },
   {
     "version": 1,
@@ -8290,7 +8384,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": "dynamodb",
+    "aws_region": "us-east-1"
   },
   {
     "version": 1,
@@ -8418,7 +8514,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": "ses",
+    "aws_region": "us-east-1"
   },
   {
     "version": 1,
@@ -8606,7 +8704,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": "sqs",
+    "aws_region": "us-east-1"
   },
   {
     "version": 1,
@@ -8675,7 +8775,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -8713,7 +8815,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -8769,7 +8873,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -8815,7 +8921,9 @@
       "/droplets/${item.id}",
       "/domains",
       "/domains/${item.name}"
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9107,7 +9215,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9320,7 +9430,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9510,7 +9622,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9540,7 +9654,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9598,7 +9714,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9636,7 +9754,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9692,7 +9812,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9730,7 +9852,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9768,7 +9892,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9830,7 +9956,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9868,7 +9996,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -9948,7 +10078,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10010,7 +10142,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10066,7 +10200,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10378,7 +10514,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10423,7 +10561,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10492,7 +10632,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10565,7 +10707,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10610,7 +10754,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10655,7 +10801,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10713,7 +10861,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10771,7 +10921,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10835,7 +10987,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10880,7 +11034,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10925,7 +11081,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -10963,7 +11121,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11001,7 +11161,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11065,7 +11227,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11123,7 +11287,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11174,7 +11340,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11225,7 +11393,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11263,7 +11433,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11301,7 +11473,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11352,7 +11526,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11472,7 +11648,9 @@
     ],
     "operator_quirks": {
       "general": "Reader URLs are formed as https://r.jina.ai/{absolute-url}. Keep the source URL as workflow input and set x-respond-with: markdown when markdown is required."
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11510,7 +11688,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11568,7 +11748,9 @@
       "webhooks": false,
       "webhook_events": [],
       "rate_limits": null
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -11808,7 +11990,9 @@
           ]
         }
       }
-    ]
+    ],
+    "aws_service": "cognito-idp",
+    "aws_region": "us-east-1"
   },
   {
     "version": 1,
@@ -12013,7 +12197,9 @@
       "auth": "Cognito AppSync auth sends a Cognito IdToken in the Authorization header. USER_PASSWORD_AUTH must be enabled on the app client; refresh uses REFRESH_TOKEN_AUTH.",
       "schema": "AppSync GraphQL responses are body.data plus optional body.errors. Query names and input types are tenant-schema specific; replace the placeholder Entity fields after schema discovery.",
       "error_handling": "AppSync resolver errors may arrive as GraphQL body.errors with HTTP 200. Treat body.errors as a failed logical call during transforms and previews."
-    }
+    },
+    "aws_service": null,
+    "aws_region": null
   },
   {
     "version": 1,
@@ -12196,7 +12382,9 @@
       "auth": "IAM-authenticated AppSync must sign with aws_service=appsync and the endpoint region. Temporary STS credentials need session_token.",
       "schema": "AppSync GraphQL responses are body.data plus optional body.errors. Query names and input types are tenant-schema specific; replace the placeholder Entity fields after schema discovery.",
       "error_handling": "AppSync resolver errors may arrive as GraphQL body.errors with HTTP 200. Treat body.errors as a failed logical call during transforms and previews."
-    }
+    },
+    "aws_service": "appsync",
+    "aws_region": null
   },
   {
     "version": 1,
@@ -12317,70 +12505,8 @@
     ],
     "operator_quirks": {
       "auth": "IAM API Gateway endpoints must sign with aws_service=execute-api and the endpoint region."
-    }
-  },
-  {
-    "version": 1,
-    "slug": "gcp-service-account",
-    "name": "Google Cloud Platform (Service Account)",
-    "driver": "http",
-    "base_url": null,
-    "auth_type": "oauth2",
-    "oauth": {
-      "issuer_url": "https://oauth2.googleapis.com",
-      "token_endpoint": "https://oauth2.googleapis.com/token",
-      "grant_type": "jwt_bearer",
-      "token_auth_method": "body",
-      "token_content_type": "form",
-      "use_pkce": false,
-      "client_id": null,
-      "extra_headers": {}
     },
-    "default_skill": null,
-    "ingestion_source": null,
-    "ingestion_url": null,
-    "icon": "gcp.svg",
-    "description": "Google Cloud APIs (BigQuery, Cloud Storage, Sheets, Drive, ...) authenticated via service-account JWT bearer. The driver signs an RS256 JWT with the SA private key, exchanges it for an access token at oauth2.googleapis.com, and refreshes inline.",
-    "category": "gcp",
-    "tags": ["rest", "gcp", "service-account", "jwt-bearer"],
-    "setup_instructions": "Create a Service Account in GCP IAM, download the JSON key. Set config.jwt_subject to the SA email (e.g. svc@project.iam.gserviceaccount.com), config.jwt_audience to https://oauth2.googleapis.com/token, scope to the GCP API scope (e.g. https://www.googleapis.com/auth/bigquery). Paste the private_key field from the JSON into config.jwt_private_key_pem (or store as a credential).",
-    "auth_options": [
-      {
-        "auth_type": "oauth2",
-        "label": "Service Account JWT (RS256)",
-        "description": "Sign a JWT with the service account private key, exchange for an access token via JWT-Bearer grant.",
-        "oauth": {
-          "grant_type": "jwt_bearer",
-          "token_auth_method": "body",
-          "token_content_type": "form",
-          "use_pkce": false,
-          "client_id": null,
-          "extra_headers": {},
-          "issuer_url": "https://oauth2.googleapis.com",
-          "token_endpoint": "https://oauth2.googleapis.com/token",
-          "scopes": ""
-        }
-      }
-    ],
-    "url_pattern": null,
-    "keywords": ["jwt-bearer", "rs256", "service-account", "gcp", "google"],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "jwt_private_key_pem",
-        "label": "Service Account Private Key (PEM)",
-        "placeholder": "-----BEGIN PRIVATE KEY-----\\n...",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    }
+    "aws_service": "execute-api",
+    "aws_region": null
   }
 ]

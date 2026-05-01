@@ -112,11 +112,16 @@ export async function resolveConnectorOAuthConfig(
     grant_type === "authorization_code" ||
     grant_type === "client_credentials" ||
     grant_type === "password" ||
-    grant_type === "cognito_user_password" ||
-    grant_type === "jwt_bearer" ||
-    grant_type === "device_code"
+    grant_type === "cognito_user_password"
   ) {
     out.grant_type = grant_type;
+  }
+  // Refresh-buffer override (G7): tenants whose IdP issues short-lived
+  // tokens can shrink the staleness window via `oauth.refresh_buffer_ms`.
+  // Defaults to 60s in the refresh worker when omitted.
+  const rawBuffer = (o as { refresh_buffer_ms?: unknown }).refresh_buffer_ms;
+  if (typeof rawBuffer === "number" && Number.isFinite(rawBuffer) && rawBuffer > 0) {
+    out.refresh_buffer_ms = rawBuffer;
   }
   return out;
 }

@@ -14,6 +14,7 @@
 
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
+import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import { recordUsage } from "../budgets.ts";
 import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "./base-types.ts";
 
@@ -68,6 +69,20 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
         drift_pct,
       });
     }
+    // Always record the drift sample so the observability dashboard
+    // can chart estimate quality at provider granularity. The
+    // histogram buckets are 0..50 in percentage points.
+    try {
+      const provider = inferProvider(p.model);
+      getMetrics().observe(METRIC_NAMES.LLM_TOKEN_DRIFT_PCT, Math.min(50, drift_pct * 100), {
+        provider,
+        model: p.model,
+        kind: "prompt",
+      });
+    } catch {
+      // Metric registry init can fail in tests that don't set up
+      // observability; never fail accounting on it.
+    }
   }
 
   try {
@@ -104,4 +119,20 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
     cache_read_tokens: cacheRead,
     cache_creation_tokens: cacheCreate,
   };
+}
+
+/**
+ * Best-effort provider classification from a model id. Anthropic's
+ * `claude-*`, OpenAI's `gpt-*`, Google's `gemini-*` and a few others
+ * are known prefixes; everything else lands as `other` so the
+ * histogram label cardinality stays bounded.
+ */
+function inferProvider(model: string): string {
+  const m = model.toLowerCase();
+  if (m.startsWith("claude-") || m.includes("anthropic")) return "anthropic";
+  if (m.startsWith("gpt-") || m.startsWith("o1-") || m.startsWith("o3-")) return "openai";
+  if (m.startsWith("gemini")) return "google";
+  if (m.startsWith("mistral") || m.startsWith("mixtral")) return "mistral";
+  if (m.startsWith("llama")) return "meta";
+  return "other";
 }

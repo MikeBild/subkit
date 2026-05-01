@@ -11,6 +11,10 @@
 //   - tool_name identifies which `askUser.*` rendered the prompt
 //   - input carries the question metadata (options, fields, summary)
 //   - output carries the user's answer once resolved
+//
+// PR 2's reference to commit-draft is historical: callers were renamed
+// `save-workflow-draft` repo-wide and this table now backs the
+// save-workflow-draft + external-write confirmation flows.
 
 import { index, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";

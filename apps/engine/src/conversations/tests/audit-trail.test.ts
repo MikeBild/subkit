@@ -183,7 +183,7 @@ describe("conversations/audit-trail", () => {
     // The Wave 4 policy row is INCIDENTAL — it fires only when the LLM
     // calls a `confirm_before_execution` tool directly. The canonical
     // path the LLM now takes is to emit
-    // `ask_user_confirm{kind:save_workflow_draft}` itself (post commit-draft
+    // `ask_user_confirm{kind:save_workflow_draft}` itself (post save-workflow-draft
     // elicitation tightening, commit 4c1f409), which bypasses the
     // policy gate entirely. The assertion that policy rows exist was
     // pinning the old codepath; we simply tolerate either shape now.

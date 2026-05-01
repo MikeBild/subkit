@@ -121,8 +121,6 @@ export const OAuth2AuthConfigSchema = z
       "client_credentials",
       "password",
       "cognito_user_password",
-      "jwt_bearer",
-      "device_code",
     ]),
     token_auth_method: z.enum(["body", "basic_auth"]).default("body"),
     token_content_type: z.enum(["form", "json"]).default("form"),
@@ -136,17 +134,6 @@ export const OAuth2AuthConfigSchema = z
     aws_region: z.string().optional(),
     cognito_username: z.string().optional(),
     cognito_use_access_token: z.boolean().optional(),
-    /** JWT Bearer config (only meaningful when `grant_type === "jwt_bearer"`).
-     *  PEM-encoded private key, default RS256. Subject is the user/SA the
-     *  assertion grants access to; issuer is typically the SA email or
-     *  client_id. */
-    jwt_private_key_pem: z.string().optional(),
-    jwt_algorithm: z.enum(["RS256", "ES256"]).optional(),
-    jwt_subject: z.string().optional(),
-    jwt_audience: z.string().optional(),
-    jwt_key_id: z.string().optional(),
-    /** Device-flow config (only meaningful when `grant_type === "device_code"`). */
-    device_authorization_endpoint: z.string().url().optional(),
   })
   .openapi("OAuth2AuthConfig");
 
@@ -190,14 +177,7 @@ const OAuthEnrichmentSchema = z
     token_endpoint: z.string().optional(),
     scope: z.string().optional(),
     grant_type: z
-      .enum([
-        "authorization_code",
-        "client_credentials",
-        "password",
-        "cognito_user_password",
-        "jwt_bearer",
-        "device_code",
-      ])
+      .enum(["authorization_code", "client_credentials", "password", "cognito_user_password"])
       .optional(),
     token_auth_method: z.enum(["body", "basic_auth"]).optional(),
     token_content_type: z.enum(["form", "json"]).optional(),
@@ -217,6 +197,12 @@ export const HttpConnectorConfig = z
     timeout_ms: z.number().positive().max(300_000).optional(),
     max_retries: z.number().int().min(0).max(5).optional(),
     follow_redirects: z.boolean().default(true).optional(),
+    // AWS SigV4 driver inputs. Both are template-seeded for every aws_sigv4
+    // connector at draft mint time (see template-enrichment.ts) and read by
+    // drivers/http.ts. `aws_region` is also accepted on the cognito_user_password
+    // credential save path (save-connector.ts).
+    aws_region: z.string().optional(),
+    aws_service: z.string().optional(),
     // Template-enrichment metadata — drivers and the LLM context may read
     // these but they are not validated here beyond shape. The template
     // schema (connectors/templates.ts) is the authoritative source.

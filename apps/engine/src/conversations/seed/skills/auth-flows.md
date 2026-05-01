@@ -41,8 +41,6 @@ Set `oauth.grant_type` on the connector config:
 | `client_credentials` | RFC 6749 §4.4, machine-to-machine | Auth0 Management API |
 | `password` | RFC 6749 §4.3, username + password | Auth0 / Keycloak / Okta password login |
 | `cognito_user_password` | AWS Cognito `InitiateAuth` (proprietary JSON) | AWS AppSync, AWS API Gateway with Cognito authorizer |
-| `jwt_bearer` | RFC 7523, signed JWT exchanged for access token | GCP service accounts, Salesforce Connected Apps, Atlassian Connect |
-| `device_code` | RFC 8628, headless / limited-input device flow | GitHub CLI, Auth0 device, AzureAD device |
 
 All four go through the same inline-refresh path: when the access token
 is within 60 seconds of expiry, the driver calls the refresh endpoint
@@ -97,63 +95,6 @@ Use the built-in `appsync-cognito` template (URL-match auto-selects it
 for `*.appsync-api.*.amazonaws.com` hosts) to skip the config dance —
 it pre-fills the endpoint, headers, `grant_type`, and
 `token_type:"none"`.
-
-### `jwt_bearer` specifics (RFC 7523)
-
-Used by **GCP service accounts**, **Salesforce Connected Apps with JWT
-bearer**, **Atlassian Connect**, and **AzureAD with private-key JWT
-client assertion**.
-
-Flow:
-
-1. Driver builds a JWT with the standard claims (`iss`, `sub`, `aud`,
-   `exp`, `iat`, optional `scope`).
-2. Signs it with the configured private key (RS256 by default; ES256
-   supported).
-3. POSTs to the token endpoint as
-   `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=<jwt>`.
-4. Receives an access_token (no refresh_token — every refresh re-signs).
-
-Connector config keys:
-
-| Key | Required | Notes |
-|---|---|---|
-| `oauth.client_id` | yes | Issuer (`iss` claim); for GCP this is the SA email; for Salesforce it's the Connected App key |
-| `oauth.token_endpoint` | yes | e.g. `https://oauth2.googleapis.com/token` |
-| `jwt_subject` | yes | `sub` claim — for GCP usually equals `iss`, for impersonation it's the user email |
-| `jwt_audience` | yes | `aud` claim — usually equals the token endpoint URL |
-| `jwt_private_key_pem` | yes | PEM-encoded RSA / EC private key |
-| `jwt_algorithm` | optional | `RS256` (default) or `ES256` |
-| `jwt_key_id` | optional | `kid` header — required by Atlassian and AzureAD-with-cert |
-| `oauth.scope` | optional | Space-delimited; for GCP set to the API scope (e.g. `https://www.googleapis.com/auth/bigquery`) |
-
-Use the built-in `gcp-service-account` template — pre-fills the
-GCP token endpoint and a starter audience.
-
-### `device_code` specifics (RFC 8628)
-
-Used when the engine runs on a headless box and you want the operator
-to complete the auth on a phone or laptop. **GitHub CLI**, **Auth0
-device login**, **AzureAD device**, **Zoom device** all speak it.
-
-Two-phase:
-
-1. Engine POSTs `client_id` to the device-authorization endpoint,
-   receives `{ user_code, verification_uri, expires_in, interval }`.
-2. UI shows the operator the `verification_uri` + `user_code` (we
-   surface them via an elicitation message in the chat). Operator
-   completes login.
-3. Engine polls the token endpoint at `interval` seconds until success
-   or `expires_in` elapses, honoring `slow_down` / `authorization_pending`.
-
-Connector config keys:
-
-| Key | Required | Notes |
-|---|---|---|
-| `oauth.client_id` | yes | App / client identifier |
-| `oauth.token_endpoint` | yes | OAuth2 token endpoint URL |
-| `device_authorization_endpoint` | yes | RFC 8628 device-auth URL (e.g. `https://github.com/login/device/code`) |
-| `oauth.scope` | optional | Space-delimited |
 
 ## `aws_sigv4` — generic AWS request signing
 
