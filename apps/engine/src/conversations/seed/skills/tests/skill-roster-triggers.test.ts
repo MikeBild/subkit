@@ -40,22 +40,34 @@ function frontmatter(body: string): Record<string, string> {
   return out;
 }
 
+// New skill schema: `activates_when` is a JSON array of activation
+// rules — `{"kind": "baseline"}` is the auto-load equivalent;
+// `{"kind": "intent_keyword", "word": "..."}` are the trigger
+// keywords. The legacy `auto_load: true` + `trigger_keywords: [...]`
+// fields no longer exist.
+type ActivationRule = { kind: "baseline" } | { kind: "intent_keyword"; word: string };
+
+function activationRules(body: string): ActivationRule[] {
+  const raw = frontmatter(body).activates_when;
+  if (!raw) return [];
+  return JSON.parse(raw) as ActivationRule[];
+}
+
+function autoLoads(body: string): boolean {
+  return activationRules(body).some((r) => r.kind === "baseline");
+}
+
 function triggerKeywords(body: string): string[] {
-  const fm = frontmatter(body);
-  const raw = fm.trigger_keywords ?? "";
-  // e.g. "[a, b, c]"
-  return raw
-    .replace(/^\[|\]$/g, "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  return activationRules(body)
+    .filter((r): r is { kind: "intent_keyword"; word: string } => r.kind === "intent_keyword")
+    .map((r) => r.word);
 }
 
 describe("error-recovery skill — auto-load on authoring-time error shapes", () => {
   const body = read("error-recovery.md");
 
   it("has auto_load: true so the recovery routine is always in context when errors show up", () => {
-    expect(frontmatter(body).auto_load).toBe("true");
+    expect(autoLoads(body)).toBe(true);
   });
 
   it("triggers on HTTP error shapes the model routinely sees", () => {
@@ -114,7 +126,7 @@ describe("connector-creation-guidance skill — creation-intent triggers only", 
   const body = read("connector-creation-guidance.md");
 
   it("keeps auto_load on so the checklist fires when the user actually wants to create a connector", () => {
-    expect(frontmatter(body).auto_load).toBe("true");
+    expect(autoLoads(body)).toBe(true);
   });
 
   it("triggers on creation-intent multi-word phrases", () => {

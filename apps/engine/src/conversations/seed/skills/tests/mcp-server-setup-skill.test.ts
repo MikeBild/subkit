@@ -47,12 +47,16 @@ describe("mcp-server-setup skill", () => {
   });
 
   it("auto-loads on broad MCP keywords, not a single vendor name", () => {
-    expect(body).toContain("auto_load: true");
-    expect(body).toContain("mcp server");
-    expect(body).toContain("cursor");
-    expect(body).toContain("continue");
-    expect(body).toContain("zed");
-    expect(body).toContain("goose");
+    // Schema: `activates_when` JSON array carries `{kind: "baseline"}`
+    // (auto-load equivalent) plus `{kind: "intent_keyword", word: ...}`
+    // entries. Pre-refactor this was `auto_load: true` +
+    // `trigger_keywords: [...]`; the contract is unchanged.
+    expect(body).toMatch(/activates_when:.*"kind":"baseline"/);
+    expect(body).toContain('"word":"mcp server"');
+    expect(body).toContain('"word":"cursor"');
+    expect(body).toContain('"word":"continue"');
+    expect(body).toContain('"word":"zed"');
+    expect(body).toContain('"word":"goose"');
   });
 
   it("preserves the runtime-substitution contract for engine_url", () => {

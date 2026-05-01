@@ -19,8 +19,6 @@ import { auditAwait } from "../../audit/audit.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
-
 let srv: HttpTestServer;
 let memberKey = "";
 let seededIds: string[] = [];
@@ -61,14 +59,18 @@ beforeAll(async () => {
   srv = await createHttpTestServer("audit-log");
 
   // Seed a known-shape set of audit rows for list / filter assertions.
-  seedStartIso = new Date(TEST_NOW_MS).toISOString();
+  // Capture the window bounds at SEED TIME using real Date.now() (not
+  // the module-load TEST_NOW_MS snapshot — that would zero-width the
+  // window since audit rows are written milliseconds AFTER load,
+  // landing outside the [snapshot, snapshot] interval).
+  seedStartIso = new Date(Date.now() - 1000).toISOString();
   seededIds = [];
   seededIds.push(await seedAudit("workflow.created"));
   seededIds.push(await seedAudit("workflow.updated"));
   seededIds.push(await seedAudit("workflow.deleted"));
   seededIds.push(await seedAudit("connector.created"));
   seededIds.push(await seedAudit("connector.updated"));
-  seedEndIso = new Date(TEST_NOW_MS).toISOString();
+  seedEndIso = new Date(Date.now() + 1000).toISOString();
 
   // A second (non-admin) member user whose api key should be denied by
   // `audit:read`. Member users inherit the built-in `member` role,

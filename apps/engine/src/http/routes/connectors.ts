@@ -89,12 +89,20 @@ const ProbeResultSchema = z
 
 const CredentialBody = z
   .object({
-    mode: z.enum(["none", "header", "query", "bearer", "basic"]),
+    mode: z.enum(["none", "header", "query", "bearer", "basic", "aws_sigv4"]),
     headers: z.record(z.string(), z.string()).optional(),
     query: z.record(z.string(), z.string()).optional(),
     token: z.string().optional(),
     username: z.string().optional(),
     password: z.string().optional(),
+    // aws_sigv4 mode — long-lived IAM keys + optional STS session token.
+    // The credential service already supports this mode; the route's
+    // request schema was the gap. The audit recorder writes
+    // `metadata.mode = "aws_sigv4"` and the service's serialize path
+    // reduces the value to a digest before persistence.
+    access_key_id: z.string().optional(),
+    secret_access_key: z.string().optional(),
+    session_token: z.string().optional(),
   })
   .openapi("CredentialBody");
 
@@ -619,6 +627,17 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
           throw new BadRequestError("basic mode requires username and password");
         }
         value = { mode: "basic", username: body.username, password: body.password };
+        break;
+      case "aws_sigv4":
+        if (!body.access_key_id || !body.secret_access_key) {
+          throw new BadRequestError("aws_sigv4 mode requires access_key_id and secret_access_key");
+        }
+        value = {
+          mode: "aws_sigv4",
+          access_key_id: body.access_key_id,
+          secret_access_key: body.secret_access_key,
+          ...(body.session_token ? { session_token: body.session_token } : {}),
+        };
         break;
     }
 
