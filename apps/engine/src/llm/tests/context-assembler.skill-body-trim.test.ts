@@ -2,17 +2,18 @@
 //
 // Two layers protect the prompt:
 //  1. Render-time: ambient skills (global / connector / workflow
-//     scope) render via `formatSkillSummary` — title + 1-line
-//     description + `load_skill('...')` hint. The full body is
-//     never inlined unless the LLM explicitly calls `load_skill`.
+//     scope) render as a per-scope INDEX block via
+//     `formatSkillIndex` — one line per skill (slug + title + first
+//     non-heading line, ≤120 chars). The full body is never inlined
+//     unless the LLM explicitly calls `load_skill`.
 //  2. Trim-time: when the prompt still exceeds the cap, the trim
 //     ladder pops in priority order. Loaded skill bodies are
-//     compacted via `trimSkill` first, then ambient skills are
-//     popped (their summary form is already small).
+//     compacted via `trimSkill` first, then entire ambient index
+//     blocks are dropped (workflow → connector → global).
 //
 // This test pins layer 1 specifically: a 40k-char skill with NO
 // `load_skill` call must not bloat the prompt — the assembler
-// renders the summary form and the body never reaches the prompt.
+// renders the index entry and the body never reaches the prompt.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
