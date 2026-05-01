@@ -358,6 +358,102 @@ describe("save_connector_draft — diagnostic re-issue", () => {
     expect(override).toBeDefined();
   });
 
+  // Regression: conversation 730c568a. The LLM force-saved a credential
+  // the probe had failed seconds earlier. Subsequent executions
+  // 401-ed against that very credential. The cooldown guard now
+  // refuses force_save while the failed probe is still fresh.
+  test("force_save is refused inside the cooldown window after a fresh failed probe", async () => {
+    await assertOwnServer(baseUrl);
+    const toolCtx = await createToolCtx();
+    await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "Force Cooldown",
+      driver: "http",
+      environment: "dev",
+      base_url: baseUrl,
+      auth_type: "none",
+    });
+    await inspectConnectorDraftTool.execute(toolCtx.base, {});
+    await validateConnectorDraftTool.execute(toolCtx.base, {});
+    const draftBefore = toolCtx.base.getDraft();
+    const connectorBefore = draftBefore.connector;
+    if (!connectorBefore) throw new Error("connector draft missing");
+    // Probe just failed — `probed_at = now` so the cooldown is in effect.
+    const failedProbeDraft = withConnectorProbe(
+      draftBefore,
+      {
+        ...connectorBefore,
+        latest_probe: {
+          ok: false,
+          method: "GET",
+          path: "/broken",
+          environment: "dev",
+          status_code: 401,
+          duration_ms: 1,
+          summary: "Probe reached the system but returned HTTP 401.",
+          response_preview: "bad credentials",
+          probed_at: new Date().toISOString(),
+        },
+      },
+      false,
+      "probe failed: HTTP 401",
+      "connector_probe_failed",
+    );
+    await toolCtx.base.setDraft(failedProbeDraft);
+
+    const blocked = await saveConnectorDraftTool.execute(toolCtx.base, {
+      force_save: true,
+    });
+    expect(blocked.ok).toBe(false);
+    if (blocked.ok) throw new Error("expected cooldown rejection");
+    expect(blocked.error_code).toBe("force_save_cooldown");
+    expect(blocked.message ?? "").toMatch(/cooldown/);
+  });
+
+  test("force_save is allowed once the failed probe is older than the cooldown", async () => {
+    await assertOwnServer(baseUrl);
+    const toolCtx = await createToolCtx();
+    await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "Cooldown Expired",
+      driver: "http",
+      environment: "dev",
+      base_url: baseUrl,
+      auth_type: "none",
+    });
+    await inspectConnectorDraftTool.execute(toolCtx.base, {});
+    await validateConnectorDraftTool.execute(toolCtx.base, {});
+    const draftBefore = toolCtx.base.getDraft();
+    const connectorBefore = draftBefore.connector;
+    if (!connectorBefore) throw new Error("connector draft missing");
+    // Probe failed two minutes ago — outside the 60s cooldown.
+    const olderThanCooldown = new Date(Date.now() - 120_000).toISOString();
+    const failedProbeDraft = withConnectorProbe(
+      draftBefore,
+      {
+        ...connectorBefore,
+        latest_probe: {
+          ok: false,
+          method: "GET",
+          path: "/broken",
+          environment: "dev",
+          status_code: 500,
+          duration_ms: 1,
+          summary: "Probe reached the system but returned HTTP 500.",
+          response_preview: "boom",
+          probed_at: olderThanCooldown,
+        },
+      },
+      false,
+      "probe failed: HTTP 500",
+      "connector_probe_failed",
+    );
+    await toolCtx.base.setDraft(failedProbeDraft);
+
+    const allowed = await saveConnectorDraftTool.execute(toolCtx.base, {
+      force_save: true,
+    });
+    expect(allowed.ok).toBe(true);
+  });
+
   test("re-issue after a failed probe without force_save returns the probe_failed envelope", async () => {
     await assertOwnServer(baseUrl);
     const toolCtx = await createToolCtx();

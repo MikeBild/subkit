@@ -13,6 +13,7 @@ import { upsertCredential } from "../../credentials/service.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { query as gqlQuery, probeGraphQLConnector } from "../drivers/graphql.ts";
+import { HttpRequestInvalidError } from "../drivers/http.ts";
 import { probeConnector } from "../drivers/index.ts";
 import { createConnector, getConnector } from "../service.ts";
 
@@ -297,5 +298,22 @@ describe("graphql driver", () => {
     // No persisted credential row was created — the override path bypasses
     // the DB so credential_id stays null.
     expect(res.credential_id).toBeNull();
+  });
+
+  // Audit anti-pattern C1: a malformed header bag must throw
+  // HttpRequestInvalidError before reaching `fetch()`. Without this
+  // the GraphQL pipeline crashed inside `new Headers()` with an
+  // obtuse "Invalid header name" message routed as `graphql_error`.
+  test("rejects an invalid outbound header name with HttpRequestInvalidError", async () => {
+    const fresh = await getConnector(tenantId, connectorId, testDb.db);
+    await expect(
+      gqlQuery({
+        db: testDb.db,
+        tenant_id: tenantId,
+        connector: fresh!,
+        query: "{ users { id } }",
+        extra_headers: { '{"X-Bad': "v" },
+      }),
+    ).rejects.toBeInstanceOf(HttpRequestInvalidError);
   });
 });

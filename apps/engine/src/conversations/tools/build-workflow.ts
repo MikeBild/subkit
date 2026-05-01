@@ -225,6 +225,49 @@ export const buildWorkflowTool: ConversationTool = {
       };
     }
 
+    // Reserved auth headers — when a request step has `connector_id`,
+    // the connector's saved credential injects auth at execution time.
+    // An explicit `Authorization` / `Cookie` / `Proxy-Authorization`
+    // header overrides that and the LLM routinely fills it with a
+    // placeholder string that doesn't expand against the resolved
+    // credential namespace. Refuse at build time so the draft never
+    // reaches preview in a state that will fail (conversation 730c568a).
+    const reservedAuthHeaderErrors: Array<{ path: string; message: string }> = [];
+    for (const rawStep of args.steps) {
+      const step = rawStep as Record<string, unknown>;
+      if (step.kind !== "request") continue;
+      if (typeof step.connector_id !== "string") continue;
+      const headers = step.headers;
+      if (!headers || typeof headers !== "object" || Array.isArray(headers)) continue;
+      for (const headerName of Object.keys(headers as Record<string, unknown>)) {
+        const lower = headerName.toLowerCase();
+        if (lower === "authorization" || lower === "cookie" || lower === "proxy-authorization") {
+          reservedAuthHeaderErrors.push({
+            path: `steps.${typeof step.id === "string" ? step.id : "?"}.headers.${headerName}`,
+            message: `do not set a ${headerName} header on a request step that has connector_id — the connector injects auth from its saved credential. Remove the header (the connector's auth_type drives Authorization automatically).`,
+          });
+        }
+      }
+    }
+    if (reservedAuthHeaderErrors.length > 0) {
+      recordAuthoringGateBlock({
+        code: "reserved_auth_header_present",
+        tool: "build_workflow",
+      });
+      return {
+        ok: false,
+        data: buildGateError(currentDraft, {
+          error_code: "reserved_auth_header_present",
+          message: `workflow steps with connector_id must not declare reserved auth headers: ${reservedAuthHeaderErrors.map((e) => e.path).join(", ")}`,
+          recommended_mode: "workflow",
+          next_best_actions: ["update_param", "edit_workflow_patch"],
+          extra: {
+            errors: reservedAuthHeaderErrors,
+          },
+        }),
+      };
+    }
+
     // Placeholder reference-integrity. Scan every string leaf across
     // steps + output_transform for `${cred.*}` / `${connector.*}`.
     const stringLeaves = collectStrings(args.steps);

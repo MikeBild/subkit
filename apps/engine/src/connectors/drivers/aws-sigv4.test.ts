@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { signSigV4Request } from "./aws-sigv4.ts";
+import { HttpRequestInvalidError } from "./http.ts";
 
 describe("signSigV4Request", () => {
   test("attaches Authorization, X-Amz-Date, X-Amz-Content-Sha256", () => {
@@ -104,5 +105,83 @@ describe("signSigV4Request", () => {
     expect(headers1.Authorization?.split(", Signature=")[0]).toBe(
       headers2.Authorization?.split(", Signature=")[0],
     );
+  });
+
+  // Audit anti-pattern E1: malformed sigv4 inputs used to throw a
+  // generic Error that the request-step retry loop misclassified as a
+  // transient `connection` error and retried 5×. Now they throw
+  // `HttpRequestInvalidError` and the loop converts to
+  // `RequestError("...", "request_invalid")` which is non-retryable.
+  describe("malformed inputs throw HttpRequestInvalidError", () => {
+    const url = new URL("https://example.amazonaws.com/x");
+    const cred = {
+      access_key_id: "AKIA...",
+      secret_access_key: "secret",
+    };
+
+    test("empty region", () => {
+      expect(() =>
+        signSigV4Request({
+          method: "GET",
+          url,
+          headers: {},
+          region: "",
+          service: "appsync",
+          credential: cred,
+        }),
+      ).toThrow(HttpRequestInvalidError);
+    });
+
+    test("region with invalid characters", () => {
+      expect(() =>
+        signSigV4Request({
+          method: "GET",
+          url,
+          headers: {},
+          region: "us-east-1; DROP",
+          service: "appsync",
+          credential: cred,
+        }),
+      ).toThrow(HttpRequestInvalidError);
+    });
+
+    test("empty service", () => {
+      expect(() =>
+        signSigV4Request({
+          method: "GET",
+          url,
+          headers: {},
+          region: "us-east-1",
+          service: "",
+          credential: cred,
+        }),
+      ).toThrow(HttpRequestInvalidError);
+    });
+
+    test("missing access_key_id", () => {
+      expect(() =>
+        signSigV4Request({
+          method: "GET",
+          url,
+          headers: {},
+          region: "us-east-1",
+          service: "appsync",
+          credential: { access_key_id: "", secret_access_key: "x" },
+        }),
+      ).toThrow(HttpRequestInvalidError);
+    });
+
+    test("missing secret_access_key", () => {
+      expect(() =>
+        signSigV4Request({
+          method: "GET",
+          url,
+          headers: {},
+          region: "us-east-1",
+          service: "appsync",
+          credential: { access_key_id: "AKIA...", secret_access_key: "" },
+        }),
+      ).toThrow(HttpRequestInvalidError);
+    });
   });
 });

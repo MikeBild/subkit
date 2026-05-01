@@ -21,6 +21,7 @@ import {
   applyAuthMaterial,
   deriveAppliedAuthMethod,
   resolveConnectorCredential,
+  validateOutboundHeaders,
 } from "./http.ts";
 
 export interface GraphQLConnectorConfig {
@@ -189,6 +190,13 @@ export async function executeGraphQLRequest(p: {
   });
   const fetchImpl = p.fetchImpl ?? fetch;
   injectTraceContext(headers);
+  // Last-line defence on the GraphQL pipeline. Same contract guard as
+  // the HTTP driver applies to its own `fetch()` — without this a
+  // malformed header bag (e.g. a non-RFC-token name from an LLM-authored
+  // connector config or step) crashes inside `new Headers()` and the
+  // GraphQL surface returns the obtuse "Invalid header name" error.
+  // (Audit anti-pattern C1, conversation 730c568a.)
+  validateOutboundHeaders(headers);
   const res = await fetchImpl(url.toString(), {
     method: "POST",
     headers,

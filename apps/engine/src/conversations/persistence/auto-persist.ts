@@ -518,6 +518,36 @@ function readEnvironment(intent: CommitIntent): "dev" | "prod" {
  *   header  → `header_name`, `header_value`
  *   query   → `param`, `value`
  */
+/**
+ * Fields in `commit_intent.payload.credential` that hold the user's
+ * secret. These MUST come from the masked form submission, never from
+ * the LLM-authored intent payload. The LLM legitimately writes a
+ * Mustache-style placeholder (`{{token}}`, `{{password}}`) into these
+ * slots when proposing the elicitation; if we let those non-empty
+ * strings flow through `extractCredentialFromFormOutput` they win over
+ * the real form value and we persist the literal placeholder as the
+ * secret — exactly what bit conversation 730c568a, where GitHub got
+ * `Authorization: Bearer {{token}}` and 401'd while the draft probe
+ * (which read from the cache populated directly from the form values)
+ * had just returned 200.
+ *
+ * The stripping is only applied when merging a `commit_intent`'s
+ * payload — the cache-population path
+ * (`maybeCacheDraftCredentialFromElicitation`) builds its seed from
+ * connector config metadata only and never carries secret fields, so
+ * leave that call site untouched.
+ */
+const SECRET_SEED_FIELDS = new Set([
+  "token",
+  "password",
+  "header_value",
+  "value",
+  "access_key_id",
+  "secret_access_key",
+  "session_token",
+  "client_secret",
+]);
+
 function mergeFormIntoCredential(
   intent: CommitIntent,
   output: unknown,
@@ -525,7 +555,11 @@ function mergeFormIntoCredential(
   const credentialSeed = (intent.payload.credential ?? {}) as Record<string, unknown>;
   const seedMode = typeof credentialSeed.mode === "string" ? credentialSeed.mode : null;
   if (!seedMode) return null;
-  return extractCredentialFromFormOutput(seedMode, credentialSeed, output);
+  const sanitizedSeed: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(credentialSeed)) {
+    if (!SECRET_SEED_FIELDS.has(k)) sanitizedSeed[k] = v;
+  }
+  return extractCredentialFromFormOutput(seedMode, sanitizedSeed, output);
 }
 
 /**
@@ -578,6 +612,16 @@ export function extractCredentialFromFormOutput(
     typeof out.values === "object" && out.values !== null
       ? (out.values as Record<string, unknown>)
       : out;
+  // Mustache-style placeholders (`{{token}}`, `{{password}}`) are how
+  // the LLM writes "this slot is filled in by the form" inside a
+  // commit_intent. If one leaks into a non-secret seed slot we still
+  // refuse to treat it as a real value, so the form output wins.
+  const seedString = (key: string): string | null => {
+    const v = seedOverrides[key];
+    if (typeof v !== "string" || v.length === 0) return null;
+    if (/^\{\{[^}]+\}\}$/.test(v)) return null;
+    return v;
+  };
   const pick = (keys: string[]): string | null => {
     for (const k of keys) {
       const exact = values[k];
@@ -597,46 +641,25 @@ export function extractCredentialFromFormOutput(
   };
   switch (seedMode) {
     case "bearer": {
-      const token =
-        (typeof seedOverrides.token === "string" && seedOverrides.token.length > 0
-          ? seedOverrides.token
-          : null) ?? pick(["token", "api_key", "apikey", "secret", "key"]);
+      const token = seedString("token") ?? pick(["token", "api_key", "apikey", "secret", "key"]);
       if (!token) return null;
       return { mode: "bearer", token };
     }
     case "basic": {
-      const username =
-        (typeof seedOverrides.username === "string" && seedOverrides.username.length > 0
-          ? seedOverrides.username
-          : null) ?? pick(["username", "user", "login"]);
-      const password =
-        (typeof seedOverrides.password === "string" && seedOverrides.password.length > 0
-          ? seedOverrides.password
-          : null) ?? pick(["password", "pass", "secret"]);
+      const username = seedString("username") ?? pick(["username", "user", "login"]);
+      const password = seedString("password") ?? pick(["password", "pass", "secret"]);
       if (!username || !password) return null;
       return { mode: "basic", username, password };
     }
     case "header": {
-      const header_name =
-        (typeof seedOverrides.header_name === "string" && seedOverrides.header_name.length > 0
-          ? seedOverrides.header_name
-          : null) ?? pick(["header_name", "header", "name"]);
-      const header_value =
-        (typeof seedOverrides.header_value === "string" && seedOverrides.header_value.length > 0
-          ? seedOverrides.header_value
-          : null) ?? pick(["header_value", "value", "token"]);
+      const header_name = seedString("header_name") ?? pick(["header_name", "header", "name"]);
+      const header_value = seedString("header_value") ?? pick(["header_value", "value", "token"]);
       if (!header_name || !header_value) return null;
       return { mode: "header", header_name, header_value };
     }
     case "query": {
-      const param =
-        (typeof seedOverrides.param === "string" && seedOverrides.param.length > 0
-          ? seedOverrides.param
-          : null) ?? pick(["param", "name"]);
-      const value =
-        (typeof seedOverrides.value === "string" && seedOverrides.value.length > 0
-          ? seedOverrides.value
-          : null) ?? pick(["value", "token"]);
+      const param = seedString("param") ?? pick(["param", "name"]);
+      const value = seedString("value") ?? pick(["value", "token"]);
       if (!param || !value) return null;
       return { mode: "query", param, value };
     }
@@ -646,47 +669,30 @@ export function extractCredentialFromFormOutput(
       // exchanges them at cognito-idp.<region>.amazonaws.com for an
       // IdToken inside `toDecryptedCredentialAsync`. region +
       // client_id come from the connector config (or seed overrides).
-      const username =
-        (typeof seedOverrides.username === "string" && seedOverrides.username.length > 0
-          ? seedOverrides.username
-          : null) ?? pick(["username", "email", "user", "login"]);
-      const password =
-        (typeof seedOverrides.password === "string" && seedOverrides.password.length > 0
-          ? seedOverrides.password
-          : null) ?? pick(["password", "pass"]);
+      const username = seedString("username") ?? pick(["username", "email", "user", "login"]);
+      const password = seedString("password") ?? pick(["password", "pass"]);
       if (!username || !password) return null;
       const out: Extract<AtomicCredentialInput, { mode: "cognito_user_password" }> = {
         mode: "cognito_user_password",
         username,
         password,
       };
-      const aws_region =
-        (typeof seedOverrides.aws_region === "string" && seedOverrides.aws_region.length > 0
-          ? seedOverrides.aws_region
-          : null) ?? pick(["aws_region", "region"]);
+      const aws_region = seedString("aws_region") ?? pick(["aws_region", "region"]);
       if (aws_region) out.aws_region = aws_region;
       const client_id =
-        (typeof seedOverrides.client_id === "string" && seedOverrides.client_id.length > 0
-          ? seedOverrides.client_id
-          : null) ?? pick(["client_id", "cognito_client_id", "app_client_id"]);
+        seedString("client_id") ?? pick(["client_id", "cognito_client_id", "app_client_id"]);
       if (client_id) out.client_id = client_id;
       const client_secret =
-        (typeof seedOverrides.client_secret === "string" && seedOverrides.client_secret.length > 0
-          ? seedOverrides.client_secret
-          : null) ?? pick(["client_secret", "cognito_client_secret"]);
+        seedString("client_secret") ?? pick(["client_secret", "cognito_client_secret"]);
       if (client_secret) out.client_secret = client_secret;
       return out;
     }
     case "aws_sigv4": {
       const access_key_id =
-        (typeof seedOverrides.access_key_id === "string" && seedOverrides.access_key_id.length > 0
-          ? seedOverrides.access_key_id
-          : null) ?? pick(["access_key_id", "aws_access_key_id"]);
+        seedString("access_key_id") ?? pick(["access_key_id", "aws_access_key_id"]);
       const secret_access_key =
-        (typeof seedOverrides.secret_access_key === "string" &&
-        seedOverrides.secret_access_key.length > 0
-          ? seedOverrides.secret_access_key
-          : null) ?? pick(["secret_access_key", "aws_secret_access_key", "secret"]);
+        seedString("secret_access_key") ??
+        pick(["secret_access_key", "aws_secret_access_key", "secret"]);
       if (!access_key_id || !secret_access_key) return null;
       const out: Extract<AtomicCredentialInput, { mode: "aws_sigv4" }> = {
         mode: "aws_sigv4",
@@ -694,9 +700,7 @@ export function extractCredentialFromFormOutput(
         secret_access_key,
       };
       const session_token =
-        (typeof seedOverrides.session_token === "string" && seedOverrides.session_token.length > 0
-          ? seedOverrides.session_token
-          : null) ?? pick(["session_token", "aws_session_token"]);
+        seedString("session_token") ?? pick(["session_token", "aws_session_token"]);
       if (session_token) out.session_token = session_token;
       return out;
     }

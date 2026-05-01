@@ -14,6 +14,7 @@
 
 import aws4 from "aws4";
 import type { AwsSigV4CredentialValue } from "../../credentials/types.ts";
+import { HttpRequestInvalidError } from "./http.ts";
 
 export interface SigV4SignParams {
   method: string;
@@ -30,11 +31,43 @@ export interface SigV4SignParams {
   credential: AwsSigV4CredentialValue;
 }
 
+// AWS region / service tokens — RFC-style identifier. Tightening the
+// shape lets us throw a typed `request_invalid` error before `aws4`
+// gets a chance to fail with a generic Error that the request-step
+// retry loop misclassifies as a transient connection error and
+// retries 5×. (Audit anti-pattern E1, conversation 730c568a.)
+const AWS_REGION_RE = /^[a-z0-9-]+$/i;
+const AWS_SERVICE_RE = /^[a-z0-9-]+$/i;
+
 /** Apply SigV4 signing to a request. Mutates `params.headers` to
  *  include `Authorization`, `X-Amz-Date`, `X-Amz-Content-Sha256`, and
  *  optionally `X-Amz-Security-Token`. Idempotent — safe to call once
  *  per request even after retries. */
 export function signSigV4Request(params: SigV4SignParams): void {
+  if (!params.region || !AWS_REGION_RE.test(params.region)) {
+    throw new HttpRequestInvalidError(
+      `aws_region "${params.region}" is empty or not a valid AWS region token`,
+      "config.aws_region",
+    );
+  }
+  if (!params.service || !AWS_SERVICE_RE.test(params.service)) {
+    throw new HttpRequestInvalidError(
+      `aws_service "${params.service}" is empty or not a valid AWS service token`,
+      "config.aws_service",
+    );
+  }
+  if (!params.credential.access_key_id) {
+    throw new HttpRequestInvalidError(
+      "aws_sigv4 credential is missing access_key_id",
+      "credential.access_key_id",
+    );
+  }
+  if (!params.credential.secret_access_key) {
+    throw new HttpRequestInvalidError(
+      "aws_sigv4 credential is missing secret_access_key",
+      "credential.secret_access_key",
+    );
+  }
   const u = params.url;
   // aws4 expects host + path + headers + body as fields on a single
   // options bag; it returns a clone with the auth headers attached.

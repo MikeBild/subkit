@@ -179,6 +179,7 @@ function normalizeConnectorDraft(raw: unknown): ConnectorDraftDocument | null {
       summary: typeof probe.summary === "string" ? probe.summary : "Probe executed.",
       ...(probe.response_preview !== undefined ? { response_preview: probe.response_preview } : {}),
       ...(typeof probe.failure_code === "string" ? { failure_code: probe.failure_code } : {}),
+      ...(typeof probe.probed_at === "string" ? { probed_at: probe.probed_at } : {}),
     };
   }
   if (typeof connector.saved_connector_id === "string") {

@@ -8,7 +8,13 @@ import {
   jsonResponse,
   type MockServer,
 } from "../../execution/tests/setup.ts";
-import { applyAuthMaterial, buildRequestPlan, parseResponseBody } from "../drivers/http.ts";
+import {
+  applyAuthMaterial,
+  buildRequestPlan,
+  executePlannedHttpRequest,
+  HttpRequestInvalidError,
+  parseResponseBody,
+} from "../drivers/http.ts";
 import { createConnector, getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 
@@ -432,5 +438,51 @@ describe("applyAuthMaterial — oauth2 token_type handling", () => {
       query,
     );
     expect(headers.Authorization).toBe("Token glpat-xyz");
+  });
+});
+
+// Regression: conversation 730c568a. The LLM authored a workflow step
+// where `headers` was a JSON-encoded object string. parseHeaderLines
+// happily turned `'{"Accept":"x"}'` into `{'{"Accept"': '"x"}'`. The
+// http driver's old contract trusted the type and crashed inside
+// `new Headers()` with "Invalid header name", which the retry loop
+// then misclassified as a transient connection error and retried 5×.
+// Post-fix the driver fails fast with HttpRequestInvalidError so the
+// retry loop converts to RequestError(request_invalid) and stops.
+describe("executePlannedHttpRequest header contract", () => {
+  test("rejects a non-object headers value before fetch", async () => {
+    await expect(
+      executePlannedHttpRequest({
+        tenant_id: ctx.tenantId,
+        method: "GET",
+        url: new URL(`${mock.baseUrl}/ping`),
+        headers: '{"Accept":"application/json"}' as unknown as Record<string, string>,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toBeInstanceOf(HttpRequestInvalidError);
+  });
+
+  test("rejects header names that aren't RFC 7230 tokens", async () => {
+    await expect(
+      executePlannedHttpRequest({
+        tenant_id: ctx.tenantId,
+        method: "GET",
+        url: new URL(`${mock.baseUrl}/ping`),
+        headers: { '{"Accept"': '"application/json"}' },
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toBeInstanceOf(HttpRequestInvalidError);
+  });
+
+  test("rejects non-string header values", async () => {
+    await expect(
+      executePlannedHttpRequest({
+        tenant_id: ctx.tenantId,
+        method: "GET",
+        url: new URL(`${mock.baseUrl}/ping`),
+        headers: { "X-Number": 42 as unknown as string },
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toBeInstanceOf(HttpRequestInvalidError);
   });
 });

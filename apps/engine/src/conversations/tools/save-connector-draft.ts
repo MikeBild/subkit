@@ -119,6 +119,30 @@ export const saveConnectorDraftTool: ConversationTool = {
       force_save: args.force_save === true,
     });
 
+    // Reject Mustache-style placeholders (`{{token}}`, `{{password}}`,
+    // `{{aws_region}}`, …) in any credential string field. The LLM
+    // legitimately writes these in commit_intent payloads as
+    // "form-substitute me" markers; the auto-persist path
+    // (`mergeFormIntoCredential`) strips them. The direct tool path
+    // doesn't go through that scrub, so the literal `{{token}}` would
+    // be persisted as the secret and every execution would 401.
+    // (Audit anti-pattern A1, conversation 730c568a.)
+    if (args.credential) {
+      const leakedField = findMustachePlaceholderField(args.credential);
+      if (leakedField) {
+        return {
+          ok: false,
+          error_code: "credential_placeholder_leak",
+          message: `credential.${leakedField} is a Mustache placeholder ("{{...}}") rather than a real value — secrets must be collected via ask_user_form(type: password, sensitive: true) and submitted by the operator, not authored by the LLM`,
+          next_best_actions: ["ask_user_form"],
+          data: {
+            error_code: "credential_placeholder_leak",
+            field: leakedField,
+          },
+        };
+      }
+    }
+
     const draft = ctx.getDraft();
     const connector = draft.connector;
     const supplied: Credential | undefined = args.credential;
@@ -425,4 +449,24 @@ async function existingCredentialMatches(p: {
     );
   }
   return false;
+}
+
+/**
+ * Walk every string leaf of an `AtomicCredentialInput` and return the
+ * field name that holds a Mustache placeholder (`{{token}}`,
+ * `{{password}}`, …). Returns null when no placeholder is found.
+ *
+ * Used by `save_connector_draft` to fail-fast at the tool boundary
+ * rather than persisting the literal placeholder as the secret. The
+ * auto-persist path has its own scrub (`SECRET_SEED_FIELDS` +
+ * `seedString` placeholder reject in `auto-persist.ts`); this is the
+ * direct-tool counterpart.
+ */
+const MUSTACHE_PLACEHOLDER_RE = /^\{\{[^}]+\}\}$/;
+
+function findMustachePlaceholderField(credential: Credential): string | null {
+  for (const [k, v] of Object.entries(credential)) {
+    if (typeof v === "string" && MUSTACHE_PLACEHOLDER_RE.test(v)) return k;
+  }
+  return null;
 }

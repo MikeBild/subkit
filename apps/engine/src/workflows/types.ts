@@ -9,7 +9,15 @@ import { z } from "@hono/zod-openapi";
  *  record, trimming whitespace on both sides. Returns `null` when no
  *  valid header line was found (so validation can fail with a useful
  *  message instead of silently coercing garbage). Empty lines are
- *  tolerated; lines without a `:` are rejected. */
+ *  tolerated; lines without a `:` are rejected.
+ *
+ *  Header names are validated as RFC 7230 tokens — without this, a
+ *  JSON-encoded string like `'{"Accept": "..."}'` would parse as a
+ *  single header named `'{"Accept"'`, slip through validation, and
+ *  blow up inside `new Headers()` at fetch time with the obtuse
+ *  "Invalid header name" error (conversation 730c568a). */
+const HTTP_TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
 function parseHeaderLines(raw: string): Record<string, string> | null {
   const out: Record<string, string> = {};
   let saw = 0;
@@ -21,6 +29,7 @@ function parseHeaderLines(raw: string): Record<string, string> | null {
     const name = line.slice(0, idx).trim();
     const value = line.slice(idx + 1).trim();
     if (!name) return null;
+    if (!HTTP_TOKEN_RE.test(name)) return null;
     out[name] = value;
     saw += 1;
   }
@@ -102,8 +111,38 @@ const GraphQLConfigSchema: z.ZodType<GraphQLConfig> = z
       .string()
       .trim()
       .min(1, "graphql string must be a non-empty query")
-      .transform((query): GraphQLConfig => ({ query })),
+      .transform((query, zctx): GraphQLConfig => {
+        // Reject the LLM's frequent failure mode: a JSON-encoded
+        // object string `'{"query":"{ users { id } }"}'` instead of
+        // the unwrapped GraphQL document. A real GraphQL document
+        // also starts with `{`, so we only fail when the entire
+        // string parses as JSON. (Audit anti-pattern B1, conversation
+        // 730c568a.)
+        if (looksLikeJsonObjectOrArray(query)) {
+          zctx.addIssue({
+            code: "custom",
+            message:
+              'graphql config must be an object {query, variables?} or a raw GraphQL document — got a JSON-encoded string. Pass `{query: "..."}` instead of `\'{"query":"..."}\'`.',
+          });
+          return z.NEVER as unknown as GraphQLConfig;
+        }
+        return { query };
+      }),
   );
+
+function looksLikeJsonObjectOrArray(s: string): boolean {
+  const trimmed = s.trim();
+  if (trimmed.length === 0) return false;
+  const first = trimmed[0];
+  const last = trimmed[trimmed.length - 1];
+  if (!(first === "{" && last === "}") && !(first === "[" && last === "]")) return false;
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed !== null && (typeof parsed === "object" || Array.isArray(parsed));
+  } catch {
+    return false;
+  }
+}
 
 const baseStep = {
   id: z.string().min(1),

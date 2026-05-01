@@ -325,3 +325,102 @@ describe("build_workflow — input_schema inference", () => {
     ]);
   });
 });
+
+// Regression: conversation 730c568a. The LLM authored a step with
+// both `connector_id` and an explicit `Authorization` header. Pre-fix
+// build_workflow accepted the draft; the validator only complained at
+// dry_run time. Move the rejection upstream so the draft never enters
+// a bad state.
+describe("build_workflow — reserved auth headers", () => {
+  test("rejects an Authorization header on a connector-bound request step", async () => {
+    const toolCtx = makeCtx();
+    // Seed a connector by id so the step targets a real row.
+    const [c] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id,
+        slug: "github-api",
+        display_name: "GitHub API",
+        driver: "http",
+        environment: "dev",
+        auth_type: "bearer",
+        base_url: "https://api.github.com",
+        config: {},
+      })
+      .returning();
+    await upsertCredential(
+      {
+        tenant_id,
+        connector_id: c!.id,
+        environment: "dev",
+        mode: "bearer",
+        value: { mode: "bearer", token: "ghp_xxx" },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+
+    const result = await buildWorkflowTool.execute(toolCtx, {
+      name: "Fetch repos",
+      slug: "fetch-repos",
+      steps: [
+        {
+          id: "fetch_repos",
+          kind: "request",
+          method: "GET",
+          path: "/user/repos",
+          connector_id: c!.id,
+          headers: { Authorization: "Bearer ghp_xxx", Accept: "application/json" },
+        },
+      ],
+      environment: "dev",
+    });
+    expect(result.ok).toBe(false);
+    const data = result.data as { error_code?: string; errors?: Array<{ path: string }> };
+    expect(data.error_code).toBe("reserved_auth_header_present");
+  });
+
+  test("accepts the same step with the Authorization header removed", async () => {
+    const toolCtx = makeCtx();
+    const [c] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id,
+        slug: "github-api-2",
+        display_name: "GitHub API 2",
+        driver: "http",
+        environment: "dev",
+        auth_type: "bearer",
+        base_url: "https://api.github.com",
+        config: {},
+      })
+      .returning();
+    await upsertCredential(
+      {
+        tenant_id,
+        connector_id: c!.id,
+        environment: "dev",
+        mode: "bearer",
+        value: { mode: "bearer", token: "ghp_xxx" },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    const result = await buildWorkflowTool.execute(toolCtx, {
+      name: "Fetch repos clean",
+      slug: "fetch-repos-clean",
+      steps: [
+        {
+          id: "fetch_repos",
+          kind: "request",
+          method: "GET",
+          path: "/user/repos",
+          connector_id: c!.id,
+          headers: { Accept: "application/vnd.github+json" },
+        },
+      ],
+      environment: "dev",
+    });
+    expect(result.ok).toBe(true);
+  });
+});
