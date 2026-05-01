@@ -169,32 +169,43 @@ function formatSkill(s: Skill, runtime_context?: AssembleContextParams["runtime_
 }
 
 /**
- * Render a non-loaded skill in summary form. Used for ambient
- * applicable skills (global / connector / workflow scope) that the
- * LLM hasn't explicitly loaded yet — keep the title + 2-line
- * description + load_skill hint, drop the body. Saves ~3-5k tokens
- * per skill on every turn.
+ * Render a per-scope skill index — one block, one line per skill.
+ * The LLM uses `load_skill(<slug-or-id>)` to pull the full body of
+ * any entry it actually needs.
+ *
+ * Pattern mirrors the validated reference-impl shape: the system
+ * prompt ships a tiny catalog (~one line per skill ≤ ~30 tokens)
+ * instead of a per-skill summary block (~58 tokens each). For a
+ * tenant with 50 skills the index costs ~1.5k tokens vs ~3k for
+ * separate summary blocks; more importantly, the index is bounded
+ * by skill count, not by each skill's first-line length.
  *
  * Pre-fix every applicable skill rendered with its full body
- * (~31k tokens of skills per turn in session a128deba). Post-fix
- * only loaded_skills carry full bodies; ambient skills carry the
- * load hint. The LLM still sees the catalog and can `load_skill`
- * on demand.
+ * (~31k tokens / turn in session a128deba). Post-fix only
+ * loaded_skills carry full bodies; ambient skills appear as one
+ * line in this index.
  */
-function formatSkillSummary(
-  s: Skill,
+export function formatSkillIndex(
+  label: string,
+  skills: Skill[],
   runtime_context?: AssembleContextParams["runtime_context"],
-): string {
-  const body = applyRuntimeTemplate(s.body, runtime_context);
-  // First non-empty content line as a 1-line summary. Skip the H1
-  // that most skills start with.
-  const firstLine =
-    body
-      .split("\n")
-      .map((l) => l.trim())
-      .find((l) => l.length > 0 && !l.startsWith("#")) ?? "";
-  const summary = firstLine.length > 160 ? `${firstLine.slice(0, 160)}…` : firstLine;
-  return `# Skill: ${s.title} (${s.scope}) — call \`load_skill('${s.id}')\` to load full body\n${summary}`;
+): string | null {
+  if (skills.length === 0) return null;
+  const lines = skills.map((s) => {
+    const ref = s.slug ?? s.id;
+    const body = applyRuntimeTemplate(s.body, runtime_context);
+    // First non-empty, non-heading line as a one-line description.
+    const firstLine =
+      body
+        .split("\n")
+        .map((l) => l.trim())
+        .find((l) => l.length > 0 && !l.startsWith("#")) ?? "";
+    const desc = firstLine.length > 120 ? `${firstLine.slice(0, 120)}…` : firstLine;
+    return `- \`${ref}\` — ${s.title}${desc.length > 0 ? `: ${desc}` : ""}`;
+  });
+  return [`# ${label} skill index — call \`load_skill('<slug>')\` for any of these`, ...lines].join(
+    "\n",
+  );
 }
 
 /**
@@ -726,17 +737,21 @@ export async function assembleEnhancedPrompt(
     if (tenantSummaryBlock) sections.push(tenantSummaryBlock);
     sections.push(baseSystem);
     if (runtimeBlock) sections.push(runtimeBlock);
-    // Ambient skills (global / connector / workflow scope) render in
-    // SUMMARY form by default — title + 1-line description + the
-    // load_skill hint. The LLM uses load_skill to pull the full body
-    // when it actually needs the rules (which moves the skill into
-    // `loadedSkills` for subsequent turns). This trims a typical
-    // turn from ~31k → ~3k skill tokens (session a128deba peak was
-    // 285k turn tokens, mostly skill bodies).
-    for (const s of globalSkills) sections.push(formatSkillSummary(s, p.runtime_context));
+    // Ambient skills render as a single per-scope INDEX block — one
+    // line per skill (slug + title + first-line description). The
+    // LLM uses `load_skill(<slug>)` to pull the full body when it
+    // actually needs the rules (which moves the skill into
+    // `loadedSkills` for subsequent turns). The index is bounded by
+    // skill count and stays cache-friendly across turns; per-skill
+    // summary blocks were ~58 tokens each, scaling unboundedly with
+    // skill body first-line size.
+    const globalIndexBlock = formatSkillIndex("Global", globalSkills, p.runtime_context);
+    const connectorIndexBlock = formatSkillIndex("Connector", connectorSkills, p.runtime_context);
+    const workflowIndexBlock = formatSkillIndex("Workflow", workflowSkills, p.runtime_context);
+    if (globalIndexBlock) sections.push(globalIndexBlock);
     if (connectorOperatorNotesBlock) sections.push(connectorOperatorNotesBlock);
-    for (const s of connectorSkills) sections.push(formatSkillSummary(s, p.runtime_context));
-    for (const s of workflowSkills) sections.push(formatSkillSummary(s, p.runtime_context));
+    if (connectorIndexBlock) sections.push(connectorIndexBlock);
+    if (workflowIndexBlock) sections.push(workflowIndexBlock);
     // Loaded skills carry the full body — the LLM explicitly opted
     // in via load_skill, so the cost is justified.
     for (const s of loadedSkills) sections.push(formatSkill(s, p.runtime_context));
@@ -793,15 +808,10 @@ export async function assembleEnhancedPrompt(
       body: `${s.body.slice(0, SKILL_BODY_SUMMARY_LIMIT).trim()}… [load_skill('${s.title ?? s.id}') for full body]`,
     };
   };
-  // Trim every loaded/global/connector/workflow skill BODY to a
-  // summary line FIRST before popping any of them. Saves the model's
-  // awareness that the skill exists + how to recover its full body
-  // (load_skill). Cursors are independent per category so each
-  // category gets its own progressive trim pass.
+  // Loaded skills go through a progressive body-trim before being
+  // popped. Ambient (index-form) skills can't be partially trimmed —
+  // their block is dropped wholesale once the budget runs out.
   let trimmedLoadedCursor = 0;
-  let trimmedWorkflowCursor = 0;
-  let trimmedConnectorCursor = 0;
-  let trimmedGlobalCursor = 0;
   while (total > cap) {
     if (interactionLogEntries.length > 0) {
       // Drop interaction log first — same priority as failures (both
@@ -839,25 +849,20 @@ export async function assembleEnhancedPrompt(
         loadedSkills[idx] = trimSkill(cur);
         trimmed.push("loaded_skill_body_trimmed");
       }
-    } else if (workflowSkills.length > 0 && trimmedWorkflowCursor < workflowSkills.length) {
-      // Ambient skills (workflow / connector / global) already
-      // render via formatSkillSummary, so further body trimming
-      // doesn't reduce their rendered size — skip directly to
-      // popping. Cursor still advances so we don't loop here.
-      trimmedWorkflowCursor = workflowSkills.length;
-    } else if (connectorSkills.length > 0 && trimmedConnectorCursor < connectorSkills.length) {
-      trimmedConnectorCursor = connectorSkills.length;
-    } else if (globalSkills.length > 0 && trimmedGlobalCursor < globalSkills.length) {
-      trimmedGlobalCursor = globalSkills.length;
     } else if (loadedSkills.length > 0) {
       loadedSkills.pop();
       trimmed.push("loaded_skill");
     } else if (workflowSkills.length > 0) {
-      workflowSkills.pop();
-      trimmed.push("workflow_skill");
+      // Index blocks render as one section per scope. Dropping them
+      // entirely is the right granularity — we can't pop one entry
+      // without re-rendering the block. Workflow scope drops first
+      // because the model can re-discover workflow-bound skills via
+      // load_skill once the conversation has a target_workflow_id.
+      workflowSkills.length = 0;
+      trimmed.push("workflow_skill_index");
     } else if (connectorSkills.length > 0) {
-      connectorSkills.pop();
-      trimmed.push("connector_skill");
+      connectorSkills.length = 0;
+      trimmed.push("connector_skill_index");
     } else if (connectorOperatorNotesBlock) {
       // operator_notes is the operator's direct, imperative instruction
       // for this connector — drop it only when nothing else remains
@@ -865,8 +870,8 @@ export async function assembleEnhancedPrompt(
       connectorOperatorNotesBlock = null;
       trimmed.push("connector_operator_notes");
     } else if (globalSkills.length > 0) {
-      globalSkills.pop();
-      trimmed.push("global_skill");
+      globalSkills.length = 0;
+      trimmed.push("global_skill_index");
     } else {
       logger.error({
         module: "llm",

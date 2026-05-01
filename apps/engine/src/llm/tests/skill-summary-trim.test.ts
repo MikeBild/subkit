@@ -1,12 +1,20 @@
-// Skill-body trimming: ambient (applicable but not loaded) skills
-// render in summary form (title + 1-line description + load_skill
-// hint). Loaded skills (via explicit load_skill calls) carry the
-// full body. Pre-fix every applicable skill rendered with its full
-// body (~31k tokens of skills per turn in session a128deba).
+// Skill ambient-rendering pattern: applicable-but-not-loaded skills
+// render as a single per-scope INDEX block (one line per skill,
+// slug + title + first-line description). The LLM uses
+// `load_skill(<slug>)` to fetch the full body when it needs the
+// rules. Loaded skills (via explicit load_skill calls) carry the
+// full body via `formatSkill`.
+//
+// Pattern mirrors the validated reference-impl shape: a tiny catalog
+// in the system prompt, full bodies on demand. Pre-fix every
+// applicable skill rendered with its full body (~31k tokens of
+// skills per turn in session a128deba). Post-index-pattern the
+// ambient cost is bounded by skill count rather than by each skill's
+// body content.
 //
 // We can't unit-test the full assembler without a DB, so this test
-// reads the source and asserts the formatter pair exists + the
-// ambient sections route through the summary form.
+// reads the source and asserts the index helper exists + the ambient
+// sections route through it.
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -14,25 +22,31 @@ import { join } from "node:path";
 
 const SRC = join(import.meta.dir, "..", "core", "context-assembler.ts");
 
-describe("context-assembler · skill body trimming", () => {
+describe("context-assembler · skill index rendering", () => {
   const body = readFileSync(SRC, "utf-8");
 
-  test("formatSkillSummary helper exists", () => {
-    expect(body).toContain("function formatSkillSummary");
+  test("formatSkillIndex helper exists", () => {
+    expect(body).toContain("function formatSkillIndex");
   });
 
-  test("globalSkills / connectorSkills / workflowSkills route through formatSkillSummary", () => {
-    expect(body).toMatch(/for \(const s of globalSkills\) sections\.push\(formatSkillSummary\(/);
-    expect(body).toMatch(/for \(const s of connectorSkills\) sections\.push\(formatSkillSummary\(/);
-    expect(body).toMatch(/for \(const s of workflowSkills\) sections\.push\(formatSkillSummary\(/);
+  test("globalSkills / connectorSkills / workflowSkills route through formatSkillIndex", () => {
+    expect(body).toMatch(/formatSkillIndex\("Global", globalSkills/);
+    expect(body).toMatch(/formatSkillIndex\("Connector", connectorSkills/);
+    expect(body).toMatch(/formatSkillIndex\("Workflow", workflowSkills/);
   });
 
   test("loadedSkills still route through full formatSkill", () => {
     expect(body).toMatch(/for \(const s of loadedSkills\) sections\.push\(formatSkill\(/);
   });
 
-  test("the summary form mentions load_skill so the LLM knows how to expand", () => {
+  test("the index block mentions load_skill so the LLM knows how to expand", () => {
     expect(body).toContain("load_skill");
-    expect(body).toContain("formatSkillSummary");
+    expect(body).toContain("formatSkillIndex");
+  });
+
+  test("the legacy formatSkillSummary helper has been retired", () => {
+    // Per repo policy (no backwards-compat shims): the per-skill
+    // summary helper should not coexist with the index helper.
+    expect(body).not.toContain("function formatSkillSummary");
   });
 });
