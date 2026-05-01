@@ -133,6 +133,7 @@ export const probeConnectorDraftTool: ConversationTool = {
           ? `${connector.driver} probe succeeded in ${duration_ms}ms.`
           : `${connector.driver} probe failed: ${res.detail ?? "unknown error"}`,
         ...(res.ok ? {} : { failure_code: "probe_failed" }),
+        probed_at: new Date().toISOString(),
       };
       const nextDraft = withConnectorProbe(
         currentDraft,
@@ -197,6 +198,7 @@ export const probeConnectorDraftTool: ConversationTool = {
           ? `GraphQL introspection probe succeeded in ${duration_ms}ms.`
           : `GraphQL probe failed: ${res.detail ?? `HTTP ${res.status ?? 0}`}`,
         ...(res.ok ? {} : { failure_code: "probe_failed" }),
+        probed_at: new Date().toISOString(),
       };
       const nextDraft = withConnectorProbe(
         currentDraft,
@@ -264,6 +266,7 @@ export const probeConnectorDraftTool: ConversationTool = {
             summary:
               "Probe blocked: no credential collected yet for this draft. Run ask_user_form(type: password, sensitive: true) to collect the secret, then re-probe.",
             failure_code: "credential_required",
+            probed_at: new Date().toISOString(),
           },
         },
         false,
@@ -339,6 +342,7 @@ export const probeConnectorDraftTool: ConversationTool = {
 
     const duration_ms = Date.now() - started;
     const truncated = truncateForLlm(responseBody);
+    const probed_at = new Date().toISOString();
     const latest_probe = errorDetail
       ? {
           ok: false,
@@ -350,6 +354,7 @@ export const probeConnectorDraftTool: ConversationTool = {
             ? `Probe timed out after ${args.timeout_ms}ms.`
             : `Probe failed: ${errorDetail}`,
           failure_code: isTimeoutError(errorDetail) ? "probe_timeout" : "probe_failed",
+          probed_at,
         }
       : {
           ok: status >= 200 && status < 400,
@@ -363,6 +368,7 @@ export const probeConnectorDraftTool: ConversationTool = {
               ? `Probe succeeded with HTTP ${status}.`
               : `Probe reached the system but returned HTTP ${status}.`,
           response_preview: truncated.data,
+          probed_at,
         };
     const nextDraft = withConnectorProbe(
       currentDraft,

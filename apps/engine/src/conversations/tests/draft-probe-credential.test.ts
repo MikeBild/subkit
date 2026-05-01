@@ -183,6 +183,89 @@ describe("extractCredentialFromFormOutput", () => {
     expect(extractCredentialFromFormOutput("bearer", {}, {})).toBeNull();
     expect(extractCredentialFromFormOutput("bearer", {}, { token: "" })).toBeNull();
   });
+
+  // Regression: conversation 730c568a. The LLM's commit_intent carried
+  // `payload.credential.token = "{{token}}"` (a Mustache placeholder
+  // for the form value). Pre-fix the extractor saw a non-empty string
+  // in the seed and used it verbatim, persisting `Bearer {{token}}`
+  // and 401-ing every subsequent execution.
+  test("rejects mustache placeholders in seed overrides so the form value wins", () => {
+    expect(
+      extractCredentialFromFormOutput("bearer", { token: "{{token}}" }, { token: "real-pat-123" }),
+    ).toEqual({ mode: "bearer", token: "real-pat-123" });
+    expect(
+      extractCredentialFromFormOutput(
+        "basic",
+        { username: "{{username}}", password: "{{password}}" },
+        { username: "alice", password: "p4ss" },
+      ),
+    ).toEqual({ mode: "basic", username: "alice", password: "p4ss" });
+    expect(
+      extractCredentialFromFormOutput(
+        "header",
+        { header_name: "X-API-Key", header_value: "{{header_value}}" },
+        { header_value: "real-key" },
+      ),
+    ).toEqual({ mode: "header", header_name: "X-API-Key", header_value: "real-key" });
+    expect(
+      extractCredentialFromFormOutput(
+        "query",
+        { param: "api_key", value: "{{value}}" },
+        { value: "real-q" },
+      ),
+    ).toEqual({ mode: "query", param: "api_key", value: "real-q" });
+  });
+
+  // Audit gap: cognito_user_password and aws_sigv4 modes were not
+  // covered by the earlier placeholder regression. Same risk class —
+  // an LLM commit_intent like `{aws_region: "{{aws_region}}", …}`
+  // would leak the literal placeholder into the persisted credential.
+  test("cognito_user_password rejects mustache placeholders in optional metadata", () => {
+    const result = extractCredentialFromFormOutput(
+      "cognito_user_password",
+      {
+        username: "{{username}}",
+        password: "{{password}}",
+        aws_region: "{{aws_region}}",
+        client_id: "{{client_id}}",
+      },
+      {
+        username: "alice@example.com",
+        password: "p4ss",
+        aws_region: "us-east-1",
+        client_id: "client-xyz",
+      },
+    );
+    expect(result).toEqual({
+      mode: "cognito_user_password",
+      username: "alice@example.com",
+      password: "p4ss",
+      aws_region: "us-east-1",
+      client_id: "client-xyz",
+    });
+  });
+
+  test("aws_sigv4 rejects mustache placeholders on access_key_id and secret_access_key", () => {
+    const result = extractCredentialFromFormOutput(
+      "aws_sigv4",
+      {
+        access_key_id: "{{access_key_id}}",
+        secret_access_key: "{{secret_access_key}}",
+        session_token: "{{session_token}}",
+      },
+      {
+        access_key_id: "AKIAIOSFODNN7EXAMPLE",
+        secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        session_token: "FQoG...",
+      },
+    );
+    expect(result).toEqual({
+      mode: "aws_sigv4",
+      access_key_id: "AKIAIOSFODNN7EXAMPLE",
+      secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      session_token: "FQoG...",
+    });
+  });
 });
 
 describe("maybeCacheDraftCredentialFromElicitation", () => {

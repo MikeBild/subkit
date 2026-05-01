@@ -37,6 +37,17 @@ import {
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { clearDraftCredential, getDraftCredential } from "./draft-credential-cache.ts";
 
+/**
+ * Cooldown window after a failed probe during which `force_save: true`
+ * is refused. Picked to be long enough that the LLM's "re-probe with
+ * the same broken credential, then force_save" loop is broken, short
+ * enough that legitimate operator workflows (rotate-then-save) don't
+ * sit and wait. Tuned at one minute — a probe + manual operator confirm
+ * comfortably fits inside this window so the cooldown only ever
+ * triggers on the bad pattern.
+ */
+const FORCE_SAVE_COOLDOWN_MS = 60_000;
+
 /** Shape of the optional credential collected via `ask_user_form(type:password)`.
  *
  *  `cognito_user_password` is the bootstrap shape: the operator hands us
@@ -317,6 +328,42 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   // recovery routes so the LLM can decide to re-probe, rotate the
   // credential, or escalate to a force_save.
   const probeFailed = requiresProbe && connector.latest_probe?.ok !== true;
+  // Cooldown: even `force_save: true` is refused when the failed probe
+  // is fresh (within 60s). Without this gate the LLM can persist the
+  // exact credential a probe just rejected — every subsequent execution
+  // then 401s and the operator chases their own tail (conversation
+  // 730c568a). Stale failed probes still bypass via force_save: true so
+  // operators can save credentials for systems they cannot probe right
+  // now (intermittent endpoints, blocked egress, etc.).
+  if (probeFailed && p.forceSave === true && connector.latest_probe?.probed_at) {
+    const probedAtMs = Date.parse(connector.latest_probe.probed_at);
+    if (Number.isFinite(probedAtMs)) {
+      const ageMs = Date.now() - probedAtMs;
+      if (ageMs >= 0 && ageMs < FORCE_SAVE_COOLDOWN_MS) {
+        const remainingMs = FORCE_SAVE_COOLDOWN_MS - ageMs;
+        return {
+          ok: false,
+          error_code: "force_save_cooldown",
+          message: `the most recent probe failed ${Math.round(ageMs / 1000)}s ago — re-probe with the rotated credential before force-saving (cooldown: ${Math.round(remainingMs / 1000)}s remaining)`,
+          next_best_actions: ["ask_user_form", "probe_connector_draft", "save_connector_draft"],
+          ...(connector.latest_probe ? { details: connector.latest_probe } : {}),
+          data: buildGateError(draft, {
+            error_code: "force_save_cooldown",
+            message:
+              "force_save is refused while the failed probe is still fresh — collect a new credential via ask_user_form, re-probe, then save",
+            recommended_mode: "connector",
+            next_best_actions: ["ask_user_form", "probe_connector_draft", "save_connector_draft"],
+            extra: {
+              latest_probe: connector.latest_probe ?? null,
+              cooldown_ms: FORCE_SAVE_COOLDOWN_MS,
+              probe_age_ms: ageMs,
+              cooldown_remaining_ms: remainingMs,
+            },
+          }),
+        };
+      }
+    }
+  }
   if (probeFailed && p.forceSave !== true) {
     const hasProbeRecord = connector.latest_probe != null;
     return {

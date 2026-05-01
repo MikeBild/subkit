@@ -16,6 +16,7 @@ import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
 import {
   buildRequestPlan,
   executePlannedHttpRequest,
+  HttpRequestInvalidError,
   serializeXmlBody,
 } from "../../connectors/drivers/http.ts";
 import {
@@ -72,7 +73,13 @@ export class RequestError extends Error {
       | "timeout"
       | "abort"
       | "connection"
-      | "filter_fail",
+      | "filter_fail"
+      // Request was malformed before it ever hit the wire (e.g. a
+      // non-RFC-token header name slipped past validation). Always
+      // non-retryable — retries can't fix a malformed plan, and the
+      // "Invalid header name" symptom this class catches gets falsely
+      // classified as `connection` without an explicit kind.
+      | "request_invalid",
     public readonly status?: number,
     public readonly meta?: Record<string, unknown>,
   ) {
@@ -175,10 +182,25 @@ async function fetchOnce(
   signal: AbortSignal,
   tunnel?: TunnelRoute,
 ): Promise<FetchAttemptResult> {
+  // Pagination cursors and `${item.…}` resolution sometimes produce a
+  // URL the placeholder validator missed. Without a typed guard,
+  // `new URL(url)` throws a generic TypeError that the retry loop
+  // misclassifies as a transient `connection` error and retries 5×.
+  // Throw `HttpRequestInvalidError` instead so the caller short-circuits
+  // to `RequestError("…", "request_invalid")`. (Audit anti-pattern E2.)
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch (err) {
+    throw new HttpRequestInvalidError(
+      `invalid request URL: ${err instanceof Error ? err.message : String(err)}`,
+      "url",
+    );
+  }
   const execution = await executePlannedHttpRequest({
     tenant_id: tunnel?.tenant_id ?? "",
     method,
-    url: new URL(url),
+    url: parsedUrl,
     headers,
     body,
     signal,
@@ -336,10 +358,16 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
       throw new RequestError(`http ${res.status}`, "http_4xx", res.status, { body: res.body });
     } catch (err) {
       lastErr = err;
+      if (err instanceof HttpRequestInvalidError) {
+        throw new RequestError(err.message, "request_invalid", undefined, {
+          path: err.path,
+        });
+      }
       if (err instanceof RequestError) {
         if (err.cause_kind === "http_4xx") throw err;
         if (err.cause_kind === "abort") throw err;
         if (err.cause_kind === "filter_fail") throw err;
+        if (err.cause_kind === "request_invalid") throw err;
         if (attempt >= p.max_attempts) throw err;
         continue;
       }
@@ -665,6 +693,20 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
                 }),
           };
         } catch (err) {
+          // Header-contract violations on the GraphQL pipeline get the
+          // same `request_invalid` classification as the HTTP driver.
+          // Without this distinction the LLM sees `graphql_error` for
+          // both real query failures and "your headers are malformed",
+          // and may loop trying to repair the GraphQL document instead
+          // of fixing the headers. (Audit anti-pattern C1.)
+          if (err instanceof HttpRequestInvalidError) {
+            return {
+              status: "failed",
+              retry_count: 0,
+              duration_ms: Date.now() - start,
+              error: buildStepErrorDetail({ code: "request_invalid", err }),
+            };
+          }
           return {
             status: "failed",
             retry_count: 0,

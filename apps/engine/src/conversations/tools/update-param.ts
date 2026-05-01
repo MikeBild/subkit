@@ -84,6 +84,39 @@ export const updateParamTool: ConversationTool = {
         }),
       };
     }
+    // Targeted guard: when the LLM mutates `headers` directly with a
+    // JSON-encoded object STRING (e.g. `value: '{"Accept": "..."}'`)
+    // the workflow schema's lenient string-coercion accepts the first
+    // `{"Accept"` token as a header name, the http driver later
+    // crashes inside `new Headers()` with "Invalid header name", and
+    // the LLM repairs blindly through `update_param` again. Reject
+    // up front with a clean repair signal so the model emits an
+    // object the next turn (conversation 730c568a).
+    if (args.param === "headers" && typeof args.value === "string") {
+      const trimmed = args.value.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        return {
+          ok: false,
+          data: buildGateError(currentDraft, {
+            error_code: "step_update_invalid",
+            message:
+              'headers must be an object (e.g. `{"Accept":"application/json"}`) or one or more `Name: Value` lines — a JSON-encoded string is not accepted',
+            recommended_mode: "workflow",
+            extra: {
+              errors: [
+                {
+                  path: "headers",
+                  message:
+                    "JSON-encoded string passed where a Record<string,string> or Name:Value lines were expected",
+                },
+              ],
+              step_id: args.step_id,
+              param: args.param,
+            },
+          }),
+        };
+      }
+    }
     let step: Record<string, unknown>;
     try {
       step = applyParamPath(workflowDraft.steps[idx] ?? {}, args.param, args.value);

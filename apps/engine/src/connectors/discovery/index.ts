@@ -21,6 +21,7 @@
 // is pure compute.
 
 import { log } from "../../logging/logger.ts";
+import { validateOutboundHeaders } from "../drivers/http.ts";
 import { scrubUrl } from "../egress.ts";
 import { getBuiltinTemplate } from "../templates.ts";
 import { graphqlIntrospectStrategy } from "./graphql-introspect.ts";
@@ -153,6 +154,14 @@ export async function discoverConnectorEndpoints(
   input: DiscoverConnectorEndpointsInput,
 ): Promise<DiscoveryResult> {
   const url = resolveSourceUrl(input);
+  // Validate the headers bag once at the dispatcher boundary instead
+  // of letting every strategy crash inside `new Headers()` with the
+  // obtuse "Invalid header name" error. A malformed header bag is a
+  // hard authoring error, not something to fall through to the next
+  // strategy on. (Audit anti-pattern C3.)
+  if (input.headers !== undefined) {
+    validateOutboundHeaders(input.headers);
+  }
   const strategies =
     input.strategies ?? reorderStrategiesForTemplate(input.template_id, DEFAULT_STRATEGIES);
   const opts: DiscoveryStrategyOptions = {

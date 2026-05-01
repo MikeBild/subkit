@@ -6,6 +6,7 @@
 // running behind the tunnel agent on a private LAN).
 
 import { getIntrospectionQuery } from "graphql";
+import { validateOutboundHeaders } from "./drivers/http.ts";
 
 export interface FetchedSpec {
   content: string;
@@ -42,6 +43,13 @@ async function fetchWithBudget(url: string, init: RequestInit): Promise<Response
   if (isPrivateHost(u.hostname) && process.env.SUBKIT_ALLOW_PRIVATE_SPEC_FETCH !== "1") {
     throw new SpecFetchError(`refusing to fetch private host ${u.hostname}`, url);
   }
+  // Defence on every fetch path. The LLM-issued
+  // `import_connector_from_spec` tool accepts an arbitrary
+  // `Record<string,string>` headers field; without this guard a
+  // non-RFC-token header name crashes inside `new Headers()` with
+  // the obtuse "Invalid header name" error and the LLM has no
+  // actionable repair signal. (Audit anti-pattern C2.)
+  if (init.headers !== undefined) validateOutboundHeaders(init.headers);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {

@@ -254,6 +254,12 @@ export interface ConnectorDraftProbeSummary {
   summary: string;
   response_preview?: unknown;
   failure_code?: string;
+  /** ISO-8601 timestamp the probe completed at. Used by the
+   *  `force_save` cooldown guard in `saveConnectorAtomic`: a probe
+   *  that just failed must not be force-saved without first
+   *  re-probing with the rotated credential (conversation 730c568a).
+   *  Optional for backwards-compat with old persisted drafts. */
+  probed_at?: string;
 }
 
 export interface ConnectorDraftDocument {

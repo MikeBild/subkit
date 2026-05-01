@@ -29,6 +29,58 @@ import { signSigV4Request } from "./aws-sigv4.ts";
 // the SSRF-block error without taking a direct dependency on the guard.
 export { EgressBlockedError } from "../egress-guard.ts";
 
+/**
+ * Thrown when the request descriptor would produce a malformed wire
+ * request — e.g. a header name that isn't an RFC 7230 token, or a
+ * non-string header value. Always non-retryable; the retry loop in
+ * `execution/steps/request.ts` recognises this class and converts it
+ * into a `RequestError("…", "request_invalid")`.
+ */
+export class HttpRequestInvalidError extends Error {
+  constructor(
+    message: string,
+    public readonly path: string,
+  ) {
+    super(message);
+    this.name = "HttpRequestInvalidError";
+  }
+}
+
+// RFC 7230 §3.2.6 token characters.
+export const HTTP_HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+/**
+ * Validate that `headers` is a `{string: string}` record whose keys are
+ * RFC 7230 tokens and whose values are strings. Throws
+ * `HttpRequestInvalidError` on any violation. Exported so non-HTTP
+ * drivers (graphql) and the discovery / spec-fetcher surfaces can call
+ * the same check before reaching `fetch()`. Defends against the
+ * conversation 730c568a class of bug on every fetch path, not only the
+ * HTTP driver.
+ */
+export function validateOutboundHeaders(headers: unknown): void {
+  if (headers === null || typeof headers !== "object" || Array.isArray(headers)) {
+    throw new HttpRequestInvalidError(
+      `headers must be a {string: string} record, got ${Array.isArray(headers) ? "array" : typeof headers}`,
+      "headers",
+    );
+  }
+  for (const [name, value] of Object.entries(headers as Record<string, unknown>)) {
+    if (!HTTP_HEADER_NAME_RE.test(name)) {
+      throw new HttpRequestInvalidError(
+        `header name "${name}" is not an RFC 7230 token — fix the workflow's headers field`,
+        `headers.${name}`,
+      );
+    }
+    if (typeof value !== "string") {
+      throw new HttpRequestInvalidError(
+        `header "${name}" must be a string, got ${typeof value}`,
+        `headers.${name}`,
+      );
+    }
+  }
+}
+
 export interface HttpRequestDescriptor {
   base_url: string | null;
   path_or_url: string; // either an absolute URL or a path relative to base_url
@@ -588,6 +640,15 @@ export async function executePlannedHttpRequest(params: {
     credential: import("../../credentials/types.ts").AwsSigV4CredentialValue;
   };
 }): Promise<HttpExecutionResult> {
+  // Last-line defence: validate the headers contract the caller is
+  // supposed to honour. The workflow draft schema and the connector
+  // driver layer should both reject malformed values upstream, but
+  // when something slips through (e.g. a JSON-encoded headers string
+  // mis-parsed into `{'{"Accept"': '...'}` — conversation 730c568a)
+  // `new Headers()` throws a TypeError that the retry loop classifies
+  // as a transient connection error and retries 5×. Reject up front
+  // so the operator sees a single, accurate `request_invalid` error.
+  validateOutboundHeaders(params.headers);
   if (params.tunnel_target) {
     const effectiveBody =
       params.body !== undefined && params.body !== null && params.method !== "GET"
