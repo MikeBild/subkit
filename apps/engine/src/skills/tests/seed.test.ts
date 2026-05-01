@@ -284,6 +284,172 @@ describe("applySkillSeedsForAllTenants — per-tenant fanout", () => {
   });
 });
 
+describe("loadSkillSeedsFromDisk — migration 0006 contract", () => {
+  test("legacy `auto_load` key reports legacy_field", async () => {
+    const dir = await fs.mkdtemp("/tmp/sk-seed-legacy-");
+    try {
+      await fs.writeFile(
+        path.join(dir, "legacy.md"),
+        [
+          "---",
+          "slug: legacy",
+          "scope: global",
+          "title: T",
+          "description: D",
+          "auto_load: true",
+          "version: 1",
+          "---",
+          "body",
+        ].join("\n"),
+      );
+      const r = await loadSkillSeedsFromDisk(dir);
+      expect(r.errors[0]!.code).toBe("legacy_field");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("legacy `trigger_keywords` key reports legacy_field", async () => {
+    const dir = await fs.mkdtemp("/tmp/sk-seed-legacy-");
+    try {
+      await fs.writeFile(
+        path.join(dir, "legacy.md"),
+        [
+          "---",
+          "slug: legacy",
+          "scope: global",
+          "title: T",
+          "description: D",
+          "trigger_keywords: [a, b]",
+          "version: 1",
+          "---",
+          "body",
+        ].join("\n"),
+      );
+      const r = await loadSkillSeedsFromDisk(dir);
+      expect(r.errors[0]!.code).toBe("legacy_field");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("activates_when parses inline JSON of discriminated objects", async () => {
+    const dir = await fs.mkdtemp("/tmp/sk-seed-aw-");
+    try {
+      await fs.writeFile(
+        path.join(dir, "rich.md"),
+        [
+          "---",
+          "slug: rich",
+          "scope: global",
+          "title: T",
+          "description: D",
+          'activates_when: [{"kind":"baseline"},{"kind":"tool","tool":"probe_connector"},{"kind":"intent_keyword","word":"customers"}]',
+          "side_effects: write",
+          "idempotency: key_required",
+          "maturity: experimental",
+          "tags: [stripe, payments]",
+          'input_schema: {"type":"object","required":["x"],"properties":{"x":{"type":"string"}}}',
+          'output_schema: {"type":"object","properties":{"y":{"type":"number"}}}',
+          "version: 2",
+          "---",
+          "body",
+        ].join("\n"),
+      );
+      const r = await loadSkillSeedsFromDisk(dir);
+      expect(r.errors).toEqual([]);
+      const s = r.skills[0]!;
+      expect(s.activates_when).toHaveLength(3);
+      expect(s.activates_when[0]!.kind).toBe("baseline");
+      expect(s.side_effects).toBe("write");
+      expect(s.idempotency).toBe("key_required");
+      expect(s.maturity).toBe("experimental");
+      expect(s.tags).toEqual(["stripe", "payments"]);
+      expect(s.input_schema).toEqual({
+        type: "object",
+        required: ["x"],
+        properties: { x: { type: "string" } },
+      });
+      expect(s.output_schema).toEqual({
+        type: "object",
+        properties: { y: { type: "number" } },
+      });
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("malformed activates_when reports bad_activates_when", async () => {
+    const dir = await fs.mkdtemp("/tmp/sk-seed-aw-bad-");
+    try {
+      await fs.writeFile(
+        path.join(dir, "bad.md"),
+        [
+          "---",
+          "slug: bad",
+          "scope: global",
+          "title: T",
+          "description: D",
+          'activates_when: [{"kind":"unknown"}]',
+          "version: 1",
+          "---",
+          "body",
+        ].join("\n"),
+      );
+      const r = await loadSkillSeedsFromDisk(dir);
+      expect(r.errors[0]!.code).toBe("bad_activates_when");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("invalid side_effects reports bad_side_effects", async () => {
+    const dir = await fs.mkdtemp("/tmp/sk-seed-se-bad-");
+    try {
+      await fs.writeFile(
+        path.join(dir, "bad.md"),
+        [
+          "---",
+          "slug: bad",
+          "scope: global",
+          "title: T",
+          "description: D",
+          "side_effects: nuke",
+          "version: 1",
+          "---",
+          "body",
+        ].join("\n"),
+      );
+      const r = await loadSkillSeedsFromDisk(dir);
+      expect(r.errors[0]!.code).toBe("bad_side_effects");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("every shipped seed file under conversations/seed/skills/ parses cleanly", async () => {
+    const dir = path.resolve(
+      process.cwd(),
+      "apps",
+      "engine",
+      "src",
+      "conversations",
+      "seed",
+      "skills",
+    );
+    const r = await loadSkillSeedsFromDisk(dir);
+    const reason = r.errors.length === 0 ? "" : `seed parse errors: ${JSON.stringify(r.errors)}`;
+    expect(reason).toBe("");
+    expect(r.errors).toEqual([]);
+    expect(r.skills.length).toBeGreaterThanOrEqual(20);
+    // Every shipped skill has a slug + activates_when (possibly empty).
+    for (const s of r.skills) {
+      expect(s.slug.length).toBeGreaterThan(0);
+      expect(Array.isArray(s.activates_when)).toBe(true);
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 
 async function oneByTenantSlug(

@@ -3,10 +3,12 @@ slug: multi-step-best-practices
 scope: global
 title: Multi-Step Workflow Best Practices
 description: Best practices for orchestrating multi-step workflows with branches, loops, and error handling.
-gates_tools: []
-version: 1
-auto_load: true
-trigger_keywords: [multi-step, orchestration, workflow, branch, loop, parallel, error-handling, retry]
+activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"multi-step"},{"kind":"intent_keyword","word":"orchestration"},{"kind":"intent_keyword","word":"workflow"},{"kind":"intent_keyword","word":"branch"},{"kind":"intent_keyword","word":"loop"},{"kind":"intent_keyword","word":"parallel"},{"kind":"intent_keyword","word":"error-handling"},{"kind":"intent_keyword","word":"retry"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [authoring, orchestration]
+version: 2
 ---
 
 # Multi-Step Workflow Best Practices

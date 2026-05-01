@@ -44,7 +44,17 @@ export const connectors = pgTable(
     config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
     base_url: text("base_url"),
     dsn: text("dsn"),
-    operator_notes: text("operator_notes"),
+    // Categorized operator quirks (migration 0006 — replaces the legacy
+    // `operator_notes` text column). Six string slots, each capped at
+    // 2K chars; the context assembler picks only the categories
+    // relevant to the current turn shape. Typed as a partial record so
+    // the application layer can pass the same `OperatorQuirks` shape
+    // (each slot independently optional) without coercing — drizzle's
+    // jsonb column accepts whatever JSON the Zod schema validated.
+    operator_quirks: jsonb("operator_quirks")
+      .$type<Partial<Record<string, string>>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     template_slug: text("template_slug"),
     template_name: text("template_name"),
     template_source: connectorTemplateSourceEnum("template_source"),

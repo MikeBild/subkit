@@ -56,6 +56,7 @@ describe("outbound: circuit breaker", () => {
         event_type: "execution.succeeded",
         body,
         webhook_id: `msg_circ_${i}`,
+        // allow-wall-clock: this test exercises real-time polling or freshness windows.
         timestamp: Math.floor(Date.now() / 1000),
         attempt_number: 1,
       };
@@ -87,6 +88,7 @@ describe("outbound: circuit breaker", () => {
       event_type: "execution.succeeded",
       body,
       webhook_id: "msg_circ_11",
+      // allow-wall-clock: this test exercises real-time polling or freshness windows.
       timestamp: Math.floor(Date.now() / 1000),
       attempt_number: 1,
     };

@@ -32,6 +32,8 @@ import { getKnowledgeSearchCacheStats, invalidateKnowledgeCache } from "../../kn
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: JourneyCtx;
 let tmpFile: string;
 let connectorId = "";
@@ -177,7 +179,7 @@ async function runCli(command: import("citty").CommandDef, rawArgs: string[]): P
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("ks-upload-converse");
-  tmpFile = path.join(tmpdir(), `ks-md-${Date.now()}.md`);
+  tmpFile = path.join(tmpdir(), `ks-md-${TEST_NOW_MS}.md`);
   writeFileSync(tmpFile, MARKDOWN_FIXTURE);
 
   const [row] = await ctx.db

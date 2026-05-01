@@ -2567,11 +2567,15 @@
                   },
                   "default": []
                 },
-                "operator_notes": {
-                  "type": "string",
-                  "nullable": true,
-                  "maxLength": 4000,
-                  "default": null
+                "operator_quirks": {
+                  "$ref": "#/components/schemas/OperatorQuirks"
+                },
+                "recipes": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectorTemplateRecipe"
+                  },
+                  "default": []
                 },
                 "source": {
                   "type": "string",
@@ -2906,6 +2910,77 @@
           "recommended_backoff_ms"
         ]
       },
+      "OperatorQuirks": {
+        "type": "object",
+        "properties": {
+          "auth": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "pagination": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "rate_limit": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "schema": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "error_handling": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "general": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "default": {}
+      },
+      "ConnectorTemplateRecipe": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "intent_keywords": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
+          },
+          "derived_from_skill": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "default": null
+          },
+          "workflow": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "description",
+          "workflow"
+        ]
+      },
       "ConnectorTemplateRow": {
         "type": "object",
         "properties": {
@@ -3070,11 +3145,15 @@
             },
             "default": []
           },
-          "operator_notes": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 4000,
-            "default": null
+          "operator_quirks": {
+            "$ref": "#/components/schemas/OperatorQuirks"
+          },
+          "recipes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateRecipe"
+            },
+            "default": []
           },
           "id": {
             "type": "string"
@@ -3274,11 +3353,15 @@
             },
             "default": []
           },
-          "operator_notes": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 4000,
-            "default": null
+          "operator_quirks": {
+            "$ref": "#/components/schemas/OperatorQuirks"
+          },
+          "recipes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateRecipe"
+            },
+            "default": []
           }
         },
         "required": [
@@ -3498,9 +3581,8 @@
               "nullable": true
             }
           },
-          "operator_notes": {
-            "type": "string",
-            "nullable": true
+          "operator_quirks": {
+            "$ref": "#/components/schemas/OperatorQuirks"
           },
           "template_slug": {
             "type": "string",
@@ -3548,7 +3630,7 @@
           "base_url",
           "dsn",
           "config",
-          "operator_notes",
+          "operator_quirks",
           "template_slug",
           "template_name",
           "template_source",
@@ -3624,10 +3706,8 @@
               "nullable": true
             }
           },
-          "operator_notes": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 4000
+          "operator_quirks": {
+            "$ref": "#/components/schemas/OperatorQuirks"
           },
           "template_slug": {
             "type": "string",
@@ -3682,10 +3762,8 @@
               "nullable": true
             }
           },
-          "operator_notes": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 4000
+          "operator_quirks": {
+            "$ref": "#/components/schemas/OperatorQuirks"
           },
           "template_slug": {
             "type": "string",
@@ -4550,6 +4628,72 @@
             },
             "default": []
           },
+          "gates_tools": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
+          },
+          "activates_when": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillActivation"
+            },
+            "default": []
+          },
+          "input_schema": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            },
+            "default": null
+          },
+          "output_schema": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            },
+            "default": null
+          },
+          "side_effects": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "destructive"
+            ],
+            "default": "read"
+          },
+          "idempotency": {
+            "type": "string",
+            "enum": [
+              "none",
+              "naturally",
+              "key_required"
+            ],
+            "default": "none"
+          },
+          "maturity": {
+            "type": "string",
+            "enum": [
+              "experimental",
+              "stable"
+            ],
+            "default": "stable"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -4591,6 +4735,190 @@
           "version",
           "created_at",
           "updated_at"
+        ]
+      },
+      "SkillActivation": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SkillActivationBaseline"
+          },
+          {
+            "$ref": "#/components/schemas/SkillActivationTool"
+          },
+          {
+            "$ref": "#/components/schemas/SkillActivationToolArg"
+          },
+          {
+            "$ref": "#/components/schemas/SkillActivationConnectorDriver"
+          },
+          {
+            "$ref": "#/components/schemas/SkillActivationConnectorTemplate"
+          },
+          {
+            "$ref": "#/components/schemas/SkillActivationConnectorRecipeMatch"
+          },
+          {
+            "$ref": "#/components/schemas/SkillActivationIntentKeyword"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "baseline": "#/components/schemas/SkillActivationBaseline",
+            "tool": "#/components/schemas/SkillActivationTool",
+            "tool_arg": "#/components/schemas/SkillActivationToolArg",
+            "connector_driver": "#/components/schemas/SkillActivationConnectorDriver",
+            "connector_template": "#/components/schemas/SkillActivationConnectorTemplate",
+            "connector_recipe_match": "#/components/schemas/SkillActivationConnectorRecipeMatch",
+            "intent_keyword": "#/components/schemas/SkillActivationIntentKeyword"
+          }
+        }
+      },
+      "SkillActivationBaseline": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "baseline"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "SkillActivationTool": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tool"
+            ]
+          },
+          "tool": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "tool"
+        ]
+      },
+      "SkillActivationToolArg": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tool_arg"
+            ]
+          },
+          "tool": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "equals": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "tool",
+          "path",
+          "equals"
+        ]
+      },
+      "SkillActivationConnectorDriver": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "connector_driver"
+            ]
+          },
+          "driver": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "driver"
+        ]
+      },
+      "SkillActivationConnectorTemplate": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "connector_template"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "slug"
+        ]
+      },
+      "SkillActivationConnectorRecipeMatch": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "connector_recipe_match"
+            ]
+          },
+          "template": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "template"
+        ]
+      },
+      "SkillActivationIntentKeyword": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "intent_keyword"
+            ]
+          },
+          "word": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "word"
         ]
       },
       "CreateSkillBody": {
@@ -4642,6 +4970,64 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "gates_tools": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "activates_when": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillActivation"
+            }
+          },
+          "input_schema": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "side_effects": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "destructive"
+            ]
+          },
+          "idempotency": {
+            "type": "string",
+            "enum": [
+              "none",
+              "naturally",
+              "key_required"
+            ]
+          },
+          "maturity": {
+            "type": "string",
+            "enum": [
+              "experimental",
+              "stable"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
             }
           },
           "status": {
@@ -4701,6 +5087,64 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "gates_tools": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "activates_when": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillActivation"
+            }
+          },
+          "input_schema": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "side_effects": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "destructive"
+            ]
+          },
+          "idempotency": {
+            "type": "string",
+            "enum": [
+              "none",
+              "naturally",
+              "key_required"
+            ]
+          },
+          "maturity": {
+            "type": "string",
+            "enum": [
+              "experimental",
+              "stable"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
             }
           },
           "status": {

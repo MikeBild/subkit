@@ -3,8 +3,12 @@ slug: self-healing
 scope: global
 title: Self-Healing And Patch Candidates
 description: How the engine detects drift, proposes bounded repairs, and gates their promotion via classification and approval.
-gates_tools: []
-version: 2
+activates_when: [{"kind":"tool","tool":"approve_patch_candidate"},{"kind":"tool","tool":"approve_skill_candidate"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [self-healing, drift, repair]
+version: 3
 ---
 
 # Self-Healing And Patch Candidates

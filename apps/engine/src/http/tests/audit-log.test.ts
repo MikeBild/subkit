@@ -19,6 +19,8 @@ import { auditAwait } from "../../audit/audit.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let srv: HttpTestServer;
 let memberKey = "";
 let seededIds: string[] = [];
@@ -59,14 +61,14 @@ beforeAll(async () => {
   srv = await createHttpTestServer("audit-log");
 
   // Seed a known-shape set of audit rows for list / filter assertions.
-  seedStartIso = new Date().toISOString();
+  seedStartIso = new Date(TEST_NOW_MS).toISOString();
   seededIds = [];
   seededIds.push(await seedAudit("workflow.created"));
   seededIds.push(await seedAudit("workflow.updated"));
   seededIds.push(await seedAudit("workflow.deleted"));
   seededIds.push(await seedAudit("connector.created"));
   seededIds.push(await seedAudit("connector.updated"));
-  seedEndIso = new Date().toISOString();
+  seedEndIso = new Date(TEST_NOW_MS).toISOString();
 
   // A second (non-admin) member user whose api key should be denied by
   // `audit:read`. Member users inherit the built-in `member` role,

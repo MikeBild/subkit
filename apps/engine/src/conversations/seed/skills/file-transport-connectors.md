@@ -3,8 +3,12 @@ slug: file-transport-connectors
 scope: global
 title: FTP / SFTP / SMB Connectors
 description: Driver specifics for file-transport drivers — list / get / put / delete operations against FTP, SFTP, and SMB shares.
-gates_tools: []
-version: 1
+activates_when: [{"kind":"connector_driver","driver":"ftp"},{"kind":"connector_driver","driver":"sftp"},{"kind":"connector_driver","driver":"smb"}]
+side_effects: write
+idempotency: key_required
+maturity: stable
+tags: [driver, files, ftp, sftp, smb]
+version: 2
 ---
 
 # FTP / SFTP / SMB Connectors

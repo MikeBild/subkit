@@ -27,6 +27,8 @@ import { runDiscoveryCached } from "../../apps/engine/src/connectors/discovery/s
 import { knowledgeSources, tenants } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 interface MockServer {
   baseUrl: string;
   introspectionCallCount: number;
@@ -281,7 +283,7 @@ describe("runDiscoveryCached against live AppSync", () => {
         .insert(connectors)
         .values({
           tenant_id: tenantId,
-          slug: `appsync-disco-${Date.now()}`,
+          slug: `appsync-disco-${TEST_NOW_MS}`,
           display_name: "AppSync discovery target",
           driver: "graphql",
           environment: "dev",

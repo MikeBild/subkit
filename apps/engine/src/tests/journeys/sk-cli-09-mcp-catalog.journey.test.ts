@@ -25,6 +25,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, connectors, portalTokens, skills, users } from "../../db/schema/index.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: JourneyCtx;
 let memberApiKey = "";
 let enduserApiKey = "";
@@ -95,7 +97,7 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
       prefix: portalToken.slice(0, 14),
       token_sha256: sha256Hex(portalToken),
       allowed_workflows: ["*"],
-      expires_at: new Date(Date.now() + 3600_000),
+      expires_at: new Date(TEST_NOW_MS + 3600_000),
     });
   });
 

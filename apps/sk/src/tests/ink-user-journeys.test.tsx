@@ -102,8 +102,10 @@ describe("Ink journey — text_delta streaming", () => {
     );
     await typeText(inst, "hi");
     await enter(inst);
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const deadline = Date.now() + 2000;
     let frame = inst.lastFrame() ?? "";
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (!frame.includes("Hello, world!") && Date.now() < deadline) {
       await tick(50);
       frame = inst.lastFrame() ?? "";
@@ -157,8 +159,10 @@ describe("Ink journey — tool call lifecycle with tool_log + truncation", () =>
     // no-op (first tick already has the content); on ubuntu-latest it
     // absorbs the extra React scheduling latency that made the frame
     // capture race before the tool_result event drained.
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const deadline = Date.now() + 2000;
     let frame = inst.lastFrame() ?? "";
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (!frame.includes("list_workflows") && Date.now() < deadline) {
       await tick(50);
       frame = inst.lastFrame() ?? "";
@@ -208,8 +212,10 @@ describe("Ink journey — elicit_request flow (confirm_before_execution)", () =>
     );
     await typeText(inst, "run workflow in prod");
     await enter(inst);
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const deadline = Date.now() + 2000;
     let frame = inst.lastFrame() ?? "";
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (!frame.includes("Policy requires confirmation") && Date.now() < deadline) {
       await tick(50);
       frame = inst.lastFrame() ?? "";

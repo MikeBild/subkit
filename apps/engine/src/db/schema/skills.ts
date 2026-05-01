@@ -45,18 +45,34 @@ export const skills = pgTable(
     lifecycle: skillLifecycleEnum("lifecycle").notNull(),
     source: skillSourceEnum("source").notNull().default("manual"),
     version: integer("version").notNull().default(1),
-    // Conversation-quality extensions (migration 0028):
+    // Conversation-quality extensions:
     //   seed_source — non-null when the row is managed by the disk seed loader
     //     (see skills/seed.ts). A manually edited skill should null this out.
-    //   gates_tools — tool names that require this skill to be loaded; read by
-    //     conversations/tools/gated.ts to decide which tools the LLM can see.
     //   slug — stable cross-tenant identifier used by the seed loader and by
     //     `load_skill` callers. Unique per tenant when present.
+    //   gates_tools — tool names that become invisible to the LLM until this
+    //     skill is in `loaded_skills`. Read by conversations/tools/gated.ts
+    //     to filter the tool palette per turn. Complementary to
+    //     `activates_when` (which controls auto-loading).
     seed_source: text("seed_source"),
-    gates_tools: jsonb("gates_tools").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     slug: text("slug"),
-    trigger_keywords: jsonb("trigger_keywords").$type<string[]>().default(sql`'[]'::jsonb`),
-    auto_load: boolean("auto_load").notNull().default(false),
+    gates_tools: jsonb("gates_tools").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    // Skill metadata overhaul (migration 0006):
+    //   activates_when — discriminated-union list of activation rules
+    //     consumed by `apps/engine/src/conversations/skill-autoload.ts`. The
+    //     matcher reads this column instead of a hand-maintained RULES table.
+    //   input_schema / output_schema — optional JSONSchema; the workflow
+    //     validator gate enforces structural superset when a workflow
+    //     declares `derived_from_skill_id` pointing at this skill.
+    //   side_effects / idempotency / maturity / tags — capability/safety
+    //     contract surfaced into the assembled prompt and gating logic.
+    activates_when: jsonb("activates_when").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
+    input_schema: jsonb("input_schema").$type<Record<string, unknown> | null>(),
+    output_schema: jsonb("output_schema").$type<Record<string, unknown> | null>(),
+    side_effects: text("side_effects").notNull().default("read"),
+    idempotency: text("idempotency").notNull().default("none"),
+    maturity: text("maturity").notNull().default("stable"),
+    tags: jsonb("tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     ...timestamps,
   },
   (t) => [

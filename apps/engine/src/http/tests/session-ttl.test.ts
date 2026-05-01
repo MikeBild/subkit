@@ -14,6 +14,8 @@ import { auditLog, sessions } from "../../db/schema/index.ts";
 import { createSession, resolveSession } from "../../identity/service.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: HttpTestServer;
 
 beforeAll(async () => {
@@ -29,7 +31,7 @@ describe("identity/service session TTL", () => {
     const session = await createSession({ tenant_id: ctx.tenantId, user_id: ctx.userId }, ctx.db);
     // Force last_seen_at 9h in the past so the sliding window has
     // elapsed on the next resolve.
-    const nineHoursAgo = new Date(Date.now() - 9 * 60 * 60 * 1000);
+    const nineHoursAgo = new Date(TEST_NOW_MS - 9 * 60 * 60 * 1000);
     await ctx.db
       .update(sessions)
       .set({ last_seen_at: nineHoursAgo })
@@ -50,10 +52,10 @@ describe("identity/service session TTL", () => {
 
   test("absolute expiry: absolute_expires_at in the past -> rejected", async () => {
     const session = await createSession({ tenant_id: ctx.tenantId, user_id: ctx.userId }, ctx.db);
-    const past = new Date(Date.now() - 1000);
+    const past = new Date(TEST_NOW_MS - 1000);
     await ctx.db
       .update(sessions)
-      .set({ absolute_expires_at: past, last_seen_at: new Date() })
+      .set({ absolute_expires_at: past, last_seen_at: new Date(TEST_NOW_MS) })
       .where(eq(sessions.id, session.id));
 
     const result = await resolveSession(session.id, ctx.db);
@@ -71,7 +73,7 @@ describe("identity/service session TTL", () => {
   test("valid session: resolves and bumps last_seen_at", async () => {
     const session = await createSession({ tenant_id: ctx.tenantId, user_id: ctx.userId }, ctx.db);
     // Move last_seen_at back a few seconds so the bump is observable.
-    const backdate = new Date(Date.now() - 5_000);
+    const backdate = new Date(TEST_NOW_MS - 5_000);
     await ctx.db
       .update(sessions)
       .set({ last_seen_at: backdate })

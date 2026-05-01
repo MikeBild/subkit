@@ -19,6 +19,8 @@ import { saveWorkflowDraftTool } from "../tools/save-workflow-draft.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: ConversationTestCtx;
 
 beforeAll(async () => {
@@ -101,7 +103,7 @@ function makeDraft(opts: {
     status: "succeeded",
     environment: "dev",
     warnings_count: opts.warningsCount,
-    recorded_at: new Date().toISOString(),
+    recorded_at: new Date(TEST_NOW_MS).toISOString(),
     diagnosis_available: opts.warningsCount > 0,
     ...(opts.executionRequiresRepair ? { requires_repair: true } : {}),
   });

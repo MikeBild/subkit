@@ -3,8 +3,12 @@ slug: postgres-connectors
 scope: global
 title: Postgres Connectors
 description: Driver specifics for Postgres — DSN, parametrised queries, and why workflow-level transactions don't exist.
-gates_tools: []
-version: 3
+activates_when: [{"kind":"connector_driver","driver":"postgres"}]
+side_effects: write
+idempotency: naturally
+maturity: stable
+tags: [driver, sql, postgres]
+version: 4
 ---
 
 # Postgres Connectors

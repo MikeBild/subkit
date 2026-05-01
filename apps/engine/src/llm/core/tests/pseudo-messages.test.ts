@@ -34,6 +34,8 @@ import {
   buildTenantStateMessage,
 } from "../pseudo-messages.ts";
 
+const TEST_DISCOVERY_MS = 4_070_908_800_000;
+
 let ctx: TestDb;
 let tenant_id: string;
 let conversation_id: string;
@@ -187,8 +189,8 @@ describe("buildDiscoveryMessage", () => {
       .values({
         tenant_id,
         status: "completed",
-        started_at: new Date(),
-        completed_at: new Date(),
+        started_at: new Date(TEST_DISCOVERY_MS),
+        completed_at: new Date(TEST_DISCOVERY_MS),
       })
       .returning();
     await ctx.db.insert(discoveryArtifacts).values({

@@ -3,8 +3,12 @@ slug: redis-connectors
 scope: global
 title: Redis Connectors
 description: Driver specifics for Redis — connection URL, GET/SET/DEL/PUBLISH operations.
-gates_tools: []
-version: 2
+activates_when: [{"kind":"connector_driver","driver":"redis"}]
+side_effects: write
+idempotency: naturally
+maturity: stable
+tags: [driver, redis, cache]
+version: 3
 ---
 
 # Redis Connectors

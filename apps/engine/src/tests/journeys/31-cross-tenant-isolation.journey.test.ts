@@ -42,6 +42,8 @@ import {
 } from "../../test-helpers/determinism/ids.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: JourneyCtx;
 
 // Deterministic ID factories — replace crypto.randomBytes / randomUUID
@@ -302,8 +304,9 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     // Tenant A signs a payload with SECRET_A. The slug routes to *some*
     // binding; we verify A's signature is rejected when used against
     // any binding bound to SECRET_B by re-issuing it under both secrets.
-    const body = JSON.stringify({ ts: Date.now() });
+    const body = JSON.stringify({ ts: TEST_NOW_MS });
     const webhookId = uuid();
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const ts = Math.floor(Date.now() / 1000);
     const baseStr = `${webhookId}.${ts}.${body}`;
     const sigA = `v1,${createHmac("sha256", SECRET_A).update(baseStr, "utf8").digest("base64")}`;

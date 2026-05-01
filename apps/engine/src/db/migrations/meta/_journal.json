@@ -43,6 +43,13 @@
       "when": 1777700000000,
       "tag": "0005_enable_prompt_cache_default_true",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777800000000,
+      "tag": "0006_skill_metadata_overhaul",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: HttpTestServer;
 
 beforeAll(async () => {
@@ -137,7 +139,7 @@ describe("/v1/identity/api-keys", () => {
     // reject the old key as `rotated_out`.
     await ctx.db
       .update(apiKeys)
-      .set({ rotating_out_at: new Date(Date.now() - 1_000) })
+      .set({ rotating_out_at: new Date(TEST_NOW_MS - 1_000) })
       .where(eq(apiKeys.id, issued.id));
 
     const afterRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys`, {

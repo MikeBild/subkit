@@ -3,10 +3,12 @@ slug: github-graphql-basics
 scope: connector
 title: GitHub GraphQL API Basics
 description: How to author workflows against the github-graphql connector — query structure, pagination, rate-limit costs.
-gates_tools: []
-version: 2
-auto_load: false
-trigger_keywords: [github graphql, github-graphql, github v4, graphql query, pageInfo, endCursor]
+activates_when: [{"kind":"connector_template","slug":"github-graphql"},{"kind":"intent_keyword","word":"github graphql"},{"kind":"intent_keyword","word":"github-graphql"},{"kind":"intent_keyword","word":"github v4"},{"kind":"intent_keyword","word":"graphql query"},{"kind":"intent_keyword","word":"pageInfo"},{"kind":"intent_keyword","word":"endCursor"}]
+side_effects: read
+idempotency: naturally
+maturity: stable
+tags: [connector, github, graphql]
+version: 3
 ---
 
 # GitHub GraphQL API Basics

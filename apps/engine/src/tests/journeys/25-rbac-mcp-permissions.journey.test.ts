@@ -14,6 +14,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { portalTokens, users } from "../../db/schema/index.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: JourneyCtx;
 
 function sha256Hex(v: string): string {
@@ -52,7 +54,7 @@ describe("journey: rbac mcp permissions", () => {
       prefix: plaintext.slice(0, 12),
       token_sha256: sha256Hex(plaintext),
       allowed_workflows: [workflowA],
-      expires_at: new Date(Date.now() + 3600_000),
+      expires_at: new Date(TEST_NOW_MS + 3600_000),
     });
   });
 

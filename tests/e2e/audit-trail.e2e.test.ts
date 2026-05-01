@@ -18,6 +18,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { boot, cli, type E2EEnv, run, runJson, shutdown } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let env: E2EEnv;
 
 beforeAll(async () => {
@@ -58,7 +60,7 @@ describe("audit trail over CLI", () => {
 
   test("skill lifecycle (create → update → archive → delete) emits 4 audit rows", async () => {
     // 1. create
-    const file = path.join(tmpdir(), `rt-skill-${Date.now()}.json`);
+    const file = path.join(tmpdir(), `rt-skill-${TEST_NOW_MS}.json`);
     writeFileSync(
       file,
       JSON.stringify({
@@ -74,7 +76,7 @@ describe("audit trail over CLI", () => {
     expect(created.id).toBeDefined();
 
     // 2. update
-    const patchFile = path.join(tmpdir(), `rt-skill-patch-${Date.now()}.json`);
+    const patchFile = path.join(tmpdir(), `rt-skill-patch-${TEST_NOW_MS}.json`);
     writeFileSync(patchFile, JSON.stringify({ body: "updated by e2e" }));
     await runJson(["skills", "edit", created.id, "--file", patchFile], {
       env,

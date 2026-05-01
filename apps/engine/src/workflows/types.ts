@@ -617,6 +617,16 @@ const _baseWorkflowDefSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1).optional(),
   description: z.string().optional(),
+  /**
+   * Optional pointer to the skill the workflow was authored from
+   * (typically via `start_workflow_from_recipe`). When set, the workflow
+   * validator enforces a structural superset relationship between the
+   * skill's `input_schema` / `output_schema` and the workflow's — so a
+   * recipe-cloned workflow cannot silently narrow its public contract
+   * away from the skill's promise. Null when the workflow was authored
+   * from scratch.
+   */
+  derived_from_skill_id: z.string().nullable().optional(),
   input_schema: z.record(z.string(), z.unknown()).optional(),
   output_schema: z.record(z.string(), z.unknown()).optional(),
   /**

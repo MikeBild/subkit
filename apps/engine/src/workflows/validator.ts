@@ -17,6 +17,51 @@ import { compile as compileJsonata } from "../execution/jsonata-engine.ts";
 import { compileSelector } from "../execution/selectors.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
+/**
+ * Skill-schema gate. When a workflow declares `derived_from_skill_id`,
+ * the workflow's `output_schema` must structurally cover the skill's
+ * declared `output_schema` so a recipe-cloned workflow cannot silently
+ * narrow the public contract the skill promised.
+ *
+ * "Cover" means: every required top-level property in the skill's
+ * schema must be present in the workflow's `properties`. We do NOT
+ * walk the full JSONSchema graph — most schemas the seed loader
+ * produces are shallow object envelopes around the workflow output;
+ * deeper structural checks would be brittle without a JSONSchema
+ * validator dep, which we intentionally don't take. The check is the
+ * inverse of "does the workflow declare everything the skill said
+ * it would return".
+ */
+export interface SkillSchemaGateResult {
+  ok: boolean;
+  missing_fields: string[];
+}
+
+export function validateOutputSchemaSuperset(
+  skill: Record<string, unknown> | null | undefined,
+  workflow: Record<string, unknown> | null | undefined,
+): SkillSchemaGateResult {
+  if (!skill || typeof skill !== "object") return { ok: true, missing_fields: [] };
+  const skillRequired = collectRequiredTopLevel(skill);
+  if (skillRequired.length === 0) return { ok: true, missing_fields: [] };
+  const workflowProps = collectTopLevelProps(workflow);
+  const missing = skillRequired.filter((f) => !workflowProps.has(f));
+  return { ok: missing.length === 0, missing_fields: missing };
+}
+
+function collectRequiredTopLevel(schema: Record<string, unknown>): string[] {
+  const required = schema.required;
+  if (!Array.isArray(required)) return [];
+  return required.filter((f): f is string => typeof f === "string");
+}
+
+function collectTopLevelProps(schema: Record<string, unknown> | null | undefined): Set<string> {
+  if (!schema || typeof schema !== "object") return new Set();
+  const props = (schema as { properties?: unknown }).properties;
+  if (!props || typeof props !== "object") return new Set();
+  return new Set(Object.keys(props as Record<string, unknown>));
+}
+
 export interface ValidationError {
   path: string;
   message: string;

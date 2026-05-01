@@ -94,7 +94,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       base_url: connector.base_url ?? null,
       dsn: connector.dsn ?? null,
       config: connector.config ?? {},
-      operator_notes: null,
+      operator_quirks: {},
       template_slug: connector.template_slug ?? null,
       template_name: connector.template_name ?? null,
       template_source: connector.template_source ?? null,

@@ -24,9 +24,9 @@
 
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { recordWorkflowCommitted, recordWorkflowUpdated } from "../../audit/recorders/index.ts";
-import { conversations } from "../../db/schema/index.ts";
+import { conversations, skills as skillsTable } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { getWorkflow } from "../../workflows/service.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
@@ -46,6 +46,12 @@ const inputSchema = z
       .default(false)
       .describe(
         "Persist the draft even if the most recent dry-run preview was unsuccessful. Surfaces a warning in the response and tags the audit row with `kind: preview_override`. Use only when the operator explicitly confirms.",
+      ),
+    confirmed: z
+      .boolean()
+      .default(false)
+      .describe(
+        'Required when the draft\'s `derived_from_skill_id` resolves to a skill with `side_effects: "destructive"`. Surface the destructive-skill banner to the operator first; pass `true` only after explicit operator confirmation in chat.',
       ),
   })
   .openapi("SaveWorkflowDraftToolInput");
@@ -86,6 +92,35 @@ export const saveWorkflowDraftTool: ConversationTool = {
     // cycle can also short-circuit cleanly.
     const fullDraft = ctx.getDraft();
     const draftSnapshot = getWorkflowDraft(fullDraft);
+
+    // Destructive-skill confirmation gate. When the draft was cloned
+    // from a recipe whose backing skill declares
+    // `side_effects: "destructive"`, refuse to commit unless the LLM
+    // re-issued with `confirmed: true`. The conversation banner
+    // (rendered by the context assembler from the loaded skill) is
+    // the operator-facing prompt that authorises this flag.
+    const derivedFromSkillId = (draftSnapshot as { derived_from_skill_id?: string | null })
+      .derived_from_skill_id;
+    if (derivedFromSkillId && !args.confirmed) {
+      const skillRows = await ctx.db
+        .select({ side_effects: skillsTable.side_effects, title: skillsTable.title })
+        .from(skillsTable)
+        .where(
+          and(eq(skillsTable.tenant_id, ctx.tenant_id), eq(skillsTable.slug, derivedFromSkillId)),
+        )
+        .limit(1);
+      const skillRow = skillRows[0];
+      if (skillRow && skillRow.side_effects === "destructive") {
+        return {
+          ok: false,
+          error_code: "destructive_skill_confirmation_required",
+          message: `workflow derives from skill \`${derivedFromSkillId}\` (${skillRow.title}) which is marked side_effects:"destructive". Surface the destructive-skill banner to the operator and re-issue with confirmed: true after explicit chat confirmation.`,
+          next_best_actions: ["save_workflow_draft"],
+          data: { derived_from_skill_id: derivedFromSkillId, side_effects: "destructive" },
+        };
+      }
+    }
+
     const draftDef = {
       name: draftSnapshot.name,
       ...(draftSnapshot.slug ? { slug: draftSnapshot.slug } : {}),

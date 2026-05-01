@@ -3,10 +3,12 @@ slug: mcp-server-setup
 scope: global
 title: MCP Server Setup
 description: Protocol-level facts for connecting any MCP client (Codex, Claude Desktop, Cursor, Continue, Zed, Goose, …) to sk as an MCP server. Vendor-specific config shapes live in the VendorRecipeManifest and must be fetched via `get_vendor_recipe`, not reproduced in prose.
-gates_tools: []
-version: 3
-auto_load: true
-trigger_keywords: [mcp, mcp server, mcp client, model context protocol, codex, claude code, claude desktop, cursor, continue, zed, goose, sk mcp, sk mcp]
+activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"mcp"},{"kind":"intent_keyword","word":"mcp server"},{"kind":"intent_keyword","word":"mcp client"},{"kind":"intent_keyword","word":"model context protocol"},{"kind":"intent_keyword","word":"codex"},{"kind":"intent_keyword","word":"claude code"},{"kind":"intent_keyword","word":"claude desktop"},{"kind":"intent_keyword","word":"cursor"},{"kind":"intent_keyword","word":"continue"},{"kind":"intent_keyword","word":"zed"},{"kind":"intent_keyword","word":"goose"},{"kind":"intent_keyword","word":"sk mcp"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [mcp, integration]
+version: 4
 ---
 
 # Connecting a client to sk as an MCP server

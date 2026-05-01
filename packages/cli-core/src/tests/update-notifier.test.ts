@@ -3,6 +3,8 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { notifyIfUpdateAvailable } from "../update-notifier.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 // Each test uses a unique binary name so caches don't collide.
 // The notifier creates its cache under ~/.{binaryName}/ so we use
 // temp-prefixed names and clean up after.
@@ -44,7 +46,7 @@ describe("notifyIfUpdateAvailable", () => {
       )) as unknown as typeof fetch;
 
     // Use a unique name to avoid cache collisions
-    const name = `notifier-test-banner-${Date.now()}`;
+    const name = `notifier-test-banner-${TEST_NOW_MS}`;
     notifyIfUpdateAvailable(name, fetchImpl);
     await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
     expect(stderrOutput).toContain("99.0.0");
@@ -69,7 +71,7 @@ describe("notifyIfUpdateAvailable", () => {
         }),
       )) as unknown as typeof fetch;
 
-    const name = `notifier-test-noop-${Date.now()}`;
+    const name = `notifier-test-noop-${TEST_NOW_MS}`;
     notifyIfUpdateAvailable(name, fetchImpl);
     await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
     expect(stderrOutput).toBe("");
@@ -83,7 +85,7 @@ describe("notifyIfUpdateAvailable", () => {
       throw new Error("network failure");
     }) as unknown as typeof fetch;
 
-    const name = `notifier-test-error-${Date.now()}`;
+    const name = `notifier-test-error-${TEST_NOW_MS}`;
     notifyIfUpdateAvailable(name, fetchImpl);
     await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
     expect(stderrOutput).toBe("");
@@ -93,7 +95,7 @@ describe("notifyIfUpdateAvailable", () => {
     // cleanupOldBinary is a no-op on non-Windows
     // Verify that notifyIfUpdateAvailable doesn't throw when calling it
     const fetchImpl = (async () => new Response("", { status: 404 })) as unknown as typeof fetch;
-    const name = `notifier-test-cleanup-${Date.now()}`;
+    const name = `notifier-test-cleanup-${TEST_NOW_MS}`;
     expect(() => notifyIfUpdateAvailable(name, fetchImpl)).not.toThrow();
   });
 });

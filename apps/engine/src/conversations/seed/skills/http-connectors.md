@@ -3,8 +3,12 @@ slug: http-connectors
 scope: global
 title: HTTP Connectors
 description: Driver specifics for the HTTP connector — methods, auth, pagination, retries.
-gates_tools: []
-version: 2
+activates_when: [{"kind":"tool","tool":"probe_connector"},{"kind":"tool_arg","tool":"propose_step","path":"step.kind","equals":"request"},{"kind":"connector_driver","driver":"http"}]
+side_effects: read
+idempotency: naturally
+maturity: stable
+tags: [driver, http, rest]
+version: 3
 ---
 
 # HTTP Connectors

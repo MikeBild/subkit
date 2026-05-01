@@ -3,10 +3,12 @@ slug: mcp-tool-contract
 scope: global
 title: MCP Callable Contract
 description: Reference for sk's MCP callable surface — how callable entries are named, how destructive calls flow through `_meta.sk_confirm`, when to trust the synthesized `inputSchema`, and how to read the `warnings[]` envelope. Consult this before driving sk from any MCP client (Codex, Claude Desktop, Cursor, sk, etc.).
-gates_tools: []
-version: 2
-auto_load: true
-trigger_keywords: [mcp tool, mcp tools, tenant delete, confirm_required, sk_confirm, ask_user_confirm, unresolved_identifier, warnings, input schema, wf., tenant., conversation.]
+activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"mcp tool"},{"kind":"intent_keyword","word":"mcp tools"},{"kind":"intent_keyword","word":"tenant delete"},{"kind":"intent_keyword","word":"confirm_required"},{"kind":"intent_keyword","word":"sk_confirm"},{"kind":"intent_keyword","word":"ask_user_confirm"},{"kind":"intent_keyword","word":"unresolved_identifier"},{"kind":"intent_keyword","word":"warnings"},{"kind":"intent_keyword","word":"input schema"},{"kind":"intent_keyword","word":"wf."},{"kind":"intent_keyword","word":"tenant."},{"kind":"intent_keyword","word":"conversation."}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [mcp, contract]
+version: 3
 ---
 
 # sk MCP callable contract

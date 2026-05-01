@@ -26,6 +26,8 @@ import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { createOidcProvider } from "../oidc.ts";
 import { type MockOidcHandle, startMockOidc } from "./fixtures/mock-oidc.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let testDb: TestDb;
 let mock: MockOidcHandle;
 let tenantId = "";
@@ -168,7 +170,7 @@ describe("oidc provider — real flow", () => {
     const row = sessionRowList[sessionRowList.length - 1]!;
     await testDb.db
       .update(sessions)
-      .set({ last_seen_at: new Date(Date.now() - 9 * 60 * 60 * 1000) })
+      .set({ last_seen_at: new Date(TEST_NOW_MS - 9 * 60 * 60 * 1000) })
       .where(eq(sessions.id, row.id));
 
     const principal = await provider.resolve(
@@ -217,7 +219,7 @@ describe("oidc provider — real flow", () => {
     const row = sessionRowList[sessionRowList.length - 1]!;
     await testDb.db
       .update(sessions)
-      .set({ absolute_expires_at: new Date(Date.now() - 1_000) })
+      .set({ absolute_expires_at: new Date(TEST_NOW_MS - 1_000) })
       .where(eq(sessions.id, row.id));
 
     const principal = await provider.resolve(

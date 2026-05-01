@@ -49,6 +49,39 @@ export const AuthTypeEnum = z.enum([
 ]);
 export type AuthType = z.infer<typeof AuthTypeEnum>;
 
+// Categorized replacement for the legacy free-form `operator_notes` blob.
+//
+// The previous shape (`text(4000)`) bloated tokens (4 KB × N connectors per
+// turn) and surfaced auth quirks while authoring transforms. Splitting into
+// six categories lets the context assembler pick only the relevant slice
+// per turn — `auth + pagination + rate_limit` for request authoring,
+// `schema` for transforms, `error_handling` after a failed envelope.
+//
+// Each slot caps at 2K characters. The whole block lives in the stable
+// cached prompt section; per-turn category selection is a string concat
+// outside the cached region so the cache key stays stable across swaps.
+export const OperatorQuirksSchema = z
+  .object({
+    auth: z.string().max(2_000).optional(),
+    pagination: z.string().max(2_000).optional(),
+    rate_limit: z.string().max(2_000).optional(),
+    schema: z.string().max(2_000).optional(),
+    error_handling: z.string().max(2_000).optional(),
+    general: z.string().max(2_000).optional(),
+  })
+  .openapi("OperatorQuirks");
+export type OperatorQuirks = z.infer<typeof OperatorQuirksSchema>;
+
+export const OPERATOR_QUIRK_CATEGORIES = [
+  "auth",
+  "pagination",
+  "rate_limit",
+  "schema",
+  "error_handling",
+  "general",
+] as const;
+export type OperatorQuirkCategory = (typeof OPERATOR_QUIRK_CATEGORIES)[number];
+
 export const HeaderAuthConfigSchema = z
   .object({
     auth_type: z.literal("header"),
@@ -209,12 +242,12 @@ export const CreateConnectorSchema = z
     dsn: z.string().optional(),
     auth_type: AuthTypeEnum.default("none"),
     config: z.record(z.string(), z.unknown()).optional(),
-    // Free-form operator notes surfaced to the LLM whenever this
-    // connector is in scope for a conversation turn. Use for tight,
-    // imperative hints the LLM should treat as authoritative
-    // ("always send `?api-version=2025-01-01`", "treat 422 as success
-    // for upserts"). For larger guidance prefer a connector-scoped Skill.
-    operator_notes: z.string().max(4_000).nullable().optional(),
+    // Categorized operator quirks surfaced to the LLM whenever this
+    // connector is in scope for a conversation turn. The context
+    // assembler picks only the categories relevant to the current turn
+    // (auth+pagination+rate_limit on request authoring, schema on
+    // transforms, error_handling after a failure envelope).
+    operator_quirks: OperatorQuirksSchema.optional(),
     template_slug: z.string().min(1).optional(),
     template_source: ConnectorTemplateSourceEnum.optional(),
     template_base_url_environment: z.string().min(1).optional(),
@@ -230,8 +263,8 @@ export const UpdateConnectorSchema = z
     dsn: z.string().optional(),
     auth_type: AuthTypeEnum.optional(),
     config: z.record(z.string(), z.unknown()).optional(),
-    // `null` clears the field; `undefined`/omitted leaves it untouched.
-    operator_notes: z.string().max(4_000).nullable().optional(),
+    // Omitted leaves quirks untouched. Pass an empty object to clear them.
+    operator_quirks: OperatorQuirksSchema.optional(),
     template_slug: z.string().min(1).optional(),
     template_source: ConnectorTemplateSourceEnum.optional(),
     template_base_url_environment: z.string().min(1).optional(),
@@ -252,7 +285,7 @@ export interface ConnectorView {
   base_url: string | null;
   dsn: string | null;
   config: Record<string, unknown>;
-  operator_notes: string | null;
+  operator_quirks: OperatorQuirks;
   template_slug: string | null;
   template_name: string | null;
   template_source: ConnectorTemplateSource | null;

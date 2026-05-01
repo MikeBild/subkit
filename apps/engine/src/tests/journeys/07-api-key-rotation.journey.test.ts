@@ -14,6 +14,8 @@ import { eq } from "drizzle-orm";
 import { apiKeys, systemAccounts, users } from "../../db/schema/index.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: JourneyCtx;
 let victimKeyId = "";
 let victimKeyPlain = "";
@@ -84,7 +86,7 @@ describe("journey: api key rotation", () => {
     // Force the overlap window into the past.
     await ctx.db
       .update(apiKeys)
-      .set({ rotating_out_at: new Date(Date.now() - 60_000) })
+      .set({ rotating_out_at: new Date(TEST_NOW_MS - 60_000) })
       .where(eq(apiKeys.id, victimKeyId));
 
     expect(await probeWith(victimKeyPlain)).toBe(401);

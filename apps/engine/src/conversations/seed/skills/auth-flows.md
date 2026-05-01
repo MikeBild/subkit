@@ -3,8 +3,12 @@ slug: auth-flows
 scope: global
 title: Auth Flows
 description: Built-in auth modes plus the multi-step "login then call" pattern for upstreams without a first-class flow.
-gates_tools: []
-version: 2
+activates_when: []
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [auth, oauth, security]
+version: 3
 ---
 
 # Auth Flows

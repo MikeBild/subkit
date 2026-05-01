@@ -51,7 +51,9 @@ describe("pubsub listener catch-up", () => {
         payload: { execution_id: "exec-a" },
       });
     });
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const d1 = Date.now() + 5_000;
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (Date.now() < d1 && firstReceived.length < 1) {
       await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: legacy; review before changing
     }
@@ -97,7 +99,9 @@ describe("pubsub listener catch-up", () => {
     });
     await secondListener.start();
 
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const d2 = Date.now() + 5_000;
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (Date.now() < d2 && secondReceived.length < 3) {
       await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: legacy; review before changing
     }

@@ -76,8 +76,10 @@ describe("queue: execution.run worker", () => {
     // 60s budget: pg-boss worker polls at 1s, and when the whole suite runs
     // in parallel each per-test database races to register ~14 queues.
     const db = engineCtx.testDb.db;
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const deadline = Date.now() + 60_000;
     let finalStatus = "";
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (Date.now() < deadline) {
       const rows = await db.select().from(executions).where(eq(executions.id, execution_id));
       finalStatus = rows[0]?.status ?? "";

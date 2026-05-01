@@ -51,7 +51,7 @@ function summarize(c: {
   environment: string;
   template_slug?: string | null;
   base_url?: string | null;
-  operator_notes?: string | null;
+  operator_quirks?: Record<string, string | undefined> | null;
   template_snapshot?: unknown;
 }): ConnectorSummary {
   const snap = (c.template_snapshot ?? null) as { example_paths?: unknown } | null;
@@ -59,6 +59,11 @@ function summarize(c: {
     snap && Array.isArray(snap.example_paths)
       ? snap.example_paths.filter((p): p is string => typeof p === "string")
       : [];
+  // Surface the `general` quirk as the connector summary blurb so
+  // discovery tools have a one-line human description without the
+  // LLM dragging in auth/pagination/rate-limit detail it doesn't need
+  // for ranking and selection.
+  const description = c.operator_quirks?.general?.trim() || null;
   return {
     id: c.id,
     slug: c.slug,
@@ -67,7 +72,7 @@ function summarize(c: {
     environment: c.environment,
     template_slug: c.template_slug ?? null,
     base_url: c.base_url ?? null,
-    description: c.operator_notes ?? null,
+    description,
     example_paths: examplePaths,
   };
 }

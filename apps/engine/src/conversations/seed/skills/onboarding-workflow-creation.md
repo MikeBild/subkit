@@ -3,10 +3,12 @@ slug: onboarding-workflow-creation
 scope: global
 title: Workflow Creation Onboarding
 description: Guides first-time users through creating their first connector and workflow via conversation.
-gates_tools: []
-version: 2
-auto_load: false
-trigger_keywords: [getting-started, first workflow, first connector, onboarding, new to sk]
+activates_when: [{"kind":"intent_keyword","word":"getting-started"},{"kind":"intent_keyword","word":"first workflow"},{"kind":"intent_keyword","word":"first connector"},{"kind":"intent_keyword","word":"onboarding"},{"kind":"intent_keyword","word":"new to sk"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [onboarding, authoring]
+version: 3
 ---
 
 # Workflow Creation Onboarding

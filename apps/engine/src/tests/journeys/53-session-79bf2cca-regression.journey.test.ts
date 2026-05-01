@@ -68,6 +68,8 @@ import type { StepRunContext } from "../../execution/types.ts";
 import { renderAuthoringContextBlock } from "../../llm/core/authoring-context-block.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: JourneyCtx;
 
 beforeAll(async () => {
@@ -228,7 +230,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
             version_id: seeded.version_id,
             version: 1,
             environment: null,
-            saved_at: new Date().toISOString(),
+            saved_at: new Date(TEST_NOW_MS).toISOString(),
           },
         ],
         latest_execution: null,
@@ -279,7 +281,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
       depth: 0,
       signal: new AbortController().signal,
       scope: {},
-      started_at: new Date(),
+      started_at: new Date(TEST_NOW_MS),
       workflow_slug: "s",
       trace_id: null,
       principal: null,

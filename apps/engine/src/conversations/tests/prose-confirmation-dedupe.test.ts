@@ -23,6 +23,8 @@ import type { ToolContext } from "../tools/index.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: LlmTestCtx;
 
 beforeAll(async () => {
@@ -66,7 +68,7 @@ async function seedTwoMessages(
   // Two messages. The order in conversation_messages is by created_at
   // (asc), but the dedupe walks DESC so newest = user, then assistant.
   // We insert assistant first, then user, with strict timestamps.
-  const t = Date.now();
+  const t = TEST_NOW_MS;
   await ctx.testDb.db.insert(conversationMessages).values({
     tenant_id: ctx.tenant_id,
     conversation_id,

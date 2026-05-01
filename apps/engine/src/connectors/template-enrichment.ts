@@ -10,7 +10,12 @@
 // the database.
 
 import type { ConnectorTemplate } from "./templates.ts";
-import type { CreateConnectorInput, DriverName } from "./types.ts";
+import {
+  type CreateConnectorInput,
+  type DriverName,
+  OPERATOR_QUIRK_CATEGORIES,
+  type OperatorQuirks,
+} from "./types.ts";
 
 export interface ConnectorDraftForEnrichment {
   name?: string | undefined;
@@ -21,7 +26,7 @@ export interface ConnectorDraftForEnrichment {
   dsn?: string | undefined;
   auth_type?: CreateConnectorInput["auth_type"] | undefined;
   config?: Record<string, unknown> | undefined;
-  operator_notes?: string | null | undefined;
+  operator_quirks?: OperatorQuirks | undefined;
 }
 
 export interface EnrichmentOptions {
@@ -119,14 +124,18 @@ export function enrichConnectorFromTemplate(
     config: cfg,
   };
   if (draft.dsn !== undefined) (result as CreateConnectorInput).dsn = draft.dsn;
-  // Operator notes: user input wins; template's note seeds the empty
-  // case. Templates carry endpoint-specific quirks (e.g. GitHub list-
-  // repos `type` vs `visibility`/`affiliation` mutual exclusion) that
-  // the LLM cannot infer from OpenAPI alone.
-  if (draft.operator_notes !== undefined) {
-    result.operator_notes = draft.operator_notes;
-  } else if (template.operator_notes) {
-    result.operator_notes = template.operator_notes;
+  // Operator quirks: per-category merge with user input winning. Each
+  // category empty on the draft is filled from the template's
+  // categorized quirks (the categorized replacement for the legacy
+  // `operator_notes` blob — context assembler picks only the
+  // categories relevant to the current turn shape).
+  const merged: OperatorQuirks = { ...(template.operator_quirks ?? {}) };
+  if (draft.operator_quirks) {
+    for (const cat of OPERATOR_QUIRK_CATEGORIES) {
+      const v = draft.operator_quirks[cat];
+      if (v !== undefined) merged[cat] = v;
+    }
   }
+  if (Object.keys(merged).length > 0) result.operator_quirks = merged;
   return result;
 }

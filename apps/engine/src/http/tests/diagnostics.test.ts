@@ -13,6 +13,8 @@ import { apiKeys, users } from "../../db/schema/index.ts";
 import { errorRing } from "../../observability/error-ring.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let srv: HttpTestServer;
 let memberKey = "";
 let enduserKey = "";
@@ -35,7 +37,7 @@ beforeAll(async () => {
   errorRing.clear();
   errorRing.record({
     trace_id: "trace-self",
-    ts: new Date().toISOString(),
+    ts: new Date(TEST_NOW_MS).toISOString(),
     tenant_id: srv.tenantId,
     method: "POST",
     path: "/v1/conversations",
@@ -47,7 +49,7 @@ beforeAll(async () => {
   });
   errorRing.record({
     trace_id: "trace-other",
-    ts: new Date().toISOString(),
+    ts: new Date(TEST_NOW_MS).toISOString(),
     tenant_id: "00000000-0000-0000-0000-000000000999",
     method: "POST",
     path: "/v1/conversations",

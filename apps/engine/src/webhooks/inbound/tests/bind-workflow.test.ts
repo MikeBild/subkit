@@ -62,6 +62,7 @@ describe("inbound: workflow binding", () => {
   test("valid delivery creates an executions row with request_source=webhook", async () => {
     const body = JSON.stringify({ invoice_id: "inv_123" });
     const webhookId = randomUUID(); // allow-random: legacy; review before changing
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const ts = Math.floor(Date.now() / 1000);
     const sig = `v1,${createHmac("sha256", SECRET)
       .update(`${webhookId}.${ts}.${body}`, "utf8")

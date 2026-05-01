@@ -14,6 +14,8 @@ import {
 } from "../generated/discovery.ts";
 import type { ToolContext } from "../index.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: TestDb;
 let tenant_id: string;
 let run_id: string;
@@ -30,8 +32,8 @@ beforeAll(async () => {
     .values({
       tenant_id,
       status: "completed",
-      started_at: new Date(),
-      completed_at: new Date(),
+      started_at: new Date(TEST_NOW_MS),
+      completed_at: new Date(TEST_NOW_MS),
     })
     .returning();
   run_id = r!.id;

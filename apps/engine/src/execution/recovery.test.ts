@@ -15,6 +15,8 @@ import { executions } from "../db/schema/index.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./recovery.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./tests/setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: EngineTestCtx;
 
 beforeAll(async () => {
@@ -30,7 +32,7 @@ async function insertRunningExecution(
   workflow_version_id: string,
   startedMsAgo: number,
 ): Promise<string> {
-  const startedAt = new Date(Date.now() - startedMsAgo);
+  const startedAt = new Date(TEST_NOW_MS - startedMsAgo);
   const [row] = await ctx.testDb.db
     .insert(executions)
     .values({

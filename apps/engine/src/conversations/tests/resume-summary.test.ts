@@ -4,6 +4,8 @@ import { describe, expect, test } from "bun:test";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import type { ConversationRecord, DraftDocument } from "../types.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 function conv(overrides: Partial<ConversationRecord> = {}): ConversationRecord {
   return {
     id: "c1",
@@ -14,8 +16,8 @@ function conv(overrides: Partial<ConversationRecord> = {}): ConversationRecord {
     owner_id: null,
     model: null,
     title: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    created_at: new Date(TEST_NOW_MS).toISOString(),
+    updated_at: new Date(TEST_NOW_MS).toISOString(),
     ...overrides,
   } as ConversationRecord;
 }

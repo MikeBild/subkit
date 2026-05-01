@@ -7,10 +7,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveSessionRef, type SessionMetadata, saveSessionMetadata } from "../sessions.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let tmpHome: string;
 let origSkHome: string | undefined;
 
-const now = new Date().toISOString();
+const now = new Date(TEST_NOW_MS).toISOString();
 
 function meta(overrides: Partial<SessionMetadata>): SessionMetadata {
   return {

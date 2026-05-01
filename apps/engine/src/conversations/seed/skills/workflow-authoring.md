@@ -3,8 +3,12 @@ slug: workflow-authoring
 scope: global
 title: Authoring Workflows In A Conversation
 description: The canonical recipe for turning a user intent into a committed sk workflow draft.
-gates_tools: []
-version: 2
+activates_when: [{"kind":"tool","tool":"build_workflow"},{"kind":"tool","tool":"approve_discovery_artifact"},{"kind":"tool","tool":"preview_attachment"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [authoring, workflow]
+version: 3
 ---
 
 # Authoring Workflows In A Conversation

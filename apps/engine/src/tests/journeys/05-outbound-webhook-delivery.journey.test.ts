@@ -106,6 +106,7 @@ describe("journey: outbound webhook delivery", () => {
       event_type: "execution.succeeded",
       body: '{"type":"execution.succeeded","data":{"ok":true}}',
       webhook_id: "msg_journey5_happy",
+      // allow-wall-clock: this test exercises real-time polling or freshness windows.
       timestamp: Math.floor(Date.now() / 1000),
       attempt_number: 1,
     };
@@ -156,6 +157,7 @@ describe("journey: outbound webhook delivery", () => {
         event_type: "execution.failed",
         body: '{"type":"execution.failed"}',
         webhook_id: `msg_journey5_flaky_${i}`,
+        // allow-wall-clock: this test exercises real-time polling or freshness windows.
         timestamp: Math.floor(Date.now() / 1000),
         attempt_number: 1,
       };
@@ -202,6 +204,7 @@ describe("journey: outbound webhook delivery", () => {
       event_type: "execution.aborted",
       body: '{"type":"execution.aborted"}',
       webhook_id: "msg_journey5_circopen",
+      // allow-wall-clock: this test exercises real-time polling or freshness windows.
       timestamp: Math.floor(Date.now() / 1000),
       attempt_number: 1,
     };

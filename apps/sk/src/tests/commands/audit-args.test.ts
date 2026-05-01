@@ -15,6 +15,7 @@ function parseSince(raw: string): string {
   if (relative) {
     const [, num, unit] = relative;
     const ms = Number(num) * (unit === "m" ? 60_000 : unit === "h" ? 3_600_000 : 86_400_000);
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     return new Date(Date.now() - ms).toISOString();
   }
   return raw;
@@ -26,8 +27,10 @@ const TOLERANCE_MS = 5_000;
 
 describe("parseSince — relative time expressions", () => {
   test("'10m' resolves to approximately 10 minutes ago", () => {
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const before = Date.now();
     const result = parseSince("10m");
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const after = Date.now();
 
     expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -40,8 +43,10 @@ describe("parseSince — relative time expressions", () => {
   });
 
   test("'1h' resolves to approximately 1 hour ago", () => {
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const before = Date.now();
     const result = parseSince("1h");
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const after = Date.now();
 
     const ts = new Date(result).getTime();
@@ -52,8 +57,10 @@ describe("parseSince — relative time expressions", () => {
   });
 
   test("'7d' resolves to approximately 7 days ago", () => {
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const before = Date.now();
     const result = parseSince("7d");
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const after = Date.now();
 
     const ts = new Date(result).getTime();
@@ -69,8 +76,10 @@ describe("parseSince — relative time expressions", () => {
   });
 
   test("'24h' resolves to approximately 24 hours ago", () => {
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const before = Date.now();
     const result = parseSince("24h");
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const after = Date.now();
 
     const ts = new Date(result).getTime();
@@ -89,8 +98,10 @@ describe("parseSince — relative time expressions", () => {
   });
 
   test("parseSince('1m') produces a valid Date close to now minus 60 seconds", () => {
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const before = Date.now();
     const result = parseSince("1m");
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const after = Date.now();
 
     const ts = new Date(result).getTime();
@@ -102,8 +113,10 @@ describe("parseSince — relative time expressions", () => {
 
 describe("parseSince — edge cases", () => {
   test("zero minutes '0m' resolves to approximately now", () => {
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const before = Date.now();
     const result = parseSince("0m");
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const after = Date.now();
 
     const ts = new Date(result).getTime();
@@ -118,8 +131,10 @@ describe("parseSince — edge cases", () => {
   });
 
   test("large day count '365d' resolves to approximately 1 year ago", () => {
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const before = Date.now();
     const result = parseSince("365d");
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const after = Date.now();
 
     const ts = new Date(result).getTime();

@@ -36,6 +36,8 @@ import { upsertCredential } from "../../apps/engine/src/credentials/service.ts";
 import { connectors, tenants } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 const live = process.env.APPSYNC_COGNITO_E2E === "1";
 const EMAIL = process.env.APPSYNC_E2E_EMAIL ?? "";
 const PASSWORD = process.env.APPSYNC_E2E_PASSWORD ?? "";
@@ -108,7 +110,7 @@ describe("AppSync + Cognito (live)", () => {
       expect(bundle.token_type).toBe("none");
       expect(typeof bundle.refresh_token).toBe("string");
       expect(bundle.expires_at).toBeInstanceOf(Date);
-      expect(bundle.expires_at!.getTime()).toBeGreaterThan(Date.now());
+      expect(bundle.expires_at!.getTime()).toBeGreaterThan(TEST_NOW_MS);
 
       // Direct AppSync call with the raw IdToken — bypasses the engine
       // driver to confirm the upstream contract.

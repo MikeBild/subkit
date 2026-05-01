@@ -26,6 +26,8 @@ import { and, eq } from "drizzle-orm";
 import { auditLog, portalTokens } from "../../db/schema/index.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: JourneyCtx;
 let workflowId = "";
 let otherWorkflowId = "";
@@ -188,7 +190,7 @@ describe("journey: portal token end-user", () => {
     // on every resolve and must reject.
     await ctx.db
       .update(portalTokens)
-      .set({ expires_at: new Date(Date.now() - 1_000) })
+      .set({ expires_at: new Date(TEST_NOW_MS - 1_000) })
       .where(and(eq(portalTokens.tenant_id, ctx.tenantId), eq(portalTokens.id, issued.id)));
     const res = await endUserFetch(issued.plaintext, "/v1/executions", {
       method: "POST",

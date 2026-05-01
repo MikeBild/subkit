@@ -50,6 +50,7 @@ describe("per-step retry overrides", () => {
         },
       ],
     });
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const start = Date.now();
     const result = await runExecution({
       db: ctx.testDb.db,
@@ -57,6 +58,7 @@ describe("per-step retry overrides", () => {
       source: { kind: "saved", workflow_id },
       input: null,
     });
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const elapsed = Date.now() - start;
     expect(result.status).toBe("succeeded");
     expect(attempts).toBe(3);

@@ -1,27 +1,27 @@
 {
-  "started_at": "2026-04-29T23:44:04.495Z",
-  "finished_at": "2026-04-29T23:44:04.496Z",
-  "total": 20,
-  "passed": 20,
+  "started_at": "2026-05-01T06:47:20.140Z",
+  "finished_at": "2026-05-01T06:47:20.141Z",
+  "total": 23,
+  "passed": 23,
   "failed": 0,
   "items": [
     {
       "name": "flow-env-override-routes-model",
       "flow": "infra",
       "pass": true,
-      "duration_ms": 308
+      "duration_ms": 171
     },
     {
       "name": "convo-verifier-rejects-missing-scope-data",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 15
+      "duration_ms": 8
     },
     {
       "name": "convo-history-questions-stay-grounded",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 2
+      "duration_ms": 1
     },
     {
       "name": "provider-error-classifier",
@@ -42,7 +42,7 @@
       "name": "convo-sample-to-schema",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 2
+      "duration_ms": 0
     },
     {
       "name": "schema-normalizer-basic",
@@ -54,7 +54,7 @@
       "name": "schema-flow-shape",
       "flow": "generate",
       "pass": true,
-      "duration_ms": 2,
+      "duration_ms": 1,
       "metrics": {
         "tool_count": 2
       }
@@ -69,13 +69,25 @@
       "name": "convo-schedule-surface-contract",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 4
+      "duration_ms": 1
     },
     {
       "name": "search-docs-ranking",
       "flow": "converse",
       "pass": true,
       "duration_ms": 1
+    },
+    {
+      "name": "quirk-token-budget",
+      "flow": "converse",
+      "pass": true,
+      "duration_ms": 0
+    },
+    {
+      "name": "recipe-discovery",
+      "flow": "converse",
+      "pass": true,
+      "duration_ms": 13
     },
     {
       "name": "ai-sdk-submit-loop",
@@ -91,7 +103,13 @@
       "name": "convo-new-workflow-intent-detaches-target",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 5
+      "duration_ms": 6
+    },
+    {
+      "name": "cache-stability",
+      "flow": "converse",
+      "pass": true,
+      "duration_ms": 66
     },
     {
       "name": "cascade-picks-openapi",
@@ -107,67 +125,67 @@
       "name": "cache-block-split",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 124
+      "duration_ms": 0
     },
     {
       "name": "convo-verifier-scope-ref-integrity",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 3
+      "duration_ms": 2
     },
     {
       "name": "convo-dlp-masks-default-pii",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 6
+      "duration_ms": 5
     },
     {
       "name": "convo-auto-save-follow-up-uses-state-tool",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 4
+      "duration_ms": 1
     },
     {
       "name": "convo-workflow-rerun-stays-chat-native",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 498
+      "duration_ms": 443
     },
     {
       "name": "convo-repair-allows-recommit-on-persisted",
       "flow": "converse",
       "pass": true,
-      "duration_ms": 2
+      "duration_ms": 1
     }
   ],
   "aggregates": {
     "pass_rate": 1,
     "latency_ms": {
-      "p50": 2,
-      "p95": 498,
-      "max": 498
+      "p50": 1,
+      "p95": 171,
+      "max": 443
     },
     "per_flow": {
       "infra": {
         "total": 2,
         "passed": 2,
         "failed": 0,
-        "p50_ms": 308,
-        "p95_ms": 308
+        "p50_ms": 171,
+        "p95_ms": 171
       },
       "converse": {
-        "total": 15,
-        "passed": 15,
+        "total": 18,
+        "passed": 18,
         "failed": 0,
-        "p50_ms": 3,
-        "p95_ms": 498
+        "p50_ms": 1,
+        "p95_ms": 443
       },
       "generate": {
         "total": 3,
         "passed": 3,
         "failed": 0,
         "p50_ms": 1,
-        "p95_ms": 2
+        "p95_ms": 1
       }
     }
   }

@@ -238,6 +238,10 @@ export interface WorkflowDraftDocument {
   output_schema?: Record<string, unknown>;
   output_transform?: string;
   edges?: Array<{ from: string; to: string }>;
+  /** Optional pointer to the skill this draft was authored against
+   *  (typically via `start_workflow_from_recipe`). Read by the
+   *  workflow validator's skill-schema gate at save time. */
+  derived_from_skill_id?: string | null;
 }
 
 export interface ConnectorDraftProbeSummary {

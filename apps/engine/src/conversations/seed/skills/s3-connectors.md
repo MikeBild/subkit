@@ -3,8 +3,12 @@ slug: s3-connectors
 scope: global
 title: S3 And MinIO Connectors
 description: Driver specifics for the S3-compatible object store — put, get, list, head, delete, plus content_type / metadata / parse_as.
-gates_tools: []
-version: 3
+activates_when: [{"kind":"connector_driver","driver":"s3"}]
+side_effects: write
+idempotency: naturally
+maturity: stable
+tags: [driver, s3, object-store]
+version: 4
 ---
 
 # S3 And MinIO Connectors

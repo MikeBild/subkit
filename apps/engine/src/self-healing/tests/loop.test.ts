@@ -35,6 +35,8 @@ import {
 import { runSelfHealingLoop } from "../service.ts";
 import { createSelfHealingCtx, type SelfHealingTestCtx } from "./setup.ts";
 
+const TEST_NOW_MS = 1_700_000_000_000;
+
 let ctx: SelfHealingTestCtx;
 
 beforeAll(async () => {
@@ -135,7 +137,7 @@ describe("self-healing/loop — direct call", () => {
       })
       .onConflictDoUpdate({
         target: [workflowAutohealPolicies.workflow_id],
-        set: { policy: "never-auto", updated_at: new Date() },
+        set: { policy: "never-auto", updated_at: new Date(TEST_NOW_MS) },
       });
 
     const result = await runSelfHealingLoop(
@@ -194,8 +196,10 @@ describe("self-healing/loop — workflow.repair queue", () => {
     });
     expect(jobId).toBeTruthy();
 
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const deadline = Date.now() + 15_000;
     let after = countBefore;
+    // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (Date.now() < deadline) {
       after = (
         await db.select().from(patchCandidates).where(eq(patchCandidates.tenant_id, ctx.tenant_id))
