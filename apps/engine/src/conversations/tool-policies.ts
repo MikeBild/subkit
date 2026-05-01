@@ -261,7 +261,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   },
   // Reads: auto. test_rbac_expression is a read-only probe.
   test_rbac_expression: { defaultMode: "no_confirm" },
-  // Draft mutations auto-execute — they stage changes that commit_draft
+  // Draft mutations auto-execute — they stage changes that save_workflow_draft
   // later explicitly confirms via ask_user_confirm. The `prerequisites`
   // infrastructure exists on every tool entry, but specific tool
   // declarations are added per-tool only after the auto-load skill
@@ -304,12 +304,12 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     },
   },
   validate_draft: { defaultMode: "no_confirm" },
-  commit_draft: {
+  save_workflow_draft: {
     defaultMode: "confirm_before_execution",
     buildPendingOutput: (input) => {
       const obj = asObj(input);
       return {
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         ...(obj.workflow_slug !== undefined ? { workflow_slug: obj.workflow_slug } : {}),
         ...(obj.connector_slug !== undefined ? { connector_slug: obj.connector_slug } : {}),
       };

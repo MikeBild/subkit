@@ -85,7 +85,7 @@ describe("ready workflow saves stay deterministic in auto mode", () => {
   test("a short yes follow-up commits the ready workflow without an extra confirm stall", async () => {
     const conversationId = await seedConversation();
 
-    getMockProvider().setConversePlan(conversationId, [{ tool: "commit_draft", args: {} }]);
+    getMockProvider().setConversePlan(conversationId, [{ tool: "save_workflow_draft", args: {} }]);
 
     const result = await cli(["--r", conversationId, "--p", "yes", "--output", "json"], {
       env,
@@ -106,7 +106,7 @@ describe("ready workflow saves stay deterministic in auto mode", () => {
     const detail = await getDetail(conversationId);
     expect(detail.conversation.status).toBe("committed");
     expect(detail.conversation.target_workflow_id).toBe(body.committed_workflow_id);
-    expect(detail.tool_calls.map((call) => call.tool)).toContain("commit_draft");
+    expect(detail.tool_calls.map((call) => call.tool)).toContain("save_workflow_draft");
     expect(detail.tool_calls.map((call) => call.tool)).not.toContain("cannot_help");
 
     const workflowRows = await env.db

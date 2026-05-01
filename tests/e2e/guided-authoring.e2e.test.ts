@@ -112,7 +112,7 @@ describe("guided authoring smoke", () => {
         "build_workflow",
         "inspect_workflow_draft",
         "dry_run_step",
-        "commit_draft",
+        "save_workflow_draft",
       ]),
     );
   }, 120_000);

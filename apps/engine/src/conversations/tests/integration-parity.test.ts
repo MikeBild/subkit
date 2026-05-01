@@ -53,9 +53,9 @@ describe("tool-policy wiring", () => {
     expect(mode).toBe("confirm_before_execution");
   });
 
-  it("commit_draft (draft_write) still requires confirm", () => {
+  it("save_workflow_draft (draft_write) still requires confirm", () => {
     const mode = resolveToolMode({
-      tool: "commit_draft",
+      tool: "save_workflow_draft",
       category: "draft_write",
       input: {},
       overrides: {},

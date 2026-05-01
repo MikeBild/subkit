@@ -42,7 +42,7 @@ export interface GenericApprovalProps {
    * When set, the renderer fetches the current persisted state for
    * the resource referenced by `commit_intent.payload` and renders a
    * `<JsonDiff />`. Only mutating intents (`save_connector_draft`,
-   * `commit_workflow_draft`, `update_connector`, `update_workflow`)
+   * `save_workflow_draft`, `update_connector`, `update_workflow`)
    * trigger the upgrade — others fall through to the legacy text
    * dump.
    */
@@ -55,7 +55,7 @@ export interface GenericApprovalProps {
 
 const MUTATING_INTENT_KINDS: ReadonlySet<string> = new Set([
   "save_connector_draft",
-  "commit_workflow_draft",
+  "save_workflow_draft",
   "update_connector",
   "update_workflow",
 ]);
@@ -87,7 +87,7 @@ function readResourceTarget(intent: CommitIntent): {
     const id = readId(intent.payload, ["connector_id", "id"]);
     return id ? { kind: "connector", id } : null;
   }
-  if (kind === "commit_workflow_draft" || kind === "update_workflow") {
+  if (kind === "save_workflow_draft" || kind === "update_workflow") {
     const id = readId(intent.payload, ["target_workflow_id", "workflow_id", "id"]);
     return id ? { kind: "workflow", id } : null;
   }

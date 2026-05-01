@@ -17,19 +17,19 @@ function el(overrides: Partial<PendingElicitation>): PendingElicitation {
 }
 
 describe("ApprovalRouter (component)", () => {
-  test("commit_draft kind routes to CommitDraftApproval", async () => {
+  test("save_workflow_draft kind routes to CommitDraftApproval", async () => {
     const ui = renderInk(
       <ApprovalRouter
         approval={el({
           summary: "Commit 1-step workflow?",
-          input: { kind: "commit_draft", diff: { slug: "demo", steps: 1 } },
+          input: { kind: "save_workflow_draft", diff: { slug: "demo", steps: 1 } },
         })}
       />,
     );
     try {
-      await ui.waitFor((t) => t.includes("confirm: commit_draft"));
+      await ui.waitFor((t) => t.includes("confirm: save_workflow_draft"));
       const txt = ui.text();
-      expect(txt).toContain("input needed: confirm: commit_draft");
+      expect(txt).toContain("input needed: confirm: save_workflow_draft");
       expect(txt).toContain("Commit 1-step workflow?");
     } finally {
       ui.unmount();
@@ -87,10 +87,10 @@ describe("ApprovalRouter (component)", () => {
         approval={el({
           summary: "",
           input: {
-            kind: "commit_draft",
+            kind: "save_workflow_draft",
             question: "Save the workflow?",
             commit_intent: {
-              kind: "commit_workflow_draft",
+              kind: "save_workflow_draft",
               description: "Save the DigitalOcean projects workflow",
               payload: {},
             },
@@ -101,7 +101,7 @@ describe("ApprovalRouter (component)", () => {
     try {
       await ui.waitFor((t) => t.includes("DigitalOcean projects workflow"));
       const txt = ui.text();
-      expect(txt).toContain("input needed: confirm: commit_draft");
+      expect(txt).toContain("input needed: confirm: save_workflow_draft");
       expect(txt).toContain("Save the DigitalOcean projects workflow");
     } finally {
       ui.unmount();

@@ -145,7 +145,7 @@ have cost another round-trip guessing `closedate_unix` or similar.
 - **Ignoring `details.body`.** The vendor's error message is the shortest
   path to a fix. Read it.
 - **Re-running the commit path after a dry-run error.** Neither the
-  `ask_user_confirm`+`commit_intent` auto-persist nor a direct `commit_draft`
+  `ask_user_confirm`+`commit_intent` auto-persist nor a direct `save_workflow_draft`
   re-runs the failing step. Repair the step + re-`dry_run` first, then commit.
   You'll otherwise persist a known-broken draft.
 - **Assuming `permission_denied` is a bug.** It's the correct outcome until

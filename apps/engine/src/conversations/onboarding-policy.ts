@@ -149,13 +149,13 @@ export function nextRecommendedAction(input: PolicyInput): NextAction {
         kind: "workflow_preview",
         summary: "Run dry_run_step or dry_run_workflow before committing.",
         rationale:
-          "Preview-before-commit is the default quality gate; commit_draft refuses without a successful preview.",
+          "Preview-before-commit is the default quality gate; save_workflow_draft refuses without a successful preview.",
       };
     }
     return {
       kind: "workflow_commit",
       summary:
-        "Commit the workflow via ask_user_confirm with commit_intent { kind: 'commit_workflow_draft' } — the harness auto-persists on confirm; do NOT chain a separate commit_draft call.",
+        "Commit the workflow via ask_user_confirm with commit_intent { kind: 'save_workflow_draft' } — the harness auto-persists on confirm; do NOT chain a separate save_workflow_draft call.",
       rationale: "Validation passed and the last preview succeeded.",
     };
   }

@@ -38,7 +38,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
     expect(visible).toContain("start_connector_from_description");
     expect(visible).toContain("start_workflow_from_goal");
     expect(visible).toContain("save_connector_draft");
-    expect(visible).toContain("commit_draft");
+    expect(visible).toContain("save_workflow_draft");
     expect(visible).toContain("list_connectors");
     expect(visible).toContain("list_workflows");
   });
@@ -55,7 +55,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
     expect(visible).toContain("list_connectors"); // always-visible reads
     expect(visible).toContain("delete_connector"); // always-visible cleanup
     expect(visible).not.toContain("save_connector_draft");
-    expect(visible).not.toContain("commit_draft");
+    expect(visible).not.toContain("save_workflow_draft");
     expect(visible).not.toContain("build_workflow");
     expect(visible).not.toContain("start_connector_from_description");
   });
@@ -92,7 +92,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
     expect(visible).not.toContain("create_api_key");
   });
 
-  test("commit_draft stays visible during workflow authoring even before any preview ran", () => {
+  test("save_workflow_draft stays visible during workflow authoring even before any preview ran", () => {
     const draft = withWorkflowDraft(
       createEmptyDraftDocument(),
       {
@@ -105,7 +105,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
     const visible = filterByAuthoringPalette(listTools(), draft, ONLY_WORKFLOW_SKILL).map(
       (tool) => tool.name,
     );
-    expect(visible).toContain("commit_draft");
+    expect(visible).toContain("save_workflow_draft");
     expect(visible).toContain("run_workflow");
     expect(visible).toContain("diagnose_latest_execution");
     expect(visible).toContain("dry_run_workflow");
@@ -175,7 +175,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
       (tool) => tool.name,
     );
     expect(visible).toContain("run_workflow");
-    expect(visible).toContain("commit_draft");
+    expect(visible).toContain("save_workflow_draft");
     expect(visible).toContain("build_workflow");
     expect(visible).toContain("diagnose_latest_execution");
     expect(visible).toContain("list_connectors");

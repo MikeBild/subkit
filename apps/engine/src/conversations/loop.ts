@@ -3,7 +3,7 @@
 // The loop hands turn execution to `streamText` with our tool palette
 // wrapped via `tool()`. Stop conditions halt the run on step-count
 // exhaustion, `request_human_approval` (pause for operator), or a
-// `commit_draft` that returned a `committed_workflow_id`. Each tool's
+// `save_workflow_draft` that returned a `committed_workflow_id`. Each tool's
 // side-effects (DB row inserts, event emission, logging, approval
 // creation) happen inside the `sdk-wrap` adapter — this file's job is
 // composing the call, mapping callbacks into DB writes + events, and
@@ -160,7 +160,7 @@ async function resolveLanguageModel(provider: string, modelId: string) {
 }
 
 /**
- * Stop after a step that invoked `commit_draft` and produced a
+ * Stop after a step that invoked `save_workflow_draft` and produced a
  * `committed_workflow_id` — the loop is done the moment the workflow
  * row is persisted.
  *
@@ -179,7 +179,7 @@ const committedStopCondition = ({
   const last = steps[steps.length - 1];
   if (!last) return false;
   return last.toolResults.some((r) => {
-    if (r.toolName !== "commit_draft") return false;
+    if (r.toolName !== "save_workflow_draft") return false;
     const output = r.output;
     return (
       !!output &&
@@ -352,7 +352,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     strongRunIntent:
       detectedIntent.forceTool === "run_workflow" ||
       detectedIntent.forceTool === "build_workflow" ||
-      detectedIntent.forceTool === "commit_draft",
+      detectedIntent.forceTool === "save_workflow_draft",
     multiArtifactIntent: detectMultiArtifactIntent(p.user_message),
     priorCriticFail: false,
   };
@@ -892,7 +892,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     // looked read-only, but the decision is fixed at streamText
     // construction (AI SDK 6.x prepareStep cannot override
     // providerOptions) and a turn that starts in `idle` can transition
-    // into `propose_step` / `commit_draft` mid-turn — at which point
+    // into `propose_step` / `save_workflow_draft` mid-turn — at which point
     // tenant_write tools could race. Keeping the disable on is the
     // only correct setting until the SDK exposes per-step
     // providerOptions overrides. The in-process serialisation mutex on
@@ -1490,7 +1490,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         ? resourceKind === null
           ? null
           : {
-              kind: "commit_draft",
+              kind: "save_workflow_draft",
               payload: {
                 resource_kind: resourceKind,
                 resource_id: signals.committed.workflow_id,
@@ -1550,7 +1550,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           // confidence is below 0.6 AND the turn committed, surface an
           // `ask_user_text` elicitation that the operator must answer
           // before the conversation continues. This does NOT roll back
-          // the commit (the commit_draft tool already wrote the row by
+          // the commit (the save_workflow_draft tool already wrote the row by
           // the time the critic runs); it forces the operator to
           // explicitly confirm or revise. Rate-limited to ONE abstention
           // per turn so a flaky critic cannot spam elicitations.

@@ -6,7 +6,7 @@
 //
 // Acceptance criteria:
 //
-//   AC1. Confirming a commit_draft elicitation unblocks the loop:
+//   AC1. Confirming a save_workflow_draft elicitation unblocks the loop:
 //        the conversation transitions from `awaiting_input` to
 //        `committed`, an `approval.approved` audit row fires, a
 //        `conversation.committed` audit row fires, and a new
@@ -18,7 +18,7 @@
 //   AC3. Responding to an unknown elicitation returns 4xx/5xx.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import * as conversationsSvc from "../../conversations/service.ts";
 import { auditLog, conversationElicitations, workflows } from "../../db/schema/index.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
@@ -26,10 +26,21 @@ import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 let ctx: JourneyCtx;
 
 async function countAudit(action: string, resourceId: string): Promise<number> {
+  // The harness emits a SECOND `approval.approved` row tagged with
+  // `reason: "auto_persist_on_confirmation"` after the canonical user-side
+  // approval. For the journey-level lifecycle assertions we only care
+  // about the canonical row (reason=null) — the dual-audit pattern is
+  // already covered by the unit tests in audit-trail.test.ts.
   const rows = await ctx.db
     .select({ id: auditLog.id })
     .from(auditLog)
-    .where(and(eq(auditLog.action, action), eq(auditLog.resource_id, resourceId)));
+    .where(
+      and(
+        eq(auditLog.action, action),
+        eq(auditLog.resource_id, resourceId),
+        isNull(auditLog.reason),
+      ),
+    );
   return rows.length;
 }
 

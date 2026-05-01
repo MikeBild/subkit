@@ -33,7 +33,7 @@ const TOOLS: Record<string, ConversationTool> = Object.fromEntries([
   fakeTool("inspect_workflow", "tenant_read"),
   fakeTool("list_workflows", "tenant_read"),
   fakeTool("propose_step", "draft_write"),
-  fakeTool("commit_draft", "tenant_write"),
+  fakeTool("save_workflow_draft", "tenant_write"),
   fakeTool("delete_workflow", "tenant_write"),
 ]);
 
@@ -176,7 +176,7 @@ describe("prepareStep — activeTools narrowing", () => {
     expect(decision?.activeTools).toContain("inspect_workflow");
     expect(decision?.activeTools).toContain("list_workflows");
     expect(decision?.activeTools).toContain("ask_user_text"); // always-available
-    expect(decision?.activeTools).not.toContain("commit_draft");
+    expect(decision?.activeTools).not.toContain("save_workflow_draft");
     expect(decision?.activeTools).not.toContain("delete_workflow");
   });
 
@@ -184,13 +184,13 @@ describe("prepareStep — activeTools narrowing", () => {
     const decision = prepareStep(baseParams({ signals: { stage: "workflow_inspected" } }));
     expect(decision?.activeTools).toContain("propose_step");
     expect(decision?.activeTools).toContain("inspect_workflow");
-    expect(decision?.activeTools).not.toContain("commit_draft");
+    expect(decision?.activeTools).not.toContain("save_workflow_draft");
   });
 
   it("returns full palette on commit/execute stages", () => {
     const decision = prepareStep(baseParams({ signals: { stage: "workflow_persisted" } }));
     // workflow_persisted is hard, so escalation fires; activeTools stays
-    // unset (full palette) so commit_draft / delete_workflow remain
+    // unset (full palette) so save_workflow_draft / delete_workflow remain
     // available.
     expect(decision?.activeTools).toBeUndefined();
   });

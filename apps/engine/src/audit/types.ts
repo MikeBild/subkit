@@ -55,7 +55,7 @@ export const AuditAction = {
   WORKFLOW_UPDATED: "workflow.updated",
   WORKFLOW_DELETED: "workflow.deleted",
   WORKFLOW_VERSION_RESTORED: "workflow.version_restored",
-  // Committed via commit_draft with `force=true` — no successful preview
+  // Committed via save_workflow_draft with `force=true` — no successful preview
   // was recorded. Metadata captures the classification of the most recent
   // preview attempt (if any) so operators can audit why the override was
   // taken.

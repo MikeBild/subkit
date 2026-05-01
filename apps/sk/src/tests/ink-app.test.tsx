@@ -430,7 +430,7 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     summary: "commit 2-step workflow",
     input: {
       question: "Commit invoice-digest?",
-      kind: "commit_draft",
+      kind: "save_workflow_draft",
       diff: {
         name: "invoice-digest",
         slug: "invoice-digest",
@@ -462,7 +462,7 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     // full diff body follows. Lines up with the ElicitRouter dispatch
     // in @chat-ui.
     expect(frame).toContain("Waiting for input: confirmation required");
-    expect(frame).toContain("confirm: commit_draft");
+    expect(frame).toContain("confirm: save_workflow_draft");
     expect(frame).toContain("commit 2-step workflow");
     expect(frame).toContain("invoice-digest");
     expect(frame).toContain("fetch");
@@ -491,7 +491,7 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
             {
               type: "tool_result",
               call_id: "commit-1",
-              tool: "commit_draft",
+              tool: "save_workflow_draft",
               output: { ok: true, data: { workflow_id: "wf-1", slug: "invoice-digest" } },
             },
             { type: "completed", status: "committed" },
@@ -517,7 +517,7 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     expect(decisions.length).toBe(1);
     expect(decisions[0]?.id).toBe("a1-abcdefab-0000-0000-0000-000000000000");
     expect((decisions[0]?.output as { confirmed: boolean }).confirmed).toBe(true);
-    expect(frame).not.toContain("confirm: commit_draft");
+    expect(frame).not.toContain("confirm: save_workflow_draft");
     expect(frame).not.toContain("Waiting for input: confirmation required");
     expect(frame).toContain("Workflow saved");
     expect(frame).toContain("invoice-digest");

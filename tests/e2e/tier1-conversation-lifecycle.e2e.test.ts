@@ -4,7 +4,7 @@
 //   * POST/GET /v1/conversations + /messages + /elicitations (Hono + Postgres)
 //   * Engine LLM dispatch through the configured real-provider path
 //   * Real tool palette — start_connector_from_description, propose_step, validate_draft,
-//     commit_draft — all running through the actual Zod validators,
+//     save_workflow_draft — all running through the actual Zod validators,
 //     workflow validator, and connector persistence layer
 //   * RBAC (admin persona), audit log, conversation_drafts snapshots
 //
@@ -194,7 +194,7 @@ describe.skipIf(!SHOULD_RUN)(
       expect(tools).toContain("start_connector_from_description");
 
       // If the LLM completed the round-trip, a connector row exists.
-      if (tools.includes("commit_draft")) {
+      if (tools.includes("save_workflow_draft")) {
         const after = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
           headers: adminAuth(),
         }).then((r) => r.json() as Promise<{ items: Array<{ slug: string; name: string }> }>);
@@ -217,9 +217,9 @@ describe.skipIf(!SHOULD_RUN)(
         "Use these tools in order to build and commit a workflow: " +
           "1) call propose_step to add a single request step (id 'fetch', kind 'request', method GET, url https://example.com), " +
           "2) call validate_draft, " +
-          "3) call ask_user_confirm with kind='commit_draft', " +
-          "4) on approval call commit_draft. " +
-          "Do not stop until commit_draft has been called.",
+          "3) call ask_user_confirm with kind='save_workflow_draft', " +
+          "4) on approval call save_workflow_draft. " +
+          "Do not stop until save_workflow_draft has been called.",
       );
 
       const detail = await getConversation(conversation_id);
@@ -232,11 +232,11 @@ describe.skipIf(!SHOULD_RUN)(
       expect(tools).toContain("propose_step");
 
       // Functional assertion (best effort): if the LLM completed the
-      // approval round-trip and called commit_draft, a workflow row
+      // approval round-trip and called save_workflow_draft, a workflow row
       // exists. We don't FAIL when the LLM stops short — that's an LLM
       // capability question, not an engine bug. We DO fail if commit
       // was attempted but no row landed.
-      if (tools.includes("commit_draft")) {
+      if (tools.includes("save_workflow_draft")) {
         const wfRes = await fetch(`${env.baseUrl}/v1/workflows?limit=200`, {
           headers: adminAuth(),
         });
@@ -292,7 +292,7 @@ describe.skipIf(!SHOULD_RUN)("Tier 1.6 — elicitation reject (real LLM)", () =>
   test("declining ask_user_confirm leaves the conversation un-committed", async () => {
     const out = await createConversation(
       "Use propose_step to add a request step (id 'fetch', kind 'request', method GET, url https://example.com), " +
-        "then validate_draft, then ask_user_confirm with kind='commit_draft' to ask me to commit.",
+        "then validate_draft, then ask_user_confirm with kind='save_workflow_draft' to ask me to commit.",
     );
     const id = out.conversation.id;
 

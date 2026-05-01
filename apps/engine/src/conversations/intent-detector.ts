@@ -122,7 +122,7 @@ export function detectUserIntent(latestUserText: string | null | undefined): Det
   }
   for (const pattern of COMMIT_DRAFT_PATTERNS) {
     if (pattern.test(text)) {
-      return { forceTool: "commit_draft", reason: "explicit_commit_intent" };
+      return { forceTool: "save_workflow_draft", reason: "explicit_commit_intent" };
     }
   }
 
@@ -168,7 +168,7 @@ export function inferStateDrivenFollowUpTool(params: {
   if (params.permission_mode !== "auto") return null;
   if (detectEnvelopeResolution(params.latestUserText) !== "approve") return null;
   const suggested = params.summary?.next_suggested_tool ?? null;
-  if (suggested === "commit_draft" || suggested === "save_connector_draft") {
+  if (suggested === "save_workflow_draft" || suggested === "save_connector_draft") {
     return suggested;
   }
   return null;

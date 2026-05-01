@@ -49,7 +49,7 @@ describe("sk turn-event reducer", () => {
       summary: "commit 1-step workflow",
       input: {
         question: "Commit?",
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         diff: { name: "new-workflow", steps: [{ id: "s1", kind: "transform" }] },
       },
     });
@@ -61,7 +61,7 @@ describe("sk turn-event reducer", () => {
       kind?: string;
       diff?: { name?: string; steps?: unknown[] };
     };
-    expect(input.kind).toBe("commit_draft");
+    expect(input.kind).toBe("save_workflow_draft");
     expect(input.diff?.name).toBe("new-workflow");
     expect(Array.isArray(input.diff?.steps)).toBe(true);
   });

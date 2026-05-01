@@ -4,7 +4,7 @@
 //   → canned "list users" plan raises an approval
 //   → dispatcher sends an approval card (fake adapter records it)
 //   → dispatcher receives an "approve" interaction
-//   → decideApproval drives the plan to commit_draft
+//   → decideApproval drives the plan to save_workflow_draft
 //   → conversation ends up status = 'committed'
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";

@@ -130,7 +130,7 @@ const WORKFLOW_PREVIEW: ReadonlySet<string> = new Set([
 /** Workflow commit — paired with workflow authoring. The tool itself
  *  enforces preview + validation via `state-gate.ts` and the in-tool
  *  `force_commit` escape hatch. */
-const WORKFLOW_PERSISTENCE: ReadonlySet<string> = new Set(["commit_draft"]);
+const WORKFLOW_PERSISTENCE: ReadonlySet<string> = new Set(["save_workflow_draft"]);
 
 /** Execution + diagnosis — paired with workflow authoring. The tools
  *  themselves emit a `tool_unavailable_in_state` envelope when no

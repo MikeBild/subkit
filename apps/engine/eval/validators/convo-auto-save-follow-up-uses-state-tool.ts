@@ -37,10 +37,11 @@ export function validate(fixture: FixtureRecord): ValidationResult {
     permission_mode: "auto",
     summary: workflowDraft.summary,
   });
-  if (workflowTool !== "commit_draft") {
+  if (workflowTool !== "save_workflow_draft") {
     return {
       pass: false,
-      reason: "ready workflow drafts no longer map a short auto-mode approval onto commit_draft",
+      reason:
+        "ready workflow drafts no longer map a short auto-mode approval onto save_workflow_draft",
     };
   }
 

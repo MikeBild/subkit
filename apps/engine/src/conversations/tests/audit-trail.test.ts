@@ -134,14 +134,17 @@ describe("conversations/audit-trail", () => {
       .from(conversationToolCalls)
       .where(eq(conversationToolCalls.conversation_id, created.conversation.id))
       .orderBy(asc(conversationToolCalls.created_at));
-    expect(toolCallsFinal.map((r) => r.tool)).toEqual([...expectedToolsPause, "commit_draft"]);
+    expect(toolCallsFinal.map((r) => r.tool)).toEqual([
+      ...expectedToolsPause,
+      "save_workflow_draft",
+    ]);
     expect(toolCallsFinal.every((r) => r.output !== null && r.output !== undefined)).toBe(true);
 
     const usageFinal = await ctx.testDb.db
       .select()
       .from(llmUsage)
       .where(and(eq(llmUsage.tenant_id, ctx.tenant_id), eq(llmUsage.flow, "converse")));
-    // 1 llmUsage row per LLM-driven step. The trailing `commit_draft`
+    // 1 llmUsage row per LLM-driven step. The trailing `save_workflow_draft`
     // tool call was synthesised by the harness auto-persist on the
     // elicitation resume — it carries no LLM step (no streamText call,
     // no tokens billed) so it is recorded in conversation_tool_calls
@@ -166,7 +169,7 @@ describe("conversations/audit-trail", () => {
         ),
       )
       .orderBy(asc(auditLog.ts));
-    // Wave 4: every confirm_before_execution decision (e.g. commit_draft)
+    // Wave 4: every confirm_before_execution decision (e.g. save_workflow_draft)
     // lands a `tool_policy.confirmation_required` row tagged with the
     // conversation_id, so operators can audit policy decisions without
     // scraping debug logs. Filter that row out for the canonical
@@ -180,7 +183,7 @@ describe("conversations/audit-trail", () => {
     // The Wave 4 policy row is INCIDENTAL — it fires only when the LLM
     // calls a `confirm_before_execution` tool directly. The canonical
     // path the LLM now takes is to emit
-    // `ask_user_confirm{kind:commit_draft}` itself (post commit-draft
+    // `ask_user_confirm{kind:save_workflow_draft}` itself (post commit-draft
     // elicitation tightening, commit 4c1f409), which bypasses the
     // policy gate entirely. The assertion that policy rows exist was
     // pinning the old codepath; we simply tolerate either shape now.

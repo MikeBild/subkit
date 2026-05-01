@@ -132,7 +132,7 @@ function unavailableEnvelope(params: {
  *
  * Stage ordering is approximate — checkpoints (`hasFreshCheckpoint`)
  * are the authoritative readiness signal for tools like
- * `save_connector_draft` / `commit_draft`. This helper is the cheap
+ * `save_connector_draft` / `save_workflow_draft`. This helper is the cheap
  * structural gate that catches obvious mismatches (e.g. asking to
  * save before any connector is even targeted).
  */
@@ -231,7 +231,7 @@ export function requirePersistedWorkflow(
     return unavailableEnvelope({
       toolName,
       message: `${toolName} requires a persisted workflow; the conversation has no authoring summary`,
-      next_best_actions: ["commit_draft", "list_workflows"],
+      next_best_actions: ["save_workflow_draft", "list_workflows"],
     });
   }
   const persistedActive =
@@ -243,7 +243,7 @@ export function requirePersistedWorkflow(
   return unavailableEnvelope({
     toolName,
     message: `${toolName} requires a persisted workflow; current state has none`,
-    next_best_actions: ["commit_draft", "list_workflows"],
+    next_best_actions: ["save_workflow_draft", "list_workflows"],
     details: { current_stage: summary.stage },
   });
 }

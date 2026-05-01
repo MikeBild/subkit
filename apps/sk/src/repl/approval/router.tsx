@@ -1,13 +1,13 @@
 // Elicitation router — dispatches on the `ask_user_*` tool family and
 // renders a kind-specific inline component. Replaces the old approval
-// router: `ask_user_confirm { kind: commit_draft }` renders a
+// router: `ask_user_confirm { kind: save_workflow_draft }` renders a
 // structured draft diff, `kind: external_write` renders target URL +
 // payload, other askUser tools (choice, multi, text, form) fall back
 // to a generic summary panel until the full elicit-prompt components
 // land in PR 5.
 //
 // When the elicitation carries a mutating `commit_intent`
-// (`save_connector_draft` / `commit_workflow_draft` / `update_connector`
+// (`save_connector_draft` / `save_workflow_draft` / `update_connector`
 // / `update_workflow`), the router routes to `GenericApproval` and
 // passes the `commit_intent` + `engineClient` so the upgraded
 // structured-diff view renders. Otherwise the legacy CommitDraft /
@@ -18,10 +18,10 @@ import type { CommitIntent } from "@engine/conversations/tools/ask-user/commit-i
 import { Box, Text } from "ink";
 import type React from "react";
 import type { EngineClient } from "../../engine-client.ts";
-import { CommitDraftApproval } from "./commit-draft.tsx";
 import { describeConfirmationPayload } from "./describe-confirmation.ts";
 import { ExternalWriteApproval } from "./external-write.tsx";
 import { GenericApproval } from "./generic.tsx";
+import { CommitDraftApproval } from "./save-workflow-draft.tsx";
 
 export interface ApprovalRouterProps {
   approval: PendingElicitation;
@@ -37,7 +37,7 @@ export interface ApprovalRouterProps {
 
 const STRUCTURED_DIFF_INTENT_KINDS: ReadonlySet<string> = new Set([
   "save_connector_draft",
-  "commit_workflow_draft",
+  "save_workflow_draft",
   "update_connector",
   "update_workflow",
 ]);
@@ -101,7 +101,7 @@ export const ApprovalRouter: React.FC<ApprovalRouterProps> = ({
           engineClient={engineClient}
           inputDisabled={inputDisabled}
         />
-      ) : approval.tool_name === "ask_user_confirm" && kind === "commit_draft" ? (
+      ) : approval.tool_name === "ask_user_confirm" && kind === "save_workflow_draft" ? (
         <CommitDraftApproval diff={diff} />
       ) : approval.tool_name === "ask_user_confirm" && kind === "external_write" ? (
         <ExternalWriteApproval target={target} diff={diff} />

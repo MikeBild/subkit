@@ -232,7 +232,7 @@ export async function buildOnboardingHint(opts: OnboardingOpts): Promise<string 
     return [
       "[ONBOARDING] Connectors present but no workflows yet.",
       "Suggest `probe_connector` against each connector to see the real response shape,",
-      "then `build_workflow` (or `propose_step`+`commit_draft`) to persist the first one.",
+      "then `build_workflow` (or `propose_step`+`save_workflow_draft`) to persist the first one.",
     ].join("\n");
   }
   if (runs_n === 0) {

@@ -8,7 +8,7 @@
 //      url → passes
 //   4. validate_draft confirms clean
 //   5. ask_user_confirm pauses the loop
-//   6. User answers { confirmed: true } → loop resumes → commit_draft
+//   6. User answers { confirmed: true } → loop resumes → save_workflow_draft
 //      → new workflow
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -87,7 +87,7 @@ describe("conversations/loop", () => {
       .where(eq(conversationDrafts.conversation_id, outcome.conversation.id));
     expect(snapshots.length).toBeGreaterThanOrEqual(1);
 
-    // Now confirm and resume — the plan continues with commit_draft.
+    // Now confirm and resume — the plan continues with save_workflow_draft.
     const elicitationId = outcome.result.pending_elicitation_id;
     if (!elicitationId) throw new Error("expected pending_elicitation_id");
     const resumed = await respondElicitation(

@@ -132,7 +132,7 @@ function buildWorkflowSuccessPayload(
         // the reference impl's `build_tool` contract so the LLM
         // never assumes the workflow is committed.
         persistence: "draft_only" as const,
-        next_step: "commit_draft" as const,
+        next_step: "save_workflow_draft" as const,
         warnings: args.warnings,
         infos: args.infos,
       },
@@ -151,7 +151,7 @@ export const buildWorkflowTool: ConversationTool = {
   use_case:
     "Use when you already know the full workflow structure — typically after probing connectors or after approving discovery artifacts. Saves 5–7 round-trips versus the incremental propose_step → connect_steps flow.",
   important_notes: [
-    "Does NOT persist the workflow; it writes to the conversation draft. To save, surface a single `ask_user_confirm` with `commit_intent: { kind: 'commit_workflow_draft', payload: { … }, description: 'Save this workflow.' }` — the harness atomically persists on confirm and injects a synthetic `commit_draft` tool-result. Do NOT chain a separate `commit_draft` call afterward.",
+    "Does NOT persist the workflow; it writes to the conversation draft. To save, surface a single `ask_user_confirm` with `commit_intent: { kind: 'save_workflow_draft', payload: { … }, description: 'Save this workflow.' }` — the harness atomically persists on confirm and injects a synthetic `save_workflow_draft` tool-result. Do NOT chain a separate `save_workflow_draft` call afterward.",
     String.raw`Every \${cred.<slug>.<field>} and \${connector.<slug>.*} must reference an existing connector + field in the target environment; mismatches yield placeholder_connector_missing / placeholder_cred_missing with exact token names.`,
     "If you pass `input_schema_sample` (a concrete payload) and omit `input_schema`, the tool infers a minimal JSON schema — accept the result or override explicitly.",
     "Replaces any in-progress draft on the conversation (idempotent): subsequent `build_workflow` calls overwrite the draft cleanly.",
@@ -527,7 +527,7 @@ export const buildWorkflowTool: ConversationTool = {
     // Detach from any previously-saved workflow target. build_workflow
     // replaces the draft wholesale; if the conversation row still
     // pointed at an earlier workflow with a different slug, downstream
-    // commit_draft would key the upsert on the stale id. The
+    // save_workflow_draft would key the upsert on the stale id. The
     // commit-time identity gate also catches this, but resetting here
     // keeps inspect / dry_run pre-commit aligned with the new draft.
     if (currentDraft.workflow?.slug !== args.slug) {

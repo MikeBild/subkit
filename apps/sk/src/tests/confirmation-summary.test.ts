@@ -8,10 +8,10 @@ describe("describeApprovalTarget", () => {
   test("uses tool + workflow id when present", () => {
     expect(
       describeApprovalTarget({
-        tool: "commit_draft",
+        tool: "save_workflow_draft",
         args: { target_workflow_id: "wf_123" },
       }),
-    ).toBe("commit_draft wf_123");
+    ).toBe("save_workflow_draft wf_123");
   });
 
   test("falls back to tool + environment when there is no resource id", () => {

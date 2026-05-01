@@ -210,8 +210,10 @@ describe("resolveExecutionMode — table coverage", () => {
     expect(r.confirmationKind).toBe("external_call");
   });
 
-  it("commit_draft / save_connector_draft — confirm_before", () => {
-    expect(resolveExecutionMode("commit_draft", {}, CTX).mode).toBe("confirm_before_execution");
+  it("save_workflow_draft / save_connector_draft — confirm_before", () => {
+    expect(resolveExecutionMode("save_workflow_draft", {}, CTX).mode).toBe(
+      "confirm_before_execution",
+    );
     expect(resolveExecutionMode("save_connector_draft", {}, CTX).mode).toBe(
       "confirm_before_execution",
     );

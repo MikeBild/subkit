@@ -85,10 +85,10 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     ).toBe("no_confirm");
   });
 
-  it("commit_draft requires confirm by default", () => {
+  it("save_workflow_draft requires confirm by default", () => {
     expect(
       resolveToolMode({
-        tool: "commit_draft",
+        tool: "save_workflow_draft",
         category: "draft_write",
         input: {},
         overrides: {},

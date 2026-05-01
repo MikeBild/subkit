@@ -3,11 +3,11 @@
 import { describe, expect, it } from "bun:test";
 import { runCritic } from "../index.ts";
 
-describe("commit_draft rubric", () => {
+describe("save_workflow_draft rubric", () => {
   it("passes when all structural checks succeed", async () => {
     const v = await runCritic({
       artifact: {
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         payload: {
           resource_kind: "workflow",
           resource_id: "wf_123",
@@ -29,7 +29,7 @@ describe("commit_draft rubric", () => {
   it("fails on placeholder marker leakage", async () => {
     const v = await runCritic({
       artifact: {
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         payload: {
           resource_kind: "connector",
           resource_id: "conn_x",
@@ -50,7 +50,7 @@ describe("commit_draft rubric", () => {
   it("fails when a referenced credential is not in the snapshot", async () => {
     const v = await runCritic({
       artifact: {
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         payload: {
           resource_kind: "connector",
           resource_id: "conn_y",
@@ -70,7 +70,7 @@ describe("commit_draft rubric", () => {
   it("fails when resource_id is null (not actually saved)", async () => {
     const v = await runCritic({
       artifact: {
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         payload: {
           resource_kind: "workflow",
           resource_id: null,
@@ -89,7 +89,7 @@ describe("commit_draft rubric", () => {
   it("fails connector commit when auth mode is missing", async () => {
     const v = await runCritic({
       artifact: {
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         payload: {
           resource_kind: "connector",
           resource_id: "conn_z",
@@ -108,7 +108,7 @@ describe("commit_draft rubric", () => {
   it("fails workflow commit when trigger_kind is 'unknown'", async () => {
     const v = await runCritic({
       artifact: {
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         payload: {
           resource_kind: "workflow",
           resource_id: "wf_q",
@@ -127,7 +127,7 @@ describe("commit_draft rubric", () => {
   it("fails when zero validated steps were recorded", async () => {
     const v = await runCritic({
       artifact: {
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         payload: {
           resource_kind: "workflow",
           resource_id: "wf_q",
@@ -208,7 +208,7 @@ describe("confidence scaling", () => {
   it("decreases confidence proportionally to number of failed checks", async () => {
     const oneFail = await runCritic({
       artifact: {
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         payload: {
           resource_kind: "workflow",
           resource_id: "wf_1",
@@ -222,7 +222,7 @@ describe("confidence scaling", () => {
     });
     const twoFail = await runCritic({
       artifact: {
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         payload: {
           resource_kind: "workflow",
           resource_id: null,

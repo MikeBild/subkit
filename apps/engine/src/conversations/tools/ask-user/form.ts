@@ -115,7 +115,7 @@ const inputSchema = z
     /**
      * Optional commit intent. When set, the harness applies the
      * intended write atomically once the operator submits — the LLM
-     * does NOT need to call save_connector_draft/commit_draft
+     * does NOT need to call save_connector_draft/save_workflow_draft
      * afterwards. See `./commit-intent.ts` for the schema.
      */
     commit_intent: commitIntentSchema.optional(),

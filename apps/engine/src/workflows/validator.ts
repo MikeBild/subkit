@@ -27,7 +27,7 @@ export interface ValidationError {
  *
  * Default ("strict") mode: every `loop.body[]`, `parallel.branches[][]`,
  * `branch.then_steps[]`, and `branch.else_steps[]` id MUST already exist
- * — used by `dry_run_workflow` and `commit_workflow_draft`, the
+ * — used by `dry_run_workflow` and `save_workflow_draft`, the
  * boundaries that can no longer recover from a missing dependency.
  *
  * "lenient" mode: unknown control-flow targets are returned as

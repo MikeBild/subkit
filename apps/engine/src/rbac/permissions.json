@@ -240,7 +240,7 @@
   },
   {
     "name": "conversation:commit",
-    "description": "Gate the engine-side commit_draft tool",
+    "description": "Gate the engine-side save_workflow_draft tool",
     "resource_type": "conversation"
   },
   {

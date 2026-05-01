@@ -3,7 +3,7 @@
 // the loop paused, the elicit card surfaced — even though the user had
 // flipped the bottom-bar chip to `auto` to opt out of approvals at
 // session level. Session 9b9ea73b had the user typing "ja approve
-// approve" three times before commit_draft committed.
+// approve" three times before save_workflow_draft committed.
 
 import { describe, expect, test } from "bun:test";
 import { askUserConfirmTool } from "../ask-user/confirm.ts";
@@ -32,10 +32,10 @@ function ctx(over: Partial<MinimalCtx> = {}): MinimalCtx {
 }
 
 describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
-  test("commit_draft resolves confirmed:true in auto mode", async () => {
+  test("save_workflow_draft resolves confirmed:true in auto mode", async () => {
     const result = await askUserConfirmTool.execute(ctx({ permission_mode: "auto" }) as never, {
       question: "Save the workflow?",
-      kind: "commit_draft",
+      kind: "save_workflow_draft",
     });
     expect(result.ok).toBe(true);
     expect((result.data as { confirmed: boolean }).confirmed).toBe(true);
@@ -80,7 +80,7 @@ describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
           // pauseForUserInput needs DB + elicitation infra; in this
           // unit test we just observe the absence of auto_resolved.
         } as never,
-        { question: "Save the workflow?", kind: "commit_draft" },
+        { question: "Save the workflow?", kind: "save_workflow_draft" },
       );
     } catch {
       didPause = true;

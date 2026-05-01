@@ -86,7 +86,7 @@ describe("journey: sk-cli admin golden path", () => {
 
   test("AC2: memory injection emits CONVERSATION_MEMORY_INJECTED", async () => {
     // Under the post-rebuild contract the canned list-users plan ends
-    // with `ask_user_confirm` before `commit_draft`, parking the
+    // with `ask_user_confirm` before `save_workflow_draft`, parking the
     // conversation in `awaiting_input`. Resolve that elicitation
     // (operator confirms) before posting a follow-up message;
     // `POST /v1/conversations/{id}/messages` returns 409

@@ -108,7 +108,7 @@ const CONVERSATION_TOOLS = [
     description: "Pause the loop and ask the operator for approval",
   },
   {
-    name: "commit_draft",
+    name: "save_workflow_draft",
     description: "Persist the draft as a new workflow version",
   },
 ] as const;

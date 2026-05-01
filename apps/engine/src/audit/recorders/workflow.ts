@@ -1,10 +1,10 @@
 // Workflow audit recorders.
 //
 // Wave 3 paths:
-//   - commitWorkflowAtomic / commit_draft → recordWorkflowCreated /
+//   - commitWorkflowAtomic / save_workflow_draft → recordWorkflowCreated /
 //     recordWorkflowUpdated (depending on whether the conversation had
 //     a target_workflow_id pinned)
-//   - commit_draft with force_commit override → recordWorkflowCommitted
+//   - save_workflow_draft with force_commit override → recordWorkflowCommitted
 //     with override=true so the commit_override row is the canonical
 //     "force_commit happened" trail
 //   - delete_workflow → recordWorkflowDeleted
@@ -53,7 +53,7 @@ export interface RecordWorkflowUpdatedParams extends RecorderBase {
   workflow_version_id?: string | null;
   reason: string;
   source: "harness_auto_persist" | "tool_call" | "service";
-  /** "commit_via_tool" | "auto_persist" | "preview_override" — surfaces in metadata. */
+  /** "save_via_tool" | "auto_persist" | "preview_override" — surfaces in metadata. */
   kind?: string;
   tool?: string;
   commit_intent_kind?: string;
@@ -116,7 +116,7 @@ export async function recordWorkflowDeleted(
 }
 
 /**
- * Force-commit override record. Only emitted when `commit_draft` was
+ * Force-commit override record. Only emitted when `save_workflow_draft` was
  * called with `force_commit: true` AND the most recent dry-run preview
  * was failing/missing. Mirrors the connector `saved_override` row.
  */
@@ -131,7 +131,7 @@ export interface RecordWorkflowCommittedParams extends RecorderBase {
   latest_preview_warnings?: unknown[];
   tool?: string;
   /**
-   * Override the metadata `kind` tag. Defaults to "force_commit_override"
+   * Override the metadata `kind` tag. Defaults to "force_save_override"
    * (the Wave 4 canonical marker). The tool path passes
    * "preview_override" so the audit trail mirrors the existing
    * tooling vocabulary.
@@ -154,7 +154,7 @@ export async function recordWorkflowCommitted(
       reason: p.reason,
       metadata: {
         source: p.source,
-        kind: p.kind ?? "force_commit_override",
+        kind: p.kind ?? "force_save_override",
         ...(p.workflow_version_id ? { workflow_version_id: p.workflow_version_id } : {}),
         ...(p.version !== undefined ? { version: p.version } : {}),
         ...(p.latest_preview_summary !== undefined

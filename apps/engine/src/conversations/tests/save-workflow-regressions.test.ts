@@ -82,7 +82,7 @@ async function seedLiveWorkflow(slug: string, name: string): Promise<{ id: strin
 }
 
 describe("workflow save regressions", () => {
-  test("a short auto-mode approval follows the draft summary into commit_draft", async () => {
+  test("a short auto-mode approval follows the draft summary into save_workflow_draft", async () => {
     const draft = {
       ...readyDraft({
         name: "GitHub Private Repos by Owner",
@@ -107,7 +107,7 @@ describe("workflow save regressions", () => {
       snapshot: draft as unknown as Record<string, unknown>,
     });
 
-    getMockProvider().setConversePlan(conversation.id, [{ tool: "commit_draft", args: {} }]);
+    getMockProvider().setConversePlan(conversation.id, [{ tool: "save_workflow_draft", args: {} }]);
 
     const result = await appendUserMessage(
       {
@@ -125,7 +125,7 @@ describe("workflow save regressions", () => {
 
     const detail = await getConversation(ctx.tenant_id, conversation.id, ctx.testDb.db);
     expect(detail?.conversation.target_workflow_id).toBe(result.result.committed_workflow_id);
-    expect(detail?.tool_calls.map((call) => call.tool)).toContain("commit_draft");
+    expect(detail?.tool_calls.map((call) => call.tool)).toContain("save_workflow_draft");
     expect(detail?.tool_calls.map((call) => call.tool)).not.toContain("ask_user_confirm");
   });
 
@@ -159,11 +159,11 @@ describe("workflow save regressions", () => {
         tool: "ask_user_confirm",
         args: {
           question: "Save the workflow now?",
-          kind: "commit_draft",
+          kind: "save_workflow_draft",
           summary: "Workflow: GitHub Private Repos by Owner",
         },
       },
-      { tool: "commit_draft", args: {} },
+      { tool: "save_workflow_draft", args: {} },
     ]);
 
     const result = await appendUserMessage(

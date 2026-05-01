@@ -37,9 +37,9 @@ describe("renderElicitAnswer — confirmation outputs", () => {
   // a6440493).
   test("appends commit_intent.description as payload preview", () => {
     const input = {
-      kind: "commit_draft",
+      kind: "save_workflow_draft",
       commit_intent: {
-        kind: "commit_workflow_draft",
+        kind: "save_workflow_draft",
         description: "Save the DigitalOcean projects workflow",
         payload: {},
       },
@@ -53,11 +53,13 @@ describe("renderElicitAnswer — confirmation outputs", () => {
     const input = {
       kind: "external_write",
       target: {
-        tool: "commit_draft",
+        tool: "save_workflow_draft",
         args: { target_workflow_id: "wf_123" },
       },
     };
-    expect(renderElicitAnswer({ confirmed: true }, input)).toBe("approve · commit_draft wf_123");
+    expect(renderElicitAnswer({ confirmed: true }, input)).toBe(
+      "approve · save_workflow_draft wf_123",
+    );
   });
 
   test("falls back to target.tool + environment when there is no workflow id", () => {

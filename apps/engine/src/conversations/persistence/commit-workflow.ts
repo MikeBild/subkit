@@ -1,9 +1,9 @@
-// Atomic workflow commit — extracted from `tools/commit-draft.ts` so
+// Atomic workflow commit — extracted from `tools/save-workflow-draft.ts` so
 // both the LLM-driven tool path AND the harness-driven auto-persist
 // path share one durability contract (PR11/PR12 — elicitation
 // `commit_intent`).
 //
-// The prior-approval gate (`ask_user_confirm{kind:commit_draft}`) is
+// The prior-approval gate (`ask_user_confirm{kind:save_workflow_draft}`) is
 // the tool's job — by the time the harness auto-persist path lands
 // here, the operator has ALREADY confirmed via the carrier
 // elicitation, so the gate would just re-detect the same row and
@@ -61,7 +61,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
           eq(conversationElicitations.tenant_id, ctx.tenant_id),
           eq(conversationElicitations.conversation_id, ctx.conversation_id),
           eq(conversationElicitations.tool_name, "ask_user_confirm"),
-          sql`(${conversationElicitations.input} ->> 'kind') = 'commit_draft'`,
+          sql`(${conversationElicitations.input} ->> 'kind') = 'save_workflow_draft'`,
         ),
       )
       .orderBy(desc(conversationElicitations.created_at))
@@ -83,11 +83,11 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       logger.warn({
         module: "conversation_persistence",
         action: "commit_gate.denied",
-        msg: "commitWorkflowAtomic prior-approval gate denied — no resolved ask_user_confirm{kind:commit_draft, confirmed:true} found",
+        msg: "commitWorkflowAtomic prior-approval gate denied — no resolved ask_user_confirm{kind:save_workflow_draft, confirmed:true} found",
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
         permission_mode: ctx.permission_mode,
-        intent_kind_expected: "commit_draft",
+        intent_kind_expected: "save_workflow_draft",
         latest_elicitation_id: head?.id ?? null,
         latest_elicitation_status: head?.status ?? null,
         latest_elicitation_confirmed:
@@ -100,7 +100,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
         data: buildGateError(ctx.getDraft(), {
           error_code: "no_prior_approval",
           message:
-            "commit_draft requires a resolved ask_user_confirm { kind: commit_draft, confirmed: true }",
+            "save_workflow_draft requires a resolved ask_user_confirm { kind: save_workflow_draft, confirmed: true }",
           recommended_mode: "workflow",
           next_best_actions: ["ask_user_confirm"],
           extra: {
@@ -181,7 +181,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       ok: false,
       error_code: "partial_success_not_acknowledged",
       message:
-        "the most recent run finished as partial_success and the latest preview has not cleared it. Repair the workflow, run dry_run_workflow again, or call commit_draft with force_commit:true after the operator explicitly confirms",
+        "the most recent run finished as partial_success and the latest preview has not cleared it. Repair the workflow, run dry_run_workflow again, or call save_workflow_draft with force_commit:true after the operator explicitly confirms",
       data: buildGateError(fullDraft, {
         error_code: "partial_success_not_acknowledged",
         message:
@@ -221,7 +221,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       ok: false,
       error_code: "warnings_unacknowledged",
       message:
-        "the most recent execution carries `requires_repair: true` and the latest preview has not cleared it. Re-run dry_run_workflow with the fixed expressions to confirm the repair flag is gone, or call commit_draft with force_commit:true after the operator explicitly confirms",
+        "the most recent execution carries `requires_repair: true` and the latest preview has not cleared it. Re-run dry_run_workflow with the fixed expressions to confirm the repair flag is gone, or call save_workflow_draft with force_commit:true after the operator explicitly confirms",
       data: buildGateError(fullDraft, {
         error_code: "warnings_unacknowledged",
         message:
@@ -258,7 +258,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       ok: false,
       error_code: "no_meaningful_change",
       message:
-        "preview output is empty `[]` AND the most recent execution had warnings — committing would stack another broken version. Either change the workflow shape so the loop body produces rows, or call commit_draft with force_commit:true after the operator explicitly confirms",
+        "preview output is empty `[]` AND the most recent execution had warnings — committing would stack another broken version. Either change the workflow shape so the loop body produces rows, or call save_workflow_draft with force_commit:true after the operator explicitly confirms",
       data: buildGateError(fullDraft, {
         error_code: "no_meaningful_change",
         message:
@@ -282,21 +282,21 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       ok: false,
       error_code: previewFailed ? "preview_failed" : "workflow_not_ready",
       message: previewFailed
-        ? "the most recent dry-run was unsuccessful — re-run dry_run_workflow successfully, or call commit_draft again with force_commit: true after the operator explicitly confirms"
+        ? "the most recent dry-run was unsuccessful — re-run dry_run_workflow successfully, or call save_workflow_draft again with force_commit: true after the operator explicitly confirms"
         : "workflow commit is blocked until a successful dry_run_workflow has run",
       next_best_actions: previewFailed
-        ? ["dry_run_workflow", "ask_user_confirm", "commit_draft"]
+        ? ["dry_run_workflow", "ask_user_confirm", "save_workflow_draft"]
         : ["dry_run_workflow"],
       ...(latestPreview ? { details: latestPreview } : {}),
       data: buildGateError(fullDraft, {
         error_code: previewFailed ? "preview_failed" : "workflow_not_ready",
         message: previewFailed
-          ? "preview failed — re-run dry_run_workflow, or call commit_draft again with force_commit: true after the operator explicitly confirms"
+          ? "preview failed — re-run dry_run_workflow, or call save_workflow_draft again with force_commit: true after the operator explicitly confirms"
           : "workflow commit is blocked until dry_run_workflow has produced a fresh preview",
         stale_checkpoints: previewFailed ? [] : ["workflow_previewed"],
         recommended_mode: "workflow",
         next_best_actions: previewFailed
-          ? ["dry_run_workflow", "ask_user_confirm", "commit_draft"]
+          ? ["dry_run_workflow", "ask_user_confirm", "save_workflow_draft"]
           : ["dry_run_workflow"],
         extra: {
           latest_preview: latestPreview ?? null,
@@ -348,7 +348,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     if (targetSlug !== null && targetSlug !== def.slug) {
       logger.info({
         module: "conversation",
-        action: "commit_draft.target_pivot_detected",
+        action: "save_workflow_draft.target_pivot_detected",
         msg: "draft slug diverged from conversation target_workflow_id — treating as new artifact",
         conversation_id: ctx.conversation_id,
         stale_target_workflow_id: targetWorkflowId,
@@ -418,7 +418,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
             conflict: { workflow_id: conflict.id, slug: conflict.slug, name: conflict.name },
             recovery: {
               overwrite:
-                "After the user confirms in chat, call commit_draft again with target_workflow_id=<conflict.workflow_id>",
+                "After the user confirms in chat, call save_workflow_draft again with target_workflow_id=<conflict.workflow_id>",
               rename:
                 "Otherwise rename the draft (update_param / build_workflow with a fresh slug) and re-validate before committing.",
             },
@@ -509,8 +509,8 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
               {
                 path: "slug",
                 message: existing
-                  ? `slug "${attempted}" belongs to workflow id=${existing.id}. To overwrite it, ask the user, then call commit_draft with target_workflow_id="${existing.id}". Otherwise rename the draft slug.`
-                  : `slug "${attempted}" already exists for this tenant — pick a different slug and call commit_draft again`,
+                  ? `slug "${attempted}" belongs to workflow id=${existing.id}. To overwrite it, ask the user, then call save_workflow_draft with target_workflow_id="${existing.id}". Otherwise rename the draft slug.`
+                  : `slug "${attempted}" already exists for this tenant — pick a different slug and call save_workflow_draft again`,
               },
             ],
             attempted_slug: attempted,
@@ -518,7 +518,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
             ...(existing
               ? {
                   recovery: {
-                    overwrite: `After the user confirms in chat, call commit_draft again with target_workflow_id="${existing.id}"`,
+                    overwrite: `After the user confirms in chat, call save_workflow_draft again with target_workflow_id="${existing.id}"`,
                     rename:
                       "Otherwise rename the draft (update_param / build_workflow with a fresh slug) and re-validate before committing.",
                   },

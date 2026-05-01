@@ -72,7 +72,7 @@ describe("sk CLI user story — real backend", () => {
   }, 120_000);
 
   // The canned open-meteo plan parks the conversation in `awaiting_input`
-  // at its terminal `ask_user_confirm` before `commit_draft`. The 409
+  // at its terminal `ask_user_confirm` before `save_workflow_draft`. The 409
   // `pending_elicitation_blocked` guard would refuse a turn-2 message
   // until the elicitation is resolved. We `decline` (confirmed:false) so
   // the conversation stays in `active` rather than advancing to

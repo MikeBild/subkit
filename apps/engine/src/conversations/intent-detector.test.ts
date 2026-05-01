@@ -56,7 +56,7 @@ function summary(overrides: Partial<AuthoringSummary> = {}): AuthoringSummary {
     next_action: "Commit the workflow now that inspection, validation, and preview are fresh.",
     next_required_action:
       "Commit the workflow now that inspection, validation, and preview are fresh.",
-    next_suggested_tool: "commit_draft",
+    next_suggested_tool: "save_workflow_draft",
     missing_fields: [],
     last_action: null,
     progress_label: "1 workflow step",
@@ -123,7 +123,7 @@ describe("detectUserIntent", () => {
 
   test("recognizes 'speichere den workflow' as commit intent", () => {
     const res = detectUserIntent("speichere den aktualisierten workflow");
-    expect(res.forceTool).toBe("commit_draft");
+    expect(res.forceTool).toBe("save_workflow_draft");
   });
 
   test("recognizes explicit new-workflow phrasing", () => {
@@ -183,14 +183,14 @@ describe("detectEnvelopeResolution", () => {
 });
 
 describe("inferStateDrivenFollowUpTool", () => {
-  test("maps a short approval onto commit_draft for a ready workflow draft in auto mode", () => {
+  test("maps a short approval onto save_workflow_draft for a ready workflow draft in auto mode", () => {
     expect(
       inferStateDrivenFollowUpTool({
         latestUserText: "yes",
         permission_mode: "auto",
         summary: summary(),
       }),
-    ).toBe("commit_draft");
+    ).toBe("save_workflow_draft");
   });
 
   test("maps a short approval onto save_connector_draft for a ready connector draft in auto mode", () => {

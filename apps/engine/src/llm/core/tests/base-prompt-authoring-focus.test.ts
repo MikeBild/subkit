@@ -61,13 +61,13 @@ describe("converse base prompt — authoring focus blocks", () => {
         blocked_by: [],
         next_required_action:
           "Commit the workflow now that inspection, validation, and preview are fresh.",
-        next_suggested_tool: "commit_draft",
+        next_suggested_tool: "save_workflow_draft",
       }),
     );
     expect(prompt).toContain("AUTHORING FOCUS: WORKFLOW");
     expect(prompt).toContain("Current workflow stage: workflow_previewed.");
     expect(prompt).toContain("Do not run a draft-only workflow.");
-    expect(prompt).toContain("Next suggested tool: commit_draft");
+    expect(prompt).toContain("Next suggested tool: save_workflow_draft");
   });
 
   it("renders the diagnosis focus block when a diagnosis is active", async () => {

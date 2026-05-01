@@ -26,17 +26,17 @@ describe("ApprovalCard", () => {
   test("surfaces commit_intent.description when summary is absent", () => {
     const ui = renderCard(
       makeApprovalCall({
-        kind: "commit_draft",
+        kind: "save_workflow_draft",
         question: "Save the workflow?",
         commit_intent: {
-          kind: "commit_workflow_draft",
+          kind: "save_workflow_draft",
           description: "Save the DigitalOcean projects workflow",
           payload: {},
         },
       }),
     );
     const frame = snapshot(ui);
-    expect(frame).toContain("approved: commit_draft");
+    expect(frame).toContain("approved: save_workflow_draft");
     expect(frame).toContain("Save the DigitalOcean projects workflow");
     ui.unmount();
   });

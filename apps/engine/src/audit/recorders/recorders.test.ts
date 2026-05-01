@@ -224,7 +224,7 @@ describe("recorder catalog — workflow", () => {
       version: 1,
       reason: "auto_persist_on_confirmation",
       source: "harness_auto_persist",
-      commit_intent_kind: "commit_workflow_draft",
+      commit_intent_kind: "save_workflow_draft",
     });
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.WORKFLOW_CREATED);
@@ -243,13 +243,13 @@ describe("recorder catalog — workflow", () => {
       workflow_version_id: "ver-1",
       reason: "manual_re_issue",
       source: "tool_call",
-      kind: "commit_via_tool",
-      tool: "commit_draft",
+      kind: "save_via_tool",
+      tool: "save_workflow_draft",
     });
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.WORKFLOW_UPDATED);
     expect(row?.reason).toBe("manual_re_issue");
-    expect((row?.metadata as Record<string, unknown>).kind).toBe("commit_via_tool");
+    expect((row?.metadata as Record<string, unknown>).kind).toBe("save_via_tool");
   });
 
   test("recordWorkflowDeleted", async () => {
@@ -275,16 +275,16 @@ describe("recorder catalog — workflow", () => {
       workflow_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
       workflow_version_id: "ver-2",
       version: 3,
-      reason: "force_commit_override",
+      reason: "force_save_override",
       source: "tool_call",
-      tool: "commit_draft",
+      tool: "save_workflow_draft",
       latest_preview_summary: { ok: false },
       latest_preview_warnings: [{ code: "preview_failed" }],
     });
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.WORKFLOW_COMMITTED_OVERRIDE);
-    expect(row?.reason).toBe("force_commit_override");
-    expect((row?.metadata as Record<string, unknown>).kind).toBe("force_commit_override");
+    expect(row?.reason).toBe("force_save_override");
+    expect((row?.metadata as Record<string, unknown>).kind).toBe("force_save_override");
   });
 });
 

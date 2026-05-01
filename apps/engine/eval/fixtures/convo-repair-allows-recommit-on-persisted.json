@@ -1,6 +1,6 @@
 {
   "name": "convo-repair-allows-recommit-on-persisted",
-  "description": "After diagnosing a persisted workflow, validating the repaired draft, the conversation tool palette MUST surface commit_draft so the agent can finish the repair in chat. Hiding it forces the agent into cannot_help with a CLI-suggesting suggest_alternative — the bug seen in session 95ccaa35 (2026-04-25).",
+  "description": "After diagnosing a persisted workflow, validating the repaired draft, the conversation tool palette MUST surface save_workflow_draft so the agent can finish the repair in chat. Hiding it forces the agent into cannot_help with a CLI-suggesting suggest_alternative — the bug seen in session 95ccaa35 (2026-04-25).",
   "flow": "converse",
   "input": {
     "active_target": {
@@ -25,7 +25,7 @@
     ],
     "blocked_by": [],
     "missing_fields": [],
-    "expect_palette_includes": ["commit_draft", "validate_draft", "dry_run_workflow"],
-    "expect_palette_excludes_when_validation_stale": ["commit_draft"]
+    "expect_palette_includes": ["save_workflow_draft", "validate_draft", "dry_run_workflow"],
+    "expect_palette_excludes_when_validation_stale": ["save_workflow_draft"]
   }
 }

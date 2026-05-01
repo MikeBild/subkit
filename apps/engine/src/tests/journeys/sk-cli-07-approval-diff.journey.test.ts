@@ -38,7 +38,7 @@ describe("journey: sk-cli elicitation diff surfacing", () => {
     );
     conversationId = outcome.conversation.id;
 
-    // Persist a structured commit_draft confirm directly via the
+    // Persist a structured save_workflow_draft confirm directly via the
     // elicitation helper — mirrors what `ask_user_confirm` does at
     // runtime without driving the full tool loop.
     const elicitation = await createElicitation(
@@ -50,7 +50,7 @@ describe("journey: sk-cli elicitation diff surfacing", () => {
         summary: "commit 2-step workflow",
         input: {
           question: "Commit this workflow?",
-          kind: "commit_draft",
+          kind: "save_workflow_draft",
           summary: "commit 2-step workflow",
           diff: {
             name: "invoice-digest",
@@ -109,7 +109,7 @@ describe("journey: sk-cli elicitation diff surfacing", () => {
     };
     expect(payload.elicitation_id).toBe(elicitationId);
     expect(payload.tool_name).toBe("ask_user_confirm");
-    expect(payload.input?.kind).toBe("commit_draft");
+    expect(payload.input?.kind).toBe("save_workflow_draft");
     expect(payload.input?.diff?.name).toBe("invoice-digest");
     expect(payload.input?.diff?.steps?.length).toBe(2);
   });
