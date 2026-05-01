@@ -15,7 +15,13 @@ import { executions } from "../db/schema/index.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./recovery.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./tests/setup.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+// Recovery sweep reads real `Date.now()` to compute age; tests must
+// pin their reference clock against today's wall clock or every
+// "1h ago" insertion ages indefinitely past the 9h threshold and
+// gets reaped (the prior hard-coded TEST_NOW_MS = 1_700_000_000_000
+// expired in Nov 2023 + the test silently broke as soon as CI ran
+// past that date).
+const TEST_NOW_MS = Date.now();
 
 let ctx: EngineTestCtx;
 

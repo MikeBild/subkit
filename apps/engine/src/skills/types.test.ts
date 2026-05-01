@@ -13,7 +13,7 @@ import {
   SkillSideEffectsSchema,
 } from "./types.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 describe("SkillActivationSchema — discriminated union", () => {
   test("accepts every kind", () => {

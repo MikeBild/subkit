@@ -19,7 +19,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 let srv: HttpTestServer;
 let memberKey = "";

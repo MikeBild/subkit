@@ -5,7 +5,7 @@ import type { ConverseMockStep } from "../../apps/engine/src/llm/mock-provider.t
 import { getMockProvider } from "../../apps/engine/src/llm/mock-provider.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 let env: E2EEnv;
 let httpServer: ReturnType<typeof Bun.serve>;

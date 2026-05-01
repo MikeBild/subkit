@@ -11,7 +11,7 @@ import { describe, expect, test } from "bun:test";
 import { runLoopStep } from "../steps/loop.ts";
 import type { StepRunContext } from "../types.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 function ctx(scope: Record<string, unknown>): StepRunContext {
   return {

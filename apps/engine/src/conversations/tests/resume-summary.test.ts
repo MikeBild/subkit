@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import type { ConversationRecord, DraftDocument } from "../types.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 function conv(overrides: Partial<ConversationRecord> = {}): ConversationRecord {
   return {

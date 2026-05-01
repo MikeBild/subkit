@@ -13,7 +13,7 @@ import {
   MAX_HISTORY,
 } from "../repl/history-store.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 const dirs: string[] = [];
 function tmpHistoryPath(): string {

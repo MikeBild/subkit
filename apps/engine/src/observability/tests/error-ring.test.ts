@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { type CapturedError, createErrorRing } from "../error-ring.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 function mk(overrides: Partial<CapturedError> = {}): CapturedError {
   return {

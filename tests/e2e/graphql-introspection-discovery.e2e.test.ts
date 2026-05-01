@@ -27,7 +27,7 @@ import { runDiscoveryCached } from "../../apps/engine/src/connectors/discovery/s
 import { knowledgeSources, tenants } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 interface MockServer {
   baseUrl: string;

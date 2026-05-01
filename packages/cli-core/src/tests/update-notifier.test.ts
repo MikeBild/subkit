@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { notifyIfUpdateAvailable } from "../update-notifier.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 // Each test uses a unique binary name so caches don't collide.
 // The notifier creates its cache under ~/.{binaryName}/ so we use

@@ -15,7 +15,7 @@ import { isCronDue, SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { ingestDocs } from "../service.ts";
 import { createDocsTestCtx, type DocsTestCtx, stubFetch } from "./setup.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 const SPEC_V1 = {
   openapi: "3.0.0",

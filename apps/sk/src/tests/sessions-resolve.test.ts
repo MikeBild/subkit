@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveSessionRef, type SessionMetadata, saveSessionMetadata } from "../sessions.ts";
 
-const TEST_NOW_MS = 1_700_000_000_000;
+const TEST_NOW_MS = Date.now();
 
 let tmpHome: string;
 let origSkHome: string | undefined;
