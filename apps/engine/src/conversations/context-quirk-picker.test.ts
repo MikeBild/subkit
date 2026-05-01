@@ -110,25 +110,40 @@ describe("formatConnectorRecipes", () => {
     expect(formatConnectorRecipes("stripe", {})).toBeNull();
   });
 
-  test("renders slug + title + intent_keywords per recipe", () => {
+  test("renders slug + title + category + tags + difficulty + intent_keywords per recipe", () => {
     const block = formatConnectorRecipes("stripe", {
       recipes: [
         {
           slug: "list-customers",
           title: "List recent Stripe customers",
+          category: "payments",
+          tags: ["read"],
+          difficulty: "intermediate",
           intent_keywords: ["list customers", "recent customers"],
         },
         {
           slug: "create-customer",
           title: "Create a Stripe customer",
+          category: "payments",
+          tags: [],
+          difficulty: "advanced",
           intent_keywords: ["create customer"],
         },
       ],
     });
     expect(block).toContain("`list-customers`");
     expect(block).toContain("List recent Stripe customers");
+    expect(block).toContain("category: payments");
+    expect(block).toContain("tags: read");
     expect(block).toContain("list customers, recent customers");
     expect(block).toContain("`create-customer`");
+    // `intermediate` is the default — drop from output to save tokens.
+    expect(block).not.toContain("difficulty: intermediate");
+    // Non-default difficulty surfaces.
+    expect(block).toContain("difficulty: advanced");
+    // The on-demand inspect_recipe path is mentioned so the LLM knows
+    // how to fetch the heavier description / sample_input.
+    expect(block).toContain("inspect_recipe");
   });
 
   test("recipe entries without slug or title are skipped", () => {
