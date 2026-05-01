@@ -11,7 +11,7 @@
 //   * Ctrl-T alternate-screen transcript toggle
 //   * useDeferredValue on the message list so long histories stay
 //     responsive when typing
-//   * Kind-specific approval router for commit_draft / external_write
+//   * Kind-specific approval router for save_workflow_draft / external_write
 //
 // The component is a pure consumer of the engine stream — all
 // state transitions go through `applyTurnEvent` from @cli-core.
@@ -2915,19 +2915,17 @@ export const InkApp: React.FC<InkAppProps> = ({
   for (let i = 0; i < deferredMessages.length; i++) {
     const m = deferredMessages[i];
     if (!m) continue;
-    // Skip empty assistant turns. The model occasionally emits a
-    // pure tool-calling turn with no text (or a literal "{}" stub
-    // when the structured output didn't include a text field). The
-    // raw stringified `{}` rendered as a `• sk    {}` line in the
-    // transcript — visual noise that confused operators in session
-    // 1222158a. The child tool calls below still render under the
-    // same parent_message_id, so dropping the empty header row only
-    // removes the speaker line, never the work the turn produced.
+    // Skip empty assistant turns. Tool-only steps carry an
+    // engine-side parent-anchor row whose content is `{}` — that
+    // empty object normalises to text="" via parseRenderableMessage
+    // Content's isEffectivelyEmpty guard, so the row reaches us with
+    // both content and parts blank. The child tool calls below still
+    // render under the same parent_message_id; dropping the empty
+    // header row only removes the speaker line, never the work the
+    // turn produced.
     const trimmedContent = (m.content ?? "").trim();
     const isEmptyAssistantStub =
-      m.role === "assistant" &&
-      (trimmedContent === "" || trimmedContent === "{}") &&
-      (!m.parts || m.parts.length === 0);
+      m.role === "assistant" && trimmedContent === "" && (!m.parts || m.parts.length === 0);
     if (!isEmptyAssistantStub) {
       transcriptRows.push(
         <MessageRow

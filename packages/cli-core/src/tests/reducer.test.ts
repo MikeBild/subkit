@@ -177,6 +177,24 @@ describe("applyTurnEvent — streaming frames", () => {
     expect(s.messages[s.messages.length - 1]?.content).toBe("partial finalised");
   });
 
+  test("tool-only assistant turn (content={}) normalises to empty text+parts", () => {
+    // Engine loop.ts:1175 emits content={} for a step with no text and
+    // no violations — the row exists only as a parent-id anchor for the
+    // child tool calls. Without isEffectivelyEmpty the safeStringify
+    // fallback would produce parsed.text="{}" and a one-element parts
+    // array, leaking a `• sk    {}` line into the transcript and
+    // breaking the empty-stub suppression in ink-app.
+    const s = applyTurnEvent(initialSessionState("conv-anchor-row"), {
+      type: "message",
+      role: "assistant",
+      content: {},
+      id: "msg-anchor-1",
+    });
+    const m = s.messages[s.messages.length - 1];
+    expect(m?.content).toBe("");
+    expect(m?.parts).toBeUndefined();
+  });
+
   test("message events keep structured render parts for code blocks and tables", () => {
     const s = applyTurnEvent(initialSessionState("conv-rich"), {
       type: "message",
