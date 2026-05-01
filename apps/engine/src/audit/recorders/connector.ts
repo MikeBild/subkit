@@ -231,6 +231,48 @@ export async function recordConnectorSavedOverride(
   );
 }
 
+export interface RecordConnectorDiscoveredParams extends RecorderBase {
+  connector_id: string;
+  /** Strategy that produced the result (openapi-direct, graphql-introspect, …). */
+  strategy: string;
+  /** Cache key the discovery dispatcher used (template:slug or url:hash). */
+  cache_key: string;
+  /** "cache" when the result was served from `knowledge_sources`, "fresh"
+   *  when the strategy chain ran. */
+  source: "cache" | "fresh";
+  endpoint_count: number;
+  /** Per-strategy warnings accumulated by the dispatcher — surfaced verbatim
+   *  so operators can see "openapi-direct 404, llms.txt empty,
+   *  html-scrape succeeded". */
+  warnings: ReadonlyArray<{ code: string; message: string }>;
+}
+
+export async function recordConnectorDiscovered(
+  p: RecordConnectorDiscoveredParams,
+): Promise<RecordedEntry> {
+  return auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: resolveActorType(p),
+      actor_id: p.actor_id,
+      action: AuditAction.CONNECTOR_DISCOVERED,
+      resource_type: "connector",
+      resource_id: p.connector_id,
+      result: "success",
+      reason: null,
+      metadata: {
+        strategy: p.strategy,
+        cache_key: p.cache_key,
+        source: p.source,
+        endpoint_count: p.endpoint_count,
+        warning_count: p.warnings.length,
+        ...(p.warnings.length > 0 ? { warnings: p.warnings.slice(0, 25) } : {}),
+      },
+    },
+    p.executor,
+  );
+}
+
 export interface RecordConnectorDraftCredentialRejectedParams extends RecorderBase {
   conversation_id: string;
   /**

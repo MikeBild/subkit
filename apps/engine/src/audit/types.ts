@@ -50,6 +50,13 @@ export const AuditAction = {
   // was recorded. Metadata records the probe classification so operators can
   // see why probing was skipped or failed.
   CONNECTOR_SAVED_OVERRIDE: "connector.saved_override",
+  // Discovery (introspection / spec-fetch / html-scrape / playwright)
+  // completed for a saved connector. Metadata records which strategy
+  // produced the result, the endpoint count, and any per-strategy
+  // warnings ("openapi-direct 404, llms.txt empty, html-scrape
+  // succeeded") — without this the operator only sees a binary
+  // "discovered / not discovered" without context.
+  CONNECTOR_DISCOVERED: "connector.discovered",
 
   WORKFLOW_CREATED: "workflow.created",
   WORKFLOW_UPDATED: "workflow.updated",

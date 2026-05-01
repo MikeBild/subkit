@@ -73,6 +73,23 @@ const awsSigV4CredentialInput = z.object({
   secret_access_key: z.string().min(1),
   session_token: z.string().min(1).optional(),
 });
+// OAuth2 client-credentials carrier. NOT a credential-row write — this
+// variant updates the saved connector's `config.oauth` block so a
+// subsequent `authenticate_oauth` call can run the dance against the
+// operator's own OAuth app. The actual access_token + refresh_token
+// arrive via the OAuth callback route, never through this tool.
+// Use case: the matched template doesn't ship the operator's client_id
+// (per-tenant apps), so the operator collects client_id + client_secret
+// via masked form, calls save_connector_draft({ credential: { mode:
+// "oauth2", ...} }), then calls authenticate_oauth.
+const oauth2CredentialInput = z.object({
+  mode: z.literal("oauth2"),
+  client_id: z.string().min(1),
+  client_secret: z.string().min(1).optional(),
+  token_endpoint: z.string().url().optional(),
+  authorization_endpoint: z.string().url().optional(),
+  scopes: z.string().optional(),
+});
 
 const credentialInput = z
   .discriminatedUnion("mode", [
@@ -82,9 +99,10 @@ const credentialInput = z
     queryCredentialInput,
     cognitoCredentialInput,
     awsSigV4CredentialInput,
+    oauth2CredentialInput,
   ])
   .describe(
-    "Optional credential to (re-)attach. Sourced verbatim from a masked `ask_user_form(type: password, sensitive: true)` submission — never typed in chat. `cognito_user_password` triggers an InitiateAuth exchange before persisting; the row ends up as a regular oauth2 credential with refresh_token + expires_at.",
+    "Optional credential to (re-)attach. Sourced verbatim from a masked `ask_user_form(type: password, sensitive: true)` submission — never typed in chat. `cognito_user_password` triggers an InitiateAuth exchange before persisting; the row ends up as a regular oauth2 credential with refresh_token + expires_at. `oauth2` carries the operator's client_id (+ optional client_secret + endpoints) into `config.oauth` so the subsequent `authenticate_oauth` call can run the dance — no credential row is written until the OAuth callback completes.",
   );
 
 const inputSchema = z
@@ -448,6 +466,10 @@ async function existingCredentialMatches(p: {
       (stored.session_token ?? null) === (supplied.session_token ?? null)
     );
   }
+  // oauth2 seed never writes a credential row (config.oauth update only).
+  // A pre-existing credential row of any other mode is by definition not
+  // a match — return false and let the persistence layer apply the seed.
+  if (supplied.mode === "oauth2") return false;
   return false;
 }
 

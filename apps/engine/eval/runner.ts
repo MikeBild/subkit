@@ -146,6 +146,14 @@ const EVAL_DIR = join(process.cwd(), "apps/engine/eval");
 const FIXTURES_DIR = join(EVAL_DIR, "fixtures");
 const VALIDATORS_DIR = join(EVAL_DIR, "validators");
 const OUT_DIR = join(EVAL_DIR, "out");
+const BASELINES_DIR = join(EVAL_DIR, "baselines");
+/**
+ * Maximum percentage-point drop in any single flow's pass rate before
+ * the runner fails the gate. Conservative — anything past this is a
+ * real regression, not eval noise. Raise the baseline (regenerate the
+ * CSV) when a flow has improved permanently.
+ */
+const PASS_RATE_DRIFT_PCT_MAX = 10;
 
 function loadFixtures(): FixtureRecord[] {
   const files = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith(".json"));
@@ -217,6 +225,84 @@ function writeCsv(report: RunReport): void {
 
 function writeJson(report: RunReport): void {
   writeFileSync(join(OUT_DIR, "eval-report.json"), JSON.stringify(report, null, 2), "utf8");
+}
+
+interface BaselineRow {
+  flow: string;
+  pass_rate: number;
+}
+
+/**
+ * Load `baselines/per-flow-pass-rate.csv` if present and compare each
+ * flow's current pass rate against the recorded baseline. Returns the
+ * list of flows whose pass rate dropped by more than
+ * `PASS_RATE_DRIFT_PCT_MAX` points — the runner exits non-zero when
+ * non-empty. The first run (no baseline file) is silent so a fresh
+ * checkout can produce its own snapshot via `bun run eval:baseline`.
+ */
+function compareAgainstBaseline(report: RunReport): {
+  drift: Array<{ flow: string; baseline_pct: number; current_pct: number; drop_pp: number }>;
+  baseline_present: boolean;
+} {
+  const baselinePath = join(BASELINES_DIR, "per-flow-pass-rate.csv");
+  let raw: string;
+  try {
+    raw = readFileSync(baselinePath, "utf8");
+  } catch {
+    return { drift: [], baseline_present: false };
+  }
+  const rows: BaselineRow[] = [];
+  for (const line of raw.split(/\r?\n/).slice(1)) {
+    if (!line.trim()) continue;
+    const [flow, rateStr] = line.split(",");
+    if (!flow || !rateStr) continue;
+    const pass_rate = Number.parseFloat(rateStr);
+    if (!Number.isFinite(pass_rate)) continue;
+    rows.push({ flow: flow.trim(), pass_rate });
+  }
+  const drift: Array<{
+    flow: string;
+    baseline_pct: number;
+    current_pct: number;
+    drop_pp: number;
+  }> = [];
+  for (const baseline of rows) {
+    const bucket = report.aggregates.per_flow[baseline.flow];
+    if (!bucket || bucket.total === 0) continue;
+    const current = bucket.passed / bucket.total;
+    const dropPp = (baseline.pass_rate - current) * 100;
+    if (dropPp > PASS_RATE_DRIFT_PCT_MAX) {
+      drift.push({
+        flow: baseline.flow,
+        baseline_pct: Math.round(baseline.pass_rate * 1000) / 10,
+        current_pct: Math.round(current * 1000) / 10,
+        drop_pp: Math.round(dropPp * 10) / 10,
+      });
+    }
+  }
+  return { drift, baseline_present: true };
+}
+
+/**
+ * Write the current per-flow pass rate as the new baseline. Invoked
+ * via `--write-baseline` so an operator who has intentionally improved
+ * a flow's pass rate can lock the new floor in one step. The CSV
+ * shape is `flow,pass_rate` with `pass_rate` as a 0..1 fraction.
+ */
+function writeBaseline(report: RunReport): void {
+  try {
+    require("node:fs").mkdirSync(BASELINES_DIR, { recursive: true });
+  } catch {
+    // ignore
+  }
+  const lines = ["flow,pass_rate"];
+  for (const [flow, bucket] of Object.entries(report.aggregates.per_flow)) {
+    if (bucket.total === 0) continue;
+    const rate = bucket.passed / bucket.total;
+    lines.push(`${flow},${rate.toFixed(4)}`);
+  }
+  writeFileSync(join(BASELINES_DIR, "per-flow-pass-rate.csv"), `${lines.join("\n")}\n`, "utf8");
+  console.log(`\nBaseline updated: ${join(BASELINES_DIR, "per-flow-pass-rate.csv")}`);
 }
 
 async function main(): Promise<void> {
@@ -298,6 +384,33 @@ async function main(): Promise<void> {
     console.log(
       `  ${flow}: ${agg.passed}/${agg.total} pass  p50=${agg.p50_ms}ms  p95=${agg.p95_ms}ms`,
     );
+  }
+  // Baseline drift gate. Operators bless a new baseline by passing
+  // `--write-baseline` after a deliberate improvement; without that
+  // flag, a flow whose pass rate slipped >10 percentage points fails
+  // the gate.
+  if (process.argv.includes("--write-baseline")) {
+    writeBaseline(report);
+  } else {
+    const { drift, baseline_present } = compareAgainstBaseline(report);
+    if (!baseline_present) {
+      console.log(
+        "\n(no eval/baselines/per-flow-pass-rate.csv yet — run with --write-baseline to seed it)",
+      );
+    } else if (drift.length > 0) {
+      console.error("\nFAIL: per-flow pass-rate drift exceeds gate:");
+      for (const d of drift) {
+        console.error(
+          `  ${d.flow}: baseline ${d.baseline_pct}% → current ${d.current_pct}% (drop ${d.drop_pp}pp, gate ${PASS_RATE_DRIFT_PCT_MAX}pp)`,
+        );
+      }
+      console.error(
+        "Investigate the regression OR re-run with --write-baseline once the new floor is intentional.",
+      );
+      process.exit(1);
+    } else {
+      console.log("\nBaseline drift: within gate.");
+    }
   }
   process.exit(failed === 0 ? 0 : 1);
 }

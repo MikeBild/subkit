@@ -23,7 +23,7 @@ describe("connector-template catalog — structural", () => {
     // (`templates.json validation failed: 90.base_url …`); the schema
     // and JSON were drifting — startup `loadBuiltinTemplates()` is the
     // canonical guard for that drift, exercised by this suite.
-    expect(templates.length).toBe(96);
+    expect(templates.length).toBe(95);
   });
 
   test("every slug matches the lowercase-kebab regex", () => {

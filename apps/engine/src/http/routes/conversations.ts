@@ -395,6 +395,7 @@ const ContextSnapshotSchema = z
         ok: z.boolean(),
         summary: z.string().nullable(),
         failure_code: z.string().nullable(),
+        probed_at: z.string().nullable(),
       })
       .nullable(),
     latest_preview: z

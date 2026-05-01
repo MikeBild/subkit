@@ -18,6 +18,7 @@ import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { ChatPlatform } from "../../chat/types.ts";
 import type { Db } from "../../db/client.ts";
 import { events, subscriptions } from "../../db/schema/index.ts";
+import type { RequestSource } from "../../execution/types.ts";
 import { logger } from "../../logging/logger.ts";
 import type { NotificationEvent, NotificationSeverity } from "../../notifications/matcher.ts";
 import {
@@ -97,10 +98,22 @@ function extractWorkflowId(payload: unknown): string | null {
   return null;
 }
 
-function extractRequestSource(payload: unknown): string | null {
+const VALID_REQUEST_SOURCES: ReadonlySet<string> = new Set([
+  "api",
+  "cli",
+  "mcp",
+  "webhook",
+  "tool-chain",
+  "scheduler",
+  "chat",
+]);
+
+function extractRequestSource(payload: unknown): RequestSource | null {
   if (payload && typeof payload === "object" && "request_source" in payload) {
     const r = (payload as { request_source?: unknown }).request_source;
-    if (typeof r === "string") return r;
+    if (typeof r === "string" && VALID_REQUEST_SOURCES.has(r)) {
+      return r as RequestSource;
+    }
   }
   return null;
 }

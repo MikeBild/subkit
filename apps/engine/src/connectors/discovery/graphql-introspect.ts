@@ -23,6 +23,7 @@ import {
 } from "graphql";
 import { log } from "../../logging/logger.ts";
 import { scrubUrl } from "../egress.ts";
+import { assertEgressAllowed } from "../egress-guard.ts";
 import {
   type DiscoveredEndpoint,
   type DiscoveredEndpointParam,
@@ -288,6 +289,7 @@ async function postIntrospection(
       query: getIntrospectionQuery(),
       operationName: "IntrospectionQuery",
     });
+    assertEgressAllowed(url, {});
     const res = await fetch(url, { method: "POST", headers, body, signal: controller.signal });
     if (!res.ok) {
       throw new DiscoveryError(

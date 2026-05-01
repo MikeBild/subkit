@@ -10,6 +10,7 @@ import {
   inferTemplateRequiredFields,
 } from "../connector-template-intelligence.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
+import { findReusableConnectorByUrl } from "./connector-reuse.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -57,6 +58,19 @@ export const startConnectorFromTemplateTool: ConversationTool = {
     // omit the field so validateConnectorDraft surfaces the missing-URL
     // gap and the operator is asked to provide it.
     const resolvedBaseUrl = enriched.base_url ?? template.base_url ?? undefined;
+    // Reuse-existing-saved-connector: same dedup as
+    // start_connector_from_description so two starts against the same
+    // upstream URL never produce two saved connectors.
+    const reuseEnvelope = await findReusableConnectorByUrl({
+      tenant_id: ctx.tenant_id,
+      environment: args.environment,
+      base_url: resolvedBaseUrl,
+      driver: enriched.driver,
+      db: ctx.db,
+    });
+    if (reuseEnvelope) {
+      return { ok: true, data: reuseEnvelope };
+    }
     const connector = {
       name: enriched.name,
       slug: enriched.slug ?? template.slug,

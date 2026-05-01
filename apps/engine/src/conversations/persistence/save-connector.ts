@@ -11,6 +11,7 @@
 import { eq } from "drizzle-orm";
 import {
   recordConnectorCreated,
+  recordConnectorDiscovered,
   recordConnectorSavedOverride,
   recordConnectorUpdated,
 } from "../../audit/recorders/index.ts";
@@ -20,7 +21,7 @@ import { listResolvedConnectorTemplates } from "../../connectors/template-resolv
 import { runCognitoUserPasswordGrant } from "../../credentials/oauth2/client.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
-import { conversations } from "../../db/schema/index.ts";
+import { connectors as connectorsTable, conversations } from "../../db/schema/index.ts";
 import { analyzeConversationAttachments } from "../../llm/flows/analyze-conversation-attachments.ts";
 import { logger } from "../../logging/logger.ts";
 import {
@@ -87,6 +88,18 @@ export type AtomicCredentialInput =
       access_key_id: string;
       secret_access_key: string;
       session_token?: string;
+    }
+  | {
+      /** OAuth2 client-credentials seed. NOT a credential-row write —
+       *  the saved connector's `config.oauth` is updated so a subsequent
+       *  `authenticate_oauth` call can run the dance. The credential
+       *  row is created later by the OAuth callback route. */
+      mode: "oauth2";
+      client_id: string;
+      client_secret?: string;
+      token_endpoint?: string;
+      authorization_endpoint?: string;
+      scopes?: string;
     };
 
 export interface SaveConnectorAtomicParams {
@@ -335,33 +348,43 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   // 730c568a). Stale failed probes still bypass via force_save: true so
   // operators can save credentials for systems they cannot probe right
   // now (intermittent endpoints, blocked egress, etc.).
-  if (probeFailed && p.forceSave === true && connector.latest_probe?.probed_at) {
-    const probedAtMs = Date.parse(connector.latest_probe.probed_at);
-    if (Number.isFinite(probedAtMs)) {
-      const ageMs = Date.now() - probedAtMs;
-      if (ageMs >= 0 && ageMs < FORCE_SAVE_COOLDOWN_MS) {
-        const remainingMs = FORCE_SAVE_COOLDOWN_MS - ageMs;
-        return {
-          ok: false,
+  //
+  // Missing-probed_at carve-out: a failed probe without a `probed_at`
+  // timestamp is either a legacy persisted draft (pre-cfdbceb) or a
+  // hand-built one. Treat it as fresh-and-failed and refuse force_save
+  // — silently bypassing the cooldown for null-probed_at would leave
+  // the LLM able to save a freshly-rejected credential.
+  if (probeFailed && p.forceSave === true && connector.latest_probe) {
+    const probedAtRaw = connector.latest_probe.probed_at;
+    const probedAtMs = probedAtRaw ? Date.parse(probedAtRaw) : Number.NaN;
+    const haveTimestamp = Number.isFinite(probedAtMs);
+    const ageMs = haveTimestamp ? Date.now() - probedAtMs : 0;
+    const insideCooldown = haveTimestamp && ageMs >= 0 && ageMs < FORCE_SAVE_COOLDOWN_MS;
+    if (!haveTimestamp || insideCooldown) {
+      const remainingMs = haveTimestamp ? FORCE_SAVE_COOLDOWN_MS - ageMs : FORCE_SAVE_COOLDOWN_MS;
+      const message = haveTimestamp
+        ? `the most recent probe failed ${Math.round(ageMs / 1000)}s ago — re-probe with the rotated credential before force-saving (cooldown: ${Math.round(remainingMs / 1000)}s remaining)`
+        : `the most recent probe failed without a timestamp — re-probe with the current credential before force-saving (cooldown: ${Math.round(remainingMs / 1000)}s)`;
+      return {
+        ok: false,
+        error_code: "force_save_cooldown",
+        message,
+        next_best_actions: ["ask_user_form", "probe_connector_draft", "save_connector_draft"],
+        ...(connector.latest_probe ? { details: connector.latest_probe } : {}),
+        data: buildGateError(draft, {
           error_code: "force_save_cooldown",
-          message: `the most recent probe failed ${Math.round(ageMs / 1000)}s ago — re-probe with the rotated credential before force-saving (cooldown: ${Math.round(remainingMs / 1000)}s remaining)`,
+          message:
+            "force_save is refused while the failed probe is still fresh — collect a new credential via ask_user_form, re-probe, then save",
+          recommended_mode: "connector",
           next_best_actions: ["ask_user_form", "probe_connector_draft", "save_connector_draft"],
-          ...(connector.latest_probe ? { details: connector.latest_probe } : {}),
-          data: buildGateError(draft, {
-            error_code: "force_save_cooldown",
-            message:
-              "force_save is refused while the failed probe is still fresh — collect a new credential via ask_user_form, re-probe, then save",
-            recommended_mode: "connector",
-            next_best_actions: ["ask_user_form", "probe_connector_draft", "save_connector_draft"],
-            extra: {
-              latest_probe: connector.latest_probe ?? null,
-              cooldown_ms: FORCE_SAVE_COOLDOWN_MS,
-              probe_age_ms: ageMs,
-              cooldown_remaining_ms: remainingMs,
-            },
-          }),
-        };
-      }
+          extra: {
+            latest_probe: connector.latest_probe ?? null,
+            cooldown_ms: FORCE_SAVE_COOLDOWN_MS,
+            probe_age_ms: haveTimestamp ? ageMs : null,
+            cooldown_remaining_ms: remainingMs,
+          },
+        }),
+      };
     }
   }
   if (probeFailed && p.forceSave !== true) {
@@ -487,7 +510,14 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   //      etc.). Same soft-fail path — the connector itself probed
   //      green so it works, just without the schema corpus.
   //   3. Any other thrown error — logged warn, swallowed.
-  if (saved.driver === "graphql" && saved.base_url) {
+  // Skip auto-discovery on `oauth2` saves whose credential row hasn't
+  // been written yet — the dance still has to run via
+  // `authenticate_oauth`. Without this gate every oauth2 graphql save
+  // fires unauth introspection, fails, and logs a noisy warn. The
+  // post-`authenticate_oauth` path is responsible for kicking discovery
+  // once the access token is bound.
+  const skipGraphqlDiscovery = saved.auth_type === "oauth2" && credential_persisted !== true;
+  if (saved.driver === "graphql" && saved.base_url && !skipGraphqlDiscovery) {
     void runDiscoveryCached(
       {
         db: ctx.db as Db,
@@ -497,33 +527,59 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       {
         connector_id: saved.id,
         base_url: saved.base_url,
+        // Thread the saved connector's environment so credential lookup
+        // hits the right (tenant_id, connector_id, environment) row.
+        // Without this every prod connector ran discovery against the
+        // dev credential slot and silently warn-logged "discovery
+        // failed" forever.
+        environment: saved.environment,
       },
-    ).catch((err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      const code =
-        err && typeof err === "object" && "code" in err
-          ? String((err as { code: unknown }).code)
-          : null;
-      // Differentiate the "schema is hidden by upstream" case from
-      // an unexpected discovery breakage — operators reading the
-      // log should see at a glance which one fired.
-      const introspectionDisabled =
-        code === "introspection_disabled" ||
-        /introspection.*not allowed|introspection.*disabled/i.test(message);
-      logger[introspectionDisabled ? "info" : "warn"]({
-        module: "conversation_persistence",
-        action: introspectionDisabled
-          ? "post_save.graphql_introspection_disabled"
-          : "post_save.graphql_discovery_failed",
-        msg: introspectionDisabled
-          ? "GraphQL connector saved without auto-discovery — upstream refuses introspection"
-          : "auto-discovery after GraphQL connector save failed (non-fatal)",
-        tenant_id: ctx.tenant_id,
-        connector_id: saved.id,
-        ...(code ? { code } : {}),
-        error: message,
+    )
+      .then((out) => {
+        // Surface per-strategy warnings into the audit trail so
+        // operators see "openapi-direct 404, llms.txt empty,
+        // graphql-introspect succeeded" without grepping logs.
+        void recordConnectorDiscovered({
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.actor_id,
+          executor: ctx.db,
+          connector_id: saved.id,
+          strategy: out.result.strategy,
+          cache_key: out.cache_key,
+          source: out.source,
+          endpoint_count: out.result.endpoints.length,
+          warnings: (out.result.warnings ?? []).map((w) => ({
+            code: w.code,
+            message: w.message,
+          })),
+        });
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        const code =
+          err && typeof err === "object" && "code" in err
+            ? String((err as { code: unknown }).code)
+            : null;
+        // Differentiate the "schema is hidden by upstream" case from
+        // an unexpected discovery breakage — operators reading the
+        // log should see at a glance which one fired.
+        const introspectionDisabled =
+          code === "introspection_disabled" ||
+          /introspection.*not allowed|introspection.*disabled/i.test(message);
+        logger[introspectionDisabled ? "info" : "warn"]({
+          module: "conversation_persistence",
+          action: introspectionDisabled
+            ? "post_save.graphql_introspection_disabled"
+            : "post_save.graphql_discovery_failed",
+          msg: introspectionDisabled
+            ? "GraphQL connector saved without auto-discovery — upstream refuses introspection"
+            : "auto-discovery after GraphQL connector save failed (non-fatal)",
+          tenant_id: ctx.tenant_id,
+          connector_id: saved.id,
+          ...(code ? { code } : {}),
+          error: message,
+        });
       });
-    });
   }
 
   // Force-save audit annotation — every probe-overridden save lands a
@@ -636,12 +692,19 @@ async function persistCredential(p: {
     const client_id =
       cred.client_id ?? (typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null);
     if (!region || !client_id) {
-      const missing: string[] = [];
-      if (!region) missing.push("aws_region");
-      if (!client_id) missing.push("oauth.client_id");
+      const missingPaths: string[] = [];
+      const writes: string[] = [];
+      if (!region) {
+        missingPaths.push("config.aws_region");
+        writes.push("aws_region: <region>");
+      }
+      if (!client_id) {
+        missingPaths.push("config.oauth.client_id");
+        writes.push("oauth: { client_id: <id> }");
+      }
       throw new Error(
-        `cognito_user_password connector is missing config.${missing.join("/config.")}. ` +
-          `Call update_connector_draft({ config: { aws_region, oauth: { client_id } } }) — the credential itself is fine.`,
+        `cognito_user_password connector is missing ${missingPaths.join(", ")}. ` +
+          `Call update_connector_draft({ config: { ${writes.join(", ")} } }) — the credential itself is fine.`,
       );
     }
     const grantParams: Parameters<typeof runCognitoUserPasswordGrant>[0] = {
@@ -690,6 +753,31 @@ async function persistCredential(p: {
       },
       p.db,
     );
+    return;
+  }
+  if (cred.mode === "oauth2") {
+    // OAuth2 seed: update the saved connector's config.oauth so a
+    // subsequent authenticate_oauth call has client_id (+ optional
+    // client_secret + endpoints + scopes) to start the dance. No
+    // credential row is written here — the OAuth callback route
+    // creates it after the operator's browser exchange.
+    const cfg = (p.connectorConfig ?? {}) as Record<string, unknown>;
+    const existingOauth = (cfg.oauth as Record<string, unknown> | undefined) ?? {};
+    const mergedOauth: Record<string, unknown> = {
+      ...existingOauth,
+      client_id: cred.client_id,
+    };
+    if (cred.client_secret !== undefined) mergedOauth.client_secret = cred.client_secret;
+    if (cred.token_endpoint !== undefined) mergedOauth.token_endpoint = cred.token_endpoint;
+    if (cred.authorization_endpoint !== undefined) {
+      mergedOauth.authorization_endpoint = cred.authorization_endpoint;
+    }
+    if (cred.scopes !== undefined) mergedOauth.scope = cred.scopes;
+    const nextConfig: Record<string, unknown> = { ...cfg, oauth: mergedOauth };
+    await p.db
+      .update(connectorsTable)
+      .set({ config: nextConfig })
+      .where(eq(connectorsTable.id, p.connector_id));
     return;
   }
   const value =

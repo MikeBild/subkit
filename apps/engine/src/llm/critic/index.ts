@@ -56,7 +56,7 @@ function inSnapshot(snapshot: string | undefined, value: string): boolean {
   return snapshot.includes(value);
 }
 
-function gradeCommitDraft(
+function gradeSaveWorkflowDraft(
   payload: SaveWorkflowDraftArtifact,
   snapshot: string | undefined,
 ): CriticVerdict {
@@ -87,12 +87,12 @@ function gradeCommitDraft(
     verdict: "fail",
     confidence,
     reason: `save_workflow_draft rubric failed: ${failedKeys.join(", ")}`,
-    hint: hintForCommitDraft(failedKeys),
+    hint: hintForSaveWorkflowDraft(failedKeys),
     checks,
   };
 }
 
-function hintForCommitDraft(failed: string[]): string {
+function hintForSaveWorkflowDraft(failed: string[]): string {
   const parts: string[] = [];
   if (failed.includes("saved"))
     parts.push("call save_connector_draft / save_workflow_draft to persist before signalling done");
@@ -168,7 +168,7 @@ export async function runCritic(params: RunCriticParams): Promise<CriticVerdict>
   const { artifact, snapshot, runtimeContext } = params;
   switch (artifact.kind) {
     case "save_workflow_draft":
-      return gradeCommitDraft(artifact.payload, snapshot);
+      return gradeSaveWorkflowDraft(artifact.payload, snapshot);
     case "chat":
       return gradeChat(artifact.payload, snapshot, runtimeContext);
   }

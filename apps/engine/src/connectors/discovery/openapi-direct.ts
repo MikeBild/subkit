@@ -9,6 +9,7 @@
 import { load as loadYaml } from "js-yaml";
 import { log } from "../../logging/logger.ts";
 import { scrubUrl } from "../egress.ts";
+import { assertEgressAllowed } from "../egress-guard.ts";
 import {
   type DiscoveredAuthScheme,
   type DiscoveredEndpoint,
@@ -154,6 +155,12 @@ async function fetchSpec(
   opts: DiscoveryStrategyOptions,
 ): Promise<{ text: string; contentType: string | null; linkHeader: string | null }> {
   const effectiveUrl = normalizeKnownHosts(url);
+  // Egress guard — discovery is just as much an outbound fetch surface
+  // as the runtime drivers, and SSRF attempts via spec URLs (private
+  // ranges, localhost, link-local) need the same RFC1918 reject. The
+  // ref impl had this gap on the documentation-fetching path; we close
+  // it here.
+  assertEgressAllowed(effectiveUrl, {});
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
   // If the caller supplied a signal, abort our internal controller when

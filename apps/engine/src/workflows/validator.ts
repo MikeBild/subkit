@@ -15,6 +15,7 @@
 
 import { compile as compileJsonata } from "../execution/jsonata-engine.ts";
 import { compileSelector } from "../execution/selectors.ts";
+import { detectReservedAuthHeaders } from "./header-policy.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
 /**
@@ -95,6 +96,13 @@ export interface ValidateOptions {
   /** When true, unknown control-flow targets become `forward_refs`
    *  instead of `errors`. Default false (strict). */
   allowForwardRefs?: boolean;
+  /** Connector IDs whose saved `auth_type === "none"`. Steps that
+   *  reference one of these may carry step-level Authorization (the
+   *  multi-step token-mint pattern documented in the auth-flows skill).
+   *  Callers with DB access pass this set; raw-API validation paths
+   *  omit it and the reserved-auth-header check fires for every
+   *  connector_id step. */
+  noneAuthConnectorIds?: ReadonlySet<string>;
 }
 
 export interface ForwardRef {
@@ -182,35 +190,6 @@ export function validateWorkflowDef(
           path: `steps.${step.id}`,
           message: "request step must specify url or connector_id",
         });
-      }
-      // Reserved auth headers (Authorization / Cookie /
-      // Proxy-Authorization) on a connector-bound step. The connector's
-      // saved credential injects auth at execution time; an explicit
-      // header here overrides that and is almost always a placeholder
-      // string the LLM authored without realising it won't expand
-      // reliably. `build_workflow` already refuses these at draft-build
-      // time (conversation 730c568a); this check stays as a defence in
-      // depth for paths that mutate steps after build (`update_param`,
-      // `edit_workflow_patch`, raw API). Headers must be a record by
-      // schema time — Fix #1 (parseHeaderLines RFC token check) closed
-      // the JSON-string slipthrough — so an `unknown` shape here is a
-      // real schema violation; let `WorkflowDefSchema` parse fail
-      // first.
-      if (
-        step.connector_id !== undefined &&
-        step.headers &&
-        typeof step.headers === "object" &&
-        !Array.isArray(step.headers)
-      ) {
-        for (const headerName of Object.keys(step.headers as Record<string, unknown>)) {
-          const lower = headerName.toLowerCase();
-          if (lower === "authorization" || lower === "cookie" || lower === "proxy-authorization") {
-            errors.push({
-              path: `steps.${step.id}.headers.${headerName}`,
-              message: `do not set a ${headerName} header on a request step that has connector_id — the connector injects auth from its saved credential. Remove the header (the connector's auth_type drives Authorization automatically).`,
-            });
-          }
-        }
       }
     }
     if (step.kind === "transform" && (step.language ?? "jsonata") === "jsonata") {
@@ -340,6 +319,23 @@ export function validateWorkflowDef(
           "step uses `${item.…}` placeholder but is not contained in any `loop.body[]`. Add a `loop` step that lists this step in its `body` (the placeholder resolver only sets `$item` inside loop iterations).",
       });
     }
+  }
+
+  // Reserved auth headers (Authorization / Cookie / Proxy-Authorization)
+  // on a `connector_id` request step. The connector's saved credential
+  // injects auth at execution time; a step-level header overrides it
+  // and is almost always a placeholder string the LLM authored that
+  // doesn't expand against the resolved credential namespace.
+  // `build_workflow` already refuses these at draft-build time
+  // (conversation 730c568a); this check stays as defence in depth for
+  // mutation paths (`update_param`, `edit_workflow_patch`, raw API).
+  // Skipped for connector_ids whose `auth_type === "none"` — see the
+  // `auth-flows.md` skill's multi-step token-mint pattern.
+  for (const v of detectReservedAuthHeaders(
+    wf.steps,
+    options.noneAuthConnectorIds ? { noneAuthConnectorIds: options.noneAuthConnectorIds } : {},
+  )) {
+    errors.push({ path: v.path, message: v.message });
   }
 
   if (errors.length > 0) {

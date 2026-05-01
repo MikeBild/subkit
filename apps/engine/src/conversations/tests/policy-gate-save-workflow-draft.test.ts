@@ -41,7 +41,7 @@ import type { DraftDocument, TurnEvent } from "../types.ts";
 let ctx: LlmTestCtx;
 
 beforeAll(async () => {
-  ctx = await createLlmTestCtx("policy-gate-commit-draft");
+  ctx = await createLlmTestCtx("policy-gate-save-workflow-draft");
 });
 
 afterAll(async () => {
@@ -127,11 +127,11 @@ describe("save_workflow_draft — policy gate", () => {
 
     const wrapped = wrapTools(toolCtx, signals, events, ctx.testDb.db, ["workflow-authoring"], {});
 
-    const commitDraft = wrapped.save_workflow_draft;
-    expect(commitDraft).toBeDefined();
+    const saveWorkflowDraft = wrapped.save_workflow_draft;
+    expect(saveWorkflowDraft).toBeDefined();
 
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const result = await (commitDraft!.execute as any)(
+    const result = await (saveWorkflowDraft!.execute as any)(
       {},
       { toolCallId: "fake-llm-call-id", messages: [] },
     );

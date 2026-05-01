@@ -15,6 +15,7 @@ import { parseGraphQLIntrospection } from "../../llm/flows/document-parsers/grap
 import { parseHar } from "../../llm/flows/document-parsers/har.ts";
 import { parseOpenApi } from "../../llm/flows/document-parsers/openapi.ts";
 import { parsePostman } from "../../llm/flows/document-parsers/postman.ts";
+import { findReusableConnectorByUrl } from "./connector-reuse.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const SourceEnum = z.enum([
@@ -131,10 +132,23 @@ export const importConnectorFromSpecTool: ConversationTool = {
   },
   inputSchema,
   category: "tenant_write",
-  async execute(_ctx, rawArgs): Promise<ToolResult> {
+  async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const parsed = await parseSource(args);
     const baseUrl = parsed.base_url;
+    // Reuse-existing-saved-connector: same dedup as
+    // start_connector_from_description so two imports against the same
+    // upstream URL never produce two saved connectors.
+    const reuseEnvelope = await findReusableConnectorByUrl({
+      tenant_id: ctx.tenant_id,
+      environment: args.environment,
+      base_url: baseUrl,
+      driver: "http",
+      db: ctx.db,
+    });
+    if (reuseEnvelope) {
+      return { ok: true, data: reuseEnvelope };
+    }
     const match = baseUrl ? matchTemplateByUrl(baseUrl) : null;
 
     if (match) {

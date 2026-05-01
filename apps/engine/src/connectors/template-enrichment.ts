@@ -42,6 +42,25 @@ function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || value === "";
 }
 
+/**
+ * Extract the AWS region from a regional service hostname. Matches
+ * `service.{region}.amazonaws.com` and `service.{region}.api.aws`. Returns
+ * null when the URL has no recognisable region segment (per-tenant AppSync
+ * IDs, custom API Gateway domains).
+ */
+function extractAwsRegionFromUrl(url: string): string | null {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    const m = host.match(/\.([a-z]{2}-[a-z]+-\d+)\.amazonaws\.com$/);
+    if (m?.[1]) return m[1];
+    const m2 = host.match(/\.([a-z]{2}-[a-z]+-\d+)\.api\.aws$/);
+    if (m2?.[1]) return m2[1];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function resolveBaseUrl(
   draftBaseUrl: string | null | undefined,
   template: ConnectorTemplate,
@@ -76,6 +95,25 @@ export function enrichConnectorFromTemplate(
   opts?: EnrichmentOptions,
 ): CreateConnectorInput {
   const cfg: Record<string, unknown> = { ...(draft.config ?? {}) };
+
+  // AWS SigV4 block from the template → config.aws_service / config.aws_region.
+  // Drivers/http.ts reads these to sign outgoing requests; the cognito save
+  // path also reads `config.aws_region`. Without this seed, every aws_sigv4
+  // save lands without the keys the driver needs and the strict
+  // HttpConnectorConfig schema requires the operator to set them by hand.
+  // User input wins (existing values are not overwritten).
+  if (draft.auth_type === "aws_sigv4") {
+    if (cfg.aws_service === undefined && template.aws_service) {
+      cfg.aws_service = template.aws_service;
+    }
+    if (cfg.aws_region === undefined) {
+      const fromTemplate = template.aws_region;
+      const baseUrl = resolveBaseUrl(draft.base_url, template, opts);
+      const fromUrl = baseUrl ? extractAwsRegionFromUrl(baseUrl) : null;
+      const region = fromTemplate ?? fromUrl;
+      if (region) cfg.aws_region = region;
+    }
+  }
 
   // OAuth2 block from the template → config.oauth (non-destructive).
   // Only seeded for oauth2 connectors; bearer/header/basic/aws_sigv4/none

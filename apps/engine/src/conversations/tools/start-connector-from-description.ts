@@ -1,5 +1,4 @@
 import { z } from "@hono/zod-openapi";
-import { listConnectors } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { matchTemplatesByUrl } from "../../connectors/template-url-match.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
@@ -14,6 +13,7 @@ import {
 } from "../connector-template-intelligence.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
 import { buildDraftMutationPayload } from "./authoring-contract.ts";
+import { findReusableConnectorByUrl } from "./connector-reuse.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -47,37 +47,15 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
     // The user then re-typed credentials. This dedup keeps the prior
     // session's work — same pattern as the reference impl's
     // `findSystem(url)` short-circuit.
-    if (args.base_url) {
-      const existing = await listConnectors(
-        ctx.tenant_id,
-        { environment: args.environment },
-        ctx.db,
-      );
-      const reuse = existing.find(
-        (c) => c.base_url === args.base_url && (!args.driver || c.driver === args.driver),
-      );
-      if (reuse) {
-        return {
-          ok: true,
-          data: {
-            resource_kind: "connector",
-            reused_existing: true,
-            connector: {
-              id: reuse.id,
-              name: reuse.display_name,
-              slug: reuse.slug,
-              driver: reuse.driver,
-              environment: reuse.environment,
-              auth_type: reuse.auth_type,
-              base_url: reuse.base_url,
-              template_slug: reuse.template_slug ?? null,
-              template_name: reuse.template_name ?? null,
-            },
-            advice:
-              "An existing saved connector matches this URL. Reuse it (its credentials are already encrypted and the schema is already discovered). To make changes, call update_connector_draft against this connector_id, OR explicitly pass a different `name` to start_connector_from_description if you really want a separate connector.",
-          },
-        };
-      }
+    const reuseEnvelope = await findReusableConnectorByUrl({
+      tenant_id: ctx.tenant_id,
+      environment: args.environment,
+      base_url: args.base_url,
+      ...(args.driver ? { driver: args.driver } : {}),
+      db: ctx.db,
+    });
+    if (reuseEnvelope) {
+      return { ok: true, data: reuseEnvelope };
     }
     const inferredDriver =
       args.driver ??
@@ -100,15 +78,14 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
     // and we have a dedicated `appsync-cognito` template.
     //
     // When multiple templates share the same url_pattern (AppSync has
-    // both `appsync-cognito` and `appsync-iam`), bias selection by the
-    // LLM-supplied `auth_type` hint when it's compatible with one of
-    // them; otherwise pick the first match (alphabetical tie-break in
-    // `matchTemplatesByUrl`). The hint may also be wrong — the LLM
-    // tends to guess SigV4 for any `appsync-api.*.amazonaws.com` host
-    // even when the operator says "I have username and password" —
-    // so when the hint disagrees with what URL match finds, URL match
-    // still wins (the operator's URL is ground truth, the LLM hint
-    // is a guess).
+    // both `appsync-cognito` and `appsync-iam`), pick the BEST URL
+    // match by score; if multiple templates TIE at the top score, use
+    // the LLM-supplied `auth_type` hint to disambiguate among them
+    // only — the hint never pulls a strictly-lower-score URL match in
+    // front of the best. The hint is a guess (LLM frequently picks
+    // SigV4 for any `appsync-api.*.amazonaws.com` host); a tie among
+    // top URL matches is exactly when the hint adds signal, and
+    // outside of ties the operator's URL is ground truth.
     const urlMatches = args.base_url
       ? matchTemplatesByUrl(
           args.base_url,
@@ -116,11 +93,15 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
           resolvedTemplates.map((entry) => entry.template),
         )
       : [];
-    const urlMatchedByAuthHint = args.auth_type
-      ? (urlMatches.find((m) => allowedTemplateAuthTypes(m.template).includes(args.auth_type!)) ??
-        null)
-      : null;
-    const urlMatched = urlMatchedByAuthHint ?? urlMatches[0] ?? null;
+    const bestUrlMatch = urlMatches[0] ?? null;
+    const topTies =
+      bestUrlMatch !== null ? urlMatches.filter((m) => m.score === bestUrlMatch.score) : [];
+    const urlMatchedByAuthHint =
+      args.auth_type && topTies.length > 1
+        ? (topTies.find((m) => allowedTemplateAuthTypes(m.template).includes(args.auth_type!)) ??
+          null)
+        : null;
+    const urlMatched = urlMatchedByAuthHint ?? bestUrlMatch;
     const urlMatchedAllowed = urlMatched !== null;
 
     const bestTemplate = pickBestConnectorTemplate(

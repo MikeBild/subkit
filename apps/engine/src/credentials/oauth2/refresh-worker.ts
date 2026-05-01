@@ -52,9 +52,6 @@ export async function refreshIfStale(
   if (!decrypted.refresh_token) return decrypted;
   const now = Date.now();
   const expiresMs = decrypted.expires_at ? decrypted.expires_at.getTime() : 0;
-  if (expiresMs > 0 && expiresMs - now > REFRESH_LEAD_MS) {
-    return decrypted; // still fresh
-  }
   // Need the connector config to build an oauth client.
   const connRows = await db
     .select()
@@ -68,6 +65,17 @@ export async function refreshIfStale(
     template_slug: connector.template_slug ?? null,
     template_snapshot: (connector.template_snapshot as Record<string, unknown> | null) ?? null,
   });
+  // Tenant-configurable refresh buffer — falls back to REFRESH_LEAD_MS
+  // (60s) when the connector's oauth config doesn't specify one. A
+  // tenant whose IdP issues 60-second tokens (rare; Atlassian test
+  // keys do this) can shrink it via the connector config.
+  const bufferMs =
+    typeof cfg?.refresh_buffer_ms === "number" && cfg.refresh_buffer_ms > 0
+      ? cfg.refresh_buffer_ms
+      : REFRESH_LEAD_MS;
+  if (expiresMs > 0 && expiresMs - now > bufferMs) {
+    return decrypted; // still fresh
+  }
   if (!cfg) {
     logger.warn({
       module: "oauth2",

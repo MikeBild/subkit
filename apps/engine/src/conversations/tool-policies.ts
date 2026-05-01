@@ -285,7 +285,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
       "config.access_token",
       "config.auth_value",
       "config.password",
-      "config.oauth.client_secret",
     ],
   },
   validate_connector_draft: { defaultMode: "no_confirm" },

@@ -78,8 +78,6 @@ describe("connector templates", () => {
         "client_credentials",
         "password",
         "cognito_user_password",
-        "jwt_bearer",
-        "device_code",
       ]).toContain(o.grant_type);
       expect(["body", "basic_auth"]).toContain(o.token_auth_method);
       expect(["form", "json"]).toContain(o.token_content_type);
