@@ -16,14 +16,18 @@ describe("connector-template catalog — structural", () => {
     expect(templates.length).toBeGreaterThanOrEqual(10);
   });
 
-  test("ships 96 templates", () => {
+  test("ships 101 templates", () => {
     // Bump this counter when adding/removing built-in templates. Pre-fix
     // we shipped four AppSync/AWS/GCP entries that the runtime
     // ConnectorTemplateSchema rejected at first-tool-invocation
     // (`templates.json validation failed: 90.base_url …`); the schema
     // and JSON were drifting — startup `loadBuiltinTemplates()` is the
     // canonical guard for that drift, exercised by this suite.
-    expect(templates.length).toBe(95);
+    //
+    // F6 (recipe sweep) added six net-new templates: aws-cloudwatch-logs,
+    // aws-cloudwatch-metrics, aws-cloudwatch-alarms, aws-sts,
+    // aws-eventbridge, oauth2-generic. 95 → 101.
+    expect(templates.length).toBe(101);
   });
 
   test("every slug matches the lowercase-kebab regex", () => {
@@ -130,13 +134,25 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
     expect(total).toBeGreaterThanOrEqual(30);
   });
 
-  test("stripe ships 12 recipes, github ships 10, postgres ships 8 (initial seed)", () => {
+  test("stripe / github / postgres carry the seeded + Workstream-D demonstration recipes", () => {
     const counts = Object.fromEntries(
       templates.filter((t) => t.recipes.length > 0).map((t) => [t.slug, t.recipes.length]),
     );
-    expect(counts.stripe).toBe(12);
-    expect(counts.github).toBe(10);
-    expect(counts.postgres).toBe(8);
+    // Initial seed: stripe 12, github 10, postgres 8. Workstream D
+    // (recipe sweep) added demonstration recipes for unused
+    // WorkflowDefSchema primitives:
+    //   stripe   +3 → 15 (charge-or-refund-by-amount [BranchStep],
+    //                     create-customer-idempotent [idempotency_key],
+    //                     list-charges-validate-no-zero-amount [validation_function])
+    //   github   +3 → 13 (list-repos-retry-on-secondary-rate-limit [retry_on_status],
+    //                     fan-out-issues-prs-releases [ParallelStep],
+    //                     list-all-repos-paginate-js-form [LoopStep.data_selector])
+    //   postgres +3 → 11 (update-must-affect-exactly-one-row [expected_row_count],
+    //                     atomic-debit-credit-double-entry [sql.also],
+    //                     export-large-table-stream [sql.cursor])
+    expect(counts.stripe).toBe(15);
+    expect(counts.github).toBe(13);
+    expect(counts.postgres).toBe(11);
   });
 
   test("recipe slugs are unique within each template", () => {
