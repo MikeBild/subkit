@@ -158,6 +158,60 @@ Credentials only flow through the masked form path. The `update_connector_draft`
 
 ---
 
+## Vendor-drift Sweep
+
+Connector templates pin vendor base URLs (`base_url`), probe endpoints, and OAuth issuers. Vendors retire or rename these surfaces over time. The Layer-3 vendor-drift sweep proves the surfaces are still live and stamps `verified_at` per template so operators can spot stale entries before a workflow fails on them.
+
+The catalogue ships three layers of validation:
+
+- **Layer 1 — structural lint.** `apps/engine/src/connectors/templates.test.ts` runs at every PR: every template must parse `ConnectorTemplateSchema`, slugs are globally unique, recipes pass `WorkflowDefSchema`, etc. No network.
+- **Layer 2 — cross-reference invariants.** Same test file: every `default_skill` resolves to a known entry in `template-skills.json`, recipe placeholders are bound, no credential-shaped literals leak into recipe workflows. No network.
+- **Layer 3 — vendor-drift sweep.** `scripts/audit/template-vendor-sweep.ts` HEADs every `base_url`, calls every declared `probe_endpoint`, and fetches `<oauth.issuer_url>/.well-known/openid-configuration` for OAuth templates. Writes `apps/engine/src/connectors/template-audit-report.json`. **Never runs in CI** — it is gated by `RUN_TEMPLATE_AUDIT=1` so a careless pipeline can't hammer vendors.
+
+### Running the sweep
+
+```bash
+# Full sweep — concurrency=3, 1s/host backoff, identifies as
+# subkit-template-audit/<engine version>. Takes a few minutes.
+RUN_TEMPLATE_AUDIT=1 bun run scripts/audit/template-vendor-sweep.ts
+
+# Smoke-test a single template before the full run.
+RUN_TEMPLATE_AUDIT=1 bun run scripts/audit/template-vendor-sweep.ts --only=stripe
+
+# Stamp `verified_at` on every template that came back OK or
+# auth_required. Off by default so the operator can review the report
+# before mutating templates.json.
+RUN_TEMPLATE_AUDIT=1 bun run scripts/audit/template-vendor-sweep.ts --update-templates
+```
+
+The sweep classifies every template as one of:
+
+- `ok` — base URL + probe + OAuth discovery all responded with the expected status.
+- `auth_required` — vendor answered with 401/403 (the URL is real; we just don't send credentials).
+- `drift` — vendor returned 404 / 410 / persistent 5xx. Triage required.
+- `error` — network-level failure (DNS, TLS, timeout). May be transient.
+- `skipped` — `base_url` is null or carries placeholder segments (`{tenant}`, `{cloudId}`).
+
+Per-vendor backoff escalates exponentially on 429/5xx (cap 30s, 4 attempts). Output is sorted by slug so re-runs produce a byte-stable report when nothing changed.
+
+### What `verified_at` means
+
+`verified_at` is a wall-clock ISO8601 timestamp of the last successful sweep. `null` means the template has never been swept (newly authored, or the script has not been run since the field landed).
+
+The Layer-1 test emits a `console.warn` (it does **not** fail the suite) when a template's `verified_at` is `null` or older than 90 days. Sample output:
+
+```
+[connector-templates] vendor-drift sweep stale on 101/101 templates.
+Run: RUN_TEMPLATE_AUDIT=1 bun run scripts/audit/template-vendor-sweep.ts --update-templates
+  - airtable (verified_at=null, never swept)
+  - apify (verified_at=null, never swept)
+  …
+```
+
+The deliberate non-fail-on-stale design lets the catalogue ship even when the sweep hasn't run recently — running the sweep is an operator decision (vendor surfaces don't drift on a PR's schedule), and a stale stamp should never block an unrelated change.
+
+---
+
 ## What to Read Next
 
 - [docs/05a-recipe-authoring.md](05a-recipe-authoring.md) — the contract for authoring recipes (pre-built workflows shipped on every connector template). Schema, conventions, multi-connector binding, quality gate, promotion checklist.

@@ -431,7 +431,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -471,7 +472,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -518,7 +520,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -565,7 +568,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -812,7 +816,8 @@
       "error_handling": "AppSync resolver errors may arrive as GraphQL body.errors with HTTP 200. Treat body.errors as a failed logical call during transforms and previews."
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -1037,7 +1042,8 @@
       "error_handling": "AppSync resolver errors may arrive as GraphQL body.errors with HTTP 200. Treat body.errors as a failed logical call during transforms and previews."
     },
     "aws_service": "appsync",
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -1546,7 +1552,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -1604,7 +1611,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -1751,7 +1759,8 @@
       "auth": "IAM API Gateway endpoints must sign with aws_service=execute-api and the endpoint region."
     },
     "aws_service": "execute-api",
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -2037,7 +2046,8 @@
       }
     ],
     "aws_service": "monitoring",
-    "aws_region": "us-east-1"
+    "aws_region": "us-east-1",
+    "verified_at": null
   },
   {
     "version": 1,
@@ -2476,7 +2486,8 @@
       }
     ],
     "aws_service": "logs",
-    "aws_region": "us-east-1"
+    "aws_region": "us-east-1",
+    "verified_at": null
   },
   {
     "version": 1,
@@ -2787,7 +2798,8 @@
       }
     ],
     "aws_service": "monitoring",
-    "aws_region": "us-east-1"
+    "aws_region": "us-east-1",
+    "verified_at": null
   },
   {
     "version": 1,
@@ -3077,7 +3089,8 @@
       }
     ],
     "aws_service": "cognito-idp",
-    "aws_region": "us-east-1"
+    "aws_region": "us-east-1",
+    "verified_at": null
   },
   {
     "version": 1,
@@ -3377,7 +3390,8 @@
       }
     ],
     "aws_service": "dynamodb",
-    "aws_region": "us-east-1"
+    "aws_region": "us-east-1",
+    "verified_at": null
   },
   {
     "version": 1,
@@ -3780,7 +3794,8 @@
       }
     ],
     "aws_service": "events",
-    "aws_region": "us-east-1"
+    "aws_region": "us-east-1",
+    "verified_at": null
   },
   {
     "version": 1,
@@ -3897,7 +3912,8 @@
       }
     ],
     "aws_service": "lambda",
-    "aws_region": "us-east-1"
+    "aws_region": "us-east-1",
+    "verified_at": null
   },
   {
     "version": 1,
@@ -4135,7 +4151,8 @@
       "general": "S3 recipes use connector_id so the S3 driver can resolve bucket/region/credentials. PUT and DELETE are external writes and must stay behind the existing confirmation path."
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -4277,7 +4294,8 @@
       }
     ],
     "aws_service": "ses",
-    "aws_region": "us-east-1"
+    "aws_region": "us-east-1",
+    "verified_at": null
   },
   {
     "version": 1,
@@ -4503,7 +4521,8 @@
       }
     ],
     "aws_service": "sqs",
-    "aws_region": "us-east-1"
+    "aws_region": "us-east-1",
+    "verified_at": null
   },
   {
     "version": 1,
@@ -4808,7 +4827,8 @@
       }
     ],
     "aws_service": "sts",
-    "aws_region": "us-east-1"
+    "aws_region": "us-east-1",
+    "verified_at": null
   },
   {
     "version": 1,
@@ -4848,7 +4868,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -4919,7 +4940,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -4977,7 +4999,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5048,7 +5071,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5130,7 +5154,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5188,7 +5213,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5228,7 +5254,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5281,7 +5308,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5341,7 +5369,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5381,7 +5410,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5456,7 +5486,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5496,7 +5527,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5528,7 +5560,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5610,7 +5643,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5663,7 +5697,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5703,7 +5738,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5751,7 +5787,8 @@
       "/domains/${item.name}"
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5826,7 +5863,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5902,7 +5940,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -5960,7 +5999,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -6013,7 +6053,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -6060,7 +6101,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -6120,7 +6162,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -6878,7 +6921,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -7232,7 +7276,8 @@
       "error_handling": "Treat a non-empty body.errors array as a failed logical call even when HTTP status is 200."
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -7307,7 +7352,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -7399,7 +7445,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -7491,7 +7538,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -7583,7 +7631,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -7675,7 +7724,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -7767,7 +7817,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -7859,7 +7910,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -7951,7 +8003,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -8043,7 +8096,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -8083,7 +8137,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -8123,7 +8178,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -8645,7 +8701,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -8705,7 +8762,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -9115,7 +9173,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -9261,7 +9320,8 @@
       "general": "Reader URLs are formed as https://r.jina.ai/{absolute-url}. Keep the source URL as workflow input and set x-respond-with: markdown when markdown is required."
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -9343,7 +9403,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -9764,7 +9825,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -10159,7 +10221,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -10251,7 +10314,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -10343,7 +10407,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -10435,7 +10500,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -10527,7 +10593,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -10619,7 +10686,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -11024,7 +11092,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -11090,7 +11159,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -11377,7 +11447,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -11641,7 +11712,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -12177,7 +12249,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -12599,7 +12672,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -12663,7 +12737,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -12898,7 +12973,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -12958,7 +13034,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -13022,7 +13099,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -13096,7 +13174,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -13177,7 +13256,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -13740,7 +13820,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -13819,7 +13900,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -13866,7 +13948,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -13906,7 +13989,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -14311,7 +14395,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -14351,7 +14436,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -14433,7 +14519,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -14480,7 +14567,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -14678,7 +14766,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -15306,7 +15395,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -15346,7 +15436,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -15412,7 +15503,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -15966,7 +16058,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -17051,7 +17144,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -17091,7 +17185,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -17131,7 +17226,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -17535,7 +17631,8 @@
       }
     ],
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -17697,7 +17794,8 @@
       "auth": "Team-scoped calls usually need teamId in query parameters. Do not bake team ids into recipes; keep them as workflow input."
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -17757,7 +17855,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -17832,7 +17931,8 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   },
   {
     "version": 1,
@@ -17890,6 +17990,7 @@
       "rate_limits": null
     },
     "aws_service": null,
-    "aws_region": null
+    "aws_region": null,
+    "verified_at": null
   }
 ]
