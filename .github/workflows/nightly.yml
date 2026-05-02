@@ -1,0 +1,127 @@
+name: nightly
+
+# Long-running suites that we want to catch regressions in but that are
+# too costly or too slow to gate every push:
+#
+#   * real-llm: 6 Tier 1.x e2e tests against a real Anthropic model.
+#     Validates the prompt-template + tool-palette + dispatch path
+#     end-to-end. Skipped on push because each run burns vendor cost
+#     (~$0.05/run) and adds 5+ min wall time. Requires the
+#     `ANTHROPIC_API_KEY` repo secret.
+#   * flake: 5 reseeded reruns of the unit suite. Catches order- and
+#     entropy-dependent flakes before they accumulate. Always runs.
+#
+# Both jobs are advisory in the sense that they don't block pushes, but
+# `continue-on-error: false` — failures here are real and should be
+# triaged the next morning.
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  real-llm:
+    name: real-llm tier 1.x
+    runs-on: ubuntu-24.04
+    if: ${{ github.repository_owner == 'MikeBild' }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: subkit
+          POSTGRES_PASSWORD: subkit
+          POSTGRES_DB: subkit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U subkit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
+      MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
+      LLM_PROVIDER: anthropic
+      # Pin the model so model-side regressions are observable.
+      # Bumping this is an intentional decision, not a drift surface.
+      ANTHROPIC_MODEL: claude-haiku-4-5-20251001
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SKIP_DOCKER: "1"
+      TZ: UTC
+      LANG: C.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - name: Cache Bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      - run: bun run db:migrate
+      - name: Verify ANTHROPIC_API_KEY is set
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "ANTHROPIC_API_KEY secret is not configured for this repo."
+            echo "Set it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+      - name: Build sk binary
+        run: bun run build:sk
+      - name: Tier 1.x e2e (real LLM)
+        run: bun test tests/e2e/tier1-conversation-lifecycle.e2e.test.ts
+
+  flake:
+    name: flake (5 reseeded runs)
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: subkit
+          POSTGRES_PASSWORD: subkit
+          POSTGRES_DB: subkit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U subkit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
+      MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
+      LLM_PROVIDER: mock
+      SKIP_DOCKER: "1"
+      TZ: UTC
+      LANG: C.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - name: Cache Bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      - run: bun run db:migrate
+      - name: 5 seeded reruns
+        run: bun run test:flake

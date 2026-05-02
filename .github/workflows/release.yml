@@ -47,67 +47,77 @@ env:
   REGISTRY: registry.digitalocean.com
 
 jobs:
-  test:
-    name: test
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: subkit
-          POSTGRES_PASSWORD: subkit
-          POSTGRES_DB: subkit
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U subkit"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
-      MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
-      LLM_PROVIDER: mock
-      SKIP_DOCKER: "1"
+  # The release gate is the SAME `ci.yml / build` job that protects `main`.
+  # We don't duplicate steps here. Two paths:
+  #
+  #  1. Tag points at a SHA that already has a green `ci / build` run →
+  #     skip the gate, save ~7 min per release.
+  #  2. Tag points at a SHA without a green run (e.g. retag, manual
+  #     dispatch with --ref main while ci is mid-flight) → invoke the
+  #     full ci.yml workflow on that SHA via `gh workflow run` and wait
+  #     on it.
+  gate:
+    name: gate
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          # Pinned to 1.3.12 — Bun 1.3.13 produces a darwin-arm64
-          # tunnel-agent binary whose structure fails `codesign --sign -`
-          # strict validation ("main executable failed strict validation").
-          # Upstream report: https://github.com/oven-sh/bun/issues (Bun
-          # 1.3.13 compile output). Unpin once 1.3.14+ lands with a fix.
-          bun-version: 1.3.12
-      - name: Cache Bun install
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
-      - run: bun run lint
-      - run: bun run typecheck
-      - run: bun run db:migrate
-      - name: Unit + integration tests
-        # `--max-concurrency=4` caps the number of test files bun runs
-        # in parallel. Without this, ~150 of the 612 test files race to
-        # spin up tenant-scoped Postgres databases (see
-        # `apps/engine/src/db/tests/setup.ts`) and exhaust the pool,
-        # surfacing as 5s timeouts in MCP / chat / tunnel / journey
-        # tests that are otherwise green in isolation. The CI runner's
-        # 4-core sizing makes 4 the natural ceiling.
-        run: bun test --max-concurrency=4 apps/ packages/
+          fetch-depth: 0
+      - name: Resolve tag SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Require green ci.yml on this SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # Look for a successful run of ci.yml against this exact SHA.
+          status=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow ci.yml \
+            --commit "$SHA" \
+            --limit 5 \
+            --json conclusion,status \
+            --jq 'map(select(.status=="completed")) | .[0].conclusion // ""')
+          if [ "$status" = "success" ]; then
+            echo "ci.yml is already green on $SHA — gate passes."
+            exit 0
+          fi
+          echo "No green ci.yml run for $SHA (status='$status'); dispatching one and waiting."
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$SHA"
+          # Wait up to 30 min for the dispatched run to finish.
+          deadline=$(( $(date +%s) + 1800 ))
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            sleep 30
+            row=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow ci.yml \
+              --commit "$SHA" \
+              --limit 1 \
+              --json conclusion,status,databaseId \
+              --jq '.[0]')
+            if [ -z "$row" ] || [ "$row" = "null" ]; then continue; fi
+            st=$(echo "$row" | jq -r '.status')
+            if [ "$st" = "completed" ]; then
+              cc=$(echo "$row" | jq -r '.conclusion')
+              if [ "$cc" = "success" ]; then
+                echo "ci.yml dispatched run completed: success"
+                exit 0
+              fi
+              echo "ci.yml dispatched run completed: $cc — failing release gate."
+              exit 1
+            fi
+          done
+          echo "Timed out waiting for ci.yml run on $SHA."
+          exit 1
 
   # ── Multi-platform CLI binaries ──
 
   build-cli-binaries:
     name: build ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
-    needs: test
+    needs: gate
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -266,6 +276,23 @@ jobs:
           codesign --remove-signature "$BINARY" 2>/dev/null || true
           codesign --sign - --force "$BINARY"
 
+      # Smoke-test the native binary. Cross-targets (matrix.target != "")
+      # can't be executed on this runner, so they remain un-smoked — the
+      # un-pinned attack surface that justifies this step is "did
+      # `bun build --compile` produce a runnable binary on the runner's own
+      # arch", not "does the cross-compiled artifact work".
+      - name: Smoke native binary
+        if: matrix.target == ''
+        shell: bash
+        run: |
+          set -eux
+          BINARY="dist/${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}"
+          if [ "${{ matrix.binary }}" = "engine" ]; then
+            "$BINARY" --smoke
+          else
+            "$BINARY" --version
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -358,7 +385,7 @@ jobs:
 
   build-and-push:
     name: build-and-push
-    needs: test
+    needs: gate
     if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
     outputs:
