@@ -251,6 +251,39 @@ export const AuditAction = {
   // an audit row with the redacted before/after diff. Secret values
   // are masked (***) so audit consumers never see the live material.
   SETTINGS_CHANGED: "settings.changed",
+
+  // Trigger lifecycle for workflow-bound webhooks + schedules. The
+  // `bound` / `unbound` events fire from the workflow save/delete
+  // path (see `apps/engine/src/workflows/service.ts`) and reflect the
+  // reverse binding into `webhooks_inbound` / `workflows_schedules`.
+  // The `fired` / `failed_verification` events are emitted by the
+  // executor side (#46 webhook firing, #47 schedule firing) — the
+  // enum values are pinned here so downstream filters can be
+  // authored ahead of the executor landing.
+  WEBHOOK_TRIGGER_BOUND: "webhook.trigger.bound",
+  WEBHOOK_TRIGGER_FIRED: "webhook.trigger.fired",
+  WEBHOOK_TRIGGER_FAILED_VERIFICATION: "webhook.trigger.failed_verification",
+  WEBHOOK_TRIGGER_UNBOUND: "webhook.trigger.unbound",
+  SCHEDULE_TRIGGER_BOUND: "schedule.trigger.bound",
+  SCHEDULE_TRIGGER_FIRED: "schedule.trigger.fired",
+  SCHEDULE_TRIGGER_UNBOUND: "schedule.trigger.unbound",
+
+  // External-system mutation surface — emitted whenever a workflow
+  // step performs a write against an outside system (HTTP non-GET,
+  // SQL INSERT/UPDATE/DELETE/CALL, S3 PUT/DELETE). Distinct from
+  // `CONNECTOR_INVOKED` which covers reads + writes and from
+  // `EXECUTION_*` which covers the workflow envelope. Compliance
+  // dashboards filter on this to scope SOC2 CC9 evidence to actual
+  // outbound mutations.
+  EXTERNAL_WRITE: "external_write",
+
+  // Setup wizard outcomes — emitted by the post-install setup flow
+  // when a tenant completes the guided onboarding (or aborts after a
+  // hard failure). Distinct from the per-step audit actions so
+  // operators can chart funnel completion without joining across
+  // every individual setup-step event.
+  SETUP_COMPLETED: "setup.completed",
+  SETUP_FAILED: "setup.failed",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

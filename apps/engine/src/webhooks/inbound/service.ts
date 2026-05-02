@@ -7,6 +7,7 @@
 //     `executions` row + enqueues an `execution.run` job with the
 //     normalized payload as input and `request_source=webhook`.
 
+import { randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { audit, auditAwait } from "../../audit/audit.ts";
@@ -18,6 +19,7 @@ import { webhooksInbound, workflows } from "../../db/schema/index.ts";
 import { createExecution } from "../../execution/state.ts";
 import { logger } from "../../logging/logger.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../../queue/queues.ts";
+import type { WebhookTrigger } from "../../workflows/types.ts";
 import { markSeenIfNew } from "./dedup.ts";
 import { verifyGitHub } from "./verifiers/github.ts";
 import { verifyStandard } from "./verifiers/standard-webhooks.ts";
@@ -187,6 +189,250 @@ export async function deleteInbound(
     );
   }
   return ok;
+}
+
+// ------------------ workflow trigger reverse-bind ---------------------
+//
+// Workflow lifecycle (`apps/engine/src/workflows/service.ts`) calls
+// these helpers when a workflow is saved or deleted with a
+// `trigger: { kind: "webhook" }` block. The contract is intentionally
+// idempotent on `(tenant_id, workflow_id)`:
+//
+//   * `bindFromWorkflow` upserts a single inbound row per workflow.
+//     The slug is derived from the workflow's slug so the public
+//     ingress URL stays stable across edits. The signing secret is
+//     NOT carried on the trigger — operators provision the secret
+//     out-of-band via the existing CRUD route. On first bind the
+//     helper writes a random placeholder ciphertext so the row's
+//     NOT-NULL constraints stay satisfied; subsequent binds preserve
+//     the secret already on the row.
+//
+//   * `unbindFromWorkflow` deletes the row. Both helpers emit
+//     `WEBHOOK_TRIGGER_BOUND` / `WEBHOOK_TRIGGER_UNBOUND` audit
+//     entries; the older `WEBHOOK_INBOUND_CREATED` /
+//     `WEBHOOK_INBOUND_DELETED` actions stay reserved for direct
+//     CRUD via the HTTP API.
+//
+// Verifier mapping mirrors the trigger discriminator:
+//
+//   "stripe-signature" → "stripe"
+//   "github-hmac"      → "github"
+//   "none"             → "standard" with native_verifier_config = { skip: true }
+//
+// The "none" mapping reuses the standard-webhooks verifier as a
+// pass-through so the inbound driver never has to special-case the
+// missing signature; the executor PR (#46) wires `skip` through.
+
+const VERIFY_TO_VERIFIER: Record<WebhookTrigger["verify"], InboundVerifierName> = {
+  "stripe-signature": "stripe",
+  "github-hmac": "github",
+  none: "standard",
+};
+
+// Postgres jsonb returns object keys in storage order (length, then
+// lex), not insertion order — round-tripping `native_verifier_config`
+// breaks naive JSON.stringify equality even when values match.
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(",")}}`;
+}
+
+function slugFromWorkflow(wfSlug: string): string {
+  // Stable, idempotent — we never want a workflow rename to leak a
+  // secondary inbound row. Length-bounded to keep below the
+  // historical 64-char slug ceiling.
+  return `wf-${wfSlug}`.slice(0, 64);
+}
+
+export interface BindFromWorkflowInput {
+  tenant_id: string;
+  workflow_id: string;
+  /** The workflow's slug, used to derive the inbound public slug. */
+  workflow_slug: string;
+  trigger: WebhookTrigger;
+  actor_id: string | null;
+}
+
+export type BindFromWorkflowOutcome =
+  | { status: "created"; row: InboundRow }
+  | { status: "updated"; row: InboundRow }
+  | { status: "noop"; row: InboundRow };
+
+/**
+ * Reverse-bind helper called from the workflow save path. Idempotent
+ * on `(tenant_id, workflow_id)` — repeated calls with the same
+ * trigger are no-ops; mutating any of `verifier`, `slug`, or
+ * `native_verifier_config` rewrites the row in place.
+ */
+export async function bindFromWorkflow(
+  input: BindFromWorkflowInput,
+  exec?: Executor,
+): Promise<BindFromWorkflowOutcome> {
+  const db = exec ?? getDb();
+  const verifier = VERIFY_TO_VERIFIER[input.trigger.verify];
+  const slug = slugFromWorkflow(input.workflow_slug);
+  const nativeConfig: Record<string, unknown> = {
+    source: input.trigger.source,
+    events: input.trigger.events,
+  };
+  if (input.trigger.verify === "none") nativeConfig.skip = true;
+
+  return await db.transaction(async (tx) => {
+    const existing = await tx
+      .select()
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, input.tenant_id),
+          eq(webhooksInbound.workflow_id, input.workflow_id),
+        ),
+      )
+      .limit(1);
+    const prior = existing[0];
+
+    if (prior) {
+      const sameSlug = prior.slug === slug;
+      const sameVerifier = prior.verifier === verifier;
+      const samePayload =
+        canonicalJson(prior.native_verifier_config ?? {}) === canonicalJson(nativeConfig);
+      if (sameSlug && sameVerifier && samePayload) {
+        return { status: "noop", row: serialize(prior) } as const;
+      }
+      const updated = await tx
+        .update(webhooksInbound)
+        .set({
+          slug,
+          verifier,
+          native_verifier_config: nativeConfig,
+          updated_at: new Date(),
+        })
+        .where(eq(webhooksInbound.id, prior.id))
+        .returning();
+      const final = updated[0] ?? prior;
+      await auditAwait(
+        {
+          tenant_id: input.tenant_id,
+          actor_type: input.actor_id ? "user" : "system",
+          actor_id: input.actor_id,
+          action: AuditAction.WEBHOOK_TRIGGER_BOUND,
+          resource_type: "webhook_inbound",
+          resource_id: final.id,
+          result: "success",
+          metadata: {
+            slug,
+            workflow_id: input.workflow_id,
+            verifier,
+            source: input.trigger.source,
+            events: input.trigger.events,
+            kind: "update",
+          },
+        },
+        tx,
+      );
+      return { status: "updated", row: serialize(final) } as const;
+    }
+
+    // First bind — provision a random placeholder secret. The operator
+    // rotates the real secret in via the existing PATCH/CREATE flow.
+    const placeholderSecret = randomBytes(32).toString("hex");
+    const placeholder = encryptSecret(placeholderSecret);
+    const inserted = await tx
+      .insert(webhooksInbound)
+      .values({
+        tenant_id: input.tenant_id,
+        slug,
+        workflow_id: input.workflow_id,
+        verifier,
+        native_verifier_config: nativeConfig,
+        secret_ciphertext: toBuf(placeholder.ciphertext),
+        secret_iv: toBuf(placeholder.iv),
+        secret_auth_tag: toBuf(placeholder.auth_tag),
+        active: true,
+      })
+      .returning();
+    const row = inserted[0];
+    assertInsertRow(row, "webhooks_inbound");
+    // Re-encrypt the placeholder with the row-scoped AAD so it matches
+    // the format `decryptSecret` expects on the read path.
+    const aadBound = encryptSecret(placeholderSecret, aadFor(input.tenant_id, row.id));
+    const finalRows = await tx
+      .update(webhooksInbound)
+      .set({
+        secret_ciphertext: toBuf(aadBound.ciphertext),
+        secret_iv: toBuf(aadBound.iv),
+        secret_auth_tag: toBuf(aadBound.auth_tag),
+        updated_at: new Date(),
+      })
+      .where(eq(webhooksInbound.id, row.id))
+      .returning();
+    const final = finalRows[0] ?? row;
+    await auditAwait(
+      {
+        tenant_id: input.tenant_id,
+        actor_type: input.actor_id ? "user" : "system",
+        actor_id: input.actor_id,
+        action: AuditAction.WEBHOOK_TRIGGER_BOUND,
+        resource_type: "webhook_inbound",
+        resource_id: row.id,
+        result: "success",
+        metadata: {
+          slug,
+          workflow_id: input.workflow_id,
+          verifier,
+          source: input.trigger.source,
+          events: input.trigger.events,
+          kind: "create",
+          placeholder_secret: true,
+        },
+      },
+      tx,
+    );
+    return { status: "created", row: serialize(final) } as const;
+  });
+}
+
+/**
+ * Reverse-unbind helper called from the workflow delete / version
+ * rotate path. Removes every inbound binding for the workflow within
+ * the tenant scope and emits one `WEBHOOK_TRIGGER_UNBOUND` audit row
+ * per removed binding. Returns the number of rows removed (zero is a
+ * legitimate outcome — workflows without webhook triggers never had
+ * a binding to remove).
+ */
+export async function unbindFromWorkflow(
+  tenant_id: string,
+  workflow_id: string,
+  actor_id: string | null,
+  exec?: Executor,
+): Promise<number> {
+  const db = exec ?? getDb();
+  return await db.transaction(async (tx) => {
+    const rows = await tx
+      .delete(webhooksInbound)
+      .where(
+        and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.workflow_id, workflow_id)),
+      )
+      .returning({ id: webhooksInbound.id, slug: webhooksInbound.slug });
+    for (const row of rows) {
+      await auditAwait(
+        {
+          tenant_id,
+          actor_type: actor_id ? "user" : "system",
+          actor_id,
+          action: AuditAction.WEBHOOK_TRIGGER_UNBOUND,
+          resource_type: "webhook_inbound",
+          resource_id: row.id,
+          result: "success",
+          metadata: { slug: row.slug, workflow_id },
+        },
+        tx,
+      );
+    }
+    return rows.length;
+  });
 }
 
 // ------------------ handle() driver -----------------------------------
