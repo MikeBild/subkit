@@ -7682,6 +7682,11 @@ export interface components {
                 aws_service: string | null;
                 /** @default null */
                 aws_region: string | null;
+                /**
+                 * Format: date-time
+                 * @default null
+                 */
+                verified_at: string | null;
                 /** @enum {string} */
                 source: "builtin" | "tenant";
                 id: string | null;
@@ -7885,6 +7890,11 @@ export interface components {
             aws_service: string | null;
             /** @default null */
             aws_region: string | null;
+            /**
+             * Format: date-time
+             * @default null
+             */
+            verified_at: string | null;
             id: string;
             /** @enum {string} */
             source: "tenant";
@@ -7934,6 +7944,11 @@ export interface components {
             aws_service: string | null;
             /** @default null */
             aws_region: string | null;
+            /**
+             * Format: date-time
+             * @default null
+             */
+            verified_at: string | null;
         };
         TemplateOAuthCredentialResponse: {
             id: string;

@@ -37,6 +37,7 @@ const baseTemplate: ConnectorTemplate = {
   recipes: [],
   aws_service: null,
   aws_region: null,
+  verified_at: null,
 };
 
 describe("enrichConnectorFromTemplate — operator_quirks propagation", () => {
