@@ -201,7 +201,7 @@ const recipeShowCommand = defineCommand({
       }
       // Pretty: header + key fields + step summary line count.
       const r = data as Record<string, unknown>;
-      const wf = (r.workflow as { steps?: unknown[] }) ?? {};
+      const wf = (r.workflow as { steps?: unknown[]; trigger?: Record<string, unknown> }) ?? {};
       const stepCount = Array.isArray(wf.steps) ? wf.steps.length : 0;
       process.stdout.write(`recipe ${slug}/${r.slug}\n`);
       process.stdout.write(`  title:        ${r.title}\n`);
@@ -221,6 +221,39 @@ const recipeShowCommand = defineCommand({
         for (const p of prereqs) process.stdout.write(`    - ${p}\n`);
       }
       process.stdout.write(`  step_count:   ${stepCount}\n`);
+      // Trigger block — operators need to see at a glance whether a
+      // recipe wakes itself up on a schedule or sits idle until called
+      // by chat / HTTP. Mirror the `WorkflowTrigger` discriminated
+      // union: `request` is the implicit default and stays silent;
+      // `schedule` and `webhook` print their distinguishing knobs.
+      const trigger = wf.trigger;
+      if (trigger && typeof trigger === "object") {
+        const kind = String(trigger.kind ?? "");
+        if (kind === "schedule") {
+          const cron = String(trigger.cron ?? "");
+          const tz = String(trigger.tz ?? "UTC");
+          const bdo = trigger.business_days_only === true ? "yes" : "no";
+          const skipDates = Array.isArray(trigger.skip_dates)
+            ? (trigger.skip_dates as string[])
+            : [];
+          process.stdout.write(`  trigger:\n`);
+          process.stdout.write(`    kind:               schedule\n`);
+          process.stdout.write(`    cron:               ${cron}  (tz: ${tz})\n`);
+          process.stdout.write(`    business_days_only: ${bdo}\n`);
+          process.stdout.write(
+            `    skip_dates:         ${skipDates.length > 0 ? skipDates.join(", ") : "(none)"}\n`,
+          );
+        } else if (kind === "webhook") {
+          const source = String(trigger.source ?? "");
+          const verify = String(trigger.verify ?? "none");
+          const events = Array.isArray(trigger.events) ? (trigger.events as string[]) : [];
+          process.stdout.write(`  trigger:\n`);
+          process.stdout.write(`    kind:    webhook\n`);
+          process.stdout.write(`    source:  ${source}\n`);
+          process.stdout.write(`    verify:  ${verify}\n`);
+          process.stdout.write(`    events:  ${events.length > 0 ? events.join(", ") : "(any)"}\n`);
+        }
+      }
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));

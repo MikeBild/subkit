@@ -16223,6 +16223,77 @@
         }
       },
       {
+        "slug": "daily-charges-digest",
+        "title": "Daily charges digest (08:00 Europe/Berlin, business days only)",
+        "description": "Pull yesterday's charges every business day at 08:00 Europe/Berlin and summarise total volume + count by currency. Skips weekends and the dates listed in `skip_dates` (German bank holidays seeded for 2026). Wired through the schedule trigger so the workflow wakes itself up — no external cron, no `sk run` loop.",
+        "intent_keywords": [
+          "daily charges digest",
+          "scheduled charges report",
+          "yesterday charges",
+          "daily revenue summary"
+        ],
+        "derived_from_skill": "stripe-basics",
+        "category": "payments",
+        "tags": ["scheduled", "trigger:schedule", "digest"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 8,
+        "prerequisites": [
+          "Stripe connector with read access to /v1/charges",
+          "Schedule trigger requires the engine's scheduler reconciler to be running"
+        ],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "stripe-daily-charges-digest",
+          "description": "Pull yesterday's charges and summarise by currency. Wakes itself up at 08:00 Europe/Berlin every business day.",
+          "trigger": {
+            "kind": "schedule",
+            "cron": "0 8 * * *",
+            "tz": "Europe/Berlin",
+            "business_days_only": true,
+            "skip_dates": [
+              "2026-01-01",
+              "2026-04-03",
+              "2026-04-06",
+              "2026-05-01",
+              "2026-05-14",
+              "2026-05-25",
+              "2026-10-03",
+              "2026-12-25",
+              "2026-12-26"
+            ]
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "list",
+              "method": "GET",
+              "url": "${connector.stripe.base_url}/charges",
+              "query": {
+                "limit": 100
+              },
+              "pagination": {
+                "strategy": "cursor",
+                "cursor_request_param": "starting_after",
+                "cursor_response_path": "data[last].id",
+                "page_size": 100
+              }
+            },
+            {
+              "kind": "transform",
+              "id": "summary",
+              "language": "jsonata",
+              "expression": "( $charges := $.list.body.data; { \"count\": $count($charges), \"by_currency\": $charges{ currency: { \"count\": $count($), \"amount_total\": $sum($.amount) } } } )"
+            }
+          ]
+        }
+      },
+      {
         "slug": "get-charge",
         "title": "Get a charge by id",
         "description": "Fetch a single charge record by its Stripe id.",
