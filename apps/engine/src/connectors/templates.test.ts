@@ -153,7 +153,10 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
     // Issues #46 + #47 (trigger executor recipes):
     //   stripe   +2 → 17 (daily-charges-digest [trigger.kind=schedule],
     //                     on-charge-failed-notify-slack [trigger.kind=webhook])
-    expect(counts.stripe).toBe(17);
+    // Issue #54 (multi-connector binding via connector_bindings):
+    //   stripe   +1 → 18 (new-customer-enrich-notify
+    //                     [3 placeholders: stripe + hubspot + slack])
+    expect(counts.stripe).toBe(18);
     expect(counts.github).toBe(13);
     expect(counts.postgres).toBe(11);
   });
