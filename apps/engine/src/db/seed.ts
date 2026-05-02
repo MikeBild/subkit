@@ -1,20 +1,21 @@
 // Idempotent seed.
 //
-// Split into three phases, each safe to run on every deploy:
+// Split into two phases, each safe to run on every deploy:
 //
 //   1. seedEssentials — RBAC permission catalog + 6 builtin roles.
 //      Always runs. Engine auth breaks without this.
 //
-//   2. seedTenantBootstrap — creates a tenant + admin user + "bootstrap-admin"
-//      system account + admin API key, keyed to BOOTSTRAP_ADMIN_EMAIL.
-//      No-op when the env var is unset. Guards key minting on
-//      "no existing key for this system account" so re-runs never
-//      produce a duplicate key.
-//
-//   3. seedDevFixtures — the legacy local-dev fixtures: `default` tenant,
+//   2. seedDevFixtures — the legacy local-dev fixtures: `default` tenant,
 //      admin@local user, default-bot system account, and a starter
 //      global skill. No demo connectors or workflows — fresh tenants
 //      start empty. Runs only when NODE_ENV !== "production".
+//
+// `seedTenantBootstrap` is also exported, but is no longer invoked by
+// this script. It is the call-driven primitive used by the first-run
+// `/v1/setup` flow (see `apps/engine/src/onboarding/bootstrap.ts`) — the
+// previous `BOOTSTRAP_*` env-var startup path was retired in #70 once
+// `POST /v1/setup` + `sk init --token` became the supported onboarding
+// surface.
 //
 // Every created row writes an audit entry. Issued API keys are printed
 // to stdout exactly once with a bright warning — they cannot be recovered.
@@ -72,12 +73,12 @@ async function seedEssentials(db: Db): Promise<SeededRoleIds> {
 // --------------------------------------------------------------------------
 
 /**
- * Explicit payload accepted by `seedTenantBootstrap` when the caller
- * already holds the four operator-supplied values (HTTP setup wizard,
- * `sk init` headless flow). Mutually exclusive with the env-var path —
- * pass either both `payload` arguments or neither, not a mix.  The
- * env-var path is still the production seed-script path; #70 will
- * retire it after the wizard fully replaces it.
+ * Explicit payload accepted by `seedTenantBootstrap`. The caller (the
+ * `/v1/setup` route handler via `onboarding/bootstrap.ts`, or the `sk
+ * init` headless flow that posts the same payload) holds the four
+ * operator-supplied values and passes them directly. The previous
+ * `BOOTSTRAP_*` env-var path was retired in #70 — `/v1/setup` is now
+ * the only supported onboarding surface.
  */
 export interface TenantBootstrapPayload {
   admin_email: string;
@@ -88,11 +89,10 @@ export interface TenantBootstrapPayload {
 
 /** Structured result from `seedTenantBootstrap` so the bootstrap
  *  orchestrator can resolve the materialised tenant + admin user + new
- *  API key without re-querying.  When the env-var path is invoked
- *  without an env var, every field is null and `issued_keys` is empty. */
+ *  API key without re-querying. */
 export interface TenantBootstrapResult {
-  tenant_id: string | null;
-  user_id: string | null;
+  tenant_id: string;
+  user_id: string;
   api_key: { plaintext: string; prefix: string } | null;
   issued_keys: IssuedKey[];
 }
@@ -100,20 +100,12 @@ export interface TenantBootstrapResult {
 export async function seedTenantBootstrap(
   db: Db,
   rbacIds: SeededRoleIds,
-  payload?: TenantBootstrapPayload,
+  payload: TenantBootstrapPayload,
 ): Promise<TenantBootstrapResult> {
-  // Resolve inputs.  Explicit payload wins; otherwise fall back to the
-  // legacy BOOTSTRAP_* env vars.  When neither is present this is a
-  // no-op so the engine boot path can call it unconditionally.
-  const email = payload?.admin_email ?? process.env.BOOTSTRAP_ADMIN_EMAIL;
-  if (!email) {
-    return { tenant_id: null, user_id: null, api_key: null, issued_keys: [] };
-  }
-
-  const slug = payload?.tenant_slug ?? process.env.BOOTSTRAP_TENANT_SLUG ?? "default";
-  const displayName = payload?.tenant_name ?? process.env.BOOTSTRAP_TENANT_NAME ?? "Subkit";
-  const createMetricsKey =
-    payload?.create_metrics_key ?? process.env.BOOTSTRAP_CREATE_METRICS_KEY === "1";
+  const email = payload.admin_email;
+  const slug = payload.tenant_slug;
+  const displayName = payload.tenant_name;
+  const createMetricsKey = payload.create_metrics_key ?? false;
 
   logger.info({
     module: "db",
@@ -121,7 +113,7 @@ export async function seedTenantBootstrap(
     msg: "running tenant bootstrap",
     tenant_slug: slug,
     admin_email: email,
-    source: payload ? "payload" : "env",
+    source: "payload",
   });
 
   return await db.transaction(async (tx) => {
@@ -604,13 +596,16 @@ export async function seed(): Promise<SeedResult> {
 
   const isProd = process.env.NODE_ENV === "production";
 
-  const tenantBootstrap = await seedTenantBootstrap(db, rbacIds);
+  // Production tenant bootstrap is no longer driven from this script —
+  // operators run `POST /v1/setup` (or `sk init --token`) on first boot
+  // (see apps/engine/src/onboarding/bootstrap.ts). This script now
+  // covers only the always-on RBAC essentials and the local-dev
+  // fixtures.
   const devKeys = isProd ? [] : await seedDevFixtures(db, rbacIds);
 
-  const issued_keys = [...tenantBootstrap.issued_keys, ...devKeys];
   return {
-    status: issued_keys.length > 0 ? "seeded" : "already_seeded",
-    issued_keys,
+    status: devKeys.length > 0 ? "seeded" : "already_seeded",
+    issued_keys: devKeys,
   };
 }
 

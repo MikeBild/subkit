@@ -328,10 +328,10 @@ export async function consume(
   }
   const payload = parsed.data;
 
-  // Materialise the tenant + admin user + admin API key.  The seed
-  // helper is now call-driven — pass an explicit payload so we don't
-  // re-read process.env.  The transaction guarantees no half-bootstrap
-  // state on partial failure.
+  // Materialise the tenant + admin user + admin API key. The seed
+  // helper is call-driven now (#70 retired the `BOOTSTRAP_*` env-var
+  // path) — pass the operator payload directly. The transaction
+  // guarantees no half-bootstrap state on partial failure.
   const result = await seedTenantBootstrap(db, rbacIds, {
     admin_email: payload.admin_email,
     tenant_name: payload.tenant_name,
@@ -339,8 +339,13 @@ export async function consume(
     create_metrics_key: false,
   });
 
-  if (!result || result.tenant_id === null || result.user_id === null || result.api_key === null) {
-    await emitFailure(db, "validation_failed", "tenant bootstrap returned no rows", opts);
+  // The upsert path skips key minting when an un-revoked admin key
+  // already exists for this system account. On a true first-run
+  // bootstrap this branch is unreachable (no prior keys), but defend
+  // anyway so a re-bootstrap attempt against a stale fixture surfaces
+  // a clean failure rather than crashing on `result.api_key.plaintext`.
+  if (result.api_key === null) {
+    await emitFailure(db, "validation_failed", "tenant bootstrap returned no api key", opts);
     return {
       status: "failed",
       code: "validation_failed",
