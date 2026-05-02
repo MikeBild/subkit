@@ -803,6 +803,20 @@ const _baseWorkflowDefSchema = z.object({
   response_filters: z.array(ResponseFilterSchema).optional(),
   steps: z.array(StepSchema).min(1).max(200),
   timeout_ms: z.number().int().positive().optional(),
+  /**
+   * Per-run cumulative LLM-token cap. Counts prompt + completion
+   * tokens across every LLM-provider call the run issues. The
+   * executor enforces this BEFORE issuing each call: when the
+   * pre-call estimate would push the running total past the cap, the
+   * run fails with the typed `llm_budget_exceeded` error and no
+   * provider charge is incurred. Optional; absent means "no per-run
+   * cap" (the per-tenant monthly budget still applies independently).
+   *
+   * Recommended for any AI-augmented recipe where a runaway loop or a
+   * prompt-bloat regression could silently rack up four-figure
+   * provider bills.
+   */
+  max_llm_tokens_per_run: z.number().int().positive().optional(),
   runtime: WorkflowRuntimeSchema.optional(),
   /**
    * How runs of this workflow get initiated. Optional — a workflow

@@ -19,6 +19,7 @@ import {
   readPaginationCheckpoint,
   writePaginationCheckpoint,
 } from "./pagination.ts";
+import { RunLlmBudget } from "./llm-budget.ts";
 import { runRequestStep } from "./steps/request.ts";
 import { createMockServer, jsonResponse, type MockServer } from "./tests/setup.ts";
 import type { StepRunContext } from "./types.ts";
@@ -124,6 +125,7 @@ function makeStepRunCtx(input: {
     step: input.step,
     step_index: 0,
     step_row_id: input.step_row_id,
+    llm_budget: new RunLlmBudget(null),
   };
 }
 

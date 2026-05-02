@@ -64,6 +64,7 @@ import type { DraftDocument } from "../../conversations/types.ts";
 import { conversationElicitations } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { runTransformStep } from "../../execution/steps/transform.ts";
+import { RunLlmBudget } from "../../execution/llm-budget.ts";
 import type { StepRunContext } from "../../execution/types.ts";
 import { renderAuthoringContextBlock } from "../../llm/core/authoring-context-block.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
@@ -294,6 +295,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
       },
       step_index: 0,
       step_row_id: "r",
+      llm_budget: new RunLlmBudget(null),
     };
     const result = await runTransformStep({
       ctx: stepCtx,
