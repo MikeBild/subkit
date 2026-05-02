@@ -485,6 +485,21 @@ export class SchedulerReconciler {
       .where(eq(workflowsSchedules.paused, false));
 
     for (const { schedule, wf } of rows) {
+      // Tenant-isolation guard: the schedule row must claim the same tenant
+      // as its joined workflow. A mismatch indicates a handcrafted or
+      // corrupted row; skipping it prevents cross-tenant execution pollution.
+      if (schedule.tenant_id !== wf.tenant_id) {
+        logger.warn({
+          module: "scheduler",
+          action: "schedule.tenant_mismatch",
+          msg: "schedule tenant_id does not match workflow tenant_id — skipping",
+          schedule_id: schedule.id,
+          schedule_tenant_id: schedule.tenant_id,
+          workflow_id: wf.id,
+          workflow_tenant_id: wf.tenant_id,
+        });
+        continue;
+      }
       const parsed = parseCronExpression(schedule.cron);
       if (!parsed.ok) continue;
       // Every-mode is handled by the local interval timer in
