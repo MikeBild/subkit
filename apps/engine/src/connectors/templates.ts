@@ -421,6 +421,20 @@ export const ConnectorTemplateSchema = z
      * `base_url` parsing as a fallback.
      */
     aws_region: z.string().min(1).nullable().default(null),
+    /**
+     * Vendor-drift sweep stamp — wall-clock ISO8601 timestamp of the
+     * last successful Layer-3 audit run that confirmed the template's
+     * `base_url`, `probe_endpoint`, and (where applicable) the OAuth
+     * issuer's `.well-known/openid-configuration` are still live. `null`
+     * means the template has never been swept (a fresh authoring entry,
+     * or the script has not been run since the field landed). The
+     * Layer-1 lint emits a `console.warn` (not a failure) when this is
+     * `null` or older than 90 days; the operator runs
+     * `scripts/audit/template-vendor-sweep.ts` (gated by
+     * `RUN_TEMPLATE_AUDIT=1`) to refresh it. See
+     * `docs/05-connectors.md` → "Vendor-drift sweep" for the lifecycle.
+     */
+    verified_at: z.string().datetime().nullable().default(null),
   })
   .superRefine((t, ctx) => {
     // Consistency gate: a template that offers BOTH a primary non-oauth auth
