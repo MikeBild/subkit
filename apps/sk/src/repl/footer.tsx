@@ -57,6 +57,12 @@ export interface FooterProps {
   tokensMonth?: number | null;
   /** Effective monthly budget; null = unlimited. */
   monthlyBudget?: number | null;
+  /** Last turn's prompt size in tokens. Drives the `ctx N/M` gauge. */
+  lastTurnPromptTokens?: number | null;
+  /** Effective per-prompt context cap for the active model — denominator
+   *  of the `ctx N/M` gauge. When null the gauge is hidden because we
+   *  cannot tell the operator how close they are to the ceiling. */
+  contextCapTokens?: number | null;
   /** Terminal width hint for collapse logic. */
   columns?: number | undefined;
 }
@@ -99,6 +105,8 @@ const FooterImpl: React.FC<FooterProps> = ({
   tokensToday = null,
   tokensMonth = null,
   monthlyBudget = null,
+  lastTurnPromptTokens = null,
+  contextCapTokens = null,
   columns = 80,
 }) => {
   const theme = useTheme();
@@ -147,6 +155,8 @@ const FooterImpl: React.FC<FooterProps> = ({
           tokensToday={tokensToday}
           tokensMonth={tokensMonth}
           monthlyBudget={monthlyBudget}
+          lastTurnPromptTokens={lastTurnPromptTokens}
+          contextCapTokens={contextCapTokens}
           theme={theme}
         />
       ) : null}
@@ -159,6 +169,8 @@ interface BudgetLineProps {
   tokensToday: number | null;
   tokensMonth: number | null;
   monthlyBudget: number | null;
+  lastTurnPromptTokens: number | null;
+  contextCapTokens: number | null;
   theme: ReturnType<typeof useTheme>;
 }
 
@@ -167,6 +179,8 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
   tokensToday,
   tokensMonth,
   monthlyBudget,
+  lastTurnPromptTokens,
+  contextCapTokens,
   theme,
 }) => {
   const monthDisplay =
@@ -187,6 +201,27 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
         : pct >= 60
           ? theme.severity.warning
           : theme.severity.dim;
+
+  // Per-turn context-window gauge. Renders only when the engine sent
+  // both the last turn's prompt size and the active model's effective
+  // cap (so we can compute a meaningful ratio). Color follows the same
+  // green→yellow→red gradient as the monthly chip but at tighter
+  // thresholds — the model rejects at 100%, so 80% is the warning line
+  // and 95% is the alarm line.
+  const ctxPct =
+    lastTurnPromptTokens != null && contextCapTokens != null && contextCapTokens > 0
+      ? Math.min(100, Math.round((lastTurnPromptTokens / contextCapTokens) * 100))
+      : null;
+  const ctxColor =
+    ctxPct == null
+      ? theme.severity.dim
+      : ctxPct >= 95
+        ? theme.severity.error
+        : ctxPct >= 80
+          ? theme.severity.warning
+          : theme.severity.dim;
+  const showCtx = lastTurnPromptTokens != null && contextCapTokens != null;
+
   return (
     <Box>
       <Text color={theme.severity.dim}> ↘ session </Text>
@@ -196,6 +231,15 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
       <Text color={theme.severity.dim}> · month </Text>
       <Text color={monthColor}>{monthDisplay}</Text>
       {pct != null ? <Text color={monthColor}> ({pct}%)</Text> : null}
+      {showCtx ? (
+        <>
+          <Text color={theme.severity.dim}> · ctx </Text>
+          <Text color={ctxColor}>
+            {formatTokens(lastTurnPromptTokens)}/{formatTokens(contextCapTokens)}
+          </Text>
+          {ctxPct != null && ctxPct >= 80 ? <Text color={ctxColor}> ({ctxPct}%)</Text> : null}
+        </>
+      ) : null}
     </Box>
   );
 };

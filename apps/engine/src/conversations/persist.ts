@@ -21,12 +21,38 @@ import type { ModelCapabilities } from "../llm/core/capabilities.ts";
 import { getStaticCapabilities } from "../llm/core/capabilities.ts";
 import type { ProviderKind } from "../llm/core/model-init.ts";
 import { countModelMessagesTokens } from "../llm/tokens.ts";
-import { truncateForLlm } from "./tools/truncate.ts";
+import { rememberRaw, truncateForLlm } from "./tools/truncate.ts";
+
+function approxValueSize(value: unknown): number {
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return 0;
+  }
+}
+
+function rememberRawForElision(value: unknown): string {
+  return rememberRaw(value);
+}
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 const MAX_REPLAY_MESSAGES = 24;
 const MAX_REPLAY_TOKENS = 12_000;
 const REPLAY_TAIL_MESSAGES = 16;
+
+// Sliding window over replayed tool-call outputs. Tool calls executed in
+// the most recent N user-turn segments keep their output verbatim; older
+// large outputs are replaced with a one-line stub that retains the
+// existing `_raw_ref` so the model can fetch the full payload via
+// `get_raw_result(ref)` if it really needs it.
+//
+// The bug this guards against: a single `inspect_workflow_draft` call
+// returning a 480k-char payload was being re-sent on every subsequent
+// turn (≈120k tokens × every turn) until the prompt overflowed at >200k.
+// Once the model has summarized a tool result into prose, the raw payload
+// contributes nothing to the next turn — but we kept it forever.
+const TOOL_OUTPUT_VERBATIM_TURNS = 3;
+const TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS = 4000;
 
 /**
  * Build multimodal UserContent for a conversation turn that may reference
@@ -383,6 +409,19 @@ export async function buildModelMessages(
     .find((message) => message.role === "system" && compactedSummary(message.content) !== null);
   const replayStartAt = latestCompaction?.created_at ?? null;
 
+  // Tool-output sliding window. Keep verbatim only the tool calls
+  // produced after the Nth-from-last user message; older bulky outputs
+  // collapse to a one-line stub. Ask-user elicitations are never elided
+  // (they carry the user's answer, not raw payload).
+  const userMessageTimestamps = msgs
+    .filter((m) => m.role === "user")
+    .map((m) => m.created_at)
+    .sort((a, b) => a.getTime() - b.getTime());
+  const verbatimWindowStartAt =
+    userMessageTimestamps.length > TOOL_OUTPUT_VERBATIM_TURNS
+      ? (userMessageTimestamps[userMessageTimestamps.length - TOOL_OUTPUT_VERBATIM_TURNS] ?? null)
+      : null;
+
   interface Item {
     kind: "msg" | "call";
     created_at: Date;
@@ -482,15 +521,33 @@ export async function buildModelMessages(
         const augmented: Record<string, unknown> = { ...rawOutput };
         if (confirmationState) augmented.confirmationState = confirmationState;
         if (interactionLog.length > 0) augmented.interactionLog = interactionLog;
-        const truncated = truncateForLlm(augmented);
-        resultValue = truncated.truncated
-          ? {
-              ...(truncated.data as Record<string, unknown>),
-              _truncated: true,
-              _raw_ref: truncated.raw_ref,
-              _note: truncated.note,
-            }
-          : augmented;
+        const isOutsideVerbatimWindow =
+          verbatimWindowStartAt !== null && call.created_at < verbatimWindowStartAt;
+        const augmentedSize = approxValueSize(augmented);
+        if (isOutsideVerbatimWindow && augmentedSize > TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS) {
+          // Older, bulky tool result — elide. Reuse the existing
+          // `_raw_ref` if persist already truncated this output on the
+          // way in; otherwise mint a fresh ref so the model can still
+          // fetch the full payload via `get_raw_result`.
+          const existingRef = typeof rawOutput._raw_ref === "string" ? rawOutput._raw_ref : null;
+          const ref = existingRef ?? rememberRawForElision(augmented);
+          resultValue = {
+            _elided: true,
+            _tool: call.tool,
+            _raw_ref: ref,
+            _note: `<elided: tool=${call.tool}, ref=${ref}, original=${augmentedSize} chars; call get_raw_result(ref="${ref}") for the full payload>`,
+          };
+        } else {
+          const truncated = truncateForLlm(augmented);
+          resultValue = truncated.truncated
+            ? {
+                ...(truncated.data as Record<string, unknown>),
+                _truncated: true,
+                _raw_ref: truncated.raw_ref,
+                _note: truncated.note,
+              }
+            : augmented;
+        }
       } else if (resolvedElicitation) {
         resultValue = {
           status: "resolved",

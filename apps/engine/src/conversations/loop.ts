@@ -36,7 +36,7 @@ import {
   supportsExtendedThinking,
 } from "../llm/core/step-router.ts";
 import { type CriticArtifact, type CriticVerdict, runCritic } from "../llm/critic/index.ts";
-import { LlmQuotaExhausted } from "../llm/errors.ts";
+import { LlmContextTooLarge, LlmQuotaExhausted } from "../llm/errors.ts";
 import { createMockLanguageModel } from "../llm/mock-stream.ts";
 import { runOutputGuard, runOutputGuardStream } from "../llm/output-guard/index.ts";
 import {
@@ -44,7 +44,7 @@ import {
   isFallbackEligible,
   toLlmProviderError,
 } from "../llm/provider-errors.ts";
-import { countModelMessagesTokens } from "../llm/tokens.ts";
+import { contextCapFor, countModelMessagesTokens } from "../llm/tokens.ts";
 import { log, logger } from "../logging/logger.ts";
 import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instrumentation.ts";
 import {
@@ -601,6 +601,38 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const messageTokens = countModelMessagesTokens(messages);
   const estimatedPromptTokens = prompt.token_counts.total + messageTokens;
   const estimated = estimatedPromptTokens + budget * 1024;
+
+  // Pre-flight context-window check. The provider rejects oversize
+  // prompts with a 400 ("prompt is too long: N tokens > 200000 maximum")
+  // — by then the user has paid the latency and we've burned a quota
+  // decrement on a doomed call. Catch it here, raise a typed error
+  // the CLI can map to actionable guidance ("conversation too long;
+  // try /compact"). The cap is the assembler's usable window, which
+  // already accounts for completion headroom (see `contextCapFor`).
+  const contextCap = contextCapFor(effectiveModel);
+  if (estimatedPromptTokens > contextCap) {
+    logger.warn({
+      module: "conversation",
+      action: "preflight.context_too_large",
+      msg: "rejecting turn before provider call — assembled prompt exceeds context cap",
+      conversation_id: p.conversation_id,
+      tenant_id: p.tenant_id,
+      model: effectiveModel,
+      estimated_prompt_tokens: estimatedPromptTokens,
+      context_cap: contextCap,
+      message_tokens: messageTokens,
+      prompt_breakdown: prompt.token_counts,
+    });
+    throw new LlmContextTooLarge("llm_context_too_large", {
+      estimated_prompt_tokens: estimatedPromptTokens,
+      context_cap: contextCap,
+      message_tokens: messageTokens,
+      prompt_total: prompt.token_counts.total,
+      model: effectiveModel,
+      remediation: "compact_or_resume",
+    });
+  }
+
   try {
     await checkBudget(p.tenant_id, estimated, route.monthly_budget, p.db);
     const verdict = await checkAndDecrement(p.tenant_id, estimated, p.db);
@@ -1692,6 +1724,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       usage: {
         turn_tokens: turnTokens,
         remaining_monthly_budget_tokens: remaining,
+        context_cap_tokens: contextCap,
         ...(breakdown ? { breakdown } : {}),
       },
     });
