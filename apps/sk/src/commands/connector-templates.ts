@@ -201,7 +201,11 @@ const recipeShowCommand = defineCommand({
       }
       // Pretty: header + key fields + step summary line count.
       const r = data as Record<string, unknown>;
-      const wf = (r.workflow as { steps?: unknown[]; trigger?: Record<string, unknown> }) ?? {};
+      const wf =
+        (r.workflow as {
+          steps?: unknown[];
+          trigger?: Record<string, unknown> | null;
+        }) ?? {};
       const stepCount = Array.isArray(wf.steps) ? wf.steps.length : 0;
       process.stdout.write(`recipe ${slug}/${r.slug}\n`);
       process.stdout.write(`  title:        ${r.title}\n`);
@@ -221,38 +225,57 @@ const recipeShowCommand = defineCommand({
         for (const p of prereqs) process.stdout.write(`    - ${p}\n`);
       }
       process.stdout.write(`  step_count:   ${stepCount}\n`);
-      // Trigger block — operators need to see at a glance whether a
-      // recipe wakes itself up on a schedule or sits idle until called
-      // by chat / HTTP. Mirror the `WorkflowTrigger` discriminated
-      // union: `request` is the implicit default and stays silent;
-      // `schedule` and `webhook` print their distinguishing knobs.
-      const trigger = wf.trigger;
+      // Trigger block — surfaces the workflow's `trigger:` discriminator
+      // so the operator sees how an execution gets initiated for the
+      // cloned workflow without having to read the raw DAG. Recipes
+      // without a trigger block (or with the implicit
+      // `kind: "request"`) print "request (on-demand)" so the line is
+      // never silently absent.
+      const trigger = wf.trigger ?? null;
       if (trigger && typeof trigger === "object") {
-        const kind = String(trigger.kind ?? "");
-        if (kind === "schedule") {
-          const cron = String(trigger.cron ?? "");
-          const tz = String(trigger.tz ?? "UTC");
-          const bdo = trigger.business_days_only === true ? "yes" : "no";
-          const skipDates = Array.isArray(trigger.skip_dates)
-            ? (trigger.skip_dates as string[])
-            : [];
+        const kind = String((trigger as Record<string, unknown>).kind ?? "request");
+        if (kind === "webhook") {
+          const t = trigger as {
+            source?: unknown;
+            events?: unknown;
+            verify?: unknown;
+          };
+          const source = typeof t.source === "string" ? t.source : "(unknown)";
+          const events = Array.isArray(t.events)
+            ? (t.events as unknown[]).map(String).join(", ")
+            : "(any)";
+          const verify = typeof t.verify === "string" ? t.verify : "(unknown)";
           process.stdout.write(`  trigger:\n`);
-          process.stdout.write(`    kind:               schedule\n`);
-          process.stdout.write(`    cron:               ${cron}  (tz: ${tz})\n`);
-          process.stdout.write(`    business_days_only: ${bdo}\n`);
+          process.stdout.write(`    kind:       webhook\n`);
+          process.stdout.write(`    source:     ${source}\n`);
+          process.stdout.write(`    events:     ${events.length > 0 ? events : "(any)"}\n`);
+          process.stdout.write(`    verify:     ${verify}\n`);
+        } else if (kind === "schedule") {
+          const t = trigger as {
+            cron?: unknown;
+            tz?: unknown;
+            business_days_only?: unknown;
+            skip_dates?: unknown;
+          };
+          process.stdout.write(`  trigger:\n`);
+          process.stdout.write(`    kind:       schedule\n`);
           process.stdout.write(
-            `    skip_dates:         ${skipDates.length > 0 ? skipDates.join(", ") : "(none)"}\n`,
+            `    cron:       ${typeof t.cron === "string" ? t.cron : "(unset)"}\n`,
           );
-        } else if (kind === "webhook") {
-          const source = String(trigger.source ?? "");
-          const verify = String(trigger.verify ?? "none");
-          const events = Array.isArray(trigger.events) ? (trigger.events as string[]) : [];
-          process.stdout.write(`  trigger:\n`);
-          process.stdout.write(`    kind:    webhook\n`);
-          process.stdout.write(`    source:  ${source}\n`);
-          process.stdout.write(`    verify:  ${verify}\n`);
-          process.stdout.write(`    events:  ${events.length > 0 ? events.join(", ") : "(any)"}\n`);
+          process.stdout.write(`    tz:         ${typeof t.tz === "string" ? t.tz : "UTC"}\n`);
+          if (t.business_days_only === true) {
+            process.stdout.write(`    business_days_only: true\n`);
+          }
+          if (Array.isArray(t.skip_dates) && (t.skip_dates as unknown[]).length > 0) {
+            process.stdout.write(
+              `    skip_dates: ${(t.skip_dates as unknown[]).map(String).join(", ")}\n`,
+            );
+          }
+        } else {
+          process.stdout.write(`  trigger:      request (on-demand)\n`);
         }
+      } else {
+        process.stdout.write(`  trigger:      request (on-demand)\n`);
       }
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
