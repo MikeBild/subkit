@@ -659,6 +659,84 @@ export const WorkflowRuntimeSchema = z
   })
   .openapi("WorkflowRuntime");
 
+// Trigger spec
+//
+// Discriminated union over the way an execution can be initiated for
+// this workflow. The `request` variant is the historical default and
+// matches every workflow authored before this field existed — chat,
+// CLI, or HTTP `POST /executions` start the run on demand. Omitting
+// the `trigger` block is therefore equivalent to setting
+// `{ kind: "request" }`.
+//
+// The `webhook` and `schedule` variants are reverse-bound by the
+// workflow lifecycle (see `webhooks/inbound/service.ts` and
+// `scheduler/repo.ts`): saving a workflow with one of these triggers
+// upserts the matching `webhooks_inbound` / `workflows_schedules` row
+// keyed on `(tenant_id, workflow_id)`; deleting or version-rotating
+// the workflow removes the row and emits a `*.trigger.unbound` audit
+// entry. This module owns the schema only — executor logic for
+// webhook firing lives in `webhooks/inbound/service.ts` (#46) and for
+// schedule firing in `scheduler/reconciler.ts` (#47).
+export const RequestTriggerSchema = z
+  .object({
+    kind: z.literal("request"),
+  })
+  .openapi("RequestTrigger");
+
+export const WebhookTriggerSchema = z
+  .object({
+    kind: z.literal("webhook"),
+    /** Inbound provider identifier. Free-form so the operator can pick
+     *  a stable slug per integration ("stripe", "github-prod"); paired
+     *  with `verify` it picks the signature verifier the inbound
+     *  driver runs at request time. */
+    source: z.string().min(1),
+    /** Provider event names this binding accepts. Empty means "any".
+     *  The inbound driver uses this list to drop noisy events before
+     *  enqueueing an execution. */
+    events: z.array(z.string().min(1)),
+    /** Signature-verification mode. `none` is allowed for trusted
+     *  ingress (intra-VPC, mTLS-fronted); the driver still requires
+     *  the binding row to exist. */
+    verify: z.enum(["stripe-signature", "github-hmac", "none"]),
+  })
+  .openapi("WebhookTrigger");
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export const ScheduleTriggerSchema = z
+  .object({
+    kind: z.literal("schedule"),
+    /** Cron expression in 5-field form (`m h dom mon dow`) or the
+     *  engine's `every:N` shorthand for sub-minute cadences. The
+     *  scheduler reconciler validates the expression at bind time. */
+    cron: z.string().min(1),
+    /** IANA timezone name (e.g. "Europe/Berlin"). The reconciler
+     *  passes this to pg-boss so cron expressions land at the local
+     *  wall-clock time the operator authored. */
+    tz: z.string().min(1).default("UTC"),
+    /** When true the scheduler skips firings that fall on weekends.
+     *  Holiday calendars are NOT inferred — declare them explicitly
+     *  via `skip_dates`. */
+    business_days_only: z.boolean().optional(),
+    /** Explicit YYYY-MM-DD dates to skip (holidays, freezes). The
+     *  reconciler compares against the trigger's `tz` so a date here
+     *  means "this calendar day in the workflow's timezone". */
+    skip_dates: z
+      .array(z.string().regex(ISO_DATE_RE, "skip_dates entries must be ISO YYYY-MM-DD"))
+      .optional(),
+  })
+  .openapi("ScheduleTrigger");
+
+export const TriggerSchema = z
+  .discriminatedUnion("kind", [RequestTriggerSchema, WebhookTriggerSchema, ScheduleTriggerSchema])
+  .openapi("WorkflowTrigger");
+
+export type RequestTrigger = z.infer<typeof RequestTriggerSchema>;
+export type WebhookTrigger = z.infer<typeof WebhookTriggerSchema>;
+export type ScheduleTrigger = z.infer<typeof ScheduleTriggerSchema>;
+export type WorkflowTrigger = z.infer<typeof TriggerSchema>;
+
 const _baseWorkflowDefSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1).optional(),
@@ -726,6 +804,17 @@ const _baseWorkflowDefSchema = z.object({
   steps: z.array(StepSchema).min(1).max(200),
   timeout_ms: z.number().int().positive().optional(),
   runtime: WorkflowRuntimeSchema.optional(),
+  /**
+   * How runs of this workflow get initiated. Optional — a workflow
+   * without a `trigger` block behaves exactly as before this field
+   * existed (implicit `{ kind: "request" }`). Setting `webhook` or
+   * `schedule` reverse-binds an inbound binding / cron schedule
+   * keyed on `(tenant_id, workflow_id)` at save time and removes it
+   * on delete or version rotate (see `service.ts`). Executor logic
+   * for the non-`request` variants lives in the webhooks + scheduler
+   * subsystems; this field is the schema contract only.
+   */
+  trigger: TriggerSchema.optional(),
 });
 
 export const WorkflowDefSchema = _baseWorkflowDefSchema

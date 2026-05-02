@@ -4,9 +4,28 @@
 // pg-boss because the table is the source of truth.
 
 import { and, eq } from "drizzle-orm";
+import { auditAwait } from "../audit/audit.ts";
+import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowsSchedules } from "../db/schema/index.ts";
+import type { ScheduleTrigger } from "../workflows/types.ts";
 import { parseCronExpression } from "./cron.ts";
+
+type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+// Postgres jsonb returns object keys in storage order (length, then
+// lex), not insertion order. JSON.stringify on the round-tripped
+// object therefore differs from JSON.stringify on the freshly-built
+// payload even when the values are equal — which would make every
+// "same trigger" rebind look like an update. Canonicalize before
+// comparing.
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(",")}}`;
+}
 
 export interface ScheduleRow {
   id: string;
@@ -128,4 +147,176 @@ export async function deleteSchedule(db: Db, tenant_id: string, id: string): Pro
     .where(and(eq(workflowsSchedules.tenant_id, tenant_id), eq(workflowsSchedules.id, id)))
     .returning({ id: workflowsSchedules.id });
   return rows.length > 0;
+}
+
+// ------------------ workflow trigger reverse-bind ---------------------
+//
+// Workflow lifecycle (`apps/engine/src/workflows/service.ts`) calls
+// these helpers when a workflow is saved or deleted with a
+// `trigger: { kind: "schedule" }` block. The contract mirrors the
+// webhooks bind/unbind helpers: idempotent on `(tenant_id,
+// workflow_id)`, audit-stamped via `SCHEDULE_TRIGGER_BOUND` /
+// `SCHEDULE_TRIGGER_UNBOUND`, and decoupled from the older
+// `SCHEDULE_CREATED` / `SCHEDULE_DELETED` actions which stay
+// reserved for direct CRUD via the HTTP API.
+//
+// The reconciler picks up the row on its next 60s pass — there is no
+// in-process notification path; the source of truth is the table.
+
+export interface BindScheduleFromWorkflowInput {
+  tenant_id: string;
+  workflow_id: string;
+  trigger: ScheduleTrigger;
+  actor_id: string | null;
+}
+
+export type BindScheduleOutcome =
+  | { status: "created"; row: ScheduleRow }
+  | { status: "updated"; row: ScheduleRow }
+  | { status: "noop"; row: ScheduleRow };
+
+export async function bindFromWorkflow(
+  db: Executor,
+  input: BindScheduleFromWorkflowInput,
+): Promise<BindScheduleOutcome> {
+  const parsed = parseCronExpression(input.trigger.cron);
+  if (!parsed.ok) {
+    throw Object.assign(new Error(`invalid cron: ${parsed.reason}`), {
+      code: "invalid_cron",
+      reason: parsed.reason,
+    });
+  }
+  // Stash the calendar gates inside the schedule's `input` payload so
+  // they survive without a schema migration. The reconciler in #47
+  // honours these on fire; for now they round-trip on the row.
+  const inputPayload = {
+    business_days_only: input.trigger.business_days_only ?? false,
+    skip_dates: input.trigger.skip_dates ?? [],
+  };
+  const tz = input.trigger.tz;
+
+  const existingRows = await db
+    .select()
+    .from(workflowsSchedules)
+    .where(
+      and(
+        eq(workflowsSchedules.tenant_id, input.tenant_id),
+        eq(workflowsSchedules.workflow_id, input.workflow_id),
+      ),
+    )
+    .limit(1);
+  const prior = existingRows[0] as ScheduleRow | undefined;
+
+  if (prior) {
+    const sameCron = prior.cron === input.trigger.cron;
+    const sameTz = prior.timezone === tz;
+    const sameInput = canonicalJson(prior.input ?? {}) === canonicalJson(inputPayload);
+    if (sameCron && sameTz && sameInput) {
+      return { status: "noop", row: prior };
+    }
+    const updated = await db
+      .update(workflowsSchedules)
+      .set({
+        cron: input.trigger.cron,
+        timezone: tz,
+        input: inputPayload as never,
+        updated_at: new Date(),
+      })
+      .where(eq(workflowsSchedules.id, prior.id))
+      .returning();
+    const row = (updated[0] as ScheduleRow | undefined) ?? prior;
+    await auditAwait(
+      {
+        tenant_id: input.tenant_id,
+        actor_type: input.actor_id ? "user" : "system",
+        actor_id: input.actor_id,
+        action: AuditAction.SCHEDULE_TRIGGER_BOUND,
+        resource_type: "workflow_schedule",
+        resource_id: row.id,
+        result: "success",
+        metadata: {
+          workflow_id: input.workflow_id,
+          cron: input.trigger.cron,
+          tz,
+          business_days_only: input.trigger.business_days_only ?? false,
+          skip_date_count: (input.trigger.skip_dates ?? []).length,
+          kind: "update",
+        },
+      },
+      db,
+    );
+    return { status: "updated", row };
+  }
+
+  const inserted = await db
+    .insert(workflowsSchedules)
+    .values({
+      tenant_id: input.tenant_id,
+      workflow_id: input.workflow_id,
+      cron: input.trigger.cron,
+      timezone: tz,
+      paused: false,
+      input: inputPayload as never,
+    })
+    .returning();
+  const row = inserted[0] as ScheduleRow;
+  await auditAwait(
+    {
+      tenant_id: input.tenant_id,
+      actor_type: input.actor_id ? "user" : "system",
+      actor_id: input.actor_id,
+      action: AuditAction.SCHEDULE_TRIGGER_BOUND,
+      resource_type: "workflow_schedule",
+      resource_id: row.id,
+      result: "success",
+      metadata: {
+        workflow_id: input.workflow_id,
+        cron: input.trigger.cron,
+        tz,
+        business_days_only: input.trigger.business_days_only ?? false,
+        skip_date_count: (input.trigger.skip_dates ?? []).length,
+        kind: "create",
+      },
+    },
+    db,
+  );
+  return { status: "created", row };
+}
+
+/**
+ * Reverse-unbind helper called from the workflow delete / version
+ * rotate path. Removes every schedule row for the workflow within
+ * the tenant scope. Returns the number of rows removed.
+ */
+export async function unbindFromWorkflow(
+  db: Executor,
+  tenant_id: string,
+  workflow_id: string,
+  actor_id: string | null,
+): Promise<number> {
+  const rows = await db
+    .delete(workflowsSchedules)
+    .where(
+      and(
+        eq(workflowsSchedules.tenant_id, tenant_id),
+        eq(workflowsSchedules.workflow_id, workflow_id),
+      ),
+    )
+    .returning({ id: workflowsSchedules.id });
+  for (const row of rows) {
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: actor_id ? "user" : "system",
+        actor_id,
+        action: AuditAction.SCHEDULE_TRIGGER_UNBOUND,
+        resource_type: "workflow_schedule",
+        resource_id: row.id,
+        result: "success",
+        metadata: { workflow_id },
+      },
+      db,
+    );
+  }
+  return rows.length;
 }

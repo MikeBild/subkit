@@ -10,6 +10,8 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { skills as skillsTable, workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
+import * as scheduleRepo from "../scheduler/repo.ts";
+import * as inboundService from "../webhooks/inbound/service.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateOutputSchemaSuperset, validateWorkflowDef } from "./validator.ts";
@@ -47,6 +49,66 @@ function slugify(name: string): string {
       .replace(/^-+|-+$/g, "")
       .slice(0, 64) || `wf-${Math.random().toString(36).slice(2, 8)}`
   );
+}
+
+/**
+ * Apply the discriminated `trigger` block from a workflow def to its
+ * reverse-bound rows in `webhooks_inbound` / `workflows_schedules`.
+ * Idempotent on `(tenant_id, workflow_id)` — repeated calls with the
+ * same trigger are no-ops.
+ *
+ * Lifecycle contract:
+ *
+ *   * `kind: "request"` (or no trigger) → tear down any prior
+ *     webhook + schedule binding the workflow had. This is what
+ *     happens when an operator removes a trigger from an existing
+ *     workflow: the next save unbinds the public ingress.
+ *   * `kind: "webhook"` → upsert the inbound row, tear down any
+ *     stale schedule.
+ *   * `kind: "schedule"` → upsert the schedule row, tear down any
+ *     stale inbound binding.
+ *
+ * The two-arm tear-down keeps a workflow from carrying both
+ * bindings simultaneously when its trigger flips between the
+ * variants — without it, a `webhook → schedule` edit would leave
+ * the public webhook URL live.
+ */
+async function applyTriggerBindings(
+  exec: Executor,
+  tenant_id: string,
+  workflow_id: string,
+  workflow_slug: string,
+  def: WorkflowDef,
+  actor_id: string | null,
+): Promise<void> {
+  const trigger = def.trigger ?? { kind: "request" as const };
+  if (trigger.kind === "webhook") {
+    await inboundService.bindFromWorkflow(
+      {
+        tenant_id,
+        workflow_id,
+        workflow_slug,
+        trigger,
+        actor_id,
+      },
+      exec,
+    );
+    await scheduleRepo.unbindFromWorkflow(exec, tenant_id, workflow_id, actor_id);
+    return;
+  }
+  if (trigger.kind === "schedule") {
+    await scheduleRepo.bindFromWorkflow(exec, {
+      tenant_id,
+      workflow_id,
+      trigger,
+      actor_id,
+    });
+    await inboundService.unbindFromWorkflow(tenant_id, workflow_id, actor_id, exec);
+    return;
+  }
+  // "request" — make sure neither binding lingers.
+  await inboundService.unbindFromWorkflow(tenant_id, workflow_id, actor_id, exec);
+  await scheduleRepo.unbindFromWorkflow(exec, tenant_id, workflow_id, actor_id);
 }
 
 async function loadWorkflowView(
@@ -164,6 +226,7 @@ export async function createWorkflow(
       },
       tx,
     );
+    await applyTriggerBindings(tx, input.tenant_id, wf.id, slug, def, input.actor_id);
     return wf.id;
   });
   log.workflow.committed({
@@ -268,6 +331,7 @@ export async function updateWorkflow(
       step_count: def.steps.length,
       actor_id: input.actor_id,
     });
+    await applyTriggerBindings(tx, input.tenant_id, wf.id, wf.slug, def, input.actor_id);
     return wf.id;
   });
   if (!updated) return { errors: ["workflow not found"] };
@@ -562,6 +626,12 @@ export async function deleteWorkflow(
       )
       .returning();
     if (!row) return false;
+    // Tear down both reverse-bound rows regardless of the workflow's
+    // last trigger kind. A schedule binding still belongs to a
+    // soft-deleted workflow until we remove it; ditto the inbound
+    // public ingress.
+    await inboundService.unbindFromWorkflow(tenant_id, row.id, actor_id, tx);
+    await scheduleRepo.unbindFromWorkflow(tx, tenant_id, row.id, actor_id);
     await auditAwait(
       {
         tenant_id,
@@ -663,6 +733,19 @@ export async function restoreWorkflowVersion(
       new_version: next,
       actor_id,
     });
+    // Re-apply trigger bindings from the restored definition. A
+    // workflow that was, for example, scheduled at v3 but rotated to a
+    // request-only v4 must have its schedule torn down on restore-to-
+    // v3 and re-bound; otherwise the public surface drifts from the
+    // committed dag.
+    const restoredDef = WorkflowDefSchema.parse(target.dag);
+    const wfRows = await tx
+      .select({ slug: workflows.slug })
+      .from(workflows)
+      .where(eq(workflows.id, id))
+      .limit(1);
+    const wfSlug = wfRows[0]?.slug ?? id;
+    await applyTriggerBindings(tx, tenant_id, id, wfSlug, restoredDef, actor_id);
     return id;
   });
   if (!updatedId) return null;
