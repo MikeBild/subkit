@@ -7601,6 +7601,13 @@
           "active": {
             "type": "boolean"
           },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "crud",
+              "trigger"
+            ]
+          },
           "created_at": {
             "type": "string"
           },
@@ -7615,6 +7622,7 @@
           "workflow_id",
           "verifier",
           "active",
+          "origin",
           "created_at",
           "updated_at"
         ]

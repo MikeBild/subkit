@@ -31,6 +31,15 @@ export const webhooksInbound = pgTable(
     secret_iv: bytea("secret_iv").notNull(),
     secret_auth_tag: bytea("secret_auth_tag").notNull(),
     active: boolean("active").default(true).notNull(),
+    /** How the row was provisioned. `crud` rows come from the
+     *  authenticated `POST /v1/webhooks/inbound` surface; `trigger`
+     *  rows are reverse-bound by the workflow save path
+     *  (`bindFromWorkflow`). The fire-time audit surface routes the
+     *  new `webhook.trigger.fired` /
+     *  `webhook.trigger.failed_verification` actions only for
+     *  `trigger` rows; `crud` rows continue to emit the legacy
+     *  `webhook.inbound.received` / `webhook.inbound.denied`. */
+    origin: text("origin").notNull().default("crud"),
     ...timestamps,
   },
   (t) => [uniqueIndex("webhooks_inbound_tenant_slug_key").on(t.tenant_id, t.slug)],

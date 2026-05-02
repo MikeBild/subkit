@@ -8833,6 +8833,8 @@ export interface components {
             /** @enum {string} */
             verifier: "standard" | "github" | "stripe" | "custom";
             active: boolean;
+            /** @enum {string} */
+            origin: "crud" | "trigger";
             created_at: string;
             updated_at: string;
         };

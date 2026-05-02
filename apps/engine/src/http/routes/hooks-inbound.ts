@@ -24,6 +24,11 @@ const InboundSchema = z
     workflow_id: z.string(),
     verifier: z.enum(["standard", "github", "stripe", "custom"]),
     active: z.boolean(),
+    /** Provenance — `crud` for direct API-managed bindings, `trigger`
+     *  for rows reverse-bound by a workflow's `webhook` trigger.
+     *  Trigger-bound rows fire `webhook.trigger.fired` at receive
+     *  time; CRUD rows fire `webhook.inbound.received`. */
+    origin: z.enum(["crud", "trigger"]),
     created_at: z.string(),
     updated_at: z.string(),
   })

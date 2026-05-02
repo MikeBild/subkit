@@ -150,7 +150,11 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
     //   postgres +3 → 11 (update-must-affect-exactly-one-row [expected_row_count],
     //                     atomic-debit-credit-double-entry [sql.also],
     //                     export-large-table-stream [sql.cursor])
-    expect(counts.stripe).toBe(15);
+    // Issue #46:
+    //   stripe   +1 → 16 (on-charge-failed-notify-slack — exercises
+    //                     the workflow `trigger: { kind: "webhook" }`
+    //                     reverse-bind end-to-end against Slack)
+    expect(counts.stripe).toBe(16);
     expect(counts.github).toBe(13);
     expect(counts.postgres).toBe(11);
   });

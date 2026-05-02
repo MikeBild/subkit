@@ -7,7 +7,7 @@
 //     `executions` row + enqueues an `execution.run` job with the
 //     normalized payload as input and `request_source=webhook`.
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { audit, auditAwait } from "../../audit/audit.ts";
@@ -24,7 +24,7 @@ import { markSeenIfNew } from "./dedup.ts";
 import { verifyGitHub } from "./verifiers/github.ts";
 import { verifyStandard } from "./verifiers/standard-webhooks.ts";
 import { verifyStripe } from "./verifiers/stripe.ts";
-import type { VerifierFn } from "./verifiers/types.ts";
+import type { VerifierFn, VerifierResult } from "./verifiers/types.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -44,6 +44,14 @@ const VERIFIERS: Record<InboundVerifierName, VerifierFn> = {
   stripe: verifyStripe,
 };
 
+/** Provenance marker — `crud` for rows created via the authenticated
+ *  HTTP CRUD surface, `trigger` for rows reverse-bound by a workflow
+ *  with a `webhook` trigger. The fire-time audit surface uses this
+ *  to decide whether to emit the workflow-trigger actions
+ *  (`webhook.trigger.fired` / `webhook.trigger.failed_verification`)
+ *  or the legacy direct-CRUD actions. */
+export type InboundOrigin = "crud" | "trigger";
+
 export interface InboundRow {
   id: string;
   tenant_id: string;
@@ -51,6 +59,7 @@ export interface InboundRow {
   workflow_id: string;
   verifier: InboundVerifierName;
   active: boolean;
+  origin: InboundOrigin;
   created_at: Date;
   updated_at: Date;
 }
@@ -63,6 +72,7 @@ function serialize(row: typeof webhooksInbound.$inferSelect): InboundRow {
     workflow_id: row.workflow_id,
     verifier: row.verifier as InboundVerifierName,
     active: row.active,
+    origin: (row.origin as InboundOrigin | undefined) ?? "crud",
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -98,6 +108,7 @@ export async function createInbound(
         secret_iv: toBuf(placeholder.iv),
         secret_auth_tag: toBuf(placeholder.auth_tag),
         active: input.active ?? true,
+        origin: "crud",
       })
       .returning();
     const row = inserted[0];
@@ -351,6 +362,7 @@ export async function bindFromWorkflow(
         secret_iv: toBuf(placeholder.iv),
         secret_auth_tag: toBuf(placeholder.auth_tag),
         active: true,
+        origin: "trigger",
       })
       .returning();
     const row = inserted[0];
@@ -392,6 +404,37 @@ export async function bindFromWorkflow(
     );
     return { status: "created", row: serialize(final) } as const;
   });
+}
+
+/**
+ * Rotate the signing secret on an existing inbound row in place.
+ *
+ * The reverse-bind helper writes a random placeholder secret on first
+ * bind because the signing secret is not carried on the workflow
+ * trigger — operators provision it out-of-band. This helper is the
+ * out-of-band entry point: it encrypts the new plaintext with the
+ * row-scoped AAD and stamps `updated_at`. Returns true when a row
+ * was updated.
+ */
+export async function rotateInboundSecret(
+  tenant_id: string,
+  inbound_id: string,
+  secret: string,
+  exec?: Executor,
+): Promise<boolean> {
+  const db = exec ?? getDb();
+  const payload = encryptSecret(secret, aadFor(tenant_id, inbound_id));
+  const result = await db
+    .update(webhooksInbound)
+    .set({
+      secret_ciphertext: toBuf(payload.ciphertext),
+      secret_iv: toBuf(payload.iv),
+      secret_auth_tag: toBuf(payload.auth_tag),
+      updated_at: new Date(),
+    })
+    .where(and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.id, inbound_id)));
+  const rowCount = (result as { rowCount?: number }).rowCount;
+  return rowCount === undefined ? true : rowCount > 0;
 }
 
 /**
@@ -478,7 +521,47 @@ export async function handleInbound(
     .limit(1);
   const row = rows[0];
   if (!row) return { status: "not_found" };
-  if (!row.active) return { status: "denied", reason: "inactive", inbound_id: row.id };
+  const origin: InboundOrigin = (row.origin as InboundOrigin | undefined) ?? "crud";
+  // Audit-action routing — `trigger`-origin rows emit the workflow-
+  // trigger lifecycle actions; `crud`-origin rows keep the legacy
+  // direct-CRUD actions. Both surfaces are append-only, both fire on
+  // the same code paths; the action label is the only thing that
+  // changes. Compliance dashboards filter on action so the split is
+  // load-bearing.
+  const FIRED_ACTION =
+    origin === "trigger" ? AuditAction.WEBHOOK_TRIGGER_FIRED : AuditAction.WEBHOOK_INBOUND_RECEIVED;
+  const FAILED_ACTION =
+    origin === "trigger"
+      ? AuditAction.WEBHOOK_TRIGGER_FAILED_VERIFICATION
+      : AuditAction.WEBHOOK_INBOUND_DENIED;
+  const baseAuditMetadata = {
+    origin,
+    slug: input.slug,
+    workflow_id: row.workflow_id,
+  };
+  if (!row.active) {
+    // Inactive bindings are a denial. Trigger-origin rows surface a
+    // `failed_verification` audit so compliance dashboards see the
+    // attempt; crud-origin rows preserve the historical "silent
+    // denial" behaviour (no audit row was ever written for inactive
+    // CRUD rows pre-#46) so we don't change the contract on the
+    // existing surface.
+    if (origin === "trigger") {
+      audit(
+        {
+          tenant_id: row.tenant_id,
+          action: FAILED_ACTION,
+          resource_type: "webhook_inbound",
+          resource_id: row.id,
+          result: "denied",
+          reason: "inactive",
+          metadata: baseAuditMetadata,
+        },
+        db,
+      );
+    }
+    return { status: "denied", reason: "inactive", inbound_id: row.id };
+  }
 
   // 2) Decrypt secret.
   const secret = decryptSecret(
@@ -496,39 +579,74 @@ export async function handleInbound(
     audit(
       {
         tenant_id: row.tenant_id,
-        action: AuditAction.WEBHOOK_INBOUND_DENIED,
+        action: FAILED_ACTION,
         resource_type: "webhook_inbound",
         resource_id: row.id,
         result: "denied",
         reason: "unknown_verifier",
-        metadata: { verifier: row.verifier },
+        metadata: { ...baseAuditMetadata, verifier: row.verifier },
       },
       db,
     );
     return { status: "denied", reason: "unknown_verifier", inbound_id: row.id };
   }
-  const verifyInput = {
-    headers: input.headers,
-    rawBody: input.rawBody,
-    secret,
-    now: input.now ?? Date.now(),
-    config: (row.native_verifier_config as Record<string, unknown> | null) ?? null,
-  };
-  const verdict = verifier(verifyInput);
+  const config = (row.native_verifier_config as Record<string, unknown> | null) ?? null;
+  // verify="none" triggers reverse-bind into the standard verifier
+  // with `{ skip: true }`. The skip path bypasses signature check
+  // entirely — the operator declared the ingress trusted (intra-VPC,
+  // mTLS-fronted) — but we still need a stable normalized.id for the
+  // replay-dedup table.
+  const verdict: VerifierResult =
+    config?.skip === true
+      ? skipVerify(input)
+      : verifier({
+          headers: input.headers,
+          rawBody: input.rawBody,
+          secret,
+          now: input.now ?? Date.now(),
+          config,
+        });
   if (!verdict.ok) {
     audit(
       {
         tenant_id: row.tenant_id,
-        action: AuditAction.WEBHOOK_INBOUND_DENIED,
+        action: FAILED_ACTION,
         resource_type: "webhook_inbound",
         resource_id: row.id,
         result: "denied",
         reason: verdict.reason,
-        metadata: { slug: input.slug, verifier: row.verifier },
+        metadata: { ...baseAuditMetadata, verifier: row.verifier },
       },
       db,
     );
     return { status: "denied", reason: verdict.reason, inbound_id: row.id };
+  }
+
+  // 3b) Optional event-name filter declared on the trigger binding.
+  // `bindFromWorkflow` writes `{ source, events: [...] }` into
+  // `native_verifier_config`. An empty `events` list is "any" — the
+  // discriminator on a webhook-trigger workflow can omit `events`, in
+  // which case it defaults to `[]` from Zod and accepts everything.
+  const events = Array.isArray(config?.events) ? (config?.events as string[]) : null;
+  if (events && events.length > 0 && !events.includes(verdict.normalized.type)) {
+    audit(
+      {
+        tenant_id: row.tenant_id,
+        action: FAILED_ACTION,
+        resource_type: "webhook_inbound",
+        resource_id: row.id,
+        result: "denied",
+        reason: "event_not_subscribed",
+        metadata: {
+          ...baseAuditMetadata,
+          event_id: verdict.normalized.id,
+          event_type: verdict.normalized.type,
+          accepted_events: events,
+        },
+      },
+      db,
+    );
+    return { status: "denied", reason: "event_not_subscribed", inbound_id: row.id };
   }
 
   // 4) Replay dedup.
@@ -538,21 +656,44 @@ export async function handleInbound(
     standard_webhook_id: verdict.normalized.id,
   });
   if (!fresh) {
-    audit(
-      {
-        tenant_id: row.tenant_id,
-        action: AuditAction.WEBHOOK_INBOUND_RECEIVED,
-        resource_type: "webhook_inbound",
-        resource_id: row.id,
-        result: "success",
-        reason: "replay_dedup",
-        metadata: {
-          slug: input.slug,
-          webhook_id: verdict.normalized.id,
+    // Replay rejection. Trigger-origin treats this as a verification
+    // failure (the event already fired once — this attempt is
+    // redundant). Crud-origin keeps the historical "received +
+    // replay_dedup reason" semantic so existing dashboards built on
+    // `webhook.inbound.received` still see the row.
+    if (origin === "trigger") {
+      audit(
+        {
+          tenant_id: row.tenant_id,
+          action: FAILED_ACTION,
+          resource_type: "webhook_inbound",
+          resource_id: row.id,
+          result: "denied",
+          reason: "replay_dedup",
+          metadata: {
+            ...baseAuditMetadata,
+            event_id: verdict.normalized.id,
+          },
         },
-      },
-      db,
-    );
+        db,
+      );
+    } else {
+      audit(
+        {
+          tenant_id: row.tenant_id,
+          action: AuditAction.WEBHOOK_INBOUND_RECEIVED,
+          resource_type: "webhook_inbound",
+          resource_id: row.id,
+          result: "success",
+          reason: "replay_dedup",
+          metadata: {
+            slug: input.slug,
+            webhook_id: verdict.normalized.id,
+          },
+        },
+        db,
+      );
+    }
     return { status: "deduped", inbound_id: row.id };
   }
 
@@ -567,12 +708,12 @@ export async function handleInbound(
     audit(
       {
         tenant_id: row.tenant_id,
-        action: AuditAction.WEBHOOK_INBOUND_DENIED,
+        action: FAILED_ACTION,
         resource_type: "webhook_inbound",
         resource_id: row.id,
         result: "error",
         reason: "workflow_unresolved",
-        metadata: { workflow_id: row.workflow_id },
+        metadata: { ...baseAuditMetadata },
       },
       db,
     );
@@ -612,27 +753,48 @@ export async function handleInbound(
   };
   await boss.send(EXECUTION_RUN_QUEUE, job);
 
-  audit(
-    {
-      tenant_id: row.tenant_id,
-      action: AuditAction.WEBHOOK_INBOUND_RECEIVED,
-      resource_type: "webhook_inbound",
-      resource_id: row.id,
-      result: "success",
-      metadata: {
-        slug: input.slug,
-        webhook_id: verdict.normalized.id,
-        execution_id,
+  if (origin === "trigger") {
+    audit(
+      {
+        tenant_id: row.tenant_id,
+        action: FIRED_ACTION,
+        resource_type: "webhook_inbound",
+        resource_id: row.id,
+        result: "success",
+        metadata: {
+          ...baseAuditMetadata,
+          event_id: verdict.normalized.id,
+          event_type: verdict.normalized.type,
+          execution_id,
+        },
       },
-    },
-    db,
-  );
+      db,
+    );
+  } else {
+    audit(
+      {
+        tenant_id: row.tenant_id,
+        action: AuditAction.WEBHOOK_INBOUND_RECEIVED,
+        resource_type: "webhook_inbound",
+        resource_id: row.id,
+        result: "success",
+        metadata: {
+          slug: input.slug,
+          webhook_id: verdict.normalized.id,
+          execution_id,
+        },
+      },
+      db,
+    );
+  }
   logger.info({
     module: "webhooks.inbound",
     action: "inbound.accepted",
     msg: "inbound webhook accepted",
     slug: input.slug,
+    origin,
     webhook_id: verdict.normalized.id,
+    event_type: verdict.normalized.type,
     execution_id,
   });
 
@@ -642,4 +804,20 @@ export async function handleInbound(
     execution_id,
     normalized: verdict.normalized,
   };
+}
+
+// `verify: "none"` short-circuit. Synthesise a normalized event from
+// optional headers (`webhook-id`, `webhook-timestamp`, `webhook-type`)
+// or fall back to a body-derived hash so replay-dedup still works.
+function skipVerify(input: HandleInboundInput): VerifierResult {
+  const id =
+    input.headers["webhook-id"] ??
+    `skip-${createHash("sha256").update(input.rawBody).digest("hex").slice(0, 32)}`;
+  const tsHeader = input.headers["webhook-timestamp"];
+  const tsParsed = tsHeader ? Number.parseInt(tsHeader, 10) : Number.NaN;
+  const timestamp = Number.isFinite(tsParsed)
+    ? tsParsed
+    : Math.floor((input.now ?? Date.now()) / 1000);
+  const type = input.headers["webhook-type"] ?? "unknown";
+  return { ok: true, normalized: { id, timestamp, type } };
 }
