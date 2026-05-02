@@ -1,13 +1,29 @@
 // Tool result truncation for LLM context.
 //
-// Long tool outputs (e.g. list_executions with 50 rows of complex
-// payloads) blow the prompt budget on subsequent turns. We truncate the
-// structured output before feeding it back to the model, and stash the
-// raw payload under an in-memory ref so a follow-up `get_raw_result`
-// tool call can retrieve it on demand.
+// Long tool outputs (e.g. `list_executions` with 50 rows of complex
+// payloads, or `inspect_workflow_draft` returning a 1MB nested workflow)
+// blow the prompt budget on subsequent turns. We truncate the structured
+// output before feeding it back to the model, and stash the raw payload
+// under an in-memory ref so a follow-up `get_raw_result` tool call can
+// retrieve it on demand.
+//
+// Two-pass shrink:
+//   1. `truncateNode` clips top-level arrays to `MAX_ARRAY_LEN` and
+//      nested arrays (depth ≥ 2) to `MAX_NESTED_ARRAY_LEN`.
+//   2. If the result is still over `MAX_JSON_CHARS`, the heaviest
+//      string/object branches are replaced with
+//      `{ __omitted_chars: <n>, __raw_ref: <ref> }` markers in
+//      descending-size order until the total fits.
+//
+// The previous implementation only used pass 1; deeply nested payloads
+// (workflow steps carrying snapshots) blew past the cap by 50–100×
+// because the per-element budget was unbounded. The bug surfaced as
+// "tool output truncated from 1225917 → 482877 chars" — successful
+// reduction, still way too large for the prompt budget.
 
 const MAX_JSON_CHARS = 8000;
 const MAX_ARRAY_LEN = 20;
+const MAX_NESTED_ARRAY_LEN = 10;
 
 const rawStore = new Map<string, unknown>();
 
@@ -18,9 +34,9 @@ export interface TruncatedOutput {
   note?: string;
 }
 
-function truncateArray(arr: unknown[]): { arr: unknown[]; dropped: number } {
-  if (arr.length <= MAX_ARRAY_LEN) return { arr, dropped: 0 };
-  return { arr: arr.slice(0, MAX_ARRAY_LEN), dropped: arr.length - MAX_ARRAY_LEN };
+function truncateArray(arr: unknown[], cap: number): { arr: unknown[]; dropped: number } {
+  if (arr.length <= cap) return { arr, dropped: 0 };
+  return { arr: arr.slice(0, cap), dropped: arr.length - cap };
 }
 
 function approxJsonLength(value: unknown): number {
@@ -31,19 +47,78 @@ function approxJsonLength(value: unknown): number {
   }
 }
 
-function truncateNode(value: unknown): unknown {
+function truncateNode(value: unknown, arrayDepth = 0): unknown {
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) {
-    const { arr, dropped } = truncateArray(value);
-    const mapped = arr.map(truncateNode);
+    const cap = arrayDepth === 0 ? MAX_ARRAY_LEN : MAX_NESTED_ARRAY_LEN;
+    const { arr, dropped } = truncateArray(value, cap);
+    const mapped = arr.map((v) => truncateNode(v, arrayDepth + 1));
     if (dropped > 0) mapped.push({ __truncated: `+${dropped} more items` });
     return mapped;
   }
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    out[k] = truncateNode(v);
+    out[k] = truncateNode(v, arrayDepth);
   }
   return out;
+}
+
+interface BranchHandle {
+  size: number;
+  replace: (marker: unknown) => void;
+}
+
+function collectHeaviestBranches(root: unknown): BranchHandle[] {
+  const handles: BranchHandle[] = [];
+  function walk(node: unknown): void {
+    if (node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) {
+        const child = node[i];
+        if (child !== null && typeof child === "object") {
+          handles.push({
+            size: approxJsonLength(child),
+            replace: (marker) => {
+              node[i] = marker;
+            },
+          });
+          walk(child);
+        }
+      }
+      return;
+    }
+    const obj = node as Record<string, unknown>;
+    for (const k of Object.keys(obj)) {
+      const child = obj[k];
+      if (child !== null && (typeof child === "object" || typeof child === "string")) {
+        handles.push({
+          size: approxJsonLength(child),
+          replace: (marker) => {
+            obj[k] = marker;
+          },
+        });
+        if (typeof child === "object") walk(child);
+      }
+    }
+  }
+  walk(root);
+  // Heaviest first — replacing the biggest branch with a small marker
+  // gets us under cap fastest with the least information loss elsewhere.
+  handles.sort((a, b) => b.size - a.size);
+  return handles;
+}
+
+function shrinkToCap(data: unknown, refId: string, cap: number): unknown {
+  let current = approxJsonLength(data);
+  if (current <= cap) return data;
+  const handles = collectHeaviestBranches(data);
+  for (const handle of handles) {
+    if (current <= cap) break;
+    if (handle.size < 64) continue; // skip tiny branches; not worth it
+    handle.replace({ __omitted_chars: handle.size, __raw_ref: refId });
+    current = approxJsonLength(data);
+  }
+  return data;
 }
 
 /**
@@ -56,8 +131,6 @@ export function truncateForLlm(output: unknown): TruncatedOutput {
   if (originalLen <= MAX_JSON_CHARS) {
     return { truncated: false, data: output };
   }
-  const shortened = truncateNode(output);
-  const shortenedLen = approxJsonLength(shortened);
   const refId = `raw_${crypto.randomUUID().slice(0, 8)}`;
   rawStore.set(refId, output);
   // Evict older entries beyond a soft cap to prevent unbounded growth.
@@ -65,6 +138,9 @@ export function truncateForLlm(output: unknown): TruncatedOutput {
     const firstKey = rawStore.keys().next().value;
     if (firstKey !== undefined) rawStore.delete(firstKey);
   }
+  const pass1 = truncateNode(output);
+  const shortened = shrinkToCap(pass1, refId, MAX_JSON_CHARS);
+  const shortenedLen = approxJsonLength(shortened);
   return {
     truncated: true,
     data: shortened,
@@ -80,3 +156,25 @@ export function getRawResult(ref: string): unknown | undefined {
 export function clearRawStore(): void {
   rawStore.clear();
 }
+
+/**
+ * Stash an arbitrary value under a fresh ref and return the ref. Used
+ * by `persist.buildModelMessages` when eliding old tool outputs that
+ * were originally small enough to skip `truncateForLlm` but are now
+ * being replaced with a stub on replay.
+ */
+export function rememberRaw(value: unknown): string {
+  const refId = `raw_${crypto.randomUUID().slice(0, 8)}`;
+  rawStore.set(refId, value);
+  if (rawStore.size > 256) {
+    const firstKey = rawStore.keys().next().value;
+    if (firstKey !== undefined) rawStore.delete(firstKey);
+  }
+  return refId;
+}
+
+export const TRUNCATE_INTERNALS = {
+  MAX_JSON_CHARS,
+  MAX_ARRAY_LEN,
+  MAX_NESTED_ARRAY_LEN,
+};
