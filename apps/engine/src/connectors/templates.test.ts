@@ -219,6 +219,78 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
   });
 });
 
+describe("connector-template catalog — Layer-3 vendor-drift sweep", () => {
+  // Layer 1 (this file) is structural: it never touches the network. The
+  // actual sweep lives in `scripts/audit/template-vendor-sweep.ts` behind
+  // the `RUN_TEMPLATE_AUDIT=1` gate. This test is the bridge: it only
+  // *warns* (never fails) when a template's `verified_at` is null or
+  // older than 90 days, so a stale catalog surfaces in `bun test` output
+  // without blocking unrelated PRs. The sweep script — run on a cadence
+  // an operator picks — refreshes the stamp.
+  test("schema accepts both null and an ISO timestamp for verified_at", async () => {
+    const { ConnectorTemplateSchema } = await import("./templates.ts");
+    const valid = templates[0]!;
+    const withNull = ConnectorTemplateSchema.safeParse({ ...valid, verified_at: null });
+    expect(withNull.success).toBe(true);
+    const withIso = ConnectorTemplateSchema.safeParse({
+      ...valid,
+      verified_at: "2026-04-01T00:00:00Z",
+    });
+    expect(withIso.success).toBe(true);
+    const withGarbage = ConnectorTemplateSchema.safeParse({
+      ...valid,
+      verified_at: "not-a-date",
+    });
+    expect(withGarbage.success).toBe(false);
+  });
+
+  test("warns (does NOT fail) when verified_at is null or older than 90 days", () => {
+    // Intentional warning, not assertion. Stale verification is a
+    // signal — running the sweep is a deliberate operator action, not
+    // something a PR author should be blocked on. The CI gate stays
+    // green; the operator triages from `bun test` output.
+    const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const stale: { slug: string; verified_at: string | null; reason: string }[] = [];
+    for (const t of templates) {
+      if (t.verified_at === null) {
+        stale.push({ slug: t.slug, verified_at: null, reason: "never swept" });
+        continue;
+      }
+      const verifiedMs = new Date(t.verified_at).getTime();
+      if (Number.isNaN(verifiedMs)) {
+        stale.push({ slug: t.slug, verified_at: t.verified_at, reason: "unparseable" });
+        continue;
+      }
+      const ageMs = now - verifiedMs;
+      if (ageMs > NINETY_DAYS_MS) {
+        const ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+        stale.push({
+          slug: t.slug,
+          verified_at: t.verified_at,
+          reason: `${ageDays}d old (>90d)`,
+        });
+      }
+    }
+    if (stale.length > 0) {
+      const lines = stale.map(
+        (s) => `  - ${s.slug} (verified_at=${s.verified_at ?? "null"}, ${s.reason})`,
+      );
+      // eslint-disable-next-line no-console
+      console.warn(
+        [
+          `[connector-templates] vendor-drift sweep stale on ${stale.length}/${templates.length} templates.`,
+          `Run: RUN_TEMPLATE_AUDIT=1 bun run scripts/audit/template-vendor-sweep.ts --update-templates`,
+          ...lines,
+        ].join("\n"),
+      );
+    }
+    // Asserting `true` keeps Bun's reporter from marking the test as
+    // empty; the warning is the actual signal.
+    expect(true).toBe(true);
+  });
+});
+
 describe("connector-template catalog — operator_quirks (migration 0006)", () => {
   test("legacy `operator_notes` field is rejected by the schema", async () => {
     const { ConnectorTemplateSchema } = await import("./templates.ts");
