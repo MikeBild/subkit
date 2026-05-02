@@ -123,6 +123,12 @@ services:
   # ---------------------------------------------------------------------
   seed:
     image: subkit/migrate:local
+    # `seed` reuses the migrate image rather than declaring its own
+    # `build:`. Without `pull_policy: never`, `docker compose up --build`
+    # tries to pull `subkit/migrate:local` from a registry on hosts that
+    # don't have it cached yet (CI, fresh clones) and fails before the
+    # `migrate` service finishes building it locally.
+    pull_policy: never
     entrypoint: ["bun", "run", "apps/engine/src/db/seed.ts"]
     restart: "no"
     networks: [subkit]
