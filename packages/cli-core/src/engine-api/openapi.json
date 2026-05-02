@@ -2680,6 +2680,12 @@
                   "minLength": 1,
                   "default": null
                 },
+                "verified_at": {
+                  "type": "string",
+                  "nullable": true,
+                  "format": "date-time",
+                  "default": null
+                },
                 "source": {
                   "type": "string",
                   "enum": [
@@ -3481,6 +3487,12 @@
             "minLength": 1,
             "default": null
           },
+          "verified_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "default": null
+          },
           "id": {
             "type": "string"
           },
@@ -3699,6 +3711,12 @@
             "type": "string",
             "nullable": true,
             "minLength": 1,
+            "default": null
+          },
+          "verified_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
             "default": null
           }
         },
