@@ -11,6 +11,8 @@
 //   - POST / PUT / PATCH / DELETE: retry only on 429 + connection errors
 
 import { and, eq } from "drizzle-orm";
+import { auditAwait } from "../../audit/audit.ts";
+import { AuditAction } from "../../audit/types.ts";
 import { evaluateHook } from "../../auth/hooks.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
 import {
@@ -39,6 +41,12 @@ import { recordSuccessShape } from "../../schema-versions/service.ts";
 import type { RequestStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
 import { type ExpectedRowCount, evaluateExpectedRowCount } from "../expected-row-count.ts";
+import {
+  estimateLlmCallTokens,
+  isLlmProviderUrl,
+  LlmBudgetExceededError,
+  parseLlmUsage,
+} from "../llm-budget.ts";
 import {
   MAX_PAGES,
   makeStrategy,
@@ -91,6 +99,25 @@ export class RequestError extends Error {
 function jitter(ms: number): number {
   const j = ms * 0.2;
   return ms + (Math.random() * 2 - 1) * j;
+}
+
+/** Best-effort extract of the model identifier for the LLM-call audit
+ *  row. Looks at the request body first (OpenAI / Anthropic both pass
+ *  `model` in the JSON payload) and falls back to the response body's
+ *  `model` field (Anthropic echoes it back). Returns `unknown` when
+ *  neither side names a model — the audit row still records the host. */
+function extractModelHint(requestBody: unknown, responseBody: unknown): string {
+  const fromReq = pickModelField(requestBody);
+  if (fromReq) return fromReq;
+  const fromRes = pickModelField(responseBody);
+  if (fromRes) return fromRes;
+  return "unknown";
+}
+
+function pickModelField(v: unknown): string | null {
+  if (!v || typeof v !== "object") return null;
+  const m = (v as Record<string, unknown>).model;
+  return typeof m === "string" && m.length > 0 ? m : null;
 }
 
 /** Map a connector's declared `auth_type` to the applied-auth-method
@@ -1331,6 +1358,39 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             step_id: p.step.id,
           }
         : null;
+      // Per-run LLM-token budget — pre-call gate. Detect that the
+      // resolved URL targets a known LLM provider host; if so,
+      // estimate the call's max tokens from the request body and
+      // refuse dispatch when the projected total would exceed the
+      // workflow's `max_llm_tokens_per_run`. The check fires on every
+      // request regardless of cap; the accumulator's `cap == null`
+      // path short-circuits when the workflow did not declare a cap.
+      const llmCall = isLlmProviderUrl(baseUrl);
+      if (llmCall) {
+        const estimated = estimateLlmCallTokens(resolvedStepBody);
+        try {
+          p.ctx.llm_budget.checkPreCall(estimated);
+        } catch (err) {
+          if (err instanceof LlmBudgetExceededError) {
+            clearTimeout(timer);
+            return {
+              status: "failed",
+              retry_count: 0,
+              duration_ms: Date.now() - start,
+              error: {
+                code: err.code,
+                message: err.message,
+                details: {
+                  running_total: err.running_total,
+                  estimated_call_tokens: err.estimated_call_tokens,
+                  cap: err.cap,
+                },
+              },
+            };
+          }
+          throw err;
+        }
+      }
       const callDoOnePage = () =>
         doOnePage({
           url: baseUrl.toString(),
@@ -1353,6 +1413,39 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             bytes_in: out.bytes_in,
           }))
         : await callDoOnePage();
+      // Per-run LLM-token budget — post-call accounting. Parse the
+      // provider's `usage` envelope, fold the prompt + completion
+      // tokens into the run accumulator, and audit the outbound call
+      // as an `external_write`. The audit row carries per-call AND
+      // running-total counts so an operator can see the burn-down
+      // without joining across rows.
+      if (llmCall) {
+        const usage = parseLlmUsage(res.body);
+        if (usage) {
+          p.ctx.llm_budget.account(usage);
+          await auditAwait(
+            {
+              tenant_id: p.ctx.tenant_id,
+              actor_type: "system",
+              action: AuditAction.EXTERNAL_WRITE,
+              resource_type: "llm",
+              resource_id: p.ctx.execution_id,
+              result: "success",
+              metadata: {
+                provider: baseUrl.hostname,
+                model: extractModelHint(resolvedStepBody, res.body),
+                prompt_tokens: usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens,
+                total_tokens: usage.total_tokens,
+                run_total_tokens: p.ctx.llm_budget.total,
+                workflow_id: p.ctx.workflow_id,
+                step_id: p.step.id,
+              },
+            },
+            p.ctx.db,
+          );
+        }
+      }
       // Apply response filters
       let body = res.body;
       try {

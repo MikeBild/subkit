@@ -8,6 +8,7 @@
 // with the resolved type + scope keys so the LLM can fix the path.
 
 import { describe, expect, test } from "bun:test";
+import { RunLlmBudget } from "../llm-budget.ts";
 import { runLoopStep } from "../steps/loop.ts";
 import type { StepRunContext } from "../types.ts";
 
@@ -34,6 +35,7 @@ function ctx(scope: Record<string, unknown>): StepRunContext {
     step_index: 0,
     step_row_id: "00000000-0000-0000-0000-000000000aaa",
     signal: new AbortController().signal,
+    llm_budget: new RunLlmBudget(null),
   };
 }
 

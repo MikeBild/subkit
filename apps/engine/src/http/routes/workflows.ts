@@ -31,6 +31,7 @@ const WorkflowSchema = z
     validation_expression: z.string().nullable(),
     validation_function: z.string().nullable(),
     timeout_ms: z.number().nullable(),
+    max_llm_tokens_per_run: z.number().nullable(),
   })
   .openapi("Workflow");
 
@@ -62,6 +63,7 @@ const CreateBody = z
     output_schema: z.record(z.string(), z.unknown()).optional(),
     steps: z.array(z.record(z.string(), z.unknown())),
     timeout_ms: z.number().int().positive().optional(),
+    max_llm_tokens_per_run: z.number().int().positive().optional(),
   })
   .openapi("CreateWorkflowBody");
 
@@ -94,6 +96,7 @@ function serializeWorkflow(w: svc.WorkflowView) {
     validation_expression: w.definition.validation_expression ?? null,
     validation_function: w.definition.validation_function ?? null,
     timeout_ms: w.definition.timeout_ms ?? null,
+    max_llm_tokens_per_run: w.definition.max_llm_tokens_per_run ?? null,
   };
 }
 
