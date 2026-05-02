@@ -19,10 +19,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
-import * as oauth from "openid-client";
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { tenants, users } from "../../../db/schema/index.ts";
+import { type DiscoveryDoc, fetchDiscovery } from "../../../identity/oidc-discovery.ts";
 import * as identity from "../../../identity/service.ts";
 import { logger } from "../../../logging/logger.ts";
 import { BadRequestError, UnauthorizedError } from "../../errors.ts";
@@ -70,31 +70,6 @@ const route = createRoute({
 });
 
 const DEFAULT_TENANT_SLUG = "default";
-
-interface DiscoveryDoc {
-  issuer: string;
-  jwks_uri?: string;
-}
-
-async function fetchDiscovery(issuerUrl: URL): Promise<DiscoveryDoc> {
-  // Use openid-client.discovery so http:// mock servers in tests are
-  // accepted via allowInsecureRequests, mirroring oauth2/client.ts.
-  const discoveryOptions: oauth.DiscoveryRequestOptions =
-    issuerUrl.protocol === "http:" ? { execute: [oauth.allowInsecureRequests] } : {};
-  // The clientId is unused for verify-only flows but the function requires one.
-  const cfg = await oauth.discovery(
-    issuerUrl,
-    "subkit-cli",
-    undefined,
-    undefined,
-    discoveryOptions,
-  );
-  const meta = cfg.serverMetadata();
-  return {
-    issuer: meta.issuer,
-    ...(meta.jwks_uri ? { jwks_uri: meta.jwks_uri } : {}),
-  };
-}
 
 export function registerSessionsOidcRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, async (c) => {
