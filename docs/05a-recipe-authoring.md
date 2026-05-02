@@ -169,51 +169,205 @@ that cannot express the connector via a `base_url` placeholder.
 }
 ```
 
-## Walkthrough — multi-connector recipe (Stripe → Slack notify)
+## The `trigger` block
+
+`workflow.trigger` is a discriminated union over `kind` — `request`,
+`webhook`, or `schedule`. Omitting it is equivalent to
+`{ "kind": "request" }`, which is what every recipe shipped before the
+trigger field existed assumes. Setting `webhook` or `schedule` reverse-binds
+an inbound binding or cron schedule on save and removes it on delete or
+version rotate, so the recipe is self-contained — operators do not need
+a separate `sk schedule create` or webhook-registration step.
+
+The schema source of truth is
+[`apps/engine/src/workflows/types.ts`](../apps/engine/src/workflows/types.ts)
+(`RequestTriggerSchema`, `WebhookTriggerSchema`, `ScheduleTriggerSchema`);
+runtime semantics are documented in
+[`docs/06-execution.md`](06-execution.md#triggers).
+
+When you author a webhook or schedule recipe, tag it with
+`"trigger:webhook"` or `"trigger:schedule"` so the recipe-pack endpoints
+can group it correctly.
+
+## Walkthrough — webhook-triggered recipe (Stripe `charge.failed` → Slack)
+
+This is the shipped `stripe.on-charge-failed-notify-slack` recipe (from
+`apps/engine/src/connectors/templates.json`). It reverse-binds an inbound
+binding on save: when Stripe posts `charge.failed` to the workflow's
+inbound URL, the engine verifies the Stripe signature, extracts the
+failed-charge fields, and posts a redacted alert into the operator's
+Slack channel.
 
 ```json
 {
-  "slug": "stripe-charge-failed-notify-slack",
-  "title": "Notify Slack on Stripe charge failure",
-  "description": "Listens for Stripe `charge.failed` events; posts a redacted summary to a Slack channel.",
-  "intent_keywords": ["failed charge", "charge failed slack", "billing alert"],
+  "slug": "on-charge-failed-notify-slack",
+  "title": "On Stripe charge.failed, post a Slack alert",
+  "description": "Webhook-triggered: when Stripe fires `charge.failed` against the workflow's inbound URL, this recipe verifies the Stripe signature, extracts the failed-charge fields (id, amount, currency, decline reason, customer email), and posts a redacted alert into the operator's chosen Slack channel. Demonstrates the workflow `trigger: { kind: 'webhook' }` block end-to-end.",
+  "intent_keywords": [
+    "charge failed slack",
+    "stripe failure alert",
+    "notify slack on failed charge",
+    "stripe webhook alert"
+  ],
+  "derived_from_skill": "stripe-basics",
   "category": "payments",
-  "tags": ["webhook", "notification"],
-  "difficulty": "intermediate",
+  "tags": ["webhook", "trigger", "alerting", "demonstration"],
+  "difficulty": "advanced",
+  "estimated_setup_minutes": 12,
+  "prerequisites": [
+    "Stripe webhook endpoint signing secret (whsec_...) configured on the bound webhook row",
+    "Slack bot token connector with chat:write scope",
+    "Slack channel id where the alert should land"
+  ],
   "required_connectors": [
-    { "placeholder": "00000000-0000-0000-0000-000000000001", "template": "stripe" },
-    { "placeholder": "00000000-0000-0000-0000-000000000002", "template": "slack" }
+    { "placeholder": "7d046f2e-9c40-4b8a-aa14-ff3eb87b5046", "template": "slack" }
   ],
   "workflow": {
-    "name": "stripe-charge-failed-notify-slack",
+    "name": "stripe-on-charge-failed-notify-slack",
+    "description": "Triggered by an inbound Stripe `charge.failed` webhook; posts a redacted alert into the operator's Slack channel.",
     "trigger": {
       "kind": "webhook",
       "source": "stripe",
       "events": ["charge.failed"],
       "verify": "stripe-signature"
     },
+    "input_schema": {
+      "type": "object",
+      "required": ["body", "alert_channel"],
+      "properties": {
+        "body": { "type": "object", "required": ["data", "type"] },
+        "alert_channel": {
+          "type": "string",
+          "description": "Slack channel id (e.g. C0123ALERT) where the alert should be posted."
+        }
+      }
+    },
     "steps": [
       {
         "kind": "transform",
-        "id": "shape",
-        "expression": "{ \"text\": \"Charge failed: \" & event.data.object.id & \" — $\" & (event.data.object.amount / 100) }"
+        "id": "extract",
+        "language": "jsonata",
+        "expression": "$input.body.data.object.{ \"charge_id\": id, \"amount\": amount, \"currency\": currency, \"failure_code\": failure_code, \"failure_message\": failure_message, \"email\": billing_details.email }"
       },
       {
         "kind": "request",
         "id": "post",
-        "connector_id": "00000000-0000-0000-0000-000000000002",
         "method": "POST",
+        "connector_id": "7d046f2e-9c40-4b8a-aa14-ff3eb87b5046",
         "url": "${connector.slack.base_url}/chat.postMessage",
-        "headers": { "content-type": "application/json" },
-        "body": { "channel": "#billing-alerts", "text": "${shape.text}" }
+        "headers": { "Content-Type": "application/json; charset=utf-8" },
+        "body": {
+          "channel": "${input.alert_channel}",
+          "text": "[stripe] charge.failed — ${scope.extract.data.currency} ${scope.extract.data.amount} — ${scope.extract.data.failure_code} — ${scope.extract.data.email} — ${scope.extract.data.charge_id}"
+        }
       }
     ]
   }
 }
 ```
 
-(Webhook trigger schema lands via Workstream A1; the JSON above
-illustrates the target shape.)
+Notes for authors:
+
+- `verify: "stripe-signature"` requires the inbound binding to carry the
+  `whsec_...` signing secret. The driver rejects unsigned or
+  signature-mismatched posts before any step runs.
+- `events: ["charge.failed"]` filters at the inbound driver, so noisy
+  events never reach `runExecution()`. Use `[]` only when the workflow
+  legitimately needs every event from `source`.
+- The `input_schema` documents what the engine guarantees the workflow
+  scope holds at step time — `body` is the verified Stripe payload and
+  `alert_channel` is the per-tenant Slack channel id supplied at bind
+  time.
+
+## Walkthrough — schedule-triggered recipe (daily charges digest)
+
+This is the shipped `stripe.daily-charges-digest` recipe. Saving it
+upserts a `workflows_schedules` row keyed on `(tenant_id, workflow_id)`;
+the scheduler reconciler wakes the workflow up at 08:00 Europe/Berlin on
+business days and skips the listed German bank holidays for 2026. No
+external cron, no `sk run` loop.
+
+```json
+{
+  "slug": "daily-charges-digest",
+  "title": "Daily charges digest (08:00 Europe/Berlin, business days only)",
+  "description": "Pull yesterday's charges every business day at 08:00 Europe/Berlin and summarise total volume + count by currency. Skips weekends and the dates listed in `skip_dates` (German bank holidays seeded for 2026). Wired through the schedule trigger so the workflow wakes itself up — no external cron, no `sk run` loop.",
+  "intent_keywords": [
+    "daily charges digest",
+    "scheduled charges report",
+    "yesterday charges",
+    "daily revenue summary"
+  ],
+  "derived_from_skill": "stripe-basics",
+  "category": "payments",
+  "tags": ["scheduled", "trigger:schedule", "digest"],
+  "difficulty": "intermediate",
+  "estimated_setup_minutes": 8,
+  "prerequisites": [
+    "Stripe connector with read access to /v1/charges",
+    "Schedule trigger requires the engine's scheduler reconciler to be running"
+  ],
+  "required_connectors": [],
+  "workflow": {
+    "name": "stripe-daily-charges-digest",
+    "description": "Pull yesterday's charges and summarise by currency. Wakes itself up at 08:00 Europe/Berlin every business day.",
+    "trigger": {
+      "kind": "schedule",
+      "cron": "0 8 * * *",
+      "tz": "Europe/Berlin",
+      "business_days_only": true,
+      "skip_dates": [
+        "2026-01-01",
+        "2026-04-03",
+        "2026-04-06",
+        "2026-05-01",
+        "2026-05-14",
+        "2026-05-25",
+        "2026-10-03",
+        "2026-12-25",
+        "2026-12-26"
+      ]
+    },
+    "steps": [
+      {
+        "kind": "request",
+        "id": "list",
+        "method": "GET",
+        "url": "${connector.stripe.base_url}/charges",
+        "query": { "limit": 100 },
+        "pagination": {
+          "strategy": "cursor",
+          "cursor_request_param": "starting_after",
+          "cursor_response_path": "data[last].id",
+          "page_size": 100
+        }
+      },
+      {
+        "kind": "transform",
+        "id": "summary",
+        "language": "jsonata",
+        "expression": "( $charges := $.list.body.data; { \"count\": $count($charges), \"by_currency\": $charges{ currency: { \"count\": $count($), \"amount_total\": $sum($.amount) } } } )"
+      }
+    ]
+  }
+}
+```
+
+Notes for authors:
+
+- `cron` is the standard 5-field expression (`m h dom mon dow`); the
+  reconciler also accepts the engine's `every:N` shorthand for sub-minute
+  cadences.
+- `tz` must be a valid IANA timezone — the reconciler hands it to
+  pg-boss so the firing lands at the operator's local wall-clock time
+  instead of UTC.
+- `business_days_only` skips weekends. Holiday calendars are NOT
+  inferred — declare every freeze date explicitly via `skip_dates`. The
+  reconciler compares each entry against the trigger's `tz` so a date
+  here means "this calendar day in the workflow's timezone".
+- A schedule recipe typically has `sample_input: null` because the
+  scheduler itself supplies no payload — the workflow reads its inputs
+  from the connectors it queries.
 
 ## Quality gate
 
