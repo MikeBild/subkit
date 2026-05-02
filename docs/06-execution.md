@@ -24,37 +24,36 @@ An Execution is an immutable record. It captures the specific Workflow version t
 
 ## Step Kinds
 
-A Workflow is composed of Steps. sk supports eight Step kinds, covering the range of patterns that enterprise workflows require.
+A Workflow is composed of Steps. sk ships eight Step kinds, covering the range of patterns that enterprise workflows require. The discriminator field is `kind`; the schema source of truth is [`apps/engine/src/workflows/types.ts`](../apps/engine/src/workflows/types.ts) (`StepSchema`).
 
-A **Request** Step calls a Connector endpoint. This is the most common Step type — it is how workflows read from and write to external integrations. Every Request Step is executed through the Connector's configured Driver, with the tenant's Credentials, through the governance layer. Connector tests and request steps share the same request execution core, so authoring-time probes and runtime behavior stay aligned.
+| `kind` | Required fields | Behaviour |
+|---|---|---|
+| `request` | one of `url` / `connector_id` / `sql`; optional `method`, `headers`, `query`, `body`, `pagination`, `graphql`, `sql`, `s3`, `xml`, `expected_statuses`, `expected_row_count`, `idempotency_key`, `outputs` | Calls a connector endpoint. Routed through the connector's driver (HTTP, GraphQL, Postgres, S3, MSSQL, Redis, FTP/SFTP/SMB) with the tenant's credentials and the governance layer. Connector tests and request steps share the same request execution core, so authoring-time probes and runtime behaviour stay aligned. |
+| `transform` | `expression`; optional `language` (`jsonata` \| `javascript`), `input_schema`, `output_schema`, `silence_warnings` | Reshapes data between steps using a sandboxed JSONata or JavaScript expression. No network access, bounded heap and wall-clock per `SANDBOX_MEMORY_LIMIT_BYTES` / `SANDBOX_WALL_MS_DEFAULT`. |
+| `branch` | `when`, `then_steps[]`; optional `else_steps[]` | Deterministic conditional routing. The engine evaluates `when` against scope and dispatches the matching branch — no inference, no fallthrough. |
+| `loop` | `body[]`, `item_var`; exactly one of `over` or `data_selector` | Iterates a collection, executing `body` per item. `data_selector` is the JS expression form (preferred for new loops, surfaces real exceptions); `over` is the legacy path/JSONata form. |
+| `parallel` | `branches[][]` | Executes multiple step sequences concurrently and merges their results. The engine fans out, awaits all branches, then continues. |
+| `wait` | `duration_ms` (≤ 6 h) | Deliberate delay for polling, rate-limit management, or human-paced flows. |
+| `call` | one of `workflow_id` or `workflow_slug`; optional `input` | Invokes another workflow. Recursion is capped by `MAX_CALL_DEPTH` (5). |
+| `tool` | `image`; optional `cmd`, `env`, `cpu`, `memory_mb`, `network_mode`, `workdir` | Runs a sandboxed container. The escape hatch for tightly controlled user-supplied images that should not be embedded in the engine. The `tool` kind here is unrelated to the LLM agentic tool-calling palette. |
 
-A **Transform** Step reshapes data between Steps using a sandboxed script. It runs in an isolated environment with no external calls and no network access. Transform Steps let workflows project, filter, aggregate, or reformat data without leaving the engine.
-
-A **Branch** Step is conditional routing. Based on the output of a prior Step, the workflow takes one of several defined paths. Branching is declared in the workflow definition — the engine evaluates it deterministically against actual data.
-
-A **Loop** Step iterates over a collection, executing a sub-workflow for each item. Loops enable workflows that process lists — invoices, users, records — without requiring multiple triggered runs.
-
-A **Parallel** Step executes multiple sub-workflows concurrently, then collects and merges their results. Parallel Steps are how workflows maximize throughput when independent operations can safely run at the same time.
-
-A **Wait** Step introduces a deliberate delay. It is used for polling patterns, rate-limit management, and human-paced flows where a workflow must pause and resume after a period of time.
-
-A **Call** Step invokes another Workflow. This is the composition mechanism — workflows can delegate to other workflows, enabling reuse and keeping individual workflows focused on a single concern.
-
-A **Tool** Step runs a sandboxed container step. This is the escape hatch for tightly controlled user-supplied tool images that need isolated execution without embedding that logic in the engine.
+Every step also accepts the shared base fields `id`, `on_error` (`fail` \| `continue`), `data_selector`, and `timeout_ms`.
 
 ---
 
 ## Triggers
 
-A Workflow is triggered in one of four ways, and the trigger source is recorded in every Execution and every Audit Log entry.
+`WorkflowDef.trigger` is a discriminated union over `kind`. Omitting the block is equivalent to `{ kind: "request" }`, so every workflow authored before this field existed keeps its behaviour. Setting `webhook` or `schedule` reverse-binds an inbound binding or cron schedule keyed on `(tenant_id, workflow_id)` at save time and removes the binding on delete or version rotate. The schema source of truth is [`apps/engine/src/workflows/types.ts`](../apps/engine/src/workflows/types.ts) (`RequestTriggerSchema`, `WebhookTriggerSchema`, `ScheduleTriggerSchema`).
 
-The **Scheduler** trigger fires a workflow at a configured cron expression. The scheduler has catch-up semantics: if the engine was down when a run was due, the run fires on the next start rather than being silently skipped.
+The trigger is recorded in every Execution and every Audit Log entry alongside the actor identity envelope.
 
-The **Inbound Webhook** trigger fires when an external connector boundary posts to the workflow's dedicated endpoint. Payloads are signature-verified before any processing begins, and replay-id deduplication ensures that a retried delivery does not trigger duplicate executions.
+| `kind` | Fields | Behaviour |
+|---|---|---|
+| `request` | (none) | Default. Run is initiated on demand by a caller — chat `run_workflow`, MCP, the CLI, or `POST /v1/executions`. Inline runs complete on the request path; `async: true` is honoured only for `source=saved`. |
+| `webhook` | `source` (string slug per integration), `events[]` (provider event names; empty means "any"), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing begins; replay-id deduplication suppresses retried deliveries. Executor lives in `apps/engine/src/webhooks/inbound/service.ts`. |
+| `schedule` | `cron` (5-field `m h dom mon dow` or `every:N` shorthand), `tz` (IANA, default `UTC`); optional `business_days_only`, `skip_dates[]` (ISO `YYYY-MM-DD`) | Reverse-bound to a `workflows_schedules` row. The scheduler reconciler validates the cron expression at bind time and uses `tz` so firings land at the operator's local wall-clock time. `business_days_only` skips weekends; `skip_dates` declares holidays / freezes explicitly (no holiday calendar is inferred). Catch-up semantics: a missed firing fires on the next reconciler pass rather than being silently skipped. Executor lives in `apps/engine/src/scheduler/reconciler.ts`. |
 
-The **API** trigger fires when a direct call arrives through the REST API or an MCP client. This is the programmatic entry point — the right path for another connector boundary or an AI agent that needs to run a workflow on demand.
-
-The **Conversation** trigger fires when a user asks sk to run a workflow through the conversational interface. The Conversation shows real-time execution progress as the workflow runs.
+All three variants land at the same `runExecution()` core through the same execution contract; only the way the run is initiated differs.
 
 ---
 
