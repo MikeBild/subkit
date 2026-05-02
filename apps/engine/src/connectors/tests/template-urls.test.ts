@@ -24,8 +24,11 @@ describe.skipIf(!RUN_URL_CHECKS)("connector template ingestion URLs", () => {
           signal: controller.signal,
           redirect: "follow",
         });
-        // Some servers don't support HEAD, retry with GET
-        if (res.status === 405 || res.status === 403) {
+        // Several real servers (Google Discovery on `*.googleapis.com`,
+        // some GitHub raw paths) respond 4xx to HEAD even when GET
+        // returns 200. Retry on any 4xx (not just 403/405) so the
+        // probe surfaces genuine link rot, not protocol quirks.
+        if (res.status >= 400 && res.status < 500) {
           const getRes = await fetch(url, {
             method: "GET",
             signal: controller.signal,
