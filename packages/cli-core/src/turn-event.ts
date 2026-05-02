@@ -6,6 +6,11 @@
 export interface TurnUsage {
   turn_tokens: number;
   remaining_monthly_budget_tokens: number | null;
+  /** Effective per-prompt context cap for the model that just ran. The
+   *  REPL footer renders a `ctx N/M` gauge against this so the operator
+   *  sees pressure on the model's window before they hit it. Optional
+   *  for backward compat. */
+  context_cap_tokens?: number;
   /** Per-section breakdown of the prompt that drove this turn — what
    *  the engine actually fed the LLM. When present, the spinner /
    *  status line render `skills 4.2k · transcript 6.1k · draft 1.3k`

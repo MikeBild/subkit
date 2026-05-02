@@ -663,6 +663,19 @@ const MessageRow: React.FC<{
 });
 MessageRow.displayName = "MessageRow";
 
+const TurnSeparator: React.FC<{ columns?: number | undefined }> = memo(({ columns }) => {
+  const theme = useTheme();
+  const width = Math.max(20, Math.min(columns ?? 80, 120));
+  return (
+    <Box marginBottom={1}>
+      <Text color={theme.severity.dim} dimColor>
+        {"─".repeat(width)}
+      </Text>
+    </Box>
+  );
+});
+TurnSeparator.displayName = "TurnSeparator";
+
 // ---------- Status bar ----------
 
 const StatusBar: React.FC<{ statusLine: string; columns: number }> = memo(
@@ -2975,6 +2988,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       diff: { title: d.title, language: d.language, hunks: d.hunks },
     });
   }
+  let renderedAnyMessageBefore = false;
   for (let i = 0; i < deferredMessages.length; i++) {
     const m = deferredMessages[i];
     if (!m) continue;
@@ -2990,6 +3004,16 @@ export const InkApp: React.FC<InkAppProps> = ({
     const isEmptyAssistantStub =
       m.role === "assistant" && trimmedContent === "" && (!m.parts || m.parts.length === 0);
     if (!isEmptyAssistantStub) {
+      // Turn separator: a single dim-grey rule before each user
+      // message that follows earlier output. It's the cheapest visual
+      // signal "a new turn starts here" without using red — red is
+      // reserved in this REPL for `tone === "error"` notices and the
+      // `ctx N/M` overflow chip in the footer. Using red between every
+      // turn would normalise the alarm color and weaken the real
+      // warnings.
+      if (m.role === "user" && renderedAnyMessageBefore) {
+        transcriptRows.push(<TurnSeparator key={`sep-${i}`} columns={columns} />);
+      }
       transcriptRows.push(
         <MessageRow
           key={`msg-${i}`}
@@ -2999,6 +3023,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           columns={columns}
         />,
       );
+      renderedAnyMessageBefore = true;
     }
     if (m.id) {
       const childCalls = callsByParent.get(m.id);
@@ -3559,6 +3584,8 @@ export const InkApp: React.FC<InkAppProps> = ({
         tokensToday={statusSnapshot?.tokens_today ?? null}
         tokensMonth={statusSnapshot?.tokens_month ?? null}
         monthlyBudget={statusSnapshot?.monthly_budget_tokens ?? null}
+        lastTurnPromptTokens={session.usage?.turn_tokens ?? null}
+        contextCapTokens={session.usage?.context_cap_tokens ?? null}
         columns={columns}
       />
 
