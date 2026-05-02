@@ -16819,6 +16819,126 @@
           ],
           "validation_function": "input.list && Array.isArray(input.list.body && input.list.body.data) && input.list.body.data.every(function(c){ return c && c.amount !== 0; })"
         }
+      },
+      {
+        "slug": "on-charge-failed-notify-slack",
+        "title": "On Stripe charge.failed, post a Slack alert",
+        "description": "Webhook-triggered: when Stripe fires `charge.failed` against the workflow's inbound URL, this recipe verifies the Stripe signature, extracts the failed-charge fields (id, amount, currency, decline reason, customer email), and posts a redacted alert into the operator's chosen Slack channel. Demonstrates the workflow `trigger: { kind: 'webhook' }` block end-to-end.",
+        "intent_keywords": [
+          "charge failed slack",
+          "stripe failure alert",
+          "notify slack on failed charge",
+          "stripe webhook alert"
+        ],
+        "derived_from_skill": "stripe-basics",
+        "category": "payments",
+        "tags": ["webhook", "trigger", "alerting", "demonstration"],
+        "difficulty": "advanced",
+        "estimated_setup_minutes": 12,
+        "prerequisites": [
+          "Stripe webhook endpoint signing secret (whsec_...) configured on the bound webhook row",
+          "Slack bot token connector with chat:write scope",
+          "Slack channel id where the alert should land"
+        ],
+        "sample_input": {
+          "alert_channel": "C0123ALERT",
+          "id": "evt_1Q9testchargefailed",
+          "type": "charge.failed",
+          "headers": {
+            "stripe-signature": "t=1709200000,v1=<redacted-hmac-sha256-hex>"
+          },
+          "body": {
+            "id": "evt_1Q9testchargefailed",
+            "object": "event",
+            "type": "charge.failed",
+            "created": 1709200000,
+            "livemode": false,
+            "data": {
+              "object": {
+                "id": "ch_1Q9testfailedcharge",
+                "object": "charge",
+                "amount": 4999,
+                "currency": "usd",
+                "failure_code": "card_declined",
+                "failure_message": "Your card was declined.",
+                "outcome": {
+                  "network_status": "declined_by_network",
+                  "reason": "generic_decline",
+                  "seller_message": "The bank did not return any further details with this decline.",
+                  "type": "issuer_declined"
+                },
+                "billing_details": {
+                  "email": "customer@example.com"
+                },
+                "status": "failed"
+              }
+            }
+          }
+        },
+        "expected_output_preview": {
+          "ok": true,
+          "channel": "C0123ALERT",
+          "ts": "1709200001.000200",
+          "message": {
+            "text": "[stripe] charge.failed — usd 49.99 — card_declined — customer@e***le.com — ch_1Q9t***arge"
+          }
+        },
+        "required_connectors": [
+          {
+            "placeholder": "7d046f2e-9c40-4b8a-aa14-ff3eb87b5046",
+            "template": "slack"
+          }
+        ],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "stripe-on-charge-failed-notify-slack",
+          "description": "Triggered by an inbound Stripe `charge.failed` webhook; posts a redacted alert into the operator's Slack channel.",
+          "trigger": {
+            "kind": "webhook",
+            "source": "stripe",
+            "events": ["charge.failed"],
+            "verify": "stripe-signature"
+          },
+          "input_schema": {
+            "type": "object",
+            "required": ["body", "alert_channel"],
+            "properties": {
+              "body": {
+                "type": "object",
+                "required": ["data", "type"]
+              },
+              "alert_channel": {
+                "type": "string",
+                "description": "Slack channel id (e.g. C0123ALERT) where the alert should be posted."
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "transform",
+              "id": "extract",
+              "language": "jsonata",
+              "expression": "$input.body.data.object.{ \"charge_id\": id, \"amount\": amount, \"currency\": currency, \"failure_code\": failure_code, \"failure_message\": failure_message, \"email\": billing_details.email }"
+            },
+            {
+              "kind": "request",
+              "id": "post",
+              "method": "POST",
+              "connector_id": "7d046f2e-9c40-4b8a-aa14-ff3eb87b5046",
+              "url": "${connector.slack.base_url}/chat.postMessage",
+              "headers": {
+                "Content-Type": "application/json; charset=utf-8"
+              },
+              "body": {
+                "channel": "${input.alert_channel}",
+                "text": "[stripe] charge.failed — ${scope.extract.data.currency} ${scope.extract.data.amount} — ${scope.extract.data.failure_code} — ${scope.extract.data.email} — ${scope.extract.data.charge_id}"
+              }
+            }
+          ]
+        }
       }
     ],
     "aws_service": null,
