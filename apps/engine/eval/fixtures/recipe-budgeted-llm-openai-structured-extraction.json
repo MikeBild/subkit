@@ -1,0 +1,10 @@
+{
+  "name": "recipe-budgeted-llm-openai-structured-extraction",
+  "description": "Eval guard for the budgeted-LLM primitive: the shipped OpenAI `structured-extraction` recipe must declare workflow.max_llm_tokens_per_run so the engine token-budget meter caps the run before it overspends. Loud failure here catches accidental removal of the cap.",
+  "flow": "infra",
+  "input": {
+    "template_slug": "openai",
+    "recipe_slug": "structured-extraction",
+    "expected_max_llm_tokens_per_run": 50000
+  }
+}

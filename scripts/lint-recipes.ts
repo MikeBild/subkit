@@ -44,6 +44,20 @@ type Recipe = {
     name?: string;
     input_schema?: Record<string, unknown>;
     steps?: Array<Record<string, unknown>>;
+    /**
+     * Optional trigger envelope. `kind` selects how the engine wakes the
+     * workflow: `request` (default, externally invoked), `webhook`
+     * (inbound URL bound by the workflow service reconciler), or
+     * `schedule` (cron + tz bound by the scheduler reconciler).
+     */
+    trigger?: { kind?: string; [k: string]: unknown };
+    /**
+     * Optional per-run LLM token budget. Recipes that call an LLM step
+     * declare a positive cap so the engine token meter aborts a runaway
+     * run before it overspends. Tracked as the `budgeted-llm` primitive
+     * in the coverage map so #69 stays a regression net.
+     */
+    max_llm_tokens_per_run?: number;
   };
 };
 
@@ -84,6 +98,22 @@ const STEP_KINDS = [
   "loop",
   "tool",
 ] as const;
+
+/**
+ * Workflow-level (non-step) primitives the lint also tracks so the
+ * coverage map catches accidental removal of a recipe demonstrating
+ * each one. These do not live inside `workflow.steps[*].kind`:
+ *
+ *   - `webhook`       — `workflow.trigger.kind === "webhook"`
+ *   - `schedule`      — `workflow.trigger.kind === "schedule"`
+ *   - `budgeted-llm`  — `workflow.max_llm_tokens_per_run > 0`
+ *
+ * Issue #69 introduced these primitives via the Stripe charge-failed
+ * webhook recipe (#46), the Stripe daily-charges-digest schedule
+ * recipe (#47), and the OpenAI structured-extraction budgeted recipe
+ * (#53). The baseline below pins each at >=1.
+ */
+const WORKFLOW_FEATURE_KINDS = ["webhook", "schedule", "budgeted-llm"] as const;
 
 type Violation = { template: string; recipe: string; rule: string; message: string };
 
@@ -231,12 +261,28 @@ function lintRequiredConnectors(template: string, recipe: Recipe): Violation[] {
 }
 
 function buildPrimitiveCoverage(templates: Template[]): Record<string, number> {
-  const counts: Record<string, number> = Object.fromEntries(STEP_KINDS.map((k) => [k, 0]));
+  const counts: Record<string, number> = Object.fromEntries([
+    ...STEP_KINDS.map((k) => [k, 0] as const),
+    ...WORKFLOW_FEATURE_KINDS.map((k) => [k, 0] as const),
+  ]);
   for (const t of templates) {
     for (const r of t.recipes ?? []) {
       for (const step of r.workflow.steps ?? []) {
         const kind = (step as { kind?: unknown }).kind;
         if (typeof kind === "string" && kind in counts) counts[kind] += 1;
+      }
+      // Workflow-level primitives. A recipe contributes at most once to
+      // each: e.g. a webhook trigger counts the recipe, not each step.
+      const trigger = r.workflow.trigger;
+      const triggerKind =
+        typeof trigger === "object" && trigger != null && typeof trigger.kind === "string"
+          ? trigger.kind
+          : undefined;
+      if (triggerKind === "webhook") counts.webhook = (counts.webhook ?? 0) + 1;
+      if (triggerKind === "schedule") counts.schedule = (counts.schedule ?? 0) + 1;
+      const budget = r.workflow.max_llm_tokens_per_run;
+      if (typeof budget === "number" && budget > 0) {
+        counts["budgeted-llm"] = (counts["budgeted-llm"] ?? 0) + 1;
       }
     }
   }
@@ -267,8 +313,16 @@ function lintPrimitiveCoverage(templates: Template[]): Violation[] {
     loop: 1,
     call: 0,
     tool: 0,
+    // v1.0 phase 1 + 2 primitives (#46/#47/#53). Each kind has at
+    // least one shipped recipe — the eval suite under
+    // `apps/engine/eval/fixtures/recipe-*.json` pins those recipes
+    // to their declared shape, this baseline pins the catalog count.
+    webhook: 1,
+    schedule: 1,
+    "budgeted-llm": 1,
   };
-  for (const kind of STEP_KINDS) {
+  const trackedKinds = [...STEP_KINDS, ...WORKFLOW_FEATURE_KINDS] as readonly string[];
+  for (const kind of trackedKinds) {
     const have = counts[kind] ?? 0;
     const need = baseline[kind] ?? 0;
     if (have < need) {
@@ -276,14 +330,14 @@ function lintPrimitiveCoverage(templates: Template[]): Violation[] {
         template: "<catalog>",
         recipe: "<aggregate>",
         rule: "primitive_coverage_regressed",
-        message: `step kind \`${kind}\` had ≥${need} recipe(s) at last sweep but now has ${have}`,
+        message: `primitive \`${kind}\` had ≥${need} recipe(s) at last sweep but now has ${have}`,
       });
     }
   }
   // Always print coverage so reviewers see progress without grepping.
   console.log("recipe primitive coverage:");
-  for (const kind of STEP_KINDS) {
-    console.log(`  ${kind.padEnd(10)} ${counts[kind] ?? 0}`);
+  for (const kind of trackedKinds) {
+    console.log(`  ${kind.padEnd(14)} ${counts[kind] ?? 0}`);
   }
   return out;
 }
