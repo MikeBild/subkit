@@ -71,13 +71,49 @@ async function seedEssentials(db: Db): Promise<SeededRoleIds> {
 // Phase 2: production tenant bootstrap
 // --------------------------------------------------------------------------
 
-async function seedTenantBootstrap(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKey[]> {
-  const email = process.env.BOOTSTRAP_ADMIN_EMAIL;
-  if (!email) return [];
+/**
+ * Explicit payload accepted by `seedTenantBootstrap` when the caller
+ * already holds the four operator-supplied values (HTTP setup wizard,
+ * `sk init` headless flow). Mutually exclusive with the env-var path —
+ * pass either both `payload` arguments or neither, not a mix.  The
+ * env-var path is still the production seed-script path; #70 will
+ * retire it after the wizard fully replaces it.
+ */
+export interface TenantBootstrapPayload {
+  admin_email: string;
+  tenant_name: string;
+  tenant_slug: string;
+  create_metrics_key?: boolean;
+}
 
-  const slug = process.env.BOOTSTRAP_TENANT_SLUG ?? "default";
-  const displayName = process.env.BOOTSTRAP_TENANT_NAME ?? "Subkit";
-  const createMetricsKey = process.env.BOOTSTRAP_CREATE_METRICS_KEY === "1";
+/** Structured result from `seedTenantBootstrap` so the bootstrap
+ *  orchestrator can resolve the materialised tenant + admin user + new
+ *  API key without re-querying.  When the env-var path is invoked
+ *  without an env var, every field is null and `issued_keys` is empty. */
+export interface TenantBootstrapResult {
+  tenant_id: string | null;
+  user_id: string | null;
+  api_key: { plaintext: string; prefix: string } | null;
+  issued_keys: IssuedKey[];
+}
+
+export async function seedTenantBootstrap(
+  db: Db,
+  rbacIds: SeededRoleIds,
+  payload?: TenantBootstrapPayload,
+): Promise<TenantBootstrapResult> {
+  // Resolve inputs.  Explicit payload wins; otherwise fall back to the
+  // legacy BOOTSTRAP_* env vars.  When neither is present this is a
+  // no-op so the engine boot path can call it unconditionally.
+  const email = payload?.admin_email ?? process.env.BOOTSTRAP_ADMIN_EMAIL;
+  if (!email) {
+    return { tenant_id: null, user_id: null, api_key: null, issued_keys: [] };
+  }
+
+  const slug = payload?.tenant_slug ?? process.env.BOOTSTRAP_TENANT_SLUG ?? "default";
+  const displayName = payload?.tenant_name ?? process.env.BOOTSTRAP_TENANT_NAME ?? "Subkit";
+  const createMetricsKey =
+    payload?.create_metrics_key ?? process.env.BOOTSTRAP_CREATE_METRICS_KEY === "1";
 
   logger.info({
     module: "db",
@@ -85,10 +121,12 @@ async function seedTenantBootstrap(db: Db, rbacIds: SeededRoleIds): Promise<Issu
     msg: "running tenant bootstrap",
     tenant_slug: slug,
     admin_email: email,
+    source: payload ? "payload" : "env",
   });
 
   return await db.transaction(async (tx) => {
     const issued: IssuedKey[] = [];
+    let adminApiKey: { plaintext: string; prefix: string } | null = null;
 
     // --- tenant (upsert by slug) ---
     let [tenant] = await tx.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
@@ -217,6 +255,7 @@ async function seedTenantBootstrap(db: Db, rbacIds: SeededRoleIds): Promise<Issu
         tenant: slug,
         usage: `Admin key for tenant "${slug}". Use with: sk login --api-key <key>`,
       });
+      adminApiKey = { plaintext: key.plaintext, prefix: key.prefix };
     }
 
     // --- optional: metrics scraper system account + scoped key ---
@@ -310,7 +349,12 @@ async function seedTenantBootstrap(db: Db, rbacIds: SeededRoleIds): Promise<Issu
       new_keys_issued: issued.length,
     });
 
-    return issued;
+    return {
+      tenant_id: tenant.id,
+      user_id: user.id,
+      api_key: adminApiKey,
+      issued_keys: issued,
+    };
   });
 }
 
@@ -560,10 +604,10 @@ export async function seed(): Promise<SeedResult> {
 
   const isProd = process.env.NODE_ENV === "production";
 
-  const tenantKeys = await seedTenantBootstrap(db, rbacIds);
+  const tenantBootstrap = await seedTenantBootstrap(db, rbacIds);
   const devKeys = isProd ? [] : await seedDevFixtures(db, rbacIds);
 
-  const issued_keys = [...tenantKeys, ...devKeys];
+  const issued_keys = [...tenantBootstrap.issued_keys, ...devKeys];
   return {
     status: issued_keys.length > 0 ? "seeded" : "already_seeded",
     issued_keys,

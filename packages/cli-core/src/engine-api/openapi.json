@@ -46,6 +46,111 @@
           "uptime_seconds"
         ]
       },
+      "SetupStatusResponse": {
+        "type": "object",
+        "properties": {
+          "pending": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pending"
+        ]
+      },
+      "SetupResponse": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "api_key": {
+            "type": "string"
+          },
+          "api_key_prefix": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "user_id",
+          "api_key",
+          "api_key_prefix"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "SetupRequestBody": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 128
+          },
+          "admin_email": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 254,
+            "format": "email"
+          },
+          "tenant_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "llm_provider": {
+            "type": "string",
+            "enum": [
+              "mock",
+              "anthropic",
+              "openai",
+              "gemini",
+              "azure",
+              "bedrock",
+              "vertex"
+            ]
+          },
+          "llm_api_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "token",
+          "admin_email",
+          "tenant_name",
+          "llm_provider",
+          "llm_api_key"
+        ]
+      },
       "StatusSummary": {
         "type": "object",
         "properties": {
@@ -220,30 +325,6 @@
           "category",
           "secret",
           "is_default"
-        ]
-      },
-      "Error": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "trace_id": {
-            "type": "string"
-          },
-          "details": {
-            "type": "object",
-            "additionalProperties": {
-              "nullable": true
-            }
-          }
-        },
-        "required": [
-          "code",
-          "message"
         ]
       },
       "SettingValue": {
@@ -9023,6 +9104,95 @@
               "text/x-shellscript": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/setup": {
+      "get": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "Check whether first-run bootstrap is still pending",
+        "description": "Returns `{pending: true}` until the operator completes the first-run setup wizard. Drives the `sk init` health probe so the CLI can refuse to prompt against an already-bootstrapped engine.",
+        "responses": {
+          "200": {
+            "description": "Bootstrap state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "Redeem the first-run bootstrap token and materialise tenant + admin",
+        "description": "Consumes the one-time token printed to engine stdout on a fresh install. Creates the tenant, admin user, admin API key, writes the LLM provider settings, and flips the post-bootstrap sentinel. The returned `api_key` is the only time the plaintext key is ever returned.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupRequestBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bootstrap completed; admin API key returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Payload failed Zod validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token missing, expired, or did not match",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Bootstrap already completed; route is gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded for this client IP",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
