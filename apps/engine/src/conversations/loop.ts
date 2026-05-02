@@ -985,7 +985,14 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               anthropic: {
                 disableParallelToolUse: !turnStageReadOnly,
                 ...(turnEnableThinking
-                  ? { thinking: { type: "enabled", budgetTokens: 4000 } }
+                  ? // claude-sonnet-4-5+/opus-4-6+ rejected the legacy
+                    // `{ type: "enabled", budgetTokens }` shape
+                    // ("thinking.type.enabled is not supported for this
+                    // model") — caught by nightly.yml's real-LLM job.
+                    // `adaptive` lets the model size its own thinking
+                    // budget per turn, which is what we want anyway
+                    // (the 4000-token cap was a guess).
+                    { thinking: { type: "adaptive" as const } }
                   : {}),
               },
             },
