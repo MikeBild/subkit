@@ -87,3 +87,17 @@ jobs:
             ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
       - run: bun run test:e2e:docker
+      - name: Capture compose logs on failure
+        if: failure()
+        run: |
+          echo '=== compose ps ==='
+          docker compose ps --all || true
+          echo
+          echo '=== migrate logs ==='
+          docker compose logs migrate || true
+          echo
+          echo '=== seed logs ==='
+          docker compose logs seed || true
+          echo
+          echo '=== engine logs ==='
+          docker compose logs engine || true
