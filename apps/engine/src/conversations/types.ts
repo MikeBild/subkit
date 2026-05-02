@@ -44,6 +44,17 @@ export interface TurnUsage {
    * when the tenant is unlimited.
    */
   remaining_monthly_budget_tokens: number | null;
+  /**
+   * Effective per-prompt context cap for the model that just ran. The
+   * CLI uses this to render a `ctx N/M` gauge in the footer — when the
+   * gauge crosses 80% the operator knows to `/compact` before the next
+   * turn, instead of discovering the cap by hitting it.
+   *
+   * Optional because non-Anthropic / mock models report different caps
+   * and we don't want the gauge to lie about a 1M-context Claude run
+   * when the cap is actually 12k for the in-process mock.
+   */
+  context_cap_tokens?: number;
   /** Per-section breakdown of the prompt assembled for this turn —
    *  surfaced to the CLI so the operator can see why a turn cost N
    *  tokens (skills vs transcript vs draft). Optional. */
