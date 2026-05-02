@@ -16939,6 +16939,114 @@
             }
           ]
         }
+      },
+      {
+        "slug": "new-customer-enrich-notify",
+        "title": "On new Stripe customer, enrich into HubSpot and notify Slack",
+        "description": "Three-connector reference recipe. Reads the freshly-created Stripe customer (id, email, name, created), upserts a HubSpot contact carrying the Stripe id as the external identifier, then posts a redacted onboarding alert into the operator's chosen Slack channel. Demonstrates multi-connector binding via `connector_bindings`: each placeholder UUID is rebound at clone time to a tenant-saved Stripe / HubSpot / Slack connector.",
+        "intent_keywords": [
+          "new customer enrich",
+          "stripe to hubspot",
+          "onboarding notification",
+          "customer enrichment workflow"
+        ],
+        "derived_from_skill": "stripe-basics",
+        "category": "crm",
+        "tags": ["multi-connector", "demonstration", "enrichment", "alerting"],
+        "difficulty": "advanced",
+        "estimated_setup_minutes": 15,
+        "prerequisites": [
+          "Stripe Secret Key with customers:read",
+          "HubSpot Private App token with crm.objects.contacts.write",
+          "Slack bot token connector with chat:write",
+          "Slack channel id where the onboarding notification should land"
+        ],
+        "sample_input": {
+          "customer_id": "cus_1Q9testnewcustomer",
+          "alert_channel": "C0123ONBOARD"
+        },
+        "expected_output_preview": {
+          "ok": true,
+          "stripe_customer_id": "cus_1Q9testnewcustomer",
+          "hubspot_contact_id": "1234567890",
+          "slack_ts": "1709200001.000200"
+        },
+        "required_connectors": [
+          {
+            "placeholder": "11111111-1111-4111-8111-111111111111",
+            "template": "stripe"
+          },
+          {
+            "placeholder": "22222222-2222-4222-8222-222222222222",
+            "template": "hubspot"
+          },
+          {
+            "placeholder": "33333333-3333-4333-8333-333333333333",
+            "template": "slack"
+          }
+        ],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "stripe-hubspot-slack-new-customer-enrich-notify",
+          "description": "Fetch a Stripe customer, upsert into HubSpot, then post a Slack onboarding alert.",
+          "input_schema": {
+            "type": "object",
+            "required": ["customer_id", "alert_channel"],
+            "properties": {
+              "customer_id": {
+                "type": "string",
+                "description": "Stripe customer id (cus_...)."
+              },
+              "alert_channel": {
+                "type": "string",
+                "description": "Slack channel id where the onboarding alert should land."
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "fetch_stripe_customer",
+              "method": "GET",
+              "connector_id": "11111111-1111-4111-8111-111111111111",
+              "url": "${connector.stripe.base_url}/customers/${input.customer_id}"
+            },
+            {
+              "kind": "request",
+              "id": "upsert_hubspot_contact",
+              "method": "POST",
+              "connector_id": "22222222-2222-4222-8222-222222222222",
+              "url": "https://api.hubapi.com/crm/v3/objects/contacts",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "properties": {
+                  "email": "${scope.fetch_stripe_customer.data.email}",
+                  "firstname": "${scope.fetch_stripe_customer.data.name}",
+                  "stripe_customer_id": "${input.customer_id}"
+                }
+              }
+            },
+            {
+              "kind": "request",
+              "id": "notify_slack",
+              "method": "POST",
+              "connector_id": "33333333-3333-4333-8333-333333333333",
+              "url": "${connector.slack.base_url}/chat.postMessage",
+              "headers": {
+                "Content-Type": "application/json; charset=utf-8"
+              },
+              "body": {
+                "channel": "${input.alert_channel}",
+                "text": "[stripe→hubspot] new customer ${scope.fetch_stripe_customer.data.email} — stripe_id=${input.customer_id} — hubspot_id=${scope.upsert_hubspot_contact.data.id}"
+              }
+            }
+          ]
+        }
       }
     ],
     "aws_service": null,
