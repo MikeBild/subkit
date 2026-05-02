@@ -17,7 +17,7 @@ let ctx: SchedulerTestCtx;
 let workflowId: string;
 
 beforeEach(async () => {
-  ctx = await createSchedulerCtx(`trigger-bind-${Math.random().toString(36).slice(2, 8)}`);
+  ctx = await createSchedulerCtx("trigger-bind");
   const wf = await createWorkflowRow(ctx.engine, {
     name: "sched-bind",
     slug: "sched-bind",

@@ -6,14 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
-    name: build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
+    name: build
+    runs-on: ubuntu-24.04
 
     services:
       postgres:
@@ -35,6 +35,8 @@ jobs:
       MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
       LLM_PROVIDER: mock
       SKIP_DOCKER: "1"
+      TZ: UTC
+      LANG: C.UTF-8
 
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +68,9 @@ jobs:
 
       - name: Terminology gate
         run: bun run check:terminology
+
+      - name: Recipe lint
+        run: bun run lint:recipes
 
       - name: OpenAPI client drift
         # Regenerates the typed cli-core client from the live OpenAPI surface
@@ -115,12 +120,11 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: engine-log-${{ matrix.os }}
+          name: engine-log
           path: engine-smoke.log
           if-no-files-found: ignore
 
       - name: Validate docker compose
-        if: matrix.os == 'ubuntu-latest'
         run: docker compose config > /dev/null
 
   secret-scan:

@@ -13,6 +13,7 @@
       "!**/dist",
       "!**/docs",
       "!**/.github",
+      "!**/.claude/worktrees",
       "!**/bun.lock",
       "!**/bun.lockb",
       "!packages/cli-core/src/engine-api/openapi.d.ts",
