@@ -29,6 +29,7 @@ import { executionsCommand } from "./commands/executions.ts";
 import { extractCommand } from "./commands/extract.ts";
 import { healthCommand } from "./commands/health.ts";
 import { hooksCommand } from "./commands/hooks.ts";
+import { initCommand } from "./commands/init.ts";
 import { installCommand } from "./commands/install.ts";
 import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
 import { notificationsCommand } from "./commands/notifications.ts";
@@ -481,6 +482,7 @@ const mainCommand = defineCommand({
     tunnels: tunnelsCommand,
     notifications: notificationsCommand,
     diagnostics: diagnosticsCommand,
+    init: initCommand,
     install: installCommand,
     // admin commands
     rbac: rbacCommand,
@@ -642,6 +644,11 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   tunnels: { command: tunnelsCommand, requires: "tunnel:read" },
   notifications: { command: notificationsCommand, requires: "notification:read" },
   diagnostics: { command: diagnosticsCommand, requires: "audit:read" },
+  // `sk init` is the first command an operator runs against a fresh
+  // engine — it has no profile / api key yet, so it carries no
+  // permission requirement.  The engine route is rate-limited and
+  // single-use; that's the gating, not a tier check here.
+  init: { command: initCommand },
   install: { command: installCommand, requires: "connector:write" },
   // admin
   rbac: { command: rbacCommand, requires: "rbac:read" },

@@ -9,6 +9,7 @@ import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
 import { logger } from "./logging/logger.ts";
 import { startTracing } from "./observability/tracing.ts";
+import * as bootstrap from "./onboarding/bootstrap.ts";
 import { startListener, stopListener } from "./pubsub/listener.ts";
 import { startBoss, stopBoss } from "./queue/boss.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
@@ -113,6 +114,23 @@ async function runServer(): Promise<void> {
       module: "engine",
       action: "rbac.seed_failed",
       msg: "RBAC seed failed; engine will boot but auth may degrade",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // First-run bootstrap probe.  Self-detects an empty `tenants` table +
+  // unset post-bootstrap sentinel, mints a one-time token, and prints a
+  // copy-paste `sk init --token <token>` banner.  Once the operator
+  // POSTs `/v1/setup`, the sentinel flips and this becomes a no-op on
+  // every subsequent boot.  Wrapped so a transient DB error never
+  // blocks the engine from coming up — the next boot retries.
+  try {
+    await bootstrap.run(db);
+  } catch (err) {
+    logger.error({
+      module: "engine",
+      action: "bootstrap.probe_failed",
+      msg: "first-run bootstrap probe failed (non-fatal)",
       error: err instanceof Error ? err.message : String(err),
     });
   }

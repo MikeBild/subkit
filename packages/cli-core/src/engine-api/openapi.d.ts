@@ -77,6 +77,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether first-run bootstrap is still pending
+         * @description Returns `{pending: true}` until the operator completes the first-run setup wizard. Drives the `sk init` health probe so the CLI can refuse to prompt against an already-bootstrapped engine.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Bootstrap state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SetupStatusResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Redeem the first-run bootstrap token and materialise tenant + admin
+         * @description Consumes the one-time token printed to engine stdout on a fresh install. Creates the tenant, admin user, admin API key, writes the LLM provider settings, and flips the post-bootstrap sentinel. The returned `api_key` is the only time the plaintext key is ever returned.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["SetupRequestBody"];
+                };
+            };
+            responses: {
+                /** @description Bootstrap completed; admin API key returned */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SetupResponse"];
+                    };
+                };
+                /** @description Payload failed Zod validation */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Token missing, expired, or did not match */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Bootstrap already completed; route is gone */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Rate limit exceeded for this client IP */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/status": {
         parameters: {
             query?: never;
@@ -6890,6 +6992,34 @@ export interface components {
             update_available?: boolean;
             latest_version?: string;
         };
+        SetupStatusResponse: {
+            pending: boolean;
+        };
+        SetupResponse: {
+            /** Format: uuid */
+            tenant_id: string;
+            /** Format: uuid */
+            user_id: string;
+            api_key: string;
+            api_key_prefix: string;
+        };
+        Error: {
+            code: string;
+            message: string;
+            trace_id?: string;
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        SetupRequestBody: {
+            token: string;
+            /** Format: email */
+            admin_email: string;
+            tenant_name: string;
+            /** @enum {string} */
+            llm_provider: "mock" | "anthropic" | "openai" | "gemini" | "azure" | "bedrock" | "vertex";
+            llm_api_key: string;
+        };
         StatusSummary: {
             user: components["schemas"]["StatusUser"];
             tenant: components["schemas"]["StatusTenant"];
@@ -6931,14 +7061,6 @@ export interface components {
             secret: boolean;
             value?: unknown;
             is_default: boolean;
-        };
-        Error: {
-            code: string;
-            message: string;
-            trace_id?: string;
-            details?: {
-                [key: string]: unknown;
-            };
         };
         SettingValue: {
             key: string;

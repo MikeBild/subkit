@@ -4,6 +4,21 @@
  * module does not delete rows.
  */
 
+/**
+ * Sentinel UUID used as `tenant_id` for audit rows that are emitted before
+ * any real tenant exists — currently the first-run setup wizard
+ * (`POST /v1/setup`) which has to write `setup.completed` / `setup.failed`
+ * audit rows under SOC2 evidence requirements before the bootstrap
+ * transaction creates the operator's first tenant.
+ *
+ * `audit_log.tenant_id` is intentionally NOT a foreign key into `tenants`
+ * (compliance — audit entries must survive tenant deletion), so a synthetic
+ * UUID that obviously will never collide with `gen_random_uuid()` output is
+ * safe to use here. Audit-log consumers can filter on this constant to
+ * separate pre-tenant infrastructure events from per-tenant activity.
+ */
+export const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000" as const;
+
 export const AuditAction = {
   TENANT_CREATED: "tenant.created",
   TENANT_UPDATED: "tenant.updated",
