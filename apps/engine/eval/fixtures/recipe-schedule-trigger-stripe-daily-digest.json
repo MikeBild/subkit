@@ -1,0 +1,14 @@
+{
+  "name": "recipe-schedule-trigger-stripe-daily-digest",
+  "description": "Eval guard for the schedule-trigger primitive: the shipped Stripe `daily-charges-digest` recipe must declare workflow.trigger.kind == schedule with cron + tz + business_days_only so the scheduler reconciler wakes the workflow without an external cron loop.",
+  "flow": "infra",
+  "input": {
+    "template_slug": "stripe",
+    "recipe_slug": "daily-charges-digest",
+    "expected_trigger_kind": "schedule",
+    "expected_cron": "0 8 * * *",
+    "expected_tz": "Europe/Berlin",
+    "expected_business_days_only": true,
+    "min_skip_dates": 1
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "recipe-webhook-trigger-stripe-charge-failed",
+  "description": "Eval guard for the webhook-trigger primitive: the shipped Stripe `on-charge-failed-notify-slack` recipe must declare workflow.trigger.kind == webhook with a verifiable signature source so the LLM can ground a `start_workflow_from_recipe` reply at the inbound URL the engine reconciles.",
+  "flow": "infra",
+  "input": {
+    "template_slug": "stripe",
+    "recipe_slug": "on-charge-failed-notify-slack",
+    "expected_trigger_kind": "webhook",
+    "expected_trigger_source": "stripe",
+    "expected_event": "charge.failed",
+    "expected_verify": "stripe-signature"
+  }
+}
