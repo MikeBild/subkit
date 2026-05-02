@@ -80,7 +80,14 @@ jobs:
         run: bun run db:migrate
 
       - name: Unit + integration tests
-        run: bun test apps/ packages/
+        # `--max-concurrency=4` caps the number of test files bun runs
+        # in parallel. Without this, ~150 of the 612 test files race to
+        # spin up tenant-scoped Postgres databases (see
+        # `apps/engine/src/db/tests/setup.ts`) and exhaust the pool,
+        # surfacing as 5s timeouts in MCP / chat / tunnel / journey
+        # tests that are otherwise green in isolation. The CI runner's
+        # 4-core sizing makes 4 the natural ceiling.
+        run: bun test --max-concurrency=4 apps/ packages/
 
       - name: AI eval contract
         run: bun run verify:ai
