@@ -16,7 +16,7 @@ import { createInboundCtx, type InboundTestCtx } from "./setup.ts";
 let ctx: InboundTestCtx;
 
 beforeEach(async () => {
-  ctx = await createInboundCtx(`trigger-bind-${Math.random().toString(36).slice(2, 8)}`);
+  ctx = await createInboundCtx("trigger-bind");
 });
 
 afterEach(async () => {
