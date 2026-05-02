@@ -3,6 +3,7 @@
 // now surfaces `unresolved_identifier` warnings next to the output.
 
 import { describe, expect, it } from "bun:test";
+import { RunLlmBudget } from "../llm-budget.ts";
 import { runTransformStep } from "../steps/transform.ts";
 import type { StepRunContext } from "../types.ts";
 
@@ -33,6 +34,7 @@ function mkCtx(): StepRunContext {
     },
     step_index: 0,
     step_row_id: "r",
+    llm_budget: new RunLlmBudget(null),
   };
 }
 

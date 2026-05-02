@@ -35,6 +35,7 @@ import {
 } from "../workflows/types.ts";
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
 import { evaluate as evaluateJsonata } from "./jsonata-engine.ts";
+import { RunLlmBudget } from "./llm-budget.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import { applyResponseFilters } from "./response-filter.ts";
@@ -202,6 +203,12 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
 
   await markExecutionRunning(db, tenant_id, execution_id);
 
+  // Per-run LLM-token budget. The cap lives on the workflow def; null
+  // means "no per-run cap" (the per-tenant monthly budget still
+  // applies independently). Threaded through every StepRunContext so
+  // drivers that issue an LLM-provider call can consult it.
+  const llmBudget = new RunLlmBudget(def.max_llm_tokens_per_run ?? null);
+
   const scope: Record<string, unknown> = { $input: normalizedInput };
 
   if (def.input_schema && normalizedInput !== undefined && normalizedInput !== null) {
@@ -304,6 +311,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       step,
       step_index: i,
       step_row_id,
+      llm_budget: llmBudget,
     };
     let outcome: import("./step-runner.ts").RunStepOutcome;
     try {
@@ -401,6 +409,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               step: bodyStep,
               step_index: i,
               step_row_id: bodyStepRowId,
+              llm_budget: llmBudget,
             };
             const bodyOutcome = await runStep(
               bodyCtx,
@@ -531,6 +540,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               step: branchStepDef,
               step_index: i,
               step_row_id: branchStepRowId,
+              llm_budget: llmBudget,
             };
             const branchOutcome = await runStep(
               branchCtx,
@@ -862,7 +872,18 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       resource_type: "execution",
       resource_id: execution_id,
       result: finalStatus === "succeeded" ? "success" : "error",
-      metadata: { final_status: finalStatus, workflow_id },
+      metadata: {
+        final_status: finalStatus,
+        workflow_id,
+        // Cumulative LLM-provider tokens consumed across every
+        // request step the run dispatched. Always emitted (even on
+        // runs that issued zero LLM calls) so dashboards can plot a
+        // per-tenant burn-down without having to filter on action.
+        total_llm_tokens: llmBudget.total,
+        ...(def.max_llm_tokens_per_run !== undefined
+          ? { max_llm_tokens_per_run: def.max_llm_tokens_per_run }
+          : {}),
+      },
     },
     db,
   );

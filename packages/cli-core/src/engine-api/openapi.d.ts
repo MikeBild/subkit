@@ -7129,6 +7129,7 @@ export interface components {
             validation_expression: string | null;
             validation_function: string | null;
             timeout_ms: number | null;
+            max_llm_tokens_per_run: number | null;
         };
         CreateWorkflowBody: {
             name: string;
@@ -7144,6 +7145,7 @@ export interface components {
                 [key: string]: unknown;
             }[];
             timeout_ms?: number;
+            max_llm_tokens_per_run?: number;
         };
         ValidateWorkflowResponse: {
             ok: boolean;
