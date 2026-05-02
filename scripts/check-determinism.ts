@@ -15,15 +15,24 @@
 //      a trailing `// allow-wall-clock` comment.
 //
 // Exit codes:
-//   0  — clean
-//   1  — rule violation (fail CI)
+//   0  — clean (or improvement vs baseline)
+//   1  — rule violation, or warning regression vs baseline (fail CI)
 //
 // Usage:
 //   bun run scripts/check-determinism.ts
+//   bun run scripts/check-determinism.ts --update-baseline
+//     (regenerate the warning baseline after a cleanup)
 //   SUBKIT_DETERMINISM_WARN=1 bun run scripts/check-determinism.ts
-//     (downgrade all violations to warnings — for incremental adoption)
+//     (downgrade error-level violations to warnings — for incremental adoption)
+//
+// Baseline ratchet:
+//   `scripts/determinism.baseline.json` maps test file → tolerated warning
+//   count. Existing warnings stay tolerated; any new warning in any file
+//   (or a brand new file with any warnings) fails CI. Decreasing counts
+//   are rewarded — the run prints which files improved and exits 0; run
+//   `--update-baseline` to lock the improvement in.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Glob } from "bun";
 
@@ -173,7 +182,39 @@ function checkFile(relPath: string): Violation[] {
   return violations;
 }
 
+const BASELINE_PATH = resolve(ROOT, "scripts/determinism.baseline.json");
+
+function loadBaseline(): Record<string, number> {
+  try {
+    return JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+function writeBaseline(counts: Record<string, number>): void {
+  // Stable, sorted output so the diff is review-friendly.
+  const sorted = Object.fromEntries(
+    Object.entries(counts)
+      .filter(([, n]) => n > 0)
+      .sort(([a], [b]) => a.localeCompare(b)),
+  );
+  writeFileSync(BASELINE_PATH, `${JSON.stringify(sorted, null, 2)}\n`);
+}
+
+function countWarningsByFile(violations: Violation[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const v of violations) {
+    if (v.severity !== "warn") continue;
+    out[v.file] = (out[v.file] ?? 0) + 1;
+  }
+  return out;
+}
+
 async function main(): Promise<number> {
+  const args = new Set(process.argv.slice(2));
+  const updateBaseline = args.has("--update-baseline");
+
   const files = await listTestFiles();
   const all: Violation[] = [];
   for (const f of files) all.push(...checkFile(f));
@@ -194,7 +235,45 @@ async function main(): Promise<number> {
   console.log(`  errors:   ${errors.length}`);
   console.log(`  warnings: ${warnings.length}`);
 
+  // Baseline ratchet — block new warnings even though existing ones are
+  // tolerated. Skip when `SUBKIT_DETERMINISM_WARN=1` (debug mode).
+  const current = countWarningsByFile(all);
+  if (updateBaseline) {
+    writeBaseline(current);
+    console.log(`baseline updated: ${BASELINE_PATH}`);
+    return 0;
+  }
+
+  let baselineRegressions = 0;
+  if (!warnOnly) {
+    const baseline = loadBaseline();
+    const seenFiles = new Set([...Object.keys(baseline), ...Object.keys(current)]);
+    const regressions: string[] = [];
+    const improvements: string[] = [];
+    for (const f of seenFiles) {
+      const before = baseline[f] ?? 0;
+      const after = current[f] ?? 0;
+      if (after > before) {
+        regressions.push(`  ${f}: ${before} → ${after} warning(s)`);
+        baselineRegressions += after - before;
+      } else if (after < before) {
+        improvements.push(`  ${f}: ${before} → ${after} warning(s)`);
+      }
+    }
+    if (improvements.length > 0) {
+      console.log("");
+      console.log("baseline improvements (run with --update-baseline to lock in):");
+      for (const line of improvements) console.log(line);
+    }
+    if (regressions.length > 0) {
+      console.log("");
+      console.log("baseline regressions (new warnings vs. tolerated baseline):");
+      for (const line of regressions) console.log(line);
+    }
+  }
+
   if (!warnOnly && errors.length > 0) return 1;
+  if (!warnOnly && baselineRegressions > 0) return 1;
   return 0;
 }
 
