@@ -6,6 +6,7 @@
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
+import type { RunLlmBudget } from "./llm-budget.ts";
 
 /** Discriminates how the execution definition was sourced.
  *  Persisted verbatim into `executions.source_kind`. */
@@ -43,6 +44,15 @@ export interface ExecutionContext {
   // Target environment for connector resolution. Requests routed through
   // connector_id are rewritten to the matching per-env row when set.
   execution_mode: ExecutionMode;
+  /**
+   * Per-run LLM-token accumulator. Always present; the cap is null
+   * when the workflow definition does not declare
+   * `max_llm_tokens_per_run`. Drivers that issue an LLM-provider call
+   * (today: HTTP request steps that target a recognised provider host)
+   * MUST consult `checkPreCall` before dispatch and `account` after
+   * the call returns successfully.
+   */
+  llm_budget: RunLlmBudget;
 }
 
 export interface StepRunContext extends ExecutionContext {

@@ -978,6 +978,10 @@
           "timeout_ms": {
             "type": "number",
             "nullable": true
+          },
+          "max_llm_tokens_per_run": {
+            "type": "number",
+            "nullable": true
           }
         },
         "required": [
@@ -999,7 +1003,8 @@
           "response_filters",
           "validation_expression",
           "validation_function",
-          "timeout_ms"
+          "timeout_ms",
+          "max_llm_tokens_per_run"
         ]
       },
       "CreateWorkflowBody": {
@@ -1036,6 +1041,11 @@
             }
           },
           "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "max_llm_tokens_per_run": {
             "type": "integer",
             "minimum": 0,
             "exclusiveMinimum": true
