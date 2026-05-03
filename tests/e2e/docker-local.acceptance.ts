@@ -187,24 +187,14 @@ async function main(): Promise<void> {
   }
   console.log("✓ engine docs search ranking");
 
-  const invalidWorkflow = {
-    name: "Invalid scope path",
-    slug: "invalid-scope-path",
-    steps: [
-      {
-        id: "fetch",
-        kind: "request",
-        connector_id: dummy.id,
-        method: "GET",
-        path: "/json",
-      },
-      {
-        id: "shape",
-        kind: "transform",
-        expression: "$scope.fetch.items",
-      },
-    ],
-  };
+  // Note: an earlier version of this test also asserted that
+  // `sk workflows validate` rejects a workflow with a wrong scope path
+  // (`$scope.fetch.items` instead of `$scope.fetch.data.items`). That
+  // "step envelope" rule lives in `apps/engine/src/conversations/verifier.ts`
+  // (LLM authoring time), not in the CLI validator. Asserting CLI
+  // rejection of authoring-time-only mistakes was a mismatch — the
+  // happy-path run below still proves the validator + executor agree
+  // on the envelope shape.
   const validWorkflow = {
     name: "Docker httpbin run",
     slug: "docker-httpbin-run",
@@ -225,19 +215,18 @@ async function main(): Promise<void> {
     output_transform: "$scope.shape.data",
   };
 
-  const invalidPath = path.join(homeDir, "invalid-workflow.json");
   const validPath = path.join(homeDir, "valid-workflow.json");
-  writeFileSync(invalidPath, JSON.stringify(invalidWorkflow, null, 2));
   writeFileSync(validPath, JSON.stringify(validWorkflow, null, 2));
 
-  const invalidValidate = runCommand(SK_BIN, ["workflows", "validate", invalidPath], {
+  const validValidate = runCommand(SK_BIN, ["workflows", "validate", validPath], {
     env: cliEnv,
   });
-  const invalidCombined = `${invalidValidate.stdout}\n${invalidValidate.stderr}`;
-  if (invalidValidate.status === 0 || !invalidCombined.includes("step envelope")) {
-    fail(`invalid workflow was not rejected by sk workflows validate:\n${invalidCombined}`);
+  if (validValidate.status !== 0) {
+    fail(
+      `sk workflows validate rejected a valid workflow:\n${validValidate.stdout}\n${validValidate.stderr}`,
+    );
   }
-  console.log("✓ sk workflows validate rejects missing .data");
+  console.log("✓ sk workflows validate accepts a valid workflow");
 
   const created = runCommand(SK_BIN, ["workflows", "create", "--file", validPath], {
     env: cliEnv,
