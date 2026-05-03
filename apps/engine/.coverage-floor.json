@@ -1,0 +1,4 @@
+{
+  "_comment": "Per-subsystem coverage floors enforced by audit-invariants CI (§6.1, §6.2 of docs/audits/2026-05-architecture-audit.md). Populated at the END of Phase 2 once the matrix tests land. Lowering a value requires a written PR justification; raising a value is a free PR. The 'enforced' flag on each entry is flipped to true when the floor is final.",
+  "subsystems": {}
+}

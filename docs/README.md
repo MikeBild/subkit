@@ -45,3 +45,11 @@ Three persona-specific paths to get running fast.
 **Developers** — start with [AGENTS.md](../AGENTS.md) for the subsystem map and contribution rules, then read all eight concept docs for full architectural context. The [developer quickstart](quickstart/developer.md) gets the local environment running in 10 minutes.
 
 **Architects** — start with [01-platform.md](01-platform.md) for the design rationale, [02-concepts.md](02-concepts.md) for the domain model, and [07-security-governance.md](07-security-governance.md) for the security architecture. The three-layer narrative in `01-platform.md` is the right lens for every other document.
+
+---
+
+## Active Audits
+
+| Audit | Scope |
+|---|---|
+| [audits/2026-05-architecture-audit.md](audits/2026-05-architecture-audit.md) | Architecture cleanup plan (phases 1–6, ~9 engineer-weeks). Every cleanup PR cites this doc. |

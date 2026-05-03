@@ -1,0 +1,21 @@
+# File-size allowlist for the audit-invariants CI check (§6.1 of
+# docs/audits/2026-05-architecture-audit.md).
+#
+# Files listed here may exceed the 1000-LOC ceiling. Each entry needs a
+# written reason. Adding to this list requires PR review.
+#
+# Phase 4 of the audit (decomposition, weeks 5-6) shrinks every file
+# below 800 LOC and removes the entries.
+#
+# Format: <relative path from repo root>  # reason
+# Comments and blank lines are ignored.
+
+apps/engine/src/conversations/loop.ts                  # Phase 4 decomposition target — chat/dispatch.ts split planned (§4.2)
+apps/engine/src/conversations/persistence/auto-persist.ts  # Phase 4 decomposition target — auto-save logic should split into draft-save / snapshot / index-update (§4.1 absorbs into persistence/)
+apps/engine/src/conversations/authoring-state.ts       # Phase 4 decomposition target — extract authoring/validate.ts + authoring/preview.ts (§4.2)
+apps/engine/src/conversations/service.ts               # Phase 4 decomposition target — shrinks to thin router after §4.1 split
+apps/engine/src/conversations/tools/sdk-wrap.ts        # Phase 4 decomposition target — split into tools/{registry,invoke,schemas}.ts (§4.2)
+apps/engine/src/execution/steps/request.ts             # Phase 4 decomposition target — split into request/{dispatch,retry,shape,errors}.ts (§4.2)
+apps/engine/src/execution/engine.ts                    # Phase 4 decomposition target — step lifecycle vs state mutation split (§4.2)
+apps/engine/src/llm/core/context-assembler.ts          # Phase 4 decomposition target — extract skill-picker.ts + accounting/prune.ts (§4.2)
+apps/engine/src/http/routes/conversations.ts           # Phase 4 split target — http/routes/conversations/{chat,drafts,events,attachments}.ts (§4.4)
