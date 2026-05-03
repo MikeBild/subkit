@@ -114,15 +114,31 @@ async function main(): Promise<void> {
   if (health.status !== 0) fail(`sk health failed:\n${health.stdout}\n${health.stderr}`);
   console.log("✓ sk health");
 
+  // The default seed deliberately does not ship a `dummy-http` connector
+  // (commit history: "Operators consistently asked 'why always demo-?
+  // I never used something like that'"). Create one inline so the rest
+  // of this acceptance flow has something to exercise.
   const connectorList = await api<{ items: Connector[] }>(apiKey, "/v1/connectors");
-  const dummy = connectorList.items.find((item) => item.slug === "dummy-http");
-  if (!dummy) fail("default docker seed did not create the dummy-http connector");
-
-  await api(apiKey, `/v1/connectors/${dummy.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ base_url: "https://httpbin.org" }),
-  });
-  console.log("✓ patched dummy-http base_url");
+  let dummy = connectorList.items.find((item) => item.slug === "dummy-http");
+  if (!dummy) {
+    dummy = await api<Connector>(apiKey, "/v1/connectors", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Dummy HTTP",
+        slug: "dummy-http",
+        driver: "http",
+        base_url: "https://httpbin.org",
+        auth_type: "none",
+      }),
+    });
+    console.log("✓ created dummy-http connector");
+  } else {
+    await api(apiKey, `/v1/connectors/${dummy.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ base_url: "https://httpbin.org" }),
+    });
+    console.log("✓ patched dummy-http base_url");
+  }
 
   const probe = runCommand(SK_BIN, ["connectors", "probe", dummy.id], { env: cliEnv });
   if (probe.status !== 0 || !`${probe.stdout}\n${probe.stderr}`.includes("ok: true")) {
