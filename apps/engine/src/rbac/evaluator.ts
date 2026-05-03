@@ -237,8 +237,21 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
     };
   }
 
-  // 2. resource grant.
-  if (check.resource) {
+  // SECURITY: Portal-token principals are scoped strictly to their
+  // `allowed_workflows` allowlist and MUST NOT inherit the underlying
+  // user's role_id, resource grants, or group memberships. Otherwise
+  // an admin operator issuing themselves a narrowly-scoped portal token
+  // would get admin access back via the role lookup — a classic scope
+  // escalation. The `isPortalToken` flag short-circuits every
+  // principal-identity path below (resource_grant, role, group) and the
+  // evaluator falls through to the portal-token allowlist branch, which
+  // is the ONLY allowed route to a positive decision for these
+  // principals.
+  const isPortalToken = check.principal.provider === "portal_token";
+
+  // 2. resource grant (skipped for portal-token principals so a per-
+  //    user grant cannot escalate the token beyond its allowlist).
+  if (!isPortalToken && check.resource) {
     const granted = await hasResourceGrant(db, check, permissionId);
     if (granted) {
       recordMetric("allow", check.permission, "resource_grant");
@@ -246,17 +259,6 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
       return { allow: true, source: "resource_grant" };
     }
   }
-
-  // SECURITY: Portal-token principals are scoped strictly to their
-  // `allowed_workflows` allowlist and MUST NOT inherit the underlying
-  // user's role_id, resource grants, or group memberships. Otherwise
-  // an admin operator issuing themselves a narrowly-scoped portal token
-  // would get admin access back via the role lookup — a classic scope
-  // escalation. The `isPortalToken` flag short-circuits every
-  // principal-identity path below (role, group) and the evaluator falls
-  // through to the portal-token allowlist branch, which is the ONLY
-  // allowed route to a positive decision for these principals.
-  const isPortalToken = check.principal.provider === "portal_token";
 
   // 3. group membership (users only, non-portal-token).
   if (!isPortalToken && check.principal.kind === "user") {
