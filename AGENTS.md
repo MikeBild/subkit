@@ -44,6 +44,7 @@ High-value references (by task type):
 - **Security & governance** — `docs/07-security-governance.md`
 - **Operations** — `docs/08-operations.md`
 - **Agent-task navigation** — `.claude/docs/agent-navigation.md` (task-oriented index)
+- **Active architecture audit** — `docs/audits/2026-05-architecture-audit.md` (cleanup plan, phases 1–6; every cleanup PR cites this doc)
 
 ## Working Rules
 
