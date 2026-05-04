@@ -25,21 +25,24 @@ The engine listens on `http://localhost:3000` by default. Verify:
 curl -s http://localhost:3000/v1/health | jq
 ```
 
-## 3. Bootstrap the first tenant + admin
+## 3. Log in with the seeded admin key (or bootstrap)
 
-On a fresh engine, watch stdout for the highlighted banner — it prints the one-time bootstrap token exactly once. Copy the token, then run:
+`bun run compose:up` defaults to `NODE_ENV=development` and seeds a `default` tenant plus an `admin@local` admin key. Grab the key from the seed-container logs and log in:
+
+```bash
+docker compose logs seed | grep -A1 'NEW API KEY ISSUED — default-bot'
+sk login --engine-url http://localhost:3000 --api-key <wf_live_…>
+```
+
+That key is printed exactly once. If you missed it, `bun run db:issue-admin-key` mints a fresh one without re-running the seed.
+
+**Production-mode first-run instead.** Set `NODE_ENV=production` in `.env` before `bun run compose:up` and the dev seed is skipped — the engine prints a one-time bootstrap-token banner on first boot. Copy the token, then:
 
 ```bash
 sk init --engine-url http://localhost:3000 --token <bootstrap-token>
 ```
 
-`sk init` redeems the token, prompts for admin email, tenant name, LLM provider, and LLM API key, then saves an admin profile + the returned `wf_live_…` key. Already-bootstrapped engine?
-
-```bash
-sk login --engine-url http://localhost:3000 --api-key <key>
-```
-
-`bun run db:issue-admin-key` is still available as an emergency hatch (skips the audit + RBAC seed flow `sk init` runs) — prefer `sk init` for a normal first-run.
+`sk init` redeems the token, prompts for admin email, tenant name, LLM provider, and LLM API key, and saves an admin profile + the returned `wf_live_…` key.
 
 ## 4. Register your first connector
 
