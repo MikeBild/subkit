@@ -3,10 +3,13 @@
 // Responsibilities:
 //   1. Look up the chat_workspaces row by (platform, workspace_id)
 //      to find the tenant.
-//   2. Resolve a chat_identities row → subkit user_id. If none, auto
+//   2. Resolve a chat_identities row → subkit user_id. If none, auto-
 //      bind the platform user to the tenant's seeded admin user and
-//      audit it as kind: "auto_link_stub". This is the P12 stand-in
-//      for the real `/subkit link` flow.
+//      audit it as kind: "auto_link". The chat surface treats every
+//      first message from an unknown platform user as implicit consent
+//      to act under the tenant's primary admin until an explicit
+//      identity-linking flow is added; the audit row is the forensic
+//      record of which platform identity got bound when.
 //   3. Resolve (or create) a chat_sessions row → conversation_id.
 //   4. Route the event to the conversation layer:
 //        - mention / slash "chat <prompt>" → createConversation /
@@ -271,7 +274,7 @@ export async function handleChatEvent(
         resource_id: user_id,
         result: "success",
         metadata: {
-          kind: "auto_link_stub",
+          kind: "auto_link",
           platform: ev.platform,
           platform_user_id: ev.user_id,
         },

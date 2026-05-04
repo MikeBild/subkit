@@ -160,7 +160,7 @@ export function planTurnRouting(args: {
       intent: "surface_help",
       confidence: "high",
       action:
-        "Explain chat-platform usage from the actual chat adapter design. For Google Chat as a conversation interface, ground the answer in chat workspace install plus `/subkit link` identity linking.",
+        "Explain chat-platform usage from the actual chat adapter design. For Google Chat as a conversation interface, ground the answer in chat workspace install; the dispatcher auto-binds first-message platform users to the tenant's seeded admin (audited as `auto_link`).",
       question: null,
       required_grounding: ["docs/03-input-surfaces.md"],
       notes: [
