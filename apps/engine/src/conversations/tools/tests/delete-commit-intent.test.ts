@@ -17,7 +17,9 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SRC = join(import.meta.dir, "..", "sdk-wrap.ts");
+// After the Phase 4 split (audit §4.2), the commit-intent helpers live
+// in `tools/sdk-wrap/policy-helpers.ts`.
+const SRC = join(import.meta.dir, "..", "sdk-wrap", "policy-helpers.ts");
 
 describe("policy-gate commit-intent · delete tools", () => {
   const body = readFileSync(SRC, "utf-8");

@@ -16,7 +16,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SDK_WRAP = join(import.meta.dir, "..", "sdk-wrap.ts");
+// After the Phase 4 split (audit §4.2), the loop-breaker code lives in
+// `tools/sdk-wrap/invoke.ts`; the top-level `sdk-wrap.ts` is now a
+// thin barrel re-exporting `wrapTools` and the public types.
+const SDK_WRAP = join(import.meta.dir, "..", "sdk-wrap", "invoke.ts");
 const LOOP = join(import.meta.dir, "..", "..", "loop.ts");
 
 describe("adaptive loop-breaker · sdk-wrap.ts", () => {
