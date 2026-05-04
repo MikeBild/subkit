@@ -30,9 +30,15 @@ describe("install script template", () => {
   });
 
   test("interpolates the engine version into the asset URL", () => {
-    const script = buildScript("3.0.0", "https://engine.example.com");
-    expect(script).toContain('VERSION="3.0.0"');
-    expect(script).toContain("releases/download/subkit-v");
+    const script = buildScript("3.3.0", "https://engine.example.com");
+    expect(script).toContain('VERSION="3.3.0"');
+    // Release tags are `v<VERSION>` since v3.3.0 (the legacy
+    // `subkit-v<VERSION>` prefix was retired). Hardcoding the old
+    // scheme silently 404'd every operator install — the test pins
+    // the new scheme + a negative check on the old prefix so a
+    // future regression fails loudly.
+    expect(script).toContain("releases/download/v${VERSION}");
+    expect(script).not.toContain("releases/download/subkit-v");
   });
 
   test("interpolates the engine base URL into the next-step message", () => {
@@ -43,6 +49,12 @@ describe("install script template", () => {
     // command — the CLI exposes `sk login` and `sk profile`
     // (set/use/list/...), with no `login` subcommand under `profile`.
     expect(script).toContain("sk init --engine-url");
+    // sk init requires --token <token> (the one-time bootstrap token
+    // printed to engine stdout on first boot). Pin the placeholder so
+    // the install-script next-step instruction stays runnable —
+    // pre-fix it told operators "sk init --engine-url X" without the
+    // required arg, and they hit `sk init: --token <token> is required`.
+    expect(script).toContain("--token <bootstrap-token>");
     expect(script).toContain("sk login --engine-url");
     expect(script).not.toContain("sk profile login");
   });

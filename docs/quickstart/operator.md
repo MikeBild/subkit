@@ -27,10 +27,10 @@ curl -s http://localhost:3000/v1/health | jq
 
 ## 3. Bootstrap the first tenant + admin
 
-On a fresh engine, watch stdout for the one-time bootstrap token, then run:
+On a fresh engine, watch stdout for the highlighted banner — it prints the one-time bootstrap token exactly once. Copy the token, then run:
 
 ```bash
-sk init --engine-url http://localhost:3000
+sk init --engine-url http://localhost:3000 --token <bootstrap-token>
 ```
 
 `sk init` redeems the token, prompts for admin email, tenant name, LLM provider, and LLM API key, then saves an admin profile + the returned `wf_live_…` key. Already-bootstrapped engine?

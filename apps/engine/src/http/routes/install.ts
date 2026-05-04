@@ -13,7 +13,11 @@
 //   - We point at the public GitHub Release for download. Bundling the
 //     binaries inside the engine docker image is tracked separately
 //     (see plan §P0.7.e); for now the script fetches from
-//     github.com/MikeBild/subkit/releases/download/subkit-v<VERSION>/.
+//     github.com/MikeBild/subkit/releases/download/v<VERSION>/. The
+//     `subkit-v…` tag prefix used through v3.2.0 was dropped at v3.3.0
+//     in favour of plain `v<VERSION>`. Operators on older engines see a
+//     correct URL because the engine's resolved version still matches
+//     the release tag for their version.
 //   - SHA-verification piggybacks on the SHA256SUMS file already
 //     attached to every release.
 //
@@ -76,7 +80,7 @@ case "$uname_m" in
 esac
 
 ASSET="sk_\${os}_\${arch}"
-RELEASE_BASE="https://github.com/\${REPO}/releases/download/subkit-v\${VERSION}"
+RELEASE_BASE="https://github.com/\${REPO}/releases/download/v\${VERSION}"
 ASSET_URL="\${RELEASE_BASE}/\${ASSET}"
 SUMS_URL="\${RELEASE_BASE}/SHA256SUMS"
 
@@ -121,8 +125,10 @@ cat <<MSG
 
 Next:
   export PATH="\${INSTALL_DIR}:$PATH"
-  # First boot: redeem the bootstrap token from engine stdout.
-  sk init --engine-url \${ENGINE_URL}
+  # First boot: redeem the one-time bootstrap token from engine stdout.
+  # The engine prints it once on first start; copy the value next to
+  # 'sk init --token …' in the banner.
+  sk init --engine-url \${ENGINE_URL} --token <bootstrap-token>
   # Already-bootstrapped engine: log in with an existing API key.
   sk login --engine-url \${ENGINE_URL} --api-key <your-api-key>
   sk doctor
