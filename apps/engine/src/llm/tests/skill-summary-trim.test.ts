@@ -20,13 +20,20 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+// After the Phase 4 split (audit §4.2), the assembler is split across
+// `core/context-assembler.ts` (orchestrator) and
+// `core/context-assembler/{formatters,loaders,skill-picker}.ts`. The
+// `formatSkillIndex` helper lives in `formatters.ts`; the routing
+// call sites stay in `context-assembler.ts`.
 const SRC = join(import.meta.dir, "..", "core", "context-assembler.ts");
+const FORMATTERS = join(import.meta.dir, "..", "core", "context-assembler", "formatters.ts");
 
 describe("context-assembler · skill index rendering", () => {
   const body = readFileSync(SRC, "utf-8");
+  const formatters = readFileSync(FORMATTERS, "utf-8");
 
   test("formatSkillIndex helper exists", () => {
-    expect(body).toContain("function formatSkillIndex");
+    expect(formatters).toContain("function formatSkillIndex");
   });
 
   test("globalSkills / connectorSkills / workflowSkills route through formatSkillIndex", () => {
