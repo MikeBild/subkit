@@ -14,7 +14,7 @@ apps/engine/src/conversations/loop.ts                  # Phase 4 decomposition t
 apps/engine/src/conversations/persistence/auto-persist.ts  # Phase 4 decomposition target — auto-save logic should split into draft-save / snapshot / index-update (§4.1 absorbs into persistence/)
 apps/engine/src/conversations/authoring-state.ts       # Phase 4 decomposition target — extract authoring/validate.ts + authoring/preview.ts (§4.2)
 apps/engine/src/conversations/service.ts               # Phase 4 decomposition target — shrinks to thin router after §4.1 split
-apps/engine/src/conversations/tools/sdk-wrap.ts        # Phase 4 decomposition target — split into tools/{registry,invoke,schemas}.ts (§4.2)
+apps/engine/src/conversations/tools/sdk-wrap/invoke.ts # Phase 4 follow-up — wrapOne body still 1.3K LOC; next: extract policy-gate / dedupe / langfuse / response-handling sections into invoke/{policy-gate,dedupe,response,attachments}.ts (§4.2)
 apps/engine/src/execution/steps/request/dispatch.ts    # Phase 4 follow-up — runRequestStep body still 1.6K LOC; next: extract per-driver branches (graphql/s3/postgres) into request/drivers/*.ts and the pagination loop into request/pagination.ts (§4.2)
 apps/engine/src/execution/engine.ts                    # Phase 4 decomposition target — step lifecycle vs state mutation split (§4.2)
 apps/engine/src/llm/core/context-assembler.ts          # Phase 4 decomposition target — extract skill-picker.ts + accounting/prune.ts (§4.2)
