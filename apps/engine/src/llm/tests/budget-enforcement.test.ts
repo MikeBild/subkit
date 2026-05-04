@@ -11,7 +11,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
-import { checkAndDecrement, currentMonthBucket } from "../budgets.ts";
+import { checkAndDecrement, currentMonthBucket } from "../accounting/index.ts";
 import { LlmQuotaExhausted } from "../errors.ts";
 import { runGenerateFlow } from "../flows/generate.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";

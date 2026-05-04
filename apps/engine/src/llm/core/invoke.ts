@@ -3,14 +3,14 @@
 // Responsibilities (in order):
 //   1) Resolve per-tenant model route (primary/fallback, provider, budget,
 //      cache-toggle) from `tenant_llm_settings` + env fallback.
-//   2) Budget pre-check and decrement via `llm/budgets.ts`.
+//   2) Budget pre-check and decrement via `llm/accounting/budget.ts`.
 //   3) Assemble context via `core/context-assembler.ts` → stable/volatile
 //      cache blocks + a budget report.
 //   4) Dispatch:
 //        provider === "mock" → in-process mock provider (tests)
 //        otherwise            → AiSdkModel (gateway-first, via `ai`)
 //   5) Post-hoc reconcile SDK-reported usage into `llm_usage` via
-//      `core/token-accountant.ts`.
+//      `llm/accounting/accountant.ts`.
 //   6) Return a uniform `{result, prompt, blocks, budget_report,
 //      model_used, fell_back}` envelope.
 //
@@ -32,11 +32,16 @@ import {
   recordLlmQuotaExhausted,
   recordLlmTokens,
 } from "../../observability/instrumentation.ts";
-import { checkAndDecrement, checkBudget, recordUsage } from "../budgets.ts";
+import {
+  account,
+  checkAndDecrement,
+  checkBudget,
+  contextCapFor,
+  recordUsage,
+} from "../accounting/index.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../errors.ts";
 import { getMockProvider, type MockResult } from "../mock-provider.ts";
 import { classifyProviderError, isFallbackEligible } from "../provider-errors.ts";
-import { contextCapFor } from "../tokens.ts";
 import type { LlmFlow, LlmProviderKind, ModelRoute, UserTurn } from "../types.ts";
 import { AiSdkModel } from "./ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "./base-types.ts";
@@ -44,7 +49,6 @@ import { toSystemMessages } from "./cache-blocks.ts";
 import { type AssembledContext, assembleContext } from "./context-assembler.ts";
 import { detectConfiguredProvider, initializeModel } from "./model-init.ts";
 import { safeParseJson } from "./safe-json.ts";
-import { account } from "./token-accountant.ts";
 
 /**
  * Resolve the Vercel AI SDK model handle for the given model id. Real-LLM

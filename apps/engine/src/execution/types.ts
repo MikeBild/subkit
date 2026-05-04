@@ -5,8 +5,8 @@
 
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
+import type { RunLlmBudget } from "../llm/accounting/index.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
-import type { RunLlmBudget } from "./llm-budget.ts";
 
 /** Discriminates how the execution definition was sourced.
  *  Persisted verbatim into `executions.source_kind`. */

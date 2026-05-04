@@ -17,10 +17,10 @@ import {
   conversationMessages,
   conversationToolCalls,
 } from "../db/schema/index.ts";
+import { countModelMessagesTokens } from "../llm/accounting/index.ts";
 import type { ModelCapabilities } from "../llm/core/capabilities.ts";
 import { getStaticCapabilities } from "../llm/core/capabilities.ts";
 import type { ProviderKind } from "../llm/core/model-init.ts";
-import { countModelMessagesTokens } from "../llm/tokens.ts";
 import { rememberRaw, truncateForLlm } from "./tools/truncate.ts";
 
 function approxValueSize(value: unknown): number {

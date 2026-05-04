@@ -19,6 +19,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
+import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { logger } from "../logging/logger.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
@@ -35,7 +36,6 @@ import {
 } from "../workflows/types.ts";
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
 import { evaluate as evaluateJsonata } from "./jsonata-engine.ts";
-import { RunLlmBudget } from "./llm-budget.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import { applyResponseFilters } from "./response-filter.ts";
