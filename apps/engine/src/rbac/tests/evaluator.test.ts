@@ -32,6 +32,12 @@ describe("rbac evaluator", () => {
   const workflowA = "11111111-1111-1111-1111-111111111111";
   const workflowB = "22222222-2222-2222-2222-222222222222";
 
+  // Bun test default beforeAll timeout (5s) is not enough when ~15
+  // other suites are simultaneously creating per-suite databases on
+  // CI. Heavy seed work below (CREATE DATABASE + migrations + RBAC
+  // catalog + 4 user inserts + grant + group + group role + group
+  // member) compounds the load. Give it a generous budget to keep CI
+  // deterministic.
   beforeAll(async () => {
     testDb = await createTestDb("rbac-evaluator");
     db = testDb.db;
@@ -91,10 +97,14 @@ describe("rbac evaluator", () => {
     if (!group) throw new Error("seed group");
     await db.insert(groupRoleAssignments).values({ group_id: group.id, role_id: adminRoleId });
     await db.insert(groupMembers).values({ group_id: group.id, user_id: groupUserId });
-  });
+  }, 60_000);
 
   afterAll(async () => {
-    await testDb.cleanup();
+    // Defensive: when beforeAll throws or times out, `testDb` is never
+    // assigned. Without this guard, the unrelated `TypeError: undefined
+    // is not an object (evaluating 'testDb.cleanup')` masks the real
+    // beforeAll failure in the CI log.
+    if (testDb) await testDb.cleanup();
   });
 
   function mkPrincipal(id: string, roleName: string): ResolvedPrincipal {
