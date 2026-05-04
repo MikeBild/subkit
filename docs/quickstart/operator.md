@@ -25,17 +25,21 @@ The engine listens on `http://localhost:3000` by default. Verify:
 curl -s http://localhost:3000/v1/health | jq
 ```
 
-## 3. Mint an admin API key
+## 3. Bootstrap the first tenant + admin
+
+On a fresh engine, watch stdout for the one-time bootstrap token, then run:
 
 ```bash
-bun run db:issue-admin-key
+sk init --engine-url http://localhost:3000
 ```
 
-Copy the `wf_live_…` key that prints. Point the CLI at the engine:
+`sk init` redeems the token, prompts for admin email, tenant name, LLM provider, and LLM API key, then saves an admin profile + the returned `wf_live_…` key. Already-bootstrapped engine?
 
 ```bash
 sk login --engine-url http://localhost:3000 --api-key <key>
 ```
+
+`bun run db:issue-admin-key` is still available as an emergency hatch (skips the audit + RBAC seed flow `sk init` runs) — prefer `sk init` for a normal first-run.
 
 ## 4. Register your first connector
 
