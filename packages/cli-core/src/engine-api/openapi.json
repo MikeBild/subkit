@@ -1960,6 +1960,101 @@
           "nullable": true
         }
       },
+      "ExecutionRunTransformResponse": {
+        "type": "object",
+        "properties": {
+          "output": {
+            "nullable": true
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "duration_ms"
+        ]
+      },
+      "ExecutionRunTransformBody": {
+        "type": "object",
+        "properties": {
+          "output_transform": {
+            "type": "string",
+            "minLength": 1
+          },
+          "output_transform_function": {
+            "type": "string",
+            "minLength": 1
+          },
+          "response_filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResponseFilter"
+            }
+          },
+          "payload": {
+            "nullable": true
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "maximum": 60000
+          }
+        }
+      },
+      "ResponseFilter": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "KEYS",
+              "VALUES",
+              "BOTH"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "REMOVE",
+              "MASK",
+              "FAIL"
+            ]
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "mask": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "FIELD",
+              "ITEM",
+              "ENTRY"
+            ]
+          }
+        },
+        "required": [
+          "target",
+          "action",
+          "pattern"
+        ]
+      },
       "ExecutionListResponse": {
         "type": "object",
         "properties": {
@@ -2125,101 +2220,6 @@
           "result_preview",
           "started_at",
           "finished_at"
-        ]
-      },
-      "ExecutionRunTransformResponse": {
-        "type": "object",
-        "properties": {
-          "output": {
-            "nullable": true
-          },
-          "duration_ms": {
-            "type": "integer",
-            "minimum": 0
-          }
-        },
-        "required": [
-          "duration_ms"
-        ]
-      },
-      "ExecutionRunTransformBody": {
-        "type": "object",
-        "properties": {
-          "output_transform": {
-            "type": "string",
-            "minLength": 1
-          },
-          "output_transform_function": {
-            "type": "string",
-            "minLength": 1
-          },
-          "response_filters": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ResponseFilter"
-            }
-          },
-          "payload": {
-            "nullable": true
-          },
-          "input_schema": {
-            "type": "object",
-            "additionalProperties": {
-              "nullable": true
-            }
-          },
-          "output_schema": {
-            "type": "object",
-            "additionalProperties": {
-              "nullable": true
-            }
-          },
-          "timeout_ms": {
-            "type": "integer",
-            "minimum": 0,
-            "exclusiveMinimum": true,
-            "maximum": 60000
-          }
-        }
-      },
-      "ResponseFilter": {
-        "type": "object",
-        "properties": {
-          "target": {
-            "type": "string",
-            "enum": [
-              "KEYS",
-              "VALUES",
-              "BOTH"
-            ]
-          },
-          "action": {
-            "type": "string",
-            "enum": [
-              "REMOVE",
-              "MASK",
-              "FAIL"
-            ]
-          },
-          "pattern": {
-            "type": "string"
-          },
-          "mask": {
-            "type": "string"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "FIELD",
-              "ITEM",
-              "ENTRY"
-            ]
-          }
-        },
-        "required": [
-          "target",
-          "action",
-          "pattern"
         ]
       },
       "ConnectorSpecImportResponse": {
@@ -10942,6 +10942,61 @@
         }
       }
     },
+    "/v1/executions/transform": {
+      "post": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "Execute a transform / filter pipeline against a payload (no run row)",
+        "description": "Stateless transform pipeline: apply `output_transform` (JSONata) or `output_transform_function` (JS) to `payload`, then run `response_filters`. Mirrors the reference impl's `POST /tools/transform/run`. Does not create an execution row — useful for CI smoke tests, transform debugging, and external probes.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecutionRunTransformBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transform completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionRunTransformResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Transform / filter raised",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/executions/{id}": {
       "get": {
         "tags": [
@@ -11062,61 +11117,6 @@
           },
           "404": {
             "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/executions/transform": {
-      "post": {
-        "tags": [
-          "executions"
-        ],
-        "summary": "Execute a transform / filter pipeline against a payload (no run row)",
-        "description": "Stateless transform pipeline: apply `output_transform` (JSONata) or `output_transform_function` (JS) to `payload`, then run `response_filters`. Mirrors the reference impl's `POST /tools/transform/run`. Does not create an execution row — useful for CI smoke tests, transform debugging, and external probes.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExecutionRunTransformBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Transform completed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExecutionRunTransformResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Transform / filter raised",
             "content": {
               "application/json": {
                 "schema": {

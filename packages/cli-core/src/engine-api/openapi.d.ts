@@ -1807,6 +1807,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/executions/transform": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute a transform / filter pipeline against a payload (no run row)
+         * @description Stateless transform pipeline: apply `output_transform` (JSONata) or `output_transform_function` (JS) to `payload`, then run `response_filters`. Mirrors the reference impl's `POST /tools/transform/run`. Does not create an execution row — useful for CI smoke tests, transform debugging, and external probes.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ExecutionRunTransformBody"];
+                };
+            };
+            responses: {
+                /** @description Transform completed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExecutionRunTransformResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Transform / filter raised */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/executions/{id}": {
         parameters: {
             query?: never;
@@ -1931,67 +1992,6 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/executions/transform": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Execute a transform / filter pipeline against a payload (no run row)
-         * @description Stateless transform pipeline: apply `output_transform` (JSONata) or `output_transform_function` (JS) to `payload`, then run `response_filters`. Mirrors the reference impl's `POST /tools/transform/run`. Does not create an execution row — useful for CI smoke tests, transform debugging, and external probes.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["ExecutionRunTransformBody"];
-                };
-            };
-            responses: {
-                /** @description Transform completed */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ExecutionRunTransformResponse"];
-                    };
-                };
-                /** @description Bad request */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Transform / filter raised */
-                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -7500,6 +7500,33 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        ExecutionRunTransformResponse: {
+            output?: unknown;
+            duration_ms: number;
+        };
+        ExecutionRunTransformBody: {
+            output_transform?: string;
+            output_transform_function?: string;
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            payload?: unknown;
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            output_schema?: {
+                [key: string]: unknown;
+            };
+            timeout_ms?: number;
+        };
+        ResponseFilter: {
+            /** @enum {string} */
+            target: "KEYS" | "VALUES" | "BOTH";
+            /** @enum {string} */
+            action: "REMOVE" | "MASK" | "FAIL";
+            pattern: string;
+            mask?: string;
+            /** @enum {string} */
+            scope?: "FIELD" | "ITEM" | "ENTRY";
+        };
         ExecutionListResponse: {
             items: components["schemas"]["Execution"][];
             next_cursor?: string | null;
@@ -7539,33 +7566,6 @@ export interface components {
             request_meta?: unknown;
             started_at: string | null;
             finished_at: string | null;
-        };
-        ExecutionRunTransformResponse: {
-            output?: unknown;
-            duration_ms: number;
-        };
-        ExecutionRunTransformBody: {
-            output_transform?: string;
-            output_transform_function?: string;
-            response_filters?: components["schemas"]["ResponseFilter"][];
-            payload?: unknown;
-            input_schema?: {
-                [key: string]: unknown;
-            };
-            output_schema?: {
-                [key: string]: unknown;
-            };
-            timeout_ms?: number;
-        };
-        ResponseFilter: {
-            /** @enum {string} */
-            target: "KEYS" | "VALUES" | "BOTH";
-            /** @enum {string} */
-            action: "REMOVE" | "MASK" | "FAIL";
-            pattern: string;
-            mask?: string;
-            /** @enum {string} */
-            scope?: "FIELD" | "ITEM" | "ENTRY";
         };
         ConnectorSpecImportResponse: {
             draft: components["schemas"]["ConnectorSpecImportDraft"];
