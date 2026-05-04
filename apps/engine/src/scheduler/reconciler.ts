@@ -7,7 +7,7 @@
 // locally via setInterval because pg-boss' cron is minute-resolution.
 
 import { CronExpressionParser } from "cron-parser";
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -551,15 +551,21 @@ export class SchedulerReconciler {
           request_source: "scheduler",
         };
         // Stamp `last_enqueued_at = now` BEFORE the enqueue so a crash
-        // mid-fire cannot replay the schedule on next boot. The
-        // RETURNING-empty case (parallel reconciler beat us) is not
-        // possible today since the WHERE has no version guard, but the
-        // pattern keeps the door open for one if a second engine
-        // instance is ever introduced.
+        // mid-fire cannot replay the schedule on next boot.
+        //
+        // Compare-and-set on `last_enqueued_at`: only update if the
+        // value is still the one we just read (or was NULL). If two
+        // reconcilers run concurrently, exactly one wins this UPDATE
+        // and the other's RETURNING comes back empty — the loser
+        // skips fireWorkflowSchedule and the schedule fires once.
+        const priorWhere =
+          last === null
+            ? isNull(workflowsSchedules.last_enqueued_at)
+            : eq(workflowsSchedules.last_enqueued_at, last);
         const stamped = await this.opts.db
           .update(workflowsSchedules)
           .set({ last_enqueued_at: now })
-          .where(eq(workflowsSchedules.id, schedule.id))
+          .where(and(eq(workflowsSchedules.id, schedule.id), priorWhere))
           .returning({ id: workflowsSchedules.id });
         if (stamped.length === 0) continue;
         await this.fireWorkflowSchedule(scheduleKeyForRow(schedule), payload, {
