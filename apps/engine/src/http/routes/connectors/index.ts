@@ -1,0 +1,85 @@
+// Connectors HTTP surface — entry point.
+//
+// Phase 4 §4.4 of the 2026-05 architecture audit (#92). The former
+// http/routes/connectors.ts (734 LOC) split into per-sub-resource
+// modules; this barrel registers shared per-path RBAC middleware and
+// delegates handler registration to each module. Public API
+// unchanged: server.ts still calls `registerConnectorRoutes(app)`.
+//
+//   GET    /v1/connectors                          — list (optional ?environment=)
+//   POST   /v1/connectors                          — create
+//   GET    /v1/connectors/:id                      — fetch
+//   PATCH  /v1/connectors/:id                      — update
+//   DELETE /v1/connectors/:id                      — soft delete
+//   POST   /v1/connectors/:id/test                 — driver health probe
+//   POST   /v1/connectors/:id/call                 — ad-hoc HTTP/GraphQL call
+//   POST   /v1/connectors/:id/oauth/start          — returns authorization_url + state
+//   GET    /v1/connectors/:id/oauth/callback       — completes code exchange
+//   POST   /v1/connectors/:id/credentials          — attach non-oauth credential
+//   POST   /v1/connectors/:id/end-user-credentials — end-user-scoped credential
+
+import type { OpenAPIHono } from "@hono/zod-openapi";
+import { requirePermission } from "../../middleware/require-permission.ts";
+import type { AppEnv } from "../../openapi.ts";
+import { registerCallRoutes } from "./call.ts";
+import { registerCollectionRoutes } from "./collection.ts";
+import { registerCredentialsRoutes } from "./credentials.ts";
+import { registerOAuthRoutes } from "./oauth.ts";
+import { registerTestRoutes } from "./test.ts";
+
+export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
+  // Pass-2 C5: RBAC gating for every connector + credential surface.
+  // Collection routes get a method-switched middleware; resource routes
+  // pass a resource descriptor so the evaluator can consult grants.
+  app.use("/v1/connectors", async (c, next) => {
+    if (c.req.method === "GET") return requirePermission("connector:read")(c, next);
+    if (c.req.method === "POST") return requirePermission("connector:write")(c, next);
+    return next();
+  });
+  app.use("/v1/connectors/:id", async (c, next) => {
+    const id = c.req.param("id");
+    if (c.req.method === "GET") {
+      return requirePermission("connector:read", () => ({ type: "connector", id }))(c, next);
+    }
+    if (c.req.method === "PATCH") {
+      return requirePermission("connector:write", () => ({ type: "connector", id }))(c, next);
+    }
+    if (c.req.method === "DELETE") {
+      return requirePermission("connector:delete", () => ({ type: "connector", id }))(c, next);
+    }
+    return next();
+  });
+  app.use("/v1/connectors/:id/test", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("connector:test", () => ({ type: "connector", id }))(c, next);
+  });
+  app.use("/v1/connectors/:id/call", async (c, next) => {
+    // Parity with the call_connector conversation tool: `connector:read`
+    // is the closest gate (no `connector:invoke` permission exists in
+    // the catalog). The probe + call paths share the same grant.
+    const id = c.req.param("id");
+    return requirePermission("connector:read", () => ({ type: "connector", id }))(c, next);
+  });
+  app.use("/v1/connectors/:id/oauth/start", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("connector:oauth", () => ({ type: "connector", id }))(c, next);
+  });
+  app.use("/v1/connectors/:id/oauth/callback", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("connector:oauth", () => ({ type: "connector", id }))(c, next);
+  });
+  app.use("/v1/connectors/:id/credentials", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("credential:write", () => ({ type: "connector", id }))(c, next);
+  });
+  app.use("/v1/connectors/:id/end-user-credentials", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("credential:write", () => ({ type: "connector", id }))(c, next);
+  });
+
+  registerCollectionRoutes(app);
+  registerTestRoutes(app);
+  registerCallRoutes(app);
+  registerOAuthRoutes(app);
+  registerCredentialsRoutes(app);
+}
