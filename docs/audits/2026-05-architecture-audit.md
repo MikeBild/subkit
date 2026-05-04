@@ -636,3 +636,70 @@ The loop's own LLM calls go through `llm/core/invoke.ts` with a budget enforced 
 ## 11. One-line summary
 
 > Subkit is structurally healthy. Stabilise the architecture with guard tests; close the matrix gaps in RBAC / audit / drivers / route boundaries; consolidate token accounting into `llm/accounting/`; then refactor `conversations/` and the five 1K+ LOC files with the safety net in place; reassess v1.1 recipe-sweep against the audit-first criterion; and only after all of that, run the narrow runtime-settings migration. Six bounded phases, ~9 engineer-weeks, no foundational rework.
+
+---
+
+## 12. Outcome (recorded 2026-05-05)
+
+What this section records is the actual outcome of the plan against the gates above, so the document does not stand as a perpetual to-do.
+
+### Phase 1 — complete
+
+- Audit doc moved into the repo at this path; AGENTS.md links it.
+- `.github/workflows/audit-invariants.yml` live with all §6.1 invariants gating PR merge.
+- Tests journey-tagged + isolated from the inner-loop target.
+- §5.2 issues opened with the `audit-2026-05` label.
+
+### Phase 2 — complete
+
+- RBAC role × permission × resource × tenant matrix tests landed.
+- Audit immutability / redaction / tenant-filter / source-attribution / transactional rollback contract tests landed.
+- Identity matrix gaps closed; auth provider negative paths landed.
+- Route-level boundary contract test (Zod / RBAC / tenant / audit) landed for every state-changing HTTP + MCP endpoint.
+- Driver coverage for ftp/sftp/mssql/redis/smb landed; #65 closed.
+- `apps/engine/.coverage-floor.json` populated and enforced.
+
+### Phase 3 — complete
+
+- `llm/accounting/{count,budget,enforce,index}.ts` exists; `knowledge/budgets.ts` and `docs-ingestion/budgets.ts` deleted; all callers route through the new surface.
+
+### Phase 4 — partial; outcome accepted as steady state
+
+What landed:
+
+- `execution/steps/request.ts` (1804 LOC) → 21-LOC barrel + `request/{errors,retry,shape,dispatch}.ts`.
+- `conversations/tools/sdk-wrap.ts` (1803 LOC) → 61-LOC barrel + `sdk-wrap/{state,policy-helpers,invoke}.ts`.
+- `conversations/authoring-state.ts` (1552 → 679 LOC) — `authoring-state/{normalize,summary}.ts` extracted.
+- `llm/core/context-assembler.ts` (1296 → 655 LOC) — `context-assembler/{formatters,loaders,skill-picker}.ts` extracted.
+- All four §4.4 route god-files (`conversations.ts`, `connector-templates.ts`, `executions.ts`, `notifications.ts`) split into per-sub-resource directories; `route_size` ≤600 LOC enforced.
+- `execution/engine.ts`, `conversations/persist.ts` + `auto-persist`, `conversations/service.ts` decomposed alongside.
+- `§4.5` caches: metrics OTLP-pushed, tunnels LRU-bounded, settings PG `LISTEN/NOTIFY`-invalidated, pubsub broker contract documented.
+
+What did **not** land, and why:
+
+- `conversations/loop.ts` (1817 LOC), `conversations/tools/sdk-wrap/invoke.ts` (1348 LOC), `execution/steps/request/dispatch.ts` (1693 LOC) remain over the 800-LOC ceiling. Trial splits produced barrel-around-one-fat-callee artefacts — the public exports stayed byte-equal (passing the §10.4 AST-export gate), but the new sub-files all closed over the same call-site state (request_id, abort signal, audit hooks, retry / pagination / shape-coercion scaffolding) and ended up taking 12-15 args each. The split was performative, not structural.
+- The `conversations/` root reshuffle into `chat/` + `authoring/` + `policy/` (§4.1) was not executed for the same reason: the partial `persistence/`, `service/`, `tools/`, `authoring-state/` extractions already paid most of the cognitive-load benefit, and the cross-cutting reshuffle would re-create the barrels-around-coupled-state pattern.
+
+These three files are now `apps/engine/.size-allowlist.txt`'s **steady-state entries** with rationales pinning the decision. Issues #90 and #91 are closed against this outcome — the documented steady state, not a deferred to-do.
+
+### Phase 5 — not run
+
+The `release/v1.1` recipe-sweep work (#48, #49, #51, #56, #82) and the v4-deferred items (#50, #52, #45) remain as backlog issues. None of them are partially landed; nothing in the codebase claims they exist.
+
+### Phase 6 — not run
+
+The runtime-settings migration (#58/#59) and binary bundling (#64) remain as backlog issues. No partial migration exists in the codebase; the 55 env vars are still env-var-driven exactly as documented in `apps/engine/src/env.ts`.
+
+### Operator-onboarding sweep (out-of-band)
+
+Three drift fixes shipped alongside Phase 4 closure:
+
+- **#125** — engine `/install` script tag prefix (`subkit-v` → `v`) + `sk init --token <bootstrap-token>` placeholder + `sk doctor` profile-not-configured hint.
+- **#126** — `scripts/release/version.sh:tag_name` aligned to the `v<VERSION>` scheme so laptop-deploy releases land at URLs the install script can reach.
+- **#127** — operator quickstart step 3 rewritten to describe what `bun run compose:up` actually does (seeded `default` tenant + `sk login`) instead of the bootstrap-banner narrative that never fires under the default `NODE_ENV=development` invocation.
+
+### What this audit closes
+
+- The architectural guardrails from §6.1 are permanent CI gates; Phase 1-3 and the deliverable subset of Phase 4 are merged on `main`.
+- The audit's `audit-2026-05` label and #66 status board are closed against this outcome.
+- Phases 5/6 stay as the live backlog under their existing labels (`release/v1.1`, `release/v4`), driven by product priority rather than by this plan.
