@@ -38,7 +38,7 @@ import { registerConnectorRoutes } from "./routes/connectors/index.ts";
 import { registerConversationAttachmentRoutes } from "./routes/conversation-attachments.ts";
 import { registerConversationRoutes } from "./routes/conversations/index.ts";
 import { registerCredentialRoutes } from "./routes/credentials.ts";
-import { registerDiagnosticsRoutes } from "./routes/diagnostics.ts";
+import { registerDiagnosticsRoutes } from "./routes/diagnostics/index.ts";
 import { registerDiscoveryRoutes } from "./routes/discovery.ts";
 import { registerEventRoutes } from "./routes/events.ts";
 import { registerExecutionRoutes } from "./routes/executions/index.ts";
