@@ -121,7 +121,10 @@ cat <<MSG
 
 Next:
   export PATH="\${INSTALL_DIR}:$PATH"
-  sk profile login --engine-url \${ENGINE_URL} --api-key <your-api-key>
+  # First boot: redeem the bootstrap token from engine stdout.
+  sk init --engine-url \${ENGINE_URL}
+  # Already-bootstrapped engine: log in with an existing API key.
+  sk login --engine-url \${ENGINE_URL} --api-key <your-api-key>
   sk doctor
 MSG
 `;

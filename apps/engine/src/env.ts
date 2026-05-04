@@ -15,7 +15,10 @@ const EnvSchema = z.object({
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
   LOG_FORMAT: z.enum(["dev", "pretty", "prod", "ndjson", "json"]).optional(),
 
-  PORT: z.coerce.number().int().positive().default(4000),
+  // 3000 matches `.env.example` and the operator quickstart docs. An
+  // operator who runs `bun start` without an env file lands on the same
+  // port the docs and curl examples assume.
+  PORT: z.coerce.number().int().positive().default(3000),
   TUNNEL_PORT: z.coerce.number().int().positive().optional(),
   PUBLIC_BASE_URL: z.string().url().optional(),
 
