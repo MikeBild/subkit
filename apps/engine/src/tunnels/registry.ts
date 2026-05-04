@@ -4,9 +4,17 @@
 // a counter of in-flight requests, and a map of request_id -> resolver so
 // `forwardRequest()` can correlate incoming `response` frames back to the
 // caller. On disconnect, pending resolvers are rejected so nothing hangs.
+//
+// Per audit doc §4.5: the registry is bounded. When the per-process cap
+// is reached, the oldest entry by `last_seen_ms` is evicted and a
+// `tunnel_registry_evictions_total` counter is bumped so operators can
+// see capacity pressure in Grafana. The cap defaults to 1024 and can
+// be raised via `SUBKIT_TUNNEL_REGISTRY_MAX` for deployments with many
+// tenants × targets.
 
 import { logger } from "../logging/logger.ts";
 import { setTunnelConnected } from "../observability/instrumentation.ts";
+import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { encodeFrame, type TunnelResponseFrame } from "./framing.ts";
 import {
   TunnelCapacityError,
@@ -17,6 +25,16 @@ import {
   type TunnelSocket,
   TunnelTimeoutError,
 } from "./types.ts";
+
+const DEFAULT_REGISTRY_MAX = 1024;
+
+function resolveRegistryMax(): number {
+  const raw = process.env.SUBKIT_TUNNEL_REGISTRY_MAX;
+  if (!raw) return DEFAULT_REGISTRY_MAX;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_REGISTRY_MAX;
+  return Math.floor(parsed);
+}
 
 export interface TunnelEntry {
   tunnel_id: string;
@@ -41,27 +59,77 @@ function key(tenant_id: string, target: string): string {
 
 export class TunnelRegistry {
   private readonly entries = new Map<string, TunnelEntry>();
+  private readonly maxEntries: number;
 
-  /** Register a live target slot. Overwrites any previous entry for the same key. */
+  constructor(opts: { maxEntries?: number } = {}) {
+    this.maxEntries = opts.maxEntries ?? resolveRegistryMax();
+  }
+
+  /** Register a live target slot. Overwrites any previous entry for
+   *  the same key. When the registry is at capacity, evicts the oldest
+   *  entry by `last_seen_ms` (LRU) and bumps the
+   *  `tunnel_registry_evictions_total` counter so operators can see
+   *  the pressure in Prometheus. */
   attach(entry: Omit<TunnelEntry, "in_flight" | "last_seen_ms">): TunnelEntry {
-    const existing = this.entries.get(key(entry.tenant_id, entry.target));
+    const k = key(entry.tenant_id, entry.target);
+    const existing = this.entries.get(k);
     if (existing) {
       // Reject outstanding requests on the previous socket so they fail fast
       // rather than stall against a dead connection.
       this.rejectAll(existing, new TunnelDisconnectedError("replaced by new connection"));
+    } else if (this.entries.size >= this.maxEntries) {
+      this.evictOldest();
     }
     const full: TunnelEntry = {
       ...entry,
       in_flight: new Map(),
       last_seen_ms: Date.now(),
     };
-    this.entries.set(key(entry.tenant_id, entry.target), full);
+    this.entries.set(k, full);
     setTunnelConnected({
       tenant_id: entry.tenant_id,
       target: entry.target,
       connected: true,
     });
     return full;
+  }
+
+  /** Drop the oldest entry by `last_seen_ms`. Pending resolvers are
+   *  rejected with a disconnect error so callers fail fast rather than
+   *  hang waiting for a now-detached socket. */
+  private evictOldest(): void {
+    let oldestKey: string | null = null;
+    let oldestSeen = Number.POSITIVE_INFINITY;
+    for (const [k, entry] of this.entries) {
+      if (entry.last_seen_ms < oldestSeen) {
+        oldestSeen = entry.last_seen_ms;
+        oldestKey = k;
+      }
+    }
+    if (!oldestKey) return;
+    const evicted = this.entries.get(oldestKey);
+    if (!evicted) return;
+    this.rejectAll(evicted, new TunnelDisconnectedError("evicted by registry capacity"));
+    this.entries.delete(oldestKey);
+    setTunnelConnected({
+      tenant_id: evicted.tenant_id,
+      target: evicted.target,
+      connected: false,
+    });
+    try {
+      getMetrics().inc(METRIC_NAMES.TUNNEL_REGISTRY_EVICTIONS_TOTAL, { reason: "lru" });
+    } catch {
+      // metrics best-effort; never let a registration ordering issue
+      // mask the actual eviction.
+    }
+    logger.warn({
+      module: "tunnels",
+      action: "registry.evicted",
+      msg: "tunnel registry hit capacity; oldest entry evicted",
+      tenant_id: evicted.tenant_id,
+      target: evicted.target,
+      last_seen_ms: evicted.last_seen_ms,
+    });
   }
 
   /** Remove an entry. Rejects any pending resolvers with disconnect. */
