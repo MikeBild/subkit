@@ -2182,6 +2182,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connector-templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a tenant connector template override */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connector-templates/{slug}/recipes": {
         parameters: {
             query?: never;
@@ -2370,60 +2424,6 @@ export interface paths {
             };
         };
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/connector-templates/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete a tenant connector template override */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Deleted */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
         options?: never;
         head?: never;
         patch?: never;
@@ -7826,25 +7826,6 @@ export interface components {
             placeholder: string;
             template: string;
         };
-        ConnectorTemplateRecipeListResponse: {
-            template_slug: string;
-            template_name: string;
-            recipes: components["schemas"]["ConnectorTemplateRecipe"][];
-        };
-        RecipePackResponse: {
-            /** @enum {string} */
-            vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr";
-            outcome: string;
-            recipes: components["schemas"]["RecipePackEntry"][];
-        };
-        RecipePackEntry: {
-            template_slug: string;
-            recipe_slug: string;
-            title: string;
-            category: string;
-            tags: string[];
-            difficulty: string;
-        };
         ConnectorTemplateRow: {
             /** @enum {number} */
             version: 1;
@@ -7949,6 +7930,25 @@ export interface components {
              * @default null
              */
             verified_at: string | null;
+        };
+        ConnectorTemplateRecipeListResponse: {
+            template_slug: string;
+            template_name: string;
+            recipes: components["schemas"]["ConnectorTemplateRecipe"][];
+        };
+        RecipePackResponse: {
+            /** @enum {string} */
+            vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr";
+            outcome: string;
+            recipes: components["schemas"]["RecipePackEntry"][];
+        };
+        RecipePackEntry: {
+            template_slug: string;
+            recipe_slug: string;
+            title: string;
+            category: string;
+            tags: string[];
+            difficulty: string;
         };
         TemplateOAuthCredentialResponse: {
             id: string;

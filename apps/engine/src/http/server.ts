@@ -33,7 +33,7 @@ import { registerAuditLogRoutes } from "./routes/audit-log.ts";
 import { registerChatRoutes } from "./routes/chat.ts";
 import { registerConnectorDiscoveryRoutes } from "./routes/connector-discovery.ts";
 import { registerConnectorDocsRoutes } from "./routes/connector-docs.ts";
-import { registerConnectorTemplateRoutes } from "./routes/connector-templates.ts";
+import { registerConnectorTemplateRoutes } from "./routes/connector-templates/index.ts";
 import { registerConnectorRoutes } from "./routes/connectors.ts";
 import { registerConversationAttachmentRoutes } from "./routes/conversation-attachments.ts";
 import { registerConversationRoutes } from "./routes/conversations/index.ts";

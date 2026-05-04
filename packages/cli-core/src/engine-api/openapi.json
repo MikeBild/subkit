@@ -3213,94 +3213,6 @@
           "template"
         ]
       },
-      "ConnectorTemplateRecipeListResponse": {
-        "type": "object",
-        "properties": {
-          "template_slug": {
-            "type": "string"
-          },
-          "template_name": {
-            "type": "string"
-          },
-          "recipes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ConnectorTemplateRecipe"
-            }
-          }
-        },
-        "required": [
-          "template_slug",
-          "template_name",
-          "recipes"
-        ]
-      },
-      "RecipePackResponse": {
-        "type": "object",
-        "properties": {
-          "vertical": {
-            "type": "string",
-            "enum": [
-              "revops",
-              "customer-success",
-              "finance",
-              "data",
-              "devops",
-              "security",
-              "marketing",
-              "hr"
-            ]
-          },
-          "outcome": {
-            "type": "string"
-          },
-          "recipes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RecipePackEntry"
-            }
-          }
-        },
-        "required": [
-          "vertical",
-          "outcome",
-          "recipes"
-        ]
-      },
-      "RecipePackEntry": {
-        "type": "object",
-        "properties": {
-          "template_slug": {
-            "type": "string"
-          },
-          "recipe_slug": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "category": {
-            "type": "string"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "difficulty": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "template_slug",
-          "recipe_slug",
-          "title",
-          "category",
-          "tags",
-          "difficulty"
-        ]
-      },
       "ConnectorTemplateRow": {
         "type": "object",
         "properties": {
@@ -3740,6 +3652,94 @@
           "probe_endpoint",
           "pagination_defaults",
           "capabilities"
+        ]
+      },
+      "ConnectorTemplateRecipeListResponse": {
+        "type": "object",
+        "properties": {
+          "template_slug": {
+            "type": "string"
+          },
+          "template_name": {
+            "type": "string"
+          },
+          "recipes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateRecipe"
+            }
+          }
+        },
+        "required": [
+          "template_slug",
+          "template_name",
+          "recipes"
+        ]
+      },
+      "RecipePackResponse": {
+        "type": "object",
+        "properties": {
+          "vertical": {
+            "type": "string",
+            "enum": [
+              "revops",
+              "customer-success",
+              "finance",
+              "data",
+              "devops",
+              "security",
+              "marketing",
+              "hr"
+            ]
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "recipes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipePackEntry"
+            }
+          }
+        },
+        "required": [
+          "vertical",
+          "outcome",
+          "recipes"
+        ]
+      },
+      "RecipePackEntry": {
+        "type": "object",
+        "properties": {
+          "template_slug": {
+            "type": "string"
+          },
+          "recipe_slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "difficulty": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_slug",
+          "recipe_slug",
+          "title",
+          "category",
+          "tags",
+          "difficulty"
         ]
       },
       "TemplateOAuthCredentialResponse": {
@@ -11306,6 +11306,55 @@
         }
       }
     },
+    "/v1/connector-templates/{id}": {
+      "delete": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Delete a tenant connector template override",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connector-templates/{slug}/recipes": {
       "get": {
         "tags": [
@@ -11493,55 +11542,6 @@
                 }
               }
             }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/connector-templates/{id}": {
-      "delete": {
-        "tags": [
-          "connectors"
-        ],
-        "summary": "Delete a tenant connector template override",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Deleted"
           },
           "403": {
             "description": "Forbidden",
