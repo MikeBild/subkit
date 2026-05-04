@@ -125,8 +125,10 @@ cat <<MSG
 
 Next:
   export PATH="\${INSTALL_DIR}:$PATH"
-  # First boot: redeem the bootstrap token from engine stdout.
-  sk init --engine-url \${ENGINE_URL}
+  # First boot: redeem the one-time bootstrap token from engine stdout.
+  # The engine prints it once on first start; copy the value next to
+  # 'sk init --token …' in the banner.
+  sk init --engine-url \${ENGINE_URL} --token <bootstrap-token>
   # Already-bootstrapped engine: log in with an existing API key.
   sk login --engine-url \${ENGINE_URL} --api-key <your-api-key>
   sk doctor

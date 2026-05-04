@@ -49,6 +49,12 @@ describe("install script template", () => {
     // command — the CLI exposes `sk login` and `sk profile`
     // (set/use/list/...), with no `login` subcommand under `profile`.
     expect(script).toContain("sk init --engine-url");
+    // sk init requires --token <token> (the one-time bootstrap token
+    // printed to engine stdout on first boot). Pin the placeholder so
+    // the install-script next-step instruction stays runnable —
+    // pre-fix it told operators "sk init --engine-url X" without the
+    // required arg, and they hit `sk init: --token <token> is required`.
+    expect(script).toContain("--token <bootstrap-token>");
     expect(script).toContain("sk login --engine-url");
     expect(script).not.toContain("sk profile login");
   });
