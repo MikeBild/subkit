@@ -35,6 +35,13 @@ import {
   WorkflowDefSchema,
 } from "../workflows/types.ts";
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
+import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
+import {
+  envelopeFor,
+  type ScopeEnvelope,
+  validateAgainstJsonSchema,
+  wrapEnvelope,
+} from "./engine/envelope.ts";
 import { evaluate as evaluateJsonata } from "./jsonata-engine.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
@@ -48,8 +55,6 @@ import {
 import { runStep } from "./step-runner.ts";
 import { MAX_CALL_DEPTH, WORKFLOW_TIMEOUT_DEFAULT_MS } from "./timeouts.ts";
 import type {
-  AppliedAuthMethod,
-  ConnectorResolutionSummary,
   ExecutionMode,
   ExecutionStatus,
   RequestSource,
@@ -59,66 +64,8 @@ import type {
   StepRunContext,
 } from "./types.ts";
 
-function validateAgainstJsonSchema(
-  value: unknown,
-  schema: Record<string, unknown>,
-  location: string,
-): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-  if (!schema || typeof schema !== "object") return { valid: true, errors: [] };
-  const required = schema.required as string[] | undefined;
-  if (required && Array.isArray(required) && typeof value === "object" && value !== null) {
-    for (const field of required) {
-      if (!(field in (value as Record<string, unknown>))) {
-        errors.push(`${location}: required field '${field}' is missing`);
-      }
-    }
-  }
-  return { valid: errors.length === 0, errors };
-}
-
-/** Envelope shape exposed on `scope[step.id]`. Transform expressions
- *  read `$scope.<id>.data` for the payload and `$scope.<id>.status_code`
- *  / `$scope.<id>.headers` / `$scope.<id>.error` / `$scope.<id>.duration_ms`
- *  for diagnostics. Matches the contract documented in the
- *  data-handling skill. */
-export interface ScopeEnvelope {
-  data: unknown;
-  status_code?: number;
-  headers?: Record<string, string>;
-  duration_ms: number;
-  error: { code: string; message: string; details?: unknown } | null;
-}
-
-function wrapEnvelope(params: {
-  data: unknown;
-  duration_ms: number;
-  error: { code: string; message: string; details?: unknown } | null;
-  request_meta?: Record<string, unknown> | null;
-}): ScopeEnvelope {
-  const env: ScopeEnvelope = {
-    data: params.data ?? null,
-    duration_ms: params.duration_ms,
-    error: params.error ?? null,
-  };
-  const rm = params.request_meta;
-  if (rm && typeof rm === "object") {
-    if (typeof rm.status === "number") env.status_code = rm.status;
-    if (rm.headers && typeof rm.headers === "object") {
-      env.headers = rm.headers as Record<string, string>;
-    }
-  }
-  return env;
-}
-
-function envelopeFor(outcome: { result: StepResult; scope_value: unknown }): ScopeEnvelope {
-  return wrapEnvelope({
-    data: outcome.scope_value,
-    duration_ms: outcome.result.duration_ms ?? 0,
-    error: outcome.result.error ?? null,
-    request_meta: outcome.result.request_meta ?? null,
-  });
-}
+export { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
+export type { ScopeEnvelope } from "./engine/envelope.ts";
 
 export interface RunExecutionParams {
   db: Db;
@@ -916,57 +863,6 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
  *  connector regardless of how many steps touched it. First occurrence wins
  *  — the step_key on the summary is the first step that used that connector.
  *  Exported for unit testing. */
-export function rollupConnectorResolutions(
-  stepSummaries: Array<{
-    step_key: string;
-    request_meta?: Record<string, unknown> | null;
-  }>,
-  requested_environment: ExecutionMode,
-): ConnectorResolutionSummary[] {
-  const seen = new Set<string>();
-  const out: ConnectorResolutionSummary[] = [];
-  for (const s of stepSummaries) {
-    const meta = s.request_meta;
-    if (!meta || typeof meta !== "object") continue;
-    const c = (meta as { connector?: Record<string, unknown> }).connector;
-    if (!c || typeof c !== "object") continue;
-    const id = typeof c.connector_id === "string" ? c.connector_id : undefined;
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    const resolvedEnv =
-      c.resolved_environment === "dev" || c.resolved_environment === "prod"
-        ? c.resolved_environment
-        : requested_environment;
-    out.push({
-      step_key: s.step_key,
-      connector_id: id,
-      connector_slug: typeof c.connector_slug === "string" ? c.connector_slug : "",
-      driver: typeof c.driver === "string" ? c.driver : "",
-      requested_environment,
-      resolved_environment: resolvedEnv,
-      auth_method: normalizeAuthMethod(c.auth_method),
-      tunnel_target: typeof c.tunnel_target === "string" ? c.tunnel_target : null,
-      base_url: typeof c.base_url === "string" ? c.base_url : null,
-    });
-  }
-  return out;
-}
-
-function normalizeAuthMethod(v: unknown): AppliedAuthMethod {
-  if (
-    v === "none" ||
-    v === "bearer" ||
-    v === "header" ||
-    v === "query" ||
-    v === "basic" ||
-    v === "oauth2_static" ||
-    v === "oauth2_refreshed"
-  ) {
-    return v;
-  }
-  return "none";
-}
-
 async function runCallStep(db: Db, ctx: StepRunContext, step: CallStep): Promise<StepResult> {
   const start = Date.now();
   if (ctx.depth + 1 > MAX_CALL_DEPTH) {
