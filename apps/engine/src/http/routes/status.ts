@@ -3,7 +3,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { connectors, llmUsage, skills, tenants } from "../../db/schema/index.ts";
-import { monthlyUsage, resolveMonthlyBudget } from "../../llm/budgets.ts";
+import { monthlyUsage, resolveMonthlyBudget } from "../../llm/accounting/index.ts";
 import { validateProviderSetup } from "../../llm/core/model-init.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";

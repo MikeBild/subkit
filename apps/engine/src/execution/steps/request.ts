@@ -31,6 +31,12 @@ import { withEgressAudit } from "../../connectors/egress.ts";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { connectorEndpointSchemas, connectors } from "../../db/schema/index.ts";
 import {
+  estimateLlmCallTokens,
+  isLlmProviderUrl,
+  LlmBudgetExceededError,
+  parseLlmUsage,
+} from "../../llm/accounting/index.ts";
+import {
   resolvePlaceholders,
   resolvePlaceholdersTypePreserving,
   resolveStringPlaceholders,
@@ -41,12 +47,6 @@ import { recordSuccessShape } from "../../schema-versions/service.ts";
 import type { RequestStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
 import { type ExpectedRowCount, evaluateExpectedRowCount } from "../expected-row-count.ts";
-import {
-  estimateLlmCallTokens,
-  isLlmProviderUrl,
-  LlmBudgetExceededError,
-  parseLlmUsage,
-} from "../llm-budget.ts";
 import {
   MAX_PAGES,
   makeStrategy,

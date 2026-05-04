@@ -9,7 +9,7 @@
 
 import type { ModelMessage } from "ai";
 import { getEncoding, type Tiktoken } from "js-tiktoken";
-import type { LlmFlow, UserTurn } from "./types.ts";
+import type { LlmFlow, UserTurn } from "../types.ts";
 
 let cached: Tiktoken | null = null;
 

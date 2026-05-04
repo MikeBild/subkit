@@ -12,8 +12,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { executionSteps, executions, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { RunLlmBudget } from "../llm/accounting/index.ts";
 import type { RequestStep } from "../workflows/types.ts";
-import { RunLlmBudget } from "./llm-budget.ts";
 import {
   type PaginationCheckpoint,
   paginationSignature,

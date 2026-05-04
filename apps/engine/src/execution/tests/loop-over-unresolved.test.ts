@@ -8,7 +8,7 @@
 // with the resolved type + scope keys so the LLM can fix the path.
 
 import { describe, expect, test } from "bun:test";
-import { RunLlmBudget } from "../llm-budget.ts";
+import { RunLlmBudget } from "../../llm/accounting/index.ts";
 import { runLoopStep } from "../steps/loop.ts";
 import type { StepRunContext } from "../types.ts";
 

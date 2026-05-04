@@ -30,7 +30,7 @@ import {
 import * as identitySvc from "../identity/service.ts";
 import * as knowledgeSvc from "../knowledge/service.ts";
 import type { UpdateKnowledgeSourceInput } from "../knowledge/types.ts";
-import { currentMonthBucket, monthlyUsage } from "../llm/budgets.ts";
+import { currentMonthBucket, monthlyUsage } from "../llm/accounting/index.ts";
 import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import * as rbacRoles from "../rbac/roles.ts";
 import * as skillCandidatesSvc from "../skill-candidates/service.ts";
