@@ -10,7 +10,9 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SRC = join(import.meta.dir, "..", "sdk-wrap.ts");
+// After the Phase 4 split (audit §4.2), the repeat-cap exemptions live
+// in `tools/sdk-wrap/invoke.ts`.
+const SRC = join(import.meta.dir, "..", "sdk-wrap", "invoke.ts");
 
 describe("sdk-wrap · per-tool repeat-cap exemptions", () => {
   const body = readFileSync(SRC, "utf-8");
