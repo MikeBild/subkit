@@ -1,0 +1,28 @@
+// Engine self-diagnostics surface — entry point.
+//
+// Phase 4 §4.4 of the 2026-05 architecture audit (#92). The former
+// http/routes/diagnostics.ts (624 LOC) split into per-route modules;
+// this barrel registers shared per-path RBAC middleware and delegates
+// handler registration to each module. Public API unchanged: server.ts
+// still calls `registerDiagnosticsRoutes(app)`.
+//
+//   GET /v1/diagnostics/errors  — tail the in-memory error ring
+//   GET /v1/diagnostics/llm     — resolved LLM provider snapshot
+//   GET /v1/diagnostics/setup   — operator-facing setup validation
+
+import type { OpenAPIHono } from "@hono/zod-openapi";
+import { requireAnyPermission, requirePermission } from "../../middleware/require-permission.ts";
+import type { AppEnv } from "../../openapi.ts";
+import { registerErrorsRoutes } from "./errors.ts";
+import { registerLlmRoutes } from "./llm.ts";
+import { registerSetupRoutes } from "./setup.ts";
+
+export function registerDiagnosticsRoutes(app: OpenAPIHono<AppEnv>): void {
+  app.use("/v1/diagnostics/errors", requirePermission("audit:read"));
+  app.use("/v1/diagnostics/llm", requirePermission("audit:read"));
+  app.use("/v1/diagnostics/setup", requireAnyPermission(["audit:read", "identity:read"]));
+
+  registerErrorsRoutes(app);
+  registerLlmRoutes(app);
+  registerSetupRoutes(app);
+}
