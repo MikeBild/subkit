@@ -16,7 +16,7 @@
 // on the stable block; the Gateway passes it through when supported;
 // providers that don't understand the hint ignore it.
 
-import { countTokens } from "../tokens.ts";
+import { countTokens } from "../accounting/index.ts";
 import type { EnhancedPrompt, LlmFlow } from "../types.ts";
 
 export interface CacheBlocks {

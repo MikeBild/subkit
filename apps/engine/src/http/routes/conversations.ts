@@ -16,7 +16,7 @@ import * as svc from "../../conversations/service.ts";
 import { replayEvents, serializeEvent } from "../../conversations/streaming.ts";
 import type { ConversationStatus, TurnEvent } from "../../conversations/types.ts";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
-import { monthlyUsage } from "../../llm/budgets.ts";
+import { monthlyUsage } from "../../llm/accounting/index.ts";
 import { resolveModelRoute } from "../../llm/core/invoke.ts";
 import { resolveEngineUrl } from "../../llm/runtime-context.ts";
 import { logger } from "../../logging/logger.ts";

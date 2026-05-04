@@ -10,7 +10,7 @@
 //   - default Claude cap (180k) when neither trigger fires
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { contextCapFor } from "../tokens.ts";
+import { contextCapFor } from "../accounting/index.ts";
 
 let originalEnv: string | undefined;
 

@@ -20,7 +20,14 @@ import {
   conversationToolCalls,
   executions,
 } from "../db/schema/index.ts";
-import { checkAndDecrement, checkBudget, monthlyUsage, recordUsage } from "../llm/budgets.ts";
+import {
+  checkAndDecrement,
+  checkBudget,
+  contextCapFor,
+  countModelMessagesTokens,
+  monthlyUsage,
+  recordUsage,
+} from "../llm/accounting/index.ts";
 import { renderAuthoringContextBlock } from "../llm/core/authoring-context-block.ts";
 import { splitPromptIntoBlocks, toSystemMessages } from "../llm/core/cache-blocks.ts";
 import {
@@ -44,7 +51,6 @@ import {
   isFallbackEligible,
   toLlmProviderError,
 } from "../llm/provider-errors.ts";
-import { contextCapFor, countModelMessagesTokens } from "../llm/tokens.ts";
 import { log, logger } from "../logging/logger.ts";
 import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instrumentation.ts";
 import {

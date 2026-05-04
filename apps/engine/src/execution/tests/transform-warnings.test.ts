@@ -3,7 +3,7 @@
 // now surfaces `unresolved_identifier` warnings next to the output.
 
 import { describe, expect, it } from "bun:test";
-import { RunLlmBudget } from "../llm-budget.ts";
+import { RunLlmBudget } from "../../llm/accounting/index.ts";
 import { runTransformStep } from "../steps/transform.ts";
 import type { StepRunContext } from "../types.ts";
 

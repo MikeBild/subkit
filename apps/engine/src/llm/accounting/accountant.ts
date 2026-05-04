@@ -15,8 +15,8 @@
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
-import { recordUsage } from "../budgets.ts";
-import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "./base-types.ts";
+import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../core/base-types.ts";
+import { recordUsage } from "./budget.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 

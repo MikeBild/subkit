@@ -25,7 +25,7 @@
 //     floor (256 tokens) guards against a "fits exactly under the cap
 //     pre-call but overruns post-call" hole.
 
-import type { RequestStep } from "../workflows/types.ts";
+import type { RequestStep } from "../../workflows/types.ts";
 
 /** Approximate tokens per character. Tighter than 1/4 for ASCII English
  *  prose and looser for non-ASCII; budgets are hints, not metering. */

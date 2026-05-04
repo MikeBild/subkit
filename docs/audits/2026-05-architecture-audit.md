@@ -106,26 +106,31 @@ Target: every file fits one screen of cognition. Tests carry over; the existing 
 
 ### 4.3 — Token / budget logic is fragmented
 
-Six files (~800 LOC total) implement overlapping budget concerns:
+Four files (~600 LOC total) implement overlapping LLM-token concerns:
 
 ```
-llm/tokens.ts                  (counting)
-llm/budgets.ts                 (limits)
-llm/core/token-accountant.ts   (state)
-execution/llm-budget.ts        (per-step gating)
-knowledge/budgets.ts           (24 LOC; almost a one-line call into a central API)
-docs-ingestion/budgets.ts      (chunking budget)
+llm/tokens.ts                  (pre-call counting via tiktoken)
+llm/budgets.ts                 (per-tenant monthly DB ledger + limits)
+llm/core/token-accountant.ts   (post-hoc reconciliation of SDK usage)
+execution/llm-budget.ts        (per-run cap on workflow LLM steps)
 ```
 
-**Action — collapse into one surface:**
+**Action — collapse into one surface (Phase 3 — landed):**
 ```
 llm/accounting/
   count.ts       # absorbs llm/tokens.ts
-  budget.ts      # absorbs llm/budgets.ts + token-accountant.ts
+  budget.ts      # absorbs llm/budgets.ts
+  accountant.ts  # absorbs llm/core/token-accountant.ts
   enforce.ts     # absorbs execution/llm-budget.ts
-  index.ts
+  index.ts       # public re-exports
 ```
-Then **delete** `knowledge/budgets.ts` and `docs-ingestion/budgets.ts`; both consumers route through `llm/accounting/`. One observable surface (one Prometheus counter, one log line, one audit event) replaces six.
+
+**Scope correction during Phase 3:** the prior framing also listed
+`knowledge/budgets.ts` and `docs-ingestion/budgets.ts` as files to
+fold in. On reading the source, those are **byte budgets** for file
+storage and HTTP-fetch resource usage — they share only the word
+"budget" with LLM-token accounting and have no overlapping logic.
+They are intentionally LEFT IN PLACE.
 
 ### 4.4 — HTTP route god-files leak internals
 
