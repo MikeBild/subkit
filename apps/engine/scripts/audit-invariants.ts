@@ -418,22 +418,38 @@ function checkCoverageFloor(): Result {
       message: ".coverage-floor.json missing",
     };
   }
-  const parsed = JSON.parse(text) as { subsystems?: Record<string, unknown> };
-  const count = Object.keys(parsed.subsystems ?? {}).length;
-  if (count === 0) {
+  const parsed = JSON.parse(text) as {
+    subsystems?: Record<string, { line_min?: number; branch_min?: number }>;
+  };
+  const entries = Object.entries(parsed.subsystems ?? {});
+  if (entries.length === 0) {
     return {
       id: "coverage_floor",
-      status: "SKIP",
-      message:
-        "Phase 2 has not populated .coverage-floor.json yet (intentional; flips to enforced at end of week 3)",
+      status: "FAIL",
+      message: ".coverage-floor.json has no subsystems declared",
     };
   }
-  // Once populated, this check should run `bun test --coverage` and
-  // compare per-subsystem floors. Implemented at the end of Phase 2.
+  // Validate each entry has the required shape — `bun run check:coverage-floor`
+  // is the script that actually runs `bun test --coverage` per subsystem
+  // and enforces the numbers. This check is the structural gate; the
+  // numeric gate is wired into `bun run verify` via check:coverage-floor.
+  const malformed: string[] = [];
+  for (const [name, entry] of entries) {
+    if (typeof entry.line_min !== "number" || typeof entry.branch_min !== "number") {
+      malformed.push(name);
+    }
+  }
+  if (malformed.length > 0) {
+    return {
+      id: "coverage_floor",
+      status: "FAIL",
+      message: `entries missing line_min/branch_min:\n  ${malformed.join("\n  ")}`,
+    };
+  }
   return {
     id: "coverage_floor",
     status: "PASS",
-    message: `floors declared for ${count} subsystems (enforcement implementation pending end of Phase 2)`,
+    message: `floors declared for ${entries.length} subsystems (numeric enforcement via \`bun run check:coverage-floor\`)`,
   };
 }
 
