@@ -11,23 +11,36 @@
 //      blocks so the provider can cache the head and recompute only the
 //      tail each turn.
 //
-// Replaces the prior `llm/context.ts` implementation entirely — all
-// callers now import from this module.
+// After the Phase 4 split (audit §4.2), the assembler is split across
+// `context-assembler/`:
+//
+//   - `context-assembler/loaders.ts`      — DB-side loaders
+//                                            (interaction log, latest
+//                                            preview, doc / knowledge
+//                                            chunks)
+//   - `context-assembler/formatters.ts`   — pure markdown rendering
+//                                            (skills, quirks, recipes,
+//                                            chunks, failures, memory,
+//                                            preview, log)
+//   - `context-assembler/skill-picker.ts` — `detectIntentSkills`
+//                                            keyword → auto-load
+//                                            dispatch
+//
+// External callers continue to import `assembleEnhancedPrompt`,
+// `assembleContext`, `basePromptFor`, `applyRuntimeTemplate`,
+// `formatSkillIndex`, `countSkillTokens`, `formatOperatorQuirks`,
+// `formatConnectorRecipes`, `selectOperatorQuirkCategories`,
+// `detectIntentSkills`, and the `AssembledContext` / `BudgetReport`
+// types from this barrel.
 
-import { and, desc, eq } from "drizzle-orm";
 import { getConnector } from "../../connectors/service.ts";
 import { generateMainAgentSystemPrompt } from "../../conversations/agent/context.ts";
-import type { Db } from "../../db/client.ts";
 import { getDb } from "../../db/client.ts";
-import { conversationElicitations, conversations } from "../../db/schema/index.ts";
-import { searchDocs } from "../../docs-ingestion/service.ts";
-import { searchKnowledge } from "../../knowledge/service.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordLlmContextAssembled } from "../../observability/instrumentation.ts";
 import {
   getSkill,
   getSkillBySlug,
-  listAutoLoadSkills,
   listSkills,
   retrieveApplicableSkills,
 } from "../../skills/service.ts";
@@ -42,17 +55,47 @@ import type {
   IncludedChunk,
   IncludedKnowledgeChunk,
   LlmFlow,
-  PriorFailure,
   UserTurn,
 } from "../types.ts";
 import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
+import {
+  applyRuntimeTemplate,
+  formatChunk,
+  formatConnectorRecipes,
+  formatFailure,
+  formatInteractionLog,
+  formatKnowledgeChunk,
+  formatLatestPreview,
+  formatOperatorQuirks,
+  formatSkill,
+  formatSkillIndex,
+  formatUserMemory,
+  selectOperatorQuirkCategories,
+} from "./context-assembler/formatters.ts";
+import {
+  type Executor,
+  type InteractionLogEntry,
+  type LatestPreviewEntry,
+  loadChunks,
+  loadInteractionLog,
+  loadKnowledgeChunks,
+  loadLatestPreview,
+} from "./context-assembler/loaders.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
 
-type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web";
+
+export {
+  applyRuntimeTemplate,
+  countSkillTokens,
+  formatConnectorRecipes,
+  formatOperatorQuirks,
+  formatSkillIndex,
+  selectOperatorQuirkCategories,
+} from "./context-assembler/formatters.ts";
+export { detectIntentSkills } from "./context-assembler/skill-picker.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web";
 
 // Live-data assembly only. The structural prompt body (persona,
 // behaviour skills, authoring-focus blocks) is owned by the agent
@@ -128,539 +171,9 @@ export async function basePromptFor(
   return BASE_SYSTEM_PROMPTS[flow];
 }
 
-/**
- * Substitute whitelisted runtime-context tokens in a skill body at
- * assembly time, so the model never sees a `${engine_url}`-style
- * template it has to resolve itself. Only tokens whose keys match a
- * known runtime-context field are replaced; unknown tokens (e.g.
- * `${plaintext_key}`, `${cred.slack.token}`, `${input.path}`) are
- * passed through unchanged — the skill author still controls what
- * stays as a placeholder for the user to fill in later.
- *
- * Mirrors the pattern used by Anthropic's Claude Code CLI: concrete
- * environment values are pre-rendered into the system prompt once,
- * rather than leaving it to the model to splice runtime data.
- */
-export function applyRuntimeTemplate(
-  body: string,
-  ctx?: AssembleContextParams["runtime_context"],
-): string {
-  if (!ctx || !body.includes("${")) return body;
-  const subs: Record<string, string | undefined> = {
-    engine_url: ctx.engine_url,
-    tenant_slug: ctx.tenant_slug,
-    actor_email: ctx.actor_email,
-    actor_role: ctx.actor_role,
-    surface: ctx.surface,
-  };
-  return body.replace(/\$\{([a-z_]+)\}/g, (whole, key: string) => {
-    const value = subs[key];
-    return typeof value === "string" && value.length > 0 ? value : whole;
-  });
-}
-
-function formatSkill(s: Skill, runtime_context?: AssembleContextParams["runtime_context"]): string {
-  const body = applyRuntimeTemplate(s.body, runtime_context);
-  const bp = s.best_practices.length > 0 ? `\nBest practices: ${s.best_practices.join("; ")}` : "";
-  const pit = s.pitfalls.length > 0 ? `\nPitfalls: ${s.pitfalls.join("; ")}` : "";
-  const refs = s.doc_refs.length > 0 ? `\nDoc refs: ${s.doc_refs.join(", ")}` : "";
-  const ex = s.examples.length > 0 ? `\nExamples:\n- ${s.examples.join("\n- ")}` : "";
-  return `# Skill: ${s.title} (${s.scope})\n${body}${bp}${pit}${refs}${ex}`;
-}
-
-/**
- * Render a per-scope skill index — one block, one line per skill.
- * The LLM uses `load_skill(<slug-or-id>)` to pull the full body of
- * any entry it actually needs.
- *
- * Pattern mirrors the validated reference-impl shape: the system
- * prompt ships a tiny catalog (~one line per skill ≤ ~30 tokens)
- * instead of a per-skill summary block (~58 tokens each). For a
- * tenant with 50 skills the index costs ~1.5k tokens vs ~3k for
- * separate summary blocks; more importantly, the index is bounded
- * by skill count, not by each skill's first-line length.
- *
- * Pre-fix every applicable skill rendered with its full body
- * (~31k tokens / turn in session a128deba). Post-fix only
- * loaded_skills carry full bodies; ambient skills appear as one
- * line in this index.
- */
-export function formatSkillIndex(
-  label: string,
-  skills: Skill[],
-  runtime_context?: AssembleContextParams["runtime_context"],
-): string | null {
-  if (skills.length === 0) return null;
-  const lines = skills.map((s) => {
-    const ref = s.slug ?? s.id;
-    const body = applyRuntimeTemplate(s.body, runtime_context);
-    // First non-empty, non-heading line as a one-line description.
-    const firstLine =
-      body
-        .split("\n")
-        .map((l) => l.trim())
-        .find((l) => l.length > 0 && !l.startsWith("#")) ?? "";
-    const desc = firstLine.length > 120 ? `${firstLine.slice(0, 120)}…` : firstLine;
-    return `- \`${ref}\` — ${s.title}${desc.length > 0 ? `: ${desc}` : ""}`;
-  });
-  return [`# ${label} skill index — call \`load_skill('<slug>')\` for any of these`, ...lines].join(
-    "\n",
-  );
-}
-
-/**
- * Public token-counter for an individual skill body using the same
- * formatter the assembler uses. Lets observability paths (e.g. the
- * dialog.turn_end log's top_skills_by_tokens breakdown) report a
- * per-skill weight without re-implementing formatSkill out-of-tree.
- */
-export function countSkillTokens(
-  s: Skill,
-  runtime_context?: AssembleContextParams["runtime_context"],
-): number {
-  return countTokens(formatSkill(s, runtime_context));
-}
-
-function fetchedAtSuffix(fetched_at: string | null): string {
-  if (!fetched_at) return "";
-  // Trim to YYYY-MM-DD so the prompt header is compact and stable.
-  const date = fetched_at.slice(0, 10);
-  return ` (fetched ${date})`;
-}
-
-/**
- * Categorized operator quirks — short, imperative hints the operator
- * wants the model to treat as authoritative ("treat 422 as success on
- * /upsert", "always send `?api-version=2025-01-01`"). Lives in
- * `connectors.operator_quirks`. The block is opt-in (only rendered
- * when at least one selected category has content). Per-turn category
- * selection is a string concat outside the cached prefix so the cache
- * key stays stable across category swaps.
- *
- * Format keeps the connector slug + name visible so the model never
- * confuses quirks from two connectors that ended up in scope on the
- * same turn.
- */
-export function formatOperatorQuirks(
-  slug: string,
-  name: string,
-  quirks: import("../../connectors/types.ts").OperatorQuirks,
-  categories: ReadonlyArray<import("../../connectors/types.ts").OperatorQuirkCategory>,
-): string | null {
-  const lines: string[] = [];
-  for (const cat of categories) {
-    const v = quirks[cat]?.trim();
-    if (v) lines.push(`## ${cat}\n${v}`);
-  }
-  if (lines.length === 0) return null;
-  return [`# Operator quirks — connector \`${slug}\` (${name})`, ...lines].join("\n");
-}
-
-/**
- * Render a slim recipe roster from a connector's `template_snapshot`.
- * Surfaces `slug + title + category + tags + difficulty + intent_keywords`
- * per recipe — never the workflow body, sample_input, or
- * expected_output_preview, which the LLM fetches on demand via
- * `inspect_recipe(template_slug, recipe_slug)` after narrowing to
- * 1-3 candidates. Cloning still goes through
- * `start_workflow_from_recipe(template_slug, recipe_slug)`.
- *
- * Token budget (per converse-pipeline memory rule): the per-turn
- * recipe block is shared with the tenant snapshot + skills index.
- * Adding category/tags/difficulty costs ~10 extra tokens per recipe
- * (≈5.7k catalog-wide), well within budget. Anything heavier
- * (description, sample_input, workflow body) MUST stay behind
- * `inspect_recipe`.
- *
- * Returns null when the snapshot ships no recipes so the assembler
- * skips emitting a dead header.
- */
-export function formatConnectorRecipes(
-  slug: string,
-  snapshot: Record<string, unknown>,
-): string | null {
-  const raw = snapshot.recipes;
-  if (!Array.isArray(raw) || raw.length === 0) return null;
-  const lines: string[] = [];
-  for (const r of raw) {
-    if (!r || typeof r !== "object") continue;
-    const rec = r as Record<string, unknown>;
-    const recipeSlug = typeof rec.slug === "string" ? rec.slug : null;
-    const title = typeof rec.title === "string" ? rec.title : null;
-    if (!recipeSlug || !title) continue;
-    const category = typeof rec.category === "string" ? rec.category : null;
-    const difficulty = typeof rec.difficulty === "string" ? rec.difficulty : null;
-    const tags = Array.isArray(rec.tags)
-      ? (rec.tags as unknown[]).filter((t): t is string => typeof t === "string")
-      : [];
-    const kws = Array.isArray(rec.intent_keywords)
-      ? (rec.intent_keywords as unknown[]).filter((k): k is string => typeof k === "string")
-      : [];
-    // Order: meta first (compact), then keywords (variable length).
-    const metaParts: string[] = [];
-    if (category) metaParts.push(`category: ${category}`);
-    if (tags.length > 0) metaParts.push(`tags: ${tags.join(", ")}`);
-    if (difficulty && difficulty !== "intermediate") {
-      // Drop the default to save tokens — surface only when notable.
-      metaParts.push(`difficulty: ${difficulty}`);
-    }
-    if (kws.length > 0) metaParts.push(`keywords: ${kws.join(", ")}`);
-    const metaSuffix = metaParts.length > 0 ? ` — ${metaParts.join(" | ")}` : "";
-    lines.push(`- \`${recipeSlug}\` — ${title}${metaSuffix}`);
-  }
-  if (lines.length === 0) return null;
-  return [
-    `# Available recipes — connector \`${slug}\``,
-    "Clone via `start_workflow_from_recipe(template_slug, recipe_slug)`. For description / sample_input / workflow shape before cloning, call `inspect_recipe(template_slug, recipe_slug)`.",
-    ...lines,
-  ].join("\n");
-}
-
-/**
- * Pick which operator-quirk categories to surface this turn. Heuristic
- * driven by the structured `AuthoringPromptHint` (the only scoped
- * authoring signal the assembler reliably has) plus a `prior_failures`
- * boost. The plan's per-turn rules:
- *   - `propose_step kind=request` (workflow drafting/inspecting) →
- *     auth + pagination + rate_limit + general
- *   - `propose_step kind=transform` (workflow validating/previewing) →
- *     pagination + schema + general
- *   - error envelope received → error_handling + schema + general
- *   - everything else → general
- *
- * Rendering only the relevant slice trims ~40-90% of the legacy 4 KB
- * `operator_notes` blob on connectors with rich text.
- */
-export function selectOperatorQuirkCategories(
-  hint: import("../../llm/types.ts").AuthoringPromptHint | undefined,
-  hasFailures: boolean,
-): ReadonlyArray<import("../../connectors/types.ts").OperatorQuirkCategory> {
-  if (hasFailures) return ["error_handling", "schema", "general"];
-  const stage = hint?.stage ?? "idle";
-  switch (stage) {
-    case "connector_targeted":
-    case "connector_draft_started":
-    case "connector_inspected":
-    case "connector_validated":
-    case "connector_authenticated":
-    case "connector_probed":
-      return ["auth", "general"];
-    case "workflow_targeted":
-    case "workflow_draft_started":
-    case "workflow_inspected":
-      return ["auth", "pagination", "rate_limit", "general"];
-    case "workflow_validated":
-    case "workflow_previewed":
-      // Transform-shaped stage — only `schema` matters; pagination /
-      // auth / rate_limit are irrelevant once the request graph is
-      // fixed and the LLM is shaping the output. Pinned by the
-      // quirk-token-budget eval.
-      return ["schema", "general"];
-    case "diagnosing":
-    case "repairing":
-      return ["error_handling", "schema", "general"];
-    case "workflow_executed":
-    case "workflow_persisted":
-    case "connector_persisted":
-    case "idle":
-      return ["general"];
-    default:
-      return ["general"];
-  }
-}
-
-function formatChunk(chunk: IncludedChunk): string {
-  const heading = chunk.title
-    ? `## Doc: ${chunk.title}${chunk.path ? ` — ${chunk.path}` : ""}`
-    : chunk.path
-      ? `## Doc: ${chunk.path}`
-      : "## Doc";
-  return `${heading}${fetchedAtSuffix(chunk.fetched_at)}\n${chunk.snippet}`;
-}
-
-function formatKnowledgeChunk(chunk: IncludedKnowledgeChunk): string {
-  const heading = chunk.title
-    ? `## Knowledge: ${chunk.title}${chunk.path ? ` — ${chunk.path}` : ""}`
-    : chunk.path
-      ? `## Knowledge: ${chunk.path}`
-      : "## Knowledge";
-  return `${heading}${fetchedAtSuffix(chunk.fetched_at)}\n${chunk.snippet}`;
-}
-
-function formatFailure(f: PriorFailure): string {
-  const parts = [`## Prior failure: ${f.step_id}`, f.error];
-  if (f.schema_diff) parts.push(`schema diff:\n${f.schema_diff}`);
-  if (f.captured_response) parts.push(`captured response:\n${f.captured_response}`);
-  return parts.join("\n");
-}
-
-function formatUserMemory(s: string): string {
-  return `# User memory\n${s}`;
-}
-
-interface InteractionLogEntry {
-  tool_name: string;
-  status: string;
-  decision: string;
-  decision_reason: string | null;
-  decided_at: Date | null;
-}
-
-/**
- * Load the last N elicitations for a conversation in reverse-chronological
- * order, then reverse to chronological for display. We only surface
- * resolved/cancelled/timeout entries — pending elicitations are still
- * waiting for the user, so reading them as "decisions" would be wrong.
- *
- * Returns at most `limit` entries; conservative because the LLM only
- * needs the recent confirmation history, not the full audit trail.
- */
-async function loadInteractionLog(
-  tenant_id: string,
-  conversation_id: string,
-  exec: Executor,
-  limit = 10,
-): Promise<InteractionLogEntry[]> {
-  try {
-    const rows = await exec
-      .select({
-        tool_name: conversationElicitations.tool_name,
-        status: conversationElicitations.status,
-        output: conversationElicitations.output,
-        decision_reason: conversationElicitations.decision_reason,
-        decided_at: conversationElicitations.decided_at,
-      })
-      .from(conversationElicitations)
-      .where(
-        and(
-          eq(conversationElicitations.tenant_id, tenant_id),
-          eq(conversationElicitations.conversation_id, conversation_id),
-        ),
-      )
-      .orderBy(desc(conversationElicitations.created_at))
-      .limit(limit);
-    const filtered = rows.filter((r) => r.status !== "pending");
-    return filtered.reverse().map((r) => {
-      const output = r.output as Record<string, unknown> | null;
-      const confirmed = output?.confirmed === true;
-      const partial = Array.isArray(output?.approved_indices);
-      const decision = partial
-        ? "partial"
-        : confirmed
-          ? "approved"
-          : r.status === "resolved"
-            ? "declined"
-            : r.status;
-      return {
-        tool_name: r.tool_name,
-        status: r.status,
-        decision,
-        decision_reason: r.decision_reason,
-        decided_at: r.decided_at,
-      };
-    });
-  } catch {
-    return [];
-  }
-}
-
-/** Compact preview entry surfaced to the model. */
-interface LatestPreviewEntry {
-  step_id: string;
-  kind: string;
-  status: string;
-  shape_summary?: string;
-  primary_data_path?: string | null;
-  available_paths?: string[];
-  error_code?: string;
-}
-
-/**
- * Read the most recent dry-run / run preview off the conversation's
- * persisted draft (`conversations.draft.latest_preview.step_traces`).
- * Compacted to step_id + kind + status + scope_at_step. The
- * authoring loop will reach for this before guessing a JSONata path
- * — no need to re-issue a dry_run just to remember the shape.
- */
-async function loadLatestPreview(
-  tenant_id: string,
-  conversation_id: string,
-  exec: Executor,
-  limit = 12,
-): Promise<LatestPreviewEntry[]> {
-  try {
-    const rows = await exec
-      .select({ draft: conversations.draft })
-      .from(conversations)
-      .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
-      .limit(1);
-    const draft = rows[0]?.draft as
-      | {
-          latest_preview?: {
-            step_traces?: Array<Record<string, unknown>>;
-          };
-        }
-      | null
-      | undefined;
-    const traces = draft?.latest_preview?.step_traces;
-    if (!Array.isArray(traces)) return [];
-    const out: LatestPreviewEntry[] = [];
-    for (const t of traces.slice(0, limit)) {
-      if (!t || typeof t !== "object") continue;
-      const stepId = (t as { step_id?: unknown }).step_id;
-      const kind = (t as { kind?: unknown }).kind;
-      const status = (t as { status?: unknown }).status;
-      if (typeof stepId !== "string") continue;
-      const scope = (t as { scope_at_step?: Record<string, unknown> }).scope_at_step;
-      const errorCode = (t as { error_code?: unknown }).error_code;
-      out.push({
-        step_id: stepId,
-        kind: typeof kind === "string" ? kind : "unknown",
-        status: typeof status === "string" ? status : "unknown",
-        ...(scope && typeof scope.shape_summary === "string"
-          ? { shape_summary: scope.shape_summary }
-          : {}),
-        ...(scope &&
-        (typeof scope.primary_data_path === "string" || scope.primary_data_path === null)
-          ? { primary_data_path: scope.primary_data_path as string | null }
-          : {}),
-        ...(scope && Array.isArray(scope.available_paths)
-          ? {
-              available_paths: (scope.available_paths as unknown[])
-                .filter((s): s is string => typeof s === "string")
-                .slice(0, 8),
-            }
-          : {}),
-        ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
-      });
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Render the latest_preview slot. The model reads this to author the
- * next transform / loop / branch path against real shapes instead of
- * guessing. Lines are intentionally terse — the model just needs the
- * shape vocabulary, not the full preview body (which lives on
- * inspect_workflow_draft / suggest_jsonata_paths).
- */
-function formatLatestPreview(entries: LatestPreviewEntry[]): string {
-  if (entries.length === 0) return "";
-  const lines = entries.map((e) => {
-    const parts: string[] = [`- ${e.step_id} (${e.kind}) → ${e.status}`];
-    if (e.shape_summary) parts.push(`shape=${e.shape_summary}`);
-    if (e.primary_data_path) parts.push(`primary=\`${e.primary_data_path}\``);
-    if (e.available_paths && e.available_paths.length > 0) {
-      parts.push(`paths=[${e.available_paths.map((p) => `\`${p}\``).join(", ")}]`);
-    }
-    if (e.error_code) parts.push(`error=${e.error_code}`);
-    return parts.join(" · ");
-  });
-  return [
-    "# Latest preview",
-    "Compact per-step view of the most recent dry_run / run for this conversation.",
-    "Author downstream `$scope.<step>.<path>` references against the listed `paths` — never guess.",
-    "Call `suggest_jsonata_paths` for full path candidates or `inspect_workflow_draft` for the per-step output_preview.",
-    "",
-    ...lines,
-  ].join("\n");
-}
-
-/**
- * Render the interaction log as a markdown section. Mirrors the
- * reference impl's `interactionLog` array — gives the model an
- * append-only record of "what was tested vs. confirmed vs. declined"
- * so it doesn't re-ask for already-resolved actions or treat a
- * partial approval as full.
- */
-function formatInteractionLog(entries: InteractionLogEntry[]): string {
-  if (entries.length === 0) return "";
-  const lines = entries.map((e) => {
-    const reason = e.decision_reason ? ` (${e.decision_reason})` : "";
-    return `- ${e.tool_name} → ${e.decision}${reason}`;
-  });
-  return [
-    "# Interaction log",
-    "Append-only record of the recent confirmations and elicitations in this conversation.",
-    "Read this before re-asking for any action: if a tool was already declined this turn, do NOT retry without explicit user guidance; if it was already confirmed, do NOT re-ask.",
-    "",
-    ...lines,
-  ].join("\n");
-}
-
 function buildQuery(turns: UserTurn[]): string {
   const tail = turns.slice(-3).map((t) => t.content);
   return tail.join(" ").slice(0, 512);
-}
-
-async function loadChunks(
-  tenant_id: string,
-  connector_id: string | undefined,
-  query: string,
-  exec: Executor,
-): Promise<IncludedChunk[]> {
-  if (!connector_id || !query) return [];
-  try {
-    const hits = await searchDocs({ tenant_id, connector_id, query, limit: 10 }, exec);
-    return hits.map((h) => ({
-      id: h.id,
-      document_id: h.document_id,
-      title: h.title,
-      path: h.path,
-      snippet: h.snippet,
-      rank: h.rank,
-      tokens: countTokens(h.snippet),
-      fetched_at: h.fetched_at,
-    }));
-  } catch (err) {
-    logger.debug({
-      module: "llm",
-      action: "llm.context.doc_search_skipped",
-      msg: "doc search failed during context assembly",
-      tenant_id,
-      connector_id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return [];
-  }
-}
-
-async function loadKnowledgeChunks(
-  tenant_id: string,
-  workflow_id: string | undefined,
-  query: string,
-  exec: Executor,
-): Promise<IncludedKnowledgeChunk[]> {
-  if (!query) return [];
-  try {
-    const hits = await searchKnowledge(
-      { tenant_id, query, ...(workflow_id ? { workflow_id } : {}), limit: 10 },
-      exec,
-    );
-    return hits.map((h) => ({
-      id: h.id,
-      knowledge_source_id: h.knowledge_source_id,
-      title: h.title,
-      path: h.path,
-      snippet: h.snippet,
-      rank: h.rank,
-      tokens: countTokens(h.snippet),
-      fetched_at: h.fetched_at,
-    }));
-  } catch (err) {
-    logger.debug({
-      module: "llm",
-      action: "llm.context.knowledge_search_skipped",
-      msg: "knowledge search failed during context assembly",
-      tenant_id,
-      workflow_id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return [];
-  }
 }
 
 export interface BudgetReport {
@@ -947,7 +460,7 @@ export async function assembleEnhancedPrompt(
   // bloating the trimmed prompt. Lower than the original 200 so a
   // 5-skill global bundle costs ~250 tokens after trim instead of ~500.
   const SKILL_BODY_SUMMARY_LIMIT = 100;
-  const trimSkill = (s: import("../../skills/types.ts").Skill): typeof s => {
+  const trimSkill = (s: Skill): typeof s => {
     if (s.body.length <= SKILL_BODY_SUMMARY_LIMIT) return s;
     return {
       ...s,
@@ -1082,160 +595,6 @@ export async function assembleEnhancedPrompt(
     included_knowledge_chunks: knowledgeChunks,
     dropped_sections: trimmed,
   };
-}
-
-/**
- * Detect which auto-load skills match the current conversation context.
- * Matching is deterministic: checks attachment MIME types and message
- * keywords against skill `trigger_keywords`. No LLM call.
- *
- * Returns skill slugs (ids or titles) to append to `loaded_skill_slugs`.
- */
-export async function detectIntentSkills(
-  tenant_id: string,
-  opts: {
-    attachmentMimeTypes?: string[];
-    userMessage?: string;
-    hasFailedExecution?: boolean;
-    hasMultipleConnectors?: boolean;
-  },
-  exec?: Executor,
-): Promise<string[]> {
-  const keywords: string[] = [];
-
-  for (const mime of opts.attachmentMimeTypes ?? []) {
-    const lower = mime.toLowerCase();
-    if (lower.includes("openapi") || lower.includes("yaml") || lower.includes("json")) {
-      keywords.push("openapi", "swagger", "yaml", "json");
-    }
-    if (lower === "application/pdf" || lower.includes("pdf")) keywords.push("pdf");
-    if (lower.startsWith("image/")) keywords.push("image", "screenshot", "png", "jpg");
-    if (lower.includes("postman")) keywords.push("postman");
-    if (lower.includes("graphql") || lower.includes("gql")) keywords.push("graphql");
-    if (lower.includes("har")) keywords.push("har");
-  }
-
-  const msg = (opts.userMessage ?? "").toLowerCase();
-  if (msg.includes("openapi") || msg.includes("swagger")) keywords.push("openapi");
-  if (msg.includes("postman")) keywords.push("postman");
-  if (msg.includes("graphql")) keywords.push("graphql");
-  // External MCP-client integration intents — any MCP-aware client
-  // (Codex, Claude Code, Claude Desktop, Cursor, Continue, Zed, Goose,
-  // …). Loads the generic `mcp-server-setup` Skill; vendor-specific
-  // config shapes live in the VendorRecipeManifest and are fetched
-  // per-client via the `get_vendor_recipe` tool, not baked into prose.
-  if (
-    msg.includes("mcp") ||
-    msg.includes("codex") ||
-    msg.includes("claude code") ||
-    msg.includes("claude desktop") ||
-    msg.includes("cursor") ||
-    msg.includes("continue") ||
-    msg.includes("zed") ||
-    msg.includes("goose")
-  ) {
-    keywords.push(
-      "mcp",
-      "mcp server",
-      "mcp client",
-      "model context protocol",
-      "codex",
-      "claude code",
-      "claude desktop",
-      "cursor",
-      "continue",
-      "zed",
-      "goose",
-    );
-  }
-  // Connector-creation intent. The `connector-creation-guidance` skill
-  // was deliberately narrowed from a broad "api/http/endpoint" trigger
-  // to creation-intent phrases only, so we match those phrases here.
-  // Mentioning `create connector` / `new connector` pushes the checklist
-  // skill; a user talking about an *existing* connector (or authoring
-  // against one) does not pay the context cost.
-  if (
-    msg.includes("create connector") ||
-    msg.includes("new connector") ||
-    msg.includes("add connector") ||
-    msg.includes("create a connector") ||
-    msg.includes("add a connector") ||
-    msg.includes("create integration") ||
-    msg.includes("new integration") ||
-    msg.includes("add integration") ||
-    msg.includes("set up integration") ||
-    msg.includes("configure connector") ||
-    msg.includes("start connector")
-  ) {
-    keywords.push(
-      "create connector",
-      "new connector",
-      "add connector",
-      "add integration",
-      "new integration",
-      "set up integration",
-      "configure connector",
-      "start connector",
-      "start_connector_from_description",
-      "start_connector_from_template",
-    );
-  }
-  // Execution-time failure diagnosis keywords — matches
-  // `troubleshooting-workflow-failures.md`'s triggers. Pushed when the
-  // loop's hasFailedExecution flag is set OR the user's message refers
-  // to a past run.
-  if (
-    opts.hasFailedExecution ||
-    msg.includes("execution failed") ||
-    msg.includes("run failed") ||
-    msg.includes("workflow failed") ||
-    msg.includes("past run") ||
-    msg.includes("circuit open") ||
-    msg.includes("schema_violation") ||
-    msg.includes("schema-violation")
-  ) {
-    keywords.push(
-      "troubleshoot",
-      "execution failed",
-      "run failed",
-      "workflow failed",
-      "past run",
-      "schema-violation",
-      "circuit-breaker",
-    );
-  }
-  // Authoring-time tool-error keywords — matches `error-recovery.md`'s
-  // triggers. Pushed on explicit error shapes a user might paste OR the
-  // model referencing its own failed tool call.
-  if (
-    msg.includes("error") ||
-    msg.includes("failed") ||
-    msg.includes("4xx") ||
-    msg.includes("5xx") ||
-    msg.includes("placeholder_unresolved") ||
-    msg.includes("permission_denied") ||
-    msg.includes("validation_failed") ||
-    msg.includes("step_timeout") ||
-    msg.includes("connector_not_found")
-  ) {
-    keywords.push(
-      "error",
-      "failed",
-      "http_4xx",
-      "http_5xx",
-      "placeholder_unresolved",
-      "permission_denied",
-      "validation_failed",
-      "step_timeout",
-      "connector_not_found",
-      "tool error",
-    );
-  }
-  if (opts.hasMultipleConnectors) keywords.push("multi-connector", "orchestration");
-  if (keywords.length === 0) keywords.push("onboarding");
-
-  const matched = await listAutoLoadSkills(tenant_id, [...new Set(keywords)], exec);
-  return matched.map((s) => s.id);
 }
 
 /**
