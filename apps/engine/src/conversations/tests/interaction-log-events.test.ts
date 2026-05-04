@@ -287,12 +287,13 @@ describe("recordTransition — visible transcript message", () => {
 describe("service-layer wiring — code review", () => {
   test("respondElicitation mirrors output to recordTransition (source inspection)", async () => {
     // This is a best-effort static inspection: we assert the substring
-    // pattern in service.ts so future refactors that drop the wiring
-    // fail loudly rather than silently passing the unit tests above.
+    // pattern in service/elicit.ts (post-§4.1 split) so future refactors
+    // that drop the wiring fail loudly rather than silently passing the
+    // unit tests above.
     const fs = await import("node:fs/promises");
-    const src = await fs.readFile(new URL("../service.ts", import.meta.url), "utf8");
+    const src = await fs.readFile(new URL("../service/elicit.ts", import.meta.url), "utf8");
     // Must import recordTransition:
-    expect(src.includes('import("./confirmation.ts")')).toBe(true);
+    expect(src.includes('import("../confirmation.ts")')).toBe(true);
     expect(src.includes("recordTransition")).toBe(true);
     // Must handle the four primary outcomes. (`auto_declined` was a
     // pre-auto-persist transient state — the harness now applies the
