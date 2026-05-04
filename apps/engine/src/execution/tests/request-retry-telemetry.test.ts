@@ -12,7 +12,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SRC = join(import.meta.dir, "..", "steps", "request.ts");
+// After the Phase 4 split (audit §4.2), the retry-telemetry log calls
+// live in `request/dispatch.ts`; the top-level `request.ts` is now a
+// barrel re-exporter only.
+const SRC = join(import.meta.dir, "..", "steps", "request", "dispatch.ts");
 
 describe("request driver · retry telemetry shape", () => {
   const body = readFileSync(SRC, "utf-8");
