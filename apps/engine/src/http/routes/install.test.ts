@@ -38,7 +38,13 @@ describe("install script template", () => {
   test("interpolates the engine base URL into the next-step message", () => {
     const script = buildScript("3.0.0", "https://my.engine.test");
     expect(script).toContain('ENGINE_URL="https://my.engine.test"');
-    expect(script).toContain("sk profile login --engine-url");
+    // First-run path is `sk init`; already-bootstrapped engines use `sk
+    // login`. The legacy `sk profile login` was never an actual
+    // command — the CLI exposes `sk login` and `sk profile`
+    // (set/use/list/...), with no `login` subcommand under `profile`.
+    expect(script).toContain("sk init --engine-url");
+    expect(script).toContain("sk login --engine-url");
+    expect(script).not.toContain("sk profile login");
   });
 
   test("detects darwin + linux", () => {
