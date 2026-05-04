@@ -57,7 +57,7 @@ import { registerInstallRoute } from "./routes/install.ts";
 import { registerKnowledgeSourceRoutes } from "./routes/knowledge-sources.ts";
 import { registerMcpCatalogRoutes } from "./routes/mcp-catalog.ts";
 import { registerMetricsRoute } from "./routes/metrics.ts";
-import { registerNotificationRoutes } from "./routes/notifications.ts";
+import { registerNotificationRoutes } from "./routes/notifications/index.ts";
 import { registerPatchCandidateRoutes } from "./routes/patch-candidates.ts";
 import { registerRbacRoutes } from "./routes/rbac.ts";
 import { registerRequestHookRoutes } from "./routes/request-hooks.ts";
