@@ -8288,71 +8288,6 @@
           }
         }
       },
-      "NotificationDeliveryListResponse": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/NotificationDelivery"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "NotificationDelivery": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "tenant_id": {
-            "type": "string"
-          },
-          "rule_id": {
-            "type": "string",
-            "nullable": true
-          },
-          "channel_id": {
-            "type": "string",
-            "nullable": true
-          },
-          "event_type": {
-            "type": "string"
-          },
-          "severity": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string",
-            "nullable": true
-          },
-          "error": {
-            "type": "string",
-            "nullable": true
-          },
-          "created_at": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "tenant_id",
-          "rule_id",
-          "channel_id",
-          "event_type",
-          "severity",
-          "status",
-          "reason",
-          "error",
-          "created_at"
-        ]
-      },
       "TestNotificationRuleResponse": {
         "type": "object",
         "properties": {
@@ -8435,6 +8370,71 @@
             }
           }
         }
+      },
+      "NotificationDeliveryListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationDelivery"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "NotificationDelivery": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "channel_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "rule_id",
+          "channel_id",
+          "event_type",
+          "severity",
+          "status",
+          "reason",
+          "error",
+          "created_at"
+        ]
       },
       "OutboxEventListResponse": {
         "type": "object",
@@ -16232,6 +16232,61 @@
         }
       }
     },
+    "/v1/notifications/rules/:id/test": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Synthesise a notification event and dispatch it through the rule pipeline. Returns the rule-matching, rate-limit, and channel-dispatch outcome so operators can verify a rule end-to-end without waiting for a real workflow run.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestNotificationRuleBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dispatch outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestNotificationRuleResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rule not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/notifications/deliveries": {
       "get": {
         "tags": [
@@ -16281,61 +16336,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotificationDeliveryListResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/notifications/rules/:id/test": {
-      "post": {
-        "tags": [
-          "notifications"
-        ],
-        "summary": "Synthesise a notification event and dispatch it through the rule pipeline. Returns the rule-matching, rate-limit, and channel-dispatch outcome so operators can verify a rule end-to-end without waiting for a real workflow run.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestNotificationRuleBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Dispatch outcome",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TestNotificationRuleResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Rule not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

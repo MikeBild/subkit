@@ -6371,46 +6371,6 @@ export interface paths {
         };
         trace?: never;
     };
-    "/v1/notifications/deliveries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List recent notification deliveries */
-        get: {
-            parameters: {
-                query?: {
-                    limit?: number;
-                    offset?: number | null;
-                    status?: string;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["NotificationDeliveryListResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/notifications/rules/:id/test": {
         parameters: {
             query?: never;
@@ -6456,6 +6416,46 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/notifications/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List recent notification deliveries */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number | null;
+                    status?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NotificationDeliveryListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9116,21 +9116,6 @@ export interface components {
             target_channel_id?: string;
             active?: boolean;
         };
-        NotificationDeliveryListResponse: {
-            items: components["schemas"]["NotificationDelivery"][];
-        };
-        NotificationDelivery: {
-            id: string;
-            tenant_id: string;
-            rule_id: string | null;
-            channel_id: string | null;
-            event_type: string;
-            severity: string;
-            status: string;
-            reason: string | null;
-            error: string | null;
-            created_at: string;
-        };
         TestNotificationRuleResponse: {
             matched: number;
             delivered: number;
@@ -9152,6 +9137,21 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             } | null;
+        };
+        NotificationDeliveryListResponse: {
+            items: components["schemas"]["NotificationDelivery"][];
+        };
+        NotificationDelivery: {
+            id: string;
+            tenant_id: string;
+            rule_id: string | null;
+            channel_id: string | null;
+            event_type: string;
+            severity: string;
+            status: string;
+            reason: string | null;
+            error: string | null;
+            created_at: string;
         };
         OutboxEventListResponse: {
             items: components["schemas"]["OutboxEvent"][];
