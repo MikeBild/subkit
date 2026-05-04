@@ -64,7 +64,12 @@ function collectRoutesFromSource(files: string[]): Set<string> {
 // the 2026-05 architecture audit (#92); we scan the directory's
 // constituent files rather than the now-removed top-level module.
 const ENGINE_ROUTE_FILES = [
-  "apps/engine/src/http/routes/conversations.ts",
+  "apps/engine/src/http/routes/conversations/collection.ts",
+  "apps/engine/src/http/routes/conversations/messages.ts",
+  "apps/engine/src/http/routes/conversations/elicitations.ts",
+  "apps/engine/src/http/routes/conversations/lifecycle.ts",
+  "apps/engine/src/http/routes/conversations/tool-policies.ts",
+  "apps/engine/src/http/routes/conversations/stream.ts",
   "apps/engine/src/http/routes/connectors.ts",
   "apps/engine/src/http/routes/connector-discovery.ts",
   "apps/engine/src/http/routes/executions/list.ts",
