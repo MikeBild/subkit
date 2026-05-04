@@ -88,7 +88,7 @@ export const doctorCommand = defineCommand({
             : "no engine_url configured for this profile",
       ...(profileStatus !== "ok"
         ? {
-            hint: "run `sk login --engine-url <url> --api-key <key>` (or `sk init --engine-url <url>` on a fresh engine to redeem the bootstrap token printed to engine stdout)",
+            hint: "run `sk login --engine-url <url> --api-key <key>` (or `sk init --engine-url <url> --token <bootstrap-token>` on a fresh engine; the token is printed once to engine stdout on first boot)",
           }
         : {}),
     });
