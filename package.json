@@ -36,6 +36,7 @@
     "check:openapi-drift": "bun run gen:openapi-client && git diff --exit-code packages/cli-core/src/engine-api",
     "check:terminology": "bash scripts/check-terminology.sh",
     "audit:invariants": "bun run apps/engine/scripts/audit-invariants.ts",
+    "check:coverage-floor": "bun run apps/engine/scripts/check-coverage-floor.ts",
     "lint:recipes": "bun run scripts/lint-recipes.ts",
     "db:seed": "bun run apps/engine/src/db/seed.ts",
     "db:issue-admin-key": "bun run apps/engine/src/db/issue-admin-key.ts",

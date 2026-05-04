@@ -1,4 +1,59 @@
 {
-  "_comment": "Per-subsystem coverage floors enforced by audit-invariants CI (§6.1, §6.2 of docs/audits/2026-05-architecture-audit.md). Populated at the END of Phase 2 once the matrix tests land. Lowering a value requires a written PR justification; raising a value is a free PR. The 'enforced' flag on each entry is flipped to true when the floor is final.",
-  "subsystems": {}
+  "_comment": "Per-subsystem coverage floors enforced by `bun run check:coverage-floor` (see apps/engine/scripts/check-coverage-floor.ts) and surfaced by the audit-invariants `coverage_floor` check (apps/engine/scripts/audit-invariants.ts §6.1). The audit doc that pins these numbers lives at docs/audits/2026-05-architecture-audit.md §6.2. Lowering a value requires a written PR justification per .audit-loop-policy.md item 2; raising a value is a free PR and is encouraged when a subsystem grows new tests.",
+  "subsystems": {
+    "apps/engine/src/rbac": {
+      "line_min": 90,
+      "branch_min": 85,
+      "rationale": "RBAC mediates every authorisation decision; high coverage matches the highest enterprise-control-plane risk surface.",
+      "phase_2_observed": { "line": 92, "branch": null }
+    },
+    "apps/engine/src/audit": {
+      "line_min": 90,
+      "branch_min": 85,
+      "rationale": "Audit log is the immutable evidence trail for SOC2/ISO27001/GDPR; redaction, tenant scoping, and tx rollback are non-negotiable contracts.",
+      "phase_2_observed": { "line": 95, "branch": null }
+    },
+    "apps/engine/src/identity": {
+      "line_min": 80,
+      "branch_min": 70,
+      "rationale": "Identity covers OIDC, JWKS, JIT provisioning, portal tokens, sessions; the floor is below rbac/audit because some service-level paths only fire under live OIDC traffic that's covered by integration tests with real IdP fixtures.",
+      "phase_2_observed": { "line": 80, "branch": null }
+    },
+    "apps/engine/src/auth": {
+      "line_min": 80,
+      "branch_min": 70,
+      "rationale": "Auth providers (api_key, portal_token, oidc) gate every request; negative paths (revoked, expired, malformed, hash mismatch, not_yet_active) all pinned by tests."
+    },
+    "apps/engine/src/credentials": {
+      "line_min": 75,
+      "branch_min": 65,
+      "rationale": "Credential vault + OAuth2 refresh logic. Floor is set lower than auth because OAuth2 refresh loops include backoff/retry branches that fire only under flaky upstreams; raising this floor requires the OAuth2 fixture suite to grow."
+    },
+    "apps/engine/src/connectors/drivers": {
+      "line_min": 60,
+      "branch_min": 50,
+      "rationale": "Driver code is mostly thin adapters over external libraries; full integration coverage requires real services (testcontainers / docker-in-docker, tracked in the driver-integration follow-up). Unit-level coverage of DSN parsing, arg validation, and connection-failure paths is what the floor reflects today."
+    },
+    "apps/engine/src/execution": {
+      "line_min": 70,
+      "branch_min": 60,
+      "rationale": "DAG executor + step dispatch. The floor is below 80% because Phase 4's god-file decomposition (loop.ts, request.ts) will reshape this surface; raise after Phase 4 lands."
+    },
+    "apps/engine/src/self-healing": {
+      "line_min": 70,
+      "branch_min": 60,
+      "rationale": "Drift detection, classifier, fixture dry-run, approve/reject reviewer helpers. Loop test + approve-reject test together cover the main control flow."
+    },
+    "apps/engine/src/scheduler": {
+      "line_min": 75,
+      "branch_min": 65,
+      "rationale": "Cron reconciler with CAS-guarded exactly-once semantics; race + dedup tests pin the contract. Calendar-gate / trigger-bind paths are also covered.",
+      "phase_2_observed": { "line": 93, "branch": null }
+    },
+    "apps/engine/src/http/routes": {
+      "line_min": 0,
+      "branch_min": 0,
+      "rationale": "Per-route coverage measurement is deferred — the route boundary harness (#88) covers Zod/RBAC/tenant/audit assertions across the catalogue rather than per-line. Raise from 0 once Phase 4 splits the route god-files and per-resource files become small enough for line coverage to be meaningful."
+    }
+  }
 }
