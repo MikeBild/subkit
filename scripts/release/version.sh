@@ -42,8 +42,13 @@ current_version() {
 }
 
 tag_name() {
+  # Tag scheme is plain `v<VERSION>` since v3.3.0 (release-please dropped
+  # the legacy `subkit-v` prefix). The engine's `/install` script and
+  # `sk update` both fetch from `releases/download/v<VERSION>/`, so a
+  # laptop deploy tagged `subkit-v…` would create a release no installer
+  # can reach.
   local ver="$1"
-  printf 'subkit-v%s\n' "$ver"
+  printf 'v%s\n' "$ver"
 }
 
 # Usage: bump_version <patch|minor|major|X.Y.Z>
