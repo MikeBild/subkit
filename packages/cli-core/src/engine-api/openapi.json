@@ -6457,6 +6457,19 @@
           "created_at"
         ]
       },
+      "PatchConversationBody": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
       "AppendConversationMessageBody": {
         "type": "object",
         "properties": {
@@ -6480,6 +6493,26 @@
         "required": [
           "message"
         ]
+      },
+      "RespondElicitationBody": {
+        "type": "object",
+        "properties": {
+          "output": {
+            "nullable": true
+          },
+          "reason": {
+            "type": "string"
+          },
+          "permission_mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "ask",
+              "plan",
+              "yolo"
+            ]
+          }
+        }
       },
       "ContextSnapshot": {
         "type": "object",
@@ -7033,26 +7066,6 @@
           "workflow_version"
         ]
       },
-      "RespondElicitationBody": {
-        "type": "object",
-        "properties": {
-          "output": {
-            "nullable": true
-          },
-          "reason": {
-            "type": "string"
-          },
-          "permission_mode": {
-            "type": "string",
-            "enum": [
-              "auto",
-              "ask",
-              "plan",
-              "yolo"
-            ]
-          }
-        }
-      },
       "CompactConversationResponse": {
         "type": "object",
         "properties": {
@@ -7080,19 +7093,6 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 50
-          }
-        }
-      },
-      "PatchConversationBody": {
-        "type": "object",
-        "properties": {
-          "model": {
-            "type": "string",
-            "nullable": true
-          },
-          "title": {
-            "type": "string",
-            "nullable": true
           }
         }
       },
@@ -14181,98 +14181,6 @@
         }
       }
     },
-    "/v1/conversations/{id}/cancel": {
-      "post": {
-        "tags": [
-          "conversations"
-        ],
-        "summary": "Cancel a conversation",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Conversation"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/conversations/{id}/context-snapshot": {
-      "get": {
-        "tags": [
-          "conversations"
-        ],
-        "summary": "Summary of the context currently in scope for a conversation",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ContextSnapshot"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/conversations/{id}/elicitations/{elicitation_id}/respond": {
       "post": {
         "tags": [
@@ -14390,6 +14298,98 @@
           },
           "404": {
             "description": "Not found — no elicitation links to that tool_call",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/cancel": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Cancel a conversation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/context-snapshot": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Summary of the context currently in scope for a conversation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextSnapshot"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
