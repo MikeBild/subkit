@@ -18,6 +18,16 @@ The sk CLI is the primary human-facing authoring tool and the canonical operator
 
 **In-conversation actions.** Users interact with the ongoing Conversation through slash commands: `/approve` to commit a Draft, `/reject` to discard a proposal, `/list` to enumerate available Connectors or Skills, `/run` to trigger an execution, `/draft` to inspect the current draft snapshot, `/context` to inspect the current authoring state, and others. These commands give users explicit control over the AI authoring loop without leaving the terminal.
 
+**Slash-command reference.** The full set of conversational and admin slashes (registered in `apps/sk/src/slash.ts`):
+
+- *Authoring*: `/connector`, `/connectors`, `/workflow`, `/workflows`, `/templates`, `/versions`, `/approve`, `/approvals`, `/reject`, `/draft`, `/context`, `/run`, `/list`, `/restore`, `/policy`, `/yolo` (force-skip checkpoint gates), `/patch-candidates`, `/discovery`, `/actions`, `/queue`, `/history`, `/view`, `/export`, `/attach`, `/paste`.
+- *Session*: `/help`, `/clear`, `/compact`, `/resume`, `/exit`, `/init`, `/setup`, `/onboard`, `/profile`, `/model`, `/status`, `/cost`, `/verbose`, `/debug`, `/bug`, `/logs`, `/config`, `/aliases`, `/env`, `/exec`.
+- *Identity & access*: `/login`, `/logout`, `/auth`, `/apikeys`, `/audit`, `/admin`, `/tenant`, `/users`, `/system-accounts`, `/permissions`.
+- *AI context*: `/skills`, `/knowledge`, `/mcp`, `/memory`, `/notifications`, `/tunnels`, `/executions`.
+- *Vendor install helpers*: `/install-slack`, `/install-teams`, `/install-github`, `/install-google-workspace`, `/install-salesforce`, `/install-jira`, `/install-hubspot`.
+
+Each command's full surface lives next to its handler; this list is the canonical index.
+
 **State visibility.** The CLI does not infer progress from transcript text alone. It renders the engine's authoring summary directly: current mode, stage, active target, checkpoint freshness, blockers, next required action, latest execution, and latest diagnosis. This is what makes resume, repair, and handoff predictable across long-running sessions.
 
 **Guided progression.** The guided CLI flow follows the same state machine as the engine. Connector save is gated by fresh inspect/validate/probe checkpoints. Workflow commit is gated by fresh inspect/validate/preview checkpoints. Execution runs always target the persisted workflow version currently tracked in the conversation state. The normal guided flow does not expose conversational force bypasses for these transitions.
