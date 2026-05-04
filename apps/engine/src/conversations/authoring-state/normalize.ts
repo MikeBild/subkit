@@ -1,0 +1,464 @@
+// Pure validators that coerce `unknown` payloads (DB rows, JSON
+// blobs, MCP tool inputs) into the typed `DraftDocument` /
+// `AuthoringState` / `AuthoringSummary` shapes. No state mutations,
+// no checkpoint logic — that lives in `summary.ts` and the parent
+// `authoring-state.ts` barrel.
+
+import { isRecord } from "../../utils/type-guards.ts";
+import type {
+  AuthoringCheckpointKey,
+  AuthoringCheckpointRecord,
+  AuthoringCheckpointStatus,
+  AuthoringCheckpointView,
+  AuthoringMode,
+  AuthoringStage,
+  AuthoringState,
+  AuthoringSummary,
+  AuthoringSurfaceMode,
+  ConnectorDraftDocument,
+  LatestDiagnosisSummary,
+  LatestExecutionSummary,
+  PersistedResourceRef,
+  WorkflowDraftDocument,
+} from "../types.ts";
+
+const CHECKPOINT_KEYS: readonly AuthoringCheckpointKey[] = [
+  "connector_inspected",
+  "connector_validated",
+  "connector_authenticated",
+  "connector_probed",
+  "connector_persisted",
+  "workflow_inspected",
+  "workflow_validated",
+  "workflow_previewed",
+  "workflow_persisted",
+  "workflow_executed",
+  "workflow_diagnosed",
+];
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+export function createEmptyWorkflowDraft(): WorkflowDraftDocument {
+  return {
+    name: "new-workflow",
+    steps: [],
+  };
+}
+
+export function createEmptyState(mode: AuthoringSurfaceMode): AuthoringState {
+  return {
+    mode,
+    stage: "idle",
+    connector_mutation_seq: 0,
+    workflow_mutation_seq: 0,
+    checkpoints: {},
+    persisted_resources: [],
+    latest_execution: null,
+    latest_diagnosis: null,
+  };
+}
+
+export function modeFromLegacy(mode: AuthoringMode | undefined): AuthoringSurfaceMode {
+  if (mode === "workflow_authoring" || mode === "resume_review") return "workflow";
+  return "connector";
+}
+
+export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
+  const fallback = createEmptyWorkflowDraft();
+  if (!isRecord(raw) || !isRecord(raw.workflow)) return fallback;
+  const base = raw.workflow;
+  const pickString = (key: string): string | undefined => {
+    const value = base[key];
+    return typeof value === "string" && value.length > 0 ? value : undefined;
+  };
+  const name = pickString("name") ?? fallback.name;
+  const slug = pickString("slug");
+  const description = pickString("description");
+  const outputTransform = pickString("output_transform");
+  const derivedFromSkillId = pickString("derived_from_skill_id");
+  return {
+    name,
+    ...(slug ? { slug } : {}),
+    ...(description ? { description } : {}),
+    ...(derivedFromSkillId ? { derived_from_skill_id: derivedFromSkillId } : {}),
+    steps: Array.isArray(base.steps)
+      ? base.steps.filter((step): step is Record<string, unknown> => isRecord(step))
+      : [],
+    ...(isRecord(base.input_schema) ? { input_schema: base.input_schema } : {}),
+    ...(isRecord(base.output_schema) ? { output_schema: base.output_schema } : {}),
+    ...(outputTransform ? { output_transform: outputTransform } : {}),
+    ...(Array.isArray(base.edges)
+      ? {
+          edges: base.edges
+            .filter(
+              (edge): edge is { from: string; to: string } =>
+                isRecord(edge) && typeof edge.from === "string" && typeof edge.to === "string",
+            )
+            .map((edge) => ({ from: edge.from, to: edge.to })),
+        }
+      : {}),
+  };
+}
+
+export function normalizeConnectorDraft(raw: unknown): ConnectorDraftDocument | null {
+  if (!isRecord(raw) || !isRecord(raw.connector)) return null;
+  const connector = raw.connector;
+  const next: ConnectorDraftDocument = {};
+  if (typeof connector.name === "string" && connector.name.length > 0) next.name = connector.name;
+  if (typeof connector.slug === "string" && connector.slug.length > 0) next.slug = connector.slug;
+  if (typeof connector.driver === "string") {
+    next.driver = connector.driver as NonNullable<ConnectorDraftDocument["driver"]>;
+  }
+  if (typeof connector.environment === "string") {
+    next.environment = connector.environment as NonNullable<ConnectorDraftDocument["environment"]>;
+  }
+  if (typeof connector.base_url === "string" && connector.base_url.length > 0) {
+    next.base_url = connector.base_url;
+  }
+  if (typeof connector.dsn === "string" && connector.dsn.length > 0) next.dsn = connector.dsn;
+  if (typeof connector.auth_type === "string") {
+    next.auth_type = connector.auth_type as NonNullable<ConnectorDraftDocument["auth_type"]>;
+  }
+  if (isRecord(connector.config)) next.config = connector.config;
+  if (typeof connector.description === "string" && connector.description.length > 0) {
+    next.description = connector.description;
+  }
+  if (typeof connector.template_slug === "string") next.template_slug = connector.template_slug;
+  if (connector.template_slug === null) next.template_slug = null;
+  if (typeof connector.template_name === "string") next.template_name = connector.template_name;
+  if (connector.template_name === null) next.template_name = null;
+  if (typeof connector.template_source === "string") {
+    next.template_source = connector.template_source as NonNullable<
+      ConnectorDraftDocument["template_source"]
+    >;
+  }
+  if (connector.template_source === null) next.template_source = null;
+  if (Array.isArray(connector.docs)) {
+    next.docs = connector.docs.filter((doc: unknown): doc is string => typeof doc === "string");
+  }
+  if (isRecord(connector.validation)) {
+    const validation = connector.validation;
+    next.validation = {
+      ok: validation.ok === true,
+      missing_fields: Array.isArray(validation.missing_fields)
+        ? validation.missing_fields.filter(
+            (field: unknown): field is string => typeof field === "string",
+          )
+        : [],
+      errors: Array.isArray(validation.errors)
+        ? validation.errors
+            .filter(
+              (error: unknown): error is { path: string; message: string } =>
+                isRecord(error) &&
+                typeof error.path === "string" &&
+                typeof error.message === "string",
+            )
+            .map((error: { path: string; message: string }) => ({
+              path: error.path,
+              message: error.message,
+            }))
+        : [],
+    };
+  }
+  if (isRecord(connector.latest_probe)) {
+    const probe = connector.latest_probe;
+    next.latest_probe = {
+      ok: probe.ok === true,
+      method: typeof probe.method === "string" ? probe.method : "GET",
+      path: typeof probe.path === "string" ? probe.path : "/",
+      environment:
+        typeof probe.environment === "string"
+          ? (probe.environment as NonNullable<ConnectorDraftDocument["environment"]>)
+          : "dev",
+      ...(typeof probe.status_code === "number" ? { status_code: probe.status_code } : {}),
+      ...(typeof probe.duration_ms === "number" ? { duration_ms: probe.duration_ms } : {}),
+      summary: typeof probe.summary === "string" ? probe.summary : "Probe executed.",
+      ...(probe.response_preview !== undefined ? { response_preview: probe.response_preview } : {}),
+      ...(typeof probe.failure_code === "string" ? { failure_code: probe.failure_code } : {}),
+      ...(typeof probe.probed_at === "string" ? { probed_at: probe.probed_at } : {}),
+    };
+  }
+  if (typeof connector.saved_connector_id === "string") {
+    next.saved_connector_id = connector.saved_connector_id;
+  }
+  if (connector.saved_connector_id === null) next.saved_connector_id = null;
+  return Object.keys(next).length > 0 ? next : {};
+}
+
+export function parseCheckpointRecord(
+  key: AuthoringCheckpointKey,
+  value: unknown,
+): AuthoringCheckpointRecord | null {
+  if (
+    !isRecord(value) ||
+    typeof value.verified_at !== "string" ||
+    typeof value.verified_by_tool !== "string"
+  ) {
+    return null;
+  }
+  return {
+    key,
+    verified_at: value.verified_at,
+    verified_by_tool: value.verified_by_tool,
+    mutation_seq: typeof value.mutation_seq === "number" ? value.mutation_seq : 0,
+    ok: typeof value.ok === "boolean" ? value.ok : null,
+    summary: typeof value.summary === "string" ? value.summary : null,
+    resource_ref:
+      isRecord(value.resource_ref) &&
+      typeof value.resource_ref.kind === "string" &&
+      typeof value.resource_ref.id === "string"
+        ? {
+            kind: value.resource_ref.kind as "connector" | "workflow" | "execution" | "diagnosis",
+            id: value.resource_ref.id,
+            version_id:
+              typeof value.resource_ref.version_id === "string"
+                ? value.resource_ref.version_id
+                : null,
+          }
+        : null,
+  };
+}
+
+export function normalizePersistedResource(value: unknown): PersistedResourceRef | null {
+  if (!isRecord(value) || typeof value.kind !== "string" || typeof value.id !== "string") {
+    return null;
+  }
+  return {
+    kind: value.kind as PersistedResourceRef["kind"],
+    id: value.id,
+    slug: typeof value.slug === "string" ? value.slug : null,
+    name: typeof value.name === "string" ? value.name : null,
+    version_id: typeof value.version_id === "string" ? value.version_id : null,
+    version: typeof value.version === "number" ? value.version : null,
+    environment:
+      value.environment === "dev" || value.environment === "prod" ? value.environment : null,
+    saved_at: typeof value.saved_at === "string" ? value.saved_at : nowIso(),
+  };
+}
+
+export function normalizeLatestExecution(value: unknown): LatestExecutionSummary | null {
+  if (
+    !isRecord(value) ||
+    typeof value.execution_id !== "string" ||
+    typeof value.status !== "string"
+  ) {
+    return null;
+  }
+  return {
+    execution_id: value.execution_id,
+    workflow_id: typeof value.workflow_id === "string" ? value.workflow_id : null,
+    workflow_version_id:
+      typeof value.workflow_version_id === "string" ? value.workflow_version_id : null,
+    status: value.status,
+    environment:
+      typeof value.environment === "string"
+        ? (value.environment as LatestExecutionSummary["environment"])
+        : "dev",
+    warnings_count: typeof value.warnings_count === "number" ? value.warnings_count : 0,
+    recorded_at: typeof value.recorded_at === "string" ? value.recorded_at : nowIso(),
+    diagnosis_available: value.diagnosis_available === true,
+    ...(value.requires_repair === true ? { requires_repair: true } : {}),
+  };
+}
+
+export function normalizeLatestDiagnosis(value: unknown): LatestDiagnosisSummary | null {
+  if (
+    !isRecord(value) ||
+    typeof value.execution_id !== "string" ||
+    typeof value.reason !== "string"
+  ) {
+    return null;
+  }
+  return {
+    execution_id: value.execution_id,
+    recorded_at: typeof value.recorded_at === "string" ? value.recorded_at : nowIso(),
+    reason: value.reason,
+    warning_sources: Array.isArray(value.warning_sources)
+      ? value.warning_sources
+          .filter(
+            (item): item is { step_key: string; code: string; identifier: string | null } =>
+              isRecord(item) && typeof item.step_key === "string" && typeof item.code === "string",
+          )
+          .map((item) => ({
+            step_key: item.step_key,
+            code: item.code,
+            identifier: typeof item.identifier === "string" ? item.identifier : null,
+          }))
+      : [],
+    steps: Array.isArray(value.steps)
+      ? value.steps
+          .filter(
+            (
+              item,
+            ): item is {
+              step_key: string;
+              kind: string;
+              status: string;
+              duration_ms?: number | null;
+              output_preview?: unknown;
+              error?: unknown;
+              request_meta?: unknown;
+            } =>
+              isRecord(item) &&
+              typeof item.step_key === "string" &&
+              typeof item.kind === "string" &&
+              typeof item.status === "string",
+          )
+          .map((item) => ({
+            step_key: item.step_key,
+            kind: item.kind,
+            status: item.status,
+            duration_ms: typeof item.duration_ms === "number" ? item.duration_ms : null,
+            ...(item.output_preview !== undefined ? { output_preview: item.output_preview } : {}),
+            ...(item.error !== undefined ? { error: item.error } : {}),
+            ...(item.request_meta !== undefined ? { request_meta: item.request_meta } : {}),
+          }))
+      : [],
+  };
+}
+
+export function normalizeState(
+  raw: unknown,
+  legacyMode: AuthoringMode | undefined,
+): AuthoringState {
+  const fallback = createEmptyState(modeFromLegacy(legacyMode));
+  if (!isRecord(raw) || !isRecord(raw.state)) return fallback;
+  const state = raw.state;
+  const next: AuthoringState = {
+    mode:
+      state.mode === "workflow" ||
+      state.mode === "execution" ||
+      state.mode === "diagnosis" ||
+      state.mode === "connector"
+        ? state.mode
+        : fallback.mode,
+    stage: typeof state.stage === "string" ? (state.stage as AuthoringStage) : fallback.stage,
+    connector_mutation_seq:
+      typeof state.connector_mutation_seq === "number" ? state.connector_mutation_seq : 0,
+    workflow_mutation_seq:
+      typeof state.workflow_mutation_seq === "number" ? state.workflow_mutation_seq : 0,
+    checkpoints: {},
+    persisted_resources: Array.isArray(state.persisted_resources)
+      ? state.persisted_resources
+          .map(normalizePersistedResource)
+          .filter((item): item is PersistedResourceRef => item !== null)
+      : [],
+    latest_execution: normalizeLatestExecution(state.latest_execution),
+    latest_diagnosis: normalizeLatestDiagnosis(state.latest_diagnosis),
+  };
+  if (isRecord(state.checkpoints)) {
+    for (const key of CHECKPOINT_KEYS) {
+      const parsed = parseCheckpointRecord(key, state.checkpoints[key]);
+      if (parsed) next.checkpoints[key] = parsed;
+    }
+  }
+  return next;
+}
+
+export function normalizeSummary(raw: unknown): AuthoringSummary | undefined {
+  if (!isRecord(raw) || !isRecord(raw.summary)) return undefined;
+  const summary = raw.summary;
+  return {
+    readiness:
+      summary.readiness === "drafting" ||
+      summary.readiness === "needs_input" ||
+      summary.readiness === "ready_to_probe" ||
+      summary.readiness === "ready_to_save" ||
+      summary.readiness === "saved"
+        ? summary.readiness
+        : "drafting",
+    next_action: typeof summary.next_action === "string" ? summary.next_action : null,
+    next_required_action:
+      typeof summary.next_required_action === "string"
+        ? summary.next_required_action
+        : typeof summary.next_action === "string"
+          ? summary.next_action
+          : null,
+    next_suggested_tool:
+      typeof summary.next_suggested_tool === "string" ? summary.next_suggested_tool : null,
+    missing_fields: Array.isArray(summary.missing_fields)
+      ? summary.missing_fields.filter(
+          (field: unknown): field is string => typeof field === "string",
+        )
+      : [],
+    last_action: typeof summary.last_action === "string" ? summary.last_action : null,
+    progress_label: typeof summary.progress_label === "string" ? summary.progress_label : null,
+    mode:
+      summary.mode === "workflow" ||
+      summary.mode === "execution" ||
+      summary.mode === "diagnosis" ||
+      summary.mode === "connector"
+        ? summary.mode
+        : "connector",
+    stage: typeof summary.stage === "string" ? (summary.stage as AuthoringStage) : "idle",
+    lifecycle_state:
+      summary.lifecycle_state === "persisted" ||
+      summary.lifecycle_state === "draft_only" ||
+      summary.lifecycle_state === "none"
+        ? summary.lifecycle_state
+        : "none",
+    active_target:
+      isRecord(summary.active_target) &&
+      typeof summary.active_target.kind === "string" &&
+      (summary.active_target.kind === "connector" ||
+        summary.active_target.kind === "workflow" ||
+        summary.active_target.kind === "none")
+        ? {
+            kind: summary.active_target.kind,
+            name:
+              typeof summary.active_target.name === "string" ? summary.active_target.name : null,
+            slug:
+              typeof summary.active_target.slug === "string" ? summary.active_target.slug : null,
+            id: typeof summary.active_target.id === "string" ? summary.active_target.id : null,
+            environment:
+              summary.active_target.environment === "dev" ||
+              summary.active_target.environment === "prod"
+                ? summary.active_target.environment
+                : null,
+            lifecycle_state:
+              summary.active_target.lifecycle_state === "persisted" ||
+              summary.active_target.lifecycle_state === "draft_only" ||
+              summary.active_target.lifecycle_state === "none"
+                ? summary.active_target.lifecycle_state
+                : "none",
+          }
+        : {
+            kind: "none",
+            name: null,
+            slug: null,
+            id: null,
+            environment: null,
+            lifecycle_state: "none",
+          },
+    blocked_by: Array.isArray(summary.blocked_by)
+      ? summary.blocked_by.filter((item: unknown): item is string => typeof item === "string")
+      : [],
+    checkpoints: Array.isArray(summary.checkpoints)
+      ? summary.checkpoints
+          .filter(
+            (item: unknown): item is AuthoringCheckpointView =>
+              isRecord(item) && typeof item.key === "string" && typeof item.status === "string",
+          )
+          .map((item) => ({
+            key: item.key as AuthoringCheckpointKey,
+            status: item.status as AuthoringCheckpointStatus,
+            verified_at: typeof item.verified_at === "string" ? item.verified_at : null,
+            verified_by_tool:
+              typeof item.verified_by_tool === "string" ? item.verified_by_tool : null,
+            ok: typeof item.ok === "boolean" ? item.ok : null,
+            summary: typeof item.summary === "string" ? item.summary : null,
+          }))
+      : [],
+    persisted_resources: Array.isArray(summary.persisted_resources)
+      ? summary.persisted_resources
+          .map(normalizePersistedResource)
+          .filter((item): item is PersistedResourceRef => item !== null)
+      : [],
+    latest_execution: normalizeLatestExecution(summary.latest_execution),
+    latest_diagnosis: normalizeLatestDiagnosis(summary.latest_diagnosis),
+  };
+}
+
+export { CHECKPOINT_KEYS, nowIso };
