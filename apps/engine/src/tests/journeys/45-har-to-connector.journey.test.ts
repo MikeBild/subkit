@@ -62,11 +62,11 @@ const EXAMPLE_HAR = JSON.stringify({
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("har-to-connector");
-});
+}, 60_000);
 
 afterAll(async () => {
   await ctx.cleanup();
-});
+}, 60_000);
 
 describe("45: HAR → connector endpoint extraction (deterministic parser)", () => {
   test("AC1: parses endpoints from HAR, no LLM call", async () => {

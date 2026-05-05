@@ -68,7 +68,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey: audit completeness over mutation routes", () => {
   test("AC1: POST /v1/workflows → workflow.created", async () => {

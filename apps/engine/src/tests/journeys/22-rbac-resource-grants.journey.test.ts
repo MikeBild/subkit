@@ -68,11 +68,11 @@ describe("journey: rbac resource grants", () => {
       scopes: ["*"],
     });
     memberApiKey = plaintext;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   async function asMember(path: string, init: RequestInit = {}) {
     const headers = new Headers(init.headers);

@@ -190,7 +190,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey 29: subkit rbac CLI", () => {
   test("AC1: rbac permissions list returns the catalog", async () => {

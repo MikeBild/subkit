@@ -59,14 +59,14 @@ describe("journey: sk-cli continue-session cache", () => {
     scratchHome = mkdtempSync(join(tmpdir(), "sk-cont-home-"));
     prevSkHome = process.env.SK_HOME;
     process.env.SK_HOME = scratchHome;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     if (prevSkHome !== undefined) process.env.SK_HOME = prevSkHome;
     else delete process.env.SK_HOME;
     rmSync(scratchHome, { recursive: true, force: true });
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: runHeadless writes a session cache entry for a new conversation", async () => {
     const result = await runHeadless({

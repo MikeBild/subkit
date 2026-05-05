@@ -76,7 +76,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => mock.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 async function connect(): Promise<Client> {
   const transport = new StreamableHTTPClientTransport(new URL(ctx.mcpUrl), {

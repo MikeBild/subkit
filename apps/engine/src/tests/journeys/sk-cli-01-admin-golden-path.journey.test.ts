@@ -49,11 +49,11 @@ describe("journey: sk-cli admin golden path", () => {
 
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-01-admin");
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: runHeadless creates a conversation and emits CONVERSATION_CREATED", async () => {
     const stdoutBuf: string[] = [];

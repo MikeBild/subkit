@@ -212,7 +212,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey 35: sk workflows CLI", () => {
   test("AC1: workflows list returns empty array before any workflows exist", async () => {

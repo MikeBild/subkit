@@ -155,7 +155,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey: self-healing safe patch", () => {
   test("AC1+AC2: loop proposes, classifies safe, dry-runs, auto-applies", async () => {

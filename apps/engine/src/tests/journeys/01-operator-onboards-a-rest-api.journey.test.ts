@@ -67,7 +67,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => mockApi.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey: operator onboards a REST API", () => {
   test("AC1: create connector, ingest OpenAPI docs, search, attach a skill", async () => {

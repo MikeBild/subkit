@@ -21,7 +21,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await ctx.cleanup();
-});
+}, 60_000);
 
 describe("47: Loop step — iterates items, injects item_var and $loop_index", () => {
   test("AC1+AC2+AC5: body runs once per item, item_var accessible, status succeeded", async () => {

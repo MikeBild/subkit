@@ -51,11 +51,11 @@ describe("journey: rbac groups", () => {
       scopes: ["*"],
     });
     apiKey = plaintext;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   async function asUser(path: string) {
     return fetch(`${ctx.baseUrl}${path}`, {

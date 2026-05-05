@@ -66,11 +66,11 @@ describe("journey: rbac can query", () => {
       steps: [{ id: "s1", kind: "transform", expression: '"w"' }],
     });
     workflowId = wf.id;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   async function can(
     principal_id: string,

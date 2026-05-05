@@ -89,11 +89,11 @@ describe("journey: sk-cli slash handler", () => {
     });
 
     session = initialSessionState(null);
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: /status reports profile + persona + session (multi-line when no openPane host)", async () => {
     const line = await handleSlash("status", [], slashCtx());

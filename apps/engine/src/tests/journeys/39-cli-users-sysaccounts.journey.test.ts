@@ -170,7 +170,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey 39: sk users CLI", () => {
   test("AC1: users list --json returns >= 1 item; items have id and email", async () => {

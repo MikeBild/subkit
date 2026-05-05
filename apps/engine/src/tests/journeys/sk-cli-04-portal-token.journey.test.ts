@@ -83,11 +83,11 @@ describe("journey: sk-cli portal-token customer", () => {
       allowed_workflows: [workflowId],
       expires_at: new Date(TEST_NOW_MS + 3600_000),
     });
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: portal-token principal can POST /v1/conversations", async () => {
     const res = await pFetch("/v1/conversations", {

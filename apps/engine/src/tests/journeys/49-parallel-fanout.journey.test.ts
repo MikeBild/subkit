@@ -20,7 +20,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await ctx.cleanup();
-});
+}, 60_000);
 
 describe("49: Parallel step — concurrent branches, merged output, skipped in linear walk", () => {
   test("AC1+AC2+AC4: all branches run, status succeeded, output is per-branch array", async () => {

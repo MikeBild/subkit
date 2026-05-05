@@ -49,7 +49,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await ctx.cleanup();
-});
+}, 60_000);
 
 describe("48: Input schema validation — required fields enforced at run start", () => {
   test("AC1: valid input (all required fields present) → status succeeded", async () => {

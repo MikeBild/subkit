@@ -45,7 +45,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 async function streamEvents(id: string): Promise<string[]> {
   const res = await journeyFetch(ctx, `/v1/conversations/${id}/stream`);

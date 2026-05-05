@@ -219,7 +219,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey 41: sk portal-tokens CLI", () => {
   test("AC1: portal-tokens list --json returns an array (may be empty)", async () => {

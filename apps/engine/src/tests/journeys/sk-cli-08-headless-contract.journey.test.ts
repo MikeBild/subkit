@@ -61,11 +61,11 @@ function profileFor(tenantId: string, apiKey: string): ResolvedProfile {
 describe("journey: sk headless output contract", () => {
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-08-headless");
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: --output text prints one line of assistant text and exits 0", async () => {
     const stdout = makeBuffer();

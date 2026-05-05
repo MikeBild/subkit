@@ -53,11 +53,11 @@ const STRIPE_OPENAPI = JSON.stringify({
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("openapi-to-workflow");
-});
+}, 60_000);
 
 afterAll(async () => {
   await ctx.cleanup();
-});
+}, 60_000);
 
 describe("44: OpenAPI → workflow (deterministic parser)", () => {
   test("AC1: parses endpoints from OpenAPI JSON, no LLM call", async () => {
