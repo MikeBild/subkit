@@ -36,3 +36,7 @@ docker/binaries/*
 # is the canonical operator template.
 subkit.config.json
 
+# Local Claude Code agent worktrees — disposable subagent state, not
+# source. Never committed.
+.claude/worktrees/
+

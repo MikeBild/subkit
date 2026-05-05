@@ -134,6 +134,36 @@ function buildAuthSection(): SetupSection {
   );
 }
 
+// Whether the named provider has the credentials it needs to actually
+// answer requests. Built from globalLlmStatus() (which is itself
+// derived from getConfig()) so this stays in sync with the schema and
+// never reads process.env directly.
+function providerHasCredentials(
+  provider: string,
+  status: ReturnType<typeof globalLlmStatus>,
+): boolean {
+  switch (provider) {
+    case "mock":
+      return true;
+    case "anthropic":
+      return status.anthropic_key_set;
+    case "openai":
+      return status.openai_key_set;
+    case "gemini":
+      return status.gemini_key_set;
+    case "azure":
+      return status.azure_key_set;
+    case "bedrock":
+      return status.bedrock_key_set;
+    case "vertex":
+      return status.vertex_api_key_set || status.vertex_service_account_set;
+    case "ai_gateway":
+      return status.gateway_key_set && status.gateway_model_set;
+    default:
+      return false;
+  }
+}
+
 function buildLlmSection(): SetupSection {
   const llmStatus = globalLlmStatus();
   const issues: SetupIssue[] = [];
@@ -158,13 +188,21 @@ function buildLlmSection(): SetupSection {
     );
   }
 
-  if (cfg.summarize_provider && llmStatus.summarize_inferred_provider === "unconfigured") {
+  // Summarize-route blocker fires when the override picks a provider
+  // but its credentials are absent. v3.4's `listLlmEnvironmentIssues`
+  // bundled this check; v3.5 derives it from the same globalLlmStatus
+  // flags that drive the credential badges below.
+  if (
+    cfg.summarize_provider &&
+    cfg.summarize_provider !== "mock" &&
+    !providerHasCredentials(cfg.summarize_provider, llmStatus)
+  ) {
     issues.push(
       buildIssue(
         "llm-summarize",
         "blocker",
         "Summarize LLM route",
-        "summarize provider is set but credentials are missing",
+        `summarize provider is set to "${cfg.summarize_provider}" but its credentials are missing`,
       ),
     );
     recommendations.push(
