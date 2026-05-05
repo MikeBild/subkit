@@ -165,12 +165,12 @@ services:
         # script reads package.json and exports it before `docker
         # compose build`.
         ENGINE_VERSION: ${ENGINE_VERSION:-0.0.0-dev}
-    # Local dev builds the slim image. Production runs the with-cli
-    # variant — see deploy/docker-compose.prod.yml — so operators on
-    # any deployment can `curl /install | bash` against the engine
-    # without GitHub egress. Use that variant locally too if you want
-    # to smoke /install/* end-to-end:
-    #   image: registry.digitalocean.com/subkit/engine:${ENGINE_VERSION:-latest}-with-cli
+    # Local builds skip the bundled CLI binaries (docker/binaries/ has
+    # only a .gitkeep), so /install/sk-* and /install/agent-* return
+    # 404 and the install script falls back to GitHub Releases — fine
+    # for dev. Run `bash scripts/release/embed-binaries.sh --from-local`
+    # before `docker compose build` to populate them and smoke the
+    # bundled flow end-to-end.
     image: subkit/engine:local
     restart: unless-stopped
     networks: [subkit]

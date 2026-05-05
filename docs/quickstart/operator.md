@@ -63,29 +63,15 @@ Pick from 90 connector templates — see [docs/05-connectors.md](../05-connector
 
 ## How `curl /install | bash` works against your engine
 
-The default deploy (`deploy/docker-compose.prod.yml`) ships the **`engine-with-cli`** image variant: the engine itself serves matching `sk` and `tunnel-agent` binaries from `/install/sk-:platform-:arch`, `/install/agent-:platform-:arch`, and `/install/sha256sums`. Anyone who can reach the engine can install the CLI, even on air-gapped or proxy-restricted networks — no GitHub egress required.
-
-Two image tags ship per release:
-
-| Tag                                | Size       | Serves `/install/sk-*` and `/install/agent-*` | When to pick                                                |
-| ---------------------------------- | ---------- | --------------------------------------------- | ----------------------------------------------------------- |
-| `subkit/engine:<version>-with-cli` | +~360 MB   | yes — bundled binaries with SHA verification  | **default**: every operator's `curl … /install` works       |
-| `subkit/engine:<version>`          | slim       | no — install script falls back to GitHub      | size-conscious deploys where every operator has GitHub egress |
-
-The install command is identical for both:
+Every released engine image bundles matching `sk` and `tunnel-agent` binaries at `/usr/local/share/subkit/binaries` and serves them at `/install/sk-:platform-:arch`, `/install/agent-:platform-:arch`, and `/install/sha256sums`. Anyone who can reach your engine URL can install the CLI:
 
 ```bash
 curl -fsSL https://my-engine.example.com/install | bash
 ```
 
-The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; on `200` it streams from there with `x-subkit-sha256` verification against `${ENGINE_URL}/install/sha256sums`. On `404` it falls back to the GitHub Release for the engine's running version. The user-visible behaviour is the same — the variant only changes whether the bytes come from the engine or from GitHub.
+The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; on `200` it streams from there with `x-subkit-sha256` verification against `${ENGINE_URL}/install/sha256sums`. The `~/.subkit/bin/sk` it lands matches the engine's running version exactly — no version drift.
 
-To opt into the slim variant, edit your `docker-compose.prod.yml`:
-
-```yaml
-engine:
-  image: registry.digitalocean.com/subkit/engine:${ENGINE_VERSION:-latest}
-```
+For local dev or fork builds where `docker/binaries/` is empty, the install routes return 404 and the script falls back to GitHub Releases for the matching tag. Run `bash scripts/release/embed-binaries.sh --from-local` before `docker compose build` to bundle the host's binaries and smoke the full flow locally.
 
 ## Next steps
 

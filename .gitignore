@@ -23,3 +23,10 @@ firebase/.firebase/
 # pollutes blame/diff.
 apps/engine/eval/out/
 
+# Binary staging for the engine docker image — populated by
+# scripts/release/embed-binaries.sh before `docker build`. The dir
+# itself is committed (via .gitkeep) so the Dockerfile's COPY always
+# resolves; the per-platform binaries + SHA256SUMS are gitignored.
+docker/binaries/*
+!docker/binaries/.gitkeep
+

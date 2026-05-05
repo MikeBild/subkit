@@ -1,0 +1,7 @@
+# Placeholder so the directory exists in the docker build context for
+# COPY in Dockerfile.engine. Real contents (per-platform sk +
+# tunnel-agent binaries plus SHA256SUMS) are produced by
+# scripts/release/embed-binaries.sh — gitignored so we don't track ~360
+# MB of compiled output. When this directory is empty (no SHA256SUMS),
+# the install-binary route 404s and the install script falls back to
+# GitHub Releases — graceful degradation for fork builds and local dev.
