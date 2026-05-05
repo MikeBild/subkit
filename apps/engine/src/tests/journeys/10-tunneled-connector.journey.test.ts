@@ -142,7 +142,7 @@ afterAll(async () => {
   await new Promise<void>((resolve) => targetServer.close(() => resolve()));
   await wsServer.stop();
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey: tunneled connector", () => {
   test("AC1: agent registers and registry exposes the target", async () => {

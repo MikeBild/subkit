@@ -76,7 +76,7 @@ afterAll(async () => {
   await happyRx.close();
   await flakyRx.close();
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey: outbound webhook delivery", () => {
   test("AC1: signed POST lands at happy receiver and writes a success delivery row", async () => {

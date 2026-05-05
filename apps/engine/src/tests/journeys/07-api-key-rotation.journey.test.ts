@@ -48,7 +48,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 async function probeWith(apiKey: string): Promise<number> {
   const res = await fetch(`${ctx.baseUrl}/v1/identity/tenants`, {

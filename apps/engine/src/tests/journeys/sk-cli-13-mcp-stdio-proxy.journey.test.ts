@@ -180,11 +180,11 @@ interface ToolResponse {
 describe("journey: sk-cli mcp stdio proxy", () => {
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-13-mcp-stdio");
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: ListTools returns all 5 sk.* tools", async () => {
     const { listTools } = await buildServer();

@@ -110,7 +110,7 @@ describe("journey: sk-cli audit provenance", () => {
     if (ctx) {
       await ctx.cleanup();
     }
-  });
+  }, 60_000);
 
   test("POST /v1/identity/sessions/oidc with sk-cli user-agent emits SK_CLI_LOGIN", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/identity/sessions/oidc`, {

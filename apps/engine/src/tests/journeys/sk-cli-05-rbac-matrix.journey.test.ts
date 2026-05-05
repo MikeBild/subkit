@@ -150,11 +150,11 @@ describe("journey: sk-cli rbac matrix", () => {
       if (!u) throw new Error(`seed user failed for role ${roleName}`);
       users_by_role[roleName] = u.id;
     }
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   async function canQuery(principalId: string, permission: string): Promise<CanResult> {
     const res = await journeyFetch(ctx, "/v1/rbac/can", {

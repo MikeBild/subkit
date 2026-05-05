@@ -22,7 +22,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await ctx.cleanup();
-});
+}, 60_000);
 
 describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
   test("AC1+AC3: true branch runs then_steps, else_steps are skipped, status succeeded", async () => {

@@ -53,7 +53,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey: portal token end-user", () => {
   test("AC1: admin issues a scoped portal token and receives plaintext", async () => {

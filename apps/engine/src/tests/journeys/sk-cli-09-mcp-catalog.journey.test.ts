@@ -99,11 +99,11 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
       allowed_workflows: ["*"],
       expires_at: new Date(TEST_NOW_MS + 3600_000),
     });
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: admin GET /v1/mcp/{prompts,resources,tools} returns 200", async () => {
     for (const path of ["/v1/mcp/prompts", "/v1/mcp/resources", "/v1/mcp/tools"]) {

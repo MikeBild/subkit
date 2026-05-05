@@ -62,11 +62,11 @@ describe("journey: sk-cli enduser dashboard", () => {
       token_sha256: sha256Hex(enduserApiKey),
       scopes: ["*"],
     });
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: enduser can POST /v1/conversations", async () => {
     const res = await endFetch("/v1/conversations", {

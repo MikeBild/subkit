@@ -222,7 +222,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey 42: sk executions CLI", () => {
   test("AC1: executions list returns an array after seeding a run", async () => {

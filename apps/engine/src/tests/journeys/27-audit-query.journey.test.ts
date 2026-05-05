@@ -64,7 +64,7 @@ describe("journey: audit query surface", () => {
 
   afterAll(async () => {
     if (ctx?.cleanup) await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: distinct mutations produce distinct audit rows", async () => {
     // 1. Create a workflow → workflow.created

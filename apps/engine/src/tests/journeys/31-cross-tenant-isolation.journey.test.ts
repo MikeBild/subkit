@@ -150,7 +150,7 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
 
   afterAll(async () => {
     if (ctx?.cleanup) await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: Tenant B cannot read/update/delete Tenant A's workflow over HTTP", async () => {
     const get = await fetchAs(ctx, tenantB.apiKey, `/v1/workflows/${tenantAWorkflowId}`);

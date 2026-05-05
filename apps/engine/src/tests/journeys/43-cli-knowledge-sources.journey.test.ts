@@ -204,7 +204,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey 43: sk knowledge-sources CLI", () => {
   test("AC1: knowledge-sources list returns an array (may be empty)", async () => {

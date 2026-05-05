@@ -91,7 +91,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => mockApi.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("54: Loop body + request step + ${item.id} placeholder", () => {
   test("AC1+AC2: ${item.id} resolves per iteration; URLs hit the wire as plain ids", async () => {

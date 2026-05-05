@@ -81,11 +81,11 @@ describe("journey: sk-cli member daily driver", () => {
       token_sha256: sha256Hex(memberApiKey),
       scopes: ["*"],
     });
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: member can POST /v1/conversations", async () => {
     const res = await memberFetch("/v1/conversations", {

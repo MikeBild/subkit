@@ -55,7 +55,7 @@ afterAll(async () => {
   await new Promise<void>((resolve) => mockDev.close(() => resolve()));
   await new Promise<void>((resolve) => mockProd.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey: dev/prod promotion", () => {
   test("AC1: create dev connector and attach a bearer credential", async () => {

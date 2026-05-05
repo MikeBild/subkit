@@ -204,7 +204,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey 52: sk CLI knowledge upload → search → converse", () => {
   // ---------- Gap 8: Markdown upload via CLI ----------

@@ -209,7 +209,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey 37: sk apikeys CLI", () => {
   test("AC1: apikeys list --json returns >= 1 item; each item has id and prefix", async () => {
