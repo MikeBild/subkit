@@ -20,6 +20,7 @@
 // should pass `ctx.mode = tenant.egress_guard_mode ?? undefined` —
 // the resolver below honors it ahead of the env-var fallback.
 
+import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
 
 export type EgressGuardMode = "strict" | "permissive";
@@ -48,8 +49,12 @@ export class EgressBlockedError extends Error {
 
 function resolveMode(ctx: EgressGuardContext): EgressGuardMode {
   if (ctx.mode === "strict" || ctx.mode === "permissive") return ctx.mode;
-  const envMode = (process.env.EGRESS_GUARD ?? "").toLowerCase();
-  if (envMode === "strict" || envMode === "permissive") return envMode;
+  try {
+    const cfgMode = getConfig().egress.mode;
+    if (cfgMode === "strict" || cfgMode === "permissive") return cfgMode;
+  } catch {
+    /* loader not initialised — fall through to NODE_ENV default */
+  }
   return (process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "strict" : "permissive";
 }
 

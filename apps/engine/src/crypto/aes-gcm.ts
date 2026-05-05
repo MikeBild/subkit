@@ -21,7 +21,6 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
-import { env } from "../env.ts";
 import { logger } from "../logging/logger.ts";
 
 export const AES_ALGORITHM = "aes-256-gcm" as const;
@@ -67,7 +66,8 @@ let loggedLoad = false;
 
 function getKey(): Buffer {
   if (cachedKey) return cachedKey;
-  cachedKey = parseKey(env.MASTER_KEY);
+  const raw = process.env.MASTER_KEY ?? "";
+  cachedKey = parseKey(raw);
   if (!loggedLoad) {
     loggedLoad = true;
     logger.info({

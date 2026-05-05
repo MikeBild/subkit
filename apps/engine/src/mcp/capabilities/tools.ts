@@ -31,6 +31,7 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { getConfig } from "../../config/loader.ts";
 import { listTools as listConversationToolsRegistry } from "../../conversations/tools/index.ts";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, workflows, workflowVersions } from "../../db/schema/index.ts";
@@ -263,7 +264,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
   // Write-tools inside the tenant.* family are additionally gated at
   // call time by `gateTenantToolCall`. The env var below forces a strictly
   // read-only MCP deployment — overriding mode-based visibility.
-  const readOnly = process.env.SK_MCP_READ_ONLY === "1";
+  let readOnly = false;
+  try {
+    readOnly = getConfig().mcp.read_only;
+  } catch {
+    /* loader not initialised */
+  }
   const allowTenantWrites = !readOnly;
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {

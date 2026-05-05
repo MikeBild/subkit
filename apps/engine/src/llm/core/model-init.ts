@@ -6,6 +6,62 @@ import { createVertex } from "@ai-sdk/google-vertex";
 import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
+import { getConfig } from "../../config/loader.ts";
+
+// Engine LLM config moved to subkit.config.json in v3.5. Each historical
+// env-var name maps to a dotted config path; existing call sites use
+// `readEnv(name)` / `requireEnv(name, provider)` which now read from
+// `getConfig()` via this map. Operator-facing diagnostics (status line,
+// /v1/diagnostics/llm) keep using the env-var names as labels because
+// they remain familiar to operators who upgrade from v3.4.x.
+const ENV_TO_CONFIG_PATH: Record<string, string[]> = {
+  LLM_PROVIDER: ["llm", "provider"],
+  LLM_FALLBACK_PROVIDER: ["llm", "fallback_provider"],
+  SUMMARIZE_LLM_PROVIDER: ["llm", "summarize_provider"],
+  SUMMARIZE_MODEL: ["llm", "summarize_model"],
+  LLM_CONTEXT_1M: ["llm", "context_1m"],
+  ANTHROPIC_API_KEY: ["llm", "providers", "anthropic", "api_key"],
+  ANTHROPIC_MODEL: ["llm", "providers", "anthropic", "model"],
+  ANTHROPIC_BASE_URL: ["llm", "providers", "anthropic", "base_url"],
+  OPENAI_API_KEY: ["llm", "providers", "openai", "api_key"],
+  OPENAI_MODEL: ["llm", "providers", "openai", "model"],
+  OPENAI_BASE_URL: ["llm", "providers", "openai", "base_url"],
+  GEMINI_API_KEY: ["llm", "providers", "gemini", "api_key"],
+  GEMINI_MODEL: ["llm", "providers", "gemini", "model"],
+  GEMINI_BASE_URL: ["llm", "providers", "gemini", "base_url"],
+  AZURE_API_KEY: ["llm", "providers", "azure", "api_key"],
+  AZURE_MODEL: ["llm", "providers", "azure", "model"],
+  AZURE_BASE_URL: ["llm", "providers", "azure", "base_url"],
+  AZURE_RESOURCE_NAME: ["llm", "providers", "azure", "resource_name"],
+  AZURE_API_VERSION: ["llm", "providers", "azure", "api_version"],
+  AZURE_USE_DEPLOYMENT_BASED_URLS: ["llm", "providers", "azure", "use_deployment_based_urls"],
+  BEDROCK_MODEL: ["llm", "providers", "bedrock", "model"],
+  AWS_REGION: ["llm", "providers", "bedrock", "region"],
+  AWS_ACCESS_KEY_ID: ["llm", "providers", "bedrock", "access_key_id"],
+  AWS_SECRET_ACCESS_KEY: ["llm", "providers", "bedrock", "secret_access_key"],
+  AWS_SESSION_TOKEN: ["llm", "providers", "bedrock", "session_token"],
+  AWS_BASE_URL: ["llm", "providers", "bedrock", "base_url"],
+  VERTEX_API_KEY: ["llm", "providers", "vertex", "api_key"],
+  VERTEX_MODEL: ["llm", "providers", "vertex", "model"],
+  VERTEX_PROJECT: ["llm", "providers", "vertex", "project"],
+  VERTEX_LOCATION: ["llm", "providers", "vertex", "location"],
+  VERTEX_CLIENT_EMAIL: ["llm", "providers", "vertex", "client_email"],
+  VERTEX_PRIVATE_KEY: ["llm", "providers", "vertex", "private_key"],
+  GOOGLE_APPLICATION_CREDENTIALS: ["llm", "providers", "vertex", "google_application_credentials"],
+  GOOGLE_VERTEX_PROJECT: ["llm", "providers", "vertex", "project"],
+  GOOGLE_VERTEX_LOCATION: ["llm", "providers", "vertex", "location"],
+  AI_GATEWAY_API_KEY: ["llm", "providers", "ai_gateway", "api_key"],
+  AI_GATEWAY_MODEL: ["llm", "providers", "ai_gateway", "model"],
+};
+
+function readConfigByPath(p: string[]): unknown {
+  let cursor: unknown = getConfig();
+  for (const seg of p) {
+    if (typeof cursor !== "object" || cursor === null) return undefined;
+    cursor = (cursor as Record<string, unknown>)[seg];
+  }
+  return cursor;
+}
 
 export const DIRECT_PROVIDER_KINDS = [
   "anthropic",
@@ -49,14 +105,25 @@ export class ProviderMisconfiguredError extends Error {
 }
 
 function readEnv(name: string): string | undefined {
-  const v = process.env[name];
-  return v && v.length > 0 ? v : undefined;
+  const cfgPath = ENV_TO_CONFIG_PATH[name];
+  if (cfgPath) {
+    const v = readConfigByPath(cfgPath);
+    if (typeof v === "string") return v.length > 0 ? v : undefined;
+    if (typeof v === "boolean") return v ? "true" : "false";
+    if (typeof v === "number") return String(v);
+    return undefined;
+  }
+  const raw = process.env[name];
+  return raw && raw.length > 0 ? raw : undefined;
 }
 
 function requireEnv(name: string, provider: ProviderKind): string {
   const value = readEnv(name);
   if (!value) {
-    throw new ProviderMisconfiguredError(provider, `${name} is not set.`);
+    throw new ProviderMisconfiguredError(
+      provider,
+      `${name} is not set. Configure via \`sk settings configure\` or SK_OVERRIDE_${name}.`,
+    );
   }
   return value;
 }

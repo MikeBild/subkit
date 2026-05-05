@@ -6,6 +6,7 @@
 // running behind the tunnel agent on a private LAN).
 
 import { getIntrospectionQuery } from "graphql";
+import { getConfig } from "../config/loader.ts";
 import { validateOutboundHeaders } from "./drivers/http.ts";
 
 export interface FetchedSpec {
@@ -40,7 +41,13 @@ export class SpecFetchError extends Error {
 
 async function fetchWithBudget(url: string, init: RequestInit): Promise<Response> {
   const u = new URL(url);
-  if (isPrivateHost(u.hostname) && process.env.SUBKIT_ALLOW_PRIVATE_SPEC_FETCH !== "1") {
+  let allowPrivate = false;
+  try {
+    allowPrivate = getConfig().spec.allow_private_fetch;
+  } catch {
+    /* loader not initialised — keep default deny */
+  }
+  if (isPrivateHost(u.hostname) && !allowPrivate) {
     throw new SpecFetchError(`refusing to fetch private host ${u.hostname}`, url);
   }
   // Defence on every fetch path. The LLM-issued

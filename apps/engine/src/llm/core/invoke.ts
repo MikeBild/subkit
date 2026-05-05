@@ -23,9 +23,9 @@ import { and, eq } from "drizzle-orm";
 import { type ZodType, z } from "zod";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { getConfig } from "../../config/loader.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { tenantLlmSettings, tenants } from "../../db/schema/index.ts";
-import { env, listLlmEnvironmentIssues } from "../../env.ts";
 import { log, logger } from "../../logging/logger.ts";
 import {
   recordLlmCacheUsage,
@@ -118,43 +118,37 @@ export interface GlobalLlmStatus {
 }
 
 export function globalLlmStatus(): GlobalLlmStatus {
+  const cfg = getConfig().llm;
   const inferred = detectConfiguredProvider();
   const fallbackInferred = detectConfiguredProvider({ providerEnvVar: "LLM_FALLBACK_PROVIDER" });
-  const summarizeProviderEnvVar = process.env.SUMMARIZE_LLM_PROVIDER
+  const summarizeProviderEnvVar = cfg.summarize_provider
     ? "SUMMARIZE_LLM_PROVIDER"
     : "LLM_PROVIDER";
   const summarizeInferred = detectConfiguredProvider({ providerEnvVar: summarizeProviderEnvVar });
-  const primaryIssues = listLlmEnvironmentIssues(process.env, { requireConfigured: true });
-  const summarizeIssues = listLlmEnvironmentIssues(process.env, {
-    providerEnvVar: summarizeProviderEnvVar,
-    fallbackProviderEnvVar: null,
-    requireConfigured: true,
-  });
+  const providers = cfg.providers;
+  const bedrock = providers.bedrock;
+  const vertex = providers.vertex;
   return {
-    provider_env: process.env.LLM_PROVIDER ?? null,
+    provider_env: cfg.provider || null,
     inferred_provider: inferred,
-    fallback_provider_env: process.env.LLM_FALLBACK_PROVIDER ?? null,
+    fallback_provider_env: cfg.fallback_provider ?? null,
     fallback_inferred_provider: fallbackInferred,
-    summarize_provider_env: process.env.SUMMARIZE_LLM_PROVIDER ?? null,
+    summarize_provider_env: cfg.summarize_provider ?? null,
     summarize_inferred_provider: summarizeInferred,
-    summarize_model: process.env.SUMMARIZE_MODEL ?? null,
-    summarize_configuration_error: summarizeIssues.length > 0 ? summarizeIssues.join(" | ") : null,
-    gateway_key_set: Boolean(process.env.AI_GATEWAY_API_KEY),
-    gateway_model_set: Boolean(process.env.AI_GATEWAY_MODEL),
-    anthropic_key_set: Boolean(process.env.ANTHROPIC_API_KEY),
-    openai_key_set: Boolean(process.env.OPENAI_API_KEY),
-    gemini_key_set: Boolean(process.env.GEMINI_API_KEY),
-    azure_key_set: Boolean(process.env.AZURE_API_KEY),
-    bedrock_key_set: Boolean(
-      process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION,
-    ),
-    vertex_api_key_set: Boolean(process.env.VERTEX_API_KEY),
-    vertex_service_account_set: Boolean(
-      process.env.VERTEX_CLIENT_EMAIL && process.env.VERTEX_PRIVATE_KEY,
-    ),
-    configuration_error: primaryIssues.length > 0 ? primaryIssues.join(" | ") : null,
-    default_primary: env.LLM_PRIMARY ?? DEFAULT_PRIMARY,
-    default_fallback: env.LLM_FALLBACK ?? DEFAULT_FALLBACK,
+    summarize_model: cfg.summarize_model || null,
+    summarize_configuration_error: null,
+    gateway_key_set: Boolean(providers.ai_gateway.api_key),
+    gateway_model_set: Boolean(providers.ai_gateway.model),
+    anthropic_key_set: Boolean(providers.anthropic.api_key),
+    openai_key_set: Boolean(providers.openai.api_key),
+    gemini_key_set: Boolean(providers.gemini.api_key),
+    azure_key_set: Boolean(providers.azure.api_key),
+    bedrock_key_set: Boolean(bedrock.access_key_id && bedrock.secret_access_key && bedrock.region),
+    vertex_api_key_set: Boolean(vertex.api_key),
+    vertex_service_account_set: Boolean(vertex.client_email && vertex.private_key),
+    configuration_error: null,
+    default_primary: cfg.model || DEFAULT_PRIMARY,
+    default_fallback: cfg.fallback_model || DEFAULT_FALLBACK,
   };
 }
 
@@ -185,10 +179,11 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     .limit(1);
   const tenant = tenantRows[0];
 
+  const cfg = getConfig().llm;
   const primary =
-    settings?.llm_primary_model ?? tenant?.llm_primary ?? env.LLM_PRIMARY ?? DEFAULT_PRIMARY;
+    settings?.llm_primary_model ?? tenant?.llm_primary ?? cfg.model ?? DEFAULT_PRIMARY;
   const fallback =
-    settings?.llm_fallback_model ?? tenant?.llm_fallback ?? env.LLM_FALLBACK ?? DEFAULT_FALLBACK;
+    settings?.llm_fallback_model ?? tenant?.llm_fallback ?? cfg.fallback_model ?? DEFAULT_FALLBACK;
   const provider = (settings?.llm_provider as LlmProviderKind | undefined) ?? currentProvider();
   const fallback_provider = currentFallbackProvider(provider);
   const monthly_budget =

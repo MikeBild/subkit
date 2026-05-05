@@ -1,3 +1,5 @@
+import { getConfig } from "../config/loader.ts";
+
 // RuntimeContext — per-turn ground truth about the engine, tenant
 // and actor that the LLM is responding to.
 //
@@ -74,7 +76,11 @@ export function resolveEngineUrl(req: Request | { url: string }): string | undef
   } catch {
     /* fall through */
   }
-  const env = process.env.SUBKIT_PUBLIC_BASE_URL;
-  if (env && env.length > 0) return env;
+  try {
+    const cfg = getConfig().server.public_base_url;
+    if (cfg && cfg.length > 0) return cfg;
+  } catch {
+    /* loader not initialised (e.g. unit tests that don't boot) — fall through */
+  }
   return undefined;
 }

@@ -14,6 +14,8 @@
 // The base URL for unix-socket requests is a stable `http://docker`
 // host placeholder since Bun routes the actual bytes over the socket.
 
+import { getConfig } from "../../config/loader.ts";
+
 export interface DockerClientOptions {
   docker_host?: string | undefined;
 }
@@ -31,7 +33,7 @@ export class DockerClient {
   private readonly baseUrl: string;
 
   constructor(opts: DockerClientOptions = {}) {
-    const host = normalizeDockerHost(opts.docker_host ?? process.env.DOCKER_HOST);
+    const host = normalizeDockerHost(opts.docker_host ?? readDockerHost());
     if (host.startsWith("unix://")) {
       this.mode = "unix";
       this.unixPath = host.slice("unix://".length);
@@ -102,6 +104,22 @@ export class DockerClient {
   }
 }
 
+function readDockerHost(): string | undefined {
+  try {
+    return getConfig().docker.host || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readSkipDocker(): boolean {
+  try {
+    return getConfig().docker.skip;
+  } catch {
+    return false;
+  }
+}
+
 function normalizeDockerHost(raw: string | undefined): string {
   if (!raw) return "";
   // macOS Docker Desktop sometimes sets DOCKER_HOST to the CLI binary
@@ -128,7 +146,7 @@ export function getDockerClient(): DockerClient {
  * Probe the daemon — used by tests to skip when Docker isn't running.
  */
 export async function daemonReachable(): Promise<boolean> {
-  if (process.env.SKIP_DOCKER === "1") return false;
+  if (readSkipDocker()) return false;
   try {
     return await getDockerClient().ping();
   } catch {

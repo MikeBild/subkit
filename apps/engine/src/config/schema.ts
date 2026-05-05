@@ -224,6 +224,10 @@ const AuthSection = z
           .string()
           .default("")
           .meta(global({ requiresRestart: true, secret: true })),
+        redirect_uri: z
+          .string()
+          .default("")
+          .meta(global({ requiresRestart: true })),
       })
       .prefault({})
       .describe("Generic OIDC provider"),
@@ -357,7 +361,14 @@ const ObservabilitySection = z
 
 const EgressSection = z
   .object({
-    mode: z.enum(["allow", "warn", "block"]).default("allow").meta(global()),
+    mode: z
+      .enum(["strict", "permissive"])
+      .nullable()
+      .default(null)
+      .describe(
+        "Egress mode: strict blocks private/loopback hosts, permissive allows them. Null falls back to NODE_ENV default.",
+      )
+      .meta(global()),
     provider_hosts_extra: z
       .array(z.string())
       .default([])

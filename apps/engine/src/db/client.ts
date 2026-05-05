@@ -3,7 +3,7 @@
 
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { env } from "../env.ts";
+import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
 import * as schema from "./schema/index.ts";
 
@@ -19,7 +19,7 @@ let _db: NodePgDatabase<typeof schema> | null = null;
  */
 export function getPool(): pg.Pool {
   if (_pool) return _pool;
-  _pool = new Pool({ connectionString: env.DATABASE_URL });
+  _pool = new Pool({ connectionString: getConfig().database.url });
   _pool.on("error", (err) => {
     logger.error({
       module: "db",

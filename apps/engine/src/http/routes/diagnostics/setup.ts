@@ -11,7 +11,7 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { listLlmEnvironmentIssues } from "../../../env.ts";
+import { getConfig } from "../../../config/loader.ts";
 import { globalLlmStatus } from "../../../llm/core/invoke.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -139,32 +139,36 @@ function buildLlmSection(): SetupSection {
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
 
-  const primaryIssues = listLlmEnvironmentIssues(process.env, { requireConfigured: true });
-  if (primaryIssues.length > 0) {
+  // Validation now lives in ConfigSchema + model-init's validateProviderSetup
+  // — boot fails on bad config so this section reports the live status from
+  // globalLlmStatus(). The blocker surface comes from `inferred_provider ===
+  // "unconfigured"` which globalLlmStatus already encodes.
+  const cfg = getConfig().llm;
+  if (llmStatus.inferred_provider === "unconfigured") {
     issues.push(
-      buildIssue("llm-primary", "blocker", "Primary LLM route", compactJoin(primaryIssues)),
+      buildIssue(
+        "llm-primary",
+        "blocker",
+        "Primary LLM route",
+        "no provider configured (set llm.provider via `sk settings configure`)",
+      ),
+    );
+    recommendations.push(
+      "Run `sk settings configure --tab llm` to set llm.provider and the matching api_key.",
     );
   }
 
-  const summarizeIssues = process.env.SUMMARIZE_LLM_PROVIDER
-    ? listLlmEnvironmentIssues(process.env, {
-        providerEnvVar: "SUMMARIZE_LLM_PROVIDER",
-        fallbackProviderEnvVar: null,
-        requireConfigured: true,
-      })
-    : [];
-  if (summarizeIssues.length > 0) {
+  if (cfg.summarize_provider && llmStatus.summarize_inferred_provider === "unconfigured") {
     issues.push(
-      buildIssue("llm-summarize", "blocker", "Summarize LLM route", compactJoin(summarizeIssues)),
+      buildIssue(
+        "llm-summarize",
+        "blocker",
+        "Summarize LLM route",
+        "summarize provider is set but credentials are missing",
+      ),
     );
     recommendations.push(
-      "Fix SUMMARIZE_LLM_PROVIDER credentials or unset the override to fall back to the primary LLM route.",
-    );
-  }
-
-  if (issues.some((issue) => issue.id === "llm-primary")) {
-    recommendations.push(
-      "Set AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL together, or configure a complete direct-provider route.",
+      "Fix llm.summarize_provider credentials or unset llm.summarize_provider to fall back to the primary route.",
     );
   }
 

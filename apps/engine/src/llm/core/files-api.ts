@@ -77,8 +77,9 @@ export async function uploadFileViaApi(p: UploadFileParams): Promise<UploadedFil
 }
 
 async function uploadAnthropic(p: UploadFileParams): Promise<UploadedFile> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new FilesApiError("anthropic", "ANTHROPIC_API_KEY not set");
+  const { getConfig } = await import("../../config/loader.ts");
+  const apiKey = getConfig().llm.providers.anthropic.api_key;
+  if (!apiKey) throw new FilesApiError("anthropic", "llm.providers.anthropic.api_key not set");
   const baseUrl = p.baseUrl ?? "https://api.anthropic.com";
   const fetchFn = p.fetchImpl ?? fetch;
 
@@ -131,8 +132,9 @@ async function uploadAnthropic(p: UploadFileParams): Promise<UploadedFile> {
 }
 
 async function uploadOpenAI(p: UploadFileParams): Promise<UploadedFile> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new FilesApiError("openai", "OPENAI_API_KEY not set");
+  const { getConfig } = await import("../../config/loader.ts");
+  const apiKey = getConfig().llm.providers.openai.api_key;
+  if (!apiKey) throw new FilesApiError("openai", "llm.providers.openai.api_key not set");
   const baseUrl = p.baseUrl ?? "https://api.openai.com";
   const fetchFn = p.fetchImpl ?? fetch;
 
@@ -184,8 +186,9 @@ async function uploadOpenAI(p: UploadFileParams): Promise<UploadedFile> {
 }
 
 async function uploadGemini(p: UploadFileParams): Promise<UploadedFile> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new FilesApiError("gemini", "GEMINI_API_KEY not set");
+  const { getConfig } = await import("../../config/loader.ts");
+  const apiKey = getConfig().llm.providers.gemini.api_key;
+  if (!apiKey) throw new FilesApiError("gemini", "llm.providers.gemini.api_key not set");
   const baseUrl = p.baseUrl ?? "https://generativelanguage.googleapis.com";
   const fetchFn = p.fetchImpl ?? fetch;
 

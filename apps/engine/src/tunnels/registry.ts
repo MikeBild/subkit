@@ -12,6 +12,7 @@
 // be raised via `SUBKIT_TUNNEL_REGISTRY_MAX` for deployments with many
 // tenants × targets.
 
+import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
 import { setTunnelConnected } from "../observability/instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
@@ -29,11 +30,13 @@ import {
 const DEFAULT_REGISTRY_MAX = 1024;
 
 function resolveRegistryMax(): number {
-  const raw = process.env.SUBKIT_TUNNEL_REGISTRY_MAX;
-  if (!raw) return DEFAULT_REGISTRY_MAX;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_REGISTRY_MAX;
-  return Math.floor(parsed);
+  try {
+    const n = getConfig().tunnel.registry_max;
+    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  } catch {
+    /* loader not initialised */
+  }
+  return DEFAULT_REGISTRY_MAX;
 }
 
 export interface TunnelEntry {

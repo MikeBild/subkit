@@ -46,13 +46,10 @@ export interface ErrorRing {
   clear(): void;
 }
 
-function capacityFromEnv(): number {
-  const raw = process.env.SK_ERROR_RING_SIZE;
-  if (!raw) return DEFAULT_CAPACITY;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n) || n <= 0) return DEFAULT_CAPACITY;
-  return Math.min(n, 5000);
-}
+// errors.ring_size lives in subkit.config.json and is read at the boot
+// path — the engine swaps the singleton ring after loadConfig() via
+// `replaceErrorRing(getConfig().errors.ring_size)`. Until then this
+// default is in effect.
 
 function truncateStack(stack: string | null | undefined): string | null {
   if (!stack) return null;
@@ -60,7 +57,7 @@ function truncateStack(stack: string | null | undefined): string | null {
   return `${stack.slice(0, MAX_STACK_BYTES)}\n…(truncated)`;
 }
 
-export function createErrorRing(capacity = capacityFromEnv()): ErrorRing {
+export function createErrorRing(capacity = DEFAULT_CAPACITY): ErrorRing {
   const buf: CapturedError[] = [];
   return {
     record(entry: CapturedError): void {

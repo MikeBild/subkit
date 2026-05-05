@@ -25,6 +25,7 @@
 //     floor (256 tokens) guards against a "fits exactly under the cap
 //     pre-call but overruns post-call" hole.
 
+import { getConfig } from "../../config/loader.ts";
 import type { RequestStep } from "../../workflows/types.ts";
 
 /** Approximate tokens per character. Tighter than 1/4 for ASCII English
@@ -59,14 +60,14 @@ const LLM_PROVIDER_HOSTS = new Set<string>([
 ]);
 
 function extraHosts(): Set<string> {
-  const raw = process.env.SUBKIT_LLM_PROVIDER_HOSTS_EXTRA;
-  if (!raw) return new Set();
-  return new Set(
-    raw
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter((s) => s.length > 0),
-  );
+  try {
+    const list = getConfig().egress.provider_hosts_extra ?? [];
+    return new Set(
+      list.map((s: string) => s.trim().toLowerCase()).filter((s: string) => s.length > 0),
+    );
+  } catch {
+    return new Set();
+  }
 }
 
 export class LlmBudgetExceededError extends Error {
