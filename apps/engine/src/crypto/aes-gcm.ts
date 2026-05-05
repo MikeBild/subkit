@@ -167,5 +167,17 @@ export function secureEqual(a: Uint8Array | string, b: Uint8Array | string): boo
   return timingSafeEqual(ba, bb);
 }
 
-// Eager-load key at module import so boot surfaces key errors loudly.
-getKey();
+// Eager key validation moved to runServer() — module load must not
+// touch env.MASTER_KEY so that arg-only flags (`engine --smoke`,
+// `engine --version`, `engine --check-update`, `engine --self-update`)
+// run on a binary that has not yet been configured. Operators still
+// get the loud-on-boot guarantee via `assertCryptoKeyOrExit()`.
+
+/**
+ * Force a key parse + cache. Call once during server startup so a bad
+ * MASTER_KEY surfaces in the boot log, before any request can reach an
+ * encrypt/decrypt path.
+ */
+export function assertCryptoKeyOrExit(): void {
+  getKey();
+}

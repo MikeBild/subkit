@@ -215,4 +215,40 @@ function parseEnv(): Env {
   return parsed.data;
 }
 
-export const env: Env = parseEnv();
+// Lazy facade. parseEnv() runs on the first property read, not at
+// module load. That keeps `engine --smoke`, `engine --version`,
+// `engine --check-update`, and `engine --self-update` runnable without
+// a configured DATABASE_URL/MASTER_KEY: the binary loads modules but
+// never touches `env.X`, so the strict schema never fires. Pre-fix the
+// eager `parseEnv()` at the bottom of this file made arg-only flags
+// fail before main() ever ran — the matrix smoke step in release.yml
+// could only succeed against a fully-configured runner.
+//
+// Once any caller reads a field, the result is memoised, so the cost
+// is one parse + validation per process — same as before.
+let _resolved: Env | null = null;
+function resolveEnv(): Env {
+  if (_resolved === null) _resolved = parseEnv();
+  return _resolved;
+}
+
+export const env: Env = new Proxy({} as Env, {
+  get(_target, prop) {
+    return resolveEnv()[prop as keyof Env];
+  },
+  has(_target, prop) {
+    return prop in resolveEnv();
+  },
+  ownKeys() {
+    return Reflect.ownKeys(resolveEnv());
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    return Object.getOwnPropertyDescriptor(resolveEnv(), prop);
+  },
+});
+
+// Test-only — let suites reset the cache between cases that mutate
+// process.env. Production code never calls this.
+export function _resetEnvCacheForTests(): void {
+  _resolved = null;
+}
