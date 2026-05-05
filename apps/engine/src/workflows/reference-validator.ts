@@ -345,38 +345,38 @@ export function validateStepReferences(def: WorkflowDef): ReferenceValidationErr
     // accurate.
     if (step.kind === "loop") {
       const loop = step as { over?: string; data_selector?: string };
-      if (loop.over) {
-        collectReferences(loop.over, stepIds, (ref) => emit(step.id, "over", ref, loop.over!));
-        collectBarePathReferences(loop.over, stepIds, (ref) =>
-          emit(step.id, "over", ref, loop.over!),
-        );
+      const over = loop.over;
+      if (over) {
+        collectReferences(over, stepIds, (ref) => emit(step.id, "over", ref, over));
+        collectBarePathReferences(over, stepIds, (ref) => emit(step.id, "over", ref, over));
       }
-      if (loop.data_selector) {
-        collectReferences(loop.data_selector, stepIds, (ref) =>
-          emit(step.id, "data_selector", ref, loop.data_selector!),
+      const data_selector = loop.data_selector;
+      if (data_selector) {
+        collectReferences(data_selector, stepIds, (ref) =>
+          emit(step.id, "data_selector", ref, data_selector),
         );
-        collectBarePathReferences(loop.data_selector, stepIds, (ref) =>
-          emit(step.id, "data_selector", ref, loop.data_selector!),
+        collectBarePathReferences(data_selector, stepIds, (ref) =>
+          emit(step.id, "data_selector", ref, data_selector),
         );
       }
       continue;
     }
     if (step.kind === "branch") {
-      const br = step as { when?: string };
-      if (br.when) {
-        collectReferences(br.when, stepIds, (ref) => emit(step.id, "when", ref, br.when!));
-        collectBarePathReferences(br.when, stepIds, (ref) => emit(step.id, "when", ref, br.when!));
+      const when = (step as { when?: string }).when;
+      if (when) {
+        collectReferences(when, stepIds, (ref) => emit(step.id, "when", ref, when));
+        collectBarePathReferences(when, stepIds, (ref) => emit(step.id, "when", ref, when));
       }
       continue;
     }
     if (step.kind === "transform") {
-      const tx = step as { expression?: string };
-      if (tx.expression) {
-        collectReferences(tx.expression, stepIds, (ref) =>
-          emit(step.id, "expression", ref, tx.expression!),
+      const expression = (step as { expression?: string }).expression;
+      if (expression) {
+        collectReferences(expression, stepIds, (ref) =>
+          emit(step.id, "expression", ref, expression),
         );
-        collectBarePathReferences(tx.expression, stepIds, (ref) =>
-          emit(step.id, "expression", ref, tx.expression!),
+        collectBarePathReferences(expression, stepIds, (ref) =>
+          emit(step.id, "expression", ref, expression),
         );
       }
       continue;

@@ -633,6 +633,10 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
       if (connector.driver === "s3") {
         clearTimeout(timer);
+        // Reached only inside the `if (p.step.connector_id)` block that
+        // already populated connectorResolution; narrow the local
+        // variable for the s3 / postgres returns below.
+        const connectorMeta = connectorResolution as ConnectorResolutionSummary;
         try {
           // The `s3` block carries operation-specific affordances
           // (key, prefix, parse_as, content_type, metadata, range,
@@ -753,7 +757,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
                 status: res.status,
                 ...(resolvedKey ? { key: resolvedKey } : {}),
                 ...(resolvedPrefix ? { prefix: resolvedPrefix } : {}),
-                connector: connectorResolution!,
+                connector: connectorMeta,
               },
             };
           }
@@ -787,7 +791,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               status: res.status,
               ...(resolvedKey ? { key: resolvedKey } : {}),
               ...(resolvedPrefix ? { prefix: resolvedPrefix } : {}),
-              connector: connectorResolution!,
+              connector: connectorMeta,
             },
           };
         } catch (err) {
@@ -801,6 +805,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
       if (connector.driver === "postgres") {
         clearTimeout(timer);
+        // Same narrowing as the s3 block above.
+        const connectorMeta = connectorResolution as ConnectorResolutionSummary;
         if (!p.step.sql?.query) {
           return {
             status: "failed",
@@ -822,7 +828,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           const useTransaction =
             sqlBlock.transaction === true ||
             (sqlBlock.also !== undefined && sqlBlock.also.length > 0);
-          const useCursor = sqlBlock.cursor !== undefined;
+          const cursor = sqlBlock.cursor;
+          const useCursor = cursor !== undefined;
 
           const dispatch = async (): Promise<{
             output: unknown;
@@ -869,12 +876,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
                 rowCountPerStatement: tx.row_count_per_statement,
               };
             }
-            if (useCursor) {
+            if (useCursor && cursor) {
               const rows = await pgQueryCursor({
                 connector,
                 sql: sqlBlock.query,
                 params: resolvedSqlParams ?? [],
-                fetch_size: sqlBlock.cursor!.fetch_size,
+                fetch_size: cursor.fetch_size,
               });
               return { output: rows, rowCount: Array.isArray(rows) ? rows.length : null };
             }
@@ -966,7 +973,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               row_count: dispatched.rowCount,
               transaction: useTransaction,
               cursor: useCursor,
-              connector: connectorResolution!,
+              connector: connectorMeta,
               ...(dispatched.rowCountPerStatement
                 ? { row_count_per_statement: dispatched.rowCountPerStatement }
                 : {}),

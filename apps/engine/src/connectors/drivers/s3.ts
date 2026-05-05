@@ -292,11 +292,12 @@ export async function executeS3Request(p: {
         typeof data === "string"
           ? Buffer.byteLength(data, "utf8")
           : (data as Uint8Array).byteLength;
+      const thresholdMb = p.multipartThresholdMb ?? 0;
       const partSize =
         p.multipart === false
           ? Math.max(dataSize + 1, 8 * 1024 * 1024)
-          : (p.multipartThresholdMb ?? 0) > 0
-            ? p.multipartThresholdMb! * 1024 * 1024
+          : thresholdMb > 0
+            ? thresholdMb * 1024 * 1024
             : undefined;
       if (partSize !== undefined) putOpts.partSize = partSize;
       const info = await client.putObject(

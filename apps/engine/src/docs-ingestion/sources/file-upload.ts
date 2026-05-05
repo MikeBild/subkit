@@ -129,8 +129,8 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][] } 
     cur.push(field);
     rows.push(cur);
   }
-  if (rows.length === 0) return { headers: [], rows: [] };
-  const headers = rows[0]!;
+  const headers = rows[0];
+  if (!headers) return { headers: [], rows: [] };
   return {
     headers,
     rows: rows.slice(1).filter((r) => r.length > 0 && !(r.length === 1 && r[0] === "")),
@@ -153,22 +153,24 @@ export function parseSimpleYaml(text: string): Record<string, unknown> {
     }
     const m = /^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/.exec(line);
     if (!m) continue;
-    const [, key, value] = m;
+    const key = m[1];
+    const value = m[2];
+    if (key === undefined || value === undefined) continue;
     if (currentKey && currentList) {
       out[currentKey] = currentList;
       currentList = null;
     }
-    if (value === "" || value === undefined) {
-      currentKey = key!;
+    if (value === "") {
+      currentKey = key;
       currentList = [];
       continue;
     }
     currentKey = null;
     currentList = null;
-    if (value === "true") out[key!] = true;
-    else if (value === "false") out[key!] = false;
-    else if (/^-?\d+(?:\.\d+)?$/.test(value)) out[key!] = Number(value);
-    else out[key!] = value.replace(/^"|"$/g, "");
+    if (value === "true") out[key] = true;
+    else if (value === "false") out[key] = false;
+    else if (/^-?\d+(?:\.\d+)?$/.test(value)) out[key] = Number(value);
+    else out[key] = value.replace(/^"|"$/g, "");
   }
   if (currentKey && currentList) out[currentKey] = currentList;
   return out;

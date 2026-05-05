@@ -65,12 +65,14 @@ export const proposeSchemaMigrationTool: ConversationTool = {
       },
       ctx.db,
     );
+    const oldest = history[history.length - 1];
+    const newest = history[0];
     const data: Record<string, unknown> = {
       status: plan.steps.length === 0 ? "shape_stable" : "migration_proposed",
       plan,
       history_count: history.length,
-      first_seen_at: history.length > 0 ? history[history.length - 1]!.seen_at : null,
-      latest_seen_at: history.length > 0 ? history[0]!.seen_at : null,
+      first_seen_at: oldest?.seen_at ?? null,
+      latest_seen_at: newest?.seen_at ?? null,
     };
     if (args.sample !== undefined) {
       data.migrated_sample = applyMigration(plan, args.sample);
