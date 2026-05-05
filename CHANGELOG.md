@@ -1,5 +1,47 @@
 # Changelog
 
+## [3.4.0](https://github.com/MikeBild/subkit/compare/v3.3.0...v3.4.0) (2026-05-05)
+
+
+### Features
+
+* **install:** bundle sk + tunnel-agent binaries inside engine image — new `engine-with-cli` variant serves them at `/install/sk-:platform-:arch`, `/install/agent-:platform-:arch`, `/install/sha256sums` so `curl … /install | bash` works without GitHub egress. Closes [#64](https://github.com/MikeBild/subkit/issues/64) ([31f2280](https://github.com/MikeBild/subkit/commit/31f22804e2521ed3c6461a3768cce34bc5b55a61))
+* **sk:** `sk ctx` token gauge + engine context-window safety fixes ([#74](https://github.com/MikeBild/subkit/pull/74)) ([a7edb1d](https://github.com/MikeBild/subkit/commit/a7edb1dd44bfb026599a00a4218223c89e999fcb))
+* **connectors:** Layer-3 vendor-drift sweep + `verified_at` stamp ([#63](https://github.com/MikeBild/subkit/pull/63)) ([d950a79](https://github.com/MikeBild/subkit/commit/d950a796f29fd938870f30f2de5ab9d3525b757f))
+* **onboarding,http,sk:** first-run bootstrap thin-slice + POST /v1/setup + `sk init` ([#60](https://github.com/MikeBild/subkit/pull/60)) ([11789dd](https://github.com/MikeBild/subkit/commit/11789dd64d782ac1202825f8bf5c5692e1cef33a))
+* **workflows,execution,audit:** per-run LLM token budget + `external_write` audit ([#53](https://github.com/MikeBild/subkit/pull/53)) ([1d126ff](https://github.com/MikeBild/subkit/commit/1d126ffb262e89cde26ffef8a26c4aa6e0a16729))
+* **conversations,recipes:** multi-connector recipe binding via `connector_bindings` ([#54](https://github.com/MikeBild/subkit/pull/54)) ([cc8f735](https://github.com/MikeBild/subkit/commit/cc8f735b52a6b622f554317075ce41d8fa501dfc))
+* **webhooks,recipes,sk:** webhook trigger end-to-end Stripe → Slack ([#46](https://github.com/MikeBild/subkit/pull/46)) ([7ca43e4](https://github.com/MikeBild/subkit/commit/7ca43e449348d3ab861c34202032448d3e5877cd))
+* **scheduler,recipes,sk:** schedule trigger end-to-end (cron+tz+skip) ([#47](https://github.com/MikeBild/subkit/pull/47)) ([c17265f](https://github.com/MikeBild/subkit/commit/c17265f1eec44afb8358f5b206eded1a9c8a209e))
+* **workflows,audit,webhooks,scheduler:** `WorkflowDef.trigger` + reverse bind/unbind + `AuditAction` sweep ([#67](https://github.com/MikeBild/subkit/pull/67)) ([504fce4](https://github.com/MikeBild/subkit/commit/504fce495e2482620709030d4ebb59eb9f49e80f))
+
+
+### Bug Fixes
+
+* **engine:** make env validation lazy so `--smoke` / `--version` / `--check-update` / `--self-update` run on an unconfigured binary ([8d02102](https://github.com/MikeBild/subkit/commit/8d02102956c267a4f713640bffb877b3f533332c))
+* **agent:** handle `--version` / `-v` before `parseArgs` ([8f4e58a](https://github.com/MikeBild/subkit/commit/8f4e58acc6899ab2ebecaef496ef7f888c4d1f4e))
+* **docker:** split `engine-with-cli` into a separate Dockerfile so BuildKit's whole-graph COPY pre-resolution doesn't break the slim build ([742e09b](https://github.com/MikeBild/subkit/commit/742e09b29f306b808f2dbdf53be95f6da8cad758))
+* **journeys:** per-hook 60s timeout + named teardown stack. Closes [#98](https://github.com/MikeBild/subkit/issues/98) ([9094baa](https://github.com/MikeBild/subkit/commit/9094baa586cff3e88188bb7172fc4e02111778eb))
+* **release:** `tag_name` emits `v<VERSION>`, not `subkit-v<VERSION>` ([#126](https://github.com/MikeBild/subkit/pull/126)) ([01a32a9](https://github.com/MikeBild/subkit/commit/01a32a9190519e3760eff020d0c87a9b54d2a393))
+* **install:** release tag prefix + `sk init --token` follow-up ([#125](https://github.com/MikeBild/subkit/pull/125)) ([73e58da](https://github.com/MikeBild/subkit/commit/73e58da186ab8700116d30b036c2daffc7851f7f))
+* **install:** align port + sk command surface in docs ↔ code ([#124](https://github.com/MikeBild/subkit/pull/124)) ([6b6894e](https://github.com/MikeBild/subkit/commit/6b6894ee0918a60014a0aee31a9fcccee718cd11))
+* **scheduler:** close two-engine race in `reconcileWorkflowSchedules` with CAS ([#103](https://github.com/MikeBild/subkit/pull/103)) ([7be268e](https://github.com/MikeBild/subkit/commit/7be268efa7f26bbfe8d3bd0b5c3e9365a34afc1d))
+* **engine,connectors:** nightly+weekly findings — adaptive thinking, URL probe + template URLs ([#76](https://github.com/MikeBild/subkit/pull/76)) ([ec2bc16](https://github.com/MikeBild/subkit/commit/ec2bc16b8207de2ed7d543ea92535fb90b325ec0))
+
+
+### Refactoring
+
+* zero out non-null assertions across production source ([#132](https://github.com/MikeBild/subkit/pull/132)) ([4ac8469](https://github.com/MikeBild/subkit/commit/4ac8469078383c56135c2802b237cb2ef86031a3))
+* drop stale 'reserved for a future' comments and an unused enum value ([#131](https://github.com/MikeBild/subkit/pull/131)) ([75e8b91](https://github.com/MikeBild/subkit/commit/75e8b910ccc1042bae257364f6b033937ad1f3cb))
+* remove three more half-implemented features ([#130](https://github.com/MikeBild/subkit/pull/130)) ([0cd9cde](https://github.com/MikeBild/subkit/commit/0cd9cdedb936c653aeb487d79c2e1b19e9b579b5))
+* **chat:** remove unused link-token feature ([#129](https://github.com/MikeBild/subkit/pull/129)) ([255e431](https://github.com/MikeBild/subkit/commit/255e4318185e3bd984c8cb5358b75a8a4512a6be))
+* **engine,db:** retire `BOOTSTRAP_*` env vars (now driven by /v1/setup) ([#70](https://github.com/MikeBild/subkit/pull/70)) ([bf37875](https://github.com/MikeBild/subkit/commit/bf37875fc1c9c77d2b3cd8b7051cbc6db1cdc016))
+* **http:** split god-file route modules per audit §4.2 — connectors, connector-templates, conversations, executions, notifications, rbac, diagnostics ([#108](https://github.com/MikeBild/subkit/pull/108), [#109](https://github.com/MikeBild/subkit/pull/109), [#115](https://github.com/MikeBild/subkit/pull/115), [#116](https://github.com/MikeBild/subkit/pull/116), [#117](https://github.com/MikeBild/subkit/pull/117), [#118](https://github.com/MikeBild/subkit/pull/118), [#119](https://github.com/MikeBild/subkit/pull/119))
+* **conversations:** split `service.ts`, `sdk-wrap.ts`, `authoring-state.ts`, `auto-persist.ts` into per-concern modules ([#112](https://github.com/MikeBild/subkit/pull/112), [#113](https://github.com/MikeBild/subkit/pull/113), [#122](https://github.com/MikeBild/subkit/pull/122), [#123](https://github.com/MikeBild/subkit/pull/123))
+* **execution:** split `request.ts` (1804 LOC) per audit §4.2 + extract engine helpers ([#111](https://github.com/MikeBild/subkit/pull/111), [#121](https://github.com/MikeBild/subkit/pull/121))
+* **llm:** consolidate token/budget accounting into `llm/accounting/`; split `context-assembler.ts` into formatters/loaders/skill-picker ([#105](https://github.com/MikeBild/subkit/pull/105), [#114](https://github.com/MikeBild/subkit/pull/114))
+* **tunnels,pubsub:** bound `TunnelRegistry` + document pubsub restart contract ([#107](https://github.com/MikeBild/subkit/pull/107))
+
 ## [3.2.1](https://github.com/MikeBild/subkit/compare/subkit-v3.2.0...subkit-v3.2.1) (2026-04-28)
 
 
