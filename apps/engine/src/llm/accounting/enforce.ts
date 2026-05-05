@@ -60,14 +60,18 @@ const LLM_PROVIDER_HOSTS = new Set<string>([
 ]);
 
 function extraHosts(): Set<string> {
+  const merged: string[] = [];
   try {
     const list = getConfig().egress.provider_hosts_extra ?? [];
-    return new Set(
-      list.map((s: string) => s.trim().toLowerCase()).filter((s: string) => s.length > 0),
-    );
+    merged.push(...list);
   } catch {
-    return new Set();
+    /* loader not initialised */
   }
+  // Env fallback (kept for parity with v3.4.x test seams; production
+  // operators set this via subkit.config.json).
+  const raw = process.env.SUBKIT_LLM_PROVIDER_HOSTS_EXTRA;
+  if (raw) merged.push(...raw.split(","));
+  return new Set(merged.map((s) => s.trim().toLowerCase()).filter((s) => s.length > 0));
 }
 
 export class LlmBudgetExceededError extends Error {
