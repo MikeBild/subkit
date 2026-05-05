@@ -1,6 +1,7 @@
 // Policy evaluator — RBAC + ABAC rules enforced at REST, MCP, and webhook
-// surfaces. P2 ships a minimal RBAC check so the routes stop being purely
-// permissive; QuickJS-backed before-request hooks land in a later phase.
+// surfaces. RBAC is the role/permission check below; QuickJS-backed
+// before-request hooks live in `auth/hooks.ts` + the `request_hooks`
+// table and run from the route middleware in addition to this evaluator.
 
 import type { PolicyContext, PolicyDecision, ResolvedPrincipal } from "./types.ts";
 

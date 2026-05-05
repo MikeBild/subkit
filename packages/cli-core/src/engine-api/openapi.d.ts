@@ -7807,7 +7807,7 @@ export interface components {
              * @default subkit-builtin
              * @enum {string}
              */
-            author: "subkit-builtin" | "community" | "tenant";
+            author: "subkit-builtin" | "tenant";
             /**
              * Format: date-time
              * @default null
