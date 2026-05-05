@@ -42,20 +42,23 @@ export function registerProvidersRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, async (c) => {
     const providers: z.infer<typeof ProviderEntry>[] = [];
 
-    // Firebase Auth — detected via FIREBASE_PROJECT_ID env var
-    const firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
-    const firebaseLoginUrl = process.env.FIREBASE_LOGIN_URL;
+    const { getConfig } = await import("../../../config/loader.ts");
+    const auth = getConfig().auth;
+
+    // Firebase Auth — detected via auth.firebase.project_id
+    const firebaseProjectId = auth.firebase.project_id;
+    const firebaseLoginUrl = auth.firebase.login_url;
     if (firebaseProjectId) {
       providers.push({
         type: "firebase",
         name: "Google (via Firebase)",
-        login_url: firebaseLoginUrl ?? `https://${firebaseProjectId}.web.app`,
+        login_url: firebaseLoginUrl || `https://${firebaseProjectId}.web.app`,
         issuer: `https://securetoken.google.com/${firebaseProjectId}`,
       });
     }
 
-    // Generic OIDC — detected via OIDC_ISSUER_URL env var
-    const oidcIssuer = process.env.OIDC_ISSUER_URL;
+    // Generic OIDC — detected via auth.oidc.issuer_url
+    const oidcIssuer = auth.oidc.issuer_url;
     if (oidcIssuer) {
       providers.push({
         type: "oidc",

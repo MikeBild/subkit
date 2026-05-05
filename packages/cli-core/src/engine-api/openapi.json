@@ -277,84 +277,178 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ListedSetting"
+              "$ref": "#/components/schemas/SettingLeafEntry"
             }
+          },
+          "diagnostics": {
+            "type": "object",
+            "properties": {
+              "pending_restart_keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "override_keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "pending_restart_keys",
+              "override_keys"
+            ]
           }
         },
         "required": [
-          "items"
+          "items",
+          "diagnostics"
         ]
       },
-      "ListedSetting": {
+      "SettingLeafEntry": {
         "type": "object",
         "properties": {
-          "key": {
+          "path": {
             "type": "string"
           },
-          "label": {
-            "type": "string"
+          "value": {
+            "nullable": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/SettingLeafMeta"
+          }
+        },
+        "required": [
+          "path",
+          "meta"
+        ]
+      },
+      "SettingLeafMeta": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "override",
+              "tenant",
+              "global",
+              "default"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "tenant"
+            ]
+          },
+          "sensitive": {
+            "type": "boolean"
+          },
+          "requiresRestart": {
+            "type": "boolean"
           },
           "description": {
             "type": "string"
           },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "global",
-              "tenant"
-            ]
-          },
-          "category": {
+          "kind": {
             "type": "string"
-          },
-          "secret": {
-            "type": "boolean"
-          },
-          "value": {
-            "nullable": true
-          },
-          "is_default": {
-            "type": "boolean"
           }
         },
         "required": [
-          "key",
-          "label",
-          "description",
+          "source",
           "scope",
-          "category",
-          "secret",
-          "is_default"
+          "sensitive",
+          "requiresRestart",
+          "kind"
         ]
       },
-      "SettingValue": {
+      "SettingPutResult": {
         "type": "object",
         "properties": {
-          "key": {
-            "type": "string"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "global",
-              "tenant"
-            ]
-          },
-          "secret": {
-            "type": "boolean"
-          },
           "value": {
             "nullable": true
           },
-          "is_default": {
+          "requiresRestart": {
             "type": "boolean"
           }
         },
         "required": [
-          "key",
-          "scope",
-          "secret",
-          "is_default"
+          "requiresRestart"
+        ]
+      },
+      "SettingScopeViolation": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "scope_violation"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "SettingRestartRequired": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "restart_required"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "requiresRestart": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "requiresRestart"
+        ]
+      },
+      "SettingValidationFailed": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "validation_failed"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expected": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "path",
+          "expected"
         ]
       },
       "SettingPutBody": {
@@ -362,6 +456,9 @@
         "properties": {
           "value": {
             "nullable": true
+          },
+          "force": {
+            "type": "boolean"
           }
         }
       },
@@ -9323,10 +9420,21 @@
         "tags": [
           "settings"
         ],
-        "summary": "List every registered setting with its resolved value",
+        "summary": "List every leaf in the runtime config with its resolved value",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "tenant",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "All settings (secrets masked)",
+            "description": "All leaves (secrets masked)",
             "content": {
               "application/json": {
                 "schema": {
@@ -9358,12 +9466,12 @@
         }
       }
     },
-    "/v1/settings/{key}": {
+    "/v1/settings/{path}": {
       "get": {
         "tags": [
           "settings"
         ],
-        "summary": "Read one setting (tenant override resolves first when scope=tenant)",
+        "summary": "Read one leaf by dotted path",
         "parameters": [
           {
             "schema": {
@@ -9371,17 +9479,26 @@
               "minLength": 1
             },
             "required": true,
-            "name": "key",
+            "name": "path",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "tenant",
+            "in": "query"
           }
         ],
         "responses": {
           "200": {
-            "description": "Resolved value (masked when secret)",
+            "description": "Resolved value",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SettingValue"
+                  "$ref": "#/components/schemas/SettingLeafEntry"
                 }
               }
             }
@@ -9407,7 +9524,7 @@
             }
           },
           "404": {
-            "description": "Unknown setting key",
+            "description": "Unknown leaf path",
             "content": {
               "application/json": {
                 "schema": {
@@ -9422,7 +9539,7 @@
         "tags": [
           "settings"
         ],
-        "summary": "Write one setting (scope inferred from the registry)",
+        "summary": "Write one leaf",
         "parameters": [
           {
             "schema": {
@@ -9430,8 +9547,17 @@
               "minLength": 1
             },
             "required": true,
-            "name": "key",
+            "name": "path",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "tenant",
+            "in": "query"
           }
         ],
         "requestBody": {
@@ -9445,21 +9571,11 @@
         },
         "responses": {
           "200": {
-            "description": "Setting written; updated value returned (masked when secret)",
+            "description": "Setting written",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SettingValue"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation failed against the setting's Zod schema",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "$ref": "#/components/schemas/SettingPutResult"
                 }
               }
             }
@@ -9475,7 +9591,17 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Scope violation or insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingScopeViolation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown leaf path",
             "content": {
               "application/json": {
                 "schema": {
@@ -9484,12 +9610,22 @@
               }
             }
           },
-          "404": {
-            "description": "Unknown setting key",
+          "409": {
+            "description": "Setting requires a restart in production; pass force=true to apply",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "$ref": "#/components/schemas/SettingRestartRequired"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed against the leaf's Zod schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingValidationFailed"
                 }
               }
             }

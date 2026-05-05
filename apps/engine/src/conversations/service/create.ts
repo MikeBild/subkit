@@ -150,7 +150,8 @@ export async function createConversation(
       /subkit engine onboarding|guided connector workflow|connect the subkit engine/i.test(msg)
     ) {
       const { cannedConnectorWorkflowPlan } = await import("../../llm/mock-provider.ts");
-      const baseUrl = process.env.SUBKIT_PUBLIC_BASE_URL ?? "http://127.0.0.1:8080";
+      const { getConfig } = await import("../../config/loader.ts");
+      const baseUrl = getConfig().server.public_base_url || "http://127.0.0.1:8080";
       getMockProvider().setConversePlan(row.id, cannedConnectorWorkflowPlan(baseUrl));
     } else if (/list.*users/i.test(msg)) {
       const { cannedListUsersPlan } = await import("../../llm/mock-provider.ts");

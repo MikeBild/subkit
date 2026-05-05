@@ -34,6 +34,7 @@
 // The span object is opaque — callers treat it like a token. When the
 // Langfuse key is not set the span is a dummy and all calls are free.
 
+import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
 
 interface LangfuseTraceHandle {
@@ -60,9 +61,15 @@ let cachedClient: LangfuseClient | null | undefined;
 
 async function getClient(): Promise<LangfuseClient | null> {
   if (cachedClient !== undefined) return cachedClient;
-  const secret = process.env.LANGFUSE_SECRET_KEY;
-  const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
-  if (!secret || !publicKey) {
+  let cfg: { secret_key: string; public_key: string; host: string };
+  try {
+    cfg = getConfig().observability.langfuse;
+  } catch {
+    // Loader not initialised (unit tests that don't boot the engine).
+    cachedClient = null;
+    return null;
+  }
+  if (!cfg.secret_key || !cfg.public_key) {
     cachedClient = null;
     return null;
   }
@@ -72,9 +79,9 @@ async function getClient(): Promise<LangfuseClient | null> {
       mod as { Langfuse: new (opts: Record<string, unknown>) => LangfuseClient }
     ).Langfuse;
     cachedClient = new LangfuseClass({
-      secretKey: secret,
-      publicKey,
-      baseUrl: process.env.LANGFUSE_BASE_URL ?? "https://cloud.langfuse.com",
+      secretKey: cfg.secret_key,
+      publicKey: cfg.public_key,
+      baseUrl: cfg.host || "https://cloud.langfuse.com",
     });
     return cachedClient;
   } catch (err) {

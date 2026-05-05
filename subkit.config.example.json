@@ -1,0 +1,158 @@
+{
+  "log": {
+    "level": "info",
+    "format": "ndjson"
+  },
+  "server": {
+    "port": 3000,
+    "tunnel_port": null,
+    "public_base_url": ""
+  },
+  "database": {
+    "url": "postgresql://USER:PASSWORD@localhost:5432/subkit"
+  },
+  "llm": {
+    "provider": "mock",
+    "model": "",
+    "api_key": "",
+    "fallback_provider": null,
+    "fallback_model": "",
+    "summarize_provider": null,
+    "summarize_model": "",
+    "context_1m": false,
+    "output_guard": "soft",
+    "providers": {
+      "anthropic": {
+        "api_key": "",
+        "model": "",
+        "base_url": ""
+      },
+      "openai": {
+        "api_key": "",
+        "model": "",
+        "base_url": ""
+      },
+      "gemini": {
+        "api_key": "",
+        "model": "",
+        "base_url": ""
+      },
+      "azure": {
+        "api_key": "",
+        "model": "",
+        "base_url": "",
+        "resource_name": "",
+        "api_version": "",
+        "use_deployment_based_urls": false
+      },
+      "bedrock": {
+        "model": "",
+        "region": "",
+        "access_key_id": "",
+        "secret_access_key": "",
+        "session_token": "",
+        "base_url": ""
+      },
+      "vertex": {
+        "api_key": "",
+        "model": "",
+        "project": "",
+        "location": "",
+        "client_email": "",
+        "private_key": "",
+        "google_application_credentials": ""
+      },
+      "ai_gateway": {
+        "api_key": "",
+        "model": ""
+      }
+    }
+  },
+  "auth": {
+    "oidc": {
+      "issuer_url": "",
+      "client_id": "",
+      "client_secret": "",
+      "redirect_uri": ""
+    },
+    "session": {
+      "secret": ""
+    },
+    "firebase": {
+      "project_id": "",
+      "login_url": ""
+    }
+  },
+  "platform": {
+    "slack": {
+      "signing_secret": "",
+      "client_id": "",
+      "client_secret": ""
+    },
+    "teams": {
+      "app_id": "",
+      "app_password": ""
+    },
+    "googlechat": {
+      "project_id": ""
+    }
+  },
+  "storage": {
+    "s3": {
+      "endpoint": "",
+      "access_key": "",
+      "secret_key": ""
+    },
+    "knowledge": {
+      "backend": "local",
+      "dir": ""
+    },
+    "offload": {
+      "bucket": "",
+      "region": "",
+      "access_key": "",
+      "secret_key": "",
+      "endpoint": "",
+      "key_prefix": "offload"
+    }
+  },
+  "observability": {
+    "langfuse": {
+      "host": "",
+      "public_key": "",
+      "secret_key": ""
+    },
+    "otlp": {
+      "endpoint": "",
+      "service_name": "subkit"
+    }
+  },
+  "egress": {
+    "mode": null,
+    "provider_hosts_extra": []
+  },
+  "mcp": {
+    "api_key": "",
+    "read_only": false
+  },
+  "tunnel": {
+    "registry_max": 100
+  },
+  "errors": {
+    "ring_size": 100
+  },
+  "docker": {
+    "host": "",
+    "skip": false
+  },
+  "spec": {
+    "allow_private_fetch": false
+  },
+  "queue": {
+    "concurrency": 8
+  },
+  "tokens": {
+    "monthly_budget": 0
+  },
+  "tenants": {}
+}

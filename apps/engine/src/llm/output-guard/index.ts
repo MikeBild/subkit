@@ -12,7 +12,7 @@
 // The hook point is `apps/engine/src/conversations/loop.ts`'s
 // `onStepFinish` (where the assistant text is captured per step).
 
-import { env } from "../../env.ts";
+import { getConfig } from "../../config/loader.ts";
 import {
   recordLlmOutputGuardDuration,
   recordLlmOutputViolation,
@@ -46,7 +46,11 @@ export const DEFAULT_SCANNERS: ReadonlyArray<Scanner> = [
 
 function effectiveMode(override?: GuardMode): GuardMode {
   if (override) return override;
-  return env.LLM_OUTPUT_GUARD;
+  try {
+    return getConfig().llm.output_guard;
+  } catch {
+    return "soft";
+  }
 }
 
 /**

@@ -828,16 +828,25 @@ export class EngineClient {
   }
 
   // --------------------------- Settings -----------------------------------
-  listSettings(): Promise<{ items: SettingItem[] }> {
-    return this.request("GET", "/v1/settings");
+  listSettings(opts: { tenant?: string } = {}): Promise<SettingsListResponse> {
+    const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
+    return this.request("GET", `/v1/settings${qs}`);
   }
 
-  getSetting(key: string): Promise<SettingValue> {
-    return this.request("GET", `/v1/settings/${encodeURIComponent(key)}`);
+  getSetting(path: string, opts: { tenant?: string } = {}): Promise<SettingLeafEntry> {
+    const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
+    return this.request("GET", `/v1/settings/${encodeURIComponent(path)}${qs}`);
   }
 
-  setSetting(key: string, value: unknown): Promise<SettingValue> {
-    return this.request("PUT", `/v1/settings/${encodeURIComponent(key)}`, { value });
+  setSetting(
+    path: string,
+    value: unknown,
+    opts: { tenant?: string; force?: boolean } = {},
+  ): Promise<SettingPutResult> {
+    const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
+    const body: Record<string, unknown> = { value };
+    if (opts.force) body.force = true;
+    return this.request("PUT", `/v1/settings/${encodeURIComponent(path)}${qs}`, body);
   }
 
   getDiagnosticsLlm(): Promise<Record<string, unknown>> {
@@ -1597,23 +1606,34 @@ export interface SetupValidationResponse {
   recommendations: string[];
 }
 
-export interface SettingItem {
-  key: string;
-  label: string;
-  description: string;
+export type SettingSource = "override" | "tenant" | "global" | "default";
+
+export interface SettingLeafMeta {
+  source: SettingSource;
   scope: "global" | "tenant";
-  category: string;
-  secret: boolean;
-  value: unknown;
-  is_default: boolean;
+  sensitive: boolean;
+  requiresRestart: boolean;
+  description?: string;
+  kind: string;
 }
 
-export interface SettingValue {
-  key: string;
-  scope: "global" | "tenant";
-  secret: boolean;
+export interface SettingLeafEntry {
+  path: string;
   value: unknown;
-  is_default: boolean;
+  meta: SettingLeafMeta;
+}
+
+export interface SettingsListResponse {
+  items: SettingLeafEntry[];
+  diagnostics: {
+    pending_restart_keys: string[];
+    override_keys: string[];
+  };
+}
+
+export interface SettingPutResult {
+  value: unknown;
+  requiresRestart: boolean;
 }
 
 function parseResponseBody(text: string): unknown {

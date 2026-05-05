@@ -31,21 +31,22 @@ export const tenants = pgTable(
     llm_fallback: text("llm_fallback"),
     llm_monthly_token_budget: bigint("llm_monthly_token_budget", { mode: "number" }),
     egress_guard_mode: egressGuardModeEnum("egress_guard_mode"),
-    /** Per-tenant runtime overrides for settings declared in the
-     *  `tenant`-scope of `apps/engine/src/settings/registry.ts`.
-     *  Keys absent here fall through to the global `engine_settings`
-     *  default, then to the registry default. */
-    settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [uniqueIndex("tenants_slug_key").on(t.slug)],
 );
 
-/** Global engine settings — values that apply across all tenants
- *  (LLM provider keys, OIDC issuer URLs, observability endpoints).
- *  Per-tenant overrides live on `tenants.settings`. Schema and types
- *  for each key are declared in `apps/engine/src/settings/registry.ts`. */
+/** Internal engine state store — bootstrap sentinel + token envelope only.
+ *  User-facing runtime configuration moved to `subkit.config.json` in v3.5
+ *  (see `apps/engine/src/config/schema.ts`). This table now persists
+ *  exclusively system-level state that boot-path code mutates without
+ *  going through the audit + tenant scope rules of the config loader.
+ *
+ *  The pre-v3.5 use cases (per-tenant LLM keys, observability endpoints,
+ *  token budgets) have all migrated to the config file; existing rows
+ *  for those keys are ignored after the v3.5 upgrade and can be deleted
+ *  by the operator at any time. */
 export const engineSettings = pgTable("engine_settings", {
   key: text("key").primaryKey(),
   value: jsonb("value").$type<unknown>().notNull(),

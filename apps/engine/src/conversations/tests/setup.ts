@@ -2,6 +2,10 @@
 // disposable database, a seeded tenant + connector + skills + docs,
 // and the mock LLM provider wired in.
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { getConfig, loadConfig } from "../../config/loader.ts";
 import {
   connectorDocumentChunks,
   connectorDocuments,
@@ -13,6 +17,24 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 
+// Ensure the v3.5 config loader is bootstrapped so getConfig() calls
+// inside the conversation pipeline don't 500 with "called before
+// loadConfig()". Idempotent — running tests load config once per
+// process and subsequent calls no-op.
+async function ensureConfigLoaded(): Promise<void> {
+  try {
+    getConfig();
+    return;
+  } catch {
+    // not yet loaded — fall through.
+  }
+  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-conv-test-"));
+  await loadConfig({
+    env: { DATABASE_URL: "postgres://placeholder/conv-test", NODE_ENV: "test" },
+    configPathOverride: join(dir, "subkit.config.json"),
+  });
+}
+
 export interface ConversationTestCtx {
   testDb: TestDb;
   tenant_id: string;
@@ -23,6 +45,7 @@ export interface ConversationTestCtx {
 
 export async function createConversationTestCtx(label: string): Promise<ConversationTestCtx> {
   process.env.LLM_PROVIDER = "mock";
+  await ensureConfigLoaded();
   resetMockProvider();
   const testDb = await createTestDb(`conv_${label}`);
 

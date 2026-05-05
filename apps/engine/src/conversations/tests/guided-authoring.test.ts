@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { setConfigKey } from "../../config/loader.ts";
 import { createConversation, getConversation, respondElicitation } from "../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
@@ -15,10 +16,17 @@ beforeAll(async () => {
       if (url.pathname === "/v1/health") {
         return Response.json({ ok: true, service: "guided-authoring-test" });
       }
-      return new Response("not found", { status: 404 });
+      // Serve everything else as 200 OK so connector probes (which
+      // hit the seeded base_url after v3.5's create.ts migration to
+      // server.public_base_url) terminate quickly instead of bouncing
+      // through the request-retry ladder until the test times out.
+      return new Response("ok", { status: 200 });
     },
   });
   baseUrl = `http://127.0.0.1:${server.port}`;
+  // v3.5: create.ts now reads getConfig().server.public_base_url
+  // (was process.env.SUBKIT_PUBLIC_BASE_URL).
+  await setConfigKey("server.public_base_url", baseUrl, { force: true });
   process.env.SUBKIT_PUBLIC_BASE_URL = baseUrl;
 });
 

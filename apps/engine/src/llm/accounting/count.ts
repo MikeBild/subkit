@@ -9,6 +9,7 @@
 
 import type { ModelMessage } from "ai";
 import { getEncoding, type Tiktoken } from "js-tiktoken";
+import { getConfig } from "../../config/loader.ts";
 import type { LlmFlow, UserTurn } from "../types.ts";
 
 let cached: Tiktoken | null = null;
@@ -77,6 +78,11 @@ function isClaudeId(id: string): boolean {
 
 function isOneMillionContextActive(id: string): boolean {
   if (id.endsWith("-1m") || id.endsWith("-1m-2025-08-07")) return true;
+  try {
+    if (getConfig().llm.context_1m) return true;
+  } catch {
+    /* loader not initialised */
+  }
   if (process.env.LLM_CONTEXT_1M === "1") return true;
   return false;
 }

@@ -66,8 +66,15 @@ async function runSmoke(): Promise<void> {
 }
 
 async function runServer(): Promise<void> {
-  const { env, validateLlmEnvironment } = await import("./env.ts");
-  validateLlmEnvironment(process.env, { requireConfigured: true });
+  // Phase 1 logger is already live (hardcoded defaults). Load the
+  // config file before any subsystem reads it; reconfigure the logger
+  // immediately so subsequent boot logs honor the operator's settings.
+  const { loadConfig, getConfig } = await import("./config/loader.ts");
+  const { reconfigureLogger } = await import("./logging/logger.ts");
+  await loadConfig();
+  const cfg = getConfig();
+  reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
+
   // Surfaces a bad MASTER_KEY in the boot log, before any request can
   // reach an encrypt/decrypt path. Pre-fix this lived as a top-level
   // call in crypto/aes-gcm.ts but that fired on every binary import,
@@ -149,7 +156,7 @@ async function runServer(): Promise<void> {
 
   // Start pg-boss + register handlers before the HTTP server so enqueue
   // requests hitting the first byte always find a live boss.
-  const boss = await startBoss({ connectionString: env.DATABASE_URL });
+  const boss = await startBoss({ connectionString: getConfig().database.url });
   await registerAllHandlers({ boss, db, chatRegistry });
 
   // Crash-recovery sweep: promote any execution stuck in `running` past
@@ -180,7 +187,7 @@ async function runServer(): Promise<void> {
   }
 
   // Pub/sub listener — catch-up first, then LISTEN.
-  const listener = await startListener({ connectionString: env.DATABASE_URL, db });
+  const listener = await startListener({ connectionString: getConfig().database.url, db });
 
   // Cron reconciler — sync workflows_schedules -> pg-boss schedules.
   const reconciler = new SchedulerReconciler({ boss, db });
@@ -252,7 +259,7 @@ async function runServer(): Promise<void> {
   }
 
   const app = createApp({ db, chatRegistry });
-  const port = env.PORT;
+  const port = getConfig().server.port;
 
   const server = serve({ fetch: app.fetch, port });
 
@@ -261,17 +268,17 @@ async function runServer(): Promise<void> {
     action: "ready",
     msg: `engine listening on http://0.0.0.0:${port}`,
     port,
-    public_base_url: env.PUBLIC_BASE_URL ?? null,
+    public_base_url: getConfig().server.public_base_url || null,
   });
 
   // Tunnel WebSocket listener — separate Bun.serve listener (Bun runtime
   // required) so tunnel agents have a place to connect. Defaults to PORT+1
-  // when TUNNEL_PORT is not set.
+  // when server.tunnel_port is not set.
   let tunnelWs: TunnelWsServerHandle | null = null;
   try {
     tunnelWs = startTunnelWsServer({
       db,
-      port: env.TUNNEL_PORT ?? port + 1,
+      port: getConfig().server.tunnel_port ?? port + 1,
     });
     logger.info({
       module: "engine",

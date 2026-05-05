@@ -344,6 +344,14 @@ export const METRIC_NAMES = {
   // to spot a drift regression after a model swap before it shows up
   // as a billing surprise.
   LLM_TOKEN_DRIFT_PCT: "llm_token_drift_pct",
+
+  // v3.5 — runtime config moved to subkit.config.json. Operators
+  // override individual leaves via SK_OVERRIDE_<KEY> env vars during
+  // incidents; this gauge reports which leaves are currently
+  // override-driven so dashboards can flag a drifted host without
+  // exposing the secret value itself. Set at every loadConfig() and
+  // every setConfigKey() commit.
+  SETTINGS_OVERRIDE_ACTIVE: "settings_override_active",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -543,6 +551,11 @@ function buildRegistry(): MetricsRegistry {
     // digits is normal; anything past ~15% is a strong signal that a
     // tokenizer assumption is stale.
     buckets: [0, 1, 2, 5, 10, 15, 20, 30, 50],
+  });
+  reg.registerGauge({
+    name: METRIC_NAMES.SETTINGS_OVERRIDE_ACTIVE,
+    help: "Active SK_OVERRIDE_<key> env overrides. 1 per dotted leaf path while the override is in effect; never carries the value itself.",
+    labels: ["key"],
   });
 
   return reg;

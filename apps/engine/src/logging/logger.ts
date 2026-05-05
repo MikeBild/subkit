@@ -15,21 +15,40 @@ const LEVEL_WEIGHT: Record<LogLevel, number> = {
 
 type RenderMode = "pretty" | "ndjson";
 
-function detectMode(): RenderMode {
-  const raw = (process.env.LOG_FORMAT ?? "").toLowerCase();
-  if (raw === "ndjson" || raw === "json" || raw === "prod") return "ndjson";
-  if (raw === "pretty" || raw === "dev") return "pretty";
+// Phase 1 boot defaults: read only NODE_ENV + TTY. LOG_LEVEL / LOG_FORMAT
+// have moved into subkit.config.json (see apps/engine/src/config/schema.ts).
+// `reconfigureLogger()` swaps these to the configured values right after
+// `loadConfig()` resolves; until then the logger is the only safe surface
+// for boot-time error reporting (no `console.*` anywhere).
+function defaultMode(): RenderMode {
+  const tty = Boolean(process.stdout.isTTY);
   const env = (process.env.NODE_ENV ?? "development").toLowerCase();
-  return env === "production" ? "ndjson" : "pretty";
+  if (env === "production") return "ndjson";
+  return tty ? "pretty" : "ndjson";
 }
 
-function detectThreshold(): number {
-  const raw = (process.env.LOG_LEVEL ?? "info").toLowerCase() as LogLevel;
-  return LEVEL_WEIGHT[raw] ?? LEVEL_WEIGHT.info;
+let MODE: RenderMode = defaultMode();
+let THRESHOLD: number = LEVEL_WEIGHT.info;
+
+export function reconfigureLogger(opts: {
+  level?: LogLevel;
+  format?: "dev" | "pretty" | "prod" | "ndjson" | "json";
+}): void {
+  if (opts.level) {
+    THRESHOLD = LEVEL_WEIGHT[opts.level] ?? LEVEL_WEIGHT.info;
+  }
+  if (opts.format) {
+    const f = opts.format.toLowerCase();
+    if (f === "pretty" || f === "dev") MODE = "pretty";
+    else if (f === "ndjson" || f === "json" || f === "prod") MODE = "ndjson";
+  }
 }
 
-const MODE: RenderMode = detectMode();
-const THRESHOLD: number = detectThreshold();
+// Test-only — restore Phase 1 defaults between cases that call `reconfigureLogger`.
+export function _resetLoggerForTests(): void {
+  MODE = defaultMode();
+  THRESHOLD = LEVEL_WEIGHT.info;
+}
 
 function formatTimestampPretty(d: Date): string {
   const hh = String(d.getHours()).padStart(2, "0");

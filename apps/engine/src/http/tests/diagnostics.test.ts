@@ -149,16 +149,26 @@ describe("/v1/diagnostics/errors", () => {
 
 describe("/v1/diagnostics/setup", () => {
   test("returns operator-facing setup validation for admins", async () => {
-    const saved = {
-      llm: process.env.LLM_PROVIDER,
-      publicBaseUrl: process.env.PUBLIC_BASE_URL,
-      summarizeProvider: process.env.SUMMARIZE_LLM_PROVIDER,
-      anthropicKey: process.env.ANTHROPIC_API_KEY,
+    // v3.5: drive the config tree via setConfigKey instead of env vars.
+    // Snapshot prior values so we can restore (other tests in the same
+    // file rely on default config state).
+    const { getConfig, setConfigKey } = await import("../../config/loader.ts");
+    const before = {
+      llmProvider: getConfig().llm.provider,
+      summarizeProvider: getConfig().llm.summarize_provider,
+      anthropicKey: getConfig().llm.providers.anthropic.api_key,
+      publicBaseUrl: getConfig().server.public_base_url,
     };
-    process.env.LLM_PROVIDER = "mock";
+    await setConfigKey("llm.provider", "mock", { force: true });
+    await setConfigKey("llm.summarize_provider", "anthropic", { force: true });
+    await setConfigKey("llm.providers.anthropic.api_key", "", { force: true });
+    await setConfigKey("server.public_base_url", "", { force: true });
+    // Pre-fix env vars the route still reads directly (PUBLIC_BASE_URL
+    // is the only env-driven leaf left in setup.ts as of v3.5; once
+    // the buildPublicUrlsSection migrates to getConfig.server.* this
+    // can be removed).
+    const savedPublicEnv = process.env.PUBLIC_BASE_URL;
     delete process.env.PUBLIC_BASE_URL;
-    process.env.SUMMARIZE_LLM_PROVIDER = "anthropic";
-    delete process.env.ANTHROPIC_API_KEY;
     try {
       const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
         headers: adminHeaders(),
@@ -195,14 +205,16 @@ describe("/v1/diagnostics/setup", () => {
       );
       expect(body.recommendations.length).toBeGreaterThan(0);
     } finally {
-      if (saved.llm === undefined) delete process.env.LLM_PROVIDER;
-      else process.env.LLM_PROVIDER = saved.llm;
-      if (saved.publicBaseUrl === undefined) delete process.env.PUBLIC_BASE_URL;
-      else process.env.PUBLIC_BASE_URL = saved.publicBaseUrl;
-      if (saved.summarizeProvider === undefined) delete process.env.SUMMARIZE_LLM_PROVIDER;
-      else process.env.SUMMARIZE_LLM_PROVIDER = saved.summarizeProvider;
-      if (saved.anthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY;
-      else process.env.ANTHROPIC_API_KEY = saved.anthropicKey;
+      await setConfigKey("llm.provider", before.llmProvider, { force: true });
+      await setConfigKey("llm.summarize_provider", before.summarizeProvider ?? null, {
+        force: true,
+      });
+      await setConfigKey("llm.providers.anthropic.api_key", before.anthropicKey, {
+        force: true,
+      });
+      await setConfigKey("server.public_base_url", before.publicBaseUrl, { force: true });
+      if (savedPublicEnv === undefined) delete process.env.PUBLIC_BASE_URL;
+      else process.env.PUBLIC_BASE_URL = savedPublicEnv;
     }
   });
 

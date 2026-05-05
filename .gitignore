@@ -30,3 +30,13 @@ apps/engine/eval/out/
 docker/binaries/*
 !docker/binaries/.gitkeep
 
+# v3.5+ runtime config file. Auto-generated on first boot in any dev
+# directory the engine runs in (it's the engine's persisted runtime
+# state, not source code). The committed `subkit.config.example.json`
+# is the canonical operator template.
+subkit.config.json
+
+# Local Claude Code agent worktrees — disposable subagent state, not
+# source. Never committed.
+.claude/worktrees/
+
