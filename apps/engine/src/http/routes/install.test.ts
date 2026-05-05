@@ -41,6 +41,27 @@ describe("install script template", () => {
     expect(script).not.toContain("releases/download/subkit-v");
   });
 
+  test("probes the engine's bundled binary endpoint before GitHub", () => {
+    const script = buildScript("3.4.0", "https://engine.example.com");
+    // The bundled URL must be probed (HEAD via curl -I) so air-gapped
+    // operators succeed without a GitHub egress rule. The check is a
+    // 5-second probe that 404s cleanly on the slim engine image.
+    expect(script).toContain("BUNDLED_ASSET_URL=");
+    expect(script).toContain("/install/sk-${os}-${arch}");
+    expect(script).toContain("/install/sha256sums");
+    expect(script).toMatch(/curl -fsSI[^\n]*BUNDLED_ASSET_URL/);
+  });
+
+  test("falls back to GitHub Releases when the bundled probe 404s", () => {
+    const script = buildScript("3.4.0", "https://engine.example.com");
+    expect(script).toContain("RELEASE_ASSET_URL=");
+    expect(script).toContain("RELEASE_SUMS_URL=");
+    // The else branch must wire ASSET_URL/SUMS_URL to the GitHub paths
+    // — without this the slim image breaks entirely.
+    expect(script).toMatch(/ASSET_URL="\$RELEASE_ASSET_URL"/);
+    expect(script).toMatch(/SUMS_URL="\$RELEASE_SUMS_URL"/);
+  });
+
   test("interpolates the engine base URL into the next-step message", () => {
     const script = buildScript("3.0.0", "https://my.engine.test");
     expect(script).toContain('ENGINE_URL="https://my.engine.test"');

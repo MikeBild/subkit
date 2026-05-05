@@ -431,6 +431,60 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ── engine-with-cli image variant ──
+  # Bundles sk + tunnel-agent binaries inside the engine image so
+  # /install/sk-* and /install/agent-* return 200 instead of 404. Lets
+  # operators on air-gapped or proxy-restricted networks self-distribute
+  # the CLI from their own engine URL — no GitHub egress required.
+  #
+  # Same DEPLOY_ENABLED gate as the slim build. Needs build-cli-binaries
+  # so embed-binaries.sh can pull the matrix artifacts; the slim image
+  # build has no such dependency and runs in parallel.
+
+  build-and-push-with-cli:
+    name: build-and-push-with-cli
+    needs: [gate, build-cli-binaries]
+    if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # gh run download in embed-binaries.sh reads the same-run artifacts
+      # produced by build-cli-binaries — same permission as publish-release.
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - id: meta
+        env:
+          RELEASE_REF: ${{ inputs.tag || github.ref_name }}
+        run: TAG="${RELEASE_REF#subkit-v}"; echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Embed CLI binaries into build context
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/release/embed-binaries.sh --from-run "$GITHUB_RUN_ID"
+      - uses: docker/setup-buildx-action@v3
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Login to DOCR
+        run: doctl registry login --expiry-seconds 1200
+      - name: Build and push engine-with-cli image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.engine
+          target: engine-with-cli
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            ENGINE_VERSION=${{ steps.meta.outputs.version }}
+          tags: |
+            ${{ env.REGISTRY }}/subkit/engine:${{ steps.meta.outputs.version }}-with-cli
+            ${{ env.REGISTRY }}/subkit/engine:latest-with-cli
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   # ── Deploy with health check + rollback ──
 
   deploy:

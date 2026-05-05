@@ -84,3 +84,26 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
   CMD wget -qO- "http://127.0.0.1:${PORT:-3000}/v1/health" >/dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["/usr/local/bin/engine"]
+
+# --- engine-with-cli variant ----------------------------------------------
+# Adds the `sk` and `tunnel-agent` binaries for every shipping platform
+# under /usr/local/share/subkit/binaries, plus the matching SHA256SUMS.
+# The /install/sk-* + /install/agent-* + /install/sha256sums routes serve
+# them, so air-gapped or proxy-restricted operators can run
+# `curl -sSL https://my-engine/install | bash` without GitHub egress.
+#
+# Costs ~+360 MB on top of the slim image (5 platforms × 2 binaries ×
+# ~30 MB plus a small windows-x64 tax). Default `engine` target stays
+# slim — operators opt into this variant by pulling the `:*-with-cli`
+# tag suffix.
+#
+# Build context expects `dist/binaries/` to exist beforehand. CI runs
+# `scripts/release/embed-binaries.sh` to populate it; local builds can
+# call the same script with `--from-local` to use already-built host
+# binaries.
+FROM runtime AS engine-with-cli
+USER root
+RUN mkdir -p /usr/local/share/subkit/binaries
+COPY --chown=nobody:nogroup dist/binaries /usr/local/share/subkit/binaries
+USER nobody
+ENV SUBKIT_BINARIES_DIR=/usr/local/share/subkit/binaries
