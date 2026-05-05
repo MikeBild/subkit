@@ -135,9 +135,6 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
         rawChunks = got.chunks;
         break;
       }
-      case "html": {
-        throw new NotImplementedError("html ingestion requires playwright in a later phase");
-      }
       case "graphql": {
         if (p.input.content !== undefined) {
           uri = p.input.url ?? "inline:graphql";
@@ -383,8 +380,7 @@ export async function ingestTemplateDocsForConnector(
     template.ingestion_source !== "markdown" &&
     template.ingestion_source !== "llms_txt" &&
     template.ingestion_source !== "graphql" &&
-    template.ingestion_source !== "postgres" &&
-    template.ingestion_source !== "html"
+    template.ingestion_source !== "postgres"
   ) {
     throw new NotImplementedError(
       `template ingestion source ${template.ingestion_source} is unsupported`,

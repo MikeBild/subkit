@@ -4,7 +4,6 @@ import type { PgBoss } from "pg-boss";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import { registerOAuth2RefreshHandler } from "../../credentials/oauth2/refresh-worker.ts";
 import type { Db } from "../../db/client.ts";
-import { registerApiKeyFlushHandler } from "./apikey-flush.ts";
 import { registerEventFanoutHandler } from "./event-fanout.ts";
 import { registerExecutionRunHandler } from "./execution-run.ts";
 import { registerIngestDocsHandler } from "./ingest-docs.ts";
@@ -23,7 +22,6 @@ export interface RegisterHandlersOptions {
 
 export interface RegisteredHandlers {
   executionRunWorkerId: string;
-  apikeyFlushWorkerId: string;
   oauth2RefreshWorkerId: string;
   ingestDocsWorkerId: string;
   ingestKnowledgeWorkerId: string;
@@ -40,7 +38,6 @@ export async function registerAllHandlers(
     boss: opts.boss,
     db: opts.db,
   });
-  const apikeyFlushWorkerId = await registerApiKeyFlushHandler(opts.boss);
   const oauth2RefreshWorkerId = await registerOAuth2RefreshHandler({
     boss: opts.boss,
     db: opts.db,
@@ -72,7 +69,6 @@ export async function registerAllHandlers(
   });
   return {
     executionRunWorkerId,
-    apikeyFlushWorkerId,
     oauth2RefreshWorkerId,
     ingestDocsWorkerId,
     ingestKnowledgeWorkerId,

@@ -14,8 +14,10 @@
 //   5. Raw-HTTP — final fallback: fetch the base URL, treat as plain text.
 //
 // Every probe routes through the same BudgetState so combined byte/link/spec
-// caps hold across strategies. Playwright-backed HTML crawl is intentionally
-// excluded — it remains a stub in sources/html.ts, shipped as a follow-up.
+// caps hold across strategies. Headless-browser HTML crawl is deliberately
+// not part of this cascade — the cost (playwright pull + browser launch +
+// JS-rendered indeterminism) outweighs the marginal coverage over the four
+// shapes above.
 
 import { load as loadYaml } from "js-yaml";
 import { canConsumeBytes, consumeBytes, createBudgetState, markBudgetExceeded } from "./budgets.ts";
