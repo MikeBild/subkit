@@ -517,6 +517,22 @@ export async function setConfigKey(
     state.globalSourceMap[dottedPath(leaf)] = opts.tenantId ? "tenant" : "global";
     if (requiresRestart) state.pendingRestartKeys.add(dottedPath(leaf));
 
+    // Hot-reload the logger when a log.* leaf changes — operators set
+    // `sk settings set log.level "debug"` expecting the next request
+    // to log at the new level, not "after restart". The reconfigure
+    // call swaps the in-memory MODE/THRESHOLD atomically.
+    if (leaf.path[0] === "log") {
+      try {
+        const { reconfigureLogger } = await import("../logging/logger.ts");
+        reconfigureLogger({
+          level: fullParse.data.log.level,
+          format: fullParse.data.log.format,
+        });
+      } catch {
+        /* logger module not loaded */
+      }
+    }
+
     // Structured runtime log — one line per applied setting so an
     // operator tailing the engine log can correlate every change with
     // the responsible request. The log NEVER carries the value itself

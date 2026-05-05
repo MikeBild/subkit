@@ -15,8 +15,8 @@ Logging
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `log.format` | enum("dev" \| "pretty" \| "prod" \| "ndjson" \| "json") | `"ndjson"` | global | no | yes | Log output format |
-| `log.level` | enum("trace" \| "debug" \| "info" \| "warn" \| "error" \| "fatal") | `"info"` | global | no | yes | Log verbosity |
+| `log.format` | enum("dev" \| "pretty" \| "prod" \| "ndjson" \| "json") | `"ndjson"` | global | no | no | Log output format |
+| `log.level` | enum("trace" \| "debug" \| "info" \| "warn" \| "error" \| "fatal") | `"info"` | global | no | no | Log verbosity |
 
 ## server
 HTTP server

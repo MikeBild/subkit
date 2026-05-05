@@ -184,6 +184,28 @@ describe("config loader — structured logs", () => {
     expect(applied[0]!.scope).toBe("tenant:tenant-x");
   });
 
+  test("setConfigKey log.level hot-reloads the live logger (no restart needed)", async () => {
+    await loadConfig({
+      env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
+      configPathOverride: cfgPath,
+    });
+    const { logger, reconfigureLogger } = await import("../../logging/logger.ts");
+    // Force a known starting point: info threshold, ndjson format.
+    reconfigureLogger({ level: "info", format: "ndjson" });
+    captured.length = 0;
+
+    // A debug line at info threshold should NOT appear.
+    logger.debug({ module: "test", msg: "should-not-appear-pre" });
+    expect(logLines((l) => l.msg === "should-not-appear-pre").length).toBe(0);
+
+    // Flip log.level to "debug" via setConfigKey.
+    await setConfigKey("log.level", "debug", { force: true });
+
+    // The next debug line should now appear without a restart.
+    logger.debug({ module: "test", msg: "should-appear-post" });
+    expect(logLines((l) => l.msg === "should-appear-post").length).toBe(1);
+  });
+
   test("setting.applied for an unchanged write reports changed:false", async () => {
     await loadConfig({
       env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },

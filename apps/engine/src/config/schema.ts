@@ -110,12 +110,12 @@ const LogSection = z
       .enum(["trace", "debug", "info", "warn", "error", "fatal"])
       .default("info")
       .describe("Log verbosity")
-      .meta(global({ requiresRestart: true })),
+      .meta(global()),
     format: z
       .enum(["dev", "pretty", "prod", "ndjson", "json"])
       .default("ndjson")
       .describe("Log output format")
-      .meta(global({ requiresRestart: true })),
+      .meta(global()),
   })
   .prefault({})
   .describe("Logging");
