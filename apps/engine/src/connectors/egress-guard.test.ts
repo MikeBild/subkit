@@ -224,9 +224,23 @@ describe("assertEgressAllowed (mode resolution)", () => {
     );
   });
 
-  test("EGRESS_GUARD=strict env var triggers strict mode", () => {
-    process.env.EGRESS_GUARD = "strict";
-    expect(() => assertEgressAllowed("http://10.0.0.1/x", {})).toThrow(EgressBlockedError);
+  test("egress.mode='strict' setConfigKey triggers strict mode (env-driven path retired in v3.5)", async () => {
+    const { _resetConfigForTests, loadConfig, setConfigKey } = await import("../config/loader.ts");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    _resetConfigForTests();
+    const dir = mkdtempSync(join(tmpdir(), "sk-cfg-egress-"));
+    try {
+      await loadConfig({
+        env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
+        configPathOverride: join(dir, "subkit.config.json"),
+      });
+      await setConfigKey("egress.mode", "strict", { force: true });
+      expect(() => assertEgressAllowed("http://10.0.0.1/x", {})).toThrow(EgressBlockedError);
+    } finally {
+      _resetConfigForTests();
+    }
   });
 
   test("NODE_ENV=production defaults to strict", () => {
