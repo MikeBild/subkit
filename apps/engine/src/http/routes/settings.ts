@@ -21,7 +21,7 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { audit } from "../../audit/audit.ts";
+import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import {
   getConfig,
@@ -342,23 +342,31 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     try {
       const result = await setConfigKey(leaf.path, body.value, setOpts);
 
-      // Audit the change. Target tenant is the ?tenant query (or the
-      // caller's own tenant for global writes — system-level state).
-      audit({
-        tenant_id: tenant ?? principal.tenant_id,
-        actor_type: "user",
-        actor_id: principal.id,
-        action: AuditAction.SETTINGS_CHANGED,
-        resource_type: "setting",
-        resource_id: result.leafPath,
-        before: maskedValue(leaf, result.before),
-        after: maskedValue(leaf, result.after),
-        metadata: {
-          scope: result.scope,
-          requires_restart: result.requiresRestart,
-          force_applied: !!body.force,
+      // Audit the change against the request-bound db so test setups
+      // that point Hono at a testcontainer (and not the engine's own
+      // pool) still write the row to the right place. Production
+      // boot wires `c.get("db")` to the same pool getDb() returns.
+      // before/after are wrapped in `{ value: ... }` — primitives
+      // serialise inconsistently across the pg jsonb adapter.
+      const db = c.get("db");
+      await auditAwait(
+        {
+          tenant_id: tenant ?? principal.tenant_id,
+          actor_type: "user",
+          actor_id: principal.id,
+          action: AuditAction.SETTINGS_CHANGED,
+          resource_type: "setting",
+          resource_id: result.leafPath,
+          before: { value: maskedValue(leaf, result.before) },
+          after: { value: maskedValue(leaf, result.after) },
+          metadata: {
+            scope: result.scope,
+            requires_restart: result.requiresRestart,
+            force_applied: !!body.force,
+          },
         },
-      });
+        db,
+      );
 
       return c.json(
         {
