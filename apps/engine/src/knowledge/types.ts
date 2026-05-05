@@ -55,8 +55,6 @@ export const CreateKnowledgeSourceSchema = z
     description: z.string().max(2000).optional(),
     scope: KnowledgeSourceScopeSchema.optional(),
     workflow_id: z.string().uuid().optional(),
-    /** Only 'manual' and 'scheduled' are currently implemented.
-     *  'webhook' is reserved for a future release. */
     refresh_strategy: z.enum(["manual", "scheduled"]).optional(),
     refresh_cron: z.string().optional(),
   })

@@ -187,7 +187,7 @@ export const RecipeCategoryEnum = z.enum([
 ]);
 
 export const RecipeDifficultyEnum = z.enum(["beginner", "intermediate", "advanced"]);
-export const RecipeAuthorEnum = z.enum(["subkit-builtin", "community", "tenant"]);
+export const RecipeAuthorEnum = z.enum(["subkit-builtin", "tenant"]);
 
 // Multi-connector binding. When a recipe spans more than one connector,
 // each `placeholder` UUID inside `recipe.workflow` (any step's
@@ -275,9 +275,8 @@ export const ConnectorRecipeSchema = z
       .regex(/^\d+\.\d+\.\d+$/)
       .default("1.0.0"),
     /** Provenance. `subkit-builtin` for everything in `templates.json`;
-     *  `community` reserved for a future contribution path; `tenant`
-     *  for tenant-authored recipes once the per-tenant authoring
-     *  surface lands. */
+     *  `tenant` for tenant-authored recipes via the per-tenant authoring
+     *  surface. */
     author: RecipeAuthorEnum.default("subkit-builtin"),
     /** Quality marker: when this recipe was last dry-run successfully
      *  against a vendor sandbox. Null means schema-only validation

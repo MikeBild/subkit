@@ -3155,7 +3155,6 @@
             "type": "string",
             "enum": [
               "subkit-builtin",
-              "community",
               "tenant"
             ],
             "default": "subkit-builtin"
