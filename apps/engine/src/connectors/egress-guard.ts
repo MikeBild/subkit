@@ -28,7 +28,7 @@ export type EgressGuardMode = "strict" | "permissive";
 export interface EgressGuardContext {
   tenant_id?: string;
   /** Explicit mode override. When unset, falls back to
-   *  `process.env.EGRESS_GUARD`, then to the NODE_ENV default. */
+   *  `getConfig().egress.mode`, then to the NODE_ENV default. */
   mode?: EgressGuardMode;
   /** When set (non-empty), the guard is skipped entirely — the tunnel
    *  is the operator-authorized path to private networks. Pass `null`
@@ -55,8 +55,10 @@ function resolveMode(ctx: EgressGuardContext): EgressGuardMode {
   } catch {
     /* loader not initialised */
   }
-  const envMode = (process.env.EGRESS_GUARD ?? "").toLowerCase();
-  if (envMode === "strict" || envMode === "permissive") return envMode;
+  // v3.5: EGRESS_GUARD env retired — egress.mode is the canonical leaf.
+  // Operators who still set the env var get a warn at boot via
+  // RETIRED_ENV_KEYS. Final fallback is NODE_ENV-derived: production
+  // defaults to strict, everything else to permissive.
   return (process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "strict" : "permissive";
 }
 

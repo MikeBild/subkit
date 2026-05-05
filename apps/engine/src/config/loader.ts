@@ -388,6 +388,56 @@ function deepFreeze<T>(obj: T): T {
   return Object.freeze(obj);
 }
 
+// boot.complete summary: every subsystem that reads getConfig() at
+// boot can register itself via `recordBootConsumer(<name>)` so the
+// loader can emit a single `config.boot.complete` log line listing
+// every consumer that wired up successfully. Lets an operator confirm
+// from one log line that the loader → consumer chain is fully live.
+//
+// The set is keyed by subsystem name (string), populated only at boot.
+// `recordBootConsumer` is a noop after `_state` is set + the
+// `boot.complete` line was emitted (so post-boot getConfig calls don't
+// flood the set).
+const _bootConsumers = new Set<string>();
+let _bootCompleteEmitted = false;
+
+export function recordBootConsumer(name: string): void {
+  if (_bootCompleteEmitted) return;
+  _bootConsumers.add(name);
+}
+
+/**
+ * Emit `config.boot.complete` once after every subsystem has wired up
+ * (e.g. at the end of `runServer()` in apps/engine/src/index.ts). The
+ * line carries the list of subsystems that called
+ * `recordBootConsumer()` at boot — operators reading the boot log get
+ * a single confirmation that loader → consumer hand-off is wired.
+ *
+ * Idempotent: subsequent calls are noops. Safe to call from tests.
+ */
+export async function emitBootComplete(): Promise<void> {
+  if (_bootCompleteEmitted) return;
+  _bootCompleteEmitted = true;
+  try {
+    const { logger } = await import("../logging/logger.ts");
+    logger.info({
+      module: "config",
+      action: "boot.complete",
+      msg: "config consumers wired",
+      consumers: [..._bootConsumers].sort(),
+      consumer_count: _bootConsumers.size,
+    });
+  } catch {
+    /* logger module not loaded yet */
+  }
+}
+
+/** **TEST-ONLY** — clear the boot-consumer registry between test cases. */
+export function _resetBootConsumersForTests(): void {
+  _bootConsumers.clear();
+  _bootCompleteEmitted = false;
+}
+
 // Read-sampling is a TEST-ONLY introspection hook. It is *not* a
 // production observability path — operator-grade read counting belongs
 // in the Prometheus metrics layer (see observability/metrics.ts). The
@@ -454,6 +504,32 @@ export function getDiagnostics(): Diagnostics {
     pending_restart_keys: [..._state.pendingRestartKeys],
     override_keys: [..._state.overrideKeys],
   };
+}
+
+/**
+ * Emit one `config.requires_restart_pending` warn per call when one or
+ * more leaves are flagged `requiresRestart: true` and have been
+ * written since boot. Call from a scheduler tick (e.g. every 5
+ * minutes) so an operator who PUT a `requiresRestart: true` leaf and
+ * forgot to restart the container surfaces in the boot/operator log
+ * stream alongside the rest of their diagnostics. No-op when the set
+ * is empty; never logs the value, only the leaf paths.
+ */
+export async function emitRequiresRestartPendingIfAny(): Promise<void> {
+  if (_state === null) return;
+  if (_state.pendingRestartKeys.size === 0) return;
+  try {
+    const { logger } = await import("../logging/logger.ts");
+    logger.warn({
+      module: "config",
+      action: "requires_restart_pending",
+      msg: "config writes pending restart — engine has not picked up the new value yet",
+      pending_restart_keys: [..._state.pendingRestartKeys].sort(),
+      pending_count: _state.pendingRestartKeys.size,
+    });
+  } catch {
+    /* logger module not loaded */
+  }
 }
 
 export interface SetConfigKeyOptions {

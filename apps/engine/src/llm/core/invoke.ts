@@ -179,6 +179,11 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     .limit(1);
   const tenant = tenantRows[0];
 
+  // v3.5: llm.model / llm.fallback_model are first-class config leaves.
+  // The pre-v3.5 LLM_PRIMARY / LLM_FALLBACK env reads are retired
+  // (see RETIRED_ENV_KEYS in env.ts) — operators who still set them
+  // get a warn at boot. Resolution chain: per-conversation settings →
+  // tenant override → schema-config → DEFAULT_*.
   let cfgModel: string | undefined;
   let cfgFallback: string | undefined;
   try {
@@ -186,22 +191,11 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     if (cfg.model) cfgModel = cfg.model;
     if (cfg.fallback_model) cfgFallback = cfg.fallback_model;
   } catch {
-    /* loader not initialised — unit tests fall back to env or DEFAULT_* */
+    /* loader not initialised — unit tests fall back to DEFAULT_* */
   }
-  const envPrimary = process.env.LLM_PRIMARY;
-  const envFallback = process.env.LLM_FALLBACK;
-  const primary =
-    settings?.llm_primary_model ??
-    tenant?.llm_primary ??
-    cfgModel ??
-    (envPrimary && envPrimary.length > 0 ? envPrimary : undefined) ??
-    DEFAULT_PRIMARY;
+  const primary = settings?.llm_primary_model ?? tenant?.llm_primary ?? cfgModel ?? DEFAULT_PRIMARY;
   const fallback =
-    settings?.llm_fallback_model ??
-    tenant?.llm_fallback ??
-    cfgFallback ??
-    (envFallback && envFallback.length > 0 ? envFallback : undefined) ??
-    DEFAULT_FALLBACK;
+    settings?.llm_fallback_model ?? tenant?.llm_fallback ?? cfgFallback ?? DEFAULT_FALLBACK;
   const provider = (settings?.llm_provider as LlmProviderKind | undefined) ?? currentProvider();
   const fallback_provider = currentFallbackProvider(provider);
   const monthly_budget =
