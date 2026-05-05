@@ -65,7 +65,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => mockApi.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("50: registry expected_statuses fallback", () => {
   test("AC1: upstream 201 succeeds when step omits expected_statuses (registry has [201,422])", async () => {

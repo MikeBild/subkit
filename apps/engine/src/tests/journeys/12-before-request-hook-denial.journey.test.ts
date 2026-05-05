@@ -40,7 +40,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => mock.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey: before-request hook denial", () => {
   test("AC1: admin creates a deny-mutating hook for role admin", async () => {

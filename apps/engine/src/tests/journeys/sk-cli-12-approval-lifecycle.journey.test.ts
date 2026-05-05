@@ -47,11 +47,11 @@ async function countAudit(action: string, resourceId: string): Promise<number> {
 describe("journey: sk-cli elicitation lifecycle", () => {
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-12-approval");
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   async function newCommitConversation(): Promise<{
     conversationId: string;

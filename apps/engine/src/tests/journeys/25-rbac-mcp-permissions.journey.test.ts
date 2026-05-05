@@ -56,11 +56,11 @@ describe("journey: rbac mcp permissions", () => {
       allowed_workflows: [workflowA],
       expires_at: new Date(TEST_NOW_MS + 3600_000),
     });
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   async function canQuery(body: unknown): Promise<{ allow: boolean; source: string | null }> {
     const res = await journeyFetch(ctx, "/v1/rbac/can", {

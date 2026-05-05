@@ -107,12 +107,15 @@ export async function createJourneyCtx(
   const random = createSeededRandom(seed);
 
   // Track what's been created so a mid-setup failure can still tear
-  // down the partial state.
-  const failSafe: Array<() => Promise<void>> = [async () => envHandle.restore()];
+  // down the partial state. Each entry is named so a flaky teardown
+  // on CI tells us which step ran long instead of just timing out.
+  const failSafe: Array<{ name: string; fn: () => Promise<void> }> = [
+    { name: "env-handle", fn: async () => envHandle.restore() },
+  ];
   const fail = async (err: unknown): Promise<never> => {
-    for (const fn of failSafe.reverse()) {
+    for (const step of failSafe.reverse()) {
       try {
-        await fn();
+        await step.fn();
       } catch {
         /* swallow — teardown best-effort */
       }
@@ -123,7 +126,7 @@ export async function createJourneyCtx(
   let testDb: TestDb;
   try {
     testDb = await createTestDb(`journey-${safeLabel}`);
-    failSafe.push(() => testDb.cleanup());
+    failSafe.push({ name: "test-db", fn: () => testDb.cleanup() });
   } catch (e) {
     await fail(e);
     throw e; // unreachable
@@ -183,13 +186,16 @@ export async function createJourneyCtx(
     } catch {
       boss = await createBoss({ connectionString: testDb.url });
     }
-    failSafe.push(async () => {
-      try {
-        await stopBoss(5_000);
-      } catch {}
-      try {
-        await disposeBoss(boss, 2_000);
-      } catch {}
+    failSafe.push({
+      name: "pg-boss",
+      fn: async () => {
+        try {
+          await stopBoss(5_000);
+        } catch {}
+        try {
+          await disposeBoss(boss, 2_000);
+        } catch {}
+      },
     });
     await registerAllHandlers({ boss, db: testDb.db });
 
@@ -202,13 +208,16 @@ export async function createJourneyCtx(
       throw new Error("failed to determine journey test server port");
     }
     const baseUrl = `http://127.0.0.1:${addr.port}`;
-    failSafe.push(async () => {
-      const s = server as unknown as {
-        close: (cb: () => void) => void;
-        closeAllConnections?: () => void;
-      };
-      s.closeAllConnections?.();
-      await new Promise<void>((resolve) => s.close(() => resolve()));
+    failSafe.push({
+      name: "http-server",
+      fn: async () => {
+        const s = server as unknown as {
+          close: (cb: () => void) => void;
+          closeAllConnections?: () => void;
+        };
+        s.closeAllConnections?.();
+        await new Promise<void>((resolve) => s.close(() => resolve()));
+      },
     });
 
     return {
@@ -228,12 +237,21 @@ export async function createJourneyCtx(
       cleanup: async () => {
         // Run the registered teardown stack in reverse order. Each
         // step swallows errors so one failing step can't block the
-        // rest of cleanup.
-        for (const fn of failSafe.reverse()) {
+        // rest of cleanup. Per-step timing is logged when
+        // SUBKIT_JOURNEY_TEARDOWN_DIAG=1, so a CI flake names the
+        // slow step instead of just hitting the hook timeout.
+        const diag = process.env.SUBKIT_JOURNEY_TEARDOWN_DIAG === "1";
+        for (const step of failSafe.reverse()) {
+          const t = diag ? Date.now() : 0;
           try {
-            await fn();
+            await step.fn();
           } catch {
             /* ignore */
+          }
+          if (diag) {
+            const dur = Date.now() - t;
+            // biome-ignore lint/suspicious/noConsole: diagnostic
+            console.warn(`[journey-teardown] ${label} ${step.name} ${dur}ms`);
           }
         }
       },

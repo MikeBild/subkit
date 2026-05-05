@@ -79,12 +79,12 @@ describe("journey: sk-cli memory pipeline", () => {
       "# Project memory\n- prefer JSON response shapes\n- avoid pagination for list endpoints under 100 rows\n",
       "utf8",
     );
-  });
+  }, 60_000);
 
   afterAll(async () => {
     rmSync(tmpWorkspace, { recursive: true, force: true });
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: SK.md is forwarded, stored, and audited on first turn", async () => {
     const result = await runHeadless({

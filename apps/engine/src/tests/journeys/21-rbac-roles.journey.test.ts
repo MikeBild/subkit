@@ -67,10 +67,10 @@ describe("journey: rbac custom role", () => {
       steps: [{ id: "t1", kind: "transform", expression: '"ok"' }],
     });
     workflowId = wf.id;
-  });
+  }, 60_000);
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1-AC5: custom role end to end", async () => {
     // AC1: create the ops-engineer role

@@ -45,7 +45,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await reconciler.stop();
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey: scheduler fires cron", () => {
   test("AC1+AC2: every:1 creates an execution within 5s tagged scheduler", async () => {

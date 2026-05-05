@@ -212,7 +212,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey 30: sk audit CLI", () => {
   test("AC1: query --action=workflow.created returns the row", async () => {

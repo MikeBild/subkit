@@ -42,7 +42,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => mock.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey: sk-stdlib before-request hook", () => {
   test("AC1: admin creates an sk-based deny-mutating hook", async () => {

@@ -46,7 +46,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => mock.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey: CLI full onboarding", () => {
   test("AC1: health reports ok + db_connected", async () => {

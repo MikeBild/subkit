@@ -67,7 +67,7 @@ describe("journey: sk-cli settings layering", () => {
     tmpWorkspace = mkdtempSync(join(tmpdir(), "sk-set-ws-"));
     prevSkHome = process.env.SK_HOME;
     process.env.SK_HOME = userHome;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     if (prevSkHome !== undefined) process.env.SK_HOME = prevSkHome;
@@ -75,7 +75,7 @@ describe("journey: sk-cli settings layering", () => {
     rmSync(userHome, { recursive: true, force: true });
     rmSync(tmpWorkspace, { recursive: true, force: true });
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   // Note: we deliberately only exercise project + local layers here
   // because loadSettings walks `homedir()` for the user layer, which

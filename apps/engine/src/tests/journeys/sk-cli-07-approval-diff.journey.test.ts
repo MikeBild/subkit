@@ -72,11 +72,11 @@ describe("journey: sk-cli elicitation diff surfacing", () => {
       ctx.db,
     );
     elicitationId = elicitation.id;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   test("AC1: elicitation row persists the structured diff", async () => {
     const [row] = await ctx.db

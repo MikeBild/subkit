@@ -224,7 +224,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-});
+}, 60_000);
 
 describe("journey 40: sk notifications CLI", () => {
   // ---- channels section ----

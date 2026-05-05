@@ -54,10 +54,10 @@ describe("journey: rbac system account scopes", () => {
     ctx = await createJourneyCtx("24-rbac-sys");
     tunnelKey = await seedSystemKey("tunnel-agent-24", BUILTIN_ROLE_NAMES.TUNNEL_AGENT);
     metricsKey = await seedSystemKey("metrics-scraper-24", BUILTIN_ROLE_NAMES.METRICS_SCRAPER);
-  });
+  }, 60_000);
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 60_000);
 
   async function req(key: string, path: string, init: RequestInit = {}) {
     const headers = new Headers(init.headers);
