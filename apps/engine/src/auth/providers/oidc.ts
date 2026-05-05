@@ -58,16 +58,23 @@ function sha256Hex(value: string): string {
 
 function deriveSessionSecret(override?: Uint8Array): Uint8Array {
   if (override) return override;
-  const fromConfig = (getConfig().auth.session.secret ?? "").trim();
+  let fromConfig = "";
+  try {
+    fromConfig = (getConfig().auth.session.secret ?? "").trim();
+  } catch {
+    /* loader not initialised */
+  }
   if (fromConfig.length > 0) {
     return new TextEncoder().encode(fromConfig);
   }
+  const fromEnv = (process.env.SESSION_SECRET ?? "").trim();
+  if (fromEnv.length > 0) {
+    return new TextEncoder().encode(fromEnv);
+  }
   // Deterministic fallback so tests + local dev work without an
-  // explicit auth.session.secret. Derivation binds the session key
-  // to the master encryption key so rolling MASTER_KEY also rolls
-  // session signatures. In production, loadConfig() auto-generates
-  // auth.session.secret on first boot, so this branch is unreachable
-  // outside the test harness.
+  // explicit auth.session.secret. In production, loadConfig() auto-
+  // generates auth.session.secret on first boot, so this branch is
+  // unreachable outside the test harness.
   const masterKey = process.env.MASTER_KEY ?? "";
   return new Uint8Array(createHash("sha256").update(`${masterKey}:session`).digest());
 }
@@ -171,11 +178,28 @@ async function resolveTenantId(db: Db, slug: string | null): Promise<string | nu
 }
 
 export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider {
-  const oidcCfg = getConfig().auth.oidc;
-  const issuerUrl = opts.issuerUrl ?? oidcCfg.issuer_url ?? "";
-  const clientId = opts.clientId ?? oidcCfg.client_id ?? "";
-  const clientSecretInput = opts.clientSecret ?? oidcCfg.client_secret ?? undefined;
-  const redirectUri = opts.redirectUri ?? oidcCfg.redirect_uri ?? "";
+  let oidcCfg: {
+    issuer_url: string;
+    client_id: string;
+    client_secret: string;
+    redirect_uri: string;
+  } = {
+    issuer_url: "",
+    client_id: "",
+    client_secret: "",
+    redirect_uri: "",
+  };
+  try {
+    oidcCfg = getConfig().auth.oidc;
+  } catch {
+    /* loader not initialised — unit tests fall back to env */
+  }
+  const issuerUrl = opts.issuerUrl ?? oidcCfg.issuer_url ?? process.env.OIDC_ISSUER_URL ?? "";
+  const clientId = opts.clientId ?? oidcCfg.client_id ?? process.env.OIDC_CLIENT_ID ?? "";
+  const clientSecretInput =
+    opts.clientSecret ?? oidcCfg.client_secret ?? process.env.OIDC_CLIENT_SECRET ?? undefined;
+  const redirectUri =
+    opts.redirectUri ?? oidcCfg.redirect_uri ?? process.env.OIDC_REDIRECT_URI ?? "";
   const sessionSecret = deriveSessionSecret(opts.sessionSecret);
   const db = opts.db;
 

@@ -81,8 +81,9 @@ function isOneMillionContextActive(id: string): boolean {
   try {
     if (getConfig().llm.context_1m) return true;
   } catch {
-    /* loader not initialised (unit tests that don't boot) */
+    /* loader not initialised */
   }
+  if (process.env.LLM_CONTEXT_1M === "1") return true;
   return false;
 }
 

@@ -55,12 +55,17 @@ const ENV_TO_CONFIG_PATH: Record<string, string[]> = {
 };
 
 function readConfigByPath(p: string[]): unknown {
-  let cursor: unknown = getConfig();
-  for (const seg of p) {
-    if (typeof cursor !== "object" || cursor === null) return undefined;
-    cursor = (cursor as Record<string, unknown>)[seg];
+  let cfg: unknown;
+  try {
+    cfg = getConfig();
+  } catch {
+    return undefined; // loader not initialised (unit tests)
   }
-  return cursor;
+  for (const seg of p) {
+    if (typeof cfg !== "object" || cfg === null) return undefined;
+    cfg = (cfg as Record<string, unknown>)[seg];
+  }
+  return cfg;
 }
 
 export const DIRECT_PROVIDER_KINDS = [
@@ -108,10 +113,14 @@ function readEnv(name: string): string | undefined {
   const cfgPath = ENV_TO_CONFIG_PATH[name];
   if (cfgPath) {
     const v = readConfigByPath(cfgPath);
-    if (typeof v === "string") return v.length > 0 ? v : undefined;
+    if (typeof v === "string" && v.length > 0) return v;
     if (typeof v === "boolean") return v ? "true" : "false";
     if (typeof v === "number") return String(v);
-    return undefined;
+    // Loader not initialised, or the leaf is empty → fall back to
+    // process.env. This keeps unit tests that set env vars directly
+    // working without a loader-bootstrap dance, AND covers the
+    // production path where an SK_OVERRIDE_* didn't fire (loader is
+    // up but the leaf is genuinely empty).
   }
   const raw = process.env[name];
   return raw && raw.length > 0 ? raw : undefined;

@@ -179,11 +179,29 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     .limit(1);
   const tenant = tenantRows[0];
 
-  const cfg = getConfig().llm;
+  let cfgModel: string | undefined;
+  let cfgFallback: string | undefined;
+  try {
+    const cfg = getConfig().llm;
+    if (cfg.model) cfgModel = cfg.model;
+    if (cfg.fallback_model) cfgFallback = cfg.fallback_model;
+  } catch {
+    /* loader not initialised — unit tests fall back to env or DEFAULT_* */
+  }
+  const envPrimary = process.env.LLM_PRIMARY;
+  const envFallback = process.env.LLM_FALLBACK;
   const primary =
-    settings?.llm_primary_model ?? tenant?.llm_primary ?? cfg.model ?? DEFAULT_PRIMARY;
+    settings?.llm_primary_model ??
+    tenant?.llm_primary ??
+    cfgModel ??
+    (envPrimary && envPrimary.length > 0 ? envPrimary : undefined) ??
+    DEFAULT_PRIMARY;
   const fallback =
-    settings?.llm_fallback_model ?? tenant?.llm_fallback ?? cfg.fallback_model ?? DEFAULT_FALLBACK;
+    settings?.llm_fallback_model ??
+    tenant?.llm_fallback ??
+    cfgFallback ??
+    (envFallback && envFallback.length > 0 ? envFallback : undefined) ??
+    DEFAULT_FALLBACK;
   const provider = (settings?.llm_provider as LlmProviderKind | undefined) ?? currentProvider();
   const fallback_provider = currentFallbackProvider(provider);
   const monthly_budget =

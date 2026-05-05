@@ -80,7 +80,9 @@ export function resolveEngineUrl(req: Request | { url: string }): string | undef
     const cfg = getConfig().server.public_base_url;
     if (cfg && cfg.length > 0) return cfg;
   } catch {
-    /* loader not initialised (e.g. unit tests that don't boot) — fall through */
+    /* loader not initialised */
   }
+  const envFallback = process.env.SUBKIT_PUBLIC_BASE_URL;
+  if (envFallback && envFallback.length > 0) return envFallback;
   return undefined;
 }

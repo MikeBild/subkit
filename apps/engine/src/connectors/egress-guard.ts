@@ -53,8 +53,10 @@ function resolveMode(ctx: EgressGuardContext): EgressGuardMode {
     const cfgMode = getConfig().egress.mode;
     if (cfgMode === "strict" || cfgMode === "permissive") return cfgMode;
   } catch {
-    /* loader not initialised — fall through to NODE_ENV default */
+    /* loader not initialised */
   }
+  const envMode = (process.env.EGRESS_GUARD ?? "").toLowerCase();
+  if (envMode === "strict" || envMode === "permissive") return envMode;
   return (process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "strict" : "permissive";
 }
 
