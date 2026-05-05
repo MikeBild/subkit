@@ -1,0 +1,37 @@
+# engine-with-cli — slim engine image plus the `sk` and `tunnel-agent`
+# binaries for every shipping platform, served from
+# /usr/local/share/subkit/binaries by the /install/sk-*, /install/agent-*,
+# and /install/sha256sums routes.
+#
+# Why a separate Dockerfile:
+#   The slim `engine` image (Dockerfile.engine, target `runtime`) and
+#   this variant must not share a build graph. BuildKit pre-resolves
+#   every COPY source when computing layer cache keys, so a `COPY
+#   dist/binaries …` in the slim Dockerfile broke the slim build
+#   whenever dist/binaries was absent — even with --target=runtime.
+#
+# Why FROM the published slim image instead of rebuilding:
+#   Keeps the engine binary bit-identical between variants, halves CI
+#   time, and means the with-cli image inherits the slim image's signed
+#   layers.
+#
+# Build context expectation:
+#   `dist/binaries/` must contain the per-platform `sk_*` /
+#   `tunnel-agent_*` binaries plus a matching `SHA256SUMS`. CI's release
+#   workflow runs `scripts/release/embed-binaries.sh --from-run
+#   $GITHUB_RUN_ID` to populate it; local smoke builds use
+#   `--from-local`.
+#
+# Image-size cost: ~+360 MB vs. the slim image (5 platforms × 2 binaries
+# × ~30 MB, plus the slightly larger windows-x64 binary). The slim
+# default image stays unchanged — operators opt into this variant by
+# pulling the `:*-with-cli` tag suffix.
+
+ARG BASE_ENGINE_IMAGE=subkit/engine:local
+FROM ${BASE_ENGINE_IMAGE}
+
+USER root
+RUN mkdir -p /usr/local/share/subkit/binaries
+COPY --chown=nobody:nogroup dist/binaries /usr/local/share/subkit/binaries
+USER nobody
+ENV SUBKIT_BINARIES_DIR=/usr/local/share/subkit/binaries

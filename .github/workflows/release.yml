@@ -437,13 +437,15 @@ jobs:
   # operators on air-gapped or proxy-restricted networks self-distribute
   # the CLI from their own engine URL — no GitHub egress required.
   #
-  # Same DEPLOY_ENABLED gate as the slim build. Needs build-cli-binaries
-  # so embed-binaries.sh can pull the matrix artifacts; the slim image
-  # build has no such dependency and runs in parallel.
+  # Builds FROM the just-pushed slim image (engine:VERSION) — keeps the
+  # engine binary bit-identical between variants and halves build time
+  # vs. recompiling. Therefore needs both `build-cli-binaries` (for the
+  # bundled binaries) AND `build-and-push` (for the slim base image to
+  # pull from). Same DEPLOY_ENABLED gate as the slim build.
 
   build-and-push-with-cli:
     name: build-and-push-with-cli
-    needs: [gate, build-cli-binaries]
+    needs: [gate, build-cli-binaries, build-and-push]
     if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
     permissions:
@@ -455,10 +457,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
-      - id: meta
-        env:
-          RELEASE_REF: ${{ inputs.tag || github.ref_name }}
-        run: TAG="${RELEASE_REF#subkit-v}"; echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
       - name: Embed CLI binaries into build context
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -473,14 +471,13 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/Dockerfile.engine
-          target: engine-with-cli
+          file: docker/Dockerfile.engine-with-cli
           push: true
           platforms: linux/amd64
           build-args: |
-            ENGINE_VERSION=${{ steps.meta.outputs.version }}
+            BASE_ENGINE_IMAGE=${{ env.REGISTRY }}/subkit/engine:${{ needs.build-and-push.outputs.version }}
           tags: |
-            ${{ env.REGISTRY }}/subkit/engine:${{ steps.meta.outputs.version }}-with-cli
+            ${{ env.REGISTRY }}/subkit/engine:${{ needs.build-and-push.outputs.version }}-with-cli
             ${{ env.REGISTRY }}/subkit/engine:latest-with-cli
           cache-from: type=gha
           cache-to: type=gha,mode=max
