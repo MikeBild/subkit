@@ -350,24 +350,45 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
       // matches the existing audit_log convention used by other
       // resource_types (credential / knowledge_source / workflow).
       const db = c.get("db");
-      await auditAwait(
-        {
-          tenant_id: tenant ?? principal.tenant_id,
-          actor_type: "user",
-          actor_id: principal.id,
-          action: AuditAction.SETTINGS_CHANGED,
-          resource_type: "setting",
-          resource_id: result.leafPath,
-          before: maskedValue(leaf, result.before),
-          after: maskedValue(leaf, result.after),
-          metadata: {
-            scope: result.scope,
-            requires_restart: result.requiresRestart,
-            force_applied: !!body.force,
+      try {
+        await auditAwait(
+          {
+            tenant_id: tenant ?? principal.tenant_id,
+            actor_type: "user",
+            actor_id: principal.id,
+            action: AuditAction.SETTINGS_CHANGED,
+            resource_type: "setting",
+            resource_id: result.leafPath,
+            before: maskedValue(leaf, result.before),
+            after: maskedValue(leaf, result.after),
+            metadata: {
+              scope: result.scope,
+              requires_restart: result.requiresRestart,
+              force_applied: !!body.force,
+            },
           },
-        },
-        db,
-      );
+          db,
+        );
+      } catch (err) {
+        // Audit row failed AFTER the in-memory + on-disk write
+        // already landed. The compliance ledger is now out of sync
+        // with the live state. Surface a `setting.apply_failed` log
+        // so an operator dashboard catches the divergence, then
+        // rethrow so the route returns 500 (the catch below maps
+        // unhandled errors). The previously-applied write remains
+        // in effect — rolling it back would require a second write
+        // that could itself fail and compound the divergence.
+        const { logger: lg } = await import("../../logging/logger.ts");
+        lg.error({
+          module: "config",
+          action: "setting.apply_failed",
+          msg: "setConfigKey succeeded but audit row write failed; live state and audit_log are out of sync",
+          leaf: result.leafPath,
+          scope: result.scope,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
 
       return c.json(
         {

@@ -134,6 +134,12 @@ sk settings set llm.api_key '"…"' --tenant <id>      # tenant overlay
 `requiresRestart: true` — the engine writes the value but tells you
 to restart for the change to take full effect.
 
+`log.level` and `log.format` are explicitly **hot-reloaded** at the
+moment of write — `requiresRestart: false`. The setting.applied log
+line documenting the change is emitted *before* the live logger is
+reconfigured, so an operator who flips `log.level=error` still sees
+the entry that flipped the threshold.
+
 ## SK_OVERRIDE_<KEY> — incident escape hatch
 
 To rotate an LLM key under pressure without going through the

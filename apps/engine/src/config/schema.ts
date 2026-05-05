@@ -120,25 +120,31 @@ const LogSection = z
   .prefault({})
   .describe("Logging");
 
+// Helper for "either an empty string OR a valid URL" — the schema's
+// pattern for optional URL leaves that ship empty until the operator
+// configures them.
+const optionalUrl = z.union([z.literal(""), z.string().url()]);
+
 const ServerSection = z
   .object({
     port: z
       .number()
       .int()
-      .positive()
+      .min(1)
+      .max(65535)
       .default(3000)
-      .describe("HTTP port to bind")
+      .describe("HTTP port to bind (1..65535)")
       .meta(global({ requiresRestart: true })),
     tunnel_port: z
       .number()
       .int()
-      .positive()
+      .min(1)
+      .max(65535)
       .nullable()
       .default(null)
-      .describe("Tunnel WebSocket port; null disables tunnels")
+      .describe("Tunnel WebSocket port (1..65535); null disables tunnels")
       .meta(global({ requiresRestart: true })),
-    public_base_url: z
-      .string()
+    public_base_url: optionalUrl
       .default("")
       .describe("External-facing URL the engine resolves at (used by /install + chat link replies)")
       .meta(global()),
@@ -212,10 +218,7 @@ const AuthSection = z
   .object({
     oidc: z
       .object({
-        issuer_url: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true })),
+        issuer_url: optionalUrl.default("").meta(global({ requiresRestart: true })),
         client_id: z
           .string()
           .default("")
@@ -224,20 +227,17 @@ const AuthSection = z
           .string()
           .default("")
           .meta(global({ requiresRestart: true, secret: true })),
-        redirect_uri: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true })),
+        redirect_uri: optionalUrl.default("").meta(global({ requiresRestart: true })),
       })
       .prefault({})
       .describe("Generic OIDC provider"),
     session: z
       .object({
         secret: z
-          .string()
+          .union([z.literal(""), z.string().min(32)])
           .default("")
           .describe(
-            "Session signing secret (auto-generated to a 32-byte hex value on first boot if empty)",
+            "Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars",
           )
           .meta(global({ requiresRestart: true, secret: true })),
       })
@@ -249,10 +249,7 @@ const AuthSection = z
           .string()
           .default("")
           .meta(global({ requiresRestart: true })),
-        login_url: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true })),
+        login_url: optionalUrl.default("").meta(global({ requiresRestart: true })),
       })
       .prefault({})
       .describe("Firebase authentication"),
@@ -300,7 +297,7 @@ const StorageSection = z
   .object({
     s3: z
       .object({
-        endpoint: z.string().default("").meta(global()),
+        endpoint: optionalUrl.default("").meta(global()),
         access_key: z
           .string()
           .default("")
@@ -335,8 +332,7 @@ const StorageSection = z
           .string()
           .default("")
           .meta(global({ secret: true })),
-        endpoint: z
-          .string()
+        endpoint: optionalUrl
           .default("")
           .describe("Optional S3 endpoint override (MinIO, R2, etc.)")
           .meta(global()),
@@ -346,16 +342,29 @@ const StorageSection = z
       .describe("Execution-payload offload to S3"),
   })
   .prefault({})
-  .describe("Storage backends");
+  .describe("Storage backends")
+  // Cross-leaf invariant (#7): knowledge.backend="s3" without
+  // storage.s3 credentials is a half-configured engine. Reject at
+  // parse time so an operator who flips backend without setting
+  // keys gets a precise validation error instead of a runtime
+  // surprise on the first knowledge ingest.
+  .refine(
+    (s) => {
+      if (s.knowledge.backend !== "s3") return true;
+      return Boolean(s.s3.access_key && s.s3.secret_key);
+    },
+    {
+      message:
+        "storage.knowledge.backend='s3' requires storage.s3.access_key and storage.s3.secret_key",
+      path: ["knowledge", "backend"],
+    },
+  );
 
 const ObservabilitySection = z
   .object({
     langfuse: z
       .object({
-        host: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true })),
+        host: optionalUrl.default("").meta(global({ requiresRestart: true })),
         public_key: z
           .string()
           .default("")
@@ -369,10 +378,7 @@ const ObservabilitySection = z
       .describe("Langfuse trace ingestion"),
     otlp: z
       .object({
-        endpoint: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true })),
+        endpoint: optionalUrl.default("").meta(global({ requiresRestart: true })),
         service_name: z
           .string()
           .default("subkit")

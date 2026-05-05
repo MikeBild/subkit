@@ -388,19 +388,36 @@ function deepFreeze<T>(obj: T): T {
   return Object.freeze(obj);
 }
 
+// Read-sampling is a TEST-ONLY introspection hook. It is *not* a
+// production observability path — operator-grade read counting belongs
+// in the Prometheus metrics layer (see observability/metrics.ts). The
+// `_` prefix and `ForTests` suffix are the project convention for
+// "you must not import this from production code"; the gauge in
+// metrics.ts is the supported runtime telemetry surface for config
+// reads. Calling `_enableReadSamplingForTests` from a non-test caller
+// silently grows a Map per `getConfig()` invocation and never frees it.
 let _readCounter: Map<string, number> | null = null;
 let _readSamplingEnabled = false;
 
-/** Test-only — turn on per-leaf read sampling. Counts every getConfig()
- *  invocation by tenant scope so a test can assert that a downstream
- *  consumer actually fetched the leaf after a setConfigKey. Disabled
- *  in production (zero overhead). */
+/**
+ * **TEST-ONLY** — turn on per-leaf read sampling. Counts every
+ * getConfig() invocation by tenant scope so a test can assert that a
+ * downstream consumer actually fetched the leaf after setConfigKey.
+ * Disabled in production by default (zero overhead until enabled).
+ *
+ * Production read counters belong in
+ * `apps/engine/src/observability/metrics.ts`, not here. Do not call
+ * this from outside a `__tests__` directory.
+ */
 export function _enableReadSamplingForTests(): Map<string, number> {
   _readCounter = new Map();
   _readSamplingEnabled = true;
   return _readCounter;
 }
 
+/** **TEST-ONLY** — counterpart to `_enableReadSamplingForTests`; clears
+ *  the counter and disables sampling. Call from `afterEach` to keep
+ *  test cases isolated. */
 export function _disableReadSamplingForTests(): void {
   _readCounter = null;
   _readSamplingEnabled = false;
@@ -539,22 +556,6 @@ export async function setConfigKey(
     state.globalSourceMap[dottedPath(leaf)] = opts.tenantId ? "tenant" : "global";
     if (requiresRestart) state.pendingRestartKeys.add(dottedPath(leaf));
 
-    // Hot-reload the logger when a log.* leaf changes — operators set
-    // `sk settings set log.level "debug"` expecting the next request
-    // to log at the new level, not "after restart". The reconfigure
-    // call swaps the in-memory MODE/THRESHOLD atomically.
-    if (leaf.path[0] === "log") {
-      try {
-        const { reconfigureLogger } = await import("../logging/logger.ts");
-        reconfigureLogger({
-          level: fullParse.data.log.level,
-          format: fullParse.data.log.format,
-        });
-      } catch {
-        /* logger module not loaded */
-      }
-    }
-
     // Structured runtime log — one line per applied setting so an
     // operator tailing the engine log can correlate every change with
     // the responsible request. The log NEVER carries the value itself
@@ -562,6 +563,12 @@ export async function setConfigKey(
     // upstream of this function); it carries only the leaf path,
     // scope, restart flag, and whether the on-disk file was actually
     // rewritten with a new value (vs. a no-op write).
+    //
+    // Emitted BEFORE the optional logger reconfigure below so that a
+    // log.level / log.format change cannot retroactively suppress or
+    // reformat the applied-line documenting the change itself: an
+    // operator who sets log.level=error must still see the
+    // setting.applied entry that flipped the threshold.
     try {
       const { logger } = await import("../logging/logger.ts");
       logger.info({
@@ -578,6 +585,24 @@ export async function setConfigKey(
       /* logger module not loaded; never fail a write because of telemetry */
     }
 
+    // Hot-reload the logger when a log.* leaf changes — operators set
+    // `sk settings set log.level "debug"` expecting the next request
+    // to log at the new level, not "after restart". The reconfigure
+    // call swaps the in-memory MODE/THRESHOLD atomically. Runs AFTER
+    // the setting.applied log above so the change-document line is
+    // not suppressed by the threshold it just installed.
+    if (leaf.path[0] === "log") {
+      try {
+        const { reconfigureLogger } = await import("../logging/logger.ts");
+        reconfigureLogger({
+          level: fullParse.data.log.level,
+          format: fullParse.data.log.format,
+        });
+      } catch {
+        /* logger module not loaded */
+      }
+    }
+
     return {
       before: beforeValue,
       after: validatedValue,
@@ -588,7 +613,11 @@ export async function setConfigKey(
   });
 }
 
-// Test-only — reset module state between cases.
+/**
+ * **TEST-ONLY** — reset module state between cases. Production code
+ * never resets the loader; loadConfig() runs exactly once at boot. Use
+ * this in `beforeEach` to isolate test cases that mutate config.
+ */
 export function _resetConfigForTests(): void {
   _state = null;
   _writeLock = Promise.resolve();

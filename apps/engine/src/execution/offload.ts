@@ -13,6 +13,7 @@
 // at a glance what the payload looked like without resolving it.
 
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
+import { getConfig } from "../config/loader.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import { executionFixtures } from "../db/schema/index.ts";
@@ -47,6 +48,14 @@ interface S3OffloadConfig {
   keyPrefix: string;
 }
 
+// Exported as `_s3OffloadConfigForTests` so the consumer read-back
+// suite can verify the resolver reflects setConfigKey writes without
+// a restart. Production code calls the unprefixed local binding via
+// the closure inside maybeOffload below.
+export function _s3OffloadConfigForTests(): S3OffloadConfig | null {
+  return s3OffloadConfig();
+}
+
 function s3OffloadConfig(): S3OffloadConfig | null {
   // Prefer the runtime config; fall back to historical env vars when
   // the loader is uninitialised (unit tests + standalone scripts).
@@ -62,9 +71,7 @@ function s3OffloadConfig(): S3OffloadConfig | null {
   let bedrockAccess = "";
   let bedrockSecret = "";
   try {
-    const cfg = (
-      require("../config/loader.ts") as typeof import("../config/loader.ts")
-    ).getConfig();
+    const cfg = getConfig();
     off = cfg.storage.offload;
     bedrockRegion = cfg.llm.providers.bedrock.region;
     bedrockAccess = cfg.llm.providers.bedrock.access_key_id;

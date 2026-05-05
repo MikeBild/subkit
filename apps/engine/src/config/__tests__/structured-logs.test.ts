@@ -107,10 +107,31 @@ describe("config loader — structured logs", () => {
     expect(typeof entry.override).toBe("number");
     expect(typeof entry.global).toBe("number");
     expect(typeof entry.default).toBe("number");
-    // Sanity: the schema has 78 leaves; on a fresh boot every leaf is
+    // Sanity: the schema has ~76 leaves; on a fresh boot every leaf is
     // either default or override (no file to populate the global yet).
     const sum = (entry.override as number) + (entry.global as number) + (entry.default as number);
     expect(sum).toBeGreaterThan(50);
+  });
+
+  test("config.loaded fires exactly once across loadConfig + reset + reload", async () => {
+    // Each loadConfig call documents its own boot. After
+    // _resetConfigForTests, a fresh loadConfig must emit a NEW
+    // config.loaded line — not zero, not two. Catches a regression
+    // where a second loadConfig silently re-uses cached state without
+    // re-emitting the boot event, or worse, accidentally fires twice.
+    await loadConfig({
+      env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
+      configPathOverride: cfgPath,
+    });
+    expect(logLines((l) => l.module === "config" && l.action === "loaded").length).toBe(1);
+
+    // Reset and reload. Should produce a SECOND loaded line, total = 2.
+    _resetConfigForTests();
+    await loadConfig({
+      env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
+      configPathOverride: cfgPath,
+    });
+    expect(logLines((l) => l.module === "config" && l.action === "loaded").length).toBe(2);
   });
 
   test("emits override.active warn when SK_OVERRIDE_* is set", async () => {

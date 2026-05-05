@@ -23,9 +23,9 @@ HTTP server
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `server.port` | number | `3000` | global | no | yes | HTTP port to bind |
+| `server.port` | number | `3000` | global | no | yes | HTTP port to bind (1..65535) |
 | `server.public_base_url` | string | `""` | global | no | no | External-facing URL the engine resolves at (used by /install + chat link replies) |
-| `server.tunnel_port` | number | `null` | global | no | yes | Tunnel WebSocket port; null disables tunnels |
+| `server.tunnel_port` | number | `null` | global | no | yes | Tunnel WebSocket port (1..65535); null disables tunnels |
 
 ## database
 Database connection
@@ -90,7 +90,7 @@ Authentication
 | `auth.oidc.client_secret` | string | `""` | global | yes | yes |  |
 | `auth.oidc.issuer_url` | string | `""` | global | no | yes |  |
 | `auth.oidc.redirect_uri` | string | `""` | global | no | yes |  |
-| `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty) |
+| `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 
 ## platform
 Chat platform integrations

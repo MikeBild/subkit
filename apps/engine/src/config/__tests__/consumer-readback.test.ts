@@ -50,6 +50,20 @@ describe("consumer read-back per subsystem", () => {
     expect(() => assertEgressAllowed("http://10.0.0.1/x", {})).toThrow(EgressBlockedError);
   });
 
+  test("egress-guard inverse: permissive mode allows what strict blocks", async () => {
+    const { assertEgressAllowed, EgressBlockedError } = await import(
+      "../../connectors/egress-guard.ts"
+    );
+    // Pre-condition: flip to strict so the private host is currently blocked.
+    await setConfigKey("egress.mode", "strict", { force: true });
+    expect(() => assertEgressAllowed("http://10.0.0.2/y", {})).toThrow(EgressBlockedError);
+
+    // Flip back to permissive — the same host must now pass without
+    // a re-import or any module reset. Proves the read path is live.
+    await setConfigKey("egress.mode", "permissive", { force: true });
+    expect(() => assertEgressAllowed("http://10.0.0.2/y", {})).not.toThrow();
+  });
+
   test("count.ts isOneMillionContextActive sees llm.context_1m change", async () => {
     const { contextCapFor } = await import("../../llm/accounting/count.ts");
     // claude-sonnet-4-5 default cap (no 1M flag) is 180k.
@@ -89,10 +103,67 @@ describe("consumer read-back per subsystem", () => {
     expect(st.openai_key_set).toBe(true);
   });
 
+  test("bedrock_key_set requires region + access_key_id + secret_access_key", async () => {
+    // Multi-leaf invariant: bedrock is "configured" only when ALL three
+    // related leaves are populated. Any single missing leaf must render
+    // bedrock_key_set=false. Catches drift if the predicate ever
+    // collapses to "any of" in invoke.ts.
+    const { globalLlmStatus } = await import("../../llm/core/invoke.ts");
+    expect(globalLlmStatus().bedrock_key_set).toBe(false);
+
+    await setConfigKey("llm.providers.bedrock.access_key_id", "AKIA...", { force: true });
+    expect(globalLlmStatus().bedrock_key_set).toBe(false);
+
+    await setConfigKey("llm.providers.bedrock.secret_access_key", "secret-bytes", { force: true });
+    expect(globalLlmStatus().bedrock_key_set).toBe(false);
+
+    await setConfigKey("llm.providers.bedrock.region", "us-east-1", { force: true });
+    expect(globalLlmStatus().bedrock_key_set).toBe(true);
+
+    // Drop one leaf — flips back to false. Proves the predicate is
+    // sensitive to each leaf, not just first-set-wins.
+    await setConfigKey("llm.providers.bedrock.region", "", { force: true });
+    expect(globalLlmStatus().bedrock_key_set).toBe(false);
+  });
+
   test("getConfig() reflects log.level change and the live logger reconfigures", async () => {
     expect(getConfig().log.level).toBe("info");
     await setConfigKey("log.level", "trace", { force: true });
     expect(getConfig().log.level).toBe("trace");
+  });
+
+  test("setConfigKey log.level actually flips the live logger threshold", async () => {
+    // Stronger than the previous test: prove the live `logger` object's
+    // emit threshold actually reconfigured (not just the in-memory
+    // Config). Capture stdout, force a known starting point, set
+    // log.level via setConfigKey, then verify a debug line that was
+    // suppressed before is emitted after.
+    const { logger, reconfigureLogger } = await import("../../logging/logger.ts");
+    reconfigureLogger({ level: "info", format: "ndjson" });
+    const lines: string[] = [];
+    const orig = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      const s = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+      for (const line of s.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("{")) lines.push(trimmed);
+      }
+      return orig(chunk);
+    }) as typeof process.stdout.write;
+    try {
+      // Pre-condition: at info threshold, a debug line is suppressed.
+      logger.debug({ module: "test", msg: "pre-debug-suppressed" });
+      expect(lines.some((l) => l.includes("pre-debug-suppressed"))).toBe(false);
+
+      await setConfigKey("log.level", "debug", { force: true });
+
+      // Post-condition: after setConfigKey, debug emits flow without restart.
+      logger.debug({ module: "test", msg: "post-debug-emitted" });
+      expect(lines.some((l) => l.includes("post-debug-emitted"))).toBe(true);
+    } finally {
+      process.stdout.write = orig as typeof process.stdout.write;
+      reconfigureLogger({ level: "info", format: "ndjson" });
+    }
   });
 
   test("getConfig().mcp.read_only flips after setConfigKey", async () => {
@@ -115,6 +186,25 @@ describe("consumer read-back per subsystem", () => {
     await setConfigKey("observability.otlp.endpoint", "https://otel.local:4318", { force: true });
     expect(getConfig().observability.langfuse.host).toBe("https://lf.local");
     expect(getConfig().observability.otlp.endpoint).toBe("https://otel.local:4318");
+  });
+
+  test("offload resolver picks up storage.offload.* changes without restart", async () => {
+    const { _s3OffloadConfigForTests } = await import("../../execution/offload.ts");
+    // No bucket configured → resolver returns null (offload disabled).
+    expect(_s3OffloadConfigForTests()).toBeNull();
+
+    // Set the minimum required leaves: bucket + access keys.
+    await setConfigKey("storage.offload.bucket", "test-bucket", { force: true });
+    await setConfigKey("storage.offload.access_key", "ak", { force: true });
+    await setConfigKey("storage.offload.secret_key", "sk", { force: true });
+    await setConfigKey("storage.offload.region", "eu-central-1", { force: true });
+
+    const cfg = _s3OffloadConfigForTests();
+    expect(cfg).not.toBeNull();
+    expect(cfg!.bucket).toBe("test-bucket");
+    expect(cfg!.region).toBe("eu-central-1");
+    expect(cfg!.accessKey).toBe("ak");
+    expect(cfg!.secretKey).toBe("sk");
   });
 
   test("read sampling proves consumers actually re-read after a write", async () => {

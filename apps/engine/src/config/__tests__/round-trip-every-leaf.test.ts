@@ -43,11 +43,30 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+function pickStringCandidate(leaf: ConfigLeaf, tag: string): string {
+  // Try a plain tagged string first. If the leaf's schema rejects it
+  // (e.g. optionalUrl unions or session.secret min(32) refinements)
+  // walk a small candidate list until one passes. This keeps the
+  // sweep deterministic per-leaf without baking path-name knowledge
+  // into the test.
+  const candidates: string[] = [
+    tag,
+    `https://example.com/${tag.replaceAll("_", "-")}`,
+    // 32-char hex-shaped value for min(32) refinements.
+    tag.padEnd(32, "x").slice(0, 32),
+  ];
+  for (const c of candidates) {
+    const r = leaf.schema.safeParse(c);
+    if (r.success) return c;
+  }
+  return tag;
+}
+
 function valueFor(leaf: ConfigLeaf, salt: number): unknown {
   const tag = `rt-${dottedPath(leaf).replaceAll(".", "_")}-${salt}`;
   switch (leaf.kind) {
     case "string":
-      return tag;
+      return pickStringCandidate(leaf, tag);
     case "number":
       // Most number leaves are positive ints with sane caps. Use a
       // small deterministic positive int.

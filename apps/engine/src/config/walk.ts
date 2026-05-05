@@ -70,13 +70,28 @@ function unwrap(schema: z.ZodTypeAny): UnwrapResult {
 
 function classify(inner: z.ZodTypeAny): { kind: LeafKind; enumValues?: string[] } | null {
   const def = (
-    inner as { def?: { type?: string; entries?: Record<string, unknown>; element?: z.ZodTypeAny } }
+    inner as {
+      def?: {
+        type?: string;
+        entries?: Record<string, unknown>;
+        element?: z.ZodTypeAny;
+        options?: z.ZodTypeAny[];
+        values?: unknown[];
+      };
+    }
   ).def;
   if (!def?.type) return null;
 
   switch (def.type) {
     case "string":
       return { kind: "string" };
+    case "literal": {
+      // A bare `z.literal("")` is treated as a string leaf — used by
+      // the optional-URL helper as one branch of a union.
+      const values = def.values ?? [];
+      if (values.every((v) => typeof v === "string")) return { kind: "string" };
+      return null;
+    }
     case "number":
       return { kind: "number" };
     case "boolean":
@@ -94,6 +109,33 @@ function classify(inner: z.ZodTypeAny): { kind: LeafKind; enumValues?: string[] 
       const elementDef = (elementInner as { def?: { type?: string } }).def;
       if (elementDef?.type === "string") return { kind: "string-list" };
       return { kind: "string-array" };
+    }
+    case "union": {
+      // Union of literals + string subtypes (the optionalUrl pattern,
+      // and the "" | min(32) pattern for auth.session.secret). Walk
+      // each branch; if every branch resolves to "string"-ish, treat
+      // the union as a string leaf. Mixed-kind unions are not
+      // supported and return null so the walker drops them — caught
+      // by the schema-walk test in apps/sk/src/settings-ui.
+      const options = def.options ?? [];
+      if (options.length === 0) return null;
+      const kinds = new Set<LeafKind>();
+      for (const opt of options) {
+        const branch = classify(unwrap(opt).inner);
+        if (!branch) return null;
+        kinds.add(branch.kind);
+      }
+      if (kinds.size === 1) return { kind: [...kinds][0]! };
+      // String-ish union: literal("") + string-with-refinement → string.
+      if (
+        kinds.size === 2 &&
+        kinds.has("string") &&
+        // both still string-shaped, just different refinements
+        true
+      ) {
+        return { kind: "string" };
+      }
+      return null;
     }
     default:
       return null;

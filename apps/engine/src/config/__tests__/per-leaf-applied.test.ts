@@ -82,11 +82,28 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+function pickStringCandidate(leaf: ConfigLeaf, tag: string): string {
+  // Try a plain tagged string first. If the leaf's schema rejects it
+  // (e.g. optionalUrl unions or session.secret min(32) refinements)
+  // walk a small candidate list until one passes. Keeps the sweep
+  // deterministic without baking path-name knowledge into the test.
+  const candidates: string[] = [
+    tag,
+    `https://example.com/${tag.replaceAll("_", "-")}`,
+    tag.padEnd(32, "x").slice(0, 32),
+  ];
+  for (const c of candidates) {
+    const r = leaf.schema.safeParse(c);
+    if (r.success) return c;
+  }
+  return tag;
+}
+
 function valueFor(leaf: ConfigLeaf, salt: number): unknown {
   const tag = `applied-${dottedPath(leaf).replaceAll(".", "-")}-${salt}`;
   switch (leaf.kind) {
     case "string":
-      return tag;
+      return pickStringCandidate(leaf, tag);
     case "number":
       // Avoid 100 (matches the default for errors.ring_size /
       // tunnel.registry_max). Pick (salt mod 60) + 5 → 5..64.
@@ -145,18 +162,20 @@ describe("per-leaf application sweep — every leaf in ConfigSchema", () => {
   });
 
   test(`every applied setting emits exactly one setting.applied log with correct meta`, async () => {
-    // log.level / log.format mutate the live logger threshold and
-    // would suppress subsequent setting.applied lines. They are
-    // covered by the hot-reload test in structured-logs.test.ts;
-    // here we exclude them so the threshold stays at info for the
-    // sweep.
+    // log.level / log.format hot-reload the live logger inside
+    // setConfigKey, but the setting.applied log is emitted BEFORE
+    // the reconfigure (see loader.ts), so flipping log.* to a
+    // restrictive value (e.g. error) cannot retroactively suppress
+    // the line documenting the change. We can therefore include
+    // log.* leaves in this sweep — but we still reset the logger to
+    // info+ndjson at the top of every iteration so a previous
+    // iteration's flip cannot mask the current iteration's emit.
     const { reconfigureLogger } = await import("../../logging/logger.ts");
     let salt = 100;
     for (const leaf of LEAVES) {
       // Reset the logger threshold every iteration — defends against
       // any leaf write that might have flipped it.
       reconfigureLogger({ level: "info", format: "ndjson" });
-      if (leaf.path[0] === "log") continue;
       const written = valueFor(leaf, salt++);
       captured.length = 0;
       await setConfigKey(leaf.path, written, { force: true });
