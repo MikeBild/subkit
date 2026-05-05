@@ -165,6 +165,11 @@ services:
         # script reads package.json and exports it before `docker
         # compose build`.
         ENGINE_VERSION: ${ENGINE_VERSION:-0.0.0-dev}
+    # For air-gapped or proxy-restricted networks, pull the with-cli
+    # variant instead — same engine, plus the sk + tunnel-agent binaries
+    # bundled at /usr/local/share/subkit/binaries so /install/sk-* and
+    # /install/agent-* serve them locally without GitHub egress.
+    #   image: registry.digitalocean.com/subkit/engine:${ENGINE_VERSION:-latest}-with-cli
     image: subkit/engine:local
     restart: unless-stopped
     networks: [subkit]

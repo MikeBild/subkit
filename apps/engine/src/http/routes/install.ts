@@ -9,17 +9,20 @@
 // binary from the GitHub Release for the engine's running version, and
 // optionally writes the engine URL into the resolved profile.
 //
-// This is deliberately minimal in v3.0.0:
-//   - We point at the public GitHub Release for download. Bundling the
-//     binaries inside the engine docker image is tracked separately
-//     (see plan §P0.7.e); for now the script fetches from
-//     github.com/MikeBild/subkit/releases/download/v<VERSION>/. The
-//     `subkit-v…` tag prefix used through v3.2.0 was dropped at v3.3.0
-//     in favour of plain `v<VERSION>`. Operators on older engines see a
-//     correct URL because the engine's resolved version still matches
-//     the release tag for their version.
-//   - SHA-verification piggybacks on the SHA256SUMS file already
-//     attached to every release.
+// Source resolution:
+//   - The script first probes the engine itself at
+//     ${ENGINE_URL}/install/sk-${os}-${arch}. The `engine-with-cli`
+//     Docker image variant bundles the matching binaries and serves
+//     them from there; air-gapped or proxy-restricted operators get a
+//     working install without GitHub egress.
+//   - On 404 (slim image, no bundle), falls back to the public GitHub
+//     Release at github.com/MikeBild/subkit/releases/download/v<VERSION>/.
+//     A single install command therefore works for both image variants.
+//   - SHA-verification piggybacks on the matching SHA256SUMS — bundled
+//     at ${ENGINE_URL}/install/sha256sums for the with-cli variant,
+//     attached to every GitHub Release for the slim variant.
+//   - The `subkit-v…` tag prefix used through v3.2.0 was dropped at
+//     v3.3.0 in favour of plain `v<VERSION>`.
 //
 // The route is unauthenticated by design — the install script itself
 // contains no secrets, only public URLs. Operators who want auth-gated
@@ -80,16 +83,33 @@ case "$uname_m" in
 esac
 
 ASSET="sk_\${os}_\${arch}"
+BUNDLED_ASSET_URL="\${ENGINE_URL}/install/sk-\${os}-\${arch}"
+BUNDLED_SUMS_URL="\${ENGINE_URL}/install/sha256sums"
 RELEASE_BASE="https://github.com/\${REPO}/releases/download/v\${VERSION}"
-ASSET_URL="\${RELEASE_BASE}/\${ASSET}"
-SUMS_URL="\${RELEASE_BASE}/SHA256SUMS"
+RELEASE_ASSET_URL="\${RELEASE_BASE}/\${ASSET}"
+RELEASE_SUMS_URL="\${RELEASE_BASE}/SHA256SUMS"
+
+# --- pick source ------------------------------------------------------------
+# Probe the engine first. The engine-with-cli image variant serves the
+# matching binary directly; the slim image returns 404 and we fall back
+# to GitHub Releases. A 200 from the engine wins because air-gapped
+# operators may not have any github.com egress at all.
+if curl -fsSI --max-time 5 -o /dev/null "$BUNDLED_ASSET_URL" 2>/dev/null; then
+  ASSET_URL="$BUNDLED_ASSET_URL"
+  SUMS_URL="$BUNDLED_SUMS_URL"
+  SOURCE="engine ($ENGINE_URL)"
+else
+  ASSET_URL="$RELEASE_ASSET_URL"
+  SUMS_URL="$RELEASE_SUMS_URL"
+  SOURCE="github.com release v$VERSION"
+fi
 
 # --- download ---------------------------------------------------------------
 mkdir -p "$INSTALL_DIR"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-echo "fetching $ASSET from $RELEASE_BASE"
+echo "fetching $ASSET from $SOURCE"
 curl -fsSL -o "\${TMP}/\${ASSET}" "$ASSET_URL"
 curl -fsSL -o "\${TMP}/SHA256SUMS" "$SUMS_URL"
 

@@ -61,6 +61,32 @@ Pick from 90 connector templates — see [docs/05-connectors.md](../05-connector
 - `sk audit tail` — confirm every state change is recorded.
 - `curl -H "Authorization: Bearer <key>" http://localhost:3000/metrics` — Prometheus scrape target.
 
+## Self-hosting the install flow (air-gapped / proxy-restricted)
+
+If your workstations cannot reach `github.com`, the default install flow breaks because `curl … /install | bash` fetches the `sk` binary from GitHub Releases. The **`engine-with-cli` image variant** bundles the matching binaries inside the engine itself, so the install command works against your own engine URL with no GitHub egress.
+
+Two image tags ship per release:
+
+| Tag                                | Size       | Serves `/install/sk-*` and `/install/agent-*` |
+| ---------------------------------- | ---------- | --------------------------------------------- |
+| `subkit/engine:<version>`          | slim       | no — install script falls back to GitHub      |
+| `subkit/engine:<version>-with-cli` | +~360 MB   | yes — bundled binaries with SHA verification  |
+
+To switch, update `docker-compose.yml`:
+
+```yaml
+engine:
+  image: registry.digitalocean.com/subkit/engine:${ENGINE_VERSION:-latest}-with-cli
+```
+
+The install command stays identical:
+
+```bash
+curl -fsSL https://my-engine.example.com/install | bash
+```
+
+The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; if the engine returns 200 it streams from there (with `x-subkit-sha256` verification against `${ENGINE_URL}/install/sha256sums`). On 404 it falls back to GitHub Releases. Operators on the slim variant see no behaviour change.
+
 ## Next steps
 
 - [docs/05-connectors.md](../05-connectors.md) — connector management, credentials, OAuth2, and private-network tunnels.

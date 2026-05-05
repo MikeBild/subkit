@@ -54,6 +54,7 @@ import { registerTenantRoutes } from "./routes/identity/tenants.ts";
 import { registerUserRoutes } from "./routes/identity/users.ts";
 import { registerWhoamiRoute } from "./routes/identity/whoami.ts";
 import { registerInstallRoute } from "./routes/install.ts";
+import { registerInstallBinaryRoute } from "./routes/install-binary.ts";
 import { registerKnowledgeSourceRoutes } from "./routes/knowledge-sources.ts";
 import { registerMcpCatalogRoutes } from "./routes/mcp-catalog.ts";
 import { registerMetricsRoute } from "./routes/metrics.ts";
@@ -178,6 +179,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
   registerInstallRoute(app);
+  registerInstallBinaryRoute(app);
   registerSetupRoute(app);
   registerStatusRoute(app);
   registerSettingsRoutes(app);
