@@ -84,6 +84,16 @@ ENV SUBKIT_BINARIES_DIR=/usr/local/share/subkit/binaries
 # Writable data directory for blob offload fallback when S3 is not configured.
 RUN mkdir -p /var/data/blobs && chown -R nobody:nogroup /var/data/blobs
 
+# v3.5+: subkit.config.json lives at /etc/subkit/subkit.config.json in
+# production (see config/loader.ts defaultConfigPath). The engine
+# auto-creates this file on first boot to persist the auto-generated
+# session secret + runtime PUT /v1/settings writes. Pre-create the
+# directory chown'd to the runtime user so the non-root container can
+# atomic-rename into it without an EACCES on /etc.
+RUN mkdir -p /etc/subkit \
+    && chown nobody:nogroup /etc/subkit \
+    && chmod 0700 /etc/subkit
+
 ARG ENGINE_VERSION=0.0.0-dev
 ENV NODE_ENV=production \
     LOG_FORMAT=ndjson \
