@@ -67,6 +67,15 @@ function parseArgs(argv: string[]): ParsedArgs {
 }
 
 async function main(): Promise<void> {
+  // --version / -v: print version + exit. Must short-circuit BEFORE
+  // parseArgs so an operator (or release.yml's matrix smoke step) can
+  // probe a freshly-downloaded binary without supplying --engine-url
+  // and friends.
+  if (process.argv.some((a) => a === "--version" || a === "-v")) {
+    process.stdout.write(`${VERSION}\n`);
+    process.exit(0);
+  }
+
   // --check-update: check for updates without installing, exit.
   if (process.argv.includes("--check-update")) {
     const { checkForUpdate, defaultUpdaterConfig } = await import("@cli-core/updater.ts");
