@@ -19,8 +19,7 @@ export type QueueName =
   | "skill-candidate.analyze"
   | "workflow.repair"
   | "webhook.deliver"
-  | "event.fanout"
-  | "apikey.last-used-flush";
+  | "event.fanout";
 
 export const QUEUE_NAMES: QueueName[] = [
   "execution.run",
@@ -31,7 +30,6 @@ export const QUEUE_NAMES: QueueName[] = [
   "workflow.repair",
   "webhook.deliver",
   "event.fanout",
-  "apikey.last-used-flush",
 ];
 
 export interface QueueConfig {
@@ -126,19 +124,10 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
       retryBackoff: true,
     },
   },
-  "apikey.last-used-flush": {
-    name: "apikey.last-used-flush",
-    queue: {
-      retryLimit: 3,
-      retryDelay: 5,
-      retryBackoff: true,
-    },
-  },
 };
 
 export const EXECUTION_RUN_QUEUE: QueueName = "execution.run";
 export const EXECUTION_RUN_DLQ: string = "execution.run.dlq";
-export const APIKEY_FLUSH_QUEUE: QueueName = "apikey.last-used-flush";
 
 /**
  * Envelope that execution.run jobs carry. Fields are kept small enough to

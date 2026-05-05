@@ -9,7 +9,6 @@ export type DocSourceType =
   | "openapi"
   | "markdown"
   | "llms_txt"
-  | "html"
   | "graphql"
   | "postgres"
   | "file_upload"

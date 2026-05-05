@@ -8219,7 +8219,7 @@ export interface components {
         };
         ConnectorDocsIngestBody: {
             /** @enum {string} */
-            source_type: "openapi" | "markdown" | "llms_txt" | "html";
+            source_type: "openapi" | "markdown" | "llms_txt";
             /** Format: uri */
             url?: string;
             content?: string;

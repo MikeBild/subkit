@@ -4747,8 +4747,7 @@
             "enum": [
               "openapi",
               "markdown",
-              "llms_txt",
-              "html"
+              "llms_txt"
             ]
           },
           "url": {
