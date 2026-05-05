@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.1](https://github.com/MikeBild/subkit/compare/v3.4.0...v3.4.1) (2026-05-05)
+
+
+### Refactoring
+
+* **install:** collapse to a single engine image; drop `-with-cli` variant. Every released `engine:<version>` now bundles `sk` + `tunnel-agent` binaries unconditionally — production runs only this image and operators on any deploy can `curl /install | bash` against it. Removes the `engine-with-cli` variant tag, the second Dockerfile, and the `build-and-push-with-cli` CI job. The install script's GitHub-Releases fallback stays for fork / dev-mode builds where `docker/binaries/` is empty ([cb8ccda](https://github.com/MikeBild/subkit/commit/cb8ccda7269dd47eb7990ccb8a4aecbcc1b883de))
+
 ## [3.4.0](https://github.com/MikeBild/subkit/compare/v3.3.0...v3.4.0) (2026-05-05)
 
 
