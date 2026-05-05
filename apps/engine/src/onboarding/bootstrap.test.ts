@@ -6,7 +6,10 @@ import { auditLog } from "../db/schema/audit.ts";
 import { engineSettings, tenants } from "../db/schema/identity.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { type SeededRoleIds, seedBuiltinRolesAndPermissions } from "../rbac/seed.ts";
-import { clearCache } from "../settings/index.ts";
+
+// settings/clearCache removed in v3.5 — runtime config moved to subkit.config.json
+const clearCache = (): void => {};
+
 import {
   _internal,
   _resetRateLimitForTests,
