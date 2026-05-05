@@ -2,6 +2,7 @@ import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
 import { serve } from "@hono/node-server";
 import { ChatAdapterRegistry } from "./chat/registry.ts";
 import { closeAllPools } from "./connectors/drivers/postgres.ts";
+import { assertCryptoKeyOrExit } from "./crypto/aes-gcm.ts";
 import { closeDb, getDb } from "./db/client.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
@@ -24,13 +25,19 @@ const SELF_UPDATE_FLAG = "--self-update";
 const CHECK_UPDATE_FLAG = "--check-update";
 
 async function runSmoke(): Promise<void> {
-  const { env } = await import("./env.ts");
+  // Read raw process.env. Importing `./env.ts` would trigger the lazy
+  // EnvSchema parse on first property access — and the smoke binary
+  // must run without DATABASE_URL/MASTER_KEY (matrix smoke step in
+  // release.yml only sets the bare minimum, and operators sanity-check
+  // a fresh download with `engine --smoke` before configuring anything).
+  const node_env = process.env.NODE_ENV ?? "development";
+  const port = Number(process.env.PORT ?? "3000");
   logger.info({
     module: "engine",
     action: "smoke.started",
     msg: "smoke mode: validating logger + audit + redaction",
-    node_env: env.NODE_ENV,
-    port: env.PORT,
+    node_env,
+    port,
   });
 
   // System-level startup: logger.info is the durable record.
@@ -61,6 +68,11 @@ async function runSmoke(): Promise<void> {
 async function runServer(): Promise<void> {
   const { env, validateLlmEnvironment } = await import("./env.ts");
   validateLlmEnvironment(process.env, { requireConfigured: true });
+  // Surfaces a bad MASTER_KEY in the boot log, before any request can
+  // reach an encrypt/decrypt path. Pre-fix this lived as a top-level
+  // call in crypto/aes-gcm.ts but that fired on every binary import,
+  // breaking arg-only flags like --smoke / --version.
+  assertCryptoKeyOrExit();
   const db = getDb();
 
   // Non-blocking update check — fire and forget
