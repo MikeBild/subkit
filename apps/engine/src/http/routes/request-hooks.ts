@@ -183,24 +183,27 @@ export function registerRequestHookRoutes(app: OpenAPIHono<AppEnv>): void {
       })
       .returning();
     if (!row) throw new Error("insert failed");
-    await writeAudit({
-      id: crypto.randomUUID(),
-      ts: new Date(),
-      tenant_id: principal.tenant_id,
-      actor_type: principal.kind,
-      actor_id: principal.id,
-      action: "before_request_hook.changed",
-      resource_type: "request_hook",
-      resource_id: row.id,
-      result: "success",
-      trace_id: c.get("trace_id") ?? "",
-      ip: null,
-      user_agent: null,
-      before: null,
-      after: { role: row.role, version: row.version, enabled: row.enabled },
-      reason: "created",
-      metadata: {},
-    });
+    await writeAudit(
+      {
+        id: crypto.randomUUID(),
+        ts: new Date(),
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        action: "before_request_hook.changed",
+        resource_type: "request_hook",
+        resource_id: row.id,
+        result: "success",
+        trace_id: c.get("trace_id") ?? "",
+        ip: null,
+        user_agent: null,
+        before: null,
+        after: { role: row.role, version: row.version, enabled: row.enabled },
+        reason: "created",
+        metadata: {},
+      },
+      db,
+    );
     return c.json(serialize(row), 201);
   });
 
@@ -239,24 +242,27 @@ export function registerRequestHookRoutes(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(requestHooks.tenant_id, principal.tenant_id), eq(requestHooks.id, id)))
       .returning();
     if (!row) throw new NotFoundError("request_hook");
-    await writeAudit({
-      id: crypto.randomUUID(),
-      ts: new Date(),
-      tenant_id: principal.tenant_id,
-      actor_type: principal.kind,
-      actor_id: principal.id,
-      action: "before_request_hook.changed",
-      resource_type: "request_hook",
-      resource_id: row.id,
-      result: "success",
-      trace_id: c.get("trace_id") ?? "",
-      ip: null,
-      user_agent: null,
-      before: { version: cur.version, enabled: cur.enabled },
-      after: { version: row.version, enabled: row.enabled },
-      reason: "updated",
-      metadata: {},
-    });
+    await writeAudit(
+      {
+        id: crypto.randomUUID(),
+        ts: new Date(),
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        action: "before_request_hook.changed",
+        resource_type: "request_hook",
+        resource_id: row.id,
+        result: "success",
+        trace_id: c.get("trace_id") ?? "",
+        ip: null,
+        user_agent: null,
+        before: { version: cur.version, enabled: cur.enabled },
+        after: { version: row.version, enabled: row.enabled },
+        reason: "updated",
+        metadata: {},
+      },
+      db,
+    );
     return c.json(serialize(row), 200);
   });
 
@@ -270,24 +276,27 @@ export function registerRequestHookRoutes(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(requestHooks.tenant_id, principal.tenant_id), eq(requestHooks.id, id)))
       .returning();
     if (!row) throw new NotFoundError("request_hook");
-    await writeAudit({
-      id: crypto.randomUUID(),
-      ts: new Date(),
-      tenant_id: principal.tenant_id,
-      actor_type: principal.kind,
-      actor_id: principal.id,
-      action: "before_request_hook.changed",
-      resource_type: "request_hook",
-      resource_id: row.id,
-      result: "success",
-      trace_id: c.get("trace_id") ?? "",
-      ip: null,
-      user_agent: null,
-      before: { role: row.role, version: row.version },
-      after: null,
-      reason: "deleted",
-      metadata: {},
-    });
+    await writeAudit(
+      {
+        id: crypto.randomUUID(),
+        ts: new Date(),
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        action: "before_request_hook.changed",
+        resource_type: "request_hook",
+        resource_id: row.id,
+        result: "success",
+        trace_id: c.get("trace_id") ?? "",
+        ip: null,
+        user_agent: null,
+        before: { role: row.role, version: row.version },
+        after: null,
+        reason: "deleted",
+        metadata: {},
+      },
+      db,
+    );
     return c.json({ deleted: true }, 200);
   });
 }

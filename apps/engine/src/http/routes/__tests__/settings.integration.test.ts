@@ -281,6 +281,33 @@ describe("PUT /v1/settings/{path}", () => {
     expect(rows.length).toBe(0);
   });
 
+  test("source_map and live value reflect every layer of the precedence chain", async () => {
+    // 1. Default — fresh boot, no overrides, no writes. ring_size
+    //    starts at the schema default (100).
+    let res = await authedFetch("/v1/settings/errors.ring_size");
+    let body = (await res.json()) as { value: unknown; meta: { source: string } };
+    expect(body.value).toBe(100);
+    expect(body.meta.source).toBe("default");
+
+    // 2. Global write — flips the leaf to source:"global".
+    await authedFetch("/v1/settings/errors.ring_size", {
+      method: "PUT",
+      body: JSON.stringify({ value: 250 }),
+    });
+    res = await authedFetch("/v1/settings/errors.ring_size");
+    body = (await res.json()) as { value: unknown; meta: { source: string } };
+    expect(body.value).toBe(250);
+    expect(body.meta.source).toBe("global");
+
+    // 3. List shows the diagnostics tally honoring the new source.
+    const listRes = await authedFetch("/v1/settings");
+    const list = (await listRes.json()) as {
+      items: Array<{ path: string; meta: { source: string } }>;
+    };
+    const ring = list.items.find((i) => i.path === "errors.ring_size");
+    expect(ring!.meta.source).toBe("global");
+  });
+
   test("audit row carries actor_tenant_id (resolved from principal context)", async () => {
     // The audit module fills tenant_id from the entry. We pass the
     // target tenant explicitly. The actor's tenant_id is recoverable

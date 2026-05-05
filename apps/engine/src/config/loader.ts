@@ -317,9 +317,36 @@ export async function loadConfig(
     const { logger } = await import("../logging/logger.ts");
     logger.warn({
       module: "config",
+      action: "override.active",
       msg: "SK_OVERRIDE_* active",
       override_keys: overrideKeys,
     });
+  }
+
+  // Per-leaf source map at boot — one structured info line that
+  // summarises which leaves came from override env, which were
+  // populated by the file, and which are riding the schema default.
+  // Operators reading the boot log can confirm every setting is
+  // sourced from the layer they expect.
+  try {
+    const { logger } = await import("../logging/logger.ts");
+    const sourceMap = buildSourceMap(mergedObj, overrides);
+    const tally = { override: 0, global: 0, default: 0 };
+    for (const src of Object.values(sourceMap)) {
+      if (src === "override") tally.override += 1;
+      else if (src === "global") tally.global += 1;
+      else if (src === "default") tally.default += 1;
+    }
+    logger.info({
+      module: "config",
+      action: "loaded",
+      msg: "config resolved",
+      config_path: configPath,
+      tenant_overlay_count: Object.keys(parsed.tenants ?? {}).length,
+      ...tally,
+    });
+  } catch {
+    /* logger module not loaded yet */
   }
 
   // settings_override_active{key} gauge — operator dashboards flip on
@@ -489,6 +516,29 @@ export async function setConfigKey(
     state.config = fullParse.data;
     state.globalSourceMap[dottedPath(leaf)] = opts.tenantId ? "tenant" : "global";
     if (requiresRestart) state.pendingRestartKeys.add(dottedPath(leaf));
+
+    // Structured runtime log — one line per applied setting so an
+    // operator tailing the engine log can correlate every change with
+    // the responsible request. The log NEVER carries the value itself
+    // (sensitive leaves render as "***" via the route's mask layer
+    // upstream of this function); it carries only the leaf path,
+    // scope, restart flag, and whether the on-disk file was actually
+    // rewritten with a new value (vs. a no-op write).
+    try {
+      const { logger } = await import("../logging/logger.ts");
+      logger.info({
+        module: "config",
+        action: "setting.applied",
+        msg: "config leaf applied",
+        leaf: dottedPath(leaf),
+        scope: opts.tenantId ? `tenant:${opts.tenantId}` : "global",
+        sensitive: !!leaf.meta.secret,
+        requires_restart: requiresRestart,
+        changed: JSON.stringify(beforeValue) !== JSON.stringify(validatedValue),
+      });
+    } catch {
+      /* logger module not loaded; never fail a write because of telemetry */
+    }
 
     return {
       before: beforeValue,
