@@ -3260,20 +3260,22 @@ export const InkApp: React.FC<InkAppProps> = ({
           was persisted). Anchored elicitations render inline inside
           the transcript above, under their parent message — see
           `renderElicitInline` in the transcript loop. */}
-      {session.pendingElicitation && elicitAnchor === null ? (
-        <ElicitRouter
-          elicitation={session.pendingElicitation}
-          inputDisabled={pane !== null || launcherOpen || slashMode}
-          onResponse={(out) => {
-            const resp = out as ElicitationResponse;
-            const reason =
-              "decision_reason" in resp && typeof resp.decision_reason === "string"
-                ? resp.decision_reason
-                : undefined;
-            void submitElicitationResponse(session.pendingElicitation!.id, resp, reason);
-          }}
-        />
-      ) : null}
+      {session.pendingElicitation && elicitAnchor === null
+        ? ((pendingElicitation) => (
+            <ElicitRouter
+              elicitation={pendingElicitation}
+              inputDisabled={pane !== null || launcherOpen || slashMode}
+              onResponse={(out) => {
+                const resp = out as ElicitationResponse;
+                const reason =
+                  "decision_reason" in resp && typeof resp.decision_reason === "string"
+                    ? resp.decision_reason
+                    : undefined;
+                void submitElicitationResponse(pendingElicitation.id, resp, reason);
+              }}
+            />
+          ))(session.pendingElicitation)
+        : null}
 
       {/* Modal slot — one pane at a time (/status, /resume browser, …) */}
       {pane?.kind === "status" ? (

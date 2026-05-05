@@ -89,7 +89,7 @@ function rewriteSoft(text: string, violations: Violation[]): string {
   // turn's system context — that replaces the old `[guard:<kind>]`
   // marker that used to leak into the user-visible chat transcript.
   for (const v of selectRewriteSpans(violations)) {
-    const { start, end } = v.span!;
+    const { start, end } = v.span;
     if (v.repair !== undefined) {
       out = `${out.slice(0, start)}${v.repair}${out.slice(end)}`;
       continue;

@@ -96,10 +96,10 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
     const bestUrlMatch = urlMatches[0] ?? null;
     const topTies =
       bestUrlMatch !== null ? urlMatches.filter((m) => m.score === bestUrlMatch.score) : [];
+    const authHint = args.auth_type;
     const urlMatchedByAuthHint =
-      args.auth_type && topTies.length > 1
-        ? (topTies.find((m) => allowedTemplateAuthTypes(m.template).includes(args.auth_type!)) ??
-          null)
+      authHint && topTies.length > 1
+        ? (topTies.find((m) => allowedTemplateAuthTypes(m.template).includes(authHint)) ?? null)
         : null;
     const urlMatched = urlMatchedByAuthHint ?? bestUrlMatch;
     const urlMatchedAllowed = urlMatched !== null;
@@ -122,8 +122,8 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
     const resolvedTemplate = urlMatchedAllowed
       ? (resolvedTemplates.find((entry) => entry.template.slug === urlMatched.template.slug) ??
         null)
-      : textMatchedAllowed
-        ? (resolvedTemplates.find((entry) => entry.template.slug === bestTemplate!.template.slug) ??
+      : textMatchedAllowed && bestTemplate
+        ? (resolvedTemplates.find((entry) => entry.template.slug === bestTemplate.template.slug) ??
           null)
         : null;
     const template = resolvedTemplate?.template ?? null;

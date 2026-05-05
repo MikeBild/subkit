@@ -102,8 +102,8 @@ export class AiSdkModel implements SubkitLlm {
     this.gt = this.opts.generateTextFn ?? generateText;
   }
 
-  private async ensureInit(): Promise<void> {
-    if (this.resolved) return;
+  private async ensureInit(): Promise<ResolvedModel> {
+    if (this.resolved) return this.resolved;
     if (!this.initPromise) {
       this.initPromise = (async () => {
         this.resolved = await initializeModel(this.opts);
@@ -122,7 +122,10 @@ export class AiSdkModel implements SubkitLlm {
         }
       })();
     }
-    return this.initPromise;
+    await this.initPromise;
+    if (!this.resolved)
+      throw new Error("ai-sdk-model: ensureInit returned without a resolved model");
+    return this.resolved;
   }
 
   private buildTools(
@@ -183,8 +186,7 @@ export class AiSdkModel implements SubkitLlm {
     metadata?: SubkitLlmTelemetryMetadata;
     // biome-ignore lint/suspicious/noExplicitAny: generic result
   }): Promise<any> {
-    await this.ensureInit();
-    const primary = this.resolved!;
+    const primary = await this.ensureInit();
     // biome-ignore lint/suspicious/noExplicitAny: ai sdk options shape
     const callOpts: any = {
       model: primary.model,

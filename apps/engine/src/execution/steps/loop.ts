@@ -143,10 +143,11 @@ export async function runLoopStep(p: {
           if (matches.length > 0) didYouMean.push({ from: ref, to: matches });
         }
       }
-      const sampleStep = didYouMean[0]?.to[0] ?? stepIds[0];
+      const firstMatch = didYouMean[0];
+      const sampleStep = firstMatch?.to[0] ?? stepIds[0];
       const hint = sampleStep
-        ? didYouMean.length > 0
-          ? ` Did you mean \`$scope.${sampleStep}.data\` (closest match for \`${didYouMean[0]!.from}\`)? Confirm the upstream step's output shape with inspect_workflow_draft.`
+        ? firstMatch
+          ? ` Did you mean \`$scope.${sampleStep}.data\` (closest match for \`${firstMatch.from}\`)? Confirm the upstream step's output shape with inspect_workflow_draft.`
           : ` Try \`$scope.${sampleStep}.data\` (or the equivalent bare form \`${sampleStep}.data\`) and confirm the upstream step's output shape with inspect_workflow_draft.`
         : " Verify the upstream step's actual output shape with inspect_workflow_draft.";
       return {
