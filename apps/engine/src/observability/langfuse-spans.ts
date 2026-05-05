@@ -61,7 +61,14 @@ let cachedClient: LangfuseClient | null | undefined;
 
 async function getClient(): Promise<LangfuseClient | null> {
   if (cachedClient !== undefined) return cachedClient;
-  const cfg = getConfig().observability.langfuse;
+  let cfg: { secret_key: string; public_key: string; host: string };
+  try {
+    cfg = getConfig().observability.langfuse;
+  } catch {
+    // Loader not initialised (unit tests that don't boot the engine).
+    cachedClient = null;
+    return null;
+  }
   if (!cfg.secret_key || !cfg.public_key) {
     cachedClient = null;
     return null;
