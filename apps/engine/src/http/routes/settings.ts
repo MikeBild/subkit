@@ -321,11 +321,19 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Cross-tenant guard via the existing settings:write permission gate
-    // — granular settings:write:tenant / settings:write:global scopes
-    // land in a follow-up. For v3.5 a holder of settings:write may
-    // mutate any tenant overlay; tenants without the perm are stopped at
-    // the route's `requirePermission` middleware.
+    // Cross-tenant guard. Only the `admin` role may target a tenant
+    // overlay other than its own. Granular settings:write:global /
+    // settings:write:tenant RBAC scopes are scheduled for v3.6; in v3.5
+    // the role check is the supported gate.
+    if (tenant && tenant !== principal.tenant_id && !principal.roles.includes("admin")) {
+      return c.json(
+        {
+          code: "scope_violation" as const,
+          message: `cannot mutate settings for tenant ${tenant} (admin role required for cross-tenant writes)`,
+        },
+        403,
+      );
+    }
 
     const setOpts: { tenantId?: string; force?: boolean } = {};
     if (tenant !== undefined) setOpts.tenantId = tenant;

@@ -322,6 +322,18 @@ export async function loadConfig(
     });
   }
 
+  // settings_override_active{key} gauge — operator dashboards flip on
+  // any leaf where the in-memory value comes from an SK_OVERRIDE_* env
+  // var. The label carries the dotted leaf path; the value itself is
+  // never exported.
+  try {
+    const { getMetrics, METRIC_NAMES } = await import("../observability/metrics.ts");
+    const reg = getMetrics();
+    for (const k of overrideKeys) reg.set(METRIC_NAMES.SETTINGS_OVERRIDE_ACTIVE, 1, { key: k });
+  } catch {
+    /* metrics module not loaded yet (some boot orderings) */
+  }
+
   _state = {
     config: parsed,
     configPath,
@@ -333,12 +345,22 @@ export async function loadConfig(
   return parsed;
 }
 
+function deepFreeze<T>(obj: T): T {
+  if (obj === null || typeof obj !== "object") return obj;
+  if (Object.isFrozen(obj)) return obj;
+  for (const v of Object.values(obj as Record<string, unknown>)) deepFreeze(v);
+  return Object.freeze(obj);
+}
+
 export function getConfig(tenantId?: string): Config {
   if (_state === null) {
     throw new ConfigLoaderError("getConfig() called before loadConfig()");
   }
-  if (!tenantId) return _state.config;
-  return applyTenantOverlay(_state.config, tenantId);
+  // Plan §2: getConfig returns an immutable view. setConfigKey writes
+  // a fresh object via JSON.parse(JSON.stringify(...)) and replaces
+  // _state.config wholesale, so freeze never blocks legitimate writes.
+  if (!tenantId) return deepFreeze(_state.config);
+  return deepFreeze(applyTenantOverlay(_state.config, tenantId));
 }
 
 export function getConfigPath(): string {

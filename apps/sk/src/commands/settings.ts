@@ -171,12 +171,17 @@ const configureCommand = defineCommand({
   meta: {
     name: "configure",
     description:
-      "Interactive Ink form for editing settings (Tab to switch sections, Enter to edit, Esc to exit)",
+      "Interactive Ink form for editing settings (Tab to switch sections, Enter to edit, Esc to exit). In non-TTY environments use --non-interactive to print the JSON contract instead.",
   },
   args: {
     tab: {
       type: "string" as const,
       description: "Open directly on a section (e.g. llm, auth, observability)",
+    },
+    "non-interactive": {
+      type: "boolean" as const,
+      description:
+        "Skip the Ink renderer; print the GET /v1/settings response as JSON. Auto-detected when stdin is not a TTY.",
     },
     ...commonArgs,
   },
@@ -185,6 +190,24 @@ const configureCommand = defineCommand({
     try {
       const tenant = (args.tenant as string | undefined) ?? undefined;
       const tab = (args.tab as string | undefined) ?? undefined;
+
+      // Auto-detect headless: any caller without a TTY (CI, pipe,
+      // redirect) gets the structured payload instead of a render that
+      // would crash or produce garbage. The explicit flag forces the
+      // same path even when a TTY is attached.
+      const headless =
+        Boolean(args["non-interactive"]) || !process.stdout.isTTY || !process.stdin.isTTY;
+      if (headless) {
+        const tenantOpt: { tenant?: string } = tenant ? { tenant } : {};
+        const res = await client.listSettings(tenantOpt);
+        return printJson({
+          mode: "non-interactive",
+          tenant: tenant ?? null,
+          tab: tab ?? null,
+          ...res,
+        });
+      }
+
       const opts: { client: EngineClient; tenant?: string; initialTab?: string } = { client };
       if (tenant) opts.tenant = tenant;
       if (tab) opts.initialTab = tab;
