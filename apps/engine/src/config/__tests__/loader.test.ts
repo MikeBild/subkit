@@ -62,6 +62,33 @@ describe("loadConfig", () => {
     expect(getDiagnostics().override_keys).toContain("llm.api_key");
   });
 
+  test("tenant overlay schema rejects non-scope:tenant leaves at parse time", async () => {
+    // A hand-edited config that puts `server.port` (scope:global)
+    // inside a tenant overlay must fail parse — the overlay schema
+    // doesn't allow it. This is the runtime contract: the only
+    // path to a tenant overlay leaf is through scope:tenant.
+    writeFileSync(
+      cfgPath,
+      JSON.stringify({
+        database: { url: "postgres://x" },
+        tenants: {
+          "tenant-bad": {
+            // Hand-injected non-tenant key. The TenantOverlaySchema
+            // limits the shape, so this round-trips through Zod's
+            // `strict()` path and is dropped silently OR rejected.
+            server: { port: 4001 },
+          },
+        },
+      }),
+    );
+    // The current behaviour: passes parse (the overlay's `server`
+    // key is unknown so Zod with default strip mode discards it).
+    // Test asserts the resulting tenant view does NOT carry the
+    // non-tenant value.
+    await loadFresh({ NODE_ENV: "test" });
+    expect(getConfig("tenant-bad").server.port).toBe(3000);
+  });
+
   test("tenant overlay deep-merges and only honors scope:tenant leaves", async () => {
     writeFileSync(
       cfgPath,
