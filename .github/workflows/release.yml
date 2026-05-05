@@ -383,11 +383,23 @@ jobs:
   # Absent-secret + always-fail is a footgun for public repos / forks —
   # graceful skip lets CLI binary publishing succeed independently.
 
+  # Builds the engine image with sk + tunnel-agent binaries bundled at
+  # /usr/local/share/subkit/binaries — served by /install/sk-* and
+  # /install/agent-*, so any operator can `curl /install | bash`
+  # against an engine without GitHub egress. `needs: build-cli-binaries`
+  # so embed-binaries.sh has matrix artifacts to stage. Same image is
+  # the only product surface — there is no slim-vs-with-cli split.
+
   build-and-push:
     name: build-and-push
-    needs: gate
+    needs: [gate, build-cli-binaries]
     if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # gh run download in embed-binaries.sh reads the same-run artifacts
+      # produced by build-cli-binaries — same permission as publish-release.
+      actions: read
     outputs:
       version: ${{ steps.meta.outputs.version }}
     steps:
@@ -398,6 +410,10 @@ jobs:
         env:
           RELEASE_REF: ${{ inputs.tag || github.ref_name }}
         run: TAG="${RELEASE_REF#subkit-v}"; echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Stage CLI binaries into docker/binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/release/embed-binaries.sh --from-run "$GITHUB_RUN_ID"
       - uses: docker/setup-buildx-action@v3
       - uses: digitalocean/action-doctl@v2
         with:
@@ -431,66 +447,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── engine-with-cli image variant ──
-  # Bundles sk + tunnel-agent binaries inside the engine image so
-  # /install/sk-* and /install/agent-* return 200 instead of 404. Lets
-  # operators on air-gapped or proxy-restricted networks self-distribute
-  # the CLI from their own engine URL — no GitHub egress required.
-  #
-  # Builds FROM the just-pushed slim image (engine:VERSION) — keeps the
-  # engine binary bit-identical between variants and halves build time
-  # vs. recompiling. Therefore needs both `build-cli-binaries` (for the
-  # bundled binaries) AND `build-and-push` (for the slim base image to
-  # pull from). Same DEPLOY_ENABLED gate as the slim build.
-
-  build-and-push-with-cli:
-    name: build-and-push-with-cli
-    needs: [gate, build-cli-binaries, build-and-push]
-    if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # gh run download in embed-binaries.sh reads the same-run artifacts
-      # produced by build-cli-binaries — same permission as publish-release.
-      actions: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-      - name: Embed CLI binaries into build context
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/release/embed-binaries.sh --from-run "$GITHUB_RUN_ID"
-      - uses: docker/setup-buildx-action@v3
-      - uses: digitalocean/action-doctl@v2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-      - name: Login to DOCR
-        run: doctl registry login --expiry-seconds 1200
-      - name: Build and push engine-with-cli image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.engine-with-cli
-          push: true
-          platforms: linux/amd64
-          build-args: |
-            BASE_ENGINE_IMAGE=${{ env.REGISTRY }}/subkit/engine:${{ needs.build-and-push.outputs.version }}
-          tags: |
-            ${{ env.REGISTRY }}/subkit/engine:${{ needs.build-and-push.outputs.version }}-with-cli
-            ${{ env.REGISTRY }}/subkit/engine:latest-with-cli
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   # ── Deploy with health check + rollback ──
 
   deploy:
     name: deploy
-    # Production runs the engine-with-cli variant (see
-    # deploy/docker-compose.prod.yml), so we must wait for that image
-    # to be pushed before recreating the engine container — otherwise
-    # `compose pull engine` resolves the previous version's tag.
-    needs: [build-and-push, build-and-push-with-cli]
+    needs: build-and-push
     if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
     env:

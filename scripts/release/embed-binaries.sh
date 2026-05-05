@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Populate `dist/binaries/` with the per-platform `sk` and `tunnel-agent`
+# Populate `docker/binaries/` with the per-platform `sk` and `tunnel-agent`
 # binaries plus a matching SHA256SUMS, ready for the `engine-with-cli`
 # Dockerfile target to COPY into /usr/local/share/subkit/binaries/.
 #
@@ -17,7 +17,7 @@
 #       engine-with-cli image locally without the full release matrix.
 #
 # In both modes the output is the same shape:
-#   dist/binaries/
+#   docker/binaries/
 #     ├── sk_darwin_arm64
 #     ├── sk_darwin_x64
 #     ├── sk_linux_arm64
@@ -39,7 +39,7 @@ set -euo pipefail
 _SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$_SCRIPT_DIR/../.." && pwd)
 
-OUT_DIR="$REPO_ROOT/dist/binaries"
+OUT_DIR="$REPO_ROOT/docker/binaries"
 MODE=""
 RUN_ID=""
 
@@ -52,7 +52,7 @@ Usage: $0 (--from-run <RUN_ID> | --from-local) [--out <DIR>]
 
   --from-run <RUN_ID>   download GitHub Actions artifacts for the given run
   --from-local          use already-built host binaries from dist/
-  --out <DIR>           output directory (default: dist/binaries)
+  --out <DIR>           output directory (default: docker/binaries)
 EOF
 }
 
@@ -86,8 +86,10 @@ if [ -z "$MODE" ]; then
   usage; exit 2
 fi
 
-rm -rf "$OUT_DIR"
+# Clear stale artifacts but keep the directory itself (and any committed
+# `.gitkeep`) so the docker build context layout stays stable.
 mkdir -p "$OUT_DIR"
+find "$OUT_DIR" -mindepth 1 -maxdepth 1 ! -name '.gitkeep' -exec rm -rf {} +
 
 # All platform combos that build-cli-binaries produces. Mirrored from
 # .github/workflows/release.yml — keep in sync if the matrix changes.
@@ -191,7 +193,8 @@ msg "generating SHA256SUMS"
   cd "$OUT_DIR"
   : > SHA256SUMS
   # Sort for deterministic output regardless of FS enumeration order.
-  find . -maxdepth 1 -type f ! -name SHA256SUMS | sort | while read -r f; do
+  # Skip SHA256SUMS itself + the committed .gitkeep placeholder.
+  find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name '.gitkeep' | sort | while read -r f; do
     sha256sum "$f" | sed 's|  \./|  |'
   done > SHA256SUMS
 )

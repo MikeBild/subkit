@@ -37,16 +37,7 @@ services:
 
   engine:
     build: !reset null
-    # Production runs the `engine-with-cli` variant: same engine binary
-    # as the slim image, plus sk + tunnel-agent binaries bundled at
-    # /usr/local/share/subkit/binaries so /install/sk-* and
-    # /install/agent-* serve them locally. Operators on air-gapped or
-    # proxy-restricted networks can `curl https://this-engine/install |
-    # bash` without GitHub egress, and the release flow is identical
-    # for everyone else (the install-script auto-probes bundled first
-    # and falls back transparently). Switching to slim is a one-line
-    # edit (drop the `-with-cli` suffix).
-    image: registry.digitalocean.com/subkit/engine:${ENGINE_VERSION:-latest}-with-cli
+    image: registry.digitalocean.com/subkit/engine:${ENGINE_VERSION:-latest}
     depends_on:
       postgres:
         condition: service_healthy
