@@ -46,8 +46,8 @@ const DEFAULT_RETENTION_SECONDS = 14 * 24 * 60 * 60;
  * webhook.deliver wants an explicit retry schedule: 1m, 5m, 30m, 2h, 5h,
  * 10h, then every 12h up to 3 days. pg-boss itself exposes a single
  * `retryDelay` + `retryBackoff` knob; the explicit schedule is enforced
- * by the webhook consumer (registered in a later phase) computing the
- * next delay from retry_count and enqueueing a `sendAfter`. We still
+ * by the webhook consumer (`queue/handlers/webhook-deliver.ts`) computing
+ * the next delay from retry_count and enqueueing a `sendAfter`. We still
  * preload the limit here so the queue create call creates the queue.
  */
 const WEBHOOK_DELIVERY_RETRY_LIMIT = 11; // 1m,5m,30m,2h,5h,10h + 5×12h
