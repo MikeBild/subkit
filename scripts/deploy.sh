@@ -243,16 +243,31 @@ if [ -n "$DROPLET_HOST" ]; then
   info "ssh target: $SSH_TARGET (key: $SSH_KEY_PATH)"
 fi
 if [ "$DRY_RUN" -eq 1 ]; then
+  info "[dry] scp $_SCRIPT_DIR/../deploy/docker-compose.prod.yml droplet:/opt/subkit/"
   info "[dry] ENGINE_VERSION=$NEW ssh ... 'bash -s' < $_SCRIPT_DIR/release/deploy-body.sh"
 else
+  # Sync the prod compose overlay before the deploy body runs. The repo
+  # is the source of truth for /opt/subkit/docker-compose.prod.yml; if
+  # we skipped this step here, a laptop deploy after editing the file
+  # in the repo would silently leave the droplet on the old config.
+  # Mirrors the equivalent step in .github/workflows/release.yml so the
+  # CI and laptop paths can't drift.
+  _PROD_COMPOSE="$_SCRIPT_DIR/../deploy/docker-compose.prod.yml"
   if [ -n "$SSH_TARGET" ]; then
+    scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
+      "$_PROD_COMPOSE" \
+      "$SSH_TARGET:/opt/subkit/docker-compose.prod.yml"
     ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
       "$SSH_TARGET" "ENGINE_VERSION='$NEW' bash -s" \
       < "$_SCRIPT_DIR/release/deploy-body.sh"
   else
     # Fallback: use doctl compute ssh (matches what verify.sh uses).
     # doctl's ssh wrapper doesn't forward stdin cleanly for 'bash -s',
-    # so we scp the script then exec it.
+    # so we scp the script then exec it. Same wrapper for the compose
+    # overlay sync.
+    doctl compute ssh "$DROPLET_NAME" --ssh-command \
+      "cat > /opt/subkit/docker-compose.prod.yml" \
+      < "$_PROD_COMPOSE"
     TMP_REMOTE="/tmp/subkit-deploy-body.$NEW.sh"
     doctl compute ssh "$DROPLET_NAME" --ssh-command \
       "cat > $TMP_REMOTE && chmod +x $TMP_REMOTE && ENGINE_VERSION='$NEW' bash $TMP_REMOTE && rm -f $TMP_REMOTE" \

@@ -61,31 +61,31 @@ Pick from 90 connector templates — see [docs/05-connectors.md](../05-connector
 - `sk audit tail` — confirm every state change is recorded.
 - `curl -H "Authorization: Bearer <key>" http://localhost:3000/metrics` — Prometheus scrape target.
 
-## Self-hosting the install flow (air-gapped / proxy-restricted)
+## How `curl /install | bash` works against your engine
 
-If your workstations cannot reach `github.com`, the default install flow breaks because `curl … /install | bash` fetches the `sk` binary from GitHub Releases. The **`engine-with-cli` image variant** bundles the matching binaries inside the engine itself, so the install command works against your own engine URL with no GitHub egress.
+The default deploy (`deploy/docker-compose.prod.yml`) ships the **`engine-with-cli`** image variant: the engine itself serves matching `sk` and `tunnel-agent` binaries from `/install/sk-:platform-:arch`, `/install/agent-:platform-:arch`, and `/install/sha256sums`. Anyone who can reach the engine can install the CLI, even on air-gapped or proxy-restricted networks — no GitHub egress required.
 
 Two image tags ship per release:
 
-| Tag                                | Size       | Serves `/install/sk-*` and `/install/agent-*` |
-| ---------------------------------- | ---------- | --------------------------------------------- |
-| `subkit/engine:<version>`          | slim       | no — install script falls back to GitHub      |
-| `subkit/engine:<version>-with-cli` | +~360 MB   | yes — bundled binaries with SHA verification  |
+| Tag                                | Size       | Serves `/install/sk-*` and `/install/agent-*` | When to pick                                                |
+| ---------------------------------- | ---------- | --------------------------------------------- | ----------------------------------------------------------- |
+| `subkit/engine:<version>-with-cli` | +~360 MB   | yes — bundled binaries with SHA verification  | **default**: every operator's `curl … /install` works       |
+| `subkit/engine:<version>`          | slim       | no — install script falls back to GitHub      | size-conscious deploys where every operator has GitHub egress |
 
-To switch, update `docker-compose.yml`:
-
-```yaml
-engine:
-  image: registry.digitalocean.com/subkit/engine:${ENGINE_VERSION:-latest}-with-cli
-```
-
-The install command stays identical:
+The install command is identical for both:
 
 ```bash
 curl -fsSL https://my-engine.example.com/install | bash
 ```
 
-The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; if the engine returns 200 it streams from there (with `x-subkit-sha256` verification against `${ENGINE_URL}/install/sha256sums`). On 404 it falls back to GitHub Releases. Operators on the slim variant see no behaviour change.
+The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; on `200` it streams from there with `x-subkit-sha256` verification against `${ENGINE_URL}/install/sha256sums`. On `404` it falls back to the GitHub Release for the engine's running version. The user-visible behaviour is the same — the variant only changes whether the bytes come from the engine or from GitHub.
+
+To opt into the slim variant, edit your `docker-compose.prod.yml`:
+
+```yaml
+engine:
+  image: registry.digitalocean.com/subkit/engine:${ENGINE_VERSION:-latest}
+```
 
 ## Next steps
 
