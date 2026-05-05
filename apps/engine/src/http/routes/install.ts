@@ -164,10 +164,16 @@ export function registerInstallRoute(app: OpenAPIHono<AppEnv>): void {
     // to the request URL itself.
     const fwdProto = c.req.header("x-forwarded-proto");
     const fwdHost = c.req.header("x-forwarded-host") ?? c.req.header("host");
-    const envBase = process.env.PUBLIC_BASE_URL;
+    let configBase = "";
+    try {
+      const { getConfig } = await import("../../config/loader.ts");
+      configBase = getConfig().server.public_base_url ?? "";
+    } catch {
+      /* loader not initialised */
+    }
     const reqUrl = new URL(c.req.url);
     const engineBaseUrl =
-      envBase?.replace(/\/$/, "") ??
+      (configBase ? configBase.replace(/\/$/, "") : "") ||
       (fwdHost ? `${fwdProto ?? reqUrl.protocol.replace(/:$/, "")}://${fwdHost}` : reqUrl.origin);
     const body = buildScript(OPENAPI_INFO.version, engineBaseUrl);
     return c.body(body, 200, {

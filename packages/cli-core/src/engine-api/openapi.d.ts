@@ -321,17 +321,19 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List every registered setting with its resolved value */
+        /** List every leaf in the runtime config with its resolved value */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    tenant?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description All settings (secrets masked) */
+                /** @description All leaves (secrets masked) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -368,32 +370,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/settings/{key}": {
+    "/v1/settings/{path}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Read one setting (tenant override resolves first when scope=tenant) */
+        /** Read one leaf by dotted path */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    tenant?: string;
+                };
                 header?: never;
                 path: {
-                    key: string;
+                    path: string;
                 };
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description Resolved value (masked when secret) */
+                /** @description Resolved value */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["SettingValue"];
+                        "application/json": components["schemas"]["SettingLeafEntry"];
                     };
                 };
                 /** @description Unauthorized */
@@ -414,7 +418,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Unknown setting key */
+                /** @description Unknown leaf path */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -425,13 +429,15 @@ export interface paths {
                 };
             };
         };
-        /** Write one setting (scope inferred from the registry) */
+        /** Write one leaf */
         put: {
             parameters: {
-                query?: never;
+                query?: {
+                    tenant?: string;
+                };
                 header?: never;
                 path: {
-                    key: string;
+                    path: string;
                 };
                 cookie?: never;
             };
@@ -441,22 +447,13 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Setting written; updated value returned (masked when secret) */
+                /** @description Setting written */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["SettingValue"];
-                    };
-                };
-                /** @description Validation failed against the setting's Zod schema */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
+                        "application/json": components["schemas"]["SettingPutResult"];
                     };
                 };
                 /** @description Unauthorized */
@@ -468,8 +465,17 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Forbidden */
+                /** @description Scope violation or insufficient permissions */
                 403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SettingScopeViolation"];
+                    };
+                };
+                /** @description Unknown leaf path */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -477,13 +483,22 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Unknown setting key */
-                404: {
+                /** @description Setting requires a restart in production; pass force=true to apply */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Error"];
+                        "application/json": components["schemas"]["SettingRestartRequired"];
+                    };
+                };
+                /** @description Validation failed against the leaf's Zod schema */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SettingValidationFailed"];
                     };
                 };
             };
@@ -7148,29 +7163,53 @@ export interface components {
             missing: string[];
         };
         SettingsListResponse: {
-            items: components["schemas"]["ListedSetting"][];
+            items: components["schemas"]["SettingLeafEntry"][];
+            diagnostics: {
+                pending_restart_keys: string[];
+                override_keys: string[];
+            };
         };
-        ListedSetting: {
-            key: string;
-            label: string;
-            description: string;
+        SettingLeafEntry: {
+            path: string;
+            value?: unknown;
+            meta: components["schemas"]["SettingLeafMeta"];
+        };
+        SettingLeafMeta: {
+            /** @enum {string} */
+            source: "override" | "tenant" | "global" | "default";
             /** @enum {string} */
             scope: "global" | "tenant";
-            category: string;
-            secret: boolean;
-            value?: unknown;
-            is_default: boolean;
+            sensitive: boolean;
+            requiresRestart: boolean;
+            description?: string;
+            kind: string;
         };
-        SettingValue: {
-            key: string;
-            /** @enum {string} */
-            scope: "global" | "tenant";
-            secret: boolean;
+        SettingPutResult: {
             value?: unknown;
-            is_default: boolean;
+            requiresRestart: boolean;
+        };
+        SettingScopeViolation: {
+            /** @enum {string} */
+            code: "scope_violation";
+            message: string;
+        };
+        SettingRestartRequired: {
+            /** @enum {string} */
+            code: "restart_required";
+            message: string;
+            /** @enum {boolean} */
+            requiresRestart: true;
+        };
+        SettingValidationFailed: {
+            /** @enum {string} */
+            code: "validation_failed";
+            message: string;
+            path: string[];
+            expected: string;
         };
         SettingPutBody: {
             value?: unknown;
+            force?: boolean;
         };
         TenantListResponse: {
             items: components["schemas"]["Tenant"][];

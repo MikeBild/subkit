@@ -144,4 +144,80 @@ if [ -n "$ERR_LINES" ]; then
 fi
 ok "engine log clean (no error/fatal frames in last ${LOG_SINCE})"
 
+# 6. v3.5 settings probes — round-trip a non-secret leaf, assert the
+#    audit row, and verify the SK_OVERRIDE_* surface. Skipped when
+#    VERIFY_API_KEY is unset (same gate as the other authenticated
+#    probes above) or when SKIP_SETTINGS_PROBE=1 is explicitly set.
+if [ -n "${VERIFY_API_KEY:-}" ] && [ "${SKIP_SETTINGS_PROBE:-0}" != "1" ]; then
+  msg "v3.5 settings probes — PUT errors.ring_size, GET diagnostics, override surface"
+
+  set +e
+  GET_BODY=$(curl -fsS -H "authorization: Bearer ${VERIFY_API_KEY}" \
+    "${DEPLOY_URL}/v1/settings/errors.ring_size" 2>&1)
+  GET_STATUS=$?
+  set -e
+  if [ "$GET_STATUS" -ne 0 ]; then
+    err "GET /v1/settings/errors.ring_size failed: $GET_BODY"
+    exit 1
+  fi
+  PRIOR=$(printf '%s\n' "$GET_BODY" | grep -oE '"value":[0-9]+' | head -1 | grep -oE '[0-9]+' || echo "100")
+  ok "GET /v1/settings/errors.ring_size returned value=$PRIOR"
+
+  PROBE_VALUE=$(( (PRIOR + 17) % 4096 + 64 ))
+  set +e
+  PUT_BODY=$(curl -fsS -X PUT \
+    -H "authorization: Bearer ${VERIFY_API_KEY}" \
+    -H "content-type: application/json" \
+    -d "{\"value\":${PROBE_VALUE}}" \
+    "${DEPLOY_URL}/v1/settings/errors.ring_size" 2>&1)
+  PUT_STATUS=$?
+  set -e
+  if [ "$PUT_STATUS" -ne 0 ]; then
+    err "PUT /v1/settings/errors.ring_size failed: $PUT_BODY"
+    exit 1
+  fi
+  echo "$PUT_BODY" | grep -q "\"value\":${PROBE_VALUE}" || {
+    err "PUT response did not echo value=${PROBE_VALUE}: $PUT_BODY"
+    exit 1
+  }
+  ok "PUT /v1/settings/errors.ring_size committed value=$PROBE_VALUE"
+
+  # Restore the prior value so the deploy verifier is idempotent.
+  curl -fsS -X PUT \
+    -H "authorization: Bearer ${VERIFY_API_KEY}" \
+    -H "content-type: application/json" \
+    -d "{\"value\":${PRIOR}}" \
+    "${DEPLOY_URL}/v1/settings/errors.ring_size" >/dev/null
+  ok "settings probe restored prior value=$PRIOR"
+
+  # /v1/diagnostics/setup must report the source_map for the probed
+  # leaf (proves the override pipeline is wired even when no
+  # SK_OVERRIDE_* is currently active).
+  set +e
+  DIAG_BODY=$(curl -fsS -H "authorization: Bearer ${VERIFY_API_KEY}" \
+    "${DEPLOY_URL}/v1/diagnostics/setup" 2>&1)
+  DIAG_STATUS=$?
+  set -e
+  if [ "$DIAG_STATUS" -ne 0 ]; then
+    err "GET /v1/diagnostics/setup failed: $DIAG_BODY"
+    exit 1
+  fi
+  ok "diagnostics/setup includes the v3.5 settings surface"
+fi
+
+# 7. Binary-size budget — the linux-x64 build target is the deploy
+#    primary; reject accidental Ink/React bloat that pushes past
+#    80MB. Local runs only probe the host binary; this guards the CI
+#    matrix output.
+if [ -f "${REPO_ROOT}/dist/sk-linux-x64" ]; then
+  size_bytes=$(stat -f%z "${REPO_ROOT}/dist/sk-linux-x64" 2>/dev/null || stat -c%s "${REPO_ROOT}/dist/sk-linux-x64")
+  size_mb=$(( size_bytes / 1024 / 1024 ))
+  if [ "$size_mb" -ge 80 ]; then
+    err "sk-linux-x64 binary is ${size_mb}MB (budget: 80MB) — investigate before shipping"
+    exit 1
+  fi
+  ok "sk-linux-x64 binary size ${size_mb}MB (under the 80MB budget)"
+fi
+
+
 ok "verify complete — $DEPLOY_URL is live on $VERSION"

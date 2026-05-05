@@ -11,7 +11,7 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { listLlmEnvironmentIssues } from "../../../env.ts";
+import { getConfig } from "../../../config/loader.ts";
 import { globalLlmStatus } from "../../../llm/core/invoke.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -134,37 +134,79 @@ function buildAuthSection(): SetupSection {
   );
 }
 
+// Whether the named provider has the credentials it needs to actually
+// answer requests. Built from globalLlmStatus() (which is itself
+// derived from getConfig()) so this stays in sync with the schema and
+// never reads process.env directly.
+function providerHasCredentials(
+  provider: string,
+  status: ReturnType<typeof globalLlmStatus>,
+): boolean {
+  switch (provider) {
+    case "mock":
+      return true;
+    case "anthropic":
+      return status.anthropic_key_set;
+    case "openai":
+      return status.openai_key_set;
+    case "gemini":
+      return status.gemini_key_set;
+    case "azure":
+      return status.azure_key_set;
+    case "bedrock":
+      return status.bedrock_key_set;
+    case "vertex":
+      return status.vertex_api_key_set || status.vertex_service_account_set;
+    case "ai_gateway":
+      return status.gateway_key_set && status.gateway_model_set;
+    default:
+      return false;
+  }
+}
+
 function buildLlmSection(): SetupSection {
   const llmStatus = globalLlmStatus();
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
 
-  const primaryIssues = listLlmEnvironmentIssues(process.env, { requireConfigured: true });
-  if (primaryIssues.length > 0) {
+  // Validation now lives in ConfigSchema + model-init's validateProviderSetup
+  // — boot fails on bad config so this section reports the live status from
+  // globalLlmStatus(). The blocker surface comes from `inferred_provider ===
+  // "unconfigured"` which globalLlmStatus already encodes.
+  const cfg = getConfig().llm;
+  if (llmStatus.inferred_provider === "unconfigured") {
     issues.push(
-      buildIssue("llm-primary", "blocker", "Primary LLM route", compactJoin(primaryIssues)),
+      buildIssue(
+        "llm-primary",
+        "blocker",
+        "Primary LLM route",
+        "no provider configured (set llm.provider via `sk settings configure`)",
+      ),
+    );
+    recommendations.push(
+      "Run `sk settings configure --tab llm` to set llm.provider and the matching api_key.",
     );
   }
 
-  const summarizeIssues = process.env.SUMMARIZE_LLM_PROVIDER
-    ? listLlmEnvironmentIssues(process.env, {
-        providerEnvVar: "SUMMARIZE_LLM_PROVIDER",
-        fallbackProviderEnvVar: null,
-        requireConfigured: true,
-      })
-    : [];
-  if (summarizeIssues.length > 0) {
+  // Summarize-route blocker fires when the override picks a provider
+  // but its credentials are absent. v3.4's `listLlmEnvironmentIssues`
+  // bundled this check; v3.5 derives it from the same globalLlmStatus
+  // flags that drive the credential badges below.
+  if (
+    cfg.summarize_provider &&
+    cfg.summarize_provider !== "mock" &&
+    !providerHasCredentials(cfg.summarize_provider, llmStatus)
+  ) {
     issues.push(
-      buildIssue("llm-summarize", "blocker", "Summarize LLM route", compactJoin(summarizeIssues)),
+      buildIssue(
+        "llm-summarize",
+        "blocker",
+        "Summarize LLM route",
+        `summarize provider is set to "${cfg.summarize_provider}" but its credentials are missing`,
+      ),
     );
     recommendations.push(
-      "Fix SUMMARIZE_LLM_PROVIDER credentials or unset the override to fall back to the primary LLM route.",
-    );
-  }
-
-  if (issues.some((issue) => issue.id === "llm-primary")) {
-    recommendations.push(
-      "Set AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL together, or configure a complete direct-provider route.",
+      "Fix llm.summarize_provider credentials or unset llm.summarize_provider to fall back to the primary route.",
     );
   }
 

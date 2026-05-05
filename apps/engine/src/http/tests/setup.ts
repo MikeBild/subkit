@@ -8,11 +8,37 @@
 //   5. returns { baseUrl, apiKey, ..., cleanup }
 
 import { createHash, randomBytes } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type ServerType, serve } from "@hono/node-server";
+import { _resetConfigForTests, getConfig, loadConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
+
+// Ensure the config loader is bootstrapped so route handlers that
+// call getConfig() see a valid Config object. v3.5 routes assume
+// loadConfig() ran in the boot path; tests that don't explicitly
+// call it would 500 on the first getConfig() — this helper closes
+// that gap idempotently. Subsequent tests can override values via
+// setConfigKey() without re-bootstrapping.
+async function ensureConfigLoaded(): Promise<void> {
+  try {
+    getConfig();
+    return;
+  } catch {
+    // not yet loaded — fall through.
+  }
+  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-http-test-"));
+  await loadConfig({
+    env: { DATABASE_URL: "postgres://placeholder/http-test", NODE_ENV: "test" },
+    configPathOverride: join(dir, "subkit.config.json"),
+  });
+}
+
+export { _resetConfigForTests };
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -37,6 +63,7 @@ export interface HttpTestServer {
 }
 
 export async function createHttpTestServer(label: string): Promise<HttpTestServer> {
+  await ensureConfigLoaded();
   const testDb = await createTestDb(`http-${label}`);
 
   // Seed minimal identity rows.

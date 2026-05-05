@@ -149,20 +149,23 @@ export async function registerDeliveryWorker(
         duration_ms: null,
         next_retry_at: null,
       });
-      audit({
-        tenant_id: data.tenant_id,
-        action: AuditAction.WEBHOOK_OUTBOUND_FAILED,
-        resource_type: "subscription",
-        resource_id: data.subscription_id,
-        result: "error",
-        reason: "circuit_open",
-        metadata: {
-          event_id: data.event_id,
-          event_type: data.event_type,
-          attempt: data.attempt_number,
-          terminal_reason: "circuit_open",
+      audit(
+        {
+          tenant_id: data.tenant_id,
+          action: AuditAction.WEBHOOK_OUTBOUND_FAILED,
+          resource_type: "subscription",
+          resource_id: data.subscription_id,
+          result: "error",
+          reason: "circuit_open",
+          metadata: {
+            event_id: data.event_id,
+            event_type: data.event_type,
+            attempt: data.attempt_number,
+            terminal_reason: "circuit_open",
+          },
         },
-      });
+        db,
+      );
       recordWebhookDelivery({
         subscription_id: data.subscription_id,
         status: "circuit_open",
@@ -257,21 +260,24 @@ export async function registerDeliveryWorker(
           duration_ms: null,
           next_retry_at: null,
         });
-        audit({
-          tenant_id: data.tenant_id,
-          action: AuditAction.WEBHOOK_OUTBOUND_FAILED,
-          resource_type: "subscription",
-          resource_id: data.subscription_id,
-          result: "error",
-          reason: "egress_blocked",
-          metadata: {
-            event_id: data.event_id,
-            event_type: data.event_type,
-            attempt: data.attempt_number,
-            terminal_reason: "egress_blocked",
-            host: err.host,
+        audit(
+          {
+            tenant_id: data.tenant_id,
+            action: AuditAction.WEBHOOK_OUTBOUND_FAILED,
+            resource_type: "subscription",
+            resource_id: data.subscription_id,
+            result: "error",
+            reason: "egress_blocked",
+            metadata: {
+              event_id: data.event_id,
+              event_type: data.event_type,
+              attempt: data.attempt_number,
+              terminal_reason: "egress_blocked",
+              host: err.host,
+            },
           },
-        });
+          db,
+        );
         recordWebhookDelivery({
           subscription_id: data.subscription_id,
           status: "dead_letter",
@@ -305,19 +311,22 @@ export async function registerDeliveryWorker(
       });
       await breaker.recordSuccess(db, data.subscription_id);
       recordWebhookDelivery({ subscription_id: data.subscription_id, status: "delivered" });
-      await auditAwait({
-        tenant_id: data.tenant_id,
-        action: AuditAction.WEBHOOK_OUTBOUND_DELIVERED,
-        resource_type: "subscription",
-        resource_id: data.subscription_id,
-        result: "success",
-        metadata: {
-          event_id: data.event_id,
-          event_type: data.event_type,
-          attempt: data.attempt_number,
-          status_code: outcome.status,
+      await auditAwait(
+        {
+          tenant_id: data.tenant_id,
+          action: AuditAction.WEBHOOK_OUTBOUND_DELIVERED,
+          resource_type: "subscription",
+          resource_id: data.subscription_id,
+          result: "success",
+          metadata: {
+            event_id: data.event_id,
+            event_type: data.event_type,
+            attempt: data.attempt_number,
+            status_code: outcome.status,
+          },
         },
-      });
+        db,
+      );
       return;
     }
 
@@ -360,24 +369,27 @@ export async function registerDeliveryWorker(
 
     const bstate = await breaker.recordFailure(db, data.subscription_id);
 
-    audit({
-      tenant_id: data.tenant_id,
-      action: AuditAction.WEBHOOK_OUTBOUND_FAILED,
-      resource_type: "subscription",
-      resource_id: data.subscription_id,
-      result: "error",
-      reason: outcome.error ?? "unknown",
-      metadata: {
-        event_id: data.event_id,
-        event_type: data.event_type,
-        attempt: data.attempt_number,
-        status_code: outcome.status || null,
-        classification,
-        terminal,
-        terminal_reason,
-        breaker_open: bstate.open_until > Date.now(),
+    audit(
+      {
+        tenant_id: data.tenant_id,
+        action: AuditAction.WEBHOOK_OUTBOUND_FAILED,
+        resource_type: "subscription",
+        resource_id: data.subscription_id,
+        result: "error",
+        reason: outcome.error ?? "unknown",
+        metadata: {
+          event_id: data.event_id,
+          event_type: data.event_type,
+          attempt: data.attempt_number,
+          status_code: outcome.status || null,
+          classification,
+          terminal,
+          terminal_reason,
+          breaker_open: bstate.open_until > Date.now(),
+        },
       },
-    });
+      db,
+    );
     recordWebhookDelivery({
       subscription_id: data.subscription_id,
       status: terminal ? "dead_letter" : "failed",

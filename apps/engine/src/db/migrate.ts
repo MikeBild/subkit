@@ -24,9 +24,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sql } from "drizzle-orm";
-import { env } from "../env.ts";
 import { logger } from "../logging/logger.ts";
 import { createDbFromUrl, type Db } from "./client.ts";
+
+// Migrate runs as a standalone binary (`bun run apps/engine/src/db/migrate.ts`)
+// without going through loadConfig — it would be circular to require a config
+// file just to migrate the database the config file may eventually live in.
+function bootstrapDatabaseUrl(): string {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error("DATABASE_URL is required for `db:migrate`");
+  }
+  return url;
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_FOLDER = path.join(HERE, "migrations");
@@ -95,7 +105,7 @@ async function readAppliedState(db: Db): Promise<AppliedState> {
   return { hashes, count: hashes.size };
 }
 
-export async function runMigrations(url: string = env.DATABASE_URL): Promise<void> {
+export async function runMigrations(url: string = bootstrapDatabaseUrl()): Promise<void> {
   logger.info({
     module: "db",
     action: "migrate.started",

@@ -30,12 +30,12 @@ import pc from "picocolors";
 import { z } from "zod";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../audit/types.ts";
+import { setConfigKey } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { engineSettings, tenants } from "../db/schema/identity.ts";
 import { seedTenantBootstrap, type TenantBootstrapPayload } from "../db/seed.ts";
 import { logger } from "../logging/logger.ts";
 import type { SeededRoleIds } from "../rbac/seed.ts";
-import * as settings from "../settings/index.ts";
 
 /** Storage key for the post-bootstrap sentinel.  Boolean payload.  */
 export const BOOTSTRAP_COMPLETED_KEY = "bootstrap.completed";
@@ -353,10 +353,23 @@ export async function consume(
     };
   }
 
-  // Persist the LLM settings via the settings service so its audit row
-  // (under the new tenant) and pubsub broadcast both fire.
-  await settings.setGlobal(db, "llm.provider", payload.llm_provider, { actor_id: null });
-  await settings.setGlobal(db, "llm.api_key", payload.llm_api_key, { actor_id: null });
+  // Persist the LLM settings to subkit.config.json — bootstrap is the
+  // first runtime write and seeds llm.provider + llm.api_key globally
+  // so the new tenant has working LLM dispatch immediately. Wrapped
+  // because some unit-test paths drive consume() directly without
+  // booting the loader; the per-tenant tenant_llm_settings row above
+  // already covers the new tenant's config in that case.
+  try {
+    await setConfigKey(["llm", "provider"], payload.llm_provider, { force: true });
+    await setConfigKey(["llm", "api_key"], payload.llm_api_key, { force: true });
+  } catch (err) {
+    logger.warn({
+      module: "onboarding.bootstrap",
+      action: "setup.config_persist_skipped",
+      msg: "config-file write skipped (loader not initialised); tenant_llm_settings row still populated",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // Flip the sentinel and revoke the token in the same logical step.
   await writeSetting(db, BOOTSTRAP_COMPLETED_KEY, true);

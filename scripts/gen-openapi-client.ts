@@ -11,9 +11,12 @@
 // schema. A CI step should `git diff --exit-code` this directory to
 // catch silent drift.
 
+import { mkdtempSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadConfig } from "../apps/engine/src/config/loader.ts";
 import { createApp } from "../apps/engine/src/http/server.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -23,6 +26,16 @@ const typesPath = resolve(outDir, "openapi.d.ts");
 
 async function run(): Promise<void> {
   await mkdir(outDir, { recursive: true });
+
+  // Bootstrap a minimal config so middleware that touches getDb() /
+  // getConfig() does not 500 when generating the snapshot. The
+  // /openapi.json route does not hit Postgres; this is just to
+  // satisfy the boot contract added in v3.5.
+  const cfgDir = mkdtempSync(join(tmpdir(), "sk-openapi-gen-"));
+  await loadConfig({
+    env: { DATABASE_URL: "postgres://placeholder/openapi-gen", NODE_ENV: "test" },
+    configPathOverride: join(cfgDir, "subkit.config.json"),
+  });
 
   const app = createApp();
   const res = await app.request("/openapi.json");

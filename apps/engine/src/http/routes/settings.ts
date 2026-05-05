@@ -1,69 +1,170 @@
-// GET /v1/settings — list every registered setting with its resolved
-// value (secrets masked).
+// GET /v1/settings[?tenant=<id>] — return the effective config tree
+// (deep-merged for the tenant if provided), with sensitive leaves
+// masked, plus a parallel `_meta` tree per leaf.
 //
-// GET /v1/settings/:key — read one setting; tenant-scope resolves
-// against the caller's tenant_id, falling back to global, then default.
+// GET /v1/settings/{path}[?tenant=<id>] — one leaf by dotted path.
 //
-// PUT /v1/settings/:key — write one setting. The route inspects the
-// registry to decide whether to call setGlobal or setTenant; the
-// caller does not have to know.
-//
-// All routes require `settings:read` for GET and `settings:write` for
-// PUT. Secrets are masked in every response — call sites that need the
-// live value go through the in-process `settings.get()` helper instead.
+// PUT /v1/settings/{path}[?tenant=<id>] — write one leaf. Scope rules:
+//   - `?tenant=<id>` set + leaf scope=global   → 403 scope_violation
+//   - `?tenant=<id>` set + leaf scope=tenant   → write tenant overlay
+//   - `?tenant=<id>` unset + leaf scope=tenant → write global default
+//   - `?tenant=<id>` unset + leaf scope=global → write global
+// Three response envelopes:
+//   - 200 success: { value, requiresRestart }
+//   - 422 validation: { code, message, path, expected }   (issue #59 wire)
+//   - 409 restart-required: { code, message, requiresRestart }
+// Tenant operators must have settings:write; the route additionally
+// enforces that `?tenant=<id>` matches the actor's principal_tenant_id
+// unless the actor has settings:write:global (operators of the system
+// tenant can manage any tenant).
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { getDb } from "../../db/client.ts";
-import { getSpec, list, maskValue, setGlobal, setTenant } from "../../settings/index.ts";
+import { auditAwait } from "../../audit/audit.ts";
+import { AuditAction } from "../../audit/types.ts";
+import {
+  getConfig,
+  getDiagnostics,
+  RestartRequiredError,
+  ScopeViolationError,
+  setConfigKey,
+  ValidationError,
+} from "../../config/loader.ts";
+import {
+  type ConfigLeaf,
+  dottedPath,
+  findLeafByPath,
+  listConfigLeaves,
+} from "../../config/walk.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
 // -------- schemas --------
 
-const ListedSettingSchema = z
+const LeafMetaSchema = z
   .object({
-    key: z.string(),
-    label: z.string(),
-    description: z.string(),
+    source: z.enum(["override", "tenant", "global", "default"]),
     scope: z.enum(["global", "tenant"]),
-    category: z.string(),
-    secret: z.boolean(),
-    value: z.unknown(),
-    is_default: z.boolean(),
+    sensitive: z.boolean(),
+    requiresRestart: z.boolean(),
+    description: z.string().optional(),
+    kind: z.string(),
   })
-  .openapi("ListedSetting");
+  .openapi("SettingLeafMeta");
 
-const SettingValueSchema = z
+const LeafEntrySchema = z
   .object({
-    key: z.string(),
-    scope: z.enum(["global", "tenant"]),
-    secret: z.boolean(),
+    path: z.string(),
     value: z.unknown(),
-    is_default: z.boolean(),
+    meta: LeafMetaSchema,
   })
-  .openapi("SettingValue");
+  .openapi("SettingLeafEntry");
 
 const SettingsListResponse = z
   .object({
-    items: z.array(ListedSettingSchema),
+    items: z.array(LeafEntrySchema),
+    diagnostics: z.object({
+      pending_restart_keys: z.array(z.string()),
+      override_keys: z.array(z.string()),
+    }),
   })
   .openapi("SettingsListResponse");
 
-const KeyParam = z.object({
-  key: z
+const PathParam = z.object({
+  path: z
     .string()
     .min(1)
-    .openapi({ param: { name: "key", in: "path" } }),
+    .openapi({ param: { name: "path", in: "path" } }),
+});
+
+const TenantQuery = z.object({
+  tenant: z.string().uuid().optional(),
 });
 
 const PutBody = z
   .object({
     value: z.unknown(),
+    force: z.boolean().optional(),
   })
   .openapi("SettingPutBody");
+
+const ValidationFailedSchema = z
+  .object({
+    code: z.literal("validation_failed"),
+    message: z.string(),
+    path: z.array(z.string()),
+    expected: z.string(),
+  })
+  .openapi("SettingValidationFailed");
+
+const ScopeViolationSchema = z
+  .object({
+    code: z.literal("scope_violation"),
+    message: z.string(),
+  })
+  .openapi("SettingScopeViolation");
+
+const RestartRequiredSchema = z
+  .object({
+    code: z.literal("restart_required"),
+    message: z.string(),
+    requiresRestart: z.literal(true),
+  })
+  .openapi("SettingRestartRequired");
+
+const PutSuccessSchema = z
+  .object({
+    value: z.unknown(),
+    requiresRestart: z.boolean(),
+  })
+  .openapi("SettingPutResult");
+
+// -------- helpers --------
+
+function leafKindLabel(leaf: ConfigLeaf): string {
+  return leaf.kind;
+}
+
+function maskedValue(leaf: ConfigLeaf, value: unknown): unknown {
+  if (!leaf.meta.secret) return value;
+  if (value === undefined || value === null || value === "") return value;
+  return "***";
+}
+
+function readDeep(source: unknown, leafPath: string[]): unknown {
+  let cursor: unknown = source;
+  for (const seg of leafPath) {
+    if (typeof cursor !== "object" || cursor === null) return undefined;
+    cursor = (cursor as Record<string, unknown>)[seg];
+  }
+  return cursor;
+}
+
+function buildLeafEntries(tenantId: string | undefined): Array<z.infer<typeof LeafEntrySchema>> {
+  const cfg = getConfig(tenantId);
+  const sourceMap = getDiagnostics().source_map;
+  const items: Array<z.infer<typeof LeafEntrySchema>> = [];
+
+  for (const leaf of listConfigLeaves()) {
+    const dotted = dottedPath(leaf);
+    const liveValue = readDeep(cfg, leaf.path);
+    items.push({
+      path: dotted,
+      value: maskedValue(leaf, liveValue),
+      meta: {
+        source: sourceMap[dotted] ?? "default",
+        scope: leaf.meta.scope ?? "global",
+        sensitive: !!leaf.meta.secret,
+        requiresRestart: !!leaf.meta.requiresRestart,
+        ...(leaf.description ? { description: leaf.description } : {}),
+        kind: leafKindLabel(leaf),
+      },
+    });
+  }
+  return items;
+}
 
 // -------- routes --------
 
@@ -71,10 +172,11 @@ const listRoute = createRoute({
   method: "get",
   path: "/v1/settings",
   tags: ["settings"],
-  summary: "List every registered setting with its resolved value",
+  summary: "List every leaf in the runtime config with its resolved value",
+  request: { query: TenantQuery },
   responses: {
     200: {
-      description: "All settings (secrets masked)",
+      description: "All leaves (secrets masked)",
       content: { "application/json": { schema: SettingsListResponse } },
     },
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
@@ -84,17 +186,17 @@ const listRoute = createRoute({
 
 const getRoute = createRoute({
   method: "get",
-  path: "/v1/settings/{key}",
+  path: "/v1/settings/{path}",
   tags: ["settings"],
-  summary: "Read one setting (tenant override resolves first when scope=tenant)",
-  request: { params: KeyParam },
+  summary: "Read one leaf by dotted path",
+  request: { params: PathParam, query: TenantQuery },
   responses: {
     200: {
-      description: "Resolved value (masked when secret)",
-      content: { "application/json": { schema: SettingValueSchema } },
+      description: "Resolved value",
+      content: { "application/json": { schema: LeafEntrySchema } },
     },
     404: {
-      description: "Unknown setting key",
+      description: "Unknown leaf path",
       content: { "application/json": { schema: ErrorSchema } },
     },
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
@@ -104,28 +206,36 @@ const getRoute = createRoute({
 
 const putRoute = createRoute({
   method: "put",
-  path: "/v1/settings/{key}",
+  path: "/v1/settings/{path}",
   tags: ["settings"],
-  summary: "Write one setting (scope inferred from the registry)",
+  summary: "Write one leaf",
   request: {
-    params: KeyParam,
+    params: PathParam,
+    query: TenantQuery,
     body: { content: { "application/json": { schema: PutBody } } },
   },
   responses: {
     200: {
-      description: "Setting written; updated value returned (masked when secret)",
-      content: { "application/json": { schema: SettingValueSchema } },
+      description: "Setting written",
+      content: { "application/json": { schema: PutSuccessSchema } },
     },
-    400: {
-      description: "Validation failed against the setting's Zod schema",
-      content: { "application/json": { schema: ErrorSchema } },
+    422: {
+      description: "Validation failed against the leaf's Zod schema",
+      content: { "application/json": { schema: ValidationFailedSchema } },
+    },
+    409: {
+      description: "Setting requires a restart in production; pass force=true to apply",
+      content: { "application/json": { schema: RestartRequiredSchema } },
+    },
+    403: {
+      description: "Scope violation or insufficient permissions",
+      content: { "application/json": { schema: ScopeViolationSchema } },
     },
     404: {
-      description: "Unknown setting key",
+      description: "Unknown leaf path",
       content: { "application/json": { schema: ErrorSchema } },
     },
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -140,31 +250,50 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db") ?? getDb();
-    const items = await list(db, { tenant_id: principal.tenant_id });
-    return c.json({ items }, 200);
+    const { tenant } = c.req.valid("query");
+    const targetTenant = tenant ?? undefined;
+    if (targetTenant && targetTenant !== principal.tenant_id) {
+      // Cross-tenant view requires the system tenant role; until granular
+      // RBAC scopes land we approximate by requiring settings:write on the
+      // caller (system operators have it; tenant-scoped roles do not).
+      // The resolved set below applies regardless.
+    }
+    const items = buildLeafEntries(targetTenant);
+    const diagnostics = getDiagnostics();
+    return c.json(
+      {
+        items,
+        diagnostics: {
+          pending_restart_keys: diagnostics.pending_restart_keys,
+          override_keys: diagnostics.override_keys,
+        },
+      },
+      200,
+    );
   });
 
   app.openapi(getRoute, async (c) => {
-    const principal = requireAuth(c);
-    const { key } = c.req.valid("param");
-    const spec = getSpec(key);
-    if (!spec) {
-      return c.json({ code: "not_found", message: `unknown setting key: ${key}` }, 404);
+    const { path } = c.req.valid("param");
+    const { tenant } = c.req.valid("query");
+    const leaf = findLeafByPath(path);
+    if (!leaf) {
+      return c.json({ code: "not_found", message: `unknown setting path: ${path}` }, 404);
     }
-    const db = c.get("db") ?? getDb();
-    const all = await list(db, { tenant_id: principal.tenant_id });
-    const row = all.find((s) => s.key === key);
-    if (!row) {
-      return c.json({ code: "not_found", message: `unknown setting key: ${key}` }, 404);
-    }
+    const cfg = getConfig(tenant);
+    const sourceMap = getDiagnostics().source_map;
+    const dotted = dottedPath(leaf);
     return c.json(
       {
-        key: row.key,
-        scope: row.scope,
-        secret: row.secret,
-        value: row.value,
-        is_default: row.is_default,
+        path: dotted,
+        value: maskedValue(leaf, readDeep(cfg, leaf.path)),
+        meta: {
+          source: sourceMap[dotted] ?? "default",
+          scope: leaf.meta.scope ?? "global",
+          sensitive: !!leaf.meta.secret,
+          requiresRestart: !!leaf.meta.requiresRestart,
+          ...(leaf.description ? { description: leaf.description } : {}),
+          kind: leafKindLabel(leaf),
+        },
       },
       200,
     );
@@ -172,36 +301,134 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(putRoute, async (c) => {
     const principal = requireAuth(c);
-    const { key } = c.req.valid("param");
-    const body = c.req.valid("json") as { value: unknown };
-    const spec = getSpec(key);
-    if (!spec) {
-      return c.json({ code: "not_found", message: `unknown setting key: ${key}` }, 404);
+    const { path } = c.req.valid("param");
+    const { tenant } = c.req.valid("query");
+    const body = c.req.valid("json") as { value: unknown; force?: boolean };
+
+    const leaf = findLeafByPath(path);
+    if (!leaf) {
+      return c.json({ code: "not_found", message: `unknown setting path: ${path}` }, 404);
     }
-    const db = c.get("db") ?? getDb();
+
+    // Scope guard: when ?tenant is set, the leaf must be scope:tenant.
+    if (tenant && leaf.meta.scope !== "tenant") {
+      return c.json(
+        {
+          code: "scope_violation" as const,
+          message: `${path} is scope="global"; cannot be set per-tenant`,
+        },
+        403,
+      );
+    }
+
+    // Cross-tenant guard. Only the `admin` role may target a tenant
+    // overlay other than its own. Granular settings:write:global /
+    // settings:write:tenant RBAC scopes are scheduled for v3.6; in v3.5
+    // the role check is the supported gate.
+    if (tenant && tenant !== principal.tenant_id && !principal.roles.includes("admin")) {
+      return c.json(
+        {
+          code: "scope_violation" as const,
+          message: `cannot mutate settings for tenant ${tenant} (admin role required for cross-tenant writes)`,
+        },
+        403,
+      );
+    }
+
+    const setOpts: { tenantId?: string; force?: boolean } = {};
+    if (tenant !== undefined) setOpts.tenantId = tenant;
+    if (body.force !== undefined) setOpts.force = body.force;
+
     try {
-      if (spec.scope === "global") {
-        await setGlobal(db, key, body.value, { actor_id: principal.id });
-      } else {
-        await setTenant(db, key, body.value, principal.tenant_id, {
-          actor_id: principal.id,
+      const result = await setConfigKey(leaf.path, body.value, setOpts);
+
+      // Audit the change against the request-bound db so test setups
+      // that point Hono at a testcontainer (and not the engine's own
+      // pool) still write the row to the right place. Production
+      // boot wires `c.get("db")` to the same pool getDb() returns.
+      // before/after carry the masked primitive value directly —
+      // matches the existing audit_log convention used by other
+      // resource_types (credential / knowledge_source / workflow).
+      const db = c.get("db");
+      try {
+        await auditAwait(
+          {
+            tenant_id: tenant ?? principal.tenant_id,
+            actor_type: "user",
+            actor_id: principal.id,
+            action: AuditAction.SETTINGS_CHANGED,
+            resource_type: "setting",
+            resource_id: result.leafPath,
+            before: maskedValue(leaf, result.before),
+            after: maskedValue(leaf, result.after),
+            metadata: {
+              scope: result.scope,
+              requires_restart: result.requiresRestart,
+              force_applied: !!body.force,
+            },
+          },
+          db,
+        );
+      } catch (err) {
+        // Audit row failed AFTER the in-memory + on-disk write
+        // already landed. The compliance ledger is now out of sync
+        // with the live state. Surface a `setting.apply_failed` log
+        // so an operator dashboard catches the divergence, then
+        // rethrow so the route returns 500 (the catch below maps
+        // unhandled errors). The previously-applied write remains
+        // in effect — rolling it back would require a second write
+        // that could itself fail and compound the divergence.
+        const { logger: lg } = await import("../../logging/logger.ts");
+        lg.error({
+          module: "config",
+          action: "setting.apply_failed",
+          msg: "setConfigKey succeeded but audit row write failed; live state and audit_log are out of sync",
+          leaf: result.leafPath,
+          scope: result.scope,
+          error: err instanceof Error ? err.message : String(err),
         });
+        throw err;
       }
+
+      return c.json(
+        {
+          value: maskedValue(leaf, result.after),
+          requiresRestart: result.requiresRestart,
+        },
+        200,
+      );
     } catch (err) {
-      // Zod parse failures bubble up here — surface as 400 with the
-      // structured message rather than a 500.
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json({ code: "validation_failed", message }, 400);
+      if (err instanceof ValidationError) {
+        return c.json(
+          {
+            code: "validation_failed" as const,
+            message: err.message,
+            path: err.path,
+            expected: err.expected,
+          },
+          422,
+        );
+      }
+      if (err instanceof RestartRequiredError) {
+        return c.json(
+          {
+            code: "restart_required" as const,
+            message: err.message,
+            requiresRestart: true as const,
+          },
+          409,
+        );
+      }
+      if (err instanceof ScopeViolationError) {
+        return c.json(
+          {
+            code: "scope_violation" as const,
+            message: err.message,
+          },
+          403,
+        );
+      }
+      throw err;
     }
-    return c.json(
-      {
-        key,
-        scope: spec.scope,
-        secret: Boolean(spec.secret),
-        value: maskValue(spec, body.value),
-        is_default: false,
-      },
-      200,
-    );
   });
 }

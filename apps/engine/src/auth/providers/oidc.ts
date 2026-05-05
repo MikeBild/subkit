@@ -30,9 +30,9 @@ import * as jose from "jose";
 import * as oauth from "openid-client";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { getConfig } from "../../config/loader.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { oidcLoginStates, sessions, tenants, users } from "../../db/schema/index.ts";
-import { env } from "../../env.ts";
 import { logger } from "../../logging/logger.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
 
@@ -58,15 +58,25 @@ function sha256Hex(value: string): string {
 
 function deriveSessionSecret(override?: Uint8Array): Uint8Array {
   if (override) return override;
+  let fromConfig = "";
+  try {
+    fromConfig = (getConfig().auth.session.secret ?? "").trim();
+  } catch {
+    /* loader not initialised */
+  }
+  if (fromConfig.length > 0) {
+    return new TextEncoder().encode(fromConfig);
+  }
   const fromEnv = (process.env.SESSION_SECRET ?? "").trim();
   if (fromEnv.length > 0) {
     return new TextEncoder().encode(fromEnv);
   }
-  // Deterministic fallback so tests + local dev work without a
-  // dedicated SESSION_SECRET env var. Derivation binds the session
-  // key to the master encryption key so rolling MASTER_KEY also
-  // rolls session signatures.
-  return new Uint8Array(createHash("sha256").update(`${env.MASTER_KEY}:session`).digest());
+  // Deterministic fallback so tests + local dev work without an
+  // explicit auth.session.secret. In production, loadConfig() auto-
+  // generates auth.session.secret on first boot, so this branch is
+  // unreachable outside the test harness.
+  const masterKey = process.env.MASTER_KEY ?? "";
+  return new Uint8Array(createHash("sha256").update(`${masterKey}:session`).digest());
 }
 
 function parseCookies(header: string | null): Record<string, string> {
@@ -168,10 +178,28 @@ async function resolveTenantId(db: Db, slug: string | null): Promise<string | nu
 }
 
 export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider {
-  const issuerUrl = opts.issuerUrl ?? process.env.OIDC_ISSUER_URL ?? "";
-  const clientId = opts.clientId ?? process.env.OIDC_CLIENT_ID ?? "";
-  const clientSecretInput = opts.clientSecret ?? process.env.OIDC_CLIENT_SECRET;
-  const redirectUri = opts.redirectUri ?? process.env.OIDC_REDIRECT_URI ?? "";
+  let oidcCfg: {
+    issuer_url: string;
+    client_id: string;
+    client_secret: string;
+    redirect_uri: string;
+  } = {
+    issuer_url: "",
+    client_id: "",
+    client_secret: "",
+    redirect_uri: "",
+  };
+  try {
+    oidcCfg = getConfig().auth.oidc;
+  } catch {
+    /* loader not initialised — unit tests fall back to env */
+  }
+  const issuerUrl = opts.issuerUrl ?? oidcCfg.issuer_url ?? process.env.OIDC_ISSUER_URL ?? "";
+  const clientId = opts.clientId ?? oidcCfg.client_id ?? process.env.OIDC_CLIENT_ID ?? "";
+  const clientSecretInput =
+    opts.clientSecret ?? oidcCfg.client_secret ?? process.env.OIDC_CLIENT_SECRET ?? undefined;
+  const redirectUri =
+    opts.redirectUri ?? oidcCfg.redirect_uri ?? process.env.OIDC_REDIRECT_URI ?? "";
   const sessionSecret = deriveSessionSecret(opts.sessionSecret);
   const db = opts.db;
 

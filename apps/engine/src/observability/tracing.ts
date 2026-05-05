@@ -18,6 +18,7 @@
 // multiple times (tests).
 
 import { LangfuseExporter } from "langfuse-vercel";
+import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
 
 interface TracingState {
@@ -37,8 +38,9 @@ export async function startTracing(): Promise<() => Promise<void>> {
   }
   state.started = true;
 
-  const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
-  const langfuseKey = process.env.LANGFUSE_SECRET_KEY;
+  const cfg = getConfig().observability;
+  const otlpEndpoint = cfg.otlp.endpoint || undefined;
+  const langfuseKey = cfg.langfuse.secret_key || undefined;
   if (!otlpEndpoint && !langfuseKey) {
     logger.info({
       module: "observability",
@@ -62,14 +64,19 @@ export async function startTracing(): Promise<() => Promise<void>> {
     exporters.push(new OTLPTraceExporter({ url: otlpEndpoint }));
   }
   if (langfuseKey) {
-    exporters.push(new LangfuseExporter());
+    const lfOpts: { secretKey: string; publicKey?: string; baseUrl?: string } = {
+      secretKey: langfuseKey,
+    };
+    if (cfg.langfuse.public_key) lfOpts.publicKey = cfg.langfuse.public_key;
+    if (cfg.langfuse.host) lfOpts.baseUrl = cfg.langfuse.host;
+    exporters.push(new LangfuseExporter(lfOpts));
   }
 
   // NodeSDK's `traceExporter` accepts only one; chain them via a
   // composite if needed. With a single exporter we pass it directly.
   const primary = exporters[0];
   const sdk = new NodeSDK({
-    serviceName: process.env.OTEL_SERVICE_NAME ?? "subkit-engine",
+    serviceName: cfg.otlp.service_name || "subkit-engine",
     // biome-ignore lint/suspicious/noExplicitAny: OTel SDK accepts a union of exporter shapes; Langfuse + OTLP both satisfy SpanExporter.
     traceExporter: primary as any,
   });

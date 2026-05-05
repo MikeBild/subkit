@@ -1,0 +1,624 @@
+import { randomBytes } from "node:crypto";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { loadConfig as c12LoadConfig } from "c12";
+import type { z } from "zod";
+import { type Config, ConfigSchema } from "./schema.ts";
+import { type ConfigLeaf, dottedPath, findLeafByPath, listConfigLeaves } from "./walk.ts";
+
+export type SourceTag = "override" | "tenant" | "global" | "default";
+
+export interface SourceMap {
+  [dottedKey: string]: SourceTag;
+}
+
+export interface Diagnostics {
+  source_map: SourceMap;
+  pending_restart_keys: string[];
+  override_keys: string[];
+}
+
+interface LoaderState {
+  config: Config;
+  configPath: string;
+  pendingRestartKeys: Set<string>;
+  overrideKeys: Set<string>;
+  // Effective source per dotted leaf (global view; tenant overrides are computed on demand).
+  globalSourceMap: SourceMap;
+}
+
+let _state: LoaderState | null = null;
+let _writeLock: Promise<void> = Promise.resolve();
+
+const OVERRIDE_PREFIX = "SK_OVERRIDE_";
+
+export class ConfigLoaderError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigLoaderError";
+  }
+}
+
+export class ScopeViolationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ScopeViolationError";
+  }
+}
+
+export class ValidationError extends Error {
+  constructor(
+    message: string,
+    public readonly path: string[],
+    public readonly expected: string,
+  ) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
+export class RestartRequiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RestartRequiredError";
+  }
+}
+
+function envKeyForLeaf(leafPath: string[]): string {
+  return OVERRIDE_PREFIX + leafPath.join("_").toUpperCase();
+}
+
+function setDeep(target: Record<string, unknown>, leafPath: string[], value: unknown): void {
+  let cursor = target;
+  for (let i = 0; i < leafPath.length - 1; i += 1) {
+    const segment = leafPath[i] as string;
+    if (typeof cursor[segment] !== "object" || cursor[segment] === null) {
+      cursor[segment] = {};
+    }
+    cursor = cursor[segment] as Record<string, unknown>;
+  }
+  cursor[leafPath[leafPath.length - 1] as string] = value;
+}
+
+function getDeep(source: Record<string, unknown>, leafPath: string[]): unknown {
+  let cursor: unknown = source;
+  for (const segment of leafPath) {
+    if (typeof cursor !== "object" || cursor === null) return undefined;
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  return cursor;
+}
+
+function coerceOverrideValue(raw: string, leaf: ConfigLeaf): unknown {
+  switch (leaf.kind) {
+    case "string":
+      return raw;
+    case "number": {
+      const n = Number(raw);
+      if (Number.isNaN(n)) {
+        throw new ConfigLoaderError(`${envKeyForLeaf(leaf.path)} must be a number; got "${raw}"`);
+      }
+      return n;
+    }
+    case "boolean":
+      return raw === "true" || raw === "1";
+    case "enum":
+      return raw;
+    case "string-list":
+      return raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    case "string-array":
+      return JSON.parse(raw);
+    default:
+      return raw;
+  }
+}
+
+function collectOverrides(env: Record<string, string | undefined>): {
+  overrides: Record<string, unknown>;
+  keys: string[];
+} {
+  const overrides: Record<string, unknown> = {};
+  const keys: string[] = [];
+
+  for (const leaf of listConfigLeaves()) {
+    const envKey = envKeyForLeaf(leaf.path);
+    const raw = env[envKey];
+    if (raw === undefined) continue;
+    const value = coerceOverrideValue(raw, leaf);
+    setDeep(overrides, leaf.path, value);
+    keys.push(dottedPath(leaf));
+  }
+
+  return { overrides, keys };
+}
+
+function defaultConfigPath(env: Record<string, string | undefined>): string {
+  const envOverride = env.SUBKIT_CONFIG;
+  if (envOverride) return path.resolve(envOverride);
+  if (env.NODE_ENV === "production") return "/etc/subkit/subkit.config.json";
+  return path.resolve(process.cwd(), "subkit.config.json");
+}
+
+async function readConfigFile(configPath: string): Promise<unknown> {
+  try {
+    const raw = await fs.readFile(configPath, "utf8");
+    if (!raw.trim()) return {};
+    return JSON.parse(raw) as unknown;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    if (err instanceof SyntaxError) {
+      throw new ConfigLoaderError(
+        `subkit.config.json at ${configPath} is invalid JSON: ${err.message}`,
+      );
+    }
+    throw err;
+  }
+}
+
+async function atomicWrite(configPath: string, content: string): Promise<void> {
+  const dir = path.dirname(configPath);
+  const tmp = `${configPath}.tmp`;
+
+  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+
+  const fileHandle = await fs.open(tmp, "w", 0o600);
+  try {
+    await fileHandle.writeFile(content);
+    await fileHandle.sync();
+  } finally {
+    await fileHandle.close();
+  }
+
+  // Best-effort fsync of parent directory so the rename is durable.
+  try {
+    const dirHandle = await fs.open(dir, "r");
+    try {
+      await dirHandle.sync();
+    } finally {
+      await dirHandle.close();
+    }
+  } catch {
+    // Some platforms (Windows) reject fsync on directory handles. The
+    // subsequent rename is still atomic on the filesystem we target.
+  }
+
+  await fs.rename(tmp, configPath);
+}
+
+function buildSourceMap(
+  raw: Record<string, unknown>,
+  overrides: Record<string, unknown>,
+): SourceMap {
+  const map: SourceMap = {};
+  for (const leaf of listConfigLeaves()) {
+    const dotted = dottedPath(leaf);
+    if (getDeep(overrides, leaf.path) !== undefined) {
+      map[dotted] = "override";
+      continue;
+    }
+    const fromFile = getDeep(raw, leaf.path);
+    if (fromFile !== undefined) {
+      map[dotted] = "global";
+      continue;
+    }
+    map[dotted] = "default";
+  }
+  return map;
+}
+
+function deepMergeReplaceArrays<T>(base: T, overlay: unknown): T {
+  if (overlay === undefined || overlay === null) return base;
+  if (typeof overlay !== "object" || Array.isArray(overlay)) {
+    return overlay as T;
+  }
+  if (typeof base !== "object" || base === null || Array.isArray(base)) {
+    return overlay as T;
+  }
+  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(overlay as Record<string, unknown>)) {
+    if (value === null) continue; // null in overlay = unset → fall through
+    out[key] = deepMergeReplaceArrays(out[key], value);
+  }
+  return out as T;
+}
+
+function applyTenantOverlay(global: Config, tenantId: string): Config {
+  const overlay = global.tenants?.[tenantId];
+  if (!overlay) return global;
+  return deepMergeReplaceArrays(global, overlay) as Config;
+}
+
+function serialize(config: Config): string {
+  return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+export async function loadConfig(
+  opts: { env?: Record<string, string | undefined>; configPathOverride?: string } = {},
+): Promise<Config> {
+  const env = opts.env ?? (process.env as Record<string, string | undefined>);
+  const configPath = opts.configPathOverride ?? defaultConfigPath(env);
+
+  const fileRaw = await readConfigFile(configPath);
+  const fileObj =
+    typeof fileRaw === "object" && fileRaw !== null ? (fileRaw as Record<string, unknown>) : {};
+
+  const { overrides, keys: overrideKeys } = collectOverrides(env);
+
+  // c12 reads + merges from the configFile path. We pass it the
+  // already-read `fileObj` via `defaults` and `overrides` for layering;
+  // c12 stays in the dep tree so the future `extends:` story is one
+  // option call away.
+  const { config: merged } = await c12LoadConfig<Record<string, unknown>>({
+    name: "subkit",
+    cwd: path.dirname(configPath),
+    configFile: configPath,
+    rcFile: false,
+    globalRc: false,
+    defaults: fileObj,
+    overrides,
+  });
+
+  const mergedObj = (merged ?? {}) as Record<string, unknown>;
+
+  // DATABASE_URL fallback: only consulted when database.url is absent.
+  const databaseUrlInConfig = (mergedObj.database as Record<string, unknown> | undefined)?.url;
+  const databaseUrlInEnv = env.DATABASE_URL;
+  if ((databaseUrlInConfig === undefined || databaseUrlInConfig === "") && databaseUrlInEnv) {
+    mergedObj.database = { ...((mergedObj.database as object) ?? {}), url: databaseUrlInEnv };
+  } else if (
+    typeof databaseUrlInConfig === "string" &&
+    databaseUrlInConfig !== "" &&
+    databaseUrlInEnv &&
+    databaseUrlInEnv !== databaseUrlInConfig
+  ) {
+    // Both present but differ — config wins, warn once.
+    const { logger } = await import("../logging/logger.ts");
+    logger.warn({
+      module: "config",
+      msg: "DATABASE_URL env differs from database.url in config; config wins",
+    });
+  }
+
+  let parsed: Config;
+  try {
+    parsed = ConfigSchema.parse(mergedObj);
+  } catch (err) {
+    if (err instanceof Error && "issues" in err) {
+      const issues = (err as z.ZodError).issues
+        .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
+        .join("\n");
+      throw new ConfigLoaderError(
+        `subkit.config.json validation failed at ${configPath}:\n${issues}\n\nSet missing values via SK_OVERRIDE_<KEY> env or \`sk settings configure\`.`,
+      );
+    }
+    throw err;
+  }
+
+  // Auto-generate session secret on first boot if missing.
+  let needsPersist = false;
+  if (!parsed.auth.session.secret) {
+    parsed.auth.session.secret = randomBytes(32).toString("hex");
+    needsPersist = true;
+  }
+
+  if (needsPersist) {
+    await atomicWrite(configPath, serialize(parsed));
+    const { logger } = await import("../logging/logger.ts");
+    logger.info({
+      module: "config",
+      msg: "auth.session.secret was empty; generated a new value and persisted",
+    });
+  }
+
+  if (overrideKeys.length > 0) {
+    const { logger } = await import("../logging/logger.ts");
+    logger.warn({
+      module: "config",
+      action: "override.active",
+      msg: "SK_OVERRIDE_* active",
+      override_keys: overrideKeys,
+    });
+  }
+
+  // Per-leaf source map at boot — one structured info line that
+  // summarises which leaves came from override env, which were
+  // populated by the file, and which are riding the schema default.
+  // Operators reading the boot log can confirm every setting is
+  // sourced from the layer they expect.
+  try {
+    const { logger } = await import("../logging/logger.ts");
+    const sourceMap = buildSourceMap(mergedObj, overrides);
+    const tally = { override: 0, global: 0, default: 0 };
+    for (const src of Object.values(sourceMap)) {
+      if (src === "override") tally.override += 1;
+      else if (src === "global") tally.global += 1;
+      else if (src === "default") tally.default += 1;
+    }
+    logger.info({
+      module: "config",
+      action: "loaded",
+      msg: "config resolved",
+      config_path: configPath,
+      tenant_overlay_count: Object.keys(parsed.tenants ?? {}).length,
+      ...tally,
+    });
+  } catch {
+    /* logger module not loaded yet */
+  }
+
+  // settings_override_active{key} gauge — operator dashboards flip on
+  // any leaf where the in-memory value comes from an SK_OVERRIDE_* env
+  // var. The label carries the dotted leaf path; the value itself is
+  // never exported. Stale labels from a prior loadConfig (e.g. a
+  // restart that dropped an override) are zeroed out so dashboards
+  // don't carry phantom data.
+  try {
+    const { getMetrics, METRIC_NAMES } = await import("../observability/metrics.ts");
+    const reg = getMetrics();
+    if (_state) {
+      for (const k of _state.overrideKeys) {
+        if (!overrideKeys.includes(k)) {
+          reg.set(METRIC_NAMES.SETTINGS_OVERRIDE_ACTIVE, 0, { key: k });
+        }
+      }
+    }
+    for (const k of overrideKeys) reg.set(METRIC_NAMES.SETTINGS_OVERRIDE_ACTIVE, 1, { key: k });
+  } catch {
+    /* metrics module not loaded yet (some boot orderings) */
+  }
+
+  _state = {
+    config: parsed,
+    configPath,
+    pendingRestartKeys: new Set(),
+    overrideKeys: new Set(overrideKeys),
+    globalSourceMap: buildSourceMap(mergedObj, overrides),
+  };
+
+  return parsed;
+}
+
+function deepFreeze<T>(obj: T): T {
+  if (obj === null || typeof obj !== "object") return obj;
+  if (Object.isFrozen(obj)) return obj;
+  for (const v of Object.values(obj as Record<string, unknown>)) deepFreeze(v);
+  return Object.freeze(obj);
+}
+
+// Read-sampling is a TEST-ONLY introspection hook. It is *not* a
+// production observability path — operator-grade read counting belongs
+// in the Prometheus metrics layer (see observability/metrics.ts). The
+// `_` prefix and `ForTests` suffix are the project convention for
+// "you must not import this from production code"; the gauge in
+// metrics.ts is the supported runtime telemetry surface for config
+// reads. Calling `_enableReadSamplingForTests` from a non-test caller
+// silently grows a Map per `getConfig()` invocation and never frees it.
+let _readCounter: Map<string, number> | null = null;
+let _readSamplingEnabled = false;
+
+/**
+ * **TEST-ONLY** — turn on per-leaf read sampling. Counts every
+ * getConfig() invocation by tenant scope so a test can assert that a
+ * downstream consumer actually fetched the leaf after setConfigKey.
+ * Disabled in production by default (zero overhead until enabled).
+ *
+ * Production read counters belong in
+ * `apps/engine/src/observability/metrics.ts`, not here. Do not call
+ * this from outside a `__tests__` directory.
+ */
+export function _enableReadSamplingForTests(): Map<string, number> {
+  _readCounter = new Map();
+  _readSamplingEnabled = true;
+  return _readCounter;
+}
+
+/** **TEST-ONLY** — counterpart to `_enableReadSamplingForTests`; clears
+ *  the counter and disables sampling. Call from `afterEach` to keep
+ *  test cases isolated. */
+export function _disableReadSamplingForTests(): void {
+  _readCounter = null;
+  _readSamplingEnabled = false;
+}
+
+export function getConfig(tenantId?: string): Config {
+  if (_state === null) {
+    throw new ConfigLoaderError("getConfig() called before loadConfig()");
+  }
+  if (_readSamplingEnabled && _readCounter) {
+    const key = tenantId ? `tenant:${tenantId}` : "global";
+    _readCounter.set(key, (_readCounter.get(key) ?? 0) + 1);
+  }
+  // Plan §2: getConfig returns an immutable view. setConfigKey writes
+  // a fresh object via JSON.parse(JSON.stringify(...)) and replaces
+  // _state.config wholesale, so freeze never blocks legitimate writes.
+  if (!tenantId) return deepFreeze(_state.config);
+  return deepFreeze(applyTenantOverlay(_state.config, tenantId));
+}
+
+export function getConfigPath(): string {
+  if (_state === null) {
+    throw new ConfigLoaderError("getConfigPath() called before loadConfig()");
+  }
+  return _state.configPath;
+}
+
+export function getDiagnostics(): Diagnostics {
+  if (_state === null) {
+    throw new ConfigLoaderError("getDiagnostics() called before loadConfig()");
+  }
+  return {
+    source_map: { ..._state.globalSourceMap },
+    pending_restart_keys: [..._state.pendingRestartKeys],
+    override_keys: [..._state.overrideKeys],
+  };
+}
+
+export interface SetConfigKeyOptions {
+  tenantId?: string;
+  force?: boolean;
+}
+
+export interface SetConfigKeyResult {
+  before: unknown;
+  after: unknown;
+  requiresRestart: boolean;
+  scope: "global" | `tenant:${string}`;
+  leafPath: string;
+}
+
+async function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+  const next = _writeLock.then(fn, fn);
+  _writeLock = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
+export async function setConfigKey(
+  leafPathInput: string | string[],
+  value: unknown,
+  opts: SetConfigKeyOptions = {},
+): Promise<SetConfigKeyResult> {
+  if (_state === null) {
+    throw new ConfigLoaderError("setConfigKey() called before loadConfig()");
+  }
+
+  const leafPath = Array.isArray(leafPathInput) ? leafPathInput : leafPathInput.split(".");
+  const leaf = findLeafByPath(leafPath);
+  if (!leaf) {
+    throw new ScopeViolationError(`unknown setting path: ${leafPath.join(".")}`);
+  }
+
+  if (opts.tenantId && leaf.meta.scope !== "tenant") {
+    throw new ScopeViolationError(
+      `${leafPath.join(".")} is scope="global"; cannot be set per-tenant`,
+    );
+  }
+
+  // Validate value through the leaf's schema (unwrap default/optional/nullable wrappers).
+  const innerSchema = (leaf.schema as { def?: unknown }).def ? leaf.schema : leaf.schema;
+  const parseResult = innerSchema.safeParse(value);
+  if (!parseResult.success) {
+    const issue = parseResult.error.issues[0];
+    if (!issue) {
+      throw new ValidationError("validation_failed", leafPath, leaf.kind);
+    }
+    throw new ValidationError(issue.message, [...leafPath, ...(issue.path as string[])], leaf.kind);
+  }
+  const validatedValue = parseResult.data;
+
+  const requiresRestart = !!leaf.meta.requiresRestart;
+  if (requiresRestart && process.env.NODE_ENV === "production" && !opts.force) {
+    throw new RestartRequiredError(
+      `${leafPath.join(".")} requires a restart in production. Re-run with force=true to apply.`,
+    );
+  }
+
+  return withWriteLock(async () => {
+    const state = _state as LoaderState;
+    let updatedConfig: Config;
+    let beforeValue: unknown;
+
+    if (opts.tenantId) {
+      const tenants = { ...(state.config.tenants ?? {}) };
+      const existingOverlay = (tenants[opts.tenantId] as Record<string, unknown> | undefined) ?? {};
+      const newOverlay = JSON.parse(JSON.stringify(existingOverlay)) as Record<string, unknown>;
+      beforeValue = getDeep(newOverlay, leafPath);
+      setDeep(newOverlay, leafPath, validatedValue);
+      tenants[opts.tenantId] = newOverlay as never;
+      updatedConfig = { ...state.config, tenants };
+    } else {
+      const next = JSON.parse(JSON.stringify(state.config)) as Config;
+      beforeValue = getDeep(next as unknown as Record<string, unknown>, leafPath);
+      setDeep(next as unknown as Record<string, unknown>, leafPath, validatedValue);
+      updatedConfig = next;
+    }
+
+    // Re-validate the whole config after the targeted edit so cross-leaf
+    // refinements stay coherent.
+    const fullParse = ConfigSchema.safeParse(updatedConfig);
+    if (!fullParse.success) {
+      const issue = fullParse.error.issues[0];
+      throw new ValidationError(
+        issue?.message ?? "validation_failed",
+        issue?.path as string[],
+        leaf.kind,
+      );
+    }
+
+    await atomicWrite(state.configPath, serialize(fullParse.data));
+
+    state.config = fullParse.data;
+    state.globalSourceMap[dottedPath(leaf)] = opts.tenantId ? "tenant" : "global";
+    if (requiresRestart) state.pendingRestartKeys.add(dottedPath(leaf));
+
+    // Structured runtime log — one line per applied setting so an
+    // operator tailing the engine log can correlate every change with
+    // the responsible request. The log NEVER carries the value itself
+    // (sensitive leaves render as "***" via the route's mask layer
+    // upstream of this function); it carries only the leaf path,
+    // scope, restart flag, and whether the on-disk file was actually
+    // rewritten with a new value (vs. a no-op write).
+    //
+    // Emitted BEFORE the optional logger reconfigure below so that a
+    // log.level / log.format change cannot retroactively suppress or
+    // reformat the applied-line documenting the change itself: an
+    // operator who sets log.level=error must still see the
+    // setting.applied entry that flipped the threshold.
+    try {
+      const { logger } = await import("../logging/logger.ts");
+      logger.info({
+        module: "config",
+        action: "setting.applied",
+        msg: "config leaf applied",
+        leaf: dottedPath(leaf),
+        scope: opts.tenantId ? `tenant:${opts.tenantId}` : "global",
+        sensitive: !!leaf.meta.secret,
+        requires_restart: requiresRestart,
+        changed: JSON.stringify(beforeValue) !== JSON.stringify(validatedValue),
+      });
+    } catch {
+      /* logger module not loaded; never fail a write because of telemetry */
+    }
+
+    // Hot-reload the logger when a log.* leaf changes — operators set
+    // `sk settings set log.level "debug"` expecting the next request
+    // to log at the new level, not "after restart". The reconfigure
+    // call swaps the in-memory MODE/THRESHOLD atomically. Runs AFTER
+    // the setting.applied log above so the change-document line is
+    // not suppressed by the threshold it just installed.
+    if (leaf.path[0] === "log") {
+      try {
+        const { reconfigureLogger } = await import("../logging/logger.ts");
+        reconfigureLogger({
+          level: fullParse.data.log.level,
+          format: fullParse.data.log.format,
+        });
+      } catch {
+        /* logger module not loaded */
+      }
+    }
+
+    return {
+      before: beforeValue,
+      after: validatedValue,
+      requiresRestart,
+      scope: opts.tenantId ? `tenant:${opts.tenantId}` : "global",
+      leafPath: dottedPath(leaf),
+    };
+  });
+}
+
+/**
+ * **TEST-ONLY** — reset module state between cases. Production code
+ * never resets the loader; loadConfig() runs exactly once at boot. Use
+ * this in `beforeEach` to isolate test cases that mutate config.
+ */
+export function _resetConfigForTests(): void {
+  _state = null;
+  _writeLock = Promise.resolve();
+}

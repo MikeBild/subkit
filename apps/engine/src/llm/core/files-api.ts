@@ -15,8 +15,23 @@
 // `capabilities.ts`); other models inline the bytes via the chat
 // message content array, which the AI SDK normalises.
 
+import { getConfig } from "../../config/loader.ts";
 import { logger } from "../../logging/logger.ts";
 import type { ProviderKind } from "./model-init.ts";
+
+async function readProviderKey(
+  provider: "anthropic" | "openai" | "gemini",
+  envFallback: string,
+): Promise<string | undefined> {
+  try {
+    const v = getConfig().llm.providers[provider].api_key;
+    if (v && v.length > 0) return v;
+  } catch {
+    /* loader not initialised */
+  }
+  const env = process.env[envFallback];
+  return env && env.length > 0 ? env : undefined;
+}
 
 export interface UploadedFile {
   file_id: string;
@@ -77,8 +92,8 @@ export async function uploadFileViaApi(p: UploadFileParams): Promise<UploadedFil
 }
 
 async function uploadAnthropic(p: UploadFileParams): Promise<UploadedFile> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new FilesApiError("anthropic", "ANTHROPIC_API_KEY not set");
+  const apiKey = await readProviderKey("anthropic", "ANTHROPIC_API_KEY");
+  if (!apiKey) throw new FilesApiError("anthropic", "llm.providers.anthropic.api_key not set");
   const baseUrl = p.baseUrl ?? "https://api.anthropic.com";
   const fetchFn = p.fetchImpl ?? fetch;
 
@@ -131,8 +146,8 @@ async function uploadAnthropic(p: UploadFileParams): Promise<UploadedFile> {
 }
 
 async function uploadOpenAI(p: UploadFileParams): Promise<UploadedFile> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new FilesApiError("openai", "OPENAI_API_KEY not set");
+  const apiKey = await readProviderKey("openai", "OPENAI_API_KEY");
+  if (!apiKey) throw new FilesApiError("openai", "llm.providers.openai.api_key not set");
   const baseUrl = p.baseUrl ?? "https://api.openai.com";
   const fetchFn = p.fetchImpl ?? fetch;
 
@@ -184,8 +199,8 @@ async function uploadOpenAI(p: UploadFileParams): Promise<UploadedFile> {
 }
 
 async function uploadGemini(p: UploadFileParams): Promise<UploadedFile> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new FilesApiError("gemini", "GEMINI_API_KEY not set");
+  const apiKey = await readProviderKey("gemini", "GEMINI_API_KEY");
+  if (!apiKey) throw new FilesApiError("gemini", "llm.providers.gemini.api_key not set");
   const baseUrl = p.baseUrl ?? "https://generativelanguage.googleapis.com";
   const fetchFn = p.fetchImpl ?? fetch;
 

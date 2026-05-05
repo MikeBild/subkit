@@ -25,6 +25,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { type ServerType, serve } from "@hono/node-server";
 import type { PgBoss } from "pg-boss";
+import {
+  getConfig as getEngineConfig,
+  loadConfig as loadEngineConfig,
+  setConfigKey,
+} from "../../apps/engine/src/config/loader.ts";
 import type { Db } from "../../apps/engine/src/db/client.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
@@ -36,6 +41,25 @@ import {
   type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
 } from "../../apps/engine/src/rbac/seed.ts";
+
+// v3.5: route handlers and conversation services read getConfig() at
+// request time, which throws if loadConfig() never ran. The e2e
+// harness boots a real Hono app via createApp(), so we must
+// bootstrap the loader before any route can be hit. Idempotent
+// across suites.
+async function ensureEngineConfigLoaded(): Promise<void> {
+  try {
+    getEngineConfig();
+    return;
+  } catch {
+    // not yet loaded — fall through.
+  }
+  const dir = mkdtempSync(path.join(tmpdir(), "sk-cfg-e2e-"));
+  await loadEngineConfig({
+    env: { DATABASE_URL: "postgres://placeholder/e2e", NODE_ENV: "test" },
+    configPathOverride: path.join(dir, "subkit.config.json"),
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -158,8 +182,10 @@ const PERSONA_DEFS: PersonaDef[] = [
 // ---------------------------------------------------------------------------
 
 export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> {
+  await ensureEngineConfigLoaded();
   if (opts.llm === "mock") {
     process.env.LLM_PROVIDER = "mock";
+    await setConfigKey("llm.provider", "mock", { force: true });
     const { resetMockProvider } = await import("../../apps/engine/src/llm/mock-provider.ts");
     resetMockProvider();
   } else {
@@ -242,6 +268,8 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
   if (!addr || typeof addr !== "object") throw new Error("failed to get server port");
   const baseUrl = `http://127.0.0.1:${addr.port}`;
   process.env.SUBKIT_PUBLIC_BASE_URL = baseUrl;
+  // v3.5: routes/services read public_base_url via getConfig().
+  await setConfigKey("server.public_base_url", baseUrl, { force: true });
 
   return {
     baseUrl,

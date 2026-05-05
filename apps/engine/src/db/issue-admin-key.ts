@@ -18,10 +18,17 @@
 
 import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { env } from "../env.ts";
 import { sha256Hex } from "../identity/api-key.ts";
 import { createDbFromUrl } from "./client.ts";
 import { apiKeys, tenants, users } from "./schema/index.ts";
+
+function bootstrapDatabaseUrl(): string {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error("DATABASE_URL is required for issue-admin-key");
+  }
+  return url;
+}
 
 function generate(): { plaintext: string; prefix: string; hash: string } {
   const rand = randomBytes(24).toString("base64url").slice(0, 32);
@@ -46,7 +53,7 @@ function parseArgs(argv: string[]): { tenantSlug: string } {
 
 async function main(): Promise<void> {
   const { tenantSlug } = parseArgs(process.argv.slice(2));
-  const { pool, db } = createDbFromUrl(env.DATABASE_URL);
+  const { pool, db } = createDbFromUrl(bootstrapDatabaseUrl());
   try {
     const [tenant] = await db
       .select({ id: tenants.id, slug: tenants.slug })
