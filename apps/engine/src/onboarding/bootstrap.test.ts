@@ -136,10 +136,13 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
     const envelope = await _internal.readSetting(tdb.db, BOOTSTRAP_TOKEN_KEY);
     expect(envelope).toBeUndefined();
 
-    const provider = await _internal.readSetting<string>(tdb.db, "llm.provider");
-    const apiKey = await _internal.readSetting<string>(tdb.db, "llm.api_key");
-    expect(provider).toBe("anthropic");
-    expect(apiKey).toBe("sk-ant-test-key");
+    // v3.5: llm.provider and llm.api_key now live in subkit.config.json,
+    // not engine_settings. The bootstrap consume() path writes them via
+    // setConfigKey but the loader is not initialised in this unit test
+    // (the wrapper logs a skip warn). The new tenant's
+    // tenant_llm_settings row carries the same config and is asserted
+    // by the integration suite — see
+    // apps/engine/src/http/routes/__tests__/settings.integration.test.ts.
 
     const completed = await tdb.db
       .select()

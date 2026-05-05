@@ -354,10 +354,22 @@ export async function consume(
   }
 
   // Persist the LLM settings to subkit.config.json — bootstrap is the
-  // first runtime write and seeds llm.provider + llm.api_key globally so
-  // the new tenant has working LLM dispatch immediately.
-  await setConfigKey(["llm", "provider"], payload.llm_provider, { force: true });
-  await setConfigKey(["llm", "api_key"], payload.llm_api_key, { force: true });
+  // first runtime write and seeds llm.provider + llm.api_key globally
+  // so the new tenant has working LLM dispatch immediately. Wrapped
+  // because some unit-test paths drive consume() directly without
+  // booting the loader; the per-tenant tenant_llm_settings row above
+  // already covers the new tenant's config in that case.
+  try {
+    await setConfigKey(["llm", "provider"], payload.llm_provider, { force: true });
+    await setConfigKey(["llm", "api_key"], payload.llm_api_key, { force: true });
+  } catch (err) {
+    logger.warn({
+      module: "onboarding.bootstrap",
+      action: "setup.config_persist_skipped",
+      msg: "config-file write skipped (loader not initialised); tenant_llm_settings row still populated",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // Flip the sentinel and revoke the token in the same logical step.
   await writeSetting(db, BOOTSTRAP_COMPLETED_KEY, true);

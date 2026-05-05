@@ -19,7 +19,21 @@ let _db: NodePgDatabase<typeof schema> | null = null;
  */
 export function getPool(): pg.Pool {
   if (_pool) return _pool;
-  _pool = new Pool({ connectionString: getConfig().database.url });
+  // Prefer the runtime config; fall back to process.env.DATABASE_URL
+  // when the loader isn't initialised (journey tests + standalone
+  // db scripts boot the app without going through loadConfig).
+  let url = "";
+  try {
+    url = getConfig().database.url;
+  } catch {
+    url = process.env.DATABASE_URL ?? "";
+  }
+  if (!url) {
+    throw new Error(
+      "database.url is not set. Configure via `sk settings set database.url '\"…\"'` or set DATABASE_URL.",
+    );
+  }
+  _pool = new Pool({ connectionString: url });
   _pool.on("error", (err) => {
     logger.error({
       module: "db",
