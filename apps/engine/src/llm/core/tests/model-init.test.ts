@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { _resetConfigForTests } from "../../../config/loader.ts";
 import { initializeModel, ProviderMisconfiguredError } from "../model-init.ts";
 
 const SAVED_ENV: Record<string, string | undefined> = {};
@@ -44,9 +45,14 @@ describe("initializeModel", () => {
   beforeEach(() => {
     snapshotEnv();
     clearEnv();
+    // v3.5: drop any config state leaked from earlier suites; readEnv
+    // reads getConfig() first and the schema's "mock" default would
+    // override these env-driven assertions otherwise.
+    _resetConfigForTests();
   });
   afterEach(() => {
     restoreEnv();
+    _resetConfigForTests();
   });
 
   it("returns the mock sentinel when LLM_PROVIDER=mock", async () => {

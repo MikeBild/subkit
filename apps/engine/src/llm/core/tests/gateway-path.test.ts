@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { _resetConfigForTests } from "../../../config/loader.ts";
 import { initializeModel, ProviderMisconfiguredError } from "../model-init.ts";
 
 const KEYS = [
@@ -15,6 +16,10 @@ const SAVED: Record<string, string | undefined> = {};
 function snapshot(): void {
   for (const k of KEYS) SAVED[k] = process.env[k];
   for (const k of KEYS) delete process.env[k];
+  // v3.5: drop any leaked loader state — readEnv reads getConfig
+  // first and the schema "mock" default would override these
+  // env-driven assertions.
+  _resetConfigForTests();
 }
 function restore(): void {
   for (const k of KEYS) {
@@ -22,6 +27,7 @@ function restore(): void {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
+  _resetConfigForTests();
 }
 
 describe("provider resolution — regression for the v1.10.0 production 500 cluster", () => {
