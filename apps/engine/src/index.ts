@@ -69,11 +69,14 @@ async function runServer(): Promise<void> {
   // Phase 1 logger is already live (hardcoded defaults). Load the
   // config file before any subsystem reads it; reconfigure the logger
   // immediately so subsequent boot logs honor the operator's settings.
-  const { loadConfig, getConfig } = await import("./config/loader.ts");
+  const { loadConfig, getConfig, recordBootConsumer, emitBootComplete } = await import(
+    "./config/loader.ts"
+  );
   const { reconfigureLogger } = await import("./logging/logger.ts");
   await loadConfig();
   const cfg = getConfig();
   reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
+  recordBootConsumer("logger");
 
   // Surfaces a bad MASTER_KEY in the boot log, before any request can
   // reach an encrypt/decrypt path. Pre-fix this lived as a top-level
@@ -114,6 +117,7 @@ async function runServer(): Promise<void> {
   // and HTTP routes all land in the same trace context. No-op when no
   // exporter env vars are set.
   const stopTracing = await startTracing();
+  recordBootConsumer("tracing");
 
   // Engine-essential seed: RBAC permission catalog + 6 builtin roles.
   // Idempotent and fast (<200ms). Running this on every startup
@@ -157,6 +161,7 @@ async function runServer(): Promise<void> {
   // Start pg-boss + register handlers before the HTTP server so enqueue
   // requests hitting the first byte always find a live boss.
   const boss = await startBoss({ connectionString: getConfig().database.url });
+  recordBootConsumer("queue");
   await registerAllHandlers({ boss, db, chatRegistry });
 
   // Crash-recovery sweep: promote any execution stuck in `running` past
@@ -192,6 +197,27 @@ async function runServer(): Promise<void> {
   // Cron reconciler — sync workflows_schedules -> pg-boss schedules.
   const reconciler = new SchedulerReconciler({ boss, db });
   await reconciler.start();
+  recordBootConsumer("scheduler");
+
+  // Periodic warn for pending requiresRestart leaves — operator-grade
+  // reminder that a setConfigKey call has landed but the engine
+  // hasn't been restarted to pick it up yet. 5-minute cadence lines
+  // up with the ops cadence on the docs/observability dashboards.
+  const restartReminderTimer = setInterval(
+    () => {
+      void (async () => {
+        try {
+          const { emitRequiresRestartPendingIfAny } = await import("./config/loader.ts");
+          await emitRequiresRestartPendingIfAny();
+        } catch {
+          /* logger module not loaded yet */
+        }
+      })();
+    },
+    5 * 60 * 1000,
+  );
+  // Don't keep the event loop alive on this timer alone.
+  if (typeof restartReminderTimer.unref === "function") restartReminderTimer.unref();
 
   // Skill-seed pipeline. Loads the markdown skill library bundled under
   // conversations/seed/skills/ and upserts each seeded skill into every
@@ -260,6 +286,7 @@ async function runServer(): Promise<void> {
 
   const app = createApp({ db, chatRegistry });
   const port = getConfig().server.port;
+  recordBootConsumer("http_server");
 
   const server = serve({ fetch: app.fetch, port });
 
@@ -270,6 +297,12 @@ async function runServer(): Promise<void> {
     port,
     public_base_url: getConfig().server.public_base_url || null,
   });
+
+  // boot.complete: every subsystem above (logger, queue, http_server,
+  // tracing if started, …) called recordBootConsumer. Emit one summary
+  // line so an operator tailing the boot log can confirm the
+  // loader → consumer chain is fully wired.
+  await emitBootComplete();
 
   // Tunnel WebSocket listener — separate Bun.serve listener (Bun runtime
   // required) so tunnel agents have a place to connect. Defaults to PORT+1
