@@ -9127,6 +9127,83 @@
         }
       }
     },
+    "/install/sha256sums": {
+      "get": {
+        "tags": [
+          "install"
+        ],
+        "summary": "Bundled SHA256SUMS for the binaries shipped in this image",
+        "description": "Returns the verbatim SHA256SUMS file for the `sk` and `tunnel-agent` binaries bundled in this engine image. 404 when the slim image is in use; clients should fall back to https://github.com/MikeBild/subkit/releases for the matching tag.",
+        "responses": {
+          "200": {
+            "description": "SHA256SUMS text",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bundle absent (slim engine image)",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/install/{asset}": {
+      "get": {
+        "tags": [
+          "install"
+        ],
+        "summary": "Bundled sk / tunnel-agent binary",
+        "description": "Streams a CLI binary bundled in the engine-with-cli image variant. Returns 404 with a pointer body when the bundle is absent, the asset name is malformed, or the requested platform/arch is not built. Verifies bytes via the `x-subkit-sha256` response header.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "sk-darwin-arm64",
+              "description": "Asset slug. Grammar: `(sk|agent)-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built."
+            },
+            "required": true,
+            "description": "Asset slug. Grammar: `(sk|agent)-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built.",
+            "name": "asset",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Binary stream",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Asset unavailable",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/setup": {
       "get": {
         "tags": [
