@@ -329,10 +329,12 @@ export async function proposeSchemaMigration(
   exec?: Executor,
 ): Promise<MigrationPlan | null> {
   const history = await listShapeHistory(p, exec);
-  if (history.length === 0) return null;
   // history is ordered newest → oldest; pick first-recorded vs latest.
-  const after = history[0]!.schema;
-  const before = history[history.length - 1]!.schema;
+  const newest = history[0];
+  const oldest = history[history.length - 1];
+  if (!newest || !oldest) return null;
+  const after = newest.schema;
+  const before = oldest.schema;
   const { added, removed, widened } = diffShapesDeep(before, after);
 
   // Helper to pick a property's type by deep path. Returns undefined

@@ -19,11 +19,14 @@ export function computeLineDiff(
   // LCS via dynamic programming.
   const m = a.length;
   const n = b.length;
+  // dp is allocated with m+1 rows above; every dp[i] for i in [0, m] exists.
+  // TS can't see that, so the asserts are load-bearing.
   const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
   for (let i = m - 1; i >= 0; i--) {
     for (let j = n - 1; j >= 0; j--) {
-      if (a[i] === b[j]) dp[i]![j] = (dp[i + 1]?.[j + 1] ?? 0) + 1;
-      else dp[i]![j] = Math.max(dp[i + 1]?.[j] ?? 0, dp[i]?.[j + 1] ?? 0);
+      const row = dp[i] as number[];
+      if (a[i] === b[j]) row[j] = (dp[i + 1]?.[j + 1] ?? 0) + 1;
+      else row[j] = Math.max(dp[i + 1]?.[j] ?? 0, dp[i]?.[j + 1] ?? 0);
     }
   }
   const raw: DiffHunk[] = [];
@@ -50,26 +53,29 @@ export function computeLineDiff(
   // collapse-large-runs behaviour. Default 3 lines of context.
   const context = options.context ?? 3;
   const compact: DiffHunk[] = [];
+  // Loop bounds (k < raw.length, p < runEnd, etc.) prove every raw[<idx>]
+  // is defined, but TS's noUncheckedIndexedAccess treats array reads as
+  // T | undefined regardless. The asserts below are load-bearing.
   for (let k = 0; k < raw.length; k++) {
-    const h = raw[k]!;
+    const h = raw[k] as DiffHunk;
     if (h.kind !== " ") {
       compact.push(h);
       continue;
     }
     // unchanged line — find run length
     let runEnd = k;
-    while (runEnd < raw.length && raw[runEnd]!.kind === " ") runEnd++;
+    while (runEnd < raw.length && (raw[runEnd] as DiffHunk).kind === " ") runEnd++;
     const runLen = runEnd - k;
     if (runLen <= context * 2 || compact.length === 0 || runEnd === raw.length) {
       // short run, OR leading run on first change, OR trailing run on last change
       // — keep as-is.
-      for (let p = k; p < runEnd; p++) compact.push(raw[p]!);
+      for (let p = k; p < runEnd; p++) compact.push(raw[p] as DiffHunk);
     } else {
       // long run with changes both before and after — keep `context`
       // lines on each end, replace middle with a single ellipsis.
-      for (let p = 0; p < context; p++) compact.push(raw[k + p]!);
+      for (let p = 0; p < context; p++) compact.push(raw[k + p] as DiffHunk);
       compact.push({ kind: " ", text: "…" });
-      for (let p = runLen - context; p < runLen; p++) compact.push(raw[k + p]!);
+      for (let p = runLen - context; p < runLen; p++) compact.push(raw[k + p] as DiffHunk);
     }
     k = runEnd - 1;
   }

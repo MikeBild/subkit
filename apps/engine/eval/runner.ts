@@ -123,13 +123,13 @@ function computeAggregates(items: RunReport["items"]): RunReport["aggregates"] {
     else bucket.failed += 1;
     per_flow[item.flow] = bucket;
   }
-  for (const flow of Object.keys(per_flow)) {
+  for (const [flow, bucket] of Object.entries(per_flow)) {
     const flow_latencies = items
       .filter((i) => i.flow === flow)
       .map((i) => i.duration_ms)
       .sort((a, b) => a - b);
-    per_flow[flow]!.p50_ms = percentile(flow_latencies, 50);
-    per_flow[flow]!.p95_ms = percentile(flow_latencies, 95);
+    bucket.p50_ms = percentile(flow_latencies, 50);
+    bucket.p95_ms = percentile(flow_latencies, 95);
   }
   return {
     pass_rate: items.length === 0 ? 1 : items.filter((i) => i.pass).length / items.length,

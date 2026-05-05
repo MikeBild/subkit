@@ -77,8 +77,9 @@ export const inspectWorkflowTool: ConversationTool = {
         | null
         | undefined;
       const m = new Map<string, Record<string, unknown>>();
-      if (Array.isArray(latest?.step_traces)) {
-        for (const trace of latest!.step_traces!) {
+      const traces = latest?.step_traces;
+      if (Array.isArray(traces)) {
+        for (const trace of traces) {
           const id = (trace as { step_id?: unknown }).step_id;
           if (typeof id === "string") m.set(id, trace);
         }

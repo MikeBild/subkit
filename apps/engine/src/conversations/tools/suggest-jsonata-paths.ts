@@ -232,8 +232,8 @@ export const suggestJsonataPathsTool: ConversationTool = {
     }
 
     if (preview === undefined) {
-      if (draftHadTracesButNoMatch) {
-        const available = traces!.map((t) => t.step_id);
+      if (draftHadTracesButNoMatch && Array.isArray(traces)) {
+        const available = traces.map((t) => t.step_id);
         return {
           ok: false,
           error_code: "step_not_in_preview",

@@ -87,7 +87,7 @@ export function evaluateLoopAuthoringGate(
 ): LoopGateResult {
   const blocks: LoopGateBlock[] = [];
   const traces: WorkflowDraftStepPreview[] = Array.isArray(latestPreview?.step_traces)
-    ? latestPreview!.step_traces!
+    ? latestPreview.step_traces
     : [];
   const traceById = new Map<string, WorkflowDraftStepPreview>();
   for (const t of traces) traceById.set(t.step_id, t);

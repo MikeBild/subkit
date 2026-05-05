@@ -685,8 +685,9 @@ async function dispatch(): Promise<void> {
   // Dispatch known subcommands directly to prevent citty from also
   // running mainCommand.run() (which starts the REPL).
   const first = rawArgs[0];
-  if (first && !first.startsWith("-") && SUB_COMMANDS[first]) {
-    await runCommand(SUB_COMMANDS[first]!.command, { rawArgs: rawArgs.slice(1) });
+  const sub = first && !first.startsWith("-") ? SUB_COMMANDS[first] : undefined;
+  if (sub) {
+    await runCommand(sub.command, { rawArgs: rawArgs.slice(1) });
     return;
   }
   await runCommand(mainCommand, { rawArgs });
