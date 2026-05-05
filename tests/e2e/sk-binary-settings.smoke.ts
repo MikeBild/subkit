@@ -43,10 +43,25 @@ describe("sk binary smoke (v3.5)", () => {
     expect(r.status).toBe(0);
   });
 
-  test("`sk settings configure --non-interactive` exits 2 without an engine but does NOT mount Ink", () => {
-    // Without a configured profile the EngineClient will fail to
-    // reach the engine. The expected failure mode is a structured
-    // SkTransportError exit, NOT a TTY hang or a React render.
+  test("`sk settings list --help` exits clean", () => {
+    const r = run(["settings", "list", "--help"]);
+    expect(r.status).toBe(0);
+  });
+
+  test("`sk settings get --help` exits clean", () => {
+    const r = run(["settings", "get", "--help"]);
+    expect(r.status).toBe(0);
+  });
+
+  test("`sk settings set --help` exits clean", () => {
+    const r = run(["settings", "set", "--help"]);
+    expect(r.status).toBe(0);
+  });
+
+  test("`sk settings configure --non-interactive` against an unreachable engine fails loudly with output", () => {
+    // The expected failure mode is a structured SkTransportError
+    // exit, NOT a TTY hang or a React render. We use TCP port 1
+    // which always rejects; the response timing is sub-second.
     const r = run([
       "settings",
       "configure",
@@ -56,22 +71,24 @@ describe("sk binary smoke (v3.5)", () => {
       "--api-key",
       "wf_live_smoke",
     ]);
-    // Exit code is non-zero (transport error). The point of the test
-    // is that the process terminates instead of hanging on a TTY.
     expect(r.status).not.toBe(null);
     expect(r.status).not.toBe(0);
-    // Either stderr carries the transport error, or stdout has the
-    // JSON envelope from a successful headless render against a
-    // running engine. Both are acceptable; the failure we're guarding
-    // against is no output at all (deadlocked Ink renderer).
     const combined = (r.stdout ?? "") + (r.stderr ?? "");
     expect(combined.length).toBeGreaterThan(0);
+    // The CLI should hand back a recognisable transport-error
+    // message on stderr, not a stack trace from the React renderer.
+    expect(r.stderr).toMatch(/cannot reach engine|sk:|transport/i);
   });
 
-  test("`sk settings list --help` exits clean", () => {
-    const r = run(["settings", "list", "--help"]);
-    expect(r.status).toBe(0);
-  });
+  // Note on the JSON-envelope assertion (audit #20): the wire shape
+  // is locked down by the route integration test in
+  // apps/engine/src/http/routes/__tests__/settings.integration.test.ts
+  // (real DB, real engine) and the headless CLI passes through the
+  // engine response untransformed via printJson, which is a
+  // straight JSON.stringify (see packages/cli-core/src/format.ts).
+  // A spawnSync test against a stub HTTP server would add timing
+  // flake without strengthening the contract — the engine + CLI
+  // are tested at their respective boundaries.
 
   test("linux-x64 binary stays under the 80MB budget (when present)", () => {
     // The local build produces only the host's binary; CI builds the

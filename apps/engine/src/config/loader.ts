@@ -325,10 +325,19 @@ export async function loadConfig(
   // settings_override_active{key} gauge — operator dashboards flip on
   // any leaf where the in-memory value comes from an SK_OVERRIDE_* env
   // var. The label carries the dotted leaf path; the value itself is
-  // never exported.
+  // never exported. Stale labels from a prior loadConfig (e.g. a
+  // restart that dropped an override) are zeroed out so dashboards
+  // don't carry phantom data.
   try {
     const { getMetrics, METRIC_NAMES } = await import("../observability/metrics.ts");
     const reg = getMetrics();
+    if (_state) {
+      for (const k of _state.overrideKeys) {
+        if (!overrideKeys.includes(k)) {
+          reg.set(METRIC_NAMES.SETTINGS_OVERRIDE_ACTIVE, 0, { key: k });
+        }
+      }
+    }
     for (const k of overrideKeys) reg.set(METRIC_NAMES.SETTINGS_OVERRIDE_ACTIVE, 1, { key: k });
   } catch {
     /* metrics module not loaded yet (some boot orderings) */

@@ -10,7 +10,7 @@
 
 import { z } from "zod";
 
-export const SETTINGS_CONTEXTS = ["Global", "Settings", "Search", "Confirm"] as const;
+export const SETTINGS_CONTEXTS = ["Global", "Settings", "Search", "Confirm", "Field"] as const;
 export type SettingsContext = (typeof SETTINGS_CONTEXTS)[number];
 
 export const SETTINGS_ACTIONS = [

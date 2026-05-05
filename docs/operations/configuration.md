@@ -172,7 +172,19 @@ the new file is populated.
 
 The v3.5 migration drops `tenants.settings`. The `engine_settings`
 table is retained but only the bootstrap probe reads/writes it
-(internal sentinel state); legacy rows can be deleted by hand.
+(internal sentinel state). After an upgrade you can run
+
+```sql
+DELETE FROM engine_settings
+ WHERE key NOT IN ('bootstrap.completed', 'bootstrap.token');
+```
+
+to drop the legacy v3.4.x runtime-config rows. The two retained keys:
+
+| key | shape | purpose |
+| --- | --- | --- |
+| `bootstrap.completed` | `boolean` | Sentinel flipped after the first-run setup wizard succeeds. Prevents `sk init` from re-arming on a populated engine. |
+| `bootstrap.token` | `{ token_sha256, expires_at_ms }` | Hashed one-time token + 15-minute TTL printed in the boot banner. Consumed by `POST /v1/setup`; deleted on success. |
 
 ## Quality gates wired into `bun run verify`
 

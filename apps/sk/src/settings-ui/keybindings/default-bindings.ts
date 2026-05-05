@@ -41,6 +41,14 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
     },
   },
   {
+    context: "Field",
+    bindings: {
+      escape: "field:cancel",
+      return: "field:commit",
+      "ctrl+r": "field:reveal-secret",
+    },
+  },
+  {
     // The Global context covers app-level concerns the modal shouldn't
     // intercept (Ctrl-C exits via Ink's built-in handler).
     context: "Global",

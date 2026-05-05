@@ -15,6 +15,7 @@ function patternFor(input: string, key: Key): string | null {
   if (key.downArrow) return "downarrow";
   if (key.leftArrow) return "leftarrow";
   if (key.rightArrow) return "rightarrow";
+  if (key.ctrl && input.length === 1) return `ctrl+${input.toLowerCase()}`;
   if (input.length === 1 && !key.ctrl && !key.meta) return input;
   return null;
 }

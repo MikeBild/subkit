@@ -158,4 +158,43 @@ describe("setConfigKey", () => {
   test("unknown leaf path throws ScopeViolationError", async () => {
     await expect(setConfigKey("does.not.exist", "x")).rejects.toBeInstanceOf(ScopeViolationError);
   });
+
+  test("setConfigKey works after a frozen-read (deepFreeze + clone-on-write invariant)", async () => {
+    const live = getConfig();
+    expect(Object.isFrozen(live)).toBe(true);
+    expect(Object.isFrozen(live.llm)).toBe(true);
+    const r = await setConfigKey("llm.api_key", "post-freeze-key");
+    expect(r.after).toBe("post-freeze-key");
+    expect(getConfig().llm.api_key).toBe("post-freeze-key");
+  });
+});
+
+describe("settings_override_active{key} gauge", () => {
+  test("sets the gauge per active override leaf and zeros stale labels on reload", async () => {
+    const { getMetrics, resetMetricsRegistryForTests } = await import(
+      "../../observability/metrics.ts"
+    );
+    resetMetricsRegistryForTests();
+
+    await loadFresh({
+      DATABASE_URL: "postgres://x",
+      NODE_ENV: "test",
+      SK_OVERRIDE_LLM_API_KEY: "first-override",
+      SK_OVERRIDE_ERRORS_RING_SIZE: "200",
+    });
+    const reg = getMetrics();
+    const renderedAfterBoot = reg.render();
+    expect(renderedAfterBoot).toContain('settings_override_active{key="llm.api_key"} 1');
+    expect(renderedAfterBoot).toContain('settings_override_active{key="errors.ring_size"} 1');
+
+    // Re-load with only one override — the dropped key must zero out.
+    await loadFresh({
+      DATABASE_URL: "postgres://x",
+      NODE_ENV: "test",
+      SK_OVERRIDE_LLM_API_KEY: "second-override",
+    });
+    const renderedAfterReload = reg.render();
+    expect(renderedAfterReload).toContain('settings_override_active{key="llm.api_key"} 1');
+    expect(renderedAfterReload).toContain('settings_override_active{key="errors.ring_size"} 0');
+  });
 });

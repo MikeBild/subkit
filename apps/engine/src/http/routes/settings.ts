@@ -346,8 +346,9 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
       // that point Hono at a testcontainer (and not the engine's own
       // pool) still write the row to the right place. Production
       // boot wires `c.get("db")` to the same pool getDb() returns.
-      // before/after are wrapped in `{ value: ... }` — primitives
-      // serialise inconsistently across the pg jsonb adapter.
+      // before/after carry the masked primitive value directly —
+      // matches the existing audit_log convention used by other
+      // resource_types (credential / knowledge_source / workflow).
       const db = c.get("db");
       await auditAwait(
         {
@@ -357,8 +358,8 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
           action: AuditAction.SETTINGS_CHANGED,
           resource_type: "setting",
           resource_id: result.leafPath,
-          before: { value: maskedValue(leaf, result.before) },
-          after: { value: maskedValue(leaf, result.after) },
+          before: maskedValue(leaf, result.before),
+          after: maskedValue(leaf, result.after),
           metadata: {
             scope: result.scope,
             requires_restart: result.requiresRestart,

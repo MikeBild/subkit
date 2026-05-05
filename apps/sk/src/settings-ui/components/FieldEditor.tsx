@@ -1,6 +1,7 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
+import { resolveAction } from "../keybindings/useKeybinding.ts";
 import type { FormField } from "../lib/zod-to-form-fields.ts";
 
 interface Props {
@@ -61,15 +62,16 @@ export const FieldEditor: React.FC<Props> = ({ field, onCommit, onCancel }) => {
 
   useInput(async (input, key) => {
     if (submitting) return;
-    if (key.escape) {
+    const action = resolveAction("Field", input, key);
+    if (action === "field:cancel") {
       onCancel();
       return;
     }
-    if (key.ctrl && (input === "r" || input === "R")) {
+    if (action === "field:reveal-secret") {
       if (field.kind === "secret") setReveal((v) => !v);
       return;
     }
-    if (key.return) {
+    if (action === "field:commit") {
       const parsed = parseValue(field, buffer);
       if (!parsed.ok) {
         setError(parsed.err);
@@ -83,6 +85,10 @@ export const FieldEditor: React.FC<Props> = ({ field, onCommit, onCancel }) => {
       }
       return;
     }
+    // Backspace + printable characters are not bound to a registry
+    // action — they are buffer ops on the in-flight edit. Keeping
+    // them inline preserves the operator's typing experience without
+    // expanding the registry surface to per-key string handlers.
     if (key.backspace || key.delete) {
       setBuffer((b) => b.slice(0, -1));
       setError(null);

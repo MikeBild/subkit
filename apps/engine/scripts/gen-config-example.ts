@@ -1,7 +1,13 @@
 // Generate subkit.config.example.json from ConfigSchema defaults.
 //
-// Output is byte-stable and feeds the `check:config-example-drift`
-// quality gate. The example carries:
+// Output is byte-stable for a given ConfigSchema. The drift gate
+// `check:config-example-drift` regenerates the file and exits
+// non-zero if the working tree differs from the regenerated output —
+// the gate runs against the operator's checked-out schema, so a
+// schema change that lands without the example regen is caught at
+// `bun run verify` time on the next CI run.
+//
+// The example carries:
 //   - every leaf populated to its schema default
 //   - database.url pre-filled with a USER:PASSWORD@host/db placeholder
 //     so a copy-paste keeps the file valid JSON until the operator

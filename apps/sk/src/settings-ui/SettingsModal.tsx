@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import React, { useState } from "react";
-import type { EngineClient } from "../engine-client.ts";
+import { type EngineClient, SkEngineError } from "../engine-client.ts";
 import { ConfirmModal } from "./components/ConfirmModal.tsx";
 import { FieldEditor } from "./components/FieldEditor.tsx";
 import { Footer } from "./components/Footer.tsx";
@@ -25,14 +25,9 @@ interface PendingRestart {
   message: string;
 }
 
-function isRestartRequiredError(err: unknown): { force: boolean; message: string } | null {
-  if (!(err instanceof Error)) return null;
-  // The engine-client throws SkEngineError carrying the response body
-  // on a non-2xx. We sniff for the documented `restart_required` code
-  // string in the error message — the route returns
-  // { code:"restart_required", message, requiresRestart:true }.
-  if (err.message.includes("restart_required")) {
-    return { force: true, message: err.message };
+function isRestartRequiredError(err: unknown): { message: string } | null {
+  if (err instanceof SkEngineError && err.code === "restart_required") {
+    return { message: err.message };
   }
   return null;
 }
@@ -81,6 +76,10 @@ export const SettingsModal: React.FC<Props> = ({
     if (editing || pendingRestart) return; // child component owns input
     // Search-mode key handling — operator types into the query buffer.
     if (searchActive) {
+      // Bound actions go through the registry; raw text input
+      // (printable chars + backspace) is buffer mutation, not an
+      // action, so it stays inline. The registry intentionally does
+      // not enumerate every printable key as a binding.
       const action = resolveAction("Search", input, key);
       if (action === "search:clear") {
         setSearchQuery("");
