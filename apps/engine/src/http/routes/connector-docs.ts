@@ -24,7 +24,7 @@ const DocIdParam = z.object({ id: z.string().uuid(), document_id: z.string().uui
 
 const IngestBody = z
   .object({
-    source_type: z.enum(["openapi", "markdown", "llms_txt", "html"]),
+    source_type: z.enum(["openapi", "markdown", "llms_txt"]),
     url: z.string().url().optional(),
     content: z.string().optional(),
   })

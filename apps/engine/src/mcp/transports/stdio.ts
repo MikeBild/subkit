@@ -2,11 +2,8 @@
 //
 // Launched via `bun run apps/engine/src/mcp/stdio.ts` or `sk mcp`. Reads an API key from
 // `SUBKIT_API_KEY`, resolves the principal through the api-key provider,
-// then boots an MCP server over a `StdioServerTransport`.
-//
-// For P7 this runs against the in-process engine (same db pool). A
-// `SUBKIT_ENGINE_URL` env variable is reserved for P15 when the stdio
-// process federates to a remote engine over REST.
+// then boots an MCP server over a `StdioServerTransport`. Runs in-process
+// against the engine's own db pool — no remote-engine federation path.
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { closeDb, getDb } from "../../db/client.ts";
