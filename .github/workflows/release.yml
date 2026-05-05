@@ -486,7 +486,11 @@ jobs:
 
   deploy:
     name: deploy
-    needs: build-and-push
+    # Production runs the engine-with-cli variant (see
+    # deploy/docker-compose.prod.yml), so we must wait for that image
+    # to be pushed before recreating the engine container — otherwise
+    # `compose pull engine` resolves the previous version's tag.
+    needs: [build-and-push, build-and-push-with-cli]
     if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
     env:
@@ -507,6 +511,17 @@ jobs:
           echo "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "${{ secrets.DROPLET_HOST }}" >> ~/.ssh/known_hosts
+      # Sync prod compose overlay before the deploy body runs.
+      # do-bootstrap.sh originally scp'd this file once at droplet
+      # provisioning, which meant config-as-code drifted whenever the
+      # repo's deploy/docker-compose.prod.yml changed (image-variant
+      # switches, port changes, etc.). Sync per release so the file in
+      # the repo is the source of truth for every deploy.
+      - name: Sync prod compose overlay to droplet
+        run: |
+          scp -i ~/.ssh/id_rsa \
+            deploy/docker-compose.prod.yml \
+            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/opt/subkit/docker-compose.prod.yml"
       - name: Run deploy-body.sh on droplet
         run: |
           ssh -i ~/.ssh/id_rsa \
