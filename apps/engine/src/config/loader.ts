@@ -388,9 +388,31 @@ function deepFreeze<T>(obj: T): T {
   return Object.freeze(obj);
 }
 
+let _readCounter: Map<string, number> | null = null;
+let _readSamplingEnabled = false;
+
+/** Test-only — turn on per-leaf read sampling. Counts every getConfig()
+ *  invocation by tenant scope so a test can assert that a downstream
+ *  consumer actually fetched the leaf after a setConfigKey. Disabled
+ *  in production (zero overhead). */
+export function _enableReadSamplingForTests(): Map<string, number> {
+  _readCounter = new Map();
+  _readSamplingEnabled = true;
+  return _readCounter;
+}
+
+export function _disableReadSamplingForTests(): void {
+  _readCounter = null;
+  _readSamplingEnabled = false;
+}
+
 export function getConfig(tenantId?: string): Config {
   if (_state === null) {
     throw new ConfigLoaderError("getConfig() called before loadConfig()");
+  }
+  if (_readSamplingEnabled && _readCounter) {
+    const key = tenantId ? `tenant:${tenantId}` : "global";
+    _readCounter.set(key, (_readCounter.get(key) ?? 0) + 1);
   }
   // Plan §2: getConfig returns an immutable view. setConfigKey writes
   // a fresh object via JSON.parse(JSON.stringify(...)) and replaces

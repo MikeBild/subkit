@@ -106,6 +106,14 @@
     "knowledge": {
       "backend": "local",
       "dir": ""
+    },
+    "offload": {
+      "bucket": "",
+      "region": "",
+      "access_key": "",
+      "secret_key": "",
+      "endpoint": "",
+      "key_prefix": "offload"
     }
   },
   "observability": {

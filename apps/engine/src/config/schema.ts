@@ -319,6 +319,31 @@ const StorageSection = z
       })
       .prefault({})
       .describe("Knowledge source storage"),
+    offload: z
+      .object({
+        bucket: z
+          .string()
+          .default("")
+          .describe("S3 bucket for execution-payload offload; empty disables offload")
+          .meta(global()),
+        region: z.string().default("").meta(global()),
+        access_key: z
+          .string()
+          .default("")
+          .meta(global({ secret: true })),
+        secret_key: z
+          .string()
+          .default("")
+          .meta(global({ secret: true })),
+        endpoint: z
+          .string()
+          .default("")
+          .describe("Optional S3 endpoint override (MinIO, R2, etc.)")
+          .meta(global()),
+        key_prefix: z.string().default("offload").meta(global()),
+      })
+      .prefault({})
+      .describe("Execution-payload offload to S3"),
   })
   .prefault({})
   .describe("Storage backends");

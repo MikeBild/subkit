@@ -48,26 +48,63 @@ interface S3OffloadConfig {
 }
 
 function s3OffloadConfig(): S3OffloadConfig | null {
-  const bucket = process.env.S3_OFFLOAD_BUCKET;
+  // Prefer the runtime config; fall back to historical env vars when
+  // the loader is uninitialised (unit tests + standalone scripts).
+  let off: {
+    bucket: string;
+    region: string;
+    access_key: string;
+    secret_key: string;
+    endpoint: string;
+    key_prefix: string;
+  } | null = null;
+  let bedrockRegion = "";
+  let bedrockAccess = "";
+  let bedrockSecret = "";
+  try {
+    const cfg = (
+      require("../config/loader.ts") as typeof import("../config/loader.ts")
+    ).getConfig();
+    off = cfg.storage.offload;
+    bedrockRegion = cfg.llm.providers.bedrock.region;
+    bedrockAccess = cfg.llm.providers.bedrock.access_key_id;
+    bedrockSecret = cfg.llm.providers.bedrock.secret_access_key;
+  } catch {
+    /* loader not initialised — fall through to env */
+  }
+  const bucket = off?.bucket || process.env.S3_OFFLOAD_BUCKET || "";
   if (!bucket) return null;
-  const accessKey = process.env.S3_OFFLOAD_ACCESS_KEY ?? process.env.AWS_ACCESS_KEY_ID;
-  const secretKey = process.env.S3_OFFLOAD_SECRET_KEY ?? process.env.AWS_SECRET_ACCESS_KEY;
+  const accessKey =
+    off?.access_key ||
+    process.env.S3_OFFLOAD_ACCESS_KEY ||
+    bedrockAccess ||
+    process.env.AWS_ACCESS_KEY_ID;
+  const secretKey =
+    off?.secret_key ||
+    process.env.S3_OFFLOAD_SECRET_KEY ||
+    bedrockSecret ||
+    process.env.AWS_SECRET_ACCESS_KEY;
   if (!accessKey || !secretKey) {
     logger.warn({
       module: "execution",
       action: "offload.s3_misconfigured",
-      msg: "S3_OFFLOAD_BUCKET set but access keys missing — falling back to fixture table",
+      msg: "storage.offload.bucket set but access keys missing — falling back to fixture table",
     });
     return null;
   }
   const cfg: S3OffloadConfig = {
     bucket,
-    region: process.env.S3_OFFLOAD_REGION ?? process.env.AWS_REGION ?? "us-east-1",
+    region:
+      off?.region ||
+      process.env.S3_OFFLOAD_REGION ||
+      bedrockRegion ||
+      process.env.AWS_REGION ||
+      "us-east-1",
     accessKey,
     secretKey,
-    keyPrefix: process.env.S3_OFFLOAD_KEY_PREFIX ?? "offload",
+    keyPrefix: off?.key_prefix || process.env.S3_OFFLOAD_KEY_PREFIX || "offload",
   };
-  const endpoint = process.env.S3_OFFLOAD_ENDPOINT;
+  const endpoint = off?.endpoint || process.env.S3_OFFLOAD_ENDPOINT;
   if (endpoint) cfg.endpoint = endpoint;
   return cfg;
 }

@@ -68,10 +68,16 @@ const RETIRED_ENV_KEYS = new Set([
   "VERTEX_PRIVATE_KEY",
   "GOOGLE_APPLICATION_CREDENTIALS",
   "LLM_OUTPUT_GUARD",
-  // Storage — moved to storage.s3.* / storage.knowledge.*
+  // Storage — moved to storage.s3.* / storage.knowledge.* / storage.offload.*
   "S3_ENDPOINT",
   "S3_ACCESS_KEY",
   "S3_SECRET_KEY",
+  "S3_OFFLOAD_BUCKET",
+  "S3_OFFLOAD_REGION",
+  "S3_OFFLOAD_ACCESS_KEY",
+  "S3_OFFLOAD_SECRET_KEY",
+  "S3_OFFLOAD_ENDPOINT",
+  "S3_OFFLOAD_KEY_PREFIX",
   // Docker — moved to docker.host
   "DOCKER_HOST",
   // Chat platforms — moved to platform.*

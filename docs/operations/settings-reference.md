@@ -111,6 +111,12 @@ Storage backends
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `storage.knowledge.backend` | enum("local" \| "s3") | `"local"` | global | no | no |  |
 | `storage.knowledge.dir` | string | `""` | global | no | no |  |
+| `storage.offload.access_key` | string | `""` | global | yes | no |  |
+| `storage.offload.bucket` | string | `""` | global | no | no | S3 bucket for execution-payload offload; empty disables offload |
+| `storage.offload.endpoint` | string | `""` | global | no | no | Optional S3 endpoint override (MinIO, R2, etc.) |
+| `storage.offload.key_prefix` | string | `"offload"` | global | no | no |  |
+| `storage.offload.region` | string | `""` | global | no | no |  |
+| `storage.offload.secret_key` | string | `""` | global | yes | no |  |
 | `storage.s3.access_key` | string | `""` | global | yes | no |  |
 | `storage.s3.endpoint` | string | `""` | global | no | no |  |
 | `storage.s3.secret_key` | string | `""` | global | yes | no |  |
