@@ -63,8 +63,8 @@ jobs:
           # repo and returns "Bad credentials" 401 otherwise.
           github_token: ${{ secrets.GITHUB_TOKEN }}
         # Advisory only — the workflow's contract (see header) is to
-        # never block merges on review-content findings. With OIDC
-        # permissions and inputs now correct, the only remaining reasons
-        # for a failure would be Anthropic API outages or rate limits;
-        # those should surface in the run log, not as a red required check.
+        # never block merges on review-content findings. With github_token
+        # and input keys now correct, the only remaining reasons for a
+        # failure would be Anthropic API outages or rate limits; those
+        # should surface in the run log, not as a red required check.
         continue-on-error: true
