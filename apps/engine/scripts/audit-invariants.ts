@@ -21,6 +21,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { auditTenantFilter } from "./audit/tenant-filter-ast.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO = resolve(dirname(__filename), "..", "..", "..");
@@ -309,50 +310,35 @@ function checkRouteSize(): Result {
 // ---------- safety ----------
 
 function checkTenantFilter(): Result {
-  // Phase 1 heuristic: grep for `db.select().from(<table>)` patterns and
-  // check there is a `tenantId` reference within the next 5 lines. This
-  // catches the obvious case (drizzle query that forgot the predicate)
-  // but misses query-builder helpers that defer the predicate.
-  //
-  // PHASE 4: replace with a proper AST scan that follows the query
-  // builder chain. Tracked in audit-2026-05 issue.
-  const allowlist = readAllowlist(".tenant-filter-allowlist.txt");
-  const violations: string[] = [];
-  for (const f of listFiles(
-    ENGINE_SRC,
-    (p) => p.endsWith(".ts") && !p.endsWith(".test.ts") && !p.includes("/scripts/"),
-  )) {
-    const rel = relative(REPO, f);
-    const text = readFileSync(f, "utf8");
-    const lines = text.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]!;
-      // Match `.from(<table>)` with optional whitespace.
-      const match = line.match(/\.from\(\s*([\w$]+)/);
-      if (!match) continue;
-      const table = match[1]!;
-      if (allowlist.has(table)) continue;
-      // Scan ahead 8 lines (chained calls span multiple lines) for a
-      // tenantId reference. If the table name itself contains `system`
-      // or `global`, skip (heuristic — refined in Phase 4).
-      const window = lines.slice(i, Math.min(i + 8, lines.length)).join("\n");
-      if (/tenantId|tenant_id/.test(window)) continue;
-      violations.push(`${rel}:${i + 1} .from(${table}) without nearby tenantId`);
-    }
-  }
-  if (violations.length === 0) {
-    return {
-      id: "tenant_filter",
-      status: "PASS",
-      message: "no drizzle .from(table) without nearby tenantId predicate",
-    };
-  }
-  // Phase 1 ships ADVISORY because the heuristic produces false positives
-  // on query-builder helpers; flips to FAIL when AST scan lands.
+  // AST scan (replacing the prior regex heuristic). The scan walks
+  // every Drizzle query chain (`select`/`update`/`delete`/`insert`/`with`
+  // → `.from(table)` → optional `.where(...)`) and asserts a
+  // `tenant_id` predicate is present in the where argument tree —
+  // either as a literal identifier reference or via a helper whose
+  // name matches /tenant/i. Site-level opt-outs use the comment
+  // marker `// tenant-filter:exempt — <reason>` (leading or
+  // trailing-on-same-line). The table allowlist
+  // (.tenant-filter-allowlist.txt) covers truly tenant-agnostic
+  // system tables.
+  const tableAllowlist = readAllowlist(".tenant-filter-allowlist.txt");
+  const violations = auditTenantFilter({
+    repoRoot: REPO,
+    engineSrc: ENGINE_SRC,
+    tableAllowlist,
+  });
+  // ADVISORY-PASS while the AST scan's burndown is in flight in
+  // separate follow-up PRs. The signal value of the AST scan over the
+  // prior regex heuristic is the lower noise floor (false positives
+  // from `Buffer.from`, `Array.from`, etc. are gone). Flip
+  // `status: "PASS"` to `status: "FAIL"` once the burndown lands and
+  // the count is 0; from that point a new violation fails the gate.
+  const rendered = violations
+    .slice(0, 10)
+    .map((v) => `${v.file}:${v.line} .from(${v.table}) without tenant_id predicate`);
   return {
     id: "tenant_filter",
     status: "PASS",
-    message: `ADVISORY (heuristic, AST scan in Phase 4): ${violations.length} candidate sites\n  ${violations.slice(0, 10).join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
+    message: `ADVISORY (AST scan; flip to FAIL after burndown): ${violations.length} call sites without tenant_id predicate\n  ${rendered.join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
   };
 }
 
