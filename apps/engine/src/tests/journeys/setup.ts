@@ -250,7 +250,6 @@ export async function createJourneyCtx(
           }
           if (diag) {
             const dur = Date.now() - t;
-            // biome-ignore lint/suspicious/noConsole: diagnostic
             console.warn(`[journey-teardown] ${label} ${step.name} ${dur}ms`);
           }
         }

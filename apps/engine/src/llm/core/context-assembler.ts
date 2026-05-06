@@ -59,7 +59,6 @@ import type {
 } from "../types.ts";
 import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
 import {
-  applyRuntimeTemplate,
   formatChunk,
   formatConnectorRecipes,
   formatFailure,

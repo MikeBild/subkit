@@ -576,11 +576,9 @@ const fail = results.filter((r) => r.status === "FAIL").length;
 const skip = results.filter((r) => r.status === "SKIP").length;
 
 for (const r of results) {
-  // biome-ignore lint/suspicious/noConsole: this is a CI script — direct stdout is the contract
   console.log(`${r.status.padEnd(4)} ${r.id.padEnd(24)} ${r.message}`);
 }
 
-// biome-ignore lint/suspicious/noConsole: summary line for CI parsing
 console.log(`\n${pass} pass, ${fail} fail, ${skip} skip`);
 
 process.exit(fail === 0 ? 0 : 1);

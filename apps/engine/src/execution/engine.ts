@@ -55,7 +55,6 @@ import {
 import { runStep } from "./step-runner.ts";
 import { MAX_CALL_DEPTH, WORKFLOW_TIMEOUT_DEFAULT_MS } from "./timeouts.ts";
 import type {
-  ExecutionMode,
   ExecutionStatus,
   RequestSource,
   RunOptions,
