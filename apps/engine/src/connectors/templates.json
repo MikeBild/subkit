@@ -8385,7 +8385,7 @@
         "title": "Daily check: are any HubSpot deals due for a postmortem in N days? (#51 + #47 pattern)",
         "description": "Schedule + State multi-day lifecycle. Every morning the workflow scans HubSpot for closed-lost deals whose `closedate` falls within the next N days, reads `last_postmortem_swept_at` from persistent state, branches on whether the operator has already been notified for this window, and writes the new watermark in the same transaction as the digest. Adapt to any HubSpot lifecycle (renewal-due-in-30-days, contract-expiring, dormant-account-recheck) — the pattern is `state_read → query → branch → state_write`, never a multi-day in-flight wait.",
         "intent_keywords": [
-          "postmortem",
+          "postmortem reminder",
           "deal lifecycle",
           "renewal reminder",
           "daily hubspot sweep",
@@ -16664,8 +16664,7 @@
           "incremental sync",
           "reverse etl",
           "watermark cursor",
-          "dunning",
-          "trial nurture",
+          "dunning sequence",
           "daily lifecycle",
           "state read",
           "state write"
