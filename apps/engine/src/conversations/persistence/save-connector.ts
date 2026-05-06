@@ -734,6 +734,35 @@ async function persistCredential(p: {
       },
       p.db,
     );
+    // Persist the slots the refresh-worker needs to call REFRESH_TOKEN_AUTH
+    // an hour from now: `cognito_username` is required to compute
+    // SECRET_HASH on app clients with a secret (without it, refresh
+    // returns NotAuthorizedException), and `cognito_use_access_token`
+    // preserves the operator's IdToken-vs-AccessToken choice across
+    // refresh boundaries. Region is normalised onto the canonical
+    // `config.aws_region` slot so the refresh-worker doesn't have to
+    // chase nested locations. Client-secret stays where the resolver
+    // already reads it (`config.oauth.client_secret` /
+    // `templateCreds.client_secret`).
+    const nextConfigCognito: Record<string, unknown> = {
+      ...((cfg as Record<string, unknown>) ?? {}),
+      aws_region: region,
+      cognito_username: cred.username,
+    };
+    if (cred.use_access_token === true) {
+      nextConfigCognito.cognito_use_access_token = true;
+    } else if (
+      "cognito_use_access_token" in (cfg as Record<string, unknown>) &&
+      (cfg as Record<string, unknown>).cognito_use_access_token === true
+    ) {
+      // Operator switched away from AccessToken — clear the prior flag so
+      // the next refresh persists the IdToken instead.
+      delete nextConfigCognito.cognito_use_access_token;
+    }
+    await p.db
+      .update(connectorsTable)
+      .set({ config: nextConfigCognito })
+      .where(eq(connectorsTable.id, p.connector_id));
     return;
   }
   if (cred.mode === "aws_sigv4") {
