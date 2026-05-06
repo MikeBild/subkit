@@ -22,7 +22,7 @@
 //   GET    /v1/conversations/:id/stream                    — SSE replay of the latest run
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { replayEvents } from "../../../conversations/streaming.ts";
+import { replayEvents } from "../../../conversations/index.ts";
 import { requireAnyPermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerCollectionRoutes } from "./collection.ts";

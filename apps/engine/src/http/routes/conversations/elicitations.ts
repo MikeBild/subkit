@@ -8,8 +8,8 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import * as svc from "../../../conversations/service.ts";
-import { serializeEvent } from "../../../conversations/streaming.ts";
+import * as svc from "../../../conversations/index.ts";
+import { serializeEvent } from "../../../conversations/index.ts";
 import { HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";

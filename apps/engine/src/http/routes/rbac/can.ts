@@ -2,7 +2,7 @@
 //   POST /v1/rbac/can
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { can, type PermissionCheck } from "../../../rbac/evaluator.ts";
+import { can, type PermissionCheck } from "../../../rbac/index.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";

@@ -13,11 +13,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
-import { lintHookSource } from "../../auth/hooks.ts";
-import { policy } from "../../auth/policy.ts";
+import { lintHookSource, policy } from "../../auth/index.ts";
 import { writeAudit } from "../../db/audit.ts";
 import { requestHooks } from "../../db/schema/request_hooks.ts";
-import { STDLIB_VERSION } from "../../sandboxes/quickjs/stdlib/index.ts";
+import { STDLIB_VERSION } from "../../sandboxes/index.ts";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

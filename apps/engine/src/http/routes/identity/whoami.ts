@@ -3,7 +3,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";
 import { roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
-import { resolveEngineUrl } from "../../../llm/runtime-context.ts";
+import { resolveEngineUrl } from "../../../llm/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 

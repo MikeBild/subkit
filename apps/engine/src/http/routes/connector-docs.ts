@@ -11,10 +11,9 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import * as connectorSvc from "../../connectors/service.ts";
-import { PageTooLargeError } from "../../docs-ingestion/budgets.ts";
-import * as docs from "../../docs-ingestion/service.ts";
-import { NotImplementedError } from "../../docs-ingestion/types.ts";
+import * as connectorSvc from "../../connectors/index.ts";
+import * as docs from "../../docs-ingestion/index.ts";
+import { NotImplementedError, PageTooLargeError } from "../../docs-ingestion/index.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

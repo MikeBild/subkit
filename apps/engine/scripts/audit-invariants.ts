@@ -229,6 +229,10 @@ function checkRouteLayering(): Result {
       const fullPath = match[1]!;
       const subsystem = match[2]!;
       if (!knownExternalSubsystems.has(subsystem)) continue;
+      // JSON imports are data, not module surface — they can't go
+      // through the TS barrel and exempt naturally. Same for any
+      // non-.ts file (currently only json).
+      if (fullPath.endsWith(".json")) continue;
       const tail = fullPath.split(`/${subsystem}/`)[1] ?? "";
       const isIndex = tail === "index" || tail === "index.ts" || tail === "";
       if (!isIndex) {
@@ -243,13 +247,10 @@ function checkRouteLayering(): Result {
       message: "all http/routes/* import only subsystem entry points",
     };
   }
-  // Phase 1 lands the check as ADVISORY (PASS with warning) until the
-  // §4.4 route splits in Phase 4 land. Flipping to FAIL is part of the
-  // Phase 4 gate.
   return {
     id: "route_layering",
-    status: "PASS",
-    message: `ADVISORY (Phase 4 will flip to FAIL): ${violations.length} layering violations\n  ${violations.slice(0, 10).join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
+    status: "FAIL",
+    message: `${violations.length} routes import subsystem internals; route files must import only the subsystem's index.ts entry point\n  ${violations.slice(0, 10).join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
   };
 }
 

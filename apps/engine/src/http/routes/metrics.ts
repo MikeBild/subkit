@@ -6,7 +6,7 @@
 // who rotate keys without thinking about scopes still see the endpoint.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { getMetrics, refreshProcessUptime } from "../../observability/metrics.ts";
+import { getMetrics, refreshProcessUptime } from "../../observability/index.ts";
 import { requireScope } from "../middleware/scope.ts";
 import type { AppEnv } from "../openapi.ts";
 

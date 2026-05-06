@@ -16,19 +16,17 @@ import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schema
 import {
   activateSkill,
   archiveSkill,
+  CreateSkillSchema,
   createSkill,
   deleteSkill,
   getSkill,
   listSkills,
-  updateSkill,
-} from "../../skills/service.ts";
-import {
-  CreateSkillSchema,
   SkillLifecycleSchema,
   SkillSchema,
   SkillScopeSchema,
   UpdateSkillSchema,
-} from "../../skills/types.ts";
+  updateSkill,
+} from "../../skills/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

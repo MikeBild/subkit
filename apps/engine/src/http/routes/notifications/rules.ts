@@ -12,11 +12,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { auditAwait } from "../../../audit/audit.ts";
-import { AuditAction } from "../../../audit/types.ts";
+import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import { type NotificationRuleRow, notificationRules } from "../../../db/schema/notifications.ts";
-import { dispatchEvent } from "../../../notifications/service.ts";
-import { serviceMetadataFromHono } from "../../../observability/service-metadata.ts";
+import { dispatchEvent } from "../../../notifications/index.ts";
+import { serviceMetadataFromHono } from "../../../observability/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";

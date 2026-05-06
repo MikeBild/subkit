@@ -17,6 +17,7 @@
 // The canonical registry is process-scoped via `getMetrics()`. Tests
 // can use `resetMetricsRegistryForTests()` to start from a clean slate.
 
+export * from "./error-ring.ts";
 export {
   recordChatDelivery,
   recordExecutionTerminal,
@@ -30,6 +31,7 @@ export {
   setQueueLag,
   setTunnelConnected,
 } from "./instrumentation.ts";
+export * from "./metrics.ts";
 export {
   getMetrics,
   METRIC_NAMES,
@@ -38,4 +40,5 @@ export {
   resetMetricsRegistryForTests,
 } from "./metrics.ts";
 export { metricsMiddleware } from "./middleware.ts";
+export * from "./service-metadata.ts";
 export type { LabelValues, MetricDefinition, SampleSnapshot, SeriesSnapshot } from "./types.ts";

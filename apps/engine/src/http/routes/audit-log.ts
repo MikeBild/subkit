@@ -19,14 +19,14 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { stream as honoStream } from "hono/streaming";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
+import type { AuditActorType, AuditResult } from "../../audit/index.ts";
 import {
   type AuditQueryFilters,
   getAuditRowById,
   queryAuditLog,
   serializeAuditEntry,
   streamAuditLog,
-} from "../../audit/query.ts";
-import type { AuditActorType, AuditResult } from "../../audit/types.ts";
+} from "../../audit/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

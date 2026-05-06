@@ -8,8 +8,8 @@
 import { z } from "@hono/zod-openapi";
 import { paginatedResponse } from "../../../api/common-schemas.ts";
 import type { executionSteps, executions } from "../../../db/schema/index.ts";
-import { RequestMetaSchema } from "../../../execution/request-meta-schema.ts";
-import { ResponseFilterSchema, StepSchema, WorkflowDefSchema } from "../../../workflows/types.ts";
+import { RequestMetaSchema } from "../../../execution/index.ts";
+import { ResponseFilterSchema, StepSchema, WorkflowDefSchema } from "../../../workflows/index.ts";
 
 export const ExecSchema = z
   .object({

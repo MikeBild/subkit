@@ -20,12 +20,8 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { getDb } from "../../db/client.ts";
-import {
-  BOOTSTRAP_LLM_PROVIDERS,
-  consume,
-  isBootstrapPending,
-} from "../../onboarding/bootstrap.ts";
-import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
+import { BOOTSTRAP_LLM_PROVIDERS, consume, isBootstrapPending } from "../../onboarding/index.ts";
+import { seedBuiltinRolesAndPermissions } from "../../rbac/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
 // -------- schemas --------

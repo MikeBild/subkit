@@ -2,5 +2,8 @@
 // over SSE (REST) and MCP progress notifications. Structured-intent
 // tool loop landed in P10.
 
+export * from "./attachments.ts";
+export * from "./parts.ts";
 export * from "./service.ts";
+export * from "./streaming.ts";
 export * from "./types.ts";

@@ -10,7 +10,7 @@
 // unauthenticated requests through to them by design.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { createOidcProvider } from "../../../auth/providers/oidc.ts";
+import { createOidcProvider } from "../../../auth/index.ts";
 import type { AppEnv } from "../../openapi.ts";
 
 export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
