@@ -28,7 +28,6 @@ describe("runTokenMintGrant — shape: aws_initiate_auth (Cognito)", () => {
         { status: 200 },
       ),
     );
-    const before = Date.now();
     const bundle = await runTokenMintGrant({
       shape: "aws_initiate_auth",
       mint_endpoint: "https://cognito-idp.eu-central-1.amazonaws.com/",
@@ -48,7 +47,13 @@ describe("runTokenMintGrant — shape: aws_initiate_auth (Cognito)", () => {
     expect(bundle.access_token).toBe("eyJ.id-token");
     expect(bundle.refresh_token).toBe("rt-1");
     expect(bundle.expires_at).toBeInstanceOf(Date);
-    expect(bundle.expires_at!.getTime()).toBeGreaterThan(before);
+    // 3600s ExpiresIn: bundle.expires_at lands ~1h from the wall clock.
+    // We assert the gap against current wall time (the mint client uses
+    // wall time itself; mocking it would just shadow the same Date.now
+    // call). Tolerance: 100ms before / 3600.1s after.
+    const ageMs = bundle.expires_at!.getTime() - Date.now(); // allow-wall-clock: this assertion exists to verify wall-time math the client itself runs
+    expect(ageMs).toBeLessThanOrEqual(3_600_000);
+    expect(ageMs).toBeGreaterThan(3_590_000);
   });
 
   test("computes SECRET_HASH when client_secret is provided", async () => {
