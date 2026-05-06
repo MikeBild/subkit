@@ -2121,6 +2121,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/executions/{id}/signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inject a runtime signal into a wait-for-event step */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ExecutionSignalRequest"];
+                };
+            };
+            responses: {
+                /** @description Signal accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExecutionSignalResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connector-templates/import": {
         parameters: {
             query?: never;
@@ -7705,6 +7756,17 @@ export interface components {
             started_at: string | null;
             finished_at: string | null;
         };
+        ExecutionSignalResponse: {
+            /** Format: uuid */
+            signal_id: string;
+        };
+        ExecutionSignalRequest: {
+            /** @example refund.approved */
+            event: string;
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
         ConnectorSpecImportResponse: {
             draft: components["schemas"]["ConnectorSpecImportDraft"];
             template_match: {
@@ -8458,7 +8520,7 @@ export interface components {
             created_at: string;
             updated_at: string;
         };
-        SkillActivation: components["schemas"]["SkillActivationBaseline"] | components["schemas"]["SkillActivationTool"] | components["schemas"]["SkillActivationToolArg"] | components["schemas"]["SkillActivationConnectorDriver"] | components["schemas"]["SkillActivationConnectorTemplate"] | components["schemas"]["SkillActivationConnectorRecipeMatch"] | components["schemas"]["SkillActivationIntentKeyword"];
+        SkillActivation: components["schemas"]["SkillActivationBaseline"] | components["schemas"]["SkillActivationTool"] | components["schemas"]["SkillActivationToolArg"] | components["schemas"]["SkillActivationConnectorDriver"] | components["schemas"]["SkillActivationConnectorTemplate"] | components["schemas"]["SkillActivationConnectorRecipeMatch"] | components["schemas"]["SkillActivationIntentKeyword"] | components["schemas"]["SkillActivationStepKind"];
         SkillActivationBaseline: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -8515,6 +8577,14 @@ export interface components {
              */
             kind: "intent_keyword";
             word: string;
+        };
+        SkillActivationStepKind: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "step_kind";
+            step_kinds: ("request" | "transform" | "call" | "wait" | "wait_for_event" | "branch" | "parallel" | "loop" | "tool")[];
         };
         CreateSkillBody: {
             /** @enum {string} */

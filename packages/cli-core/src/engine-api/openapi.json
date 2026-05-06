@@ -2319,6 +2319,37 @@
           "finished_at"
         ]
       },
+      "ExecutionSignalResponse": {
+        "type": "object",
+        "properties": {
+          "signal_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "signal_id"
+        ]
+      },
+      "ExecutionSignalRequest": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "string",
+            "minLength": 1,
+            "example": "refund.approved"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
       "ConnectorSpecImportResponse": {
         "type": "object",
         "properties": {
@@ -5220,6 +5251,9 @@
           },
           {
             "$ref": "#/components/schemas/SkillActivationIntentKeyword"
+          },
+          {
+            "$ref": "#/components/schemas/SkillActivationStepKind"
           }
         ],
         "discriminator": {
@@ -5231,7 +5265,8 @@
             "connector_driver": "#/components/schemas/SkillActivationConnectorDriver",
             "connector_template": "#/components/schemas/SkillActivationConnectorTemplate",
             "connector_recipe_match": "#/components/schemas/SkillActivationConnectorRecipeMatch",
-            "intent_keyword": "#/components/schemas/SkillActivationIntentKeyword"
+            "intent_keyword": "#/components/schemas/SkillActivationIntentKeyword",
+            "step_kind": "#/components/schemas/SkillActivationStepKind"
           }
         }
       },
@@ -5380,6 +5415,39 @@
         "required": [
           "kind",
           "word"
+        ]
+      },
+      "SkillActivationStepKind": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "step_kind"
+            ]
+          },
+          "step_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "request",
+                "transform",
+                "call",
+                "wait",
+                "wait_for_event",
+                "branch",
+                "parallel",
+                "loop",
+                "tool"
+              ]
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "kind",
+          "step_kinds"
         ]
       },
       "CreateSkillBody": {
@@ -11325,6 +11393,61 @@
         "responses": {
           "202": {
             "description": "Cancellation requested"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/executions/{id}/signals": {
+      "post": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "Inject a runtime signal into a wait-for-event step",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecutionSignalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Signal accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionSignalResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "Not found",
