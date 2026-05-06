@@ -213,6 +213,23 @@ describe("tenant-filter-ast", () => {
     expect(auditTenantFilterFromText(STRING_FROM_NOT_QUERY)).toEqual([]);
   });
 
+  test("exempt comment without a reason still flags the site", () => {
+    const text = `
+import { eq } from "drizzle-orm";
+import { conversations } from "../db/schema.ts";
+
+declare const db: any;
+declare const id: string;
+
+export async function load() {
+  // tenant-filter:exempt
+  return await db.select().from(conversations).where(eq(conversations.id, id));
+}
+`;
+    const v = auditTenantFilterFromText(text);
+    expect(v).toHaveLength(1);
+  });
+
   test("exempt comment placed mid-chain (across continuation lines) is recognized", () => {
     const text = `
 import { eq } from "drizzle-orm";

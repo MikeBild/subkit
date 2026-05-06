@@ -51,6 +51,17 @@ describe("scrub-review-comment", () => {
     expect(scrub(body)).toBe(body);
   });
 
+  test("exits non-zero on empty stdin", () => {
+    const result = spawnSync("bun", ["run", SCRIPT], { input: "", encoding: "utf8" });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("stdin was empty");
+  });
+
+  test("exits non-zero on whitespace-only stdin", () => {
+    const result = spawnSync("bun", ["run", SCRIPT], { input: "   \n\n\t  ", encoding: "utf8" });
+    expect(result.status).not.toBe(0);
+  });
+
   test("scrubs multiple secrets in the same body", () => {
     const body = [
       "Found in the diff:",

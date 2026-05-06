@@ -50,7 +50,11 @@ const QUERY_STARTERS = new Set([
   "$with",
 ]);
 
-const EXEMPT_RE = /\btenant-filter:\s*exempt\b\s*[-—:]?\s*(.+)?/;
+// Reason is mandatory: a `// tenant-filter:exempt` with no explanation
+// silently disables the audit at the call site, which is exactly the
+// failure mode the gate exists to prevent. The non-greedy `\S` after
+// the separator forces at least one non-space character.
+const EXEMPT_RE = /\btenant-filter:\s*exempt\b\s*[-—:]\s*\S/;
 const TENANT_ID_NAMES = new Set(["tenant_id", "tenantId"]);
 
 function listSourceFiles(root: string): string[] {
@@ -87,7 +91,7 @@ function listSourceFiles(root: string): string[] {
         p.endsWith(".ts") &&
         !p.endsWith(".test.ts") &&
         !p.endsWith(".d.ts") &&
-        !p.includes("/scripts/")
+        !p.split("/").includes("scripts")
       ) {
         out.push(p);
       }

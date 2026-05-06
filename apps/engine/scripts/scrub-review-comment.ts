@@ -11,9 +11,13 @@
 // Usage:
 //   bun run apps/engine/scripts/scrub-review-comment.ts < raw.md > scrubbed.md
 //
-// stdin → scrubbed stdout. Non-zero exit only on read failure.
+// stdin → scrubbed stdout. Exits non-zero on empty input so the
+// caller's `gh pr comment --body-file` path doesn't silently post an
+// empty comment when the model produced nothing — empty bodies are
+// rejected by `gh` and the resulting workflow failure would otherwise
+// look mysterious.
 
-import { scrubString } from "../../../packages/shared/src/redaction.ts";
+import { scrubString } from "@shared/redaction.ts";
 
 async function readAll(stream: NodeJS.ReadStream): Promise<string> {
   let buf = "";
@@ -23,4 +27,8 @@ async function readAll(stream: NodeJS.ReadStream): Promise<string> {
 }
 
 const input = await readAll(process.stdin);
+if (input.trim() === "") {
+  process.stderr.write("scrub-review-comment: stdin was empty; refusing to emit\n");
+  process.exit(2);
+}
 process.stdout.write(scrubString(input));

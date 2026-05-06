@@ -69,6 +69,13 @@ jobs:
         id: review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Defense in depth: `--dangerously-skip-permissions` lets
+          # the agent read/write inside $GITHUB_WORKSPACE; explicitly
+          # clear the GitHub tokens so a hypothetical agent shell-out
+          # cannot reach the gh API for this step. The Post step
+          # below still has `GH_TOKEN` set for the actual comment.
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
         # `set +e` (the shell default for this script) — claude can
         # exit non-zero (budget exhaustion, timeout, refusal) and we
         # explicitly do not want that to fail the job. Whatever
