@@ -507,6 +507,23 @@ function checkPrTemplate(): Result {
       message: "no PR_BODY env (running outside PR context)",
     };
   }
+  // Skip on release-please-generated PRs. release-please composes the
+  // body from conventional-commit messages plus an auto-link to the
+  // release-notes branch when the body would otherwise overflow GitHub's
+  // PR-body cap. Either marker means the PR is automated; the
+  // audit-phase template fields don't apply.
+  const branch = process.env.PR_HEAD_REF ?? "";
+  const isReleasePleasePr =
+    branch.startsWith("release-please--") ||
+    body.includes("release-please--branches--") ||
+    body.startsWith(":robot:");
+  if (isReleasePleasePr) {
+    return {
+      id: "pr_template",
+      status: "SKIP",
+      message: "release-please-generated PR; audit-phase fields not applicable",
+    };
+  }
   const required = ["Audit phase", "Section reference", "Verification touched"];
   const missing = required.filter((k) => !body.includes(k));
   if (missing.length === 0) {
