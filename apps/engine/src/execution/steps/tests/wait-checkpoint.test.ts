@@ -17,6 +17,7 @@ import {
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { RunLlmBudget } from "../../../llm/accounting/enforce.ts";
+import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
 import type { WaitStep } from "../../../workflows/types.ts";
 import type { StepRunContext } from "../../types.ts";
 import { runWaitStep } from "../wait.ts";
@@ -71,7 +72,7 @@ function buildCtx(executionId: string, ac: AbortController): StepRunContext {
     depth: 0,
     signal: ac.signal,
     scope: {},
-    started_at: new Date(),
+    started_at: new Date(FROZEN_NOW),
     workflow_slug: "wf-wait",
     trace_id: null,
     execution_mode: "dev",
@@ -123,7 +124,7 @@ describe("#48 wait checkpoint contract", () => {
       ctx: ctxObj,
       step: { kind: "wait", id: "w3", duration_ms: 60_000 },
     });
-    setTimeout(() => ac.abort(), 20);
+    setTimeout(() => ac.abort(), 20); // allow-wall-clock: deliberate race to abort the in-flight wait
     const result = await promise;
     expect(result.status).toBe("aborted");
     const remaining = await ctx.db.select({ n: count() }).from(workflowWaits);
