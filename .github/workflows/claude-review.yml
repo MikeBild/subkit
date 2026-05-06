@@ -4,6 +4,12 @@ name: claude-review
 # and routed to the domain-architect sub-agent at .claude/agents/domain-architect.md)
 # against the PR diff and posts a single summary comment.
 #
+# Trust boundary: the model's stdout is captured and piped through
+# `apps/engine/scripts/scrub-review-comment.ts` (which reuses the
+# `scrubString` patterns from `packages/shared/src/redaction.ts`)
+# BEFORE the comment is posted via `gh pr comment`. A model that
+# echoes a diff-embedded secret cannot leak it to a public PR thread.
+#
 # Advisory only — workflow always exits 0. Humans triage the findings.
 #
 # Cost guards:
@@ -42,29 +48,43 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Run /review
-        uses: anthropics/claude-code-action@beta
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          # Action expects `direct_prompt` and `max_turns` — the previous
-          # `prompt` / `claude_args` keys produced an "Unexpected input(s)"
-          # warning and were silently ignored.
-          direct_prompt: /review
-          max_turns: 8
-          # Anthropic API key is consumed as a `with:` input, not from
-          # the `env:` block. Passing it via env produces
-          # "Environment variable validation failed: Either
-          # ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is required"
-          # at runtime — the action validates the input, not the env.
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Use the workflow's default GITHUB_TOKEN (already scoped to
-          # `pull-requests: write` above) to post comments. Without this,
-          # the action falls back to OIDC → installation-token, which
-          # requires the Anthropic GitHub App to be installed on the
-          # repo and returns "Bad credentials" 401 otherwise.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          bun-version: latest
+
+      - name: Install Claude Code CLI
+        run: bun add -g @anthropic-ai/claude-code
+
+      - name: Run /review and capture raw output
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          # Render the slash-command body into a one-shot prompt; the CLI
+          # is non-interactive in --print mode and exits 0 on success.
+          PROMPT="$(cat .claude/commands/review.md)"
+          claude --print --max-turns 8 "$PROMPT" > review-raw.md
+
+      - name: Scrub secrets from review body
+        run: |
+          set -euo pipefail
+          bun run apps/engine/scripts/scrub-review-comment.ts \
+            < review-raw.md > review-scrubbed.md
+          # Sanity-floor: an empty body would be silently ignored by
+          # `gh pr comment`; the model returning nothing is a real
+          # failure mode worth surfacing.
+          test -s review-scrubbed.md
+
+      - name: Post review comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file review-scrubbed.md
         # Advisory only — the workflow's contract (see header) is to
-        # never block merges on review-content findings. With github_token
-        # and input keys now correct, the only remaining reasons for a
-        # failure would be Anthropic API outages or rate limits; those
-        # should surface in the run log, not as a red required check.
+        # never block merges on review-content findings. With redaction
+        # in front of the comment-post, any model output is safe to ship.
         continue-on-error: true
