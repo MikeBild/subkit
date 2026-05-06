@@ -77,6 +77,7 @@ async function resolveSaved(
   if (!wfRow) throw new Error(`workflow not found: ${workflow_id}`);
   const versionId = version_id ?? wfRow.current_version_id;
   if (!versionId) throw new Error("workflow has no current version");
+  // tenant-filter:exempt — tenant-scoped via parent execution_id; verified by caller
   const versionRows = await db
     .select()
     .from(workflowVersions)

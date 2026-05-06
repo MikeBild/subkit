@@ -212,4 +212,29 @@ describe("tenant-filter-ast", () => {
   test("non-query .from-like surfaces are ignored", () => {
     expect(auditTenantFilterFromText(STRING_FROM_NOT_QUERY)).toEqual([]);
   });
+
+  test("exempt comment placed mid-chain (across continuation lines) is recognized", () => {
+    const text = `
+import { eq } from "drizzle-orm";
+import { conversations } from "../db/schema.ts";
+
+declare const db: any;
+declare const id: string;
+
+export async function load() {
+  const x =
+    null ??
+    // tenant-filter:exempt — slug-based routing pre-tenant
+    (
+      await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, id))
+        .limit(1)
+    )[0];
+  return x;
+}
+`;
+    expect(auditTenantFilterFromText(text)).toEqual([]);
+  });
 });

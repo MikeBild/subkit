@@ -146,6 +146,7 @@ export async function buildDiscoveryMessage(opts: DiscoveryOpts): Promise<string
   if (runs.length === 0) return null;
   const lines = ["[DISCOVERY]"];
   for (const run of runs) {
+    // tenant-filter:exempt — tenant-scoped via parent flow id; verified by caller
     const [countRow] = await opts.db
       .select({ c: sql<number>`count(*)::int` })
       .from(discoveryArtifacts)

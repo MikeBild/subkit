@@ -207,6 +207,7 @@ export async function seedTenantBootstrap(
     }
 
     // --- admin API key: mint only if no un-revoked key exists ---
+    // tenant-filter:exempt — test/dev seeding utilities
     const existingAdminKey = await tx
       .select({ id: apiKeys.id })
       .from(apiKeys)
@@ -287,6 +288,7 @@ export async function seedTenantBootstrap(
         );
       }
 
+      // tenant-filter:exempt — test/dev seeding utilities
       const existingMetricsKey = await tx
         .select({ id: apiKeys.id })
         .from(apiKeys)

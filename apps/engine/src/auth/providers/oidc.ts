@@ -290,6 +290,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       // Atomic load + delete so replays of the same state can't finish
       // twice. We use a transaction to bracket the read and the delete.
       const pending = await exec.transaction(async (tx) => {
+        // tenant-filter:exempt — OIDC issuer/sub lookup pre-tenant
         const rows = await tx
           .select()
           .from(oidcLoginStates)
@@ -480,6 +481,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       if (!payload) return null;
 
       const exec = getExec();
+      // tenant-filter:exempt — OIDC issuer/sub lookup pre-tenant
       const rows = await exec
         .select()
         .from(sessions)
@@ -538,6 +540,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           });
       });
 
+      // tenant-filter:exempt — OIDC issuer/sub lookup pre-tenant
       const userRows = await exec
         .select({ role: users.role, email: users.email })
         .from(users)

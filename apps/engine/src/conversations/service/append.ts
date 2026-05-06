@@ -103,6 +103,7 @@ export async function appendUserMessage(
     );
   } else {
     // Reuse whatever was last persisted on the row.
+    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
     const [row] = await exec
       .select({ memory: conversations.memory, model: conversations.model })
       .from(conversations)

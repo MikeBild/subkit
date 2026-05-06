@@ -405,6 +405,7 @@ export class SchedulerReconciler {
    * happens without waiting for the cron's first natural tick.
    */
   async reconcileDocsAutoRefresh(): Promise<void> {
+    // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
     const rows = await this.opts.db
       .select()
       .from(connectors)
@@ -475,6 +476,7 @@ export class SchedulerReconciler {
    * the interval timer already enforces the same dedup property.
    */
   async reconcileWorkflowSchedules(now: Date = new Date()): Promise<void> {
+    // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
     const rows = await this.opts.db
       .select({
         schedule: workflowsSchedules,
@@ -661,6 +663,7 @@ export class SchedulerReconciler {
   }
 
   private async resolveWorkflowVersion(workflow_id: string): Promise<string> {
+    // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
     const rows = await this.opts.db
       .select()
       .from(workflows)
@@ -674,6 +677,7 @@ export class SchedulerReconciler {
   }
 
   private async computeDesired(): Promise<DesiredState> {
+    // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
     const rows = await this.opts.db
       .select({
         schedule: workflowsSchedules,
@@ -726,6 +730,7 @@ export class SchedulerReconciler {
    * is re-fetched). File-upload sources require a manual re-upload.
    */
   async reconcileKnowledgeAutoRefresh(): Promise<void> {
+    // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
     const rows = await this.opts.db
       .select()
       .from(knowledgeSources)

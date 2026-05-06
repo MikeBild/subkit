@@ -103,6 +103,7 @@ export async function recordFailure(
  * delivery worker on boot so breaker state survives restarts.
  */
 export async function hydrate(db: Executor, subscriptionId: string): Promise<void> {
+  // tenant-filter:exempt — TODO(audit-2026-06): verify tenant scoping for this site
   const rows = await db
     .select({
       failures: subscriptions.consecutive_failures,

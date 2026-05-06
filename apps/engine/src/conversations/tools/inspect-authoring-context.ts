@@ -18,6 +18,7 @@ export const inspectAuthoringContextTool: ConversationTool = {
   inputSchema,
   category: "tenant_read",
   async execute(ctx): Promise<ToolResult> {
+    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
     const [row] = await ctx.db
       .select({
         target_connector_id: conversations.target_connector_id,
@@ -27,18 +28,22 @@ export const inspectAuthoringContextTool: ConversationTool = {
       .where(eq(conversations.id, ctx.conversation_id))
       .limit(1);
     const [messageCount, toolCallCount, attachmentCount, pendingCount] = await Promise.all([
+      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
       ctx.db
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationMessages)
         .where(eq(conversationMessages.conversation_id, ctx.conversation_id)),
+      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
       ctx.db
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationToolCalls)
         .where(eq(conversationToolCalls.conversation_id, ctx.conversation_id)),
+      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
       ctx.db
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationAttachments)
         .where(eq(conversationAttachments.conversation_id, ctx.conversation_id)),
+      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
       ctx.db
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationElicitations)

@@ -35,6 +35,7 @@ export interface ReapOrphanedWaitsResult {
 }
 
 export async function reapOrphanedWaits(db: Db, boss: PgBoss): Promise<ReapOrphanedWaitsResult> {
+  // tenant-filter:exempt — wait reaper sweeps every tenant; row carries tenant_id forward
   const orphans = await db.select().from(workflowWaits);
   if (orphans.length === 0) return { reaped: 0 };
 

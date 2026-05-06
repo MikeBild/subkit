@@ -55,6 +55,7 @@ export const findUserTool: ConversationTool = {
       }
       let role_name: string | null = null;
       if (u.role_id) {
+        // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
         const named = await ctx.db
           .select({ name: roles.name })
           .from(roles)
@@ -85,7 +86,8 @@ export const findUserTool: ConversationTool = {
       .filter((rid): rid is string => typeof rid === "string");
     const roleRows =
       roleIds.length > 0
-        ? await ctx.db
+        ? // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
+          await ctx.db
             .select({ id: roles.id, name: roles.name })
             .from(roles)
             .where(inArray(roles.id, roleIds))

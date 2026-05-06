@@ -192,6 +192,7 @@ export function registerCompletionCapability(p: RegisterCompletionParams): void 
       if (!wf?.current_version_id) {
         return { completion: { values: [], total: 0, hasMore: false } };
       }
+      // tenant-filter:exempt — MCP capability listing — tenant scoping enforced at the route boundary
       const versionRows = await db
         .select({ dag: workflowVersions.dag })
         .from(workflowVersions)

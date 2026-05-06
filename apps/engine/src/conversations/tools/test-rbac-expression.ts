@@ -139,6 +139,7 @@ export const testRbacExpressionTool: ConversationTool = {
       if (rows[0]) {
         actorExists = true;
         if (rows[0].role_id) {
+          // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
           const named = await ctx.db
             .select({ name: roles.name })
             .from(roles)
@@ -160,6 +161,7 @@ export const testRbacExpressionTool: ConversationTool = {
       if (rows[0]) {
         actorExists = true;
         if (rows[0].role_id) {
+          // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
           const named = await ctx.db
             .select({ name: roles.name })
             .from(roles)

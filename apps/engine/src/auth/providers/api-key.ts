@@ -121,6 +121,7 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
       }
 
       const db = opts.db ?? getDb();
+      // tenant-filter:exempt — prefix-based credential lookup pre-tenant
       const rows = await db
         .select()
         .from(apiKeys)
@@ -245,6 +246,7 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
       if (row.user_id) {
         kind = "user";
         ownerId = row.user_id;
+        // tenant-filter:exempt — prefix-based credential lookup pre-tenant
         const userRows = await db
           .select({
             role: users.role,
@@ -273,6 +275,7 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
       } else if (row.system_account_id) {
         kind = "system_account";
         ownerId = row.system_account_id;
+        // tenant-filter:exempt — prefix-based credential lookup pre-tenant
         const acctRows = await db
           .select({
             id: systemAccounts.id,

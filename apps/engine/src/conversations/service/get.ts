@@ -31,11 +31,13 @@ export async function getConversation(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
+  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
   const msgs = await exec
     .select()
     .from(conversationMessages)
     .where(eq(conversationMessages.conversation_id, id))
     .orderBy(asc(conversationMessages.created_at));
+  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
   const calls = await exec
     .select()
     .from(conversationToolCalls)

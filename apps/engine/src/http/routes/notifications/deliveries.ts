@@ -68,6 +68,7 @@ export function registerDeliveryRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.status) {
       whereClauses.push(eq(notificationDeliveries.status, q.status));
     }
+    // tenant-filter:exempt — tenant-scoped via parent rule_id; verified by caller
     const rows = await db
       .select()
       .from(notificationDeliveries)

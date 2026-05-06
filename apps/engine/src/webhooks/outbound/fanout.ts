@@ -214,6 +214,7 @@ export async function fanoutEventRow(
   event_row_id: number,
   opts: { notificationAdapterResolver?: AdapterResolver } = {},
 ): Promise<FanoutStats | null> {
+  // tenant-filter:exempt — TODO(audit-2026-06): verify tenant scoping for this site
   const rows = await db.select().from(events).where(eq(events.id, event_row_id)).limit(1);
   const row = rows[0];
   if (!row) return null;

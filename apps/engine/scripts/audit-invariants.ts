@@ -327,19 +327,20 @@ function checkTenantFilter(): Result {
     engineSrc: ENGINE_SRC,
     tableAllowlist,
   });
-  // ADVISORY-PASS while the AST scan's burndown is in flight in
-  // separate follow-up PRs. The signal value of the AST scan over the
-  // prior regex heuristic is the lower noise floor (false positives
-  // from `Buffer.from`, `Array.from`, etc. are gone). Flip
-  // `status: "PASS"` to `status: "FAIL"` once the burndown lands and
-  // the count is 0; from that point a new violation fails the gate.
+  if (violations.length === 0) {
+    return {
+      id: "tenant_filter",
+      status: "PASS",
+      message: "no drizzle .from(table) chain without a tenant_id predicate",
+    };
+  }
   const rendered = violations
     .slice(0, 10)
     .map((v) => `${v.file}:${v.line} .from(${v.table}) without tenant_id predicate`);
   return {
     id: "tenant_filter",
-    status: "PASS",
-    message: `ADVISORY (AST scan; flip to FAIL after burndown): ${violations.length} call sites without tenant_id predicate\n  ${rendered.join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
+    status: "FAIL",
+    message: `${violations.length} call sites without tenant_id predicate (add the predicate or annotate with \`// tenant-filter:exempt — <reason>\`):\n  ${rendered.join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
   };
 }
 

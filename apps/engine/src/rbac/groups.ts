@@ -87,6 +87,7 @@ export async function removeMember(db: Db, group_id: string, user_id: string): P
 }
 
 export async function listMembers(db: Db, group_id: string): Promise<string[]> {
+  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ user_id: groupMembers.user_id })
     .from(groupMembers)
@@ -113,6 +114,7 @@ export async function revokeRoleFromGroup(
 }
 
 export async function listGroupRoles(db: Db, group_id: string): Promise<string[]> {
+  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ role_id: groupRoleAssignments.role_id })
     .from(groupRoleAssignments)

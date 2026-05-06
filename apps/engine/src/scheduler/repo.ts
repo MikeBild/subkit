@@ -86,6 +86,7 @@ export async function listSchedules(
 ): Promise<ScheduleRow[]> {
   const conds = [eq(workflowsSchedules.tenant_id, tenant_id)];
   if (workflow_id) conds.push(eq(workflowsSchedules.workflow_id, workflow_id));
+  // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
   const rows = await db
     .select()
     .from(workflowsSchedules)

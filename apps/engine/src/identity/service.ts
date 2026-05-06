@@ -712,6 +712,7 @@ export async function resolveSession(
   exec?: Executor,
 ): Promise<ResolveSessionResult> {
   const db = exec ?? getDb();
+  // tenant-filter:exempt — global identity-provider catalog
   const rows = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
   const row = rows[0];
   if (!row) return { session: null, reason: "not_found" };

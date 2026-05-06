@@ -166,6 +166,7 @@ export async function appendSnapshot(
   exec: Executor,
 ): Promise<void> {
   // Ordinal is monotonic — compute as count + 1 over the live set.
+  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
   const [row] = (await exec
     .select({ n: sql<number>`count(*)::int` })
     .from(conversationDrafts)

@@ -99,6 +99,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const conds = [eq(events.tenant_id, principal.tenant_id)];
     if (q.channel) conds.push(eq(events.channel, q.channel));
     if (q.type) conds.push(eq(events.type, q.type));
+    // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
     const rows = await db
       .select()
       .from(events)
@@ -253,6 +254,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
       //    `replayLimit` rows so fresh clients see recent history.
       let cursor = 0;
       if (Number.isFinite(lastEventId) && lastEventId !== null && lastEventId >= 0) {
+        // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
         const replay = await db
           .select()
           .from(events)
@@ -265,6 +267,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
         }
         if (cursor === 0) cursor = lastEventId;
       } else {
+        // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
         const recent = await db
           .select()
           .from(events)
@@ -289,6 +292,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
       // 3. Poll loop. Stops as soon as the client disconnects.
       const signal = c.req.raw.signal;
       while (!signal.aborted) {
+        // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
         const newRows = await db
           .select()
           .from(events)

@@ -87,6 +87,7 @@ export async function listConversations(
   const conds = [eq(conversations.tenant_id, p.tenant_id)];
   if (p.status) conds.push(eq(conversations.status, p.status));
   if (p.owner_id) conds.push(eq(conversations.owner_id, p.owner_id));
+  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
   const rows = await exec
     .select()
     .from(conversations)

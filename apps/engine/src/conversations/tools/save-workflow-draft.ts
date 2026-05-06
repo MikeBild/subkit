@@ -132,6 +132,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
     const draftHash = hashWorkflowDef(draftDef);
     let targetForIdempotency: string | null = args.target_workflow_id ?? null;
     if (!targetForIdempotency) {
+      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
       const convRows = await ctx.db
         .select({ target_workflow_id: conversations.target_workflow_id })
         .from(conversations)

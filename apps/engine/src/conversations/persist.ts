@@ -82,6 +82,7 @@ export async function buildUserContentParts(
 
   if (slugs.length === 0) return text;
 
+  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
   const rows = await db
     .select()
     .from(conversationAttachments)
@@ -351,16 +352,19 @@ export async function buildModelMessages(
   opts: BuildModelMessagesOpts = {},
 ): Promise<ModelMessage[]> {
   const [msgs, calls, elicitations] = await Promise.all([
+    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
     db
       .select()
       .from(conversationMessages)
       .where(eq(conversationMessages.conversation_id, conversation_id))
       .orderBy(asc(conversationMessages.created_at)),
+    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
     db
       .select()
       .from(conversationToolCalls)
       .where(eq(conversationToolCalls.conversation_id, conversation_id))
       .orderBy(asc(conversationToolCalls.created_at)),
+    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
     db
       .select()
       .from(conversationElicitations)

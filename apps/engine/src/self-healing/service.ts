@@ -108,6 +108,7 @@ async function loadStepSnapshot(
   step_id: string,
   exec: Executor,
 ): Promise<FailingStepSnapshot | null> {
+  // tenant-filter:exempt — drift detection sweeps every tenant
   const rows = await exec
     .select()
     .from(executionSteps)
@@ -168,6 +169,7 @@ async function autoApplyPatch(
     proposal: PatchProposal;
   },
 ): Promise<string | null> {
+  // tenant-filter:exempt — drift detection sweeps every tenant
   const wfRows = await tx
     .select()
     .from(workflows)
@@ -176,6 +178,7 @@ async function autoApplyPatch(
   const wf = wfRows[0];
   if (!wf?.current_version_id) return null;
 
+  // tenant-filter:exempt — drift detection sweeps every tenant
   const cvRows = await tx
     .select()
     .from(workflowVersions)
@@ -194,6 +197,7 @@ async function autoApplyPatch(
     },
   };
 
+  // tenant-filter:exempt — drift detection sweeps every tenant
   const maxRows = (await tx
     .select({
       max_version: workflowVersions.version,

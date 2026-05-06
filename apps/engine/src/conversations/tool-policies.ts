@@ -39,6 +39,7 @@ export interface ToolPolicies {
 export type PermissionMode = "auto" | "ask" | "plan" | "yolo";
 
 export async function getToolPolicies(db: Db, conversation_id: string): Promise<ToolPolicies> {
+  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
   const rows = await db
     .select({ tool_policies: conversations.tool_policies })
     .from(conversations)

@@ -81,6 +81,7 @@ export function registerSignalRoute(app: OpenAPIHono<AppEnv>): void {
       // Token-mediated path. The execution row carries the canonical
       // tenant_id; we look it up by primary key (no tenant filter,
       // since the verifier proves the caller knows the tenant).
+      // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
       const rows = await db
         .select({ id: executions.id, tenant_id: executions.tenant_id })
         .from(executions)

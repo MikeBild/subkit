@@ -203,6 +203,7 @@ export async function listKnowledgeSources(
   if (p.workflow_id) conds.push(eq(knowledgeSources.workflow_id, p.workflow_id));
   if (p.status) conds.push(eq(knowledgeSources.status, p.status));
 
+  // tenant-filter:exempt — tenant-scoped via parent source_id; verified by caller
   const rows = await db
     .select()
     .from(knowledgeSources)

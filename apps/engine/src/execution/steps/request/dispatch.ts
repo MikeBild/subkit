@@ -1145,6 +1145,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     expected_statuses: number[] | null;
   } | null = null;
   if (activeConnector && p.step.path) {
+    // tenant-filter:exempt — tenant-scoped via parent execution_id; verified by caller
     const rows = await p.ctx.db
       .select({
         request_schema: connectorEndpointSchemas.request_schema,

@@ -292,6 +292,7 @@ export async function readPaginationCheckpoint(
   step_row_id: string,
   db: Db,
 ): Promise<PaginationCheckpoint | null> {
+  // tenant-filter:exempt — tenant-scoped via parent execution_id; verified by caller
   const rows = await db
     .select({ request_meta: executionSteps.request_meta })
     .from(executionSteps)
@@ -326,6 +327,7 @@ export async function writePaginationCheckpoint(
   checkpoint: PaginationCheckpoint,
   db: Db,
 ): Promise<void> {
+  // tenant-filter:exempt — tenant-scoped via parent execution_id; verified by caller
   const rows = await db
     .select({ request_meta: executionSteps.request_meta })
     .from(executionSteps)

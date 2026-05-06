@@ -153,6 +153,7 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const conds = [eq(patchCandidates.tenant_id, principal.tenant_id)];
     if (q.status) conds.push(eq(patchCandidates.status, q.status));
     if (q.workflow_id) conds.push(eq(patchCandidates.workflow_id, q.workflow_id));
+    // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
     const rows = await db
       .select()
       .from(patchCandidates)

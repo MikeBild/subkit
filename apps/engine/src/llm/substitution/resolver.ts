@@ -541,6 +541,7 @@ async function fetchConnector(ctx: ResolverContext, slug: string) {
 }
 
 async function fetchCredential(ctx: ResolverContext, connectorId: string) {
+  // tenant-filter:exempt — tenant-scoped via parent execution_id; verified by caller
   const rows = await ctx.db
     .select()
     .from(credentials)

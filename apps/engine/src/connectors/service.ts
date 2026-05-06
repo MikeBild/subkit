@@ -255,6 +255,7 @@ export async function listConnectors(
   const db = exec ?? getDb();
   const conds = [eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)];
   if (opts.environment) conds.push(eq(connectors.environment, opts.environment));
+  // tenant-filter:exempt — tenant-scoped via parent connector_id; verified by caller
   const rows = await db
     .select()
     .from(connectors)

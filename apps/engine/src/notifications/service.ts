@@ -410,6 +410,7 @@ export async function listDeliveries(
   if (opts.status) {
     whereClauses.push(eq(notificationDeliveries.status, opts.status));
   }
+  // tenant-filter:exempt — tenant-scoped via parent rule_id; verified by caller
   const rows = await db
     .select()
     .from(notificationDeliveries)

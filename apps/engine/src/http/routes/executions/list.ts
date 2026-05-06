@@ -98,6 +98,7 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.status)
       conds.push(eq(executions.status, q.status as typeof executions.$inferSelect.status));
     if (q.request_source) conds.push(eq(executions.request_source, q.request_source));
+    // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
     const rows = await db
       .select()
       .from(executions)

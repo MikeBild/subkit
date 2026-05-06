@@ -54,6 +54,7 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
     let roleName: string | null = null;
 
     if (principal.kind === "user") {
+      // tenant-filter:exempt — global identity-provider catalog
       const [row] = await db
         .select({
           email: users.email,
@@ -67,6 +68,7 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
       email = row?.email ?? null;
       roleName = row?.role_name ?? row?.role_legacy ?? null;
     } else if (principal.kind === "system_account") {
+      // tenant-filter:exempt — global identity-provider catalog
       const [row] = await db
         .select({
           role_name: roles.name,

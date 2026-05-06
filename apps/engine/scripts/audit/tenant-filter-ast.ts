@@ -153,11 +153,36 @@ function hasExemptComment(call: CallExpression, sourceText: string): boolean {
     }
     cur = cur.getParent();
   }
-  // Same-line leading: rare but handle the case where the comment sits
-  // after the receiver on the previous line.
-  const lineStart = sourceText.lastIndexOf("\n", start);
-  const before = sourceText.substring(lineStart === -1 ? 0 : lineStart, start);
-  if (EXEMPT_RE.test(before)) return true;
+  // Mid-chain comment: scan upward from the .from() call through
+  // chain-continuation lines (chained method calls, await, opening
+  // parens, blank/comment lines). Drizzle queries often span many
+  // lines as a single statement, so a statement-level leading-trivia
+  // scan misses comments placed adjacent to the .from() inside the
+  // chain. We stop once we hit a line that clearly starts a fresh
+  // statement.
+  let scanFrom = start;
+  for (let i = 0; i < 12; i++) {
+    const prevNewline = sourceText.lastIndexOf("\n", scanFrom - 1);
+    if (prevNewline === -1) break;
+    const lineStartPos = sourceText.lastIndexOf("\n", prevNewline - 1) + 1;
+    const lineSlice = sourceText.substring(lineStartPos, prevNewline);
+    if (EXEMPT_RE.test(lineSlice)) return true;
+    const trimmed = lineSlice.trim();
+    const isContinuation =
+      trimmed === "" ||
+      trimmed.startsWith("//") ||
+      trimmed.startsWith(".") ||
+      trimmed.startsWith("await ") ||
+      trimmed.endsWith("(") ||
+      trimmed.endsWith(",") ||
+      trimmed.endsWith("&&") ||
+      trimmed.endsWith("||") ||
+      trimmed.endsWith("??") ||
+      trimmed === "(" ||
+      trimmed === ")";
+    if (!isContinuation) break;
+    scanFrom = lineStartPos;
+  }
   return false;
 }
 

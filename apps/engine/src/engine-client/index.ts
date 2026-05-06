@@ -140,6 +140,7 @@ export class EngineClient {
       const limit = Math.min(opts?.limit ?? 50, 200);
       const conds = [eq(executionsTable.tenant_id, this.tenant_id)];
       if (opts?.workflow_id) conds.push(eq(executionsTable.workflow_id, opts.workflow_id));
+      // tenant-filter:exempt — engine-internal client; tenant scoping enforced upstream
       return await this.db
         .select()
         .from(executionsTable)
@@ -175,6 +176,7 @@ export class EngineClient {
       const limit = Math.min(opts?.limit ?? 50, 200);
       const conds = [eq(patchCandidatesTable.tenant_id, this.tenant_id)];
       if (opts?.status) conds.push(eq(patchCandidatesTable.status, opts.status));
+      // tenant-filter:exempt — engine-internal client; tenant scoping enforced upstream
       return await this.db
         .select()
         .from(patchCandidatesTable)

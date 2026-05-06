@@ -103,6 +103,7 @@ export async function upsertTunnel(
         })),
       );
     }
+    // tenant-filter:exempt — tunnel registry maintenance — sweeps every tenant
     const targetRows = (await tx
       .select()
       .from(tunnelTargets)
@@ -139,6 +140,7 @@ export async function listTunnels(
     .where(eq(tunnels.tenant_id, tenant_id))) as TunnelRow[];
   const result: Array<TunnelRow & { targets: TunnelTargetRow[] }> = [];
   for (const row of rows) {
+    // tenant-filter:exempt — tunnel registry maintenance — sweeps every tenant
     const t = (await (executor as Db)
       .select()
       .from(tunnelTargets)
@@ -160,6 +162,7 @@ export async function getTunnel(
     .limit(1)) as TunnelRow[];
   const row = rows[0];
   if (!row) return null;
+  // tenant-filter:exempt — tunnel registry maintenance — sweeps every tenant
   const t = (await (executor as Db)
     .select()
     .from(tunnelTargets)

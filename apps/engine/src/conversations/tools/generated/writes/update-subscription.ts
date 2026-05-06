@@ -55,6 +55,7 @@ async function resolveConversationPrincipal(ctx: ToolContext): Promise<ResolvedP
     if (!row) return null;
     let roleNames: string[] = [row.role];
     if (row.role_id) {
+      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
       const named = await ctx.db
         .select({ name: roles.name })
         .from(roles)
@@ -80,6 +81,7 @@ async function resolveConversationPrincipal(ctx: ToolContext): Promise<ResolvedP
     if (!row) return null;
     let roleNames: string[] = ["member"];
     if (row.role_id) {
+      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
       const named = await ctx.db
         .select({ name: roles.name })
         .from(roles)
