@@ -3,7 +3,7 @@
 // providerMetadata.anthropic.usage fallback.
 
 import { describe, expect, test } from "bun:test";
-import { isAbortError, readStepUsage } from "../usage.ts";
+import { isAbortError, readStepUsage } from "./usage.ts";
 
 describe("readStepUsage", () => {
   test("zeros out missing usage fields", () => {

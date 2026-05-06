@@ -31,17 +31,25 @@ export async function getConversation(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
   const msgs = await exec
     .select()
     .from(conversationMessages)
-    .where(eq(conversationMessages.conversation_id, id))
+    .where(
+      and(
+        eq(conversationMessages.tenant_id, tenant_id),
+        eq(conversationMessages.conversation_id, id),
+      ),
+    )
     .orderBy(asc(conversationMessages.created_at));
-  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
   const calls = await exec
     .select()
     .from(conversationToolCalls)
-    .where(eq(conversationToolCalls.conversation_id, id))
+    .where(
+      and(
+        eq(conversationToolCalls.tenant_id, tenant_id),
+        eq(conversationToolCalls.conversation_id, id),
+      ),
+    )
     .orderBy(asc(conversationToolCalls.created_at));
   const draft = await loadDraft(tenant_id, id, exec);
   const conversationRecord = rowToRecord(row);

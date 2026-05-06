@@ -4,5 +4,7 @@
 
 export * from "./hooks.ts";
 export * from "./policy.ts";
+export * from "./providers/api-key.ts";
 export * from "./providers/oidc.ts";
+export * from "./providers/portal-token.ts";
 export * from "./types.ts";

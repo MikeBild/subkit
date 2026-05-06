@@ -3,7 +3,7 @@
 // orchestrator state — so a unit test pins the runtime contract.
 
 import { describe, expect, test } from "bun:test";
-import { committedStopCondition, pausedStopCondition } from "../stop-conditions.ts";
+import { committedStopCondition, pausedStopCondition } from "./stop-conditions.ts";
 
 describe("committedStopCondition", () => {
   test("returns false on empty step list", () => {

@@ -3,7 +3,7 @@
 // silently when the SDK upgrades the provider registry signature.
 
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_BUDGET, MAX_REPAIRS_PER_TURN, resolveLanguageModel } from "../model-resolver.ts";
+import { DEFAULT_BUDGET, MAX_REPAIRS_PER_TURN, resolveLanguageModel } from "./model-resolver.ts";
 
 describe("resolveLanguageModel", () => {
   test("returns a fresh MockLanguageModelV3 for the mock provider", async () => {

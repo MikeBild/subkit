@@ -251,32 +251,36 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // Thread loaded skills from the conversation row into the prompt so
   // on-demand knowledge from `load_skill(slug)` actually reaches the
   // model. Also thread `surface` so per-surface prompt variants fire.
-  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK; defense-in-depth pending Stream 4 split
   const loadedSkillsRowForPrompt = await p.db
     .select({ loaded_skills: conversations.loaded_skills })
     .from(conversations)
-    .where(eq(conversations.id, p.conversation_id))
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
     .limit(1);
   const explicitSkillSlugs = (loadedSkillsRowForPrompt[0]?.loaded_skills ?? []) as string[];
 
   // Auto-load skills based on conversation context — attachment MIME
   // types, recent execution failures, and target workflow presence.
   // Deterministic keyword match against `skills.trigger_keywords`.
-  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK; defense-in-depth pending Stream 4 split
   const attachmentMimeRows = await p.db
     .select({ content_type: conversationAttachments.content_type })
     .from(conversationAttachments)
-    .where(eq(conversationAttachments.conversation_id, p.conversation_id));
+    .where(
+      and(
+        eq(conversationAttachments.tenant_id, p.tenant_id),
+        eq(conversationAttachments.conversation_id, p.conversation_id),
+      ),
+    );
   const attachmentMimeTypes = attachmentMimeRows
     .map((r) => r.content_type)
     .filter((m): m is string => typeof m === "string" && m.length > 0);
   let hasFailedExecution = false;
   if (workflowIdForTurn) {
-    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK; defense-in-depth pending Stream 4 split
     const failed = await p.db
       .select({ id: executions.id })
       .from(executions)
-      .where(eq(executions.workflow_id, workflowIdForTurn))
+      .where(
+        and(eq(executions.tenant_id, p.tenant_id), eq(executions.workflow_id, workflowIdForTurn)),
+      )
       .limit(5);
     hasFailedExecution = failed.length > 0; // any prior execution counts as feedback context
   }
@@ -320,17 +324,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   } | null = null;
   const activeConnectorId =
     p.connector_id ??
-    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK; defense-in-depth pending Stream 4 split
     (
       await p.db
         .select({ target_connector_id: conversations.target_connector_id })
         .from(conversations)
-        .where(eq(conversations.id, p.conversation_id))
+        .where(
+          and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+        )
         .limit(1)
     )[0]?.target_connector_id ??
     null;
   if (activeConnectorId) {
-    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK; defense-in-depth pending Stream 4 split
     const epRows = await p.db
       .select({
         method: connectorEndpointSchemas.method,
@@ -339,7 +343,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         confidence: connectorEndpointSchemas.confidence,
       })
       .from(connectorEndpointSchemas)
-      .where(eq(connectorEndpointSchemas.connector_id, activeConnectorId))
+      .where(
+        and(
+          eq(connectorEndpointSchemas.tenant_id, p.tenant_id),
+          eq(connectorEndpointSchemas.connector_id, activeConnectorId),
+        ),
+      )
       .limit(50);
     const head = epRows[0];
     if (head) {
@@ -401,7 +410,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   //    next_best_actions: ["ask_user_form"] }` only reaches the LLM
   // via the truncated tool-result message — putting the action list
   // in prior_failures keeps it in the high-priority section.
-  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK; defense-in-depth pending Stream 4 split
   const recentToolCalls = await p.db
     .select({
       tool: conversationToolCalls.tool,
@@ -409,7 +417,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       created_at: conversationToolCalls.created_at,
     })
     .from(conversationToolCalls)
-    .where(eq(conversationToolCalls.conversation_id, p.conversation_id))
+    .where(
+      and(
+        eq(conversationToolCalls.tenant_id, p.tenant_id),
+        eq(conversationToolCalls.conversation_id, p.conversation_id),
+      ),
+    )
     .orderBy(desc(conversationToolCalls.created_at))
     .limit(8);
   const priorFailuresFromTools: Array<{ step_id: string; error: string }> = [];
@@ -447,6 +460,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       user_turns: await (async () => {
         const parts = await buildUserContentParts(
           p.db,
+          p.tenant_id,
           p.conversation_id,
           currentUserText,
           route.provider,
@@ -561,14 +575,13 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // skill-gated tools are filtered out until the matching
   // `load_skill(slug)` is called and policy-gated tools see the
   // right pre-execution mode.
-  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK; defense-in-depth pending Stream 4 split
   const skillAndPolicyRow = await p.db
     .select({
       loaded_skills: conversations.loaded_skills,
       tool_policies: conversations.tool_policies,
     })
     .from(conversations)
-    .where(eq(conversations.id, p.conversation_id))
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
     .limit(1);
   const persistedLoadedSkills = (skillAndPolicyRow[0]?.loaded_skills ?? []) as string[];
   // Auto-load the canonical authoring skills so the palette exposes
@@ -1560,11 +1573,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     let status: RunLoopResult["status"] = "active";
     let committedWorkflowId: string | undefined;
     let pendingElicitationId: string | undefined;
-    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK; defense-in-depth pending Stream 4 split
     const rows = await p.db
       .select()
       .from(conversations)
-      .where(eq(conversations.id, p.conversation_id))
+      .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
       .limit(1);
     const persistedStatus = rows[0]?.status ?? null;
     const conversationCancelled =
