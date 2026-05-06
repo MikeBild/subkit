@@ -332,7 +332,9 @@ export type AppliedAuthMethod =
   | "basic"
   | "oauth2_static"
   | "oauth2_refreshed"
-  | "aws_sigv4";
+  | "aws_sigv4"
+  | "token_mint_static"
+  | "token_mint_refreshed";
 
 /** Per-connector rollup in `RunResult.connector_resolutions`. One entry per
  *  unique (step_key, connector_id) pair — lets debuggers see at a glance

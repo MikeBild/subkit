@@ -22,6 +22,7 @@ export const credentialModeEnum = pgEnum("credential_mode", [
   "basic",
   "oauth2",
   "aws_sigv4",
+  "token_mint",
 ]);
 export const endUserCombineModeEnum = pgEnum("end_user_combine_mode", ["merge", "replace"]);
 export const connectorTemplateSourceEnum = pgEnum("connector_template_source", [
