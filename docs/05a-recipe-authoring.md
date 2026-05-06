@@ -444,7 +444,7 @@ Every recipe-touching PR runs:
 
 ```sh
 bun run lint:recipes        # F4 lint
-bun run check:terminology   # banned: automation, automations, superglue
+bun run check:terminology   # see scripts/terminology.banned.txt
 bun run test:unit           # includes recipe-snapshot.test.ts
 bun run verify:ai           # includes recipe-discovery validator
 ```

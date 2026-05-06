@@ -7,7 +7,7 @@
 // locally via setInterval because pg-boss' cron is minute-resolution.
 
 import { CronExpressionParser } from "cron-parser";
-import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";

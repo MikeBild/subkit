@@ -27,7 +27,7 @@
 
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -137,7 +137,7 @@ function parseCoverageTable(text: string): CoverageRow[] {
     const parts = line.split("|").map((p) => p.trim());
     if (parts.length < 3) continue;
     const file = parts[0];
-    if (!file || !file.startsWith("apps/")) continue;
+    if (!file?.startsWith("apps/")) continue;
     const funcs = Number(parts[1]);
     const lines = Number(parts[2]);
     if (Number.isNaN(funcs) || Number.isNaN(lines)) continue;
@@ -229,13 +229,11 @@ let pass = 0;
 let fail = 0;
 let skip = 0;
 for (const r of results) {
-  // biome-ignore lint/suspicious/noConsole: this is a CI script — direct stdout is the contract
   console.log(`${r.status.padEnd(4)} ${r.subsystem.padEnd(36)} ${r.message}`);
   if (r.status === "PASS") pass++;
   else if (r.status === "FAIL") fail++;
   else skip++;
 }
-// biome-ignore lint/suspicious/noConsole: summary line for CI parsing
 console.log(`\n${pass} pass, ${fail} fail, ${skip} skip`);
 
 process.exit(fail === 0 ? 0 : 1);

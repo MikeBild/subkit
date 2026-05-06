@@ -212,5 +212,3 @@ to drop the legacy v3.4.x runtime-config rows. The two retained keys:
 - [`settings-reference.md`](./settings-reference.md) — auto-generated
   per-leaf reference (path, type, default, scope, sensitive,
   requiresRestart).
-- [`releases/v3.5.0-runbook.md`](../releases/v3.5.0-runbook.md) —
-  cut-the-release checklist and v3.6 follow-ups.
