@@ -6,4 +6,5 @@ export * from "./attachments.ts";
 export * from "./parts.ts";
 export * from "./service.ts";
 export * from "./streaming.ts";
+export * from "./tool-policies.ts";
 export * from "./types.ts";

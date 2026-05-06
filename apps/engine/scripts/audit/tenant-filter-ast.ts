@@ -344,22 +344,68 @@ export function auditTenantFilter(opts: AuditOpts): TenantFilterViolation[] {
     const fileTenantHelpers = collectTenantHelperNames(sourceFile);
     sourceFile.forEachDescendant((node) => {
       if (!Node.isCallExpression(node)) return;
-      const expr = node.getExpression();
-      if (!Node.isPropertyAccessExpression(expr)) return;
-      if (expr.getName() !== "from") return;
-      if (!isQueryStarter(expr.getExpression())) return;
-      const args = node.getArguments();
-      if (args.length !== 1) return;
-      const table = resolveTableArg(args[0]!);
-      if (!table) return;
-      if (tableAllowlist.has(table)) return;
-      if (hasExemptComment(node, sourceText)) return;
-      if (chainHasTenantWhere(node, fileTenantHelpers)) return;
-      const lineCol = sourceFile.getLineAndColumnAtPos(node.getStart());
-      violations.push({ file: rel, line: lineCol.line, table });
+      const v = inspectQueryNode(node, {
+        rel,
+        sourceText,
+        sourceFile,
+        tableAllowlist,
+        fileTenantHelpers,
+      });
+      if (v) violations.push(v);
     });
   }
   return violations;
+}
+
+interface InspectOpts {
+  rel: string;
+  sourceText: string;
+  sourceFile: SourceFile;
+  tableAllowlist: ReadonlySet<string>;
+  fileTenantHelpers: ReadonlySet<string>;
+}
+
+/**
+ * Classify a CallExpression and report a violation if it is a
+ * Drizzle SELECT chain that lacks a tenant predicate.
+ *
+ * SCOPE — INTENTIONAL BLIND SPOTS:
+ *   * `db.update(<table>).set(...).where(...)` — NOT inspected.
+ *   * `db.delete(<table>).where(...)` — NOT inspected.
+ *   * `db.insert(<table>).values(...)` — NOT inspected (no WHERE;
+ *     covered by the schema-level `tenant_id NOT NULL` constraint).
+ *
+ * The scaffolding to extend the scan to update/delete chains is
+ * trivially copy-pasteable from this function, but turning it on
+ * surfaces ~180 pre-existing call sites that need triage. That
+ * burndown deserves its own focused PR (mirror this PR's shape:
+ * fix or annotate every site, then flip the gate). For now the
+ * SELECT path is the gate; update/delete paths are
+ * reviewer-enforced. Documented in `apps/engine/AGENTS.md`.
+ */
+function inspectQueryNode(node: CallExpression, opts: InspectOpts): TenantFilterViolation | null {
+  const expr = node.getExpression();
+  if (Node.isPropertyAccessExpression(expr)) {
+    if (expr.getName() === "from" && isQueryStarter(expr.getExpression())) {
+      return reportIfMissing(node, node.getArguments(), opts);
+    }
+  }
+  return null;
+}
+
+function reportIfMissing(
+  node: CallExpression,
+  args: Node[],
+  opts: InspectOpts,
+): TenantFilterViolation | null {
+  if (args.length !== 1) return null;
+  const table = resolveTableArg(args[0]!);
+  if (!table) return null;
+  if (opts.tableAllowlist.has(table)) return null;
+  if (hasExemptComment(node, opts.sourceText)) return null;
+  if (chainHasTenantWhere(node, opts.fileTenantHelpers)) return null;
+  const lineCol = opts.sourceFile.getLineAndColumnAtPos(node.getStart());
+  return { file: opts.rel, line: lineCol.line, table };
 }
 
 export function auditTenantFilterFromText(
@@ -380,19 +426,14 @@ export function auditTenantFilterFromText(
   const fileTenantHelpers = collectTenantHelperNames(sourceFile);
   sourceFile.forEachDescendant((node) => {
     if (!Node.isCallExpression(node)) return;
-    const expr = node.getExpression();
-    if (!Node.isPropertyAccessExpression(expr)) return;
-    if (expr.getName() !== "from") return;
-    if (!isQueryStarter(expr.getExpression())) return;
-    const args = node.getArguments();
-    if (args.length !== 1) return;
-    const table = resolveTableArg(args[0]!);
-    if (!table) return;
-    if (allow.has(table)) return;
-    if (hasExemptComment(node, sourceText)) return;
-    if (chainHasTenantWhere(node, fileTenantHelpers)) return;
-    const lineCol = sourceFile.getLineAndColumnAtPos(node.getStart());
-    violations.push({ file: fileName, line: lineCol.line, table });
+    const v = inspectQueryNode(node, {
+      rel: fileName,
+      sourceText,
+      sourceFile,
+      tableAllowlist: allow,
+      fileTenantHelpers,
+    });
+    if (v) violations.push(v);
   });
   return violations;
 }

@@ -103,11 +103,12 @@ export async function upsertTunnel(
         })),
       );
     }
-    // tenant-filter:exempt — tunnel registry maintenance — sweeps every tenant
     const targetRows = (await tx
       .select()
       .from(tunnelTargets)
-      .where(eq(tunnelTargets.tunnel_id, row.id))) as TunnelTargetRow[];
+      .where(
+        and(eq(tunnelTargets.tenant_id, params.tenant_id), eq(tunnelTargets.tunnel_id, row.id)),
+      )) as TunnelTargetRow[];
     return { tunnel: row, targets: targetRows };
   });
 }
@@ -123,11 +124,15 @@ export async function markTunnelDisconnected(
     .where(and(eq(tunnels.tenant_id, tenant_id), eq(tunnels.id, tunnel_id)));
 }
 
-export async function touchTunnelLastSeen(tunnel_id: string, executor: Executor): Promise<void> {
+export async function touchTunnelLastSeen(
+  tenant_id: string,
+  tunnel_id: string,
+  executor: Executor,
+): Promise<void> {
   await (executor as Db)
     .update(tunnels)
     .set({ last_seen_at: new Date() })
-    .where(eq(tunnels.id, tunnel_id));
+    .where(and(eq(tunnels.tenant_id, tenant_id), eq(tunnels.id, tunnel_id)));
 }
 
 export async function listTunnels(
@@ -140,11 +145,12 @@ export async function listTunnels(
     .where(eq(tunnels.tenant_id, tenant_id))) as TunnelRow[];
   const result: Array<TunnelRow & { targets: TunnelTargetRow[] }> = [];
   for (const row of rows) {
-    // tenant-filter:exempt — tunnel registry maintenance — sweeps every tenant
     const t = (await (executor as Db)
       .select()
       .from(tunnelTargets)
-      .where(eq(tunnelTargets.tunnel_id, row.id))) as TunnelTargetRow[];
+      .where(
+        and(eq(tunnelTargets.tenant_id, tenant_id), eq(tunnelTargets.tunnel_id, row.id)),
+      )) as TunnelTargetRow[];
     result.push({ ...row, targets: t });
   }
   return result;
@@ -162,11 +168,12 @@ export async function getTunnel(
     .limit(1)) as TunnelRow[];
   const row = rows[0];
   if (!row) return null;
-  // tenant-filter:exempt — tunnel registry maintenance — sweeps every tenant
   const t = (await (executor as Db)
     .select()
     .from(tunnelTargets)
-    .where(eq(tunnelTargets.tunnel_id, row.id))) as TunnelTargetRow[];
+    .where(
+      and(eq(tunnelTargets.tenant_id, tenant_id), eq(tunnelTargets.tunnel_id, row.id)),
+    )) as TunnelTargetRow[];
   return { ...row, targets: t };
 }
 

@@ -27,7 +27,13 @@ responsibilities.
   with a mandatory non-`TODO`/`FIXME` reason; see
   `.tenant-filter-allowlist.txt` and
   `apps/engine/scripts/audit/tenant-filter-ast.ts` for the full
-  detection rules.
+  detection rules. **Scope:** the AST scan covers
+  `db.select().from(<table>).where(...)` chains only —
+  `db.update(<table>).set(...).where(...)` and
+  `db.delete(<table>).where(...)` chains are reviewer-enforced.
+  Extending the scan to those write paths surfaces ~180 pre-existing
+  call sites that need triage; that burndown is tracked as a
+  follow-up audit pass.
 - **Audit on every state change.** Use the helpers in `audit/`. Include
   request source (`api | cli | scheduler | mcp | webhook | tool-chain | ui`) and
   actor. A state change without an audit entry is a bug.
