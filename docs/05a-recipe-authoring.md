@@ -369,6 +369,75 @@ Notes for authors:
   scheduler itself supplies no payload — the workflow reads its inputs
   from the connectors it queries.
 
+## Walkthrough — auth-chain recipe (mint then use)
+
+This is the shipped `firebase.signin-email-password-then-firestore-read`
+recipe. It demonstrates the canonical *mint then use* shape for any
+non-OAuth2 username/password JWT flow — Firebase Auth REST, Cognito
+InitiateAuth (when not handled by the connector's OAuth2 grant),
+generic POST `/login` endpoints, etc. Two patterns are load-bearing:
+**redacted secret outputs** and **dot-path scope substitution** in
+downstream headers.
+
+```json
+{
+  "slug": "signin-email-password-then-firestore-read",
+  "workflow": {
+    "name": "firebase-signin-email-password-then-firestore-read",
+    "steps": [
+      {
+        "kind": "request",
+        "id": "signin",
+        "method": "POST",
+        "url": "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword",
+        "query": { "key": "${input.api_key}" },
+        "body": {
+          "email": "${input.email}",
+          "password": "${input.password}",
+          "returnSecureToken": true
+        },
+        "outputs": {
+          "idToken": { "secret": true },
+          "refreshToken": { "secret": true }
+        }
+      },
+      {
+        "kind": "request",
+        "id": "read_document",
+        "method": "GET",
+        "url": "https://firestore.googleapis.com/v1/projects/${input.project_id}/databases/(default)/documents/${input.collection}/${input.document_id}",
+        "headers": {
+          "Authorization": "Bearer ${scope.signin.idToken}"
+        }
+      }
+    ]
+  }
+}
+```
+
+Notes for authors:
+
+- **`outputs.<path>.secret = true`** marks the field for redaction in
+  audit log, step preview, and offload — but the raw value stays in the
+  in-memory scope so downstream steps can still substitute it. Reach for
+  this on every minted token (`idToken`, `access_token`,
+  `AuthenticationResult.IdToken`, `AssumeRoleResult.Credentials.SessionToken`).
+- **`${scope.<step_id>.<dot.path>}`** is dot-notation, NOT JSON-pointer.
+  Nested paths work transparently:
+  `${scope.signin.idToken}` (top-level) and
+  `${scope.assume.AssumeRoleResult.Credentials.AccessKeyId}` (nested) both
+  resolve via repeated property lookup.
+- The first step has no `connector_id` substitution because the auth API
+  lives at a fixed URL distinct from the protected resource. Use the
+  hard-coded URL in step 1 and `${connector.<slug>.base_url}` (or another
+  hard-coded URL) in step 2.
+- When the protected resource API is reachable via a connector with an
+  existing auth mode (`oauth2` Authorization Code, `oauth2` Password
+  Grant, `aws_sigv4`, `bearer`, etc.), prefer that mode over a hand-wired
+  two-step chain — the connector's `refreshIfStale()` handles minting
+  transparently and the workflow stays single-step. Use this two-step
+  pattern only when no built-in auth mode fits the provider's flow.
+
 ## Quality gate
 
 Every recipe-touching PR runs:
