@@ -12,7 +12,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
-import { getToolPolicies, setToolPolicy } from "./tool-policies.ts";
+import { getToolPolicies, setToolPolicy, type ToolPolicyAuditCtx } from "./tool-policies.ts";
+
+const AUDIT_CTX: ToolPolicyAuditCtx = {
+  actor_type: "system",
+  actor_id: null,
+  request_source: "cli",
+};
 
 let testDb: TestDb;
 let tenantA: string;
@@ -40,7 +46,7 @@ beforeAll(async () => {
   conversationA = convA.id;
   // Seed a real policy on tenant A's conversation so the read-back
   // assertion below has something to differentiate from "row missing".
-  await setToolPolicy(testDb.db, tenantA, conversationA, "run_workflow", "no_confirm");
+  await setToolPolicy(testDb.db, tenantA, conversationA, "run_workflow", "no_confirm", AUDIT_CTX);
 });
 
 afterAll(async () => {
@@ -66,6 +72,7 @@ describe("tool-policies cross-tenant isolation", () => {
       conversationA,
       "run_workflow",
       "confirm_after_execution",
+      AUDIT_CTX,
     );
     const aPolicies = await getToolPolicies(testDb.db, tenantA, conversationA);
     expect(aPolicies.run_workflow).toBe("no_confirm");
@@ -75,7 +82,7 @@ describe("tool-policies cross-tenant isolation", () => {
     // The null-clear path runs the same UPDATE; same isolation
     // contract. Tenant B's null-clear of tenant A's row must not
     // remove tenant A's "no_confirm" override.
-    await setToolPolicy(testDb.db, tenantB, conversationA, "run_workflow", null);
+    await setToolPolicy(testDb.db, tenantB, conversationA, "run_workflow", null, AUDIT_CTX);
     const aPolicies = await getToolPolicies(testDb.db, tenantA, conversationA);
     expect(aPolicies.run_workflow).toBe("no_confirm");
   });

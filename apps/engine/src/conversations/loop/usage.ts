@@ -43,20 +43,24 @@ export function readStepUsage(step: RawStep): StepUsage {
   return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
 }
 
-// Heuristic abort/cancel detection. The first two arms are safe: a
-// DOMException of name AbortError/TimeoutError is unambiguous, and
-// matching `abort|cancel` against a real Error's message catches the
-// common SDK shapes that don't bother with DOMException. The
-// String(err) fallback is loose by design — an unknown thrown value
-// is rare in this code path and we'd rather treat a "cancellation
-// policy"-style provider message as user abort than miss a real
-// abort thrown as a string. Pinned by the unit test below; tighten
-// only with a deliberate decision (e.g. anchored regex or an SDK
-// upgrade that exposes a cleaner abort signal).
+// Heuristic abort/cancel detection.
+//
+// The first arm (DOMException AbortError/TimeoutError) is the
+// canonical signal — every modern fetch / stream / setTimeout
+// abort lands here. The remaining arms are best-effort matches
+// against SDK shapes that throw a regular Error or a string.
+// The regex is anchored on word boundaries so a substring like
+// "cancellation policy" inside a provider message DOES NOT count
+// as user abort — that was a documented false-positive class on
+// the prior loose regex; collapsing a real provider error into
+// "abort" makes the loop swallow it instead of surfacing it.
+// Pinned by the unit tests below.
+const ABORT_TOKEN_RE = /\b(?:abort(?:ed)?|cancel(?:l?ed)?)\b/i;
+
 export function isAbortError(err: unknown): boolean {
   if (err instanceof DOMException) {
     return err.name === "AbortError" || err.name === "TimeoutError";
   }
-  if (err instanceof Error) return /abort|cancel/i.test(err.message);
-  return /abort|cancel/i.test(String(err));
+  if (err instanceof Error) return ABORT_TOKEN_RE.test(err.message);
+  return ABORT_TOKEN_RE.test(String(err));
 }

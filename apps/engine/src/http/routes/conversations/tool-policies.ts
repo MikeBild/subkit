@@ -4,7 +4,6 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { AuditAction, auditAwait, ToolPolicyChangedMetadataSchema } from "../../../audit/index.ts";
 import * as svc from "../../../conversations/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -70,39 +69,17 @@ export function registerToolPoliciesRoutes(app: OpenAPIHono<AppEnv>): void {
     const { setToolPolicy, getToolPolicies } = await import(
       "../../../conversations/tool-policies.ts"
     );
-    // Snapshot prior policy state so each audit row records both
-    // the relaxation direction and the destination — investigators
-    // querying "who relaxed gating on tool X" need both ends.
-    const prior = await getToolPolicies(db, principal.tenant_id, id);
+    // The service-layer setToolPolicy now owns the audit emission
+    // and runs each change inside a SELECT … FOR UPDATE
+    // transaction. The route just walks the request body and
+    // forwards the actor identity / request source so the audit
+    // row carries the right context.
     for (const [toolName, mode] of Object.entries(body.policies)) {
-      await setToolPolicy(db, principal.tenant_id, id, toolName, mode);
-      // Tool-policy changes are governance decisions: who relaxed
-      // gating on which tool, when, for which conversation. Audit
-      // every change so compliance can scan `audit_log` for any
-      // `tool_policy.changed` entry without scraping HTTP logs.
-      // Parse through ToolPolicyChangedMetadataSchema to lock the
-      // shape downstream BI / SIEM consumers will see. A future
-      // typo (`mode_prior`, "API" vs "api", etc.) fails at request
-      // time instead of corrupting the audit log.
-      const metadata = ToolPolicyChangedMetadataSchema.parse({
-        tool: toolName,
-        mode: mode ?? null,
-        prior_mode: prior[toolName] ?? null,
+      await setToolPolicy(db, principal.tenant_id, id, toolName, mode, {
+        actor_type: principal.kind,
+        actor_id: principal.id,
         request_source: "api",
       });
-      await auditAwait(
-        {
-          tenant_id: principal.tenant_id,
-          actor_type: principal.kind,
-          actor_id: principal.id,
-          action: AuditAction.TOOL_POLICY_CHANGED,
-          resource_type: "conversation",
-          resource_id: id,
-          result: "success",
-          metadata,
-        },
-        db,
-      );
     }
     const policies = await getToolPolicies(db, principal.tenant_id, id);
     return c.json({ policies }, 200);

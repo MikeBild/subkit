@@ -94,15 +94,24 @@ describe("isAbortError", () => {
     expect(isAbortError("the request was cancelled")).toBe(true);
   });
 
-  test("known false-positive class: provider strings containing the word 'cancel'", () => {
-    // Documented contract: the heuristic IS loose on purpose. A
-    // provider error whose message contains "cancellation policy"
-    // or similar gets misclassified as abort. We accept that — the
-    // alternative (anchored regex) misses real abort cases thrown
-    // as strings. This test pins the current behaviour so a future
-    // tightening is a deliberate decision, not an accident.
-    expect(isAbortError(new Error("provider has a cancellation policy"))).toBe(true);
-    expect(isAbortError("operation cannot be cancelled by tenant")).toBe(true);
+  test("rejects provider strings where the cancel/abort token is INSIDE another word", () => {
+    // The regex is anchored on \b word boundaries, so substrings
+    // inside a longer word ("cancellation", "cancellable") do not
+    // count. This was the prior loose-regex false-positive class:
+    // a real provider error containing "cancellation policy" got
+    // misclassified as user abort and the loop swallowed it.
+    expect(isAbortError(new Error("provider has a cancellation policy"))).toBe(false);
+    expect(isAbortError("operation cannot be cancellation-policy gated")).toBe(false);
+  });
+
+  test("still recognises the standalone token forms thrown by SDKs", () => {
+    // Word-boundary form: "aborted", "cancelled", "cancel", "abort"
+    // all match. The regex covers both UK and US spellings of
+    // "cancel(l)ed".
+    expect(isAbortError(new Error("aborted"))).toBe(true);
+    expect(isAbortError(new Error("operation was cancelled"))).toBe(true);
+    expect(isAbortError(new Error("operation was canceled"))).toBe(true);
+    expect(isAbortError("aborted upstream")).toBe(true);
   });
 
   test("rejects unrelated errors", () => {

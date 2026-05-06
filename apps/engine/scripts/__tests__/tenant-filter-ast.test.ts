@@ -213,6 +213,53 @@ describe("tenant-filter-ast", () => {
     expect(auditTenantFilterFromText(STRING_FROM_NOT_QUERY)).toEqual([]);
   });
 
+  test("exempt comment placed beyond MAX_CHAIN_SCAN_LINES is NOT recognised (boundary pin)", () => {
+    // Pins the upper bound of the mid-chain trivia scan
+    // (MAX_CHAIN_SCAN_LINES = 12). An exempt comment 14 lines
+    // above the .from() must NOT be treated as exempt — otherwise
+    // a future raise of the constant could mask real violations
+    // by accident. If a legitimate query needs the comment at
+    // that distance, the constant should be raised deliberately
+    // and this test updated.
+    const text = `
+import { eq } from "drizzle-orm";
+import { conversations } from "../db/schema.ts";
+
+declare const db: any;
+declare const id: string;
+
+export async function load() {
+  const x =
+    null ??
+    // tenant-filter:exempt — far-away exempt that should NOT count
+    (
+      // padding line 1
+      // padding line 2
+      // padding line 3
+      // padding line 4
+      // padding line 5
+      // padding line 6
+      // padding line 7
+      // padding line 8
+      // padding line 9
+      // padding line 10
+      // padding line 11
+      // padding line 12
+      // padding line 13
+      // padding line 14
+      await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, id))
+        .limit(1)
+    )[0];
+  return x;
+}
+`;
+    const v = auditTenantFilterFromText(text);
+    expect(v).toHaveLength(1);
+  });
+
   test("exempt comment with TODO/FIXME reason still flags the site", () => {
     const text = `
 import { eq } from "drizzle-orm";

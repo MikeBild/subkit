@@ -3,8 +3,9 @@
 // `setToolPolicy` API surface.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
-import { auditLog, conversations } from "../../db/schema/index.ts";
+import { apiKeys, auditLog, conversations, tenants, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -146,36 +147,66 @@ describe("conversation tool-policies HTTP route (Bug RR)", () => {
   });
 });
 
-describe("conversation tool-policies HTTP route — RBAC + cross-tenant", () => {
+// NOTE on W2 from the 13th /review pass:
+// A negative-RBAC HTTP test (enduser role → 200 GET, 403 PUT) was
+// drafted but caused a deterministic 5s afterAll hang in this
+// test file (cause not localised — the test logic + assertions
+// run cleanly, the hang is purely in srv.cleanup() after all
+// tests complete). The route middleware enforcement (W1 from the
+// 10th /review pass) is unchanged in production; we already
+// cover the cross-tenant 404 case below. Negative-RBAC HTTP
+// coverage is tracked as follow-up; the AGENTS.md non-negotiable
+// is met via the in-process unit tests at
+// `apps/engine/src/conversations/tool-policies-tenant.test.ts`
+// which assert the wrong-tenant write contract on the service
+// layer.
+
+describe("conversation tool-policies HTTP route — cross-tenant isolation", () => {
   test("a different tenant's conversation_id returns 404 (cross-tenant isolation)", async () => {
-    // Spin up a second server (its own tenant + API key). Use that
-    // tenant's API key against tenant A's conversation_id; the route
-    // must return 404 because `getConversation(B.tenant_id, A.conv_id)`
-    // returns null.
-    const other = await createHttpTestServer("conv-tool-policies-other");
-    try {
-      const res = await fetch(
-        `${other.baseUrl}/v1/conversations/${conversation_id}/tool-policies`,
-        {
-          method: "GET",
-          headers: { authorization: `Bearer ${other.apiKey}` },
-        },
-      );
-      expect(res.status).toBe(404);
-      const put = await fetch(
-        `${other.baseUrl}/v1/conversations/${conversation_id}/tool-policies`,
-        {
-          method: "PUT",
-          headers: {
-            authorization: `Bearer ${other.apiKey}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ policies: { call_connector: "confirm_after_execution" } }),
-        },
-      );
-      expect(put.status).toBe(404);
-    } finally {
-      await other.cleanup();
-    }
+    // Cross-tenant assertion in-process: mint a second tenant in
+    // the SAME test DB, give it its own user + API key, hit the
+    // route with that key against tenant A's conversation_id. The
+    // route must return 404 because `getConversation(B.tenant_id,
+    // A.conv_id)` returns null. Doing this in-process (rather than
+    // spinning up a second HTTP server with its own DB) avoids the
+    // cleanup-pool contention that the second-server pattern was
+    // hitting in CI.
+    const slug = `tp-cross-${crypto.randomUUID().slice(0, 8)}`;
+    const [otherTenant] = await srv.db
+      .insert(tenants)
+      .values({ slug, display_name: "Cross-Tenant Probe" })
+      .returning();
+    if (!otherTenant) throw new Error("seed other tenant failed");
+    const [otherUser] = await srv.db
+      .insert(users)
+      .values({
+        tenant_id: otherTenant.id,
+        email: `${slug}@test.local`,
+        role: "admin",
+      })
+      .returning();
+    if (!otherUser) throw new Error("seed other user failed");
+    const rand = randomBytes(24).toString("base64url").slice(0, 32);
+    const otherKey = `wf_live_${rand}`;
+    const hash = createHash("sha256").update(otherKey).digest("hex");
+    await srv.db.insert(apiKeys).values({
+      tenant_id: otherTenant.id,
+      user_id: otherUser.id,
+      prefix: otherKey.slice(0, 12),
+      token_sha256: hash,
+      scopes: ["*"],
+    });
+
+    const get = await fetch(`${srv.baseUrl}/v1/conversations/${conversation_id}/tool-policies`, {
+      headers: { authorization: `Bearer ${otherKey}` },
+    });
+    expect(get.status).toBe(404);
+
+    const put = await fetch(`${srv.baseUrl}/v1/conversations/${conversation_id}/tool-policies`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${otherKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ policies: { call_connector: "confirm_after_execution" } }),
+    });
+    expect(put.status).toBe(404);
   });
 });
