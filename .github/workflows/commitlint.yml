@@ -9,7 +9,11 @@ permissions:
   pull-requests: read
 
 jobs:
-  lint:
+  # Job key MUST be `commitlint` — branch protection on `main` requires a
+  # check-run literally named `commitlint`. A renamed job name (e.g. `lint`)
+  # produces a `lint` check-run that branch protection won't see, blocking
+  # all merges with a phantom missing required check.
+  commitlint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
