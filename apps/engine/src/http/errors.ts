@@ -7,23 +7,60 @@
 export interface HttpErrorBody {
   code: string;
   message: string;
+  /** Operator-friendly remediation hint. Surfaced verbatim by the sk CLI. */
+  hint?: string;
+  /** Seconds the client should wait before retrying. Set on 429/503. */
+  retry_after?: number;
+  details?: Record<string, unknown>;
+}
+
+export interface HttpErrorOptions {
+  hint?: string;
+  retry_after?: number;
   details?: Record<string, unknown>;
 }
 
 export class HttpError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly hint: string | undefined;
+  readonly retry_after: number | undefined;
   readonly details: Record<string, unknown> | undefined;
 
-  constructor(status: number, code: string, message: string, details?: Record<string, unknown>) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    detailsOrOpts?: Record<string, unknown> | HttpErrorOptions,
+  ) {
     super(message);
     this.status = status;
     this.code = code;
-    this.details = details;
+    // Dispatch heuristic: an arg shaped like the new options envelope —
+    // i.e. carrying `hint` or `retry_after` — is treated as `HttpErrorOptions`.
+    // Anything else (including legacy bag-of-details objects that happen to
+    // contain a `details` key) stays in `details` verbatim, preserving
+    // backwards compatibility with the 50+ existing throw sites.
+    if (
+      detailsOrOpts &&
+      typeof detailsOrOpts === "object" &&
+      ("hint" in detailsOrOpts || "retry_after" in detailsOrOpts)
+    ) {
+      const opts = detailsOrOpts as HttpErrorOptions;
+      this.hint = opts.hint;
+      this.retry_after = opts.retry_after;
+      this.details = opts.details;
+    } else {
+      this.details = detailsOrOpts as Record<string, unknown> | undefined;
+      this.hint = undefined;
+      this.retry_after = undefined;
+    }
   }
 
   toBody(): HttpErrorBody {
     const body: HttpErrorBody = { code: this.code, message: this.message };
+    if (this.hint) body.hint = this.hint;
+    if (this.retry_after != null) body.retry_after = this.retry_after;
     if (this.details) body.details = this.details;
     return body;
   }
