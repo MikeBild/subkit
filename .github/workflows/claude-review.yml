@@ -1,0 +1,52 @@
+name: claude-review
+
+# Runs the project's /review slash command (defined at .claude/commands/review.md
+# and routed to the domain-architect sub-agent at .claude/agents/domain-architect.md)
+# against the PR diff and posts a single summary comment.
+#
+# Advisory only — workflow always exits 0. Humans triage the findings.
+#
+# Cost guards:
+#   * skipped on docs-only PRs (paths-ignore)
+#   * skipped on drafts
+#   * skipped on PRs from forks (secrets aren't available there anyway)
+#   * skipped if the PR title contains "[skip-review]"
+#   * --max-turns 8 caps API spend per run
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Claude review
+    runs-on: ubuntu-24.04
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !contains(github.event.pull_request.title, '[skip-review]')
+    steps:
+      - name: Checkout (full history for diff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run /review
+        uses: anthropics/claude-code-action@beta
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          prompt: /review
+          claude_args: --max-turns 8
+        continue-on-error: true
