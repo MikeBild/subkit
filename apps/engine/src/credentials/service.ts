@@ -29,6 +29,8 @@ import type {
   HeaderCredentialValue,
   OAuth2CredentialValue,
   QueryCredentialValue,
+  TokenMintCredentialValue,
+  TokenMintShape,
 } from "./types.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -60,7 +62,24 @@ export type CredentialPlaintext =
       refresh_token?: string | null;
       expires_at?: Date | null;
     } & OAuth2CredentialValue)
-  | ({ mode: "aws_sigv4" } & AwsSigV4CredentialValue);
+  | ({ mode: "aws_sigv4" } & AwsSigV4CredentialValue)
+  | {
+      mode: "token_mint";
+      // Cached access token from the most recent mint. Empty until the
+      // first mint runs.
+      access_token: string;
+      refresh_token?: string | null;
+      expires_at?: Date | null;
+      // Static mint config — encrypted at rest with the cached token.
+      shape: TokenMintShape;
+      mint_endpoint: string;
+      credentials: TokenMintCredentialValue["credentials"];
+      token_path: string;
+      refresh_token_path?: string;
+      expires_in_path?: string;
+      expires_at_path?: string;
+      header_template?: string;
+    };
 
 function serializePlain(value: CredentialPlaintext): string {
   switch (value.mode) {
@@ -85,6 +104,18 @@ function serializePlain(value: CredentialPlaintext): string {
         access_key_id: value.access_key_id,
         secret_access_key: value.secret_access_key,
         ...(value.session_token ? { session_token: value.session_token } : {}),
+      });
+    case "token_mint":
+      return JSON.stringify({
+        access_token: value.access_token,
+        shape: value.shape,
+        mint_endpoint: value.mint_endpoint,
+        credentials: value.credentials,
+        token_path: value.token_path,
+        ...(value.refresh_token_path ? { refresh_token_path: value.refresh_token_path } : {}),
+        ...(value.expires_in_path ? { expires_in_path: value.expires_in_path } : {}),
+        ...(value.expires_at_path ? { expires_at_path: value.expires_at_path } : {}),
+        ...(value.header_template ? { header_template: value.header_template } : {}),
       });
   }
 }
@@ -121,6 +152,32 @@ function deserializePlain(mode: CredentialMode, raw: string): DecryptedCredentia
         secret_access_key: String(parsed.secret_access_key ?? ""),
         ...(typeof parsed.session_token === "string"
           ? { session_token: parsed.session_token }
+          : {}),
+      };
+    case "token_mint":
+      return {
+        mode: "token_mint",
+        access_token: String(parsed.access_token ?? ""),
+        refresh_token: null,
+        expires_at: null,
+        shape: (parsed.shape as TokenMintShape) ?? "json",
+        mint_endpoint: String(parsed.mint_endpoint ?? ""),
+        credentials: (parsed.credentials as TokenMintCredentialValue["credentials"]) ?? {
+          username: "",
+          password: "",
+        },
+        token_path: String(parsed.token_path ?? ""),
+        ...(typeof parsed.refresh_token_path === "string"
+          ? { refresh_token_path: parsed.refresh_token_path }
+          : {}),
+        ...(typeof parsed.expires_in_path === "string"
+          ? { expires_in_path: parsed.expires_in_path }
+          : {}),
+        ...(typeof parsed.expires_at_path === "string"
+          ? { expires_at_path: parsed.expires_at_path }
+          : {}),
+        ...(typeof parsed.header_template === "string"
+          ? { header_template: parsed.header_template }
           : {}),
       };
     default: {

@@ -186,6 +186,21 @@ export function applyAuthMaterial(
         : `${scheme} ${credential.access_token}`;
       return;
     }
+    case "token_mint": {
+      // A4: Cognito InitiateAuth, Firebase signInWithPassword, generic
+      // POST /login. The mint client cached `access_token` on the row.
+      // `header_template` defaults to `Bearer ${token}` — the only
+      // substitution token is `${token}`. Empty access_token (first
+      // request before the initial mint runs) leaves Authorization
+      // unset so the request errors with a clear upstream 401 instead
+      // of a malformed header.
+      if (!credential.access_token) return;
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: header_template is operator-supplied and ${token} is a literal placeholder, not a JS template
+      const tpl = credential.header_template ?? "Bearer ${token}";
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: matches the literal placeholder above
+      headers.Authorization = tpl.replaceAll("${token}", credential.access_token);
+      return;
+    }
   }
 }
 
@@ -224,7 +239,9 @@ export type AppliedAuthMethod =
   | "basic"
   | "oauth2_static"
   | "oauth2_refreshed"
-  | "aws_sigv4";
+  | "aws_sigv4"
+  | "token_mint_static"
+  | "token_mint_refreshed";
 
 export interface ResolvedConnectorCredential {
   credential: DecryptedCredential | null;
@@ -302,6 +319,11 @@ export function deriveAppliedAuthMethod(
       return oauth2Refreshed ? "oauth2_refreshed" : "oauth2_static";
     case "aws_sigv4":
       return "aws_sigv4";
+    case "token_mint":
+      // `oauth2Refreshed` is reused as the inline-refresh signal for
+      // token_mint as well, since both modes share the
+      // `refreshIfStale()` plumbing in the HTTP driver.
+      return oauth2Refreshed ? "token_mint_refreshed" : "token_mint_static";
   }
 }
 
