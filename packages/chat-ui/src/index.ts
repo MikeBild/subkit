@@ -85,5 +85,12 @@ export {
   StepTree,
   type StepTreeProps,
 } from "./spinner/StepTree.tsx";
-export { ThemeProvider, useTheme } from "./theme/Provider.tsx";
-export { defaultTheme, type ThemeTokens } from "./theme/tokens.ts";
+export { ThemeProvider, useTheme, useThemeControl } from "./theme/Provider.tsx";
+export {
+  defaultTheme,
+  PALETTES,
+  paletteFor,
+  shouldForceNoColor,
+  type ThemeName,
+  type ThemeTokens,
+} from "./theme/tokens.ts";

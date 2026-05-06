@@ -148,12 +148,21 @@ export class SkEngineError extends Error {
   readonly status: number;
   readonly code: string;
   readonly trace_id: string | null;
+  readonly hint: string | null;
+  readonly retry_after: number | null;
   readonly details: unknown;
   readonly body: unknown;
   constructor(status: number, body: unknown) {
     const parsed =
       typeof body === "object" && body !== null
-        ? (body as { code?: unknown; message?: unknown; trace_id?: unknown; details?: unknown })
+        ? (body as {
+            code?: unknown;
+            message?: unknown;
+            trace_id?: unknown;
+            hint?: unknown;
+            retry_after?: unknown;
+            details?: unknown;
+          })
         : null;
     const msg =
       parsed && typeof parsed.message === "string"
@@ -168,6 +177,12 @@ export class SkEngineError extends Error {
     this.trace_id =
       parsed && typeof parsed.trace_id === "string" && parsed.trace_id.length > 0
         ? parsed.trace_id
+        : null;
+    this.hint =
+      parsed && typeof parsed.hint === "string" && parsed.hint.length > 0 ? parsed.hint : null;
+    this.retry_after =
+      parsed && typeof parsed.retry_after === "number" && Number.isFinite(parsed.retry_after)
+        ? Math.max(0, Math.ceil(parsed.retry_after))
         : null;
     this.details = parsed?.details ?? null;
     this.body = body;
