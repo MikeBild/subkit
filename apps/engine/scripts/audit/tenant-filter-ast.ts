@@ -176,6 +176,13 @@ function hasExemptComment(call: CallExpression, sourceText: string): boolean {
   // chain. We stop once we hit a line that clearly starts a fresh
   // statement.
   let scanFrom = start;
+  // 12 ≈ longest observed Drizzle chain in this repo (the
+  // executions/run.ts list query, with multi-condition `where(and(…))`
+  // spread across helper variable + inline conditions). If the scan
+  // starts missing valid leading exemptions on legitimate longer
+  // chains, raise this; do not raise blindly — the upper bound
+  // also caps how far an exempt comment can sit from its `.from()`
+  // call, which is a readability constraint.
   for (let i = 0; i < 12; i++) {
     const prevNewline = sourceText.lastIndexOf("\n", scanFrom - 1);
     if (prevNewline === -1) break;

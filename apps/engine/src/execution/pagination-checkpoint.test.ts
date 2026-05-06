@@ -281,4 +281,71 @@ describe("pagination checkpoint", () => {
     expect(meta.resumed_from_page).toBeUndefined();
     expect((r.output as unknown[]).length).toBe(TOTAL_PAGES * PAGE_SIZE);
   });
+
+  test("cross-tenant read returns null (defense-in-depth predicate)", async () => {
+    // Seed a checkpoint under tenant A, then read it back as tenant B.
+    // Without the tenant_id predicate the prior PK-only lookup would
+    // surface tenant A's row to tenant B; with the predicate the query
+    // returns nothing.
+    const { step_row_id } = await createExecutionRow();
+    const cp: PaginationCheckpoint = {
+      state: { kind: "page", page: 7 },
+      page_idx: 7,
+      accumulated_count: 7 * PAGE_SIZE,
+      signature: "sig-cross-tenant",
+      written_at: new Date(TEST_NOW_MS).toISOString(),
+    };
+    await writePaginationCheckpoint(tenantId, step_row_id, cp, testDb.db);
+
+    // Stand up a second tenant in the same DB and try to read tenant
+    // A's checkpoint with tenant B's id.
+    const [otherTenant] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "pg-checkpoint-other", display_name: "Other Tenant" })
+      .returning();
+    if (!otherTenant) throw new Error("second tenant insert failed");
+
+    const cross = await readPaginationCheckpoint(otherTenant.id, step_row_id, testDb.db);
+    expect(cross).toBeNull();
+
+    // Sanity: same row read with the right tenant still returns the
+    // checkpoint (proves the test query path is exercised).
+    const same = await readPaginationCheckpoint(tenantId, step_row_id, testDb.db);
+    expect(same).not.toBeNull();
+    expect(same?.signature).toBe("sig-cross-tenant");
+  });
+
+  test("cross-tenant write does not clobber another tenant's request_meta", async () => {
+    // Same shape as above but for the write path. Issuing a write
+    // with tenant B's id against tenant A's step row updates zero
+    // rows; tenant A's checkpoint stays intact.
+    const { step_row_id } = await createExecutionRow();
+    const original: PaginationCheckpoint = {
+      state: { kind: "offset", offset: 100 },
+      page_idx: 2,
+      accumulated_count: 100,
+      signature: "sig-original",
+      written_at: new Date(TEST_NOW_MS).toISOString(),
+    };
+    await writePaginationCheckpoint(tenantId, step_row_id, original, testDb.db);
+
+    const [otherTenant] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "pg-checkpoint-other-w", display_name: "Other Tenant W" })
+      .returning();
+    if (!otherTenant) throw new Error("second tenant insert failed");
+
+    const hostile: PaginationCheckpoint = {
+      state: { kind: "offset", offset: 9999 },
+      page_idx: 999,
+      accumulated_count: 99999,
+      signature: "sig-hostile",
+      written_at: new Date(TEST_NOW_MS).toISOString(),
+    };
+    await writePaginationCheckpoint(otherTenant.id, step_row_id, hostile, testDb.db);
+
+    const round = await readPaginationCheckpoint(tenantId, step_row_id, testDb.db);
+    expect(round?.signature).toBe("sig-original");
+    expect(round?.page_idx).toBe(2);
+  });
 });

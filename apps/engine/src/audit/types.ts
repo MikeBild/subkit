@@ -276,6 +276,13 @@ export const AuditAction = {
   //   tenants without scraping debug logs.
   CONNECTOR_DRAFT_CREDENTIAL_REJECTED: "connector.draft.credential_rejected",
   TOOL_POLICY_CONFIRMATION_REQUIRED: "tool_policy.confirmation_required",
+  // - `tool_policy.changed` — operator overrode the per-tool default
+  //   confirmation mode for a conversation (set/clear via the
+  //   `/conversations/:id/tool-policies` route, the chat dispatcher's
+  //   `/policy` slash command, or programmatically through
+  //   `setToolPolicy`). Captures the tool name and the new mode (or
+  //   `null` on clear) so compliance can audit who relaxed gating.
+  TOOL_POLICY_CHANGED: "tool_policy.changed",
 
   // Settings subsystem (apps/engine/src/settings/) — every set writes
   // an audit row with the redacted before/after diff. Secret values

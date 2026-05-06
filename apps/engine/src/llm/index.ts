@@ -6,14 +6,14 @@
 
 // LLM module barrel.
 //
-// Convention: `export *` is used for files whose entire export surface
-// is intentionally public (each function in those files passes through
-// review). Files where only specific symbols should be public use a
-// pinned named-export list. The narrow flows export only the entry
-// point function (`runConverseFlow`, `runExtractFlow`, etc.) — the
-// internal helpers in those files stay internal even though they are
-// `export`ed at the file level (TypeScript surface hygiene; routes
-// reach in via this barrel only).
+// Convention: `export *` is used for files whose entire file-level
+// export surface is intentionally public — each `export` in those
+// files passes through review. Internal helpers stay as non-exported
+// functions, so the barrel reflects exactly the file's intended
+// surface. The flow modules (`flows/converse.ts`, `flows/extract.ts`,
+// etc.) use a pinned named-export list because those files contain
+// internal helpers that ARE `export`ed at the file level (legacy)
+// but should not flow through the barrel.
 export * from "./accounting/index.ts";
 export * from "./core/context-assembler.ts";
 export * from "./core/invoke.ts";
