@@ -135,7 +135,12 @@ jobs:
           rc=$?
           set -e
           if [ $rc -ne 0 ]; then
-            echo "::warning::scrub step failed (rc=$rc); replacing body with diagnostic placeholder"
+            # ::error:: surfaces the scrubber crash on the workflow's
+            # summary page so a silent degradation to the placeholder
+            # body is visible to operators, not buried in the log.
+            # The job still exits 0 (advisory contract); the error
+            # annotation just makes the failure noticeable.
+            echo "::error title=scrub-review-comment crashed::scrub step failed (rc=$rc); model output suppressed for safety — review the run log and verify scrub-review-comment.ts"
             printf '%s\n' \
               '_claude-review: scrub step failed (rc='"$rc"'); model output suppressed for safety. See workflow logs._' \
               > review-scrubbed.md

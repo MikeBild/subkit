@@ -1,9 +1,11 @@
 // AST-based replacement for the old `.from(table)` regex heuristic in
 // audit-invariants.ts. The heuristic produced 196 candidate sites, of
-// which a substantial fraction were `Buffer.from(...)`, `Array.from(...)`,
-// and similar non-query constructors. This scan distinguishes a Drizzle
-// query chain from a constructor by walking the AST receiver back to a
-// query starter (`select`, `update`, `delete`, `insert`, ...).
+// which the bulk were `Buffer.from(...)` and `Array.from(...)` —
+// both `.from(<expr>)` shapes whose receiver is the global Buffer /
+// Array constructor, not a Drizzle query builder. This scan
+// distinguishes a Drizzle query chain from those constructors by
+// walking the AST receiver back to a query starter (`select`,
+// `update`, `delete`, `insert`, `with`).
 //
 // Safe-detection rules (any of):
 //   1. The `.from(table)` table identifier is in `.tenant-filter-allowlist.txt`

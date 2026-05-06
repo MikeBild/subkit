@@ -150,11 +150,15 @@ async function listWorkflowTools({ db, principal }: ListToolsParams): Promise<To
     }
     let description = row.name;
     let inputSchema: Tool["inputSchema"] = emptyObjectSchema();
-    // tenant-filter:exempt — MCP capability listing — tenant scoping enforced at the route boundary
     const versionRows = await db
       .select({ dag: workflowVersions.dag })
       .from(workflowVersions)
-      .where(eq(workflowVersions.id, row.current_version_id))
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, principal.tenant_id),
+          eq(workflowVersions.id, row.current_version_id),
+        ),
+      )
       .limit(1);
     const dag = versionRows[0]?.dag;
     if (dag) {
@@ -204,6 +208,7 @@ interface ProgressNotifier {
 
 function startProgressBridge(
   db: Db,
+  tenant_id: string,
   execution_id: string,
   totalStepsHint: number,
   notifier: ProgressNotifier,
@@ -213,7 +218,6 @@ function startProgressBridge(
   const tick = async (): Promise<void> => {
     if (stopped) return;
     try {
-      // tenant-filter:exempt — MCP capability listing — tenant scoping enforced at the route boundary
       const rows = await db
         .select({
           id: executionSteps.id,
@@ -221,7 +225,12 @@ function startProgressBridge(
           status: executionSteps.status,
         })
         .from(executionSteps)
-        .where(eq(executionSteps.execution_id, execution_id))
+        .where(
+          and(
+            eq(executionSteps.tenant_id, tenant_id),
+            eq(executionSteps.execution_id, execution_id),
+          ),
+        )
         .orderBy(asc(executionSteps.started_at));
       if (rows.length > seen) {
         for (let i = seen; i < rows.length; i++) {
@@ -632,19 +641,22 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       // progress bridge's total estimate.
       let totalSteps = 1;
       try {
-        // tenant-filter:exempt — MCP capability listing — tenant scoping enforced at the route boundary
         const wfRows = await db
           .select({ current_version_id: workflows.current_version_id })
           .from(workflows)
-          .where(eq(workflows.id, wf.id))
+          .where(and(eq(workflows.tenant_id, principal.tenant_id), eq(workflows.id, wf.id)))
           .limit(1);
         const vId = wfRows[0]?.current_version_id ?? null;
         if (vId) {
-          // tenant-filter:exempt — MCP capability listing — tenant scoping enforced at the route boundary
           const vRows = await db
             .select({ dag: workflowVersions.dag })
             .from(workflowVersions)
-            .where(eq(workflowVersions.id, vId))
+            .where(
+              and(
+                eq(workflowVersions.tenant_id, principal.tenant_id),
+                eq(workflowVersions.id, vId),
+              ),
+            )
             .limit(1);
           const parsed = vRows[0]?.dag ? WorkflowDefSchema.safeParse(vRows[0].dag) : null;
           if (parsed?.success) totalSteps = parsed.data.steps.length;
@@ -721,7 +733,13 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             if (latest) {
               state.executionId = latest.id;
               if (progressToken !== undefined && progressToken !== null) {
-                state.bridge = startProgressBridge(db, latest.id, totalSteps, notifier);
+                state.bridge = startProgressBridge(
+                  db,
+                  principal.tenant_id,
+                  latest.id,
+                  totalSteps,
+                  notifier,
+                );
               }
             }
           } catch {

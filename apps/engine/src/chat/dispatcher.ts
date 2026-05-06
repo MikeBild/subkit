@@ -389,11 +389,10 @@ export async function handleChatEvent(
 
     // Pull the workflow_version_id directly from the table — the view
     // exposes only the version number.
-    // tenant-filter:exempt — tenant-scoped via parent session_id; verified by caller
     const versionRows = await db
       .select({ current_version_id: workflowsTable.current_version_id })
       .from(workflowsTable)
-      .where(eq(workflowsTable.id, wf.id))
+      .where(and(eq(workflowsTable.tenant_id, tenant_id), eq(workflowsTable.id, wf.id)))
       .limit(1);
     const workflow_version_id = versionRows[0]?.current_version_id;
     if (!workflow_version_id) {
@@ -414,11 +413,10 @@ export async function handleChatEvent(
     // role/group/grant ladder. We preload the user's legacy enum role
     // so the built-in admin short-circuit still fires for the seeded
     // chat admin user that auto-linked on first message.
-    // tenant-filter:exempt — tenant-scoped via parent session_id; verified by caller
     const userRows = await db
       .select({ role: users.role })
       .from(users)
-      .where(eq(users.id, user_id))
+      .where(and(eq(users.tenant_id, tenant_id), eq(users.id, user_id)))
       .limit(1);
     const syntheticRoles = userRows[0] ? [userRows[0].role] : [];
     const runDecision = await can(db, {
@@ -524,11 +522,16 @@ export async function handleChatEvent(
 
   // Look up or create the conversation bound to this chat thread.
   const threadKey = ev.thread_id ?? `${ev.channel_id}:root`;
-  // tenant-filter:exempt — tenant-scoped via parent session_id; verified by caller
   const [existing] = await db
     .select()
     .from(chatSessions)
-    .where(and(eq(chatSessions.workspace_id, workspace.id), eq(chatSessions.thread_id, threadKey)))
+    .where(
+      and(
+        eq(chatSessions.tenant_id, tenant_id),
+        eq(chatSessions.workspace_id, workspace.id),
+        eq(chatSessions.thread_id, threadKey),
+      ),
+    )
     .limit(1);
 
   let conversation_id: string;
@@ -594,11 +597,10 @@ export async function handleChatEvent(
   // Double-check the conversation got committed when we expect it
   // (caller tests can read this too).
   if (outcome.status === "committed") {
-    // tenant-filter:exempt — tenant-scoped via parent session_id; verified by caller
     await db
       .select({ id: conversations.id, status: conversations.status })
       .from(conversations)
-      .where(eq(conversations.id, conversation_id))
+      .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
       .limit(1);
   }
 

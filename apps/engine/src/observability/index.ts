@@ -18,27 +18,8 @@
 // can use `resetMetricsRegistryForTests()` to start from a clean slate.
 
 export * from "./error-ring.ts";
-export {
-  recordChatDelivery,
-  recordExecutionTerminal,
-  recordLlmQuotaExhausted,
-  recordLlmTokens,
-  recordPatchCandidate,
-  recordRequestRetry,
-  recordWebhookDelivery,
-  setOutboxCursorLag,
-  setQueueDepth,
-  setQueueLag,
-  setTunnelConnected,
-} from "./instrumentation.ts";
+export * from "./instrumentation.ts";
 export * from "./metrics.ts";
-export {
-  getMetrics,
-  METRIC_NAMES,
-  MetricsRegistry,
-  refreshProcessUptime,
-  resetMetricsRegistryForTests,
-} from "./metrics.ts";
 export { metricsMiddleware } from "./middleware.ts";
 export * from "./service-metadata.ts";
-export type { LabelValues, MetricDefinition, SampleSnapshot, SeriesSnapshot } from "./types.ts";
+export * from "./types.ts";

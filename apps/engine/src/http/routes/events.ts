@@ -228,7 +228,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const channelFilter = c.req.query("channel") ?? null;
     const typeFilter = c.req.query("type") ?? null;
 
-    const filterConds = () => {
+    const tenantFilterConds = () => {
       const tenantConds = [eq(events.tenant_id, tenantId)];
       if (rawExecutionId) {
         tenantConds.push(sql`${events.payload}->>'execution_id' = ${rawExecutionId}`);
@@ -253,11 +253,10 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
       //    `replayLimit` rows so fresh clients see recent history.
       let cursor = 0;
       if (Number.isFinite(lastEventId) && lastEventId !== null && lastEventId >= 0) {
-        // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
         const replay = await db
           .select()
           .from(events)
-          .where(and(...filterConds(), gt(events.id, lastEventId)))
+          .where(and(...tenantFilterConds(), gt(events.id, lastEventId)))
           .orderBy(asc(events.id))
           .limit(1_000);
         for (const row of replay) {
@@ -266,11 +265,10 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
         }
         if (cursor === 0) cursor = lastEventId;
       } else {
-        // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
         const recent = await db
           .select()
           .from(events)
-          .where(and(...filterConds()))
+          .where(and(...tenantFilterConds()))
           .orderBy(desc(events.id))
           .limit(replayLimit);
         const ordered = recent.slice().reverse();
@@ -291,11 +289,10 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
       // 3. Poll loop. Stops as soon as the client disconnects.
       const signal = c.req.raw.signal;
       while (!signal.aborted) {
-        // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
         const newRows = await db
           .select()
           .from(events)
-          .where(and(...filterConds(), gt(events.id, cursor)))
+          .where(and(...tenantFilterConds(), gt(events.id, cursor)))
           .orderBy(asc(events.id))
           .limit(200);
         for (const row of newRows) {
