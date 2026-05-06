@@ -171,7 +171,7 @@ describe("conversation tool-policies HTTP route — cross-tenant isolation", () 
     // spinning up a second HTTP server with its own DB) avoids the
     // cleanup-pool contention that the second-server pattern was
     // hitting in CI.
-    const slug = `tp-cross-${crypto.randomUUID().slice(0, 8)}`;
+    const slug = `tp-cross-${crypto.randomUUID().slice(0, 8)}`; // allow-random: cross-tenant fixture; uniqueness > determinism here
     const [otherTenant] = await srv.db
       .insert(tenants)
       .values({ slug, display_name: "Cross-Tenant Probe" })
@@ -186,7 +186,7 @@ describe("conversation tool-policies HTTP route — cross-tenant isolation", () 
       })
       .returning();
     if (!otherUser) throw new Error("seed other user failed");
-    const rand = randomBytes(24).toString("base64url").slice(0, 32);
+    const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: matches the API key minted by setup.ts
     const otherKey = `wf_live_${rand}`;
     const hash = createHash("sha256").update(otherKey).digest("hex");
     await srv.db.insert(apiKeys).values({
