@@ -583,6 +583,35 @@ export class EngineClient {
     return this.request("GET", "/v1/identity/whoami");
   }
 
+  /**
+   * Composite startup payload — replaces the per-permission rbac:can
+   * fan-out the CLI used to issue at session start. Returns the
+   * authenticated principal's whoami snapshot, the precomputed allow-set
+   * for the well-known UX-gating permissions, the tenant snapshot, and
+   * the most recent owned conversations.
+   */
+  skBootstrap(): Promise<{
+    whoami: {
+      id: string;
+      kind: "user" | "system_account";
+      tenant_id: string;
+      tenant_slug: string | null;
+      email: string | null;
+      role_name: string | null;
+      provider: string;
+      base_url: string | null;
+      scopes: string[] | null;
+    };
+    permissions: string[];
+    permissions_checked: string[];
+    tenant: { id: string; slug: string | null; display_name: string | null };
+    recent_sessions: Array<{ id: string; title: string | null; updated_at: string }>;
+    flags: Record<string, boolean>;
+    server_time: string;
+  }> {
+    return this.request("GET", "/v1/sk/bootstrap");
+  }
+
   // --------------------------- Conversations ---------------------------
   listConversations(
     query: { status?: string; owner?: "me"; limit?: number; offset?: number } = {},
