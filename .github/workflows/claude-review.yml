@@ -70,6 +70,25 @@ jobs:
         # Bump deliberately when verified locally.
         run: bun add -g @anthropic-ai/claude-code@2.1.131
 
+      - name: Capability probe — fail loudly if a required flag has been renamed
+        # The pinned version above protects against silent flag
+        # renames at install time, but a future bump (manual or via
+        # Renovate) could land a CLI that no longer accepts the
+        # flags this workflow depends on. The advisory-only contract
+        # (continue-on-error + exit 0 on the run step) would then
+        # silently drop the review. This probe surfaces a missing
+        # flag as a workflow ::error:: annotation BEFORE the run
+        # step, where it is loudly visible.
+        run: |
+          set -e
+          help="$(claude --help 2>&1 || true)"
+          for flag in --bare --dangerously-skip-permissions --max-budget-usd -p; do
+            if ! grep -qF -- "$flag" <<<"$help"; then
+              echo "::error title=claude-code CLI capability missing::flag $flag is not in claude --help; the review pipeline is degraded. Bump the pinned version (claude-review.yml) once verified locally, or fix the workflow."
+              exit 1
+            fi
+          done
+
       - name: Run /review and capture raw output
         id: review
         env:

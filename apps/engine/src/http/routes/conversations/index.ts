@@ -80,6 +80,18 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/conversations/:id/stream", async (c, next) => {
     return requireAnyPermission(["conversation:read", "workflow:read"])(c, next);
   });
+  // Tool policies are governance state (per-tool confirm/auto/yolo
+  // matrix); the PUT mutates it and writes a `tool_policy.changed`
+  // audit row, so the surface is RBAC-gated identically to the
+  // sibling approve/cancel routes. GET is reader-permission
+  // because the policy state is not secret but reveals which
+  // dangerous tools the operator has relaxed.
+  app.use("/v1/conversations/:id/tool-policies", async (c, next) => {
+    if (c.req.method === "GET") {
+      return requireAnyPermission(["conversation:read", "workflow:read"])(c, next);
+    }
+    return requireAnyPermission(["conversation:approve", "workflow:write"])(c, next);
+  });
 
   registerCollectionRoutes(app);
   registerMessagesRoutes(app);

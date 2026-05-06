@@ -70,6 +70,10 @@ export function registerToolPoliciesRoutes(app: OpenAPIHono<AppEnv>): void {
     const { setToolPolicy, getToolPolicies } = await import(
       "../../../conversations/tool-policies.ts"
     );
+    // Snapshot prior policy state so each audit row records both
+    // the relaxation direction and the destination — investigators
+    // querying "who relaxed gating on tool X" need both ends.
+    const prior = await getToolPolicies(db, principal.tenant_id, id);
     for (const [toolName, mode] of Object.entries(body.policies)) {
       await setToolPolicy(db, principal.tenant_id, id, toolName, mode);
       // Tool-policy changes are governance decisions: who relaxed
@@ -85,7 +89,12 @@ export function registerToolPoliciesRoutes(app: OpenAPIHono<AppEnv>): void {
           resource_type: "conversation",
           resource_id: id,
           result: "success",
-          metadata: { tool: toolName, mode: mode ?? null },
+          metadata: {
+            tool: toolName,
+            mode: mode ?? null,
+            prior_mode: prior[toolName] ?? null,
+            request_source: "api",
+          },
         },
         db,
       );
