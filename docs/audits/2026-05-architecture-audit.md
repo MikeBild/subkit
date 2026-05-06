@@ -1,6 +1,6 @@
 # Subkit — Architecture Audit & Simplification Plan (v2)
 
-> Status: revised after operator review on 2026-05-03. Supersedes the prior draft. All counts re-verified against `main`. The reference implementation under `~/Projects/AI/superglue` is referred to as "the reference implementation / ref-impl" only and is **not** treated as an architecture target — its choices are simpler in places, but subkit's heavier shape (typed drivers, tenant scoping, audit, Zod surface, engine/sk/agent split) is intentional control-plane cost.
+> Status: revised after operator review on 2026-05-03. Supersedes the prior draft. All counts re-verified against `main`. The reference implementation lives in a separate local repo and is referred to as "the reference implementation / ref-impl" only — it is **not** treated as an architecture target. Its choices are simpler in places, but subkit's heavier shape (typed drivers, tenant scoping, audit, Zod surface, engine/sk/agent split) is intentional control-plane cost.
 
 ---
 
