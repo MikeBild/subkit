@@ -74,6 +74,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHA: ${{ steps.sha.outputs.sha }}
+          # GitHub's `gh workflow run --ref` requires a branch or tag
+          # name; raw SHAs return HTTP 422 "No ref found". Pass the tag
+          # we're releasing (the workflow_dispatch ref or the inputs.tag
+          # override) so the dispatch resolves correctly.
+          DISPATCH_REF: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           # Look for a successful run of ci.yml against this exact SHA.
@@ -88,8 +93,8 @@ jobs:
             echo "ci.yml is already green on $SHA — gate passes."
             exit 0
           fi
-          echo "No green ci.yml run for $SHA (status='$status'); dispatching one and waiting."
-          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$SHA"
+          echo "No green ci.yml run for $SHA (status='$status'); dispatching one against ref=$DISPATCH_REF and waiting."
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$DISPATCH_REF"
           # Wait up to 30 min for the dispatched run to finish.
           deadline=$(( $(date +%s) + 1800 ))
           while [ "$(date +%s)" -lt "$deadline" ]; do
