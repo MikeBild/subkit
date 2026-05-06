@@ -72,6 +72,7 @@ export function createPortalTokenProvider(opts: PortalTokenProviderOptions = {})
       }
 
       const db = opts.db ?? getDb();
+      // tenant-filter:exempt — portal-token JTI lookup pre-tenant
       const rows = await db
         .select()
         .from(portalTokens)
@@ -135,6 +136,7 @@ export function createPortalTokenProvider(opts: PortalTokenProviderOptions = {})
       const ownerId = row.enduser_ref;
       let email: string | undefined;
       try {
+        // tenant-filter:exempt — portal-token JTI lookup pre-tenant
         const u = await db
           .select({ email: users.email })
           .from(users)

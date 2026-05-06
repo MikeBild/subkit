@@ -3,8 +3,8 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { probeConnector } from "../../../connectors/drivers/index.ts";
-import * as connectorSvc from "../../../connectors/service.ts";
+import * as connectorSvc from "../../../connectors/index.ts";
+import { probeConnector } from "../../../connectors/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";

@@ -14,7 +14,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { patchCandidates } from "../../db/schema/index.ts";
-import { approvePatchCandidate, rejectPatchCandidate } from "../../self-healing/service.ts";
+import { approvePatchCandidate, rejectPatchCandidate } from "../../self-healing/index.ts";
 import { ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -150,13 +150,13 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    const conds = [eq(patchCandidates.tenant_id, principal.tenant_id)];
-    if (q.status) conds.push(eq(patchCandidates.status, q.status));
-    if (q.workflow_id) conds.push(eq(patchCandidates.workflow_id, q.workflow_id));
+    const tenantConds = [eq(patchCandidates.tenant_id, principal.tenant_id)];
+    if (q.status) tenantConds.push(eq(patchCandidates.status, q.status));
+    if (q.workflow_id) tenantConds.push(eq(patchCandidates.workflow_id, q.workflow_id));
     const rows = await db
       .select()
       .from(patchCandidates)
-      .where(and(...conds))
+      .where(and(...tenantConds))
       .orderBy(desc(patchCandidates.created_at))
       .limit(q.limit ?? 50);
     return c.json({ items: rows.map(serialize) }, 200);

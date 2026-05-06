@@ -3,8 +3,8 @@
 // every per-sub-resource module imports from here.
 
 import { z } from "@hono/zod-openapi";
-import type * as svc from "../../../conversations/service.ts";
-import { resolveEngineUrl } from "../../../llm/runtime-context.ts";
+import type * as svc from "../../../conversations/index.ts";
+import { resolveEngineUrl } from "../../../llm/index.ts";
 
 /**
  * Build the per-turn `runtime_context` block from the inbound HTTP

@@ -14,10 +14,7 @@ import {
   ConnectorCallRequestSchema,
   ConnectorCallResponseSchema,
 } from "../../../api/connector-schemas.ts";
-import {
-  type CallConnectorMethod,
-  callConnector,
-} from "../../../connectors/services/call-connector.ts";
+import { type CallConnectorMethod, callConnector } from "../../../connectors/index.ts";
 import { NotFoundError, UnprocessableEntityError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";

@@ -3,13 +3,13 @@
 // from here.
 
 import { z } from "@hono/zod-openapi";
-import { resolveConnectorOAuthConfig } from "../../../connectors/template-binding.ts";
 import {
   ConnectorTemplateSourceEnum,
   type ConnectorView,
   OperatorQuirksSchema,
-} from "../../../connectors/types.ts";
-import type { OAuth2ClientConfig } from "../../../credentials/oauth2/types.ts";
+  resolveConnectorOAuthConfig,
+} from "../../../connectors/index.ts";
+import type { OAuth2ClientConfig } from "../../../credentials/index.ts";
 import type { Db } from "../../../db/client.ts";
 import { BadRequestError } from "../../errors.ts";
 

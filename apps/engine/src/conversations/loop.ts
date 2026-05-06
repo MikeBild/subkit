@@ -35,7 +35,7 @@ import {
   countSkillTokens,
   detectIntentSkills,
 } from "../llm/core/context-assembler.ts";
-import { resolveModelRoute, resolveLanguageModel as resolveSdkModel } from "../llm/core/invoke.ts";
+import { resolveModelRoute } from "../llm/core/invoke.ts";
 import { repairToolCall as repairToolCallHandler } from "../llm/core/repair-tool-call.ts";
 import {
   prepareStep as routerPrepareStep,
@@ -44,7 +44,6 @@ import {
 } from "../llm/core/step-router.ts";
 import { type CriticArtifact, type CriticVerdict, runCritic } from "../llm/critic/index.ts";
 import { LlmContextTooLarge, LlmQuotaExhausted } from "../llm/errors.ts";
-import { createMockLanguageModel } from "../llm/mock-stream.ts";
 import { runOutputGuard, runOutputGuardStream } from "../llm/output-guard/index.ts";
 import {
   classifyProviderError,
@@ -68,6 +67,13 @@ import {
   detectUserIntent,
   inferStateDrivenFollowUpTool,
 } from "./intent-detector.ts";
+import {
+  DEFAULT_BUDGET,
+  MAX_REPAIRS_PER_TURN,
+  resolveLanguageModel,
+} from "./loop/model-resolver.ts";
+import { committedStopCondition, pausedStopCondition } from "./loop/stop-conditions.ts";
+import { isAbortError, readStepUsage } from "./loop/usage.ts";
 import {
   appendMessage,
   buildModelMessages,
@@ -135,131 +141,6 @@ export interface RunLoopResult {
   status: "awaiting_input" | "committed" | "active" | "abandoned" | "exhausted";
   committed_workflow_id?: string;
   pending_elicitation_id?: string;
-}
-
-// Per-turn step ceiling. Reference impl uses `stepCountIs(50)` and
-// trusts the model. Subkit's old budget of 20 was too tight for
-// incremental authoring (a 5-step workflow with dry_run + inspect +
-// commit flow easily exceeds 20). Raised to 50 to match the
-// reference; the adaptive per-tool repeat detector and the
-// consecutive-failures cap remain the actual loop-protection layers.
-const DEFAULT_BUDGET = 50;
-
-/**
- * Hard cap on `experimental_repairToolCall` invocations per turn.
- * Beyond this the model is in a degenerate state and additional
- * repair calls just burn budget — surface the failure to the loop so
- * the next turn's prepareStep can escalate.
- */
-const MAX_REPAIRS_PER_TURN = 2;
-
-/**
- * Resolve the SDK language model for this run. The mock provider
- * returns a fresh `MockLanguageModelV3` that reads from the shared
- * plan-cursor singleton; real providers go through the provider
- * registry (A1) so the `anthropic:` prefix is stripped natively.
- */
-async function resolveLanguageModel(provider: string, modelId: string) {
-  if (provider === "mock") return createMockLanguageModel(modelId);
-  // biome-ignore lint/suspicious/noExplicitAny: LlmProviderKind is broader
-  return await resolveSdkModel(provider as any, modelId);
-}
-
-/**
- * Stop after a step that invoked `save_workflow_draft` and produced a
- * `committed_workflow_id` — the loop is done the moment the workflow
- * row is persisted.
- *
- * Typed `any` against the SDK's StopCondition generic because our
- * concrete tool map and the SDK's variadic ToolSet do not reconcile
- * at the type level; the runtime contract is a predicate over
- * `steps[last].toolResults`.
- */
-const committedStopCondition = ({
-  steps,
-}: {
-  steps: ReadonlyArray<{
-    toolResults: ReadonlyArray<{ toolName: string; output?: unknown }>;
-  }>;
-}): boolean => {
-  const last = steps[steps.length - 1];
-  if (!last) return false;
-  return last.toolResults.some((r) => {
-    if (r.toolName !== "save_workflow_draft") return false;
-    const output = r.output;
-    return (
-      !!output &&
-      typeof output === "object" &&
-      "committed_workflow_id" in (output as Record<string, unknown>) &&
-      typeof (output as { committed_workflow_id?: unknown }).committed_workflow_id === "string"
-    );
-  });
-};
-
-/**
- * Stop after any tool returns a pause payload. This is required for
- * policy-gated confirm-before-execution flows where the wrapper emits
- * an `ask_user_confirm` elicitation without the model explicitly
- * calling `ask_user_confirm` as a tool in the same step.
- */
-const pausedStopCondition = ({
-  steps,
-}: {
-  steps: ReadonlyArray<{
-    toolResults: ReadonlyArray<{ output?: unknown }>;
-  }>;
-}): boolean => {
-  const last = steps[steps.length - 1];
-  if (!last) return false;
-  return last.toolResults.some((result) => {
-    const output = result.output;
-    return !!output && typeof output === "object" && "pause" in (output as Record<string, unknown>);
-  });
-};
-
-interface StepUsage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-}
-
-function isAbortError(err: unknown): boolean {
-  if (err instanceof DOMException) {
-    return err.name === "AbortError" || err.name === "TimeoutError";
-  }
-  if (err instanceof Error) return /abort|cancel/i.test(err.message);
-  return /abort|cancel/i.test(String(err));
-}
-
-function readStepUsage(step: {
-  usage: {
-    inputTokens?: number | undefined;
-    outputTokens?: number | undefined;
-    inputTokenDetails?: {
-      cacheReadTokens?: number | undefined;
-      cacheWriteTokens?: number | undefined;
-    };
-  };
-  providerMetadata?: Record<string, unknown> | undefined;
-}): StepUsage {
-  const inputTokens = step.usage.inputTokens ?? 0;
-  const outputTokens = step.usage.outputTokens ?? 0;
-  let cacheReadTokens = step.usage.inputTokenDetails?.cacheReadTokens ?? 0;
-  let cacheCreationTokens = step.usage.inputTokenDetails?.cacheWriteTokens ?? 0;
-  // Anthropic surfaces cache tokens via providerMetadata.anthropic.usage
-  // when the unified usage fields are unset. Prefer the flat fields and
-  // fall back to provider metadata.
-  const anthropic = step.providerMetadata?.anthropic as
-    | { usage?: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
-    | undefined;
-  if (!cacheReadTokens && anthropic?.usage?.cache_read_input_tokens) {
-    cacheReadTokens = Number(anthropic.usage.cache_read_input_tokens);
-  }
-  if (!cacheCreationTokens && anthropic?.usage?.cache_creation_input_tokens) {
-    cacheCreationTokens = Number(anthropic.usage.cache_creation_input_tokens);
-  }
-  return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
 }
 
 export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
@@ -373,7 +254,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const loadedSkillsRowForPrompt = await p.db
     .select({ loaded_skills: conversations.loaded_skills })
     .from(conversations)
-    .where(eq(conversations.id, p.conversation_id))
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
     .limit(1);
   const explicitSkillSlugs = (loadedSkillsRowForPrompt[0]?.loaded_skills ?? []) as string[];
 
@@ -383,7 +264,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const attachmentMimeRows = await p.db
     .select({ content_type: conversationAttachments.content_type })
     .from(conversationAttachments)
-    .where(eq(conversationAttachments.conversation_id, p.conversation_id));
+    .where(
+      and(
+        eq(conversationAttachments.tenant_id, p.tenant_id),
+        eq(conversationAttachments.conversation_id, p.conversation_id),
+      ),
+    );
   const attachmentMimeTypes = attachmentMimeRows
     .map((r) => r.content_type)
     .filter((m): m is string => typeof m === "string" && m.length > 0);
@@ -392,7 +278,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     const failed = await p.db
       .select({ id: executions.id })
       .from(executions)
-      .where(eq(executions.workflow_id, workflowIdForTurn))
+      .where(
+        and(eq(executions.tenant_id, p.tenant_id), eq(executions.workflow_id, workflowIdForTurn)),
+      )
       .limit(5);
     hasFailedExecution = failed.length > 0; // any prior execution counts as feedback context
   }
@@ -440,7 +328,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       await p.db
         .select({ target_connector_id: conversations.target_connector_id })
         .from(conversations)
-        .where(eq(conversations.id, p.conversation_id))
+        .where(
+          and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+        )
         .limit(1)
     )[0]?.target_connector_id ??
     null;
@@ -453,7 +343,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         confidence: connectorEndpointSchemas.confidence,
       })
       .from(connectorEndpointSchemas)
-      .where(eq(connectorEndpointSchemas.connector_id, activeConnectorId))
+      .where(
+        and(
+          eq(connectorEndpointSchemas.tenant_id, p.tenant_id),
+          eq(connectorEndpointSchemas.connector_id, activeConnectorId),
+        ),
+      )
       .limit(50);
     const head = epRows[0];
     if (head) {
@@ -522,7 +417,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       created_at: conversationToolCalls.created_at,
     })
     .from(conversationToolCalls)
-    .where(eq(conversationToolCalls.conversation_id, p.conversation_id))
+    .where(
+      and(
+        eq(conversationToolCalls.tenant_id, p.tenant_id),
+        eq(conversationToolCalls.conversation_id, p.conversation_id),
+      ),
+    )
     .orderBy(desc(conversationToolCalls.created_at))
     .limit(8);
   const priorFailuresFromTools: Array<{ step_id: string; error: string }> = [];
@@ -560,6 +460,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       user_turns: await (async () => {
         const parts = await buildUserContentParts(
           p.db,
+          p.tenant_id,
           p.conversation_id,
           currentUserText,
           route.provider,
@@ -680,7 +581,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       tool_policies: conversations.tool_policies,
     })
     .from(conversations)
-    .where(eq(conversations.id, p.conversation_id))
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
     .limit(1);
   const persistedLoadedSkills = (skillAndPolicyRow[0]?.loaded_skills ?? []) as string[];
   // Auto-load the canonical authoring skills so the palette exposes
@@ -1675,7 +1576,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     const rows = await p.db
       .select()
       .from(conversations)
-      .where(eq(conversations.id, p.conversation_id))
+      .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
       .limit(1);
     const persistedStatus = rows[0]?.status ?? null;
     const conversationCancelled =

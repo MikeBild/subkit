@@ -3,14 +3,17 @@
 // per-sub-resource module imports from here.
 
 import { z } from "@hono/zod-openapi";
-import { policy } from "../../../auth/policy.ts";
-import type { ResolvedConnectorTemplate } from "../../../connectors/template-resolver.ts";
+import { policy } from "../../../auth/index.ts";
+import type {
+  ConnectorView,
+  CreateConnectorInput,
+  ResolvedConnectorTemplate,
+} from "../../../connectors/index.ts";
 import {
   ConnectorRecipeSchema,
   type ConnectorTemplate,
   ConnectorTemplateSchema,
-} from "../../../connectors/templates.ts";
-import type { ConnectorView, CreateConnectorInput } from "../../../connectors/types.ts";
+} from "../../../connectors/index.ts";
 import { ForbiddenError } from "../../errors.ts";
 
 export const ListResponseSchema = z

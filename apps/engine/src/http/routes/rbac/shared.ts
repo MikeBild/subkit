@@ -5,9 +5,9 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
 import { users as usersTable } from "../../../db/schema/index.ts";
-import type * as grantsSvc from "../../../rbac/grants.ts";
-import type * as groupsSvc from "../../../rbac/groups.ts";
-import * as rolesSvc from "../../../rbac/roles.ts";
+import type * as grantsSvc from "../../../rbac/index.ts";
+import type * as groupsSvc from "../../../rbac/index.ts";
+import * as rolesSvc from "../../../rbac/index.ts";
 import { BadRequestError, ConflictError, NotFoundError } from "../../errors.ts";
 
 export function serializeRole(r: rolesSvc.RoleRow) {

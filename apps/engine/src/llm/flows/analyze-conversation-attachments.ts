@@ -35,6 +35,7 @@ export interface AnalyzeConversationAttachmentsParams {
 export async function analyzeConversationAttachments(
   p: AnalyzeConversationAttachmentsParams,
 ): Promise<DocumentAnalysisResult | null> {
+  // tenant-filter:exempt — tenant-scoped via parent flow id; verified by caller
   const rows = await p.db
     .select()
     .from(conversationAttachments)

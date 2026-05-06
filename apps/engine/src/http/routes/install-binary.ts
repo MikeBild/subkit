@@ -35,7 +35,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const DEFAULT_BINARIES_DIR = "/usr/local/share/subkit/binaries";

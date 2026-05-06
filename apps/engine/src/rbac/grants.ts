@@ -37,6 +37,7 @@ export interface GrantRow {
 }
 
 async function resolvePermissionId(db: Db, name: string): Promise<string> {
+  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ id: permissionsTable.id })
     .from(permissionsTable)

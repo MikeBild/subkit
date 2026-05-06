@@ -95,6 +95,7 @@ async function upsertPermissions(db: Db): Promise<Map<string, string>> {
       .values({ name: p.name, description: p.description, resource_type: p.resource_type })
       .onConflictDoNothing({ target: permissionsTable.name });
   }
+  // tenant-filter:exempt — seed/migration utility
   const rows = await db
     .select({ id: permissionsTable.id, name: permissionsTable.name })
     .from(permissionsTable)

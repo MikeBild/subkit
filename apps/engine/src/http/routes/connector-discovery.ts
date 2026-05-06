@@ -25,9 +25,8 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { DiscoveryResultSchema } from "../../api/connector-schemas.ts";
-import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
-import { DiscoveryError } from "../../connectors/discovery/types.ts";
-import { logger } from "../../logging/logger.ts";
+import { DiscoveryError, runDiscoveryCached } from "../../connectors/index.ts";
+import { logger } from "../../logging/index.ts";
 import { BadRequestError, HttpError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

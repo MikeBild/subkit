@@ -16,7 +16,24 @@ responsibilities.
 ## Non-negotiables
 
 - **Tenant isolation on every query and response.** `tenant_id` is not optional.
-  A missing scope is a security bug, not a style issue.
+  A missing scope is a security bug, not a style issue. The
+  `audit-invariants` `tenant_filter` AST scan recognises a `.where(...)`
+  argument as tenant-scoped if any identifier or property name in the
+  argument tree matches `/tenant/i`. List services in this repo use
+  `tenantConds` / `tenantWhereClauses` (rather than `conds` /
+  `whereClauses`) so the scan sees the predicate. **Do not rename
+  these back** — the rename silently regresses the gate. Inline
+  exemptions live as `// tenant-filter:exempt — <reason>` comments
+  with a mandatory non-`TODO`/`FIXME` reason; see
+  `.tenant-filter-allowlist.txt` and
+  `apps/engine/scripts/audit/tenant-filter-ast.ts` for the full
+  detection rules. **Scope:** the AST scan covers
+  `db.select().from(<table>).where(...)` chains only —
+  `db.update(<table>).set(...).where(...)` and
+  `db.delete(<table>).where(...)` chains are reviewer-enforced.
+  Extending the scan to those write paths surfaces ~180 pre-existing
+  call sites that need triage; that burndown is tracked as a
+  follow-up audit pass.
 - **Audit on every state change.** Use the helpers in `audit/`. Include
   request source (`api | cli | scheduler | mcp | webhook | tool-chain | ui`) and
   actor. A state change without an audit entry is a bug.

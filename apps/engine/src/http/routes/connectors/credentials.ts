@@ -4,11 +4,10 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { auditAwait } from "../../../audit/audit.ts";
-import { AuditAction } from "../../../audit/types.ts";
-import * as connectorSvc from "../../../connectors/service.ts";
-import { runClientCredentialsGrant } from "../../../credentials/oauth2/client.ts";
-import * as credsvc from "../../../credentials/service.ts";
+import { AuditAction, auditAwait } from "../../../audit/index.ts";
+import * as connectorSvc from "../../../connectors/index.ts";
+import * as credsvc from "../../../credentials/index.ts";
+import { runClientCredentialsGrant } from "../../../credentials/index.ts";
 import { encryptSecret } from "../../../crypto/aes-gcm.ts";
 import { credentials, endUserCredentials } from "../../../db/schema/index.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";

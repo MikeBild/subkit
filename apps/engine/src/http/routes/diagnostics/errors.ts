@@ -15,7 +15,7 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { errorRing } from "../../../observability/error-ring.ts";
+import { errorRing } from "../../../observability/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { ListQuery, ListResponse } from "./schemas.ts";

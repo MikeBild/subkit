@@ -6,9 +6,12 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { extractCodebaseArchive } from "../../discovery/archive.ts";
-import * as svc from "../../discovery/service.ts";
-import { DiscoveryArtifactSchema, DiscoveryRunSchema } from "../../discovery/types.ts";
+import * as svc from "../../discovery/index.ts";
+import {
+  DiscoveryArtifactSchema,
+  DiscoveryRunSchema,
+  extractCodebaseArchive,
+} from "../../discovery/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

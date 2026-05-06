@@ -135,7 +135,12 @@ export const saveWorkflowDraftTool: ConversationTool = {
       const convRows = await ctx.db
         .select({ target_workflow_id: conversations.target_workflow_id })
         .from(conversations)
-        .where(eq(conversations.id, ctx.conversation_id))
+        .where(
+          and(
+            eq(conversations.tenant_id, ctx.tenant_id),
+            eq(conversations.id, ctx.conversation_id),
+          ),
+        )
         .limit(1);
       targetForIdempotency = convRows[0]?.target_workflow_id ?? null;
     }

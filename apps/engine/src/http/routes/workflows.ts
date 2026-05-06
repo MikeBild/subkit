@@ -2,9 +2,8 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { synthesizeInputSchema } from "../../workflows/input-schema-synth.ts";
-import * as svc from "../../workflows/service.ts";
-import { validateWorkflowDef } from "../../workflows/validator.ts";
+import * as svc from "../../workflows/index.ts";
+import { synthesizeInputSchema, validateWorkflowDef } from "../../workflows/index.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

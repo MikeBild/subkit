@@ -22,11 +22,13 @@
 // catalog because the public payloads are platform-owned.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { audit } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
-import type { ChatAdapter } from "../../chat/adapter.ts";
-import type { ChatAdapterRegistry } from "../../chat/registry.ts";
-import type { ChatEvent, ChatPlatform } from "../../chat/types.ts";
+import { AuditAction, audit } from "../../audit/index.ts";
+import type {
+  ChatAdapter,
+  ChatAdapterRegistry,
+  ChatEvent,
+  ChatPlatform,
+} from "../../chat/index.ts";
 import type { Db } from "../../db/client.ts";
 import type { AppEnv } from "../openapi.ts";
 

@@ -25,14 +25,13 @@ import path from "node:path";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
 import {
   clearMemoryAttachments as _clearMemoryAttachmentsUnused,
   putMemoryAttachment,
-} from "../../conversations/attachments.ts";
+} from "../../conversations/index.ts";
 import { conversationAttachments, conversations } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";

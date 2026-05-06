@@ -5,13 +5,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import * as connectorSvc from "../../../connectors/service.ts";
-import {
-  completeAuthorizationCode,
-  startAuthorizationCode,
-} from "../../../credentials/oauth2/client.ts";
-import type { OAuth2ClientConfig } from "../../../credentials/oauth2/types.ts";
-import * as credsvc from "../../../credentials/service.ts";
+import * as connectorSvc from "../../../connectors/index.ts";
+import type { OAuth2ClientConfig } from "../../../credentials/index.ts";
+import * as credsvc from "../../../credentials/index.ts";
+import { completeAuthorizationCode, startAuthorizationCode } from "../../../credentials/index.ts";
 import { connectorOauthStates } from "../../../db/schema/index.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";

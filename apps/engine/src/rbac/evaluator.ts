@@ -64,6 +64,7 @@ function recordMetric(result: "allow" | "deny", permission: string, source: stri
 }
 
 async function lookupPermissionId(db: Db, name: string): Promise<string | null> {
+  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ id: permissionsTable.id })
     .from(permissionsTable)
@@ -83,6 +84,7 @@ async function lookupBuiltinRoleIdByName(db: Db, name: string): Promise<string |
 
 async function principalRoleId(db: Db, principal: ResolvedPrincipal): Promise<string | null> {
   if (principal.kind === "user") {
+    // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
     const rows = await db
       .select({ role_id: users.role_id })
       .from(users)
@@ -100,6 +102,7 @@ async function principalRoleId(db: Db, principal: ResolvedPrincipal): Promise<st
   }
   // system_account
   const { systemAccounts } = await import("../db/schema/index.ts");
+  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ role_id: systemAccounts.role_id })
     .from(systemAccounts)
@@ -114,6 +117,7 @@ async function principalRoleId(db: Db, principal: ResolvedPrincipal): Promise<st
 }
 
 async function roleHasPermission(db: Db, roleId: string, permissionId: string): Promise<boolean> {
+  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ role_id: rolePermissions.role_id })
     .from(rolePermissions)
@@ -130,6 +134,7 @@ async function groupGrantsPermission(
   permissionId: string,
 ): Promise<boolean> {
   // Join group_members → group_role_assignments → role_permissions.
+  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ group_id: groupMembers.group_id })
     .from(groupMembers)

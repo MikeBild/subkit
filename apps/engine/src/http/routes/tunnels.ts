@@ -13,16 +13,15 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
-import { audit } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
-import { tunnelRegistry } from "../../tunnels/registry.ts";
+import { AuditAction, audit } from "../../audit/index.ts";
 import {
   deleteTunnel,
   fingerprintAgentToken,
   getTunnel,
   listTunnels,
+  tunnelRegistry,
   upsertTunnel,
-} from "../../tunnels/service.ts";
+} from "../../tunnels/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

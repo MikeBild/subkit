@@ -6,11 +6,11 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import * as svc from "../../skill-candidates/service.ts";
+import * as svc from "../../skill-candidates/index.ts";
 import {
   type ApproveSkillCandidateParams,
   SkillCandidateSchema,
-} from "../../skill-candidates/types.ts";
+} from "../../skill-candidates/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

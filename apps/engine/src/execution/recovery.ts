@@ -93,6 +93,7 @@ export async function recoverCrashedExecutions(
   // per-row in JS (not SQL) so the override and the multiplier stay
   // visible at the call site rather than buried inside an INTERVAL
   // expression.
+  // tenant-filter:exempt — recovery sweeps every tenant on resume
   const candidates = (await db
     .select({
       id: executions.id,

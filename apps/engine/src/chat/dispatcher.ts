@@ -221,6 +221,7 @@ export async function handleChatEvent(
 ): Promise<DispatchOutcome> {
   const { db, adapter } = deps;
 
+  // tenant-filter:exempt — platform/workspace_id lookup pre-tenant
   const [workspace] = await db
     .select()
     .from(chatWorkspaces)
@@ -235,6 +236,7 @@ export async function handleChatEvent(
   const tenant_id = workspace.tenant_id;
 
   // Resolve identity → subkit user.
+  // tenant-filter:exempt — platform user-identity lookup pre-tenant
   const [identity] = await db
     .select()
     .from(chatIdentities)
@@ -390,7 +392,7 @@ export async function handleChatEvent(
     const versionRows = await db
       .select({ current_version_id: workflowsTable.current_version_id })
       .from(workflowsTable)
-      .where(eq(workflowsTable.id, wf.id))
+      .where(and(eq(workflowsTable.tenant_id, tenant_id), eq(workflowsTable.id, wf.id)))
       .limit(1);
     const workflow_version_id = versionRows[0]?.current_version_id;
     if (!workflow_version_id) {
@@ -414,7 +416,7 @@ export async function handleChatEvent(
     const userRows = await db
       .select({ role: users.role })
       .from(users)
-      .where(eq(users.id, user_id))
+      .where(and(eq(users.tenant_id, tenant_id), eq(users.id, user_id)))
       .limit(1);
     const syntheticRoles = userRows[0] ? [userRows[0].role] : [];
     const runDecision = await can(db, {
@@ -523,7 +525,13 @@ export async function handleChatEvent(
   const [existing] = await db
     .select()
     .from(chatSessions)
-    .where(and(eq(chatSessions.workspace_id, workspace.id), eq(chatSessions.thread_id, threadKey)))
+    .where(
+      and(
+        eq(chatSessions.tenant_id, tenant_id),
+        eq(chatSessions.workspace_id, workspace.id),
+        eq(chatSessions.thread_id, threadKey),
+      ),
+    )
     .limit(1);
 
   let conversation_id: string;
@@ -592,7 +600,7 @@ export async function handleChatEvent(
     await db
       .select({ id: conversations.id, status: conversations.status })
       .from(conversations)
-      .where(eq(conversations.id, conversation_id))
+      .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
       .limit(1);
   }
 

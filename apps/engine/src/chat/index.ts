@@ -1,0 +1,12 @@
+// Public API barrel for the `chat` subsystem. Routes and other
+// subsystems must import from this entry point only — see the
+// route_layering check at apps/engine/scripts/audit-invariants.ts.
+
+export * from "./adapter.ts";
+// `dispatcher.ts` carries the `handleChatEvent` entry point used by
+// `http/routes/chat.ts`. Re-exported here so a future second caller
+// (e.g. an MCP capability or a webhook handler) can reach it through
+// the barrel without tripping the route_layering FAIL gate.
+export * from "./dispatcher.ts";
+export * from "./registry.ts";
+export * from "./types.ts";

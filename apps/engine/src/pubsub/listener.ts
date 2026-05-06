@@ -245,6 +245,7 @@ export class PubSubListener {
     const db = this.opts.db;
     const cursor = await this.loadCursor(channel);
     const maxBatch = this.opts.catchUpBatchSize ?? DEFAULT_CATCH_UP_BATCH;
+    // tenant-filter:exempt — outbox/listener sweeps every tenant; row carries tenant_id forward
     const rows = await db
       .select()
       .from(eventsTable)
@@ -281,6 +282,7 @@ export class PubSubListener {
 
   private async loadCursor(channel: OutboxChannel): Promise<number> {
     const db = this.opts.db;
+    // tenant-filter:exempt — outbox/listener sweeps every tenant; row carries tenant_id forward
     const rows = await db
       .select()
       .from(outboxCursors)
@@ -303,6 +305,7 @@ export class PubSubListener {
     // Approximate "lag" = head row id - cursor id. Cheap query against
     // the indexed channel column.
     try {
+      // tenant-filter:exempt — outbox/listener sweeps every tenant; row carries tenant_id forward
       const headRows = await db
         .select({ max_id: sql<number>`COALESCE(MAX(id), 0)` })
         .from(eventsTable)

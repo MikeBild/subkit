@@ -187,6 +187,7 @@ async function resolveConversationPrincipal(ctx: ToolContext): Promise<ResolvedP
     if (!row) return null;
     let roleNames: string[] = [row.role];
     if (row.role_id) {
+      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
       const named = await ctx.db
         .select({ name: roles.name })
         .from(roles)
@@ -212,6 +213,7 @@ async function resolveConversationPrincipal(ctx: ToolContext): Promise<ResolvedP
     if (!row) return null;
     let roleNames: string[] = ["member"];
     if (row.role_id) {
+      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
       const named = await ctx.db
         .select({ name: roles.name })
         .from(roles)

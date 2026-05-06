@@ -53,6 +53,7 @@ export async function refreshIfStale(
   const now = Date.now();
   const expiresMs = decrypted.expires_at ? decrypted.expires_at.getTime() : 0;
   // Need the connector config to build an oauth client.
+  // tenant-filter:exempt — background refresh sweeps every tenant
   const connRows = await db
     .select()
     .from(connectors)
@@ -232,6 +233,7 @@ export async function registerOAuth2RefreshHandler(opts: {
 }
 
 async function handleRefreshJob(db: Db, data: RefreshOAuthJob): Promise<void> {
+  // tenant-filter:exempt — background refresh sweeps every tenant
   const rows = await db
     .select()
     .from(credentials)

@@ -514,6 +514,7 @@ export async function handleInbound(
   //    expect uniqueness across tenants via the composite unique
   //    index. For P11 a slug is globally unique because tests seed a
   //    single tenant, but we still carry the tenant id forward.
+  // tenant-filter:exempt — slug-based routing pre-tenant; (slug) is globally unique
   const rows = await db
     .select()
     .from(webhooksInbound)

@@ -253,12 +253,12 @@ export async function listConnectors(
   exec?: Executor,
 ): Promise<ConnectorView[]> {
   const db = exec ?? getDb();
-  const conds = [eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)];
-  if (opts.environment) conds.push(eq(connectors.environment, opts.environment));
+  const tenantConds = [eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)];
+  if (opts.environment) tenantConds.push(eq(connectors.environment, opts.environment));
   const rows = await db
     .select()
     .from(connectors)
-    .where(and(...conds))
+    .where(and(...tenantConds))
     .orderBy(desc(connectors.created_at))
     .limit(Math.min(opts.limit ?? 100, 500))
     .offset(opts.offset ?? 0);

@@ -57,24 +57,24 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
 function buildWhere(filters: AuditQueryFilters, before?: Date) {
-  const conds = [eq(auditLog.tenant_id, filters.tenant_id)];
+  const tenantConds = [eq(auditLog.tenant_id, filters.tenant_id)];
   if (filters.actions && filters.actions.length > 0) {
-    conds.push(inArray(auditLog.action, filters.actions));
+    tenantConds.push(inArray(auditLog.action, filters.actions));
   }
-  if (filters.actor_id) conds.push(eq(auditLog.actor_id, filters.actor_id));
-  if (filters.actor_type) conds.push(eq(auditLog.actor_type, filters.actor_type));
-  if (filters.resource_type) conds.push(eq(auditLog.resource_type, filters.resource_type));
+  if (filters.actor_id) tenantConds.push(eq(auditLog.actor_id, filters.actor_id));
+  if (filters.actor_type) tenantConds.push(eq(auditLog.actor_type, filters.actor_type));
+  if (filters.resource_type) tenantConds.push(eq(auditLog.resource_type, filters.resource_type));
   if (filters.resource_id) {
     // `resource_id` is `text` in the schema, but callers occasionally
     // pass uuids. Compare as text to avoid coercion surprises.
-    conds.push(sql`${auditLog.resource_id}::text = ${filters.resource_id}`);
+    tenantConds.push(sql`${auditLog.resource_id}::text = ${filters.resource_id}`);
   }
-  if (filters.result) conds.push(eq(auditLog.result, filters.result));
-  if (filters.trace_id) conds.push(eq(auditLog.trace_id, filters.trace_id));
-  if (filters.ts_from) conds.push(gte(auditLog.ts, filters.ts_from));
-  if (filters.ts_to) conds.push(lte(auditLog.ts, filters.ts_to));
-  if (before) conds.push(lt(auditLog.ts, before));
-  return and(...conds);
+  if (filters.result) tenantConds.push(eq(auditLog.result, filters.result));
+  if (filters.trace_id) tenantConds.push(eq(auditLog.trace_id, filters.trace_id));
+  if (filters.ts_from) tenantConds.push(gte(auditLog.ts, filters.ts_from));
+  if (filters.ts_to) tenantConds.push(lte(auditLog.ts, filters.ts_to));
+  if (before) tenantConds.push(lt(auditLog.ts, before));
+  return and(...tenantConds);
 }
 
 function rowToEntry(row: typeof auditLog.$inferSelect): AuditEntry {

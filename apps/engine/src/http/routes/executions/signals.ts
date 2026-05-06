@@ -79,8 +79,11 @@ export function registerSignalRoute(app: OpenAPIHono<AppEnv>): void {
     let tenant_id: string;
     if (token) {
       // Token-mediated path. The execution row carries the canonical
-      // tenant_id; we look it up by primary key (no tenant filter,
-      // since the verifier proves the caller knows the tenant).
+      // tenant_id; we look it up by primary key and verify the
+      // tenant binding against the signed HMAC token below — at this
+      // point in the flow the principal has not yet been established,
+      // so the lookup is intentionally cross-tenant.
+      // tenant-filter:exempt — token-mediated lookup by globally-unique execution_id; tenant_id is read out and verified against the signed HMAC token below
       const rows = await db
         .select({ id: executions.id, tenant_id: executions.tenant_id })
         .from(executions)
