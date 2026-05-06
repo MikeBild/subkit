@@ -55,6 +55,11 @@ const QUERY_STARTERS = new Set([
 // failure mode the gate exists to prevent. The non-greedy `\S` after
 // the separator forces at least one non-space character.
 const EXEMPT_RE = /\btenant-filter:\s*exempt\b\s*[-—:]\s*\S/;
+// `TODO`/`FIXME` is not a documented decision — it is "I haven't
+// actually checked". Reject these in the reason text so a future
+// contributor cannot ship a green build behind a TODO. If the site
+// genuinely needs tracking, file an issue and link it in the reason.
+const TODO_REASON_RE = /\b(?:TODO|FIXME|XXX|HACK)\b/;
 const TENANT_ID_NAMES = new Set(["tenant_id", "tenantId"]);
 
 function listSourceFiles(root: string): string[] {
@@ -140,19 +145,23 @@ function resolveTableArg(arg: Node): string | undefined {
   return undefined;
 }
 
+function exemptMatches(text: string): boolean {
+  return EXEMPT_RE.test(text) && !TODO_REASON_RE.test(text);
+}
+
 function hasExemptComment(call: CallExpression, sourceText: string): boolean {
   const start = call.getStart();
   const end = call.getEnd();
   // Same-line trailing comment: scan from end of call to next newline.
   const lineEnd = sourceText.indexOf("\n", end);
   const after = sourceText.substring(end, lineEnd === -1 ? sourceText.length : lineEnd);
-  if (EXEMPT_RE.test(after)) return true;
+  if (exemptMatches(after)) return true;
   // Leading trivia on the enclosing statement — walk up until a Statement.
   let cur: Node | undefined = call;
   while (cur) {
     if (Node.isStatement(cur) || Node.isVariableStatement(cur)) {
       const leading = sourceText.substring(cur.getFullStart(), cur.getStart());
-      if (EXEMPT_RE.test(leading)) return true;
+      if (exemptMatches(leading)) return true;
       break;
     }
     cur = cur.getParent();
@@ -170,7 +179,7 @@ function hasExemptComment(call: CallExpression, sourceText: string): boolean {
     if (prevNewline === -1) break;
     const lineStartPos = sourceText.lastIndexOf("\n", prevNewline - 1) + 1;
     const lineSlice = sourceText.substring(lineStartPos, prevNewline);
-    if (EXEMPT_RE.test(lineSlice)) return true;
+    if (exemptMatches(lineSlice)) return true;
     const trimmed = lineSlice.trim();
     const isContinuation =
       trimmed === "" ||

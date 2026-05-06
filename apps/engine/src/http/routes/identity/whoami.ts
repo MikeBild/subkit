@@ -1,7 +1,7 @@
 // Minimal identity shape — just enough for the persona banner, no second probe needed.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -54,7 +54,6 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
     let roleName: string | null = null;
 
     if (principal.kind === "user") {
-      // tenant-filter:exempt — global identity-provider catalog
       const [row] = await db
         .select({
           email: users.email,
@@ -63,19 +62,23 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
         })
         .from(users)
         .leftJoin(roles, eq(roles.id, users.role_id))
-        .where(eq(users.id, principal.id))
+        .where(and(eq(users.tenant_id, principal.tenant_id), eq(users.id, principal.id)))
         .limit(1);
       email = row?.email ?? null;
       roleName = row?.role_name ?? row?.role_legacy ?? null;
     } else if (principal.kind === "system_account") {
-      // tenant-filter:exempt — global identity-provider catalog
       const [row] = await db
         .select({
           role_name: roles.name,
         })
         .from(systemAccounts)
         .leftJoin(roles, eq(roles.id, systemAccounts.role_id))
-        .where(eq(systemAccounts.id, principal.id))
+        .where(
+          and(
+            eq(systemAccounts.tenant_id, principal.tenant_id),
+            eq(systemAccounts.id, principal.id),
+          ),
+        )
         .limit(1);
       roleName = row?.role_name ?? null;
     }

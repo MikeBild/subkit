@@ -541,12 +541,20 @@ async function fetchConnector(ctx: ResolverContext, slug: string) {
 }
 
 async function fetchCredential(ctx: ResolverContext, connectorId: string) {
-  // tenant-filter:exempt — tenant-scoped via parent execution_id; verified by caller
+  // Defense-in-depth: tenant_id is also the AAD for the AES-GCM
+  // wrapper around the secret blob, so a wrong-tenant row would fail
+  // to decrypt downstream — but pinning the predicate at query time
+  // turns that failure mode from "decryption error" into "row not
+  // found", which is the right thing for an audit log to record.
   const rows = await ctx.db
     .select()
     .from(credentials)
     .where(
-      and(eq(credentials.connector_id, connectorId), eq(credentials.environment, ctx.environment)),
+      and(
+        eq(credentials.tenant_id, ctx.tenant_id),
+        eq(credentials.connector_id, connectorId),
+        eq(credentials.environment, ctx.environment),
+      ),
     )
     .limit(1);
   return rows[0] ?? null;

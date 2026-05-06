@@ -213,6 +213,23 @@ describe("tenant-filter-ast", () => {
     expect(auditTenantFilterFromText(STRING_FROM_NOT_QUERY)).toEqual([]);
   });
 
+  test("exempt comment with TODO/FIXME reason still flags the site", () => {
+    const text = `
+import { eq } from "drizzle-orm";
+import { conversations } from "../db/schema.ts";
+
+declare const db: any;
+declare const id: string;
+
+export async function load() {
+  // tenant-filter:exempt — TODO(audit-2026-06): verify tenant scoping for this site
+  return await db.select().from(conversations).where(eq(conversations.id, id));
+}
+`;
+    const v = auditTenantFilterFromText(text);
+    expect(v).toHaveLength(1);
+  });
+
   test("exempt comment without a reason still flags the site", () => {
     const text = `
 import { eq } from "drizzle-orm";

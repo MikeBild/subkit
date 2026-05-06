@@ -119,10 +119,15 @@ jobs:
 
       - name: Scrub secrets from review body
         # The scrubber is a deterministic regex pass over stdin; the
-        # only failure modes are missing-stdin (handled above by
-        # always producing review-raw.md) and a bug in the scrubber
-        # itself (which the unit tests cover). Still wrapped in
-        # `|| true` to keep the advisory-only contract.
+        # only failure modes are empty-stdin (the scrubber refuses)
+        # and a bug in the scrubber itself (which the unit tests
+        # cover). Fail closed — if the scrub step fails, post a
+        # diagnostic placeholder rather than the raw model output.
+        # Posting raw output on scrub failure would defeat the
+        # workflow's documented trust boundary ("a model that
+        # echoes a diff-embedded secret cannot leak it to a public
+        # PR thread"); a transient scrubber crash must never trade
+        # against that contract.
         run: |
           set +e
           bun run apps/engine/scripts/scrub-review-comment.ts \
@@ -130,8 +135,10 @@ jobs:
           rc=$?
           set -e
           if [ $rc -ne 0 ]; then
-            echo "::warning::scrub step failed (rc=$rc); posting raw output as fallback"
-            cp review-raw.md review-scrubbed.md
+            echo "::warning::scrub step failed (rc=$rc); replacing body with diagnostic placeholder"
+            printf '%s\n' \
+              '_claude-review: scrub step failed (rc='"$rc"'); model output suppressed for safety. See workflow logs._' \
+              > review-scrubbed.md
           fi
           exit 0
 
