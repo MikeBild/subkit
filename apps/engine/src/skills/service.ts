@@ -438,7 +438,6 @@ export async function retrieveApplicableSkills(
   const active = eq(skills.lifecycle, "active");
   const tenant = eq(skills.tenant_id, p.tenant_id);
 
-  // tenant-filter:exempt — tenant-scoped via parent skill_id; verified by caller
   const globalRows = await db
     .select()
     .from(skills)
@@ -447,7 +446,6 @@ export async function retrieveApplicableSkills(
 
   let connectorRows: SkillRow[] = [];
   if (p.connector_ids && p.connector_ids.length > 0) {
-    // tenant-filter:exempt — tenant-scoped via parent skill_id; verified by caller
     connectorRows = await db
       .select()
       .from(skills)
@@ -464,7 +462,6 @@ export async function retrieveApplicableSkills(
 
   let workflowRows: SkillRow[] = [];
   if (p.workflow_ids && p.workflow_ids.length > 0) {
-    // tenant-filter:exempt — tenant-scoped via parent skill_id; verified by caller
     workflowRows = await db
       .select()
       .from(skills)

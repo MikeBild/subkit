@@ -105,14 +105,14 @@ function parsePersistedRequestMeta(
 }
 
 async function loadStepSnapshot(
+  tenant_id: string,
   step_id: string,
   exec: Executor,
 ): Promise<FailingStepSnapshot | null> {
-  // tenant-filter:exempt — drift detection sweeps every tenant
   const rows = await exec
     .select()
     .from(executionSteps)
-    .where(eq(executionSteps.id, step_id))
+    .where(and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.id, step_id)))
     .limit(1);
   const row = rows[0];
   if (!row) return null;
@@ -169,20 +169,23 @@ async function autoApplyPatch(
     proposal: PatchProposal;
   },
 ): Promise<string | null> {
-  // tenant-filter:exempt — drift detection sweeps every tenant
   const wfRows = await tx
     .select()
     .from(workflows)
-    .where(eq(workflows.id, params.workflow_id))
+    .where(and(eq(workflows.tenant_id, params.tenant_id), eq(workflows.id, params.workflow_id)))
     .limit(1);
   const wf = wfRows[0];
   if (!wf?.current_version_id) return null;
 
-  // tenant-filter:exempt — drift detection sweeps every tenant
   const cvRows = await tx
     .select()
     .from(workflowVersions)
-    .where(eq(workflowVersions.id, wf.current_version_id))
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, params.tenant_id),
+        eq(workflowVersions.id, wf.current_version_id),
+      ),
+    )
     .limit(1);
   const currentVersion = cvRows[0];
   if (!currentVersion) return null;
@@ -197,13 +200,17 @@ async function autoApplyPatch(
     },
   };
 
-  // tenant-filter:exempt — drift detection sweeps every tenant
   const maxRows = (await tx
     .select({
       max_version: workflowVersions.version,
     })
     .from(workflowVersions)
-    .where(eq(workflowVersions.workflow_id, params.workflow_id))
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, params.tenant_id),
+        eq(workflowVersions.workflow_id, params.workflow_id),
+      ),
+    )
     .orderBy(desc(workflowVersions.version))
     .limit(1)) as Array<{ max_version: number }>;
   const next = (maxRows[0]?.max_version ?? 0) + 1;
@@ -243,7 +250,7 @@ export async function runSelfHealingLoop(
   // handed us directly — tests do this to avoid seeding noise).
   let snapshot: FailingStepSnapshot | null = params.step_snapshot ?? null;
   if (!snapshot && params.step_id) {
-    snapshot = await loadStepSnapshot(params.step_id, db);
+    snapshot = await loadStepSnapshot(params.tenant_id, params.step_id, db);
   }
   if (!snapshot) {
     logger.warn({

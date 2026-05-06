@@ -3,7 +3,12 @@
 // silently when the SDK upgrades the provider registry signature.
 
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_BUDGET, MAX_REPAIRS_PER_TURN, resolveLanguageModel } from "./model-resolver.ts";
+import {
+  DEFAULT_BUDGET,
+  type LoopProviderKind,
+  MAX_REPAIRS_PER_TURN,
+  resolveLanguageModel,
+} from "./model-resolver.ts";
 
 describe("resolveLanguageModel", () => {
   test("returns a fresh MockLanguageModelV3 for the mock provider", async () => {
@@ -19,6 +24,29 @@ describe("resolveLanguageModel", () => {
     const a = await resolveLanguageModel("mock", "mock-sonnet");
     const b = await resolveLanguageModel("mock", "mock-sonnet");
     expect(a).not.toBe(b);
+  });
+
+  test("real-provider path types check against LoopProviderKind union", () => {
+    // Compile-only assertion: the union must include the SDK provider
+    // kinds the loop ever passes. If the SDK adds/removes a provider
+    // tag in `llm/types.ts:LlmProviderKind`, this site will surface
+    // the change at typecheck time instead of through the runtime
+    // `as any` cast that previously masked it.
+    const providers: LoopProviderKind[] = [
+      "mock",
+      "anthropic",
+      "openai",
+      "gemini",
+      "azure",
+      "bedrock",
+      "vertex",
+      "gateway",
+    ];
+    // `void` to keep the test intent explicit: this is a typecheck
+    // assertion, not a runtime assertion. Real-provider dispatch is
+    // covered by the integration suite under conversations/tests/.
+    void providers;
+    expect(providers.length).toBeGreaterThan(1);
   });
 });
 

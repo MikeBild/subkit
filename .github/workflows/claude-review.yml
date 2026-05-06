@@ -63,7 +63,12 @@ jobs:
           bun-version: latest
 
       - name: Install Claude Code CLI
-        run: bun add -g @anthropic-ai/claude-code
+        # Pinned. Unpinned `bun add -g @anthropic-ai/claude-code`
+        # would let an upstream flag rename (e.g. dropping
+        # `--max-budget-usd`) silently degrade the review job to a
+        # no-op, since the workflow is `continue-on-error: true`.
+        # Bump deliberately when verified locally.
+        run: bun add -g @anthropic-ai/claude-code@2.1.131
 
       - name: Run /review and capture raw output
         id: review

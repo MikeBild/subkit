@@ -139,8 +139,8 @@ describe("pagination checkpoint", () => {
       signature: "sig-abc",
       written_at: new Date(TEST_NOW_MS).toISOString(),
     };
-    await writePaginationCheckpoint(step_row_id, cp, testDb.db);
-    const round = await readPaginationCheckpoint(step_row_id, testDb.db);
+    await writePaginationCheckpoint(tenantId, step_row_id, cp, testDb.db);
+    const round = await readPaginationCheckpoint(tenantId, step_row_id, testDb.db);
     expect(round).not.toBeNull();
     expect(round?.state).toEqual({ kind: "page", page: 50 });
     expect(round?.page_idx).toBe(50);
@@ -161,7 +161,7 @@ describe("pagination checkpoint", () => {
       signature: "sig-1",
       written_at: new Date(TEST_NOW_MS).toISOString(),
     };
-    await writePaginationCheckpoint(step_row_id, cp, testDb.db);
+    await writePaginationCheckpoint(tenantId, step_row_id, cp, testDb.db);
     const rows = await testDb.db
       .select()
       .from(executionSteps)
@@ -198,7 +198,7 @@ describe("pagination checkpoint", () => {
 
     // After failure the row's request_meta should hold the checkpoint
     // recorded at page 50 (the most recent multiple of the 50-page window).
-    const cp = await readPaginationCheckpoint(step_row_id, testDb.db);
+    const cp = await readPaginationCheckpoint(tenantId, step_row_id, testDb.db);
     expect(cp).not.toBeNull();
     expect(cp?.state).toEqual({ kind: "page", page: 50 });
     expect(cp?.page_idx).toBe(50);
@@ -256,7 +256,7 @@ describe("pagination checkpoint", () => {
       signature: "sig-from-an-old-workflow-shape",
       written_at: new Date(TEST_NOW_MS).toISOString(),
     };
-    await writePaginationCheckpoint(step_row_id, stale, testDb.db);
+    await writePaginationCheckpoint(tenantId, step_row_id, stale, testDb.db);
 
     const step: RequestStep = {
       id: "fetch-pages",

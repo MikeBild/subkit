@@ -12,7 +12,7 @@
 // stale resume position.
 
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { executionSteps } from "../db/schema/index.ts";
 import { applySelector } from "./selectors.ts";
@@ -289,14 +289,14 @@ export function makeStrategy(
 /** Read the current pagination checkpoint for a step row. Returns null when
  *  no row exists, no `request_meta`, or no checkpoint subkey. */
 export async function readPaginationCheckpoint(
+  tenant_id: string,
   step_row_id: string,
   db: Db,
 ): Promise<PaginationCheckpoint | null> {
-  // tenant-filter:exempt — tenant-scoped via parent execution_id; verified by caller
   const rows = await db
     .select({ request_meta: executionSteps.request_meta })
     .from(executionSteps)
-    .where(eq(executionSteps.id, step_row_id))
+    .where(and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.id, step_row_id)))
     .limit(1);
   const meta = rows[0]?.request_meta as Record<string, unknown> | null | undefined;
   if (!meta || typeof meta !== "object") return null;
@@ -323,22 +323,22 @@ export async function readPaginationCheckpoint(
  *  point-locked by primary key so the merge is contention-safe in the steady
  *  state of one-writer-per-step. */
 export async function writePaginationCheckpoint(
+  tenant_id: string,
   step_row_id: string,
   checkpoint: PaginationCheckpoint,
   db: Db,
 ): Promise<void> {
-  // tenant-filter:exempt — tenant-scoped via parent execution_id; verified by caller
   const rows = await db
     .select({ request_meta: executionSteps.request_meta })
     .from(executionSteps)
-    .where(eq(executionSteps.id, step_row_id))
+    .where(and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.id, step_row_id)))
     .limit(1);
   const existing = (rows[0]?.request_meta as Record<string, unknown> | null) ?? {};
   const next = { ...existing, pagination_checkpoint: checkpoint };
   await db
     .update(executionSteps)
     .set({ request_meta: next })
-    .where(eq(executionSteps.id, step_row_id));
+    .where(and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.id, step_row_id)));
 }
 
 function extractArray(body: unknown, path?: string): unknown[] | null {

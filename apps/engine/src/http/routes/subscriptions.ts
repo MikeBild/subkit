@@ -282,11 +282,12 @@ export function registerSubscriptionRoutes(app: OpenAPIHono<AppEnv>): void {
     const timestamp = Math.floor(Date.now() / 1000);
     let body: string;
     if (existing.outbox_event_id != null) {
-      // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
       const outboxRows = await db
         .select()
         .from(events)
-        .where(eq(events.id, existing.outbox_event_id))
+        .where(
+          and(eq(events.tenant_id, principal.tenant_id), eq(events.id, existing.outbox_event_id)),
+        )
         .limit(1);
       const outbox = outboxRows[0];
       if (outbox) {

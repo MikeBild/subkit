@@ -74,4 +74,26 @@ describe("scrub-review-comment", () => {
     expect(out).not.toContain("AKIAIOSFODNN7EXAMPLE");
     expect(out).not.toContain("Bearer xyz.abc-def_ghi");
   });
+
+  test("fail-closed contract: a non-zero exit MUST be observable to the workflow", () => {
+    // The workflow's `Scrub secrets from review body` step relies on
+    // a non-zero exit to trigger the diagnostic-placeholder fallback
+    // (and the ::error:: annotation). If a future "make this resilient"
+    // change makes the script swallow errors and exit 0, the workflow
+    // would post the raw body — exactly the leak the gate exists to
+    // prevent.
+    //
+    // This test pins the contract: ANY input that the script refuses
+    // MUST produce a non-zero exit code AND a stderr message. Today
+    // empty / whitespace-only stdin is the only refusal class; if
+    // future scrubber changes add other refusals, extend this list.
+    for (const refusedInput of ["", "   \n\n\t  "]) {
+      const result = spawnSync("bun", ["run", SCRIPT], {
+        input: refusedInput,
+        encoding: "utf8",
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr.length).toBeGreaterThan(0);
+    }
+  });
 });
