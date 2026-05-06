@@ -63,10 +63,22 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -euo pipefail
-          # Render the slash-command body into a one-shot prompt; the CLI
-          # is non-interactive in --print mode and exits 0 on success.
-          PROMPT="$(cat .claude/commands/review.md)"
-          claude --print --max-turns 8 "$PROMPT" > review-raw.md
+          # The slash-command file starts with `---\n…\n---` YAML
+          # frontmatter; passing it verbatim to `claude --print` makes
+          # the CLI parse `---` as a flag and bail with
+          # "unknown option '---'". Strip the leading frontmatter
+          # block (only when it sits at line 1) and feed the prompt
+          # via stdin so quoting can't break on the body's backticks
+          # or single quotes.
+          awk '
+            BEGIN { in_fm = 0; done_fm = 0 }
+            NR == 1 && /^---[[:space:]]*$/ { in_fm = 1; next }
+            in_fm && /^---[[:space:]]*$/ { in_fm = 0; done_fm = 1; next }
+            in_fm { next }
+            { print }
+          ' .claude/commands/review.md > review-prompt.md
+          test -s review-prompt.md
+          claude --print --max-turns 8 < review-prompt.md > review-raw.md
 
       - name: Scrub secrets from review body
         run: |
