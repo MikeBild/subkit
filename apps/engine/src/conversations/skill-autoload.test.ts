@@ -288,3 +288,88 @@ describe("listBaselineSlugs", () => {
     expect(listBaselineSlugs(CATALOG)).toEqual(["error-recovery", "subkit-concepts"]);
   });
 });
+
+describe("autoloadForToolCall — step_kind activation rule (A5)", () => {
+  const STEP_KIND_CATALOG: ActivationRecord[] = [
+    {
+      slug: "wait-step-skill",
+      activates_when: [{ kind: "step_kind", step_kinds: ["wait"] }],
+      maturity: "stable",
+      side_effects: "read",
+      tags: [],
+    },
+    {
+      slug: "branch-and-loop-skill",
+      activates_when: [{ kind: "step_kind", step_kinds: ["branch", "loop"] }],
+      maturity: "stable",
+      side_effects: "read",
+      tags: [],
+    },
+  ];
+
+  test("propose_step kind=wait → activates wait-step-skill", () => {
+    expect(
+      autoloadForToolCall(
+        { tool: "propose_step", input: { step: { kind: "wait", duration_ms: 5000 } } },
+        STEP_KIND_CATALOG,
+        [],
+      ),
+    ).toContain("wait-step-skill");
+  });
+
+  test("propose_step kind=request → does NOT activate wait-step-skill", () => {
+    expect(
+      autoloadForToolCall(
+        { tool: "propose_step", input: { step: { kind: "request" } } },
+        STEP_KIND_CATALOG,
+        [],
+      ),
+    ).not.toContain("wait-step-skill");
+  });
+
+  test("build_workflow with steps[].kind=wait → activates wait-step-skill", () => {
+    expect(
+      autoloadForToolCall(
+        {
+          tool: "build_workflow",
+          input: {
+            steps: [
+              { kind: "request", id: "a" },
+              { kind: "wait", id: "b", duration_ms: 1000 },
+            ],
+          },
+        },
+        STEP_KIND_CATALOG,
+        [],
+      ),
+    ).toContain("wait-step-skill");
+  });
+
+  test("build_workflow with branch.then_steps[].kind=loop → activates branch-and-loop-skill", () => {
+    expect(
+      autoloadForToolCall(
+        {
+          tool: "build_workflow",
+          input: {
+            steps: [
+              {
+                kind: "branch",
+                id: "b1",
+                then_steps: [{ kind: "loop", id: "l1" }],
+                else_steps: [],
+              },
+            ],
+          },
+        },
+        STEP_KIND_CATALOG,
+        [],
+      ),
+    ).toContain("branch-and-loop-skill");
+  });
+
+  test("user-turn signals do NOT trigger step_kind rules", () => {
+    expect(
+      autoloadForUserTurn({ user_text: "wait for something" }, STEP_KIND_CATALOG, []),
+    ).not.toContain("wait-step-skill");
+  });
+});

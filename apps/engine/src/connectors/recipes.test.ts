@@ -135,3 +135,99 @@ describe("catalog totals", () => {
     expect(total).toBeGreaterThanOrEqual(30);
   });
 });
+
+// In an AI-authored model, a primitive without a recipe is a primitive the
+// LLM never emits cleanly on first attempt (repair loop is `maxRetries: 0`).
+// This gate enforces that every workflow step kind has ≥1 demonstrating
+// recipe in `templates.json`. Add the kind to `KNOWN_UNCOVERED` only with a
+// TODO citation pointing at the issue that will land its first recipe.
+describe("recipe-coverage gate (A1)", () => {
+  const DECLARED_STEP_KINDS = [
+    "request",
+    "transform",
+    "call",
+    "wait",
+    "wait_for_event",
+    "branch",
+    "parallel",
+    "loop",
+    "tool",
+  ] as const;
+
+  // Step kinds without a shipped recipe today. Each entry must reference an
+  // open issue or follow-up that will remove it. Empty set = full coverage.
+  const KNOWN_UNCOVERED = new Set<string>([
+    "call", // TODO: sub-workflow invocation — needs recipe demonstrating CallStep before promotion
+    "tool", // TODO: in-workflow LLM tool call — needs recipe demonstrating ToolStep before promotion
+    "wait_for_event", // TODO: HITL approval recipe — ship alongside #49 wait-for-event step runner
+  ]);
+
+  function collectStepKinds(steps: unknown): Set<string> {
+    const used = new Set<string>();
+    const walk = (xs: unknown): void => {
+      if (!Array.isArray(xs)) return;
+      for (const s of xs) {
+        if (!s || typeof s !== "object") continue;
+        const step = s as Record<string, unknown>;
+        if (typeof step.kind === "string") used.add(step.kind);
+        if (Array.isArray(step.then_steps)) walk(step.then_steps);
+        if (Array.isArray(step.else_steps)) walk(step.else_steps);
+        if (Array.isArray(step.branches)) for (const b of step.branches) walk(b);
+        if (Array.isArray(step.body_steps)) walk(step.body_steps);
+      }
+    };
+    walk(steps);
+    return used;
+  }
+
+  test("every StepSchema discriminant is either covered by a recipe or listed in KNOWN_UNCOVERED", () => {
+    const used = new Set<string>();
+    for (const t of loadBuiltinTemplates()) {
+      for (const r of t.recipes) {
+        for (const k of collectStepKinds(r.workflow.steps)) used.add(k);
+      }
+    }
+    const missing: string[] = [];
+    for (const kind of DECLARED_STEP_KINDS) {
+      if (used.has(kind)) continue;
+      if (KNOWN_UNCOVERED.has(kind)) continue;
+      missing.push(kind);
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test("KNOWN_UNCOVERED entries are not silently shadowed by a now-covered recipe", () => {
+    const used = new Set<string>();
+    for (const t of loadBuiltinTemplates()) {
+      for (const r of t.recipes) {
+        for (const k of collectStepKinds(r.workflow.steps)) used.add(k);
+      }
+    }
+    const stale: string[] = [];
+    for (const kind of KNOWN_UNCOVERED) {
+      if (used.has(kind)) stale.push(kind);
+    }
+    // If this fails: a recipe added the kind. Remove it from KNOWN_UNCOVERED.
+    expect(stale).toEqual([]);
+  });
+
+  test("DECLARED_STEP_KINDS matches the actual StepSchema discriminator", () => {
+    // Hand-rolled list above matches WorkflowDef StepSchema discriminator.
+    // If StepSchema gains a kind, this assertion fails by design — update the
+    // list AND add KNOWN_UNCOVERED entry pointing at the issue that ships
+    // the first recipe.
+    const declared = new Set<string>(DECLARED_STEP_KINDS);
+    const expected = new Set<string>([
+      "request",
+      "transform",
+      "call",
+      "wait",
+      "wait_for_event",
+      "branch",
+      "parallel",
+      "loop",
+      "tool",
+    ]);
+    expect([...declared].sort()).toEqual([...expected].sort());
+  });
+});

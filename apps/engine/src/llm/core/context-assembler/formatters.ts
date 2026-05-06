@@ -166,6 +166,12 @@ export function formatOperatorQuirks(
  * Returns null when the snapshot ships no recipes so the assembler
  * skips emitting a dead header.
  */
+// Cap on rendered recipe lines per connector. Defensive: today no connector
+// ships more than ~18 recipes, but as the catalogue grows the per-turn block
+// must stay bounded. When truncated, the LLM is directed to `inspect_recipe`
+// to discover the rest.
+export const RECIPE_LINES_BUDGET = 24;
+
 export function formatConnectorRecipes(
   slug: string,
   snapshot: Record<string, unknown>,
@@ -200,10 +206,18 @@ export function formatConnectorRecipes(
     lines.push(`- \`${recipeSlug}\` — ${title}${metaSuffix}`);
   }
   if (lines.length === 0) return null;
+  const truncated = lines.length > RECIPE_LINES_BUDGET;
+  const visible = truncated ? lines.slice(0, RECIPE_LINES_BUDGET) : lines;
+  const tail = truncated
+    ? [
+        `- _… and ${lines.length - RECIPE_LINES_BUDGET} more — call \`inspect_recipe(template_slug, recipe_slug)\` to discover_`,
+      ]
+    : [];
   return [
     `# Available recipes — connector \`${slug}\``,
     "Clone via `start_workflow_from_recipe(template_slug, recipe_slug)`. For description / sample_input / workflow shape before cloning, call `inspect_recipe(template_slug, recipe_slug)`.",
-    ...lines,
+    ...visible,
+    ...tail,
   ].join("\n");
 }
 
