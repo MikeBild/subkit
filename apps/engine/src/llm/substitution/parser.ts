@@ -1,7 +1,7 @@
 // Placeholder syntax recognised inside any string value that the engine hands
 // to a step driver or to a conversation-tool output envelope.
 //
-// Six token kinds:
+// Seven token kinds:
 //
 //     ${cred.<slug>.<field>}                     — credential field
 //     ${connector.<slug>.base_url}               — connector base URL
@@ -9,6 +9,8 @@
 //     ${input.<pointer>}                         — workflow / tool input
 //     ${scope.<step_id>.<pointer>}               — previous step's data envelope
 //     ${item.<pointer>}                          — current loop iteration item
+//     ${state.<into_var>}                        — persistent workflow state (#51)
+//     ${state.<into_var>.<pointer>}              — nested path into a JSON value
 //
 // Escapes:
 //
@@ -28,7 +30,8 @@ export type PlaceholderKind =
   | "connector_config"
   | "input"
   | "scope"
-  | "item";
+  | "item"
+  | "state";
 
 export interface Placeholder {
   kind: PlaceholderKind;
@@ -57,6 +60,7 @@ export interface ParseError {
     | "malformed_input"
     | "malformed_scope"
     | "malformed_item"
+    | "malformed_state"
     | "bad_identifier";
   message: string;
   span: { start: number; end: number };
@@ -386,12 +390,35 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
       }
       return { ok: true, token: { kind: "item", path: pathParts, span, raw } };
     }
+    case "state": {
+      // ${state.<into_var>} | ${state.<into_var>.<pointer…>}
+      if (parts.length < 2) {
+        return {
+          ok: false,
+          error: {
+            code: "malformed_state",
+            message: `expected \${state.<into_var>} or \${state.<into_var>.<path>}`,
+            span,
+          },
+        };
+      }
+      const pathParts = parts.slice(1);
+      for (const p of pathParts) {
+        if (!IDENT.test(p)) {
+          return {
+            ok: false,
+            error: { code: "bad_identifier", message: `invalid state path segment '${p}'`, span },
+          };
+        }
+      }
+      return { ok: true, token: { kind: "state", path: pathParts, span, raw } };
+    }
     default:
       return {
         ok: false,
         error: {
           code: "unknown_kind",
-          message: `unknown placeholder kind '${head}'; expected one of: cred, connector, input, scope, item`,
+          message: `unknown placeholder kind '${head}'; expected one of: cred, connector, input, scope, item, state`,
           span,
         },
       };

@@ -93,6 +93,21 @@ export const AuditAction = {
   // see that the previous engine instance crashed mid-flight.
   EXECUTION_CRASH_RECOVERED: "execution.crash_recovered",
 
+  // Persistent workflow run state (#51): cross-run watermark / cursor
+  // reads + writes, tenant-encrypted, scoped to a single workflow.
+  // Emitted from the step-runner when a request step declares
+  // `state_read` / `state_write`. Both pair with `metadata.key`.
+  STATE_READ: "state.read",
+  STATE_WRITE: "state.write",
+
+  // Step-level wait checkpoint (#48 SHRUNK). First step-level audit pair
+  // in subkit — wait_started fires at step start with the configured
+  // sleep_until_ts; wait_completed pairs at step end with `reason`
+  // (`timer` for normal completion, `cancelled` for abort, or `recovered`
+  // for engine-boot reaper resumes). Both pair with `metadata.step_id`.
+  WAIT_STARTED: "wait.started",
+  WAIT_COMPLETED: "wait.completed",
+
   SCHEDULE_CREATED: "schedule.created",
   SCHEDULE_UPDATED: "schedule.updated",
   SCHEDULE_PAUSED: "schedule.paused",

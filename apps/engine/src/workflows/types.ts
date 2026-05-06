@@ -371,6 +371,30 @@ export const RequestStepSchema = z
      *  audit, and downstream scope. Used by chained-auth recipes
      *  (Cognito IdToken, OAuth2 access_token / refresh_token). */
     outputs: z.record(z.string().min(1), z.object({ secret: z.boolean().optional() })).optional(),
+    /** Read a tenant-encrypted persistent state value before the step
+     *  runs (#51). Bound into the substitution scope under
+     *  `${state.<into_var>}` for use in `query`, `body`, headers, etc.
+     *  When the row does not exist on the first run, `default_value`
+     *  is used (typically `null` for cursor-based reverse-ETL). */
+    state_read: z
+      .object({
+        key: z.string().min(1),
+        into_var: z.string().min(1),
+        default_value: z.unknown().optional(),
+      })
+      .optional(),
+    /** Write a tenant-encrypted persistent state value after the step
+     *  succeeds (#51). `value_path` is dot-notation against the step
+     *  result envelope (e.g. `body.last_id` or `data[last].updated_at`).
+     *  Persisted in the same transaction as the step's output —
+     *  a crash between cannot leave the watermark and side-effect
+     *  divergent. */
+    state_write: z
+      .object({
+        key: z.string().min(1),
+        value_path: z.string().min(1),
+      })
+      .optional(),
   })
   .refine((s) => s.url !== undefined || s.connector_id !== undefined || s.sql !== undefined, {
     message:
@@ -575,6 +599,11 @@ export const CallStepSchema = z
   })
   .openapi("CallStep");
 
+// Wait step (#48 SHRUNK). Same-day in-process pause with restart-safe
+// resumption via the `workflow_waits` checkpoint table. Cap raised from
+// 6h to 24h. NOT multi-day — that pattern moves to the Schedule + State
+// recipe (#51 + A8). NOT signal-driven — that's a separate primitive
+// (#49 wait-for-event).
 export const WaitStepSchema = z
   .object({
     kind: z.literal("wait"),
@@ -583,9 +612,45 @@ export const WaitStepSchema = z
       .number()
       .int()
       .min(0)
-      .max(6 * 60 * 60_000),
+      .max(24 * 60 * 60_000),
   })
   .openapi("WaitStep");
+
+// Wait-for-event step (#49). Signal-driven HITL pause with an HMAC-signed
+// approval URL. The step blocks until a row in `workflow_signals` arrives
+// with the matching `event_name` and (optionally) a payload that matches
+// the dot-notation predicate, OR until `timeout_ms` elapses. On timeout
+// the workflow runs the `on_timeout` step id (operator-defined fallback,
+// never auto-compensate).
+//
+// Compile-time `superRefine` (defined on WorkflowDefSchema) enforces that
+// `WorkflowDef.timeout_ms ≥ wait_for_event.timeout_ms` so a 30-day
+// approval timeout is not silently truncated by the workflow's own cap.
+export const WaitForEventStepSchema = z
+  .object({
+    kind: z.literal("wait_for_event"),
+    ...baseStep,
+    /** Inbound signal name. Bare-string match against
+     *  `workflow_signals.event_name`. */
+    event_name: z.string().min(1),
+    /** Optional dot-notation predicate against the inbound signal
+     *  payload (e.g. `outcome` with `equals: "approved"`). Empty
+     *  predicate matches any payload. */
+    match: z
+      .object({
+        path: z.string().min(1),
+        equals: z.union([z.string(), z.number(), z.boolean(), z.null()]),
+      })
+      .optional(),
+    /** Step-level timeout in milliseconds. Required — there is no
+     *  default; the operator must declare an explicit upper bound. */
+    timeout_ms: z.number().int().positive(),
+    /** Operator-defined fallback step id to run on timeout. The fallback
+     *  never auto-triggers compensation; if rollback is desired, the
+     *  fallback step itself must call into the saga path. */
+    on_timeout: z.string().min(1).optional(),
+  })
+  .openapi("WaitForEventStep");
 
 export const BranchStepSchema = z
   .object({
@@ -644,6 +709,7 @@ export const StepSchema = z.discriminatedUnion("kind", [
   TransformStepSchema,
   CallStepSchema,
   WaitStepSchema,
+  WaitForEventStepSchema,
   BranchStepSchema,
   ParallelStepSchema,
   LoopStepSchema,
@@ -831,6 +897,11 @@ const _baseWorkflowDefSchema = z.object({
   trigger: TriggerSchema.optional(),
 });
 
+// Default workflow timeout used when `timeout_ms` is omitted. Mirrors
+// `execution/timeouts.ts:WORKFLOW_TIMEOUT_DEFAULT_MS = 6h`. Imported as
+// a literal here to avoid a circular dependency on the execution module.
+const WORKFLOW_TIMEOUT_DEFAULT_MS_LITERAL = 6 * 60 * 60_000;
+
 export const WorkflowDefSchema = _baseWorkflowDefSchema
   .superRefine((s, ctx) => {
     // The two final-output forms are mutually exclusive — the engine
@@ -850,6 +921,22 @@ export const WorkflowDefSchema = _baseWorkflowDefSchema
       // by skipping the issue. Kept here as a hook for a future
       // policy.
     }
+    // #49: HITL workflows must declare `WorkflowDef.timeout_ms` at least
+    // as long as the longest `wait_for_event.timeout_ms`. Otherwise the
+    // workflow's own timeout aborts the wait early — and the operator
+    // who minted a 30-day approval link sees the run die at 6h with no
+    // signal received.
+    const workflowTimeoutMs = s.timeout_ms ?? WORKFLOW_TIMEOUT_DEFAULT_MS_LITERAL;
+    s.steps.forEach((step, idx) => {
+      if (step.kind !== "wait_for_event") return;
+      if (step.timeout_ms > workflowTimeoutMs) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["steps", idx, "timeout_ms"],
+          message: `wait_for_event.timeout_ms (${step.timeout_ms}ms) exceeds WorkflowDef.timeout_ms (${workflowTimeoutMs}ms). Set workflow.timeout_ms ≥ ${step.timeout_ms} so the workflow does not abort the wait early.`,
+        });
+      }
+    });
   })
   .openapi("WorkflowDef");
 
@@ -859,6 +946,7 @@ export type RequestStep = z.infer<typeof RequestStepSchema>;
 export type TransformStep = z.infer<typeof TransformStepSchema>;
 export type CallStep = z.infer<typeof CallStepSchema>;
 export type WaitStep = z.infer<typeof WaitStepSchema>;
+export type WaitForEventStep = z.infer<typeof WaitForEventStepSchema>;
 export type BranchStep = z.infer<typeof BranchStepSchema>;
 export type ParallelStep = z.infer<typeof ParallelStepSchema>;
 export type LoopStep = z.infer<typeof LoopStepSchema>;

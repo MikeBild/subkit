@@ -73,6 +73,28 @@ describe("parsePlaceholders — happy-path token shapes", () => {
       "scope",
     ]);
   });
+
+  test("state token with single-segment path parses as kind=state", () => {
+    const r = parsePlaceholders(`\${state.last_seen_at}`);
+    expect(r.errors).toEqual([]);
+    expect(r.tokens.length).toBe(1);
+    const t = r.tokens[0]!;
+    expect(t.kind).toBe("state");
+    expect(t.path).toEqual(["last_seen_at"]);
+  });
+
+  test("state token with nested path parses as kind=state", () => {
+    const r = parsePlaceholders(`\${state.cursor.id}`);
+    expect(r.errors).toEqual([]);
+    expect(r.tokens[0]?.kind).toBe("state");
+    expect(r.tokens[0]?.path).toEqual(["cursor", "id"]);
+  });
+
+  test("bare state token is rejected with malformed_state", () => {
+    const r = parsePlaceholders(`\${state}`);
+    expect(r.errors.length).toBe(1);
+    expect(r.errors[0]?.code).toBe("malformed_state");
+  });
 });
 
 describe("parsePlaceholders — escape semantics", () => {

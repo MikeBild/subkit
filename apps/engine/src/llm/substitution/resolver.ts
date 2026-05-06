@@ -298,6 +298,28 @@ async function resolveOneRaw(tok: Placeholder, ctx: ResolverContext): Promise<On
       return resolveJsonPathRaw(ctx.scope?.[tok.stepId], tok.path, `scope.${tok.stepId}`);
     case "item":
       return resolveJsonPathRaw(ctx.scope?.$item, tok.path, "item");
+    case "state":
+      // ${state.<into_var>} | ${state.<into_var>.<pointer>} reads the
+      // value the step-runner bound under `scope.$state[into_var]`
+      // before invoking the request driver. Single-segment tokens
+      // resolve to the bound value verbatim.
+      if (tok.path.length === 1) {
+        const stateBag = (ctx.scope?.$state ?? {}) as Record<string, unknown>;
+        const intoVar = tok.path[0]!;
+        if (!(intoVar in stateBag)) {
+          return {
+            ok: false,
+            code: "key_not_found",
+            message: `state.${intoVar} — no state_read declared on the active step`,
+          };
+        }
+        return { ok: true, value: stateBag[intoVar] };
+      }
+      return resolveJsonPathRaw(
+        (ctx.scope?.$state as Record<string, unknown> | undefined)?.[tok.path[0]!],
+        tok.path.slice(1),
+        `state.${tok.path[0]}`,
+      );
   }
 }
 
@@ -348,6 +370,29 @@ async function resolveOne(tok: Placeholder, ctx: ResolverContext): Promise<OneRe
       return resolveJsonPath(ctx.scope?.[tok.stepId], tok.path, `scope.${tok.stepId}`);
     case "item":
       return resolveJsonPath(ctx.scope?.$item, tok.path, "item");
+    case "state": {
+      // String-coercion path. `${state.<into_var>}` round-trips the
+      // bound value through JSON.stringify when it is not already a
+      // primitive, matching the contract the rest of the resolver uses.
+      if (tok.path.length === 1) {
+        const stateBag = (ctx.scope?.$state ?? {}) as Record<string, unknown>;
+        const intoVar = tok.path[0]!;
+        if (!(intoVar in stateBag)) {
+          return {
+            ok: false,
+            code: "key_not_found",
+            message: `state.${intoVar} — no state_read declared on the active step`,
+          };
+        }
+        const v = stateBag[intoVar];
+        return { ok: true, value: v === null || v === undefined ? "" : String(v) };
+      }
+      return resolveJsonPath(
+        (ctx.scope?.$state as Record<string, unknown> | undefined)?.[tok.path[0]!],
+        tok.path.slice(1),
+        `state.${tok.path[0]}`,
+      );
+    }
   }
 }
 
@@ -589,6 +634,13 @@ export function flattenCredential(
       // expose the secret_access_key or session_token.
       const d = decrypted as { access_key_id: string };
       return { access_key_id: d.access_key_id };
+    }
+    case "token_mint": {
+      // Token-mint credentials cache the most recent access token in
+      // `access_token`; only that field is exposed to substitution.
+      // Never surface `credentials.password` / `client_secret`.
+      const d = decrypted as { access_token: string };
+      return { access_token: d.access_token };
     }
     case "none":
       return {};
