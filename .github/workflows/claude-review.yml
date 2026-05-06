@@ -17,7 +17,7 @@ name: claude-review
 #   * skipped on drafts
 #   * skipped on PRs from forks (secrets aren't available there anyway)
 #   * skipped if the PR title contains "[skip-review]"
-#   * --max-turns 8 caps API spend per run
+#   * --max-budget-usd 1.00 caps API spend per run
 
 on:
   pull_request:
@@ -65,20 +65,30 @@ jobs:
           set -euo pipefail
           # The slash-command file starts with `---\n…\n---` YAML
           # frontmatter; passing it verbatim to `claude --print` makes
-          # the CLI parse `---` as a flag and bail with
-          # "unknown option '---'". Strip the leading frontmatter
-          # block (only when it sits at line 1) and feed the prompt
-          # via stdin so quoting can't break on the body's backticks
-          # or single quotes.
+          # the CLI parse `---` as a flag. Strip the leading
+          # frontmatter (only when it sits at line 1) and pass the
+          # body as a positional argument.
           awk '
-            BEGIN { in_fm = 0; done_fm = 0 }
+            BEGIN { in_fm = 0 }
             NR == 1 && /^---[[:space:]]*$/ { in_fm = 1; next }
-            in_fm && /^---[[:space:]]*$/ { in_fm = 0; done_fm = 1; next }
+            in_fm && /^---[[:space:]]*$/ { in_fm = 0; next }
             in_fm { next }
             { print }
           ' .claude/commands/review.md > review-prompt.md
           test -s review-prompt.md
-          claude --print --max-turns 8 < review-prompt.md > review-raw.md
+          PROMPT="$(cat review-prompt.md)"
+          # `--bare` forces strict ANTHROPIC_API_KEY auth (no OAuth /
+          # keychain reads — neither exists in CI). `-p` is the
+          # non-interactive print mode. `--dangerously-skip-permissions`
+          # skips the approval prompts the agent would otherwise wait
+          # for. `--max-budget-usd` caps spend per run (the action's
+          # equivalent of `max_turns: 8` is dollar-denominated when
+          # invoked from the CLI).
+          claude --bare \
+                 --dangerously-skip-permissions \
+                 --max-budget-usd 1.00 \
+                 -p "$PROMPT" \
+                 > review-raw.md
 
       - name: Scrub secrets from review body
         run: |
