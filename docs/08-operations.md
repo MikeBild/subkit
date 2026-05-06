@@ -16,6 +16,24 @@ The standard deployment model is straightforward: one engine service and one Pos
 
 The **Tunnel Agent** is a separate small binary deployed in private networks. When a Connector targets a system behind a firewall or VPN, the Tunnel Agent runs inside that network and opens a persistent outbound WebSocket connection to the engine. No inbound firewall rules are required. The engine routes Connector requests through the open tunnel. The Tunnel Agent is stateless and reconnects automatically on interruption.
 
+### Compose layout
+
+The repository ships two compose files:
+
+- **`docker-compose.yml`** at the repo root — local dev. Builds images from source, publishes ports on the host, seeds a development tenant + admin key.
+- **[`deploy/docker-compose.prod.yml`](../deploy/docker-compose.prod.yml)** — production overlay. Pulls images from DigitalOcean Container Registry, drops the host-port publishes for the engine and Postgres, fronts the engine with a Caddy reverse proxy with always-on Let's Encrypt TLS, and mounts the host Docker socket for the sandbox spawner.
+
+On the droplet (`scripts/do-bootstrap.sh` provisions the layout), both files live under `/opt/subkit/` and are stacked with `-f`:
+
+```sh
+docker compose \
+  -f /opt/subkit/docker-compose.yml \
+  -f /opt/subkit/docker-compose.prod.yml \
+  up -d
+```
+
+`scripts/release/deploy-body.sh` runs this exact stacking on every release; the laptop `scripts/deploy.sh` orchestrator pipes the same body file into `bash -s` over SSH. The two paths cannot drift.
+
 ---
 
 ## Installation
