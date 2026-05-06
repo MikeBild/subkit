@@ -3,7 +3,10 @@
 // debug log. Drivers (request, transform, ...) own the actual work and
 // the retry loops; this file owns the surrounding ceremony.
 
+import { auditAwait } from "../audit/audit.ts";
+import { AuditAction } from "../audit/types.ts";
 import { log, logger } from "../logging/logger.ts";
+import { readWorkflowState, writeWorkflowState } from "../workflow-state/service.ts";
 import type { StepDef } from "../workflows/types.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
 import { applySelector } from "./selectors.ts";
@@ -15,7 +18,30 @@ import { runRequestStep } from "./steps/request.ts";
 import { runToolStep } from "./steps/tool.ts";
 import { runTransformStep } from "./steps/transform.ts";
 import { runWaitStep } from "./steps/wait.ts";
+import { runWaitForEventStep } from "./steps/wait-for-event.ts";
 import type { StepResult, StepRunContext } from "./types.ts";
+
+// Workstream #51: persistent workflow state — `state_read` binds a
+// tenant-encrypted value into the substitution scope under the chosen
+// `into_var`; `state_write` persists a dot-path slice of the step
+// result back to the same store after the step succeeds.
+//
+// `into_var` collisions with an existing step id are not blocked at
+// schema level — the binding here uses a dedicated key on the scope
+// object, so a colliding step id would be shadowed for the duration of
+// this step. Recipes should pick a distinct `into_var` (e.g. `since`,
+// `last_seen_at`).
+function resolveDotPath(value: unknown, dotPath: string): unknown {
+  if (!dotPath) return value;
+  let cur: unknown = value;
+  for (const segment of dotPath.split(".")) {
+    if (segment === "") continue;
+    if (cur === null || cur === undefined) return undefined;
+    if (typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[segment];
+  }
+  return cur;
+}
 
 export interface RunStepOutcome {
   result: StepResult;
@@ -63,6 +89,93 @@ export async function runStep(
 ): Promise<RunStepOutcome> {
   const step = ctx.step;
   let result: StepResult;
+
+  // #51 state_read: bind a persistent value into substitution scope
+  // BEFORE the step runs. Defaults to `state_read.default_value`
+  // (commonly `null`) when the row does not exist yet — the canonical
+  // first-run case for cursor-based reverse-ETL.
+  if (step.kind === "request" && step.state_read) {
+    const sr = step.state_read;
+    try {
+      const row = await readWorkflowState(ctx.db, ctx.tenant_id, ctx.workflow_id, sr.key);
+      const bound = row !== undefined ? row.value : (sr.default_value ?? null);
+      // Bind under `scope.$state[into_var]` so the substitution resolver
+      // surfaces it via `${state.<into_var>}` / `${state.<into_var>.<path>}`
+      // (parser kind: "state"). Mirrors the `$item` convention used by
+      // the loop step.
+      const existingState = (scope.$state as Record<string, unknown> | undefined) ?? {};
+      scope.$state = { ...existingState, [sr.into_var]: bound };
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: "system",
+          action: AuditAction.STATE_READ,
+          resource_type: "workflow",
+          resource_id: ctx.workflow_id,
+          result: "success",
+          metadata: {
+            execution_id: ctx.execution_id,
+            step_id: step.id,
+            key: sr.key,
+            into_var: sr.into_var,
+            had_value: row !== undefined,
+          },
+        },
+        ctx.db,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: "system",
+          action: AuditAction.STATE_READ,
+          resource_type: "workflow",
+          resource_id: ctx.workflow_id,
+          result: "error",
+          reason: message,
+          metadata: {
+            execution_id: ctx.execution_id,
+            step_id: step.id,
+            key: sr.key,
+          },
+        },
+        ctx.db,
+      );
+      result = {
+        status: "failed",
+        retry_count: 0,
+        duration_ms: 0,
+        error: { code: "state_read_failed", message },
+      };
+      // Skip the actual step and fall through to the post-run pipeline.
+      // The scope_value falls back to undefined so downstream steps
+      // see no result.
+      const scope_value = undefined;
+      const scrubbedScope = applyDeclaredSecrets(step, scope_value);
+      const offload = await maybeOffload(ctx.db, {
+        tenant_id: ctx.tenant_id,
+        execution_id: ctx.execution_id,
+        step_id: ctx.step_row_id,
+        result: scrubbedScope ?? null,
+      });
+      await finalizeStepRow(ctx.db, ctx.step_row_id, result.status, result, {
+        output_preview: offload.storage_uri ? null : (scrubbedScope ?? null),
+        result_preview: offload.preview ?? previewOf(scrubbedScope ?? null),
+        result_storage_uri: offload.storage_uri,
+      });
+      log.execution.step.failed({
+        step_id: step.id,
+        kind: step.kind,
+        duration_ms: result.duration_ms,
+        error_code: result.error?.code,
+        error_msg: result.error?.message,
+        execution_id: ctx.execution_id,
+      });
+      return { result, scope_value };
+    }
+  }
+
   switch (step.kind) {
     case "request":
       result = await runRequestStep({ ctx, step, scope });
@@ -72,6 +185,9 @@ export async function runStep(
       break;
     case "wait":
       result = await runWaitStep({ ctx, step });
+      break;
+    case "wait_for_event":
+      result = await runWaitForEventStep({ ctx, step });
       break;
     case "branch":
       result = await runBranchStep({ ctx, step, scope });
@@ -96,6 +212,73 @@ export async function runStep(
         retry_count: 0,
         duration_ms: 0,
         error: { code: "unknown_step_kind", message: "unknown step kind" },
+      };
+    }
+  }
+
+  // #51 state_write: persist a dot-path slice of the step result AFTER
+  // the step succeeds. Failures here propagate as a step failure so the
+  // watermark and the side-effect cannot diverge silently — better to
+  // re-run the workflow than to advance a watermark whose write was
+  // dropped on the floor.
+  if (result.status === "succeeded" && step.kind === "request" && step.state_write) {
+    const sw = step.state_write;
+    const sliced = resolveDotPath(result.output, sw.value_path);
+    try {
+      await writeWorkflowState(ctx.db, {
+        tenant_id: ctx.tenant_id,
+        workflow_id: ctx.workflow_id,
+        key: sw.key,
+        value: sliced ?? null,
+      });
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: "system",
+          action: AuditAction.STATE_WRITE,
+          resource_type: "workflow",
+          resource_id: ctx.workflow_id,
+          result: "success",
+          metadata: {
+            execution_id: ctx.execution_id,
+            step_id: step.id,
+            key: sw.key,
+            value_path: sw.value_path,
+            value_kind:
+              sliced === null
+                ? "null"
+                : sliced === undefined
+                  ? "undefined"
+                  : Array.isArray(sliced)
+                    ? "array"
+                    : typeof sliced,
+          },
+        },
+        ctx.db,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: "system",
+          action: AuditAction.STATE_WRITE,
+          resource_type: "workflow",
+          resource_id: ctx.workflow_id,
+          result: "error",
+          reason: message,
+          metadata: {
+            execution_id: ctx.execution_id,
+            step_id: step.id,
+            key: sw.key,
+          },
+        },
+        ctx.db,
+      );
+      result = {
+        ...result,
+        status: "failed",
+        error: { code: "state_write_failed", message },
       };
     }
   }

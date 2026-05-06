@@ -26,4 +26,7 @@ export * from "./tunnels.ts";
 export * from "./webhooks.ts";
 // webhooks-extras is a re-export barrel (same tables); omitted to avoid
 // duplicate symbol exports.
+export * from "./workflow_run_state.ts";
+export * from "./workflow_signals.ts";
+export * from "./workflow_waits.ts";
 export * from "./workflows.ts";
