@@ -44,14 +44,18 @@ jobs:
           fetch-depth: 0
       - name: Run /review
         uses: anthropics/claude-code-action@beta
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
           # Action expects `direct_prompt` and `max_turns` — the previous
           # `prompt` / `claude_args` keys produced an "Unexpected input(s)"
           # warning and were silently ignored.
           direct_prompt: /review
           max_turns: 8
+          # Anthropic API key is consumed as a `with:` input, not from
+          # the `env:` block. Passing it via env produces
+          # "Environment variable validation failed: Either
+          # ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is required"
+          # at runtime — the action validates the input, not the env.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Use the workflow's default GITHUB_TOKEN (already scoped to
           # `pull-requests: write` above) to post comments. Without this,
           # the action falls back to OIDC → installation-token, which
