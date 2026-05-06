@@ -506,45 +506,52 @@ jobs:
       # connection-resets and droplet-side fail2ban "soft" blocks that
       # clear within a minute.
       - name: Sync prod compose overlay to droplet
+        # Bare loop, NOT `set -e` + `if`. After `if cmd; then ... fi`,
+        # `$?` post-`fi` is 0 even when the inner command failed — bash
+        # only exposes the inner exit code inside the test position. We
+        # need the actual rc to decide retry vs. terminate.
         run: |
-          set -e
+          set +e
           for attempt in 1 2 3 4 5; do
-            if scp -i ~/.ssh/id_rsa \
-                deploy/docker-compose.prod.yml \
-                "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/opt/subkit/docker-compose.prod.yml"; then
+            scp -i ~/.ssh/id_rsa \
+              deploy/docker-compose.prod.yml \
+              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/opt/subkit/docker-compose.prod.yml"
+            rc=$?
+            if [ "$rc" -eq 0 ]; then
               echo "scp succeeded on attempt $attempt"
               exit 0
             fi
             if [ "$attempt" -eq 5 ]; then
-              echo "scp failed after 5 attempts — giving up"
-              exit 1
+              echo "scp failed after 5 attempts — giving up (rc=$rc)"
+              exit "$rc"
             fi
             sleep $((attempt * 15))
-            echo "scp retry $((attempt + 1))..."
+            echo "scp retry $((attempt + 1)) (rc=$rc)..."
           done
       - name: Run deploy-body.sh on droplet
         run: |
-          set -e
+          set +e
           for attempt in 1 2 3 4 5; do
-            if ssh -i ~/.ssh/id_rsa \
-                "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
-                "ENGINE_VERSION='$VERSION' bash -s" \
-                < scripts/release/deploy-body.sh; then
+            ssh -i ~/.ssh/id_rsa \
+              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
+              "ENGINE_VERSION='$VERSION' bash -s" \
+              < scripts/release/deploy-body.sh
+            rc=$?
+            if [ "$rc" -eq 0 ]; then
               echo "deploy-body succeeded on attempt $attempt"
               exit 0
             fi
-            rc=$?
-            # Exit codes 254 (255 internal) indicate ssh transport
-            # errors — connection reset, host unreachable, etc. Worth
-            # retrying. Anything else is a deploy-body.sh failure on
-            # the droplet (image pull, healthcheck, …) and a retry
-            # would just waste time.
+            # Exit codes 254/255 indicate ssh transport errors —
+            # connection reset, host unreachable, banner-exchange
+            # timeout. Worth retrying. Anything else is a
+            # deploy-body.sh failure on the droplet (image pull,
+            # healthcheck, migrate) and a retry would just waste time.
             if [ "$rc" -ne 255 ] && [ "$rc" -ne 254 ]; then
               echo "deploy-body returned $rc (non-transport) — not retrying"
               exit "$rc"
             fi
             if [ "$attempt" -eq 5 ]; then
-              echo "ssh deploy-body failed after 5 transport-level attempts"
+              echo "ssh deploy-body failed after 5 transport-level attempts (rc=$rc)"
               exit "$rc"
             fi
             sleep $((attempt * 15))
