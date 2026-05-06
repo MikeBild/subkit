@@ -82,7 +82,22 @@ jobs:
       - name: Build sk binary
         run: bun run build:sk
       - name: Tier 1.x e2e (real LLM)
-        run: bun test tests/e2e/tier1-conversation-lifecycle.e2e.test.ts
+        # Real LLM tests probe whether claude-haiku-4-5 actually picks
+        # the prescribed tool call out of the open palette. The model's
+        # routing varies between identical calls, so a single test run
+        # is a noisy signal. History on this workflow shows ~50% flake
+        # rate (5/10 last runs failed). Retry once on first miss; if
+        # both runs miss we trust the result and surface the failure.
+        # This drops the steady-state nightly noise to ~25% without
+        # masking real LLM-quality regressions.
+        run: |
+          set -e
+          if bun test tests/e2e/tier1-conversation-lifecycle.e2e.test.ts; then
+            exit 0
+          fi
+          echo "::warning::Tier 1.x e2e first attempt failed — retrying once for LLM-route flake"
+          sleep 10
+          bun test tests/e2e/tier1-conversation-lifecycle.e2e.test.ts
 
   flake:
     name: flake (5 reseeded runs)
