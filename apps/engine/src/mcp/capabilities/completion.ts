@@ -195,7 +195,12 @@ export function registerCompletionCapability(p: RegisterCompletionParams): void 
       const versionRows = await db
         .select({ dag: workflowVersions.dag })
         .from(workflowVersions)
-        .where(eq(workflowVersions.id, wf.current_version_id))
+        .where(
+          and(
+            eq(workflowVersions.tenant_id, principal.tenant_id),
+            eq(workflowVersions.id, wf.current_version_id),
+          ),
+        )
         .limit(1);
       const dag = versionRows[0]?.dag as { input_schema?: unknown } | null;
       const properties = extractTopLevelProperties(dag?.input_schema);

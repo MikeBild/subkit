@@ -10,10 +10,9 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import { auditAwait } from "../../../audit/audit.ts";
-import { AuditAction } from "../../../audit/types.ts";
+import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import { users as usersTable } from "../../../db/schema/index.ts";
-import * as rolesSvc from "../../../rbac/roles.ts";
+import * as rolesSvc from "../../../rbac/index.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";

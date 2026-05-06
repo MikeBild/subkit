@@ -14,6 +14,7 @@ export {
   shouldAutoApply,
 } from "./policy.ts";
 export type { RunSelfHealingParams, SelfHealingResult } from "./service.ts";
+export * from "./service.ts";
 export {
   approvePatchCandidate,
   rejectPatchCandidate,

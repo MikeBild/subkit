@@ -7,8 +7,8 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import * as connectorSvc from "../../../connectors/service.ts";
-import { CreateConnectorSchema, UpdateConnectorSchema } from "../../../connectors/types.ts";
+import * as connectorSvc from "../../../connectors/index.ts";
+import { CreateConnectorSchema, UpdateConnectorSchema } from "../../../connectors/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";

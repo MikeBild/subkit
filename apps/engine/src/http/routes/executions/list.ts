@@ -93,15 +93,15 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    const conds = [eq(executions.tenant_id, principal.tenant_id)];
-    if (q.workflow_id) conds.push(eq(executions.workflow_id, q.workflow_id));
+    const tenantConds = [eq(executions.tenant_id, principal.tenant_id)];
+    if (q.workflow_id) tenantConds.push(eq(executions.workflow_id, q.workflow_id));
     if (q.status)
-      conds.push(eq(executions.status, q.status as typeof executions.$inferSelect.status));
-    if (q.request_source) conds.push(eq(executions.request_source, q.request_source));
+      tenantConds.push(eq(executions.status, q.status as typeof executions.$inferSelect.status));
+    if (q.request_source) tenantConds.push(eq(executions.request_source, q.request_source));
     const rows = await db
       .select()
       .from(executions)
-      .where(and(...conds))
+      .where(and(...tenantConds))
       .orderBy(desc(executions.created_at))
       .limit(q.limit ?? 50);
     return c.json({ items: rows.map(serializeExec) }, 200);

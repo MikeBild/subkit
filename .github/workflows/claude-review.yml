@@ -4,14 +4,28 @@ name: claude-review
 # and routed to the domain-architect sub-agent at .claude/agents/domain-architect.md)
 # against the PR diff and posts a single summary comment.
 #
-# Advisory only — workflow always exits 0. Humans triage the findings.
+# Trust boundary: the model's stdout is captured and piped through
+# `apps/engine/scripts/scrub-review-comment.ts` (which reuses the
+# `scrubString` patterns from `packages/shared/src/redaction.ts`)
+# BEFORE the comment is posted via `gh pr comment`. A model that
+# echoes a diff-embedded secret cannot leak it to a public PR thread.
+#
+# Advisory only — the WORKFLOW always exits 0. Humans triage the
+# findings, and a missing review never blocks a merge.
+#
+# Stability contract: every step is wrapped so it cannot fail the
+# job. The model can run out of budget, time out, or refuse to
+# respond — the workflow still posts whatever it managed to capture
+# (or skips posting silently). Per the "advisory only" header above,
+# the only things that should fail this job are config bugs in the
+# workflow YAML itself.
 #
 # Cost guards:
 #   * skipped on docs-only PRs (paths-ignore)
 #   * skipped on drafts
 #   * skipped on PRs from forks (secrets aren't available there anyway)
 #   * skipped if the PR title contains "[skip-review]"
-#   * --max-turns 8 caps API spend per run
+#   * --max-budget-usd 15.00 caps API spend per run
 
 on:
   pull_request:
@@ -42,29 +56,137 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Run /review
-        uses: anthropics/claude-code-action@beta
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          # Action expects `direct_prompt` and `max_turns` — the previous
-          # `prompt` / `claude_args` keys produced an "Unexpected input(s)"
-          # warning and were silently ignored.
-          direct_prompt: /review
-          max_turns: 8
-          # Anthropic API key is consumed as a `with:` input, not from
-          # the `env:` block. Passing it via env produces
-          # "Environment variable validation failed: Either
-          # ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is required"
-          # at runtime — the action validates the input, not the env.
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Use the workflow's default GITHUB_TOKEN (already scoped to
-          # `pull-requests: write` above) to post comments. Without this,
-          # the action falls back to OIDC → installation-token, which
-          # requires the Anthropic GitHub App to be installed on the
-          # repo and returns "Bad credentials" 401 otherwise.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-        # Advisory only — the workflow's contract (see header) is to
-        # never block merges on review-content findings. With github_token
-        # and input keys now correct, the only remaining reasons for a
-        # failure would be Anthropic API outages or rate limits; those
-        # should surface in the run log, not as a red required check.
+          bun-version: latest
+
+      - name: Install Claude Code CLI
+        # Pinned. Unpinned `bun add -g @anthropic-ai/claude-code`
+        # would let an upstream flag rename (e.g. dropping
+        # `--max-budget-usd`) silently degrade the review job to a
+        # no-op, since the workflow is `continue-on-error: true`.
+        # Bump deliberately when verified locally.
+        run: bun add -g @anthropic-ai/claude-code@2.1.131
+
+      - name: Capability probe — fail loudly if a required flag has been renamed
+        # The pinned version above protects against silent flag
+        # renames at install time, but a future bump (manual or via
+        # Renovate) could land a CLI that no longer accepts the
+        # flags this workflow depends on. The advisory-only contract
+        # (continue-on-error + exit 0 on the run step) would then
+        # silently drop the review. This probe surfaces a missing
+        # flag as a workflow ::error:: annotation BEFORE the run
+        # step, where it is loudly visible.
+        run: |
+          set -e
+          help="$(claude --help 2>&1 || true)"
+          for flag in --bare --dangerously-skip-permissions --max-budget-usd -p; do
+            if ! grep -qF -- "$flag" <<<"$help"; then
+              echo "::error title=claude-code CLI capability missing::flag $flag is not in claude --help; the review pipeline is degraded. Bump the pinned version (claude-review.yml) once verified locally, or fix the workflow."
+              exit 1
+            fi
+          done
+
+      - name: Run /review and capture raw output
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Defense in depth: `--dangerously-skip-permissions` lets
+          # the agent read/write inside $GITHUB_WORKSPACE; explicitly
+          # clear the GitHub tokens so a hypothetical agent shell-out
+          # cannot reach the gh API for this step. The Post step
+          # below still has `GH_TOKEN` set for the actual comment.
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        # `set +e` (the shell default for this script) — claude can
+        # exit non-zero (budget exhaustion, timeout, refusal) and we
+        # explicitly do not want that to fail the job. Whatever
+        # output landed in review-raw.md is what gets posted; an
+        # empty file means we skip the post step gracefully.
+        run: |
+          # Strip the slash-command file's leading YAML frontmatter
+          # (`---\n…\n---`) so the CLI doesn't parse `---` as a flag.
+          awk '
+            BEGIN { in_fm = 0 }
+            NR == 1 && /^---[[:space:]]*$/ { in_fm = 1; next }
+            in_fm && /^---[[:space:]]*$/ { in_fm = 0; next }
+            in_fm { next }
+            { print }
+          ' .claude/commands/review.md > review-prompt.md
+          if [ ! -s review-prompt.md ]; then
+            echo "::warning::review-prompt.md is empty after frontmatter strip; skipping review"
+            : > review-raw.md
+            exit 0
+          fi
+          PROMPT="$(cat review-prompt.md)"
+          # `--bare` forces strict ANTHROPIC_API_KEY auth (no OAuth /
+          # keychain reads — neither exists in CI). `-p` is the
+          # non-interactive print mode. `--dangerously-skip-permissions`
+          # skips the approval prompts the agent would otherwise wait
+          # for. `--max-budget-usd 15.00` caps spend per run; raised
+          # from $5 after observing budget-exhaustion placeholders on
+          # 170+-file audit-cleanup diffs (PR #143). $15 covers the
+          # largest realistic monorepo diff at sonnet-class context;
+          # the workflow is `continue-on-error` and emits a
+          # diagnostic placeholder + ::error:: annotation when the
+          # budget is hit, so $15 is a soft ceiling, not a hard one.
+          set +e
+          claude --bare \
+                 --dangerously-skip-permissions \
+                 --max-budget-usd 15.00 \
+                 -p "$PROMPT" \
+                 > review-raw.md
+          exit_code=$?
+          set -e
+          if [ $exit_code -ne 0 ]; then
+            echo "::warning::claude CLI exited $exit_code; posting whatever output landed (advisory only)"
+          fi
+          # Always succeed — see "Stability contract" in the header.
+          exit 0
+
+      - name: Scrub secrets from review body
+        # The scrubber is a deterministic regex pass over stdin; the
+        # only failure modes are empty-stdin (the scrubber refuses)
+        # and a bug in the scrubber itself (which the unit tests
+        # cover). Fail closed — if the scrub step fails, post a
+        # diagnostic placeholder rather than the raw model output.
+        # Posting raw output on scrub failure would defeat the
+        # workflow's documented trust boundary ("a model that
+        # echoes a diff-embedded secret cannot leak it to a public
+        # PR thread"); a transient scrubber crash must never trade
+        # against that contract.
+        run: |
+          set +e
+          bun run apps/engine/scripts/scrub-review-comment.ts \
+            < review-raw.md > review-scrubbed.md
+          rc=$?
+          set -e
+          if [ $rc -ne 0 ]; then
+            # ::error:: surfaces the scrubber crash on the workflow's
+            # summary page so a silent degradation to the placeholder
+            # body is visible to operators, not buried in the log.
+            # The job still exits 0 (advisory contract); the error
+            # annotation just makes the failure noticeable.
+            echo "::error title=scrub-review-comment crashed::scrub step failed (rc=$rc); model output suppressed for safety — review the run log and verify scrub-review-comment.ts"
+            printf '%s\n' \
+              '_claude-review: scrub step failed (rc='"$rc"'); model output suppressed for safety. See workflow logs._' \
+              > review-scrubbed.md
+          fi
+          exit 0
+
+      - name: Post review comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Skip posting on empty output rather than calling `gh` with
+        # an empty body (which `gh` rejects). `continue-on-error`
+        # remains as a belt for any unexpected gh failure.
+        run: |
+          if [ ! -s review-scrubbed.md ]; then
+            echo "::notice::review body is empty; nothing to post"
+            exit 0
+          fi
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file review-scrubbed.md
         continue-on-error: true

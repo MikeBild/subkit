@@ -4,7 +4,7 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import * as svc from "../../../conversations/service.ts";
+import { getConversation, getToolPolicies, setToolPolicy } from "../../../conversations/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -52,10 +52,9 @@ export function registerToolPoliciesRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     // Confirm the conversation belongs to the tenant before reading.
-    const detail = await svc.getConversation(principal.tenant_id, id, db);
+    const detail = await getConversation(principal.tenant_id, id, db);
     if (!detail) throw new NotFoundError("conversation");
-    const { getToolPolicies } = await import("../../../conversations/tool-policies.ts");
-    const policies = await getToolPolicies(db, id);
+    const policies = await getToolPolicies(db, principal.tenant_id, id);
     return c.json({ policies }, 200);
   });
 
@@ -64,15 +63,20 @@ export function registerToolPoliciesRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const detail = await svc.getConversation(principal.tenant_id, id, db);
+    const detail = await getConversation(principal.tenant_id, id, db);
     if (!detail) throw new NotFoundError("conversation");
-    const { setToolPolicy, getToolPolicies } = await import(
-      "../../../conversations/tool-policies.ts"
-    );
+    // The service-layer setToolPolicy owns the audit emission and
+    // runs each change inside a transaction. The route just walks
+    // the request body and forwards the actor identity / request
+    // source so the audit row carries the right context.
     for (const [toolName, mode] of Object.entries(body.policies)) {
-      await setToolPolicy(db, id, toolName, mode);
+      await setToolPolicy(db, principal.tenant_id, id, toolName, mode, {
+        actor_type: principal.kind,
+        actor_id: principal.id,
+        request_source: "api",
+      });
     }
-    const policies = await getToolPolicies(db, id);
+    const policies = await getToolPolicies(db, principal.tenant_id, id);
     return c.json({ policies }, 200);
   });
 }

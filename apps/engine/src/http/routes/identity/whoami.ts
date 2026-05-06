@@ -1,9 +1,9 @@
 // Minimal identity shape — just enough for the persona banner, no second probe needed.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
-import { resolveEngineUrl } from "../../../llm/runtime-context.ts";
+import { resolveEngineUrl } from "../../../llm/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
@@ -62,7 +62,7 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
         })
         .from(users)
         .leftJoin(roles, eq(roles.id, users.role_id))
-        .where(eq(users.id, principal.id))
+        .where(and(eq(users.tenant_id, principal.tenant_id), eq(users.id, principal.id)))
         .limit(1);
       email = row?.email ?? null;
       roleName = row?.role_name ?? row?.role_legacy ?? null;
@@ -73,7 +73,12 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
         })
         .from(systemAccounts)
         .leftJoin(roles, eq(roles.id, systemAccounts.role_id))
-        .where(eq(systemAccounts.id, principal.id))
+        .where(
+          and(
+            eq(systemAccounts.tenant_id, principal.tenant_id),
+            eq(systemAccounts.id, principal.id),
+          ),
+        )
         .limit(1);
       roleName = row?.role_name ?? null;
     }

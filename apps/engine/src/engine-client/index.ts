@@ -138,12 +138,12 @@ export class EngineClient {
   executions = {
     list: async (opts?: { limit?: number; workflow_id?: string }) => {
       const limit = Math.min(opts?.limit ?? 50, 200);
-      const conds = [eq(executionsTable.tenant_id, this.tenant_id)];
-      if (opts?.workflow_id) conds.push(eq(executionsTable.workflow_id, opts.workflow_id));
+      const tenantConds = [eq(executionsTable.tenant_id, this.tenant_id)];
+      if (opts?.workflow_id) tenantConds.push(eq(executionsTable.workflow_id, opts.workflow_id));
       return await this.db
         .select()
         .from(executionsTable)
-        .where(and(...conds))
+        .where(and(...tenantConds))
         .orderBy(desc(executionsTable.created_at))
         .limit(limit);
     },
@@ -173,12 +173,12 @@ export class EngineClient {
       status?: "proposed" | "applied" | "rejected" | "superseded";
     }) => {
       const limit = Math.min(opts?.limit ?? 50, 200);
-      const conds = [eq(patchCandidatesTable.tenant_id, this.tenant_id)];
-      if (opts?.status) conds.push(eq(patchCandidatesTable.status, opts.status));
+      const tenantConds = [eq(patchCandidatesTable.tenant_id, this.tenant_id)];
+      if (opts?.status) tenantConds.push(eq(patchCandidatesTable.status, opts.status));
       return await this.db
         .select()
         .from(patchCandidatesTable)
-        .where(and(...conds))
+        .where(and(...tenantConds))
         .orderBy(desc(patchCandidatesTable.created_at))
         .limit(limit);
     },

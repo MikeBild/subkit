@@ -139,6 +139,7 @@ export const testRbacExpressionTool: ConversationTool = {
       if (rows[0]) {
         actorExists = true;
         if (rows[0].role_id) {
+          // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
           const named = await ctx.db
             .select({ name: roles.name })
             .from(roles)
@@ -160,6 +161,7 @@ export const testRbacExpressionTool: ConversationTool = {
       if (rows[0]) {
         actorExists = true;
         if (rows[0].role_id) {
+          // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
           const named = await ctx.db
             .select({ name: roles.name })
             .from(roles)

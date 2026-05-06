@@ -12,7 +12,7 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";
-import { globalLlmStatus } from "../../../llm/core/invoke.ts";
+import { globalLlmStatus } from "../../../llm/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import {

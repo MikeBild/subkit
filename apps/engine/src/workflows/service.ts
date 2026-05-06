@@ -131,7 +131,12 @@ async function loadWorkflowView(
     const vRows = await exec
       .select()
       .from(workflowVersions)
-      .where(eq(workflowVersions.id, wf.current_version_id))
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, tenant_id),
+          eq(workflowVersions.id, wf.current_version_id),
+        ),
+      )
       .limit(1);
     const v = vRows[0];
     if (v) {
@@ -293,7 +298,12 @@ export async function updateWorkflow(
         max_version: sql<number>`coalesce(max(${workflowVersions.version}), 0)`,
       })
       .from(workflowVersions)
-      .where(eq(workflowVersions.workflow_id, wf.id))) as Array<{ max_version: number }>;
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, input.tenant_id),
+          eq(workflowVersions.workflow_id, wf.id),
+        ),
+      )) as Array<{ max_version: number }>;
     const next = (versionRows[0]?.max_version ?? 0) + 1;
     const [v] = await tx
       .insert(workflowVersions)
@@ -556,13 +566,13 @@ export async function listWorkflows(
 ): Promise<WorkflowView[]> {
   const db = exec ?? getDb();
   const limit = Math.min(opts.limit ?? 50, 200);
-  const conds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
-  if (opts.status) conds.push(eq(workflows.lifecycle, opts.status));
-  if (opts.name_contains) conds.push(like(workflows.name, `%${opts.name_contains}%`));
+  const tenantConds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
+  if (opts.status) tenantConds.push(eq(workflows.lifecycle, opts.status));
+  if (opts.name_contains) tenantConds.push(like(workflows.name, `%${opts.name_contains}%`));
   const rows = await db
     .select()
     .from(workflows)
-    .where(and(...conds))
+    .where(and(...tenantConds))
     .orderBy(desc(workflows.created_at))
     .limit(limit)
     .offset(opts.offset ?? 0);
@@ -696,7 +706,9 @@ export async function restoreWorkflowVersion(
         max_version: sql<number>`coalesce(max(${workflowVersions.version}), 0)`,
       })
       .from(workflowVersions)
-      .where(eq(workflowVersions.workflow_id, id))) as Array<{ max_version: number }>;
+      .where(
+        and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.workflow_id, id)),
+      )) as Array<{ max_version: number }>;
     const next = (restoreRows[0]?.max_version ?? 0) + 1;
     const [v] = await tx
       .insert(workflowVersions)
@@ -742,7 +754,7 @@ export async function restoreWorkflowVersion(
     const wfRows = await tx
       .select({ slug: workflows.slug })
       .from(workflows)
-      .where(eq(workflows.id, id))
+      .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, id)))
       .limit(1);
     const wfSlug = wfRows[0]?.slug ?? id;
     await applyTriggerBindings(tx, tenant_id, id, wfSlug, restoredDef, actor_id);

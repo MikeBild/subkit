@@ -9,10 +9,10 @@
 import { createRoute, type OpenAPIHono, type z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
+  ConnectorRecipeSchema,
   listResolvedConnectorTemplates,
   resolveConnectorTemplate,
-} from "../../../connectors/template-resolver.ts";
-import { ConnectorRecipeSchema } from "../../../connectors/templates.ts";
+} from "../../../connectors/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";

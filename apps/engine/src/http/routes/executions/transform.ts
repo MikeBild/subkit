@@ -9,15 +9,14 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { auditAwait } from "../../../audit/audit.ts";
-import { AuditAction } from "../../../audit/types.ts";
-import { evaluate as evaluateJsonata } from "../../../execution/jsonata-engine.ts";
+import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import {
   applyResponseFilters,
+  evaluate as evaluateJsonata,
   ResponseFilterFailError,
-} from "../../../execution/response-filter.ts";
-import { logger } from "../../../logging/logger.ts";
-import { runJs } from "../../../sandboxes/quickjs/runtime.ts";
+} from "../../../execution/index.ts";
+import { logger } from "../../../logging/index.ts";
+import { runJs } from "../../../sandboxes/index.ts";
 import { BadRequestError, UnprocessableEntityError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";

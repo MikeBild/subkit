@@ -12,13 +12,11 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema, paginatedResponse } from "../../api/common-schemas.ts";
-import { audit } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
+import { AuditAction, audit } from "../../audit/index.ts";
 import { writeEvent } from "../../db/events.ts";
 import { events } from "../../db/schema/index.ts";
-import { getBoss } from "../../queue/boss.ts";
-import { EVENT_TYPES, validateEventPayload } from "../../webhooks/events/catalog.ts";
-import { fanoutEvent } from "../../webhooks/outbound/fanout.ts";
+import { getBoss } from "../../queue/index.ts";
+import { EVENT_TYPES, fanoutEvent, validateEventPayload } from "../../webhooks/index.ts";
 import { BadRequestError, ForbiddenError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -98,13 +96,13 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    const conds = [eq(events.tenant_id, principal.tenant_id)];
-    if (q.channel) conds.push(eq(events.channel, q.channel));
-    if (q.type) conds.push(eq(events.type, q.type));
+    const tenantConds = [eq(events.tenant_id, principal.tenant_id)];
+    if (q.channel) tenantConds.push(eq(events.channel, q.channel));
+    if (q.type) tenantConds.push(eq(events.type, q.type));
     const rows = await db
       .select()
       .from(events)
-      .where(and(...conds))
+      .where(and(...tenantConds))
       .orderBy(desc(events.id))
       .limit(q.limit ?? 100);
     return c.json(
@@ -230,14 +228,14 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const channelFilter = c.req.query("channel") ?? null;
     const typeFilter = c.req.query("type") ?? null;
 
-    const filterConds = () => {
-      const conds = [eq(events.tenant_id, tenantId)];
+    const tenantFilterConds = () => {
+      const tenantConds = [eq(events.tenant_id, tenantId)];
       if (rawExecutionId) {
-        conds.push(sql`${events.payload}->>'execution_id' = ${rawExecutionId}`);
+        tenantConds.push(sql`${events.payload}->>'execution_id' = ${rawExecutionId}`);
       }
-      if (channelFilter) conds.push(eq(events.channel, channelFilter));
-      if (typeFilter) conds.push(eq(events.type, typeFilter));
-      return conds;
+      if (channelFilter) tenantConds.push(eq(events.channel, channelFilter));
+      if (typeFilter) tenantConds.push(eq(events.type, typeFilter));
+      return tenantConds;
     };
 
     return streamSSE(c, async (stream) => {
@@ -258,7 +256,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
         const replay = await db
           .select()
           .from(events)
-          .where(and(...filterConds(), gt(events.id, lastEventId)))
+          .where(and(...tenantFilterConds(), gt(events.id, lastEventId)))
           .orderBy(asc(events.id))
           .limit(1_000);
         for (const row of replay) {
@@ -270,7 +268,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
         const recent = await db
           .select()
           .from(events)
-          .where(and(...filterConds()))
+          .where(and(...tenantFilterConds()))
           .orderBy(desc(events.id))
           .limit(replayLimit);
         const ordered = recent.slice().reverse();
@@ -294,7 +292,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
         const newRows = await db
           .select()
           .from(events)
-          .where(and(...filterConds(), gt(events.id, cursor)))
+          .where(and(...tenantFilterConds(), gt(events.id, cursor)))
           .orderBy(asc(events.id))
           .limit(200);
         for (const row of newRows) {

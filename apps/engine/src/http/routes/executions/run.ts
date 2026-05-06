@@ -9,19 +9,17 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { auditAwait } from "../../../audit/audit.ts";
-import { AuditAction } from "../../../audit/types.ts";
-import type { ResolvedPrincipal } from "../../../auth/types.ts";
-import { runExecution } from "../../../execution/engine.ts";
+import { AuditAction, auditAwait } from "../../../audit/index.ts";
+import type { ResolvedPrincipal } from "../../../auth/index.ts";
+import type { ExecutionMode } from "../../../execution/index.ts";
 import {
+  createExecution,
   type RunExecutionSource,
   resolveDefinition,
-} from "../../../execution/resolve-definition.ts";
-import { createExecution } from "../../../execution/state.ts";
-import type { ExecutionMode } from "../../../execution/types.ts";
-import { getBoss } from "../../../queue/boss.ts";
-import type { ExecutionRunJob } from "../../../queue/queues.ts";
-import { EXECUTION_RUN_QUEUE } from "../../../queue/queues.ts";
+  runExecution,
+} from "../../../execution/index.ts";
+import type { ExecutionRunJob } from "../../../queue/index.ts";
+import { EXECUTION_RUN_QUEUE, getBoss } from "../../../queue/index.ts";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";

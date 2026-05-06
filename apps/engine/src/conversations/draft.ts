@@ -169,7 +169,12 @@ export async function appendSnapshot(
   const [row] = (await exec
     .select({ n: sql<number>`count(*)::int` })
     .from(conversationDrafts)
-    .where(eq(conversationDrafts.conversation_id, conversation_id))) as Array<{ n: number }>;
+    .where(
+      and(
+        eq(conversationDrafts.tenant_id, tenant_id),
+        eq(conversationDrafts.conversation_id, conversation_id),
+      ),
+    )) as Array<{ n: number }>;
   const next = (row?.n ?? 0) + 1;
   const normalized = normalizeDraftDocument(draft);
   await exec.insert(conversationDrafts).values({

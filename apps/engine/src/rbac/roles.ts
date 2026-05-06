@@ -109,6 +109,7 @@ export async function deleteRole(db: Db, tenant_id: string, id: string): Promise
 }
 
 export async function listRolePermissions(db: Db, role_id: string): Promise<string[]> {
+  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db
     .select({ name: permissionsTable.name })
     .from(rolePermissions)
@@ -126,6 +127,7 @@ export async function grantPermissionToRole(
   const role = await getRole(db, tenant_id, role_id);
   if (!role) throw new RoleNotFoundError();
   if (role.is_builtin) throw new BuiltinImmutableError();
+  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const pRows = await db
     .select({ id: permissionsTable.id })
     .from(permissionsTable)
@@ -145,6 +147,7 @@ export async function revokePermissionFromRole(
   const role = await getRole(db, tenant_id, role_id);
   if (!role) throw new RoleNotFoundError();
   if (role.is_builtin) throw new BuiltinImmutableError();
+  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const pRows = await db
     .select({ id: permissionsTable.id })
     .from(permissionsTable)
@@ -167,6 +170,7 @@ export async function findRoleByName(
   const where = tenant_id
     ? and(eq(rolesTable.tenant_id, tenant_id), eq(rolesTable.name, name))
     : and(isNull(rolesTable.tenant_id), eq(rolesTable.name, name));
+  // tenant-filter:exempt — RBAC catalog walk — handles both global rows (tenant_id IS NULL) and tenant rows
   const rows = await db.select().from(rolesTable).where(where).limit(1);
   return rows[0] ?? null;
 }

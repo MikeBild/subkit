@@ -8,7 +8,7 @@
 // parse the `[conv:<id>]` envelope that keys its plan cursor.
 
 import type { FilePart, ImagePart, ModelMessage, TextPart } from "ai";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import {
@@ -65,6 +65,7 @@ const TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS = 4000;
  */
 export async function buildUserContentParts(
   db: Db,
+  tenant_id: string,
   conversation_id: string,
   text: string,
   provider: ProviderKind = "anthropic",
@@ -85,7 +86,12 @@ export async function buildUserContentParts(
   const rows = await db
     .select()
     .from(conversationAttachments)
-    .where(eq(conversationAttachments.conversation_id, conversation_id));
+    .where(
+      and(
+        eq(conversationAttachments.tenant_id, tenant_id),
+        eq(conversationAttachments.conversation_id, conversation_id),
+      ),
+    );
 
   const rowMap = new Map(rows.map((r) => [r.slug, r]));
   const parts: Array<TextPart | ImagePart | FilePart> = [];
@@ -354,20 +360,34 @@ export async function buildModelMessages(
     db
       .select()
       .from(conversationMessages)
-      .where(eq(conversationMessages.conversation_id, conversation_id))
+      .where(
+        and(
+          eq(conversationMessages.tenant_id, tenant_id),
+          eq(conversationMessages.conversation_id, conversation_id),
+        ),
+      )
       .orderBy(asc(conversationMessages.created_at)),
     db
       .select()
       .from(conversationToolCalls)
-      .where(eq(conversationToolCalls.conversation_id, conversation_id))
+      .where(
+        and(
+          eq(conversationToolCalls.tenant_id, tenant_id),
+          eq(conversationToolCalls.conversation_id, conversation_id),
+        ),
+      )
       .orderBy(asc(conversationToolCalls.created_at)),
     db
       .select()
       .from(conversationElicitations)
-      .where(eq(conversationElicitations.conversation_id, conversation_id))
+      .where(
+        and(
+          eq(conversationElicitations.tenant_id, tenant_id),
+          eq(conversationElicitations.conversation_id, conversation_id),
+        ),
+      )
       .orderBy(asc(conversationElicitations.created_at)),
   ]);
-  void tenant_id;
   const callsById = new Map(calls.map((call) => [call.id, call]));
   const replayableElicitations = elicitations
     .map((elicitation) => {

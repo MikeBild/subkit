@@ -84,13 +84,13 @@ export async function listConversations(
   p: ListConversationsParams,
   exec: Db,
 ): Promise<ConversationListItem[]> {
-  const conds = [eq(conversations.tenant_id, p.tenant_id)];
-  if (p.status) conds.push(eq(conversations.status, p.status));
-  if (p.owner_id) conds.push(eq(conversations.owner_id, p.owner_id));
+  const tenantConds = [eq(conversations.tenant_id, p.tenant_id)];
+  if (p.status) tenantConds.push(eq(conversations.status, p.status));
+  if (p.owner_id) tenantConds.push(eq(conversations.owner_id, p.owner_id));
   const rows = await exec
     .select()
     .from(conversations)
-    .where(and(...conds))
+    .where(and(...tenantConds))
     .orderBy(desc(conversations.updated_at))
     .limit(Math.min(p.limit ?? 50, 200))
     .offset(p.offset ?? 0);

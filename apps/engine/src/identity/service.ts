@@ -712,6 +712,7 @@ export async function resolveSession(
   exec?: Executor,
 ): Promise<ResolveSessionResult> {
   const db = exec ?? getDb();
+  // tenant-filter:exempt — pre-tenant session resolution; tenant_id is read out of the resolved row to *establish* tenant context for downstream code
   const rows = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
   const row = rows[0];
   if (!row) return { session: null, reason: "not_found" };

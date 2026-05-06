@@ -30,8 +30,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, Next } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { audit } from "../../../audit/audit.ts";
-import { AuditAction } from "../../../audit/types.ts";
+import { AuditAction, audit } from "../../../audit/index.ts";
 import type { Db } from "../../../db/client.ts";
 import {
   detectFormat,
@@ -39,8 +38,8 @@ import {
   parseSimpleXml,
   parseSimpleYaml,
   UnsupportedFileUploadError,
-} from "../../../docs-ingestion/sources/file-upload.ts";
-import { runExtractFlow } from "../../../llm/flows/extract.ts";
+} from "../../../docs-ingestion/index.ts";
+import { runExtractFlow } from "../../../llm/index.ts";
 import { PayloadTooLargeError, UnsupportedMediaTypeError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";

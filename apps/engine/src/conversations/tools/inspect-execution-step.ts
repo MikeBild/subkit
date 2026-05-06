@@ -93,6 +93,7 @@ export const inspectExecutionStepTool: ConversationTool = {
       .from(executionSteps)
       .where(
         and(
+          eq(executionSteps.tenant_id, ctx.tenant_id),
           eq(executionSteps.execution_id, args.execution_id),
           eq(executionSteps.step_key, args.step_key),
         ),
@@ -104,7 +105,12 @@ export const inspectExecutionStepTool: ConversationTool = {
       const allSteps = await ctx.db
         .select({ step_key: executionSteps.step_key, status: executionSteps.status })
         .from(executionSteps)
-        .where(eq(executionSteps.execution_id, args.execution_id));
+        .where(
+          and(
+            eq(executionSteps.tenant_id, ctx.tenant_id),
+            eq(executionSteps.execution_id, args.execution_id),
+          ),
+        );
       return {
         ok: false,
         data: {

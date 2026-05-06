@@ -9,8 +9,8 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { getBoss } from "../../queue/boss.ts";
-import * as svc from "../../webhooks/inbound/service.ts";
+import { getBoss } from "../../queue/index.ts";
+import * as svc from "../../webhooks/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

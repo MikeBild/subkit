@@ -4,9 +4,8 @@
 //   DELETE /v1/rbac/grants/:id
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { auditAwait } from "../../../audit/audit.ts";
-import { AuditAction } from "../../../audit/types.ts";
-import * as grantsSvc from "../../../rbac/grants.ts";
+import { AuditAction, auditAwait } from "../../../audit/index.ts";
+import * as grantsSvc from "../../../rbac/index.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";

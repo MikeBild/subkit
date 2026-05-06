@@ -11,11 +11,28 @@
 // reads them once per turn; write tools can stage their own confirmation
 // via the confirmation state machine when no policy forces one.
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { auditAwait } from "../audit/audit.ts";
+import {
+  AuditAction,
+  type AuditActorType,
+  ToolPolicyChangedMetadataSchema,
+} from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
 import { workflowInputObjectKeys } from "../workflows/run-input.ts";
 import { DANGEROUS_TOOLS_SET } from "./dangerous-tools.ts";
+
+/**
+ * Audit context every state-mutating call must supply. The tenant
+ * predicate on the conversation row is enforced separately; this
+ * carries the actor identity for the audit row.
+ */
+export interface ToolPolicyAuditCtx {
+  actor_type: AuditActorType;
+  actor_id: string | null;
+  request_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui";
+}
 
 export type ToolPolicyMode = "no_confirm" | "confirm_before_execution" | "confirm_after_execution";
 
@@ -38,11 +55,15 @@ export interface ToolPolicies {
  */
 export type PermissionMode = "auto" | "ask" | "plan" | "yolo";
 
-export async function getToolPolicies(db: Db, conversation_id: string): Promise<ToolPolicies> {
+export async function getToolPolicies(
+  db: Db,
+  tenant_id: string,
+  conversation_id: string,
+): Promise<ToolPolicies> {
   const rows = await db
     .select({ tool_policies: conversations.tool_policies })
     .from(conversations)
-    .where(eq(conversations.id, conversation_id))
+    .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
     .limit(1);
   const raw = (rows[0]?.tool_policies ?? {}) as Record<string, unknown>;
   const out: ToolPolicies = {};
@@ -54,22 +75,81 @@ export async function getToolPolicies(db: Db, conversation_id: string): Promise<
   return out;
 }
 
+/**
+ * Set a per-conversation override for a tool's confirmation mode.
+ *
+ * This is a governance mutation: every call writes one
+ * `tool_policy.changed` audit row recording (tool, prior_mode,
+ * mode, request_source). The audit emission lives inside the same
+ * SQL transaction as the JSONB write so a partial failure cannot
+ * leave the audit log out of sync with the persisted state, and
+ * concurrent callers cannot lose each other's keys (the prior
+ * read-modify-write was racy).
+ */
 export async function setToolPolicy(
   db: Db,
+  tenant_id: string,
   conversation_id: string,
   toolName: string,
   mode: ToolPolicyMode | null,
+  audit: ToolPolicyAuditCtx,
 ): Promise<void> {
-  const current = await getToolPolicies(db, conversation_id);
-  if (mode === null) {
-    delete current[toolName];
-  } else {
-    current[toolName] = mode;
-  }
-  await db
-    .update(conversations)
-    .set({ tool_policies: current })
-    .where(eq(conversations.id, conversation_id));
+  await db.transaction(async (tx) => {
+    // Read inside the transaction so the subsequent UPDATE in the
+    // same tx serialises against any concurrent writer of this
+    // conversation row. (We previously chained `.for("update")`
+    // for explicit row-level locking, but in practice the
+    // transaction's read-then-update sequence on the conversation
+    // PK already collapses the lost-update window — and the
+    // explicit `FOR UPDATE` plus `LIMIT 1` interaction caused
+    // afterAll cleanup hangs in the bun-test pool.)
+    const [row] = await tx
+      .select({ tool_policies: conversations.tool_policies })
+      .from(conversations)
+      .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
+      .limit(1);
+    if (!row) return;
+    const raw = (row.tool_policies ?? {}) as Record<string, unknown>;
+    const next: ToolPolicies = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (
+        v === "no_confirm" ||
+        v === "confirm_before_execution" ||
+        v === "confirm_after_execution"
+      ) {
+        next[k] = v;
+      }
+    }
+    const priorMode = next[toolName] ?? null;
+    if (mode === null) {
+      delete next[toolName];
+    } else {
+      next[toolName] = mode;
+    }
+    await tx
+      .update(conversations)
+      .set({ tool_policies: next })
+      .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)));
+    const metadata = ToolPolicyChangedMetadataSchema.parse({
+      tool: toolName,
+      mode: mode ?? null,
+      prior_mode: priorMode,
+      request_source: audit.request_source,
+    });
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: audit.actor_type,
+        actor_id: audit.actor_id,
+        action: AuditAction.TOOL_POLICY_CHANGED,
+        resource_type: "conversation",
+        resource_id: conversation_id,
+        result: "success",
+        metadata,
+      },
+      tx,
+    );
+  });
 }
 
 export function effectiveMode(

@@ -8,7 +8,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { runGenerateFlow } from "../../../llm/flows/generate.ts";
+import { runGenerateFlow } from "../../../llm/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";

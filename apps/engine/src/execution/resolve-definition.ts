@@ -80,7 +80,7 @@ async function resolveSaved(
   const versionRows = await db
     .select()
     .from(workflowVersions)
-    .where(eq(workflowVersions.id, versionId))
+    .where(and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.id, versionId)))
     .limit(1);
   const versionRow = versionRows[0];
   if (!versionRow) throw new Error("workflow version not found");

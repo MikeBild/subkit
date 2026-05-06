@@ -3,8 +3,10 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { upsertTemplateOAuthCredentials } from "../../../connectors/template-credentials.ts";
-import { resolveConnectorTemplate } from "../../../connectors/template-resolver.ts";
+import {
+  resolveConnectorTemplate,
+  upsertTemplateOAuthCredentials,
+} from "../../../connectors/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";

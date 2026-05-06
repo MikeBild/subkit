@@ -4,12 +4,10 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import {
   listResolvedConnectorTemplates,
-  type ResolvedConnectorTemplate,
-} from "../../../connectors/template-resolver.ts";
-import {
   matchTemplatesByUrl,
+  type ResolvedConnectorTemplate,
   type TemplateUrlMatch,
-} from "../../../connectors/template-url-match.ts";
+} from "../../../connectors/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { MatchUrlQuery, MatchUrlResponseSchema } from "./schemas.ts";

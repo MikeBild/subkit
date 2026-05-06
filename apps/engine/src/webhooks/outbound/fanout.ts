@@ -214,6 +214,7 @@ export async function fanoutEventRow(
   event_row_id: number,
   opts: { notificationAdapterResolver?: AdapterResolver } = {},
 ): Promise<FanoutStats | null> {
+  // tenant-filter:exempt — events PK lookup; row's tenant_id is read out and forwarded to fanoutEvent for downstream filtering
   const rows = await db.select().from(events).where(eq(events.id, event_row_id)).limit(1);
   const row = rows[0];
   if (!row) return null;

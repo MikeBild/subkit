@@ -1154,6 +1154,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       .from(connectorEndpointSchemas)
       .where(
         and(
+          eq(connectorEndpointSchemas.tenant_id, p.ctx.tenant_id),
           eq(connectorEndpointSchemas.connector_id, activeConnector.id),
           eq(connectorEndpointSchemas.method, p.step.method),
           eq(connectorEndpointSchemas.path, p.step.path),
@@ -1432,7 +1433,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     let resumePageIdx = 0;
     let resumeAccumulatedCount = 0;
     try {
-      const existing = await readPaginationCheckpoint(p.ctx.step_row_id, p.ctx.db);
+      const existing = await readPaginationCheckpoint(p.ctx.tenant_id, p.ctx.step_row_id, p.ctx.db);
       if (existing && existing.signature === requestSignature) {
         resumeSeed = existing.state;
         resumePageIdx = existing.page_idx;
@@ -1592,6 +1593,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         };
         latestCheckpoint = checkpoint;
         inFlightCheckpoint = writePaginationCheckpoint(
+          p.ctx.tenant_id,
           p.ctx.step_row_id,
           checkpoint,
           p.ctx.db,

@@ -21,6 +21,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { auditTenantFilter } from "./audit/tenant-filter-ast.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO = resolve(dirname(__filename), "..", "..", "..");
@@ -228,6 +229,10 @@ function checkRouteLayering(): Result {
       const fullPath = match[1]!;
       const subsystem = match[2]!;
       if (!knownExternalSubsystems.has(subsystem)) continue;
+      // JSON imports are data, not module surface — they can't go
+      // through the TS barrel and exempt naturally. Same for any
+      // non-.ts file (currently only json).
+      if (fullPath.endsWith(".json")) continue;
       const tail = fullPath.split(`/${subsystem}/`)[1] ?? "";
       const isIndex = tail === "index" || tail === "index.ts" || tail === "";
       if (!isIndex) {
@@ -242,13 +247,10 @@ function checkRouteLayering(): Result {
       message: "all http/routes/* import only subsystem entry points",
     };
   }
-  // Phase 1 lands the check as ADVISORY (PASS with warning) until the
-  // §4.4 route splits in Phase 4 land. Flipping to FAIL is part of the
-  // Phase 4 gate.
   return {
     id: "route_layering",
-    status: "PASS",
-    message: `ADVISORY (Phase 4 will flip to FAIL): ${violations.length} layering violations\n  ${violations.slice(0, 10).join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
+    status: "FAIL",
+    message: `${violations.length} routes import subsystem internals; route files must import only the subsystem's index.ts entry point\n  ${violations.slice(0, 10).join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
   };
 }
 
@@ -309,50 +311,36 @@ function checkRouteSize(): Result {
 // ---------- safety ----------
 
 function checkTenantFilter(): Result {
-  // Phase 1 heuristic: grep for `db.select().from(<table>)` patterns and
-  // check there is a `tenantId` reference within the next 5 lines. This
-  // catches the obvious case (drizzle query that forgot the predicate)
-  // but misses query-builder helpers that defer the predicate.
-  //
-  // PHASE 4: replace with a proper AST scan that follows the query
-  // builder chain. Tracked in audit-2026-05 issue.
-  const allowlist = readAllowlist(".tenant-filter-allowlist.txt");
-  const violations: string[] = [];
-  for (const f of listFiles(
-    ENGINE_SRC,
-    (p) => p.endsWith(".ts") && !p.endsWith(".test.ts") && !p.includes("/scripts/"),
-  )) {
-    const rel = relative(REPO, f);
-    const text = readFileSync(f, "utf8");
-    const lines = text.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]!;
-      // Match `.from(<table>)` with optional whitespace.
-      const match = line.match(/\.from\(\s*([\w$]+)/);
-      if (!match) continue;
-      const table = match[1]!;
-      if (allowlist.has(table)) continue;
-      // Scan ahead 8 lines (chained calls span multiple lines) for a
-      // tenantId reference. If the table name itself contains `system`
-      // or `global`, skip (heuristic — refined in Phase 4).
-      const window = lines.slice(i, Math.min(i + 8, lines.length)).join("\n");
-      if (/tenantId|tenant_id/.test(window)) continue;
-      violations.push(`${rel}:${i + 1} .from(${table}) without nearby tenantId`);
-    }
-  }
+  // AST scan (replacing the prior regex heuristic). The scan walks
+  // every Drizzle query chain (`select`/`update`/`delete`/`insert`/`with`
+  // → `.from(table)` → optional `.where(...)`) and asserts a
+  // `tenant_id` predicate is present in the where argument tree —
+  // either as a literal identifier reference or via a helper whose
+  // name matches /tenant/i. Site-level opt-outs use the comment
+  // marker `// tenant-filter:exempt — <reason>` (leading or
+  // trailing-on-same-line). The table allowlist
+  // (.tenant-filter-allowlist.txt) covers truly tenant-agnostic
+  // system tables.
+  const tableAllowlist = readAllowlist(".tenant-filter-allowlist.txt");
+  const violations = auditTenantFilter({
+    repoRoot: REPO,
+    engineSrc: ENGINE_SRC,
+    tableAllowlist,
+  });
   if (violations.length === 0) {
     return {
       id: "tenant_filter",
       status: "PASS",
-      message: "no drizzle .from(table) without nearby tenantId predicate",
+      message: "no drizzle .from(table) chain without a tenant_id predicate",
     };
   }
-  // Phase 1 ships ADVISORY because the heuristic produces false positives
-  // on query-builder helpers; flips to FAIL when AST scan lands.
+  const rendered = violations
+    .slice(0, 10)
+    .map((v) => `${v.file}:${v.line} .from(${v.table}) without tenant_id predicate`);
   return {
     id: "tenant_filter",
-    status: "PASS",
-    message: `ADVISORY (heuristic, AST scan in Phase 4): ${violations.length} candidate sites\n  ${violations.slice(0, 10).join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
+    status: "FAIL",
+    message: `${violations.length} call sites without tenant_id predicate (add the predicate or annotate with \`// tenant-filter:exempt — <reason>\`):\n  ${rendered.join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
   };
 }
 

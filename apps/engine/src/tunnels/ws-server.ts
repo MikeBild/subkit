@@ -210,7 +210,7 @@ export function startTunnelWsServer(opts: TunnelWsServerOptions): TunnelWsServer
           case "ping": {
             ws.send(encodeFrame({ type: "pong", ts: frame.ts }));
             if (ws.data.tunnel_id) {
-              await touchTunnelLastSeen(ws.data.tunnel_id, db).catch(() => {});
+              await touchTunnelLastSeen(ws.data.tenant_id, ws.data.tunnel_id, db).catch(() => {});
             }
             for (const target of ws.data.targets) {
               registry.touch(ws.data.tenant_id, target);
