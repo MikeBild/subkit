@@ -94,7 +94,17 @@ export async function refreshIfStale(
     let bundle: Awaited<ReturnType<typeof runRefreshTokenGrant>>;
     if (cfg.grant_type === "cognito_user_password") {
       const cogConfig = (connector.config as Record<string, unknown>) ?? {};
-      const region = typeof cogConfig.aws_region === "string" ? cogConfig.aws_region : null;
+      const cogOauth = (cogConfig.oauth as Record<string, unknown> | undefined) ?? {};
+      // Accept aws_region from the canonical slot (`config.aws_region`,
+      // normalised at initial-mint time) OR the legacy nested fallback
+      // (`config.oauth.aws_region`) for connectors saved before the
+      // canonicalisation landed.
+      const region =
+        typeof cogConfig.aws_region === "string"
+          ? cogConfig.aws_region
+          : typeof cogOauth.aws_region === "string"
+            ? cogOauth.aws_region
+            : null;
       const username =
         typeof cogConfig.cognito_username === "string" ? cogConfig.cognito_username : "";
       const useAccessToken = cogConfig.cognito_use_access_token === true;
@@ -103,6 +113,21 @@ export async function refreshIfStale(
           module: "oauth2",
           action: "oauth2.refresh_skipped",
           msg: "cognito connector missing config.aws_region; cannot refresh",
+          connector_id: connector.id,
+        });
+        return decrypted;
+      }
+      if (cfg.client_secret && !username) {
+        // SECRET_HASH = HMAC(client_secret, username + client_id). With
+        // an empty username, the hash is wrong and Cognito rejects
+        // REFRESH_TOKEN_AUTH with NotAuthorizedException — burning the
+        // refresh window. Skip with a clear signal so the operator
+        // re-issues the credential (which re-populates
+        // `cognito_username` via persistCredential).
+        logger.warn({
+          module: "oauth2",
+          action: "oauth2.refresh_skipped",
+          msg: "cognito connector with client_secret missing config.cognito_username; cannot compute SECRET_HASH for refresh. Re-issue the credential.",
           connector_id: connector.id,
         });
         return decrypted;

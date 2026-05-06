@@ -194,4 +194,62 @@ describe("Cognito User-Password (InitiateAuth)", () => {
     }
     expect(caught?.message).toContain("no tokens");
   });
+
+  test("REFRESH_TOKEN_AUTH with client_secret computes SECRET_HASH from the persisted username (not empty)", async () => {
+    // Regression: Cognito clients with a client_secret require
+    // SECRET_HASH on every InitiateAuth call (including
+    // REFRESH_TOKEN_AUTH). The hash is HMAC(secret, username + client_id).
+    // If the refresh-worker doesn't have the original username (because
+    // initial-mint forgot to persist it to `connector.config`), it
+    // computes a hash with empty username and Cognito rejects with
+    // NotAuthorizedException — burning the refresh window. This test
+    // pins the contract: when username is provided, SECRET_HASH must be
+    // present in REFRESH_TOKEN_AUTH and must differ from the
+    // empty-username hash.
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          AuthenticationResult: { IdToken: "fresh", ExpiresIn: 60 },
+        }),
+        { status: 200 },
+      ),
+    );
+    await runCognitoRefreshTokenGrant({
+      region: "eu-central-1",
+      client_id: "abc-secret",
+      client_secret: "shh",
+      username: "user@example.com",
+      password: "",
+      refresh_token: "rt",
+    });
+    const initWithUser = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    const bodyWithUser = JSON.parse(String(initWithUser.body));
+    expect(typeof bodyWithUser.AuthParameters.SECRET_HASH).toBe("string");
+    const hashWithUser = bodyWithUser.AuthParameters.SECRET_HASH as string;
+
+    fetchSpy.mockClear();
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          AuthenticationResult: { IdToken: "fresh", ExpiresIn: 60 },
+        }),
+        { status: 200 },
+      ),
+    );
+    await runCognitoRefreshTokenGrant({
+      region: "eu-central-1",
+      client_id: "abc-secret",
+      client_secret: "shh",
+      username: "", // bug shape: refresh-worker prior to fix passed empty
+      password: "",
+      refresh_token: "rt",
+    });
+    const initEmpty = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    const bodyEmpty = JSON.parse(String(initEmpty.body));
+    const hashEmpty = bodyEmpty.AuthParameters.SECRET_HASH as string;
+    // Empty-username SECRET_HASH must NOT match the real-username hash.
+    // Cognito rejects the empty-username variant; the persistCredential
+    // fix in save-connector.ts ensures this never happens at runtime.
+    expect(hashEmpty).not.toBe(hashWithUser);
+  });
 });
