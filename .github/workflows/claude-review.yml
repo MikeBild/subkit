@@ -24,12 +24,6 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  # `anthropics/claude-code-action` mints a GitHub App installation token
-  # via OIDC (`getOidcToken()` in src/github/token.ts) so it can post the
-  # review comment under the action's bot identity. Without this, the
-  # token-fetch retries 3× then fails — and `continue-on-error: true`
-  # silently swallows the failure as success, producing no comment.
-  id-token: write
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
@@ -58,6 +52,12 @@ jobs:
           # warning and were silently ignored.
           direct_prompt: /review
           max_turns: 8
+          # Use the workflow's default GITHUB_TOKEN (already scoped to
+          # `pull-requests: write` above) to post comments. Without this,
+          # the action falls back to OIDC → installation-token, which
+          # requires the Anthropic GitHub App to be installed on the
+          # repo and returns "Bad credentials" 401 otherwise.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
         # Advisory only — the workflow's contract (see header) is to
         # never block merges on review-content findings. With OIDC
         # permissions and inputs now correct, the only remaining reasons
