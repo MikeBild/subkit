@@ -69,7 +69,7 @@ function buildSection(
   };
 }
 
-function compactJoin(items: readonly string[]): string {
+function _compactJoin(items: readonly string[]): string {
   return items.join(" ");
 }
 

@@ -60,6 +60,7 @@ Pick from 90 connector templates — see [docs/05-connectors.md](../05-connector
 - `sk executions list` — watch executions.
 - `sk audit tail` — confirm every state change is recorded.
 - `curl -H "Authorization: Bearer <key>" http://localhost:3000/metrics` — Prometheus scrape target.
+- `sk settings configure` — interactive form for every runtime config leaf (database, LLM provider, observability, etc.). See [`subkit.config.example.json`](../../subkit.config.example.json) at the repo root for the full schema with defaults.
 
 ## How `curl /install | bash` works against your engine
 

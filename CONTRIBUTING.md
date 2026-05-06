@@ -52,7 +52,7 @@ A `BREAKING CHANGE:` token in the body bumps the major.
 ## Naming and terminology
 
 - The end-user CLI surface is **`sk`**. Use `sk` in user-facing prose, error messages, screenshots, and docs. The string `subkit` only appears when it adds information (the GitHub org, the `subkit` compatibility alias).
-- Banned terms: `automation`, `automations`, `superglue`. The terminology gate (`scripts/check-terminology.sh` + `scripts/terminology.banned.txt`) enforces this on every PR.
+- Banned terms are listed in [`scripts/terminology.banned.txt`](scripts/terminology.banned.txt) and enforced on every PR by [`scripts/check-terminology.sh`](scripts/check-terminology.sh).
 
 ## Tests
 

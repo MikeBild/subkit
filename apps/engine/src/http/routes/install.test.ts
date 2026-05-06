@@ -37,6 +37,7 @@ describe("install script template", () => {
     // scheme silently 404'd every operator install — the test pins
     // the new scheme + a negative check on the old prefix so a
     // future regression fails loudly.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variable in generated install script
     expect(script).toContain("releases/download/v${VERSION}");
     expect(script).not.toContain("releases/download/subkit-v");
   });
@@ -47,6 +48,7 @@ describe("install script template", () => {
     // operators succeed without a GitHub egress rule. The check is a
     // 5-second probe that 404s cleanly on the slim engine image.
     expect(script).toContain("BUNDLED_ASSET_URL=");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variables in generated install script
     expect(script).toContain("/install/sk-${os}-${arch}");
     expect(script).toContain("/install/sha256sums");
     expect(script).toMatch(/curl -fsSI[^\n]*BUNDLED_ASSET_URL/);

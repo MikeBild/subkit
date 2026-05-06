@@ -10,7 +10,6 @@
 
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
-import React from "react";
 import type {
   EngineClient,
   SettingLeafEntry,
