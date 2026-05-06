@@ -5,6 +5,7 @@ import { closeAllPools } from "./connectors/drivers/postgres.ts";
 import { assertCryptoKeyOrExit } from "./crypto/aes-gcm.ts";
 import { closeDb, getDb } from "./db/client.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
+import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
@@ -187,6 +188,31 @@ async function runServer(): Promise<void> {
       module: "queue",
       action: "crash_recovery_failed",
       msg: "boot-time crash recovery sweep failed (non-fatal)",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // #48: reap orphaned wait checkpoints. Re-enqueues `execution.run`
+  // for every row in `workflow_waits` (`sendAfter:sleep_until_ts` for
+  // future deadlines, immediate for overdue ones), then drops the
+  // checkpoint row. Each reap emits `WAIT_COMPLETED { reason:
+  // "recovered" }` so the operator can correlate against the original
+  // `WAIT_STARTED` entry.
+  try {
+    const { reaped } = await reapOrphanedWaits(db, boss);
+    if (reaped > 0) {
+      logger.info({
+        module: "execution",
+        action: "wait_reaper.boot_complete",
+        msg: "boot-time wait reaper finished",
+        reaped,
+      });
+    }
+  } catch (err) {
+    logger.error({
+      module: "execution",
+      action: "wait_reaper.boot_failed",
+      msg: "boot-time wait reaper failed (non-fatal)",
       error: err instanceof Error ? err.message : String(err),
     });
   }
