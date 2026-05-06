@@ -24,6 +24,12 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  # `anthropics/claude-code-action` mints a GitHub App installation token
+  # via OIDC (`getOidcToken()` in src/github/token.ts) so it can post the
+  # review comment under the action's bot identity. Without this, the
+  # token-fetch retries 3× then fails — and `continue-on-error: true`
+  # silently swallows the failure as success, producing no comment.
+  id-token: write
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
@@ -47,6 +53,14 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
-          prompt: /review
-          claude_args: --max-turns 8
+          # Action expects `direct_prompt` and `max_turns` — the previous
+          # `prompt` / `claude_args` keys produced an "Unexpected input(s)"
+          # warning and were silently ignored.
+          direct_prompt: /review
+          max_turns: 8
+        # Advisory only — the workflow's contract (see header) is to
+        # never block merges on review-content findings. With OIDC
+        # permissions and inputs now correct, the only remaining reasons
+        # for a failure would be Anthropic API outages or rate limits;
+        # those should surface in the run log, not as a red required check.
         continue-on-error: true
