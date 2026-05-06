@@ -4,7 +4,7 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../../audit/index.ts";
+import { AuditAction, auditAwait, ToolPolicyChangedMetadataSchema } from "../../../audit/index.ts";
 import * as svc from "../../../conversations/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -80,6 +80,16 @@ export function registerToolPoliciesRoutes(app: OpenAPIHono<AppEnv>): void {
       // gating on which tool, when, for which conversation. Audit
       // every change so compliance can scan `audit_log` for any
       // `tool_policy.changed` entry without scraping HTTP logs.
+      // Parse through ToolPolicyChangedMetadataSchema to lock the
+      // shape downstream BI / SIEM consumers will see. A future
+      // typo (`mode_prior`, "API" vs "api", etc.) fails at request
+      // time instead of corrupting the audit log.
+      const metadata = ToolPolicyChangedMetadataSchema.parse({
+        tool: toolName,
+        mode: mode ?? null,
+        prior_mode: prior[toolName] ?? null,
+        request_source: "api",
+      });
       await auditAwait(
         {
           tenant_id: principal.tenant_id,
@@ -89,12 +99,7 @@ export function registerToolPoliciesRoutes(app: OpenAPIHono<AppEnv>): void {
           resource_type: "conversation",
           resource_id: id,
           result: "success",
-          metadata: {
-            tool: toolName,
-            mode: mode ?? null,
-            prior_mode: prior[toolName] ?? null,
-            request_source: "api",
-          },
+          metadata,
         },
         db,
       );

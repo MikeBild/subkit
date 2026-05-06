@@ -43,8 +43,13 @@ describe("resolveLanguageModel", () => {
       "gateway",
     ];
     // `void` to keep the test intent explicit: this is a typecheck
-    // assertion, not a runtime assertion. Real-provider dispatch is
-    // covered by the integration suite under conversations/tests/.
+    // assertion, not a runtime assertion. Real-provider dispatch
+    // (mock provider in test mode → resolveSdkModel(provider, modelId))
+    // is covered by the orchestrator integration test at
+    // `apps/engine/src/conversations/tests/loop.test.ts`, which drives
+    // an end-to-end runLoop call against the SDK. Do not delete this
+    // typecheck case without confirming that integration test still
+    // pins the SDK contract.
     void providers;
     expect(providers.length).toBeGreaterThan(1);
   });

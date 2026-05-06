@@ -94,6 +94,17 @@ describe("isAbortError", () => {
     expect(isAbortError("the request was cancelled")).toBe(true);
   });
 
+  test("known false-positive class: provider strings containing the word 'cancel'", () => {
+    // Documented contract: the heuristic IS loose on purpose. A
+    // provider error whose message contains "cancellation policy"
+    // or similar gets misclassified as abort. We accept that — the
+    // alternative (anchored regex) misses real abort cases thrown
+    // as strings. This test pins the current behaviour so a future
+    // tightening is a deliberate decision, not an accident.
+    expect(isAbortError(new Error("provider has a cancellation policy"))).toBe(true);
+    expect(isAbortError("operation cannot be cancelled by tenant")).toBe(true);
+  });
+
   test("rejects unrelated errors", () => {
     expect(isAbortError(new Error("something else"))).toBe(false);
     expect(isAbortError(new DOMException("oops", "InvalidStateError"))).toBe(false);

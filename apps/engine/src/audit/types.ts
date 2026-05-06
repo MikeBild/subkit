@@ -4,6 +4,8 @@
  * module does not delete rows.
  */
 
+import { z } from "zod";
+
 /**
  * Sentinel UUID used as `tenant_id` for audit rows that are emitted before
  * any real tenant exists — currently the first-run setup wizard
@@ -282,6 +284,8 @@ export const AuditAction = {
   //   `/policy` slash command, or programmatically through
   //   `setToolPolicy`). Captures the tool name and the new mode (or
   //   `null` on clear) so compliance can audit who relaxed gating.
+  //   Metadata schema is pinned by `ToolPolicyChangedMetadataSchema`
+  //   below.
   TOOL_POLICY_CHANGED: "tool_policy.changed",
 
   // Settings subsystem (apps/engine/src/settings/) — every set writes
@@ -327,6 +331,43 @@ export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];
 
 export type AuditActorType = "user" | "system_account" | "system";
 export type AuditResult = "success" | "denied" | "error";
+
+// ---------------------------------------------------------------------------
+// Per-action metadata schemas
+// ---------------------------------------------------------------------------
+//
+// Audit-row `metadata` is `Record<string, unknown>` at the storage
+// layer (we don't constrain the column shape per action), but the
+// emitter-side schema for governance-relevant actions is pinned via
+// Zod so downstream BI / SIEM consumers have a stable contract.
+// Add a schema here when an action becomes load-bearing for
+// compliance.
+
+/** `tool_policy.changed` metadata. Emitted from the
+ *  `PUT /v1/conversations/:id/tool-policies` handler. */
+export const ToolPolicyChangedMetadataSchema = z.object({
+  /** Tool whose per-conversation override changed. */
+  tool: z.string().min(1),
+  /** New mode, or `null` if the operator cleared the override. */
+  mode: z
+    .union([
+      z.literal("no_confirm"),
+      z.literal("confirm_before_execution"),
+      z.literal("confirm_after_execution"),
+    ])
+    .nullable(),
+  /** Prior mode for before/after diff, or `null` if no prior override existed. */
+  prior_mode: z
+    .union([
+      z.literal("no_confirm"),
+      z.literal("confirm_before_execution"),
+      z.literal("confirm_after_execution"),
+    ])
+    .nullable(),
+  /** AGENTS.md request_source enum: api | cli | scheduler | mcp | webhook | tool-chain | ui */
+  request_source: z.enum(["api", "cli", "scheduler", "mcp", "webhook", "tool-chain", "ui"]),
+});
+export type ToolPolicyChangedMetadata = z.infer<typeof ToolPolicyChangedMetadataSchema>;
 
 export type AuditEntry = {
   id: string;

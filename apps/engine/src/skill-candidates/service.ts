@@ -69,7 +69,7 @@ async function getEvidenceCounts(
 ): Promise<Map<string, number>> {
   if (candidateIds.length === 0) return new Map();
   const db = exec;
-  // tenant-filter:exempt — tenant-scoped via parent candidate_id; verified by caller
+  // tenant-filter:exempt — skill_candidate_evidence has no tenant_id column (FK-cascade to skill_candidates.id); callers MUST pre-filter candidate ids via listSkillCandidates / getSkillCandidate, both of which scope on tenant_id
   const rows = await db
     .select({
       candidate_id: skillCandidateEvidence.skill_candidate_id,
@@ -150,7 +150,7 @@ export async function getSkillCandidateEvidence(
   const candidate = await getSkillCandidate(tenant_id, candidate_id, db);
   if (!candidate) return [];
 
-  // tenant-filter:exempt — tenant-scoped via parent candidate_id; verified by caller
+  // tenant-filter:exempt — skill_candidate_evidence has no tenant_id column (FK-cascade to skill_candidates.id); the candidate above was already tenant-checked via getSkillCandidate
   const rows = await db
     .select()
     .from(skillCandidateEvidence)
@@ -224,7 +224,7 @@ async function upsertFromSignal(
         .where(eq(skillCandidates.id, row.id));
 
       // Add new evidence entries (cap at MAX_EVIDENCE_PER_CANDIDATE)
-      // tenant-filter:exempt — tenant-scoped via parent candidate_id; verified by caller
+      // tenant-filter:exempt — skill_candidate_evidence has no tenant_id column (FK-cascade to skill_candidates.id); `row` was loaded above with eq(skillCandidates.tenant_id, tenant_id)
       const existingEvidence = await tx
         .select()
         .from(skillCandidateEvidence)
@@ -268,22 +268,21 @@ async function upsertFromSignal(
 
     // Supersede existing proposed candidates for the same scope+entity
     // with a different fingerprint (pattern has evolved).
-    const supersedeScope = [
+    const tenantSupersedeScope = [
       eq(skillCandidates.tenant_id, tenant_id),
       eq(skillCandidates.status, "proposed"),
       eq(skillCandidates.scope, signal.scope),
       eq(skillCandidates.pattern_kind, signal.pattern_kind),
     ];
     if (signal.workflow_id)
-      supersedeScope.push(eq(skillCandidates.workflow_id, signal.workflow_id));
+      tenantSupersedeScope.push(eq(skillCandidates.workflow_id, signal.workflow_id));
     if (signal.connector_id)
-      supersedeScope.push(eq(skillCandidates.connector_id, signal.connector_id));
+      tenantSupersedeScope.push(eq(skillCandidates.connector_id, signal.connector_id));
 
-    // tenant-filter:exempt — tenant-scoped via parent candidate_id; verified by caller
     const stale = await tx
       .select({ id: skillCandidates.id })
       .from(skillCandidates)
-      .where(and(...supersedeScope));
+      .where(and(...tenantSupersedeScope));
 
     for (const s of stale) {
       await tx

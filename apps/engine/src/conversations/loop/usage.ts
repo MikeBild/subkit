@@ -43,6 +43,16 @@ export function readStepUsage(step: RawStep): StepUsage {
   return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
 }
 
+// Heuristic abort/cancel detection. The first two arms are safe: a
+// DOMException of name AbortError/TimeoutError is unambiguous, and
+// matching `abort|cancel` against a real Error's message catches the
+// common SDK shapes that don't bother with DOMException. The
+// String(err) fallback is loose by design — an unknown thrown value
+// is rare in this code path and we'd rather treat a "cancellation
+// policy"-style provider message as user abort than miss a real
+// abort thrown as a string. Pinned by the unit test below; tighten
+// only with a deliberate decision (e.g. anchored regex or an SDK
+// upgrade that exposes a cleaner abort signal).
 export function isAbortError(err: unknown): boolean {
   if (err instanceof DOMException) {
     return err.name === "AbortError" || err.name === "TimeoutError";

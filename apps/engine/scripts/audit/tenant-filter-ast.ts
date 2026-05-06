@@ -57,6 +57,15 @@ const QUERY_STARTERS = new Set([
 // failure mode the gate exists to prevent. The non-greedy `\S` after
 // the separator forces at least one non-space character.
 const EXEMPT_RE = /\btenant-filter:\s*exempt\b\s*[-—:]\s*\S/;
+
+// 12 ≈ longest observed Drizzle chain in this repo (the
+// `executions/run.ts` list query, with multi-condition `where(and(…))`
+// spread across helper variable + inline conditions). If the scan
+// starts missing valid leading exemptions on legitimate longer
+// chains, raise this; do not raise blindly — the upper bound also
+// caps how far an exempt comment can sit from its `.from()` call,
+// which is a readability constraint.
+const MAX_CHAIN_SCAN_LINES = 12;
 // `TODO`/`FIXME` is not a documented decision — it is "I haven't
 // actually checked". Reject these in the reason text so a future
 // contributor cannot ship a green build behind a TODO. If the site
@@ -176,14 +185,7 @@ function hasExemptComment(call: CallExpression, sourceText: string): boolean {
   // chain. We stop once we hit a line that clearly starts a fresh
   // statement.
   let scanFrom = start;
-  // 12 ≈ longest observed Drizzle chain in this repo (the
-  // executions/run.ts list query, with multi-condition `where(and(…))`
-  // spread across helper variable + inline conditions). If the scan
-  // starts missing valid leading exemptions on legitimate longer
-  // chains, raise this; do not raise blindly — the upper bound
-  // also caps how far an exempt comment can sit from its `.from()`
-  // call, which is a readability constraint.
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < MAX_CHAIN_SCAN_LINES; i++) {
     const prevNewline = sourceText.lastIndexOf("\n", scanFrom - 1);
     if (prevNewline === -1) break;
     const lineStartPos = sourceText.lastIndexOf("\n", prevNewline - 1) + 1;
