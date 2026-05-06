@@ -125,12 +125,17 @@ jobs:
           # keychain reads — neither exists in CI). `-p` is the
           # non-interactive print mode. `--dangerously-skip-permissions`
           # skips the approval prompts the agent would otherwise wait
-          # for. `--max-budget-usd 5.00` caps spend per run; large
-          # diffs can blow past $1 with sonnet-class context.
+          # for. `--max-budget-usd 15.00` caps spend per run; raised
+          # from $5 after observing budget-exhaustion placeholders on
+          # 170+-file audit-cleanup diffs (PR #143). $15 covers the
+          # largest realistic monorepo diff at sonnet-class context;
+          # the workflow is `continue-on-error` and emits a
+          # diagnostic placeholder + ::error:: annotation when the
+          # budget is hit, so $15 is a soft ceiling, not a hard one.
           set +e
           claude --bare \
                  --dangerously-skip-permissions \
-                 --max-budget-usd 5.00 \
+                 --max-budget-usd 15.00 \
                  -p "$PROMPT" \
                  > review-raw.md
           exit_code=$?
