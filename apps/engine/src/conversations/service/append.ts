@@ -2,7 +2,7 @@
 // `PendingElicitationBlockedError` when an `ask_user_*` is still
 // pending — the loop must resume via `respondElicitation` instead.
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -103,11 +103,10 @@ export async function appendUserMessage(
     );
   } else {
     // Reuse whatever was last persisted on the row.
-    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
     const [row] = await exec
       .select({ memory: conversations.memory, model: conversations.model })
       .from(conversations)
-      .where(eq(conversations.id, p.conversation_id))
+      .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
       .limit(1);
     effectiveMemory = row?.memory ?? null;
   }

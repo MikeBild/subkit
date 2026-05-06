@@ -77,7 +77,6 @@ export const inspectExecutionStepTool: ConversationTool = {
       };
     }
 
-    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
     const stepRows = await ctx.db
       .select({
         id: executionSteps.id,
@@ -94,6 +93,7 @@ export const inspectExecutionStepTool: ConversationTool = {
       .from(executionSteps)
       .where(
         and(
+          eq(executionSteps.tenant_id, ctx.tenant_id),
           eq(executionSteps.execution_id, args.execution_id),
           eq(executionSteps.step_key, args.step_key),
         ),
@@ -102,11 +102,15 @@ export const inspectExecutionStepTool: ConversationTool = {
     const step = stepRows[0];
     if (!step) {
       // List available step_keys so the LLM can retry without guessing.
-      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
       const allSteps = await ctx.db
         .select({ step_key: executionSteps.step_key, status: executionSteps.status })
         .from(executionSteps)
-        .where(eq(executionSteps.execution_id, args.execution_id));
+        .where(
+          and(
+            eq(executionSteps.tenant_id, ctx.tenant_id),
+            eq(executionSteps.execution_id, args.execution_id),
+          ),
+        );
       return {
         ok: false,
         data: {

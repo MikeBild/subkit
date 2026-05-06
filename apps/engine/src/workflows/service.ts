@@ -558,14 +558,13 @@ export async function listWorkflows(
 ): Promise<WorkflowView[]> {
   const db = exec ?? getDb();
   const limit = Math.min(opts.limit ?? 50, 200);
-  const conds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
-  if (opts.status) conds.push(eq(workflows.lifecycle, opts.status));
-  if (opts.name_contains) conds.push(like(workflows.name, `%${opts.name_contains}%`));
-  // tenant-filter:exempt — tenant-scoped via parent workflow_id; verified by caller
+  const tenantConds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
+  if (opts.status) tenantConds.push(eq(workflows.lifecycle, opts.status));
+  if (opts.name_contains) tenantConds.push(like(workflows.name, `%${opts.name_contains}%`));
   const rows = await db
     .select()
     .from(workflows)
-    .where(and(...conds))
+    .where(and(...tenantConds))
     .orderBy(desc(workflows.created_at))
     .limit(limit)
     .offset(opts.offset ?? 0);

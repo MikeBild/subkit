@@ -18,37 +18,50 @@ export const inspectAuthoringContextTool: ConversationTool = {
   inputSchema,
   category: "tenant_read",
   async execute(ctx): Promise<ToolResult> {
-    // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
     const [row] = await ctx.db
       .select({
         target_connector_id: conversations.target_connector_id,
         target_workflow_id: conversations.target_workflow_id,
       })
       .from(conversations)
-      .where(eq(conversations.id, ctx.conversation_id))
+      .where(
+        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
+      )
       .limit(1);
     const [messageCount, toolCallCount, attachmentCount, pendingCount] = await Promise.all([
-      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
       ctx.db
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationMessages)
-        .where(eq(conversationMessages.conversation_id, ctx.conversation_id)),
-      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
+        .where(
+          and(
+            eq(conversationMessages.tenant_id, ctx.tenant_id),
+            eq(conversationMessages.conversation_id, ctx.conversation_id),
+          ),
+        ),
       ctx.db
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationToolCalls)
-        .where(eq(conversationToolCalls.conversation_id, ctx.conversation_id)),
-      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
+        .where(
+          and(
+            eq(conversationToolCalls.tenant_id, ctx.tenant_id),
+            eq(conversationToolCalls.conversation_id, ctx.conversation_id),
+          ),
+        ),
       ctx.db
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationAttachments)
-        .where(eq(conversationAttachments.conversation_id, ctx.conversation_id)),
-      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
+        .where(
+          and(
+            eq(conversationAttachments.tenant_id, ctx.tenant_id),
+            eq(conversationAttachments.conversation_id, ctx.conversation_id),
+          ),
+        ),
       ctx.db
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationElicitations)
         .where(
           and(
+            eq(conversationElicitations.tenant_id, ctx.tenant_id),
             eq(conversationElicitations.conversation_id, ctx.conversation_id),
             eq(conversationElicitations.status, "pending"),
           ),

@@ -96,14 +96,13 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    const conds = [eq(events.tenant_id, principal.tenant_id)];
-    if (q.channel) conds.push(eq(events.channel, q.channel));
-    if (q.type) conds.push(eq(events.type, q.type));
-    // tenant-filter:exempt — tenant-scoped via principal at the route boundary; child rows reached by parent FK
+    const tenantConds = [eq(events.tenant_id, principal.tenant_id)];
+    if (q.channel) tenantConds.push(eq(events.channel, q.channel));
+    if (q.type) tenantConds.push(eq(events.type, q.type));
     const rows = await db
       .select()
       .from(events)
-      .where(and(...conds))
+      .where(and(...tenantConds))
       .orderBy(desc(events.id))
       .limit(q.limit ?? 100);
     return c.json(
@@ -230,13 +229,13 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const typeFilter = c.req.query("type") ?? null;
 
     const filterConds = () => {
-      const conds = [eq(events.tenant_id, tenantId)];
+      const tenantConds = [eq(events.tenant_id, tenantId)];
       if (rawExecutionId) {
-        conds.push(sql`${events.payload}->>'execution_id' = ${rawExecutionId}`);
+        tenantConds.push(sql`${events.payload}->>'execution_id' = ${rawExecutionId}`);
       }
-      if (channelFilter) conds.push(eq(events.channel, channelFilter));
-      if (typeFilter) conds.push(eq(events.type, typeFilter));
-      return conds;
+      if (channelFilter) tenantConds.push(eq(events.channel, channelFilter));
+      if (typeFilter) tenantConds.push(eq(events.type, typeFilter));
+      return tenantConds;
     };
 
     return streamSSE(c, async (stream) => {

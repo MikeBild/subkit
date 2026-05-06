@@ -11,7 +11,7 @@
 // reads them once per turn; write tools can stage their own confirmation
 // via the confirmation state machine when no policy forces one.
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
 import { workflowInputObjectKeys } from "../workflows/run-input.ts";
@@ -38,12 +38,15 @@ export interface ToolPolicies {
  */
 export type PermissionMode = "auto" | "ask" | "plan" | "yolo";
 
-export async function getToolPolicies(db: Db, conversation_id: string): Promise<ToolPolicies> {
-  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
+export async function getToolPolicies(
+  db: Db,
+  tenant_id: string,
+  conversation_id: string,
+): Promise<ToolPolicies> {
   const rows = await db
     .select({ tool_policies: conversations.tool_policies })
     .from(conversations)
-    .where(eq(conversations.id, conversation_id))
+    .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
     .limit(1);
   const raw = (rows[0]?.tool_policies ?? {}) as Record<string, unknown>;
   const out: ToolPolicies = {};
@@ -57,11 +60,12 @@ export async function getToolPolicies(db: Db, conversation_id: string): Promise<
 
 export async function setToolPolicy(
   db: Db,
+  tenant_id: string,
   conversation_id: string,
   toolName: string,
   mode: ToolPolicyMode | null,
 ): Promise<void> {
-  const current = await getToolPolicies(db, conversation_id);
+  const current = await getToolPolicies(db, tenant_id, conversation_id);
   if (mode === null) {
     delete current[toolName];
   } else {
@@ -70,7 +74,7 @@ export async function setToolPolicy(
   await db
     .update(conversations)
     .set({ tool_policies: current })
-    .where(eq(conversations.id, conversation_id));
+    .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)));
 }
 
 export function effectiveMode(

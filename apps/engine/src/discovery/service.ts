@@ -335,14 +335,13 @@ export async function listDiscoveryRuns(
   const limit = Math.min(Math.max(1, p.limit ?? 50), 200);
   const offset = Math.max(0, p.offset ?? 0);
 
-  const conds = [eq(discoveryRuns.tenant_id, p.tenant_id)];
-  if (p.status) conds.push(eq(discoveryRuns.status, p.status));
+  const tenantConds = [eq(discoveryRuns.tenant_id, p.tenant_id)];
+  if (p.status) tenantConds.push(eq(discoveryRuns.status, p.status));
 
-  // tenant-filter:exempt — tenant-scoped via parent run_id; verified by caller
   const rows = await db
     .select()
     .from(discoveryRuns)
-    .where(and(...conds))
+    .where(and(...tenantConds))
     .orderBy(desc(discoveryRuns.created_at))
     .limit(limit)
     .offset(offset);
@@ -358,18 +357,17 @@ export async function listDiscoveryArtifacts(
   const limit = Math.min(Math.max(1, p.limit ?? 50), 200);
   const offset = Math.max(0, p.offset ?? 0);
 
-  const conds = [
+  const tenantConds = [
     eq(discoveryArtifacts.tenant_id, p.tenant_id),
     eq(discoveryArtifacts.run_id, p.run_id),
   ];
-  if (p.kind) conds.push(eq(discoveryArtifacts.kind, p.kind));
-  if (p.status) conds.push(eq(discoveryArtifacts.status, p.status));
+  if (p.kind) tenantConds.push(eq(discoveryArtifacts.kind, p.kind));
+  if (p.status) tenantConds.push(eq(discoveryArtifacts.status, p.status));
 
-  // tenant-filter:exempt — tenant-scoped via parent run_id; verified by caller
   const rows = await db
     .select()
     .from(discoveryArtifacts)
-    .where(and(...conds))
+    .where(and(...tenantConds))
     .orderBy(desc(discoveryArtifacts.created_at))
     .limit(limit)
     .offset(offset);

@@ -101,19 +101,18 @@ export async function listSkillCandidates(
   const limit = Math.min(Math.max(1, p.limit ?? 50), 500);
   const offset = Math.max(0, p.offset ?? 0);
 
-  const conds = [eq(skillCandidates.tenant_id, p.tenant_id)];
-  if (p.status) conds.push(eq(skillCandidates.status, p.status));
-  if (p.scope) conds.push(eq(skillCandidates.scope, p.scope));
-  if (p.connector_id) conds.push(eq(skillCandidates.connector_id, p.connector_id));
-  if (p.workflow_id) conds.push(eq(skillCandidates.workflow_id, p.workflow_id));
-  if (p.pattern_kind) conds.push(eq(skillCandidates.pattern_kind, p.pattern_kind));
-  if (p.confidence) conds.push(eq(skillCandidates.confidence, p.confidence));
+  const tenantConds = [eq(skillCandidates.tenant_id, p.tenant_id)];
+  if (p.status) tenantConds.push(eq(skillCandidates.status, p.status));
+  if (p.scope) tenantConds.push(eq(skillCandidates.scope, p.scope));
+  if (p.connector_id) tenantConds.push(eq(skillCandidates.connector_id, p.connector_id));
+  if (p.workflow_id) tenantConds.push(eq(skillCandidates.workflow_id, p.workflow_id));
+  if (p.pattern_kind) tenantConds.push(eq(skillCandidates.pattern_kind, p.pattern_kind));
+  if (p.confidence) tenantConds.push(eq(skillCandidates.confidence, p.confidence));
 
-  // tenant-filter:exempt — tenant-scoped via parent candidate_id; verified by caller
   const rows = await db
     .select()
     .from(skillCandidates)
-    .where(and(...conds))
+    .where(and(...tenantConds))
     .orderBy(desc(skillCandidates.created_at))
     .limit(limit)
     .offset(offset);

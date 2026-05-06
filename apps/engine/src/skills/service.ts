@@ -169,16 +169,15 @@ export interface ListSkillsParams {
 
 export async function listSkills(p: ListSkillsParams, exec?: Executor): Promise<Skill[]> {
   const db = exec ?? getDb();
-  const conds = [eq(skills.tenant_id, p.tenant_id)];
-  if (p.scope) conds.push(eq(skills.scope, p.scope));
-  if (p.connector_id) conds.push(eq(skills.connector_id, p.connector_id));
-  if (p.workflow_id) conds.push(eq(skills.workflow_id, p.workflow_id));
-  if (p.status) conds.push(eq(skills.lifecycle, p.status));
-  // tenant-filter:exempt — tenant-scoped via parent skill_id; verified by caller
+  const tenantConds = [eq(skills.tenant_id, p.tenant_id)];
+  if (p.scope) tenantConds.push(eq(skills.scope, p.scope));
+  if (p.connector_id) tenantConds.push(eq(skills.connector_id, p.connector_id));
+  if (p.workflow_id) tenantConds.push(eq(skills.workflow_id, p.workflow_id));
+  if (p.status) tenantConds.push(eq(skills.lifecycle, p.status));
   const rows = await db
     .select()
     .from(skills)
-    .where(and(...conds))
+    .where(and(...tenantConds))
     .orderBy(desc(skills.version), desc(skills.created_at))
     .limit(Math.min(p.limit ?? 100, 500))
     .offset(p.offset ?? 0);

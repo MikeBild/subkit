@@ -55,7 +55,7 @@ export const findUserTool: ConversationTool = {
       }
       let role_name: string | null = null;
       if (u.role_id) {
-        // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
+        // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
         const named = await ctx.db
           .select({ name: roles.name })
           .from(roles)
@@ -86,7 +86,7 @@ export const findUserTool: ConversationTool = {
       .filter((rid): rid is string => typeof rid === "string");
     const roleRows =
       roleIds.length > 0
-        ? // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
+        ? // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
           await ctx.db
             .select({ id: roles.id, name: roles.name })
             .from(roles)

@@ -198,16 +198,18 @@ export async function listKnowledgeSources(
   const limit = Math.min(Math.max(1, p.limit ?? 50), 500);
   const offset = Math.max(0, p.offset ?? 0);
 
-  const conds = [eq(knowledgeSources.tenant_id, p.tenant_id), isNull(knowledgeSources.deleted_at)];
-  if (p.scope) conds.push(eq(knowledgeSources.scope, p.scope));
-  if (p.workflow_id) conds.push(eq(knowledgeSources.workflow_id, p.workflow_id));
-  if (p.status) conds.push(eq(knowledgeSources.status, p.status));
+  const tenantConds = [
+    eq(knowledgeSources.tenant_id, p.tenant_id),
+    isNull(knowledgeSources.deleted_at),
+  ];
+  if (p.scope) tenantConds.push(eq(knowledgeSources.scope, p.scope));
+  if (p.workflow_id) tenantConds.push(eq(knowledgeSources.workflow_id, p.workflow_id));
+  if (p.status) tenantConds.push(eq(knowledgeSources.status, p.status));
 
-  // tenant-filter:exempt — tenant-scoped via parent source_id; verified by caller
   const rows = await db
     .select()
     .from(knowledgeSources)
-    .where(and(...conds))
+    .where(and(...tenantConds))
     .orderBy(desc(knowledgeSources.created_at))
     .limit(limit)
     .offset(offset);

@@ -834,11 +834,15 @@ export function wrapOne(
         // slugs to `loaded_skills` so the next context assembly sees
         // their bodies. Idempotent — already-loaded slugs are filtered.
         try {
-          // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
           const convRow = await db
             .select({ loaded_skills: conversations.loaded_skills })
             .from(conversations)
-            .where(eq(conversations.id, ctx.conversation_id))
+            .where(
+              and(
+                eq(conversations.tenant_id, ctx.tenant_id),
+                eq(conversations.id, ctx.conversation_id),
+              ),
+            )
             .limit(1);
           const currentlyLoaded = (convRow[0]?.loaded_skills ?? []) as string[];
           const [catalog, scope] = await Promise.all([

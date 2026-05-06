@@ -316,11 +316,12 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     steps: draft.steps,
   };
 
-  // tenant-filter:exempt — tenant-scoped via conversation_id parent FK
   const convRows = await ctx.db
     .select({ target_workflow_id: conversations.target_workflow_id })
     .from(conversations)
-    .where(eq(conversations.id, ctx.conversation_id))
+    .where(
+      and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
+    )
     .limit(1);
   let targetWorkflowId = convRows[0]?.target_workflow_id ?? null;
 

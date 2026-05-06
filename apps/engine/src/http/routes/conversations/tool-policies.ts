@@ -55,7 +55,7 @@ export function registerToolPoliciesRoutes(app: OpenAPIHono<AppEnv>): void {
     const detail = await svc.getConversation(principal.tenant_id, id, db);
     if (!detail) throw new NotFoundError("conversation");
     const { getToolPolicies } = await import("../../../conversations/tool-policies.ts");
-    const policies = await getToolPolicies(db, id);
+    const policies = await getToolPolicies(db, principal.tenant_id, id);
     return c.json({ policies }, 200);
   });
 
@@ -70,9 +70,9 @@ export function registerToolPoliciesRoutes(app: OpenAPIHono<AppEnv>): void {
       "../../../conversations/tool-policies.ts"
     );
     for (const [toolName, mode] of Object.entries(body.policies)) {
-      await setToolPolicy(db, id, toolName, mode);
+      await setToolPolicy(db, principal.tenant_id, id, toolName, mode);
     }
-    const policies = await getToolPolicies(db, id);
+    const policies = await getToolPolicies(db, principal.tenant_id, id);
     return c.json({ policies }, 200);
   });
 }

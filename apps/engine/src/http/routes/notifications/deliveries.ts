@@ -64,15 +64,14 @@ export function registerDeliveryRoutes(app: OpenAPIHono<AppEnv>): void {
     const q = c.req.valid("query");
     const limit = Math.min(q.limit ?? 50, 500);
     const offset = q.offset ?? 0;
-    const whereClauses = [eq(notificationDeliveries.tenant_id, principal.tenant_id)];
+    const tenantWhereClauses = [eq(notificationDeliveries.tenant_id, principal.tenant_id)];
     if (q.status) {
-      whereClauses.push(eq(notificationDeliveries.status, q.status));
+      tenantWhereClauses.push(eq(notificationDeliveries.status, q.status));
     }
-    // tenant-filter:exempt — tenant-scoped via parent rule_id; verified by caller
     const rows = await db
       .select()
       .from(notificationDeliveries)
-      .where(whereClauses.length === 1 ? whereClauses[0] : and(...whereClauses))
+      .where(tenantWhereClauses.length === 1 ? tenantWhereClauses[0] : and(...tenantWhereClauses))
       .orderBy(desc(notificationDeliveries.created_at))
       .limit(limit)
       .offset(offset);

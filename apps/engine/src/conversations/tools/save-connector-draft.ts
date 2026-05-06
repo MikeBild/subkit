@@ -17,7 +17,7 @@
 // question.
 
 import { z } from "@hono/zod-openapi";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   recordConnectorCreated,
   recordConnectorSavedOverride,
@@ -332,11 +332,15 @@ export const saveConnectorDraftTool: ConversationTool = {
         : null;
     let connector_id = typeof dataConnector?.id === "string" ? dataConnector.id : null;
     if (!connector_id) {
-      // tenant-filter:exempt — tenant-scoped via conversation_id parent FK on the calling row
       const rows = await ctx.db
         .select({ id: conversations.target_connector_id })
         .from(conversations)
-        .where(eq(conversations.id, ctx.conversation_id))
+        .where(
+          and(
+            eq(conversations.tenant_id, ctx.tenant_id),
+            eq(conversations.id, ctx.conversation_id),
+          ),
+        )
         .limit(1);
       connector_id = rows[0]?.id ?? null;
     }

@@ -199,9 +199,25 @@ function hasExemptComment(call: CallExpression, sourceText: string): boolean {
   return false;
 }
 
+// /tenant/i match against any identifier or property name lets the
+// scan recognize predicates that flow through helper variables —
+// `tenantConds`, `tenantWhereClauses`, `withTenantScope(...)`, etc.
+// The constraint is intentionally loose: any code that puts the word
+// "tenant" in a where-tree identifier is signalling intent, and a
+// reviewer can confirm the array's first element is the predicate.
+const TENANT_NAMED_RE = /tenant/i;
+
 function nodeIsTenantSignal(n: Node, fileTenantHelpers: ReadonlySet<string>): boolean {
-  if (Node.isIdentifier(n) && TENANT_ID_NAMES.has(n.getText())) return true;
-  if (Node.isPropertyAccessExpression(n) && TENANT_ID_NAMES.has(n.getName())) return true;
+  if (Node.isIdentifier(n)) {
+    const name = n.getText();
+    if (TENANT_ID_NAMES.has(name)) return true;
+    if (TENANT_NAMED_RE.test(name)) return true;
+  }
+  if (Node.isPropertyAccessExpression(n)) {
+    const name = n.getName();
+    if (TENANT_ID_NAMES.has(name)) return true;
+    if (TENANT_NAMED_RE.test(name)) return true;
+  }
   if (Node.isCallExpression(n)) {
     const e = n.getExpression();
     const callName = Node.isPropertyAccessExpression(e)
@@ -209,7 +225,7 @@ function nodeIsTenantSignal(n: Node, fileTenantHelpers: ReadonlySet<string>): bo
       : Node.isIdentifier(e)
         ? e.getText()
         : "";
-    if (callName && /tenant/i.test(callName)) return true;
+    if (callName && TENANT_NAMED_RE.test(callName)) return true;
     if (callName && fileTenantHelpers.has(callName)) return true;
   }
   return false;

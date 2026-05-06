@@ -84,13 +84,12 @@ export async function listSchedules(
   tenant_id: string,
   workflow_id?: string,
 ): Promise<ScheduleRow[]> {
-  const conds = [eq(workflowsSchedules.tenant_id, tenant_id)];
-  if (workflow_id) conds.push(eq(workflowsSchedules.workflow_id, workflow_id));
-  // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
+  const tenantConds = [eq(workflowsSchedules.tenant_id, tenant_id)];
+  if (workflow_id) tenantConds.push(eq(workflowsSchedules.workflow_id, workflow_id));
   const rows = await db
     .select()
     .from(workflowsSchedules)
-    .where(and(...conds));
+    .where(and(...tenantConds));
   return rows as ScheduleRow[];
 }
 

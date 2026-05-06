@@ -247,6 +247,22 @@ export async function load() {
     expect(v).toHaveLength(1);
   });
 
+  test("tenantConds-style identifier in .where() is recognized as a tenant signal", () => {
+    const text = `
+import { and, eq } from "drizzle-orm";
+import { connectors } from "../db/schema.ts";
+
+declare const db: any;
+declare const tenant_id: string;
+
+export async function listConnectors() {
+  const tenantConds = [eq(connectors.tenant_id, tenant_id)];
+  return await db.select().from(connectors).where(and(...tenantConds));
+}
+`;
+    expect(auditTenantFilterFromText(text)).toEqual([]);
+  });
+
   test("exempt comment placed mid-chain (across continuation lines) is recognized", () => {
     const text = `
 import { eq } from "drizzle-orm";

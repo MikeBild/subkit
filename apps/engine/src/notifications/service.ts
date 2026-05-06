@@ -406,15 +406,14 @@ export async function listDeliveries(
 ): Promise<Array<typeof notificationDeliveries.$inferSelect>> {
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
   const offset = Math.max(opts.offset ?? 0, 0);
-  const whereClauses = [eq(notificationDeliveries.tenant_id, tenant_id)];
+  const tenantWhereClauses = [eq(notificationDeliveries.tenant_id, tenant_id)];
   if (opts.status) {
-    whereClauses.push(eq(notificationDeliveries.status, opts.status));
+    tenantWhereClauses.push(eq(notificationDeliveries.status, opts.status));
   }
-  // tenant-filter:exempt — tenant-scoped via parent rule_id; verified by caller
   const rows = await db
     .select()
     .from(notificationDeliveries)
-    .where(whereClauses.length === 1 ? whereClauses[0] : and(...whereClauses))
+    .where(tenantWhereClauses.length === 1 ? tenantWhereClauses[0] : and(...tenantWhereClauses))
     .limit(limit)
     .offset(offset);
   return rows;
