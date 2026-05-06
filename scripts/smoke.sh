@@ -49,17 +49,40 @@ for i in $(seq 1 60); do
 done
 
 # --- 2. OpenAPI spec ---------------------------------------------------------
+# Bounded poll for info.version == EXPECTED. Without polling, a single-shot
+# check races the droplet's container-recreation: /v1/health flips green
+# (engine listening) seconds before /openapi.json swaps in the new spec
+# (caddy reload completes). PR #138 caught a real instance where the
+# droplet served 3.5.1 seconds after 4.0.0 was tagged — see
+# `fix(ci): release deploy retry now captures the real ssh exit code`.
+# Tries up to 30× over 60s when EXPECTED is set; single-shot when not.
 echo "Smoke: checking /openapi.json"
-spec_body=$(curl -fsS --max-time 10 "$URL/openapi.json" 2>/dev/null || true)
-if [[ -n "$spec_body" ]]; then
-  spec_version=$(jq -r '.info.version // empty' <<<"$spec_body")
-  if [[ -n "$EXPECTED" && "$spec_version" != "$EXPECTED" ]]; then
-    fail "/openapi.json info.version=$spec_version expected=$EXPECTED"
-  else
-    pass "/openapi.json reachable version=$spec_version"
+attempts=1
+[[ -n "$EXPECTED" ]] && attempts=30
+spec_version=""
+spec_body=""
+for i in $(seq 1 "$attempts"); do
+  spec_body=$(curl -fsS --max-time 10 "$URL/openapi.json" 2>/dev/null || true)
+  if [[ -n "$spec_body" ]]; then
+    spec_version=$(jq -r '.info.version // empty' <<<"$spec_body")
+    if [[ -z "$EXPECTED" || "$spec_version" == "$EXPECTED" ]]; then
+      break
+    fi
+    if [[ "$attempts" -gt 1 && $i -lt $attempts ]]; then
+      printf "  attempt %2d/%d: info.version=%s expected=%s — retrying\n" "$i" "$attempts" "$spec_version" "$EXPECTED"
+      sleep 2
+    fi
+  elif [[ "$attempts" -gt 1 && $i -lt $attempts ]]; then
+    printf "  attempt %2d/%d: /openapi.json unreachable — retrying\n" "$i" "$attempts"
+    sleep 2
   fi
-else
+done
+if [[ -z "$spec_body" ]]; then
   fail "/openapi.json unreachable"
+elif [[ -n "$EXPECTED" && "$spec_version" != "$EXPECTED" ]]; then
+  fail "/openapi.json info.version=$spec_version expected=$EXPECTED (after $attempts attempts)"
+else
+  pass "/openapi.json reachable version=$spec_version"
 fi
 
 # --- 3. Auth providers discovery ---------------------------------------------
