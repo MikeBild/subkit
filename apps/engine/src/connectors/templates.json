@@ -5998,6 +5998,108 @@
       "webhook_events": [],
       "rate_limits": null
     },
+    "recipes": [
+      {
+        "slug": "signin-email-password-then-firestore-read",
+        "title": "Mint a Firebase Auth IdToken from email+password, then read a Firestore document",
+        "description": "Two-step auth-chain pattern. Step 1 calls Firebase Auth REST signInWithPassword (no OAuth2 grant) and captures `idToken` as a redacted secret. Step 2 reads a Firestore document using the fresh idToken in the Authorization header via dot-path substitution. Demonstrates the canonical 'mint then use' shape for non-OAuth2 username/password JWT flows (Cognito, Firebase, generic POST/login).",
+        "intent_keywords": [
+          "firebase auth password",
+          "firebase signin password",
+          "firebase email password jwt",
+          "mint then use",
+          "auth chain",
+          "username password login"
+        ],
+        "derived_from_skill": null,
+        "category": "database",
+        "tags": ["auth-chain", "few-shot"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 10,
+        "prerequisites": [],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "firebase-signin-email-password-then-firestore-read",
+          "description": "Mint a Firebase Auth IdToken via signInWithPassword, then read a Firestore document with that token in the Authorization header.",
+          "input_schema": {
+            "type": "object",
+            "required": ["api_key", "email", "password", "project_id", "collection", "document_id"],
+            "properties": {
+              "api_key": {
+                "type": "string",
+                "description": "Firebase Web API key (from Firebase Console → Project settings → General)."
+              },
+              "email": {
+                "type": "string",
+                "description": "End-user email."
+              },
+              "password": {
+                "type": "string",
+                "description": "End-user password."
+              },
+              "project_id": {
+                "type": "string",
+                "description": "Firebase project id."
+              },
+              "collection": {
+                "type": "string",
+                "description": "Firestore collection name."
+              },
+              "document_id": {
+                "type": "string",
+                "description": "Firestore document id."
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "signin",
+              "method": "POST",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "url": "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword",
+              "query": {
+                "key": "${input.api_key}"
+              },
+              "headers": {
+                "content-type": "application/json"
+              },
+              "body": {
+                "email": "${input.email}",
+                "password": "${input.password}",
+                "returnSecureToken": true
+              },
+              "outputs": {
+                "idToken": { "secret": true },
+                "refreshToken": { "secret": true }
+              }
+            },
+            {
+              "kind": "request",
+              "id": "read_document",
+              "method": "GET",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "url": "https://firestore.googleapis.com/v1/projects/${input.project_id}/databases/(default)/documents/${input.collection}/${input.document_id}",
+              "headers": {
+                "Authorization": "Bearer ${scope.signin.idToken}",
+                "content-type": "application/json"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "operator_quirks": {
+      "auth": "Firebase Auth REST signInWithPassword takes the Web API key as a query param (`?key=...`), not a Bearer header. The IdToken returned in `idToken` lasts 1 hour; refresh via `securetoken.googleapis.com/v1/token` with the captured `refreshToken`. Mark both tokens `secret: true` so they redact in audit/offload.",
+      "schema": "signInWithPassword response is a flat object: `{ kind, localId, email, displayName, idToken, registered, refreshToken, expiresIn }`. Reference the token in downstream steps via `${scope.signin.idToken}` (dot-notation, not JSON-pointer).",
+      "general": "This recipe demonstrates the two-step 'mint then use' pattern for any non-OAuth2 username/password JWT flow. Adapt step 1's URL/body and step 2's substitution path for Cognito InitiateAuth, Auth0 Resource Owner Password Grant, or a custom POST /login endpoint."
+    },
     "aws_service": null,
     "aws_region": null,
     "verified_at": null
@@ -8279,6 +8381,73 @@
     },
     "recipes": [
       {
+        "slug": "postmortem-due-in-n-days-via-state",
+        "title": "Daily check: are any HubSpot deals due for a postmortem in N days? (#51 + #47 pattern)",
+        "description": "Schedule + State multi-day lifecycle. Every morning the workflow scans HubSpot for closed-lost deals whose `closedate` falls within the next N days, reads `last_postmortem_swept_at` from persistent state, branches on whether the operator has already been notified for this window, and writes the new watermark in the same transaction as the digest. Adapt to any HubSpot lifecycle (renewal-due-in-30-days, contract-expiring, dormant-account-recheck) — the pattern is `state_read → query → branch → state_write`, never a multi-day in-flight wait.",
+        "intent_keywords": [
+          "postmortem",
+          "deal lifecycle",
+          "renewal reminder",
+          "daily hubspot sweep",
+          "watermark"
+        ],
+        "derived_from_skill": "hubspot-basics",
+        "category": "crm",
+        "tags": ["scheduled", "trigger:schedule", "stateful", "few-shot"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 10,
+        "prerequisites": [
+          "HubSpot connector with read access to /crm/v3/objects/deals",
+          "Engine scheduler reconciler running (#47)",
+          "Persistent workflow state enabled (#51)"
+        ],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "hubspot-postmortem-due-via-state",
+          "description": "Daily HubSpot deal sweep: surface closed-lost deals whose postmortem window opens today; advance the watermark only after the digest is built so a crash mid-run replays safely.",
+          "trigger": {
+            "kind": "schedule",
+            "cron": "0 9 * * *",
+            "tz": "Europe/Berlin",
+            "business_days_only": true,
+            "skip_dates": []
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "deals_due",
+              "method": "GET",
+              "url": "${connector.hubspot.base_url}/crm/v3/objects/deals",
+              "query": {
+                "limit": 100,
+                "properties": "dealname,dealstage,closedate"
+              },
+              "state_read": {
+                "key": "last_postmortem_swept_at",
+                "into_var": "last_postmortem_swept_at",
+                "default_value": null
+              },
+              "state_write": {
+                "key": "last_postmortem_swept_at",
+                "value_path": "headers.date"
+              }
+            },
+            {
+              "kind": "transform",
+              "id": "shape_digest",
+              "language": "jsonata",
+              "expression": "( $deals := $.deals_due.body.results; { \"swept_at\": $now(), \"prior_sweep\": $.deals_due[\"_state\"].last_postmortem_swept_at, \"deals_in_window\": $count($deals) } )"
+            }
+          ]
+        }
+      },
+      {
         "slug": "list-contacts",
         "title": "List HubSpot contacts",
         "description": "Page through CRM contacts with cursor pagination.",
@@ -8838,6 +9007,72 @@
       "rate_limits": null
     },
     "recipes": [
+      {
+        "slug": "trial-nurture-day-1-3-7-14-via-state",
+        "title": "Daily trial-nurture sweep with state-driven cadence (#51 + #47 pattern)",
+        "description": "Replaces a multi-day in-flight wait with the canonical Schedule + State pattern. Every morning the workflow lists Intercom contacts whose `created_at` matches one of the nurture-cadence days (1, 3, 7, 14 days post-signup), reads `last_nurture_sent_for` from state, sends only the messages that haven't been delivered yet, and advances the watermark. Adapt the cadence array (`[1, 3, 7, 14]`) for any time-shaped lifecycle.",
+        "intent_keywords": [
+          "trial nurture",
+          "drip campaign",
+          "intercom messages",
+          "lifecycle email",
+          "watermark"
+        ],
+        "derived_from_skill": null,
+        "category": "marketing",
+        "tags": ["scheduled", "trigger:schedule", "stateful", "few-shot"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 10,
+        "prerequisites": [
+          "Intercom connector with read access to /contacts and write to /messages",
+          "Engine scheduler reconciler running (#47)",
+          "Persistent workflow state enabled (#51)"
+        ],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "intercom-trial-nurture-via-state",
+          "description": "Daily nurture sweep: pick contacts whose signup-age matches the next-due cadence step, advance the per-contact watermark in state.",
+          "trigger": {
+            "kind": "schedule",
+            "cron": "0 10 * * *",
+            "tz": "Europe/Berlin",
+            "business_days_only": false,
+            "skip_dates": []
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "due_contacts",
+              "method": "GET",
+              "url": "${connector.intercom.base_url}/contacts",
+              "query": {
+                "per_page": 100
+              },
+              "state_read": {
+                "key": "last_nurture_sent_for",
+                "into_var": "last_nurture_sent_for",
+                "default_value": {}
+              },
+              "state_write": {
+                "key": "last_nurture_sent_for",
+                "value_path": "headers.date"
+              }
+            },
+            {
+              "kind": "transform",
+              "id": "summary",
+              "language": "jsonata",
+              "expression": "( $contacts := $.due_contacts.body.data; { \"swept_at\": $now(), \"due_count\": $count($contacts) } )"
+            }
+          ]
+        }
+      },
       {
         "slug": "me",
         "title": "Get authenticated admin",
@@ -13849,8 +14084,42 @@
     "description": "Salesforce REST API",
     "category": "crm",
     "tags": ["rest", "soql", "bulk-api"],
-    "setup_instructions": "Create a Connected App in Salesforce Setup > App Manager; note client_id and client_secret for OAuth2 authorization code flow.",
-    "auth_options": [],
+    "setup_instructions": "Create a Connected App in Salesforce Setup > App Manager; note client_id and client_secret. Choose Authorization Code (browser-mediated, recommended) or Password Grant (machine-to-machine; the Connected App must be configured to allow it).",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth2 Authorization Code (recommended)",
+        "description": "Browser-mediated consent. The Connected App's redirect URI must match the engine's callback.",
+        "oauth": {
+          "issuer_url": "https://login.salesforce.com",
+          "authorization_endpoint": "https://login.salesforce.com/services/oauth2/authorize",
+          "token_endpoint": "https://login.salesforce.com/services/oauth2/token",
+          "scopes": "api refresh_token",
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {}
+        }
+      },
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth2 Password Grant (machine-to-machine, A4)",
+        "description": "Username + password against a Connected App with `password` grant enabled. Refresh runs the same `runPasswordGrant()` path as the initial mint. NOT recommended for end-user logins; use Authorization Code there.",
+        "oauth": {
+          "issuer_url": "https://login.salesforce.com",
+          "token_endpoint": "https://login.salesforce.com/services/oauth2/token",
+          "scopes": "api refresh_token",
+          "grant_type": "password",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {}
+        }
+      }
+    ],
     "url_pattern": "^https:\\/\\/[^/]+\\.my\\.salesforce\\.com(\\/|$)",
     "keywords": ["Account", "Contact", "Opportunity", "Lead", "Case", "Task", "SOQL"],
     "inline_schema": null,
@@ -16383,6 +16652,76 @@
               "id": "summary",
               "language": "jsonata",
               "expression": "( $charges := $.list.body.data; { \"count\": $count($charges), \"by_currency\": $charges{ currency: { \"count\": $count($), \"amount_total\": $sum($.amount) } } } )"
+            }
+          ]
+        }
+      },
+      {
+        "slug": "incremental-charges-via-state",
+        "title": "Incremental charges sync via persistent state (#51 + #47 pattern)",
+        "description": "Canonical AI-authoring few-shot for the multi-day lifecycle pattern: a daily schedule wakes the workflow, `state_read` pulls the last-synced cursor (`null` on the first run via `default_value`), the request lists only newer charges, and `state_write` advances the watermark in the same transaction as the step result. Replaces the multi-day-wait anti-pattern: subkit's mental model is *trigger fires run, run terminates* — not *function that sleeps for days*. Adapt to dunning (D1/D3/D7 reminders), trial nurture (Day 1/3/7/14), and any other lifecycle whose cadence is daily-or-coarser.",
+        "intent_keywords": [
+          "incremental sync",
+          "reverse etl",
+          "watermark cursor",
+          "dunning",
+          "trial nurture",
+          "daily lifecycle",
+          "state read",
+          "state write"
+        ],
+        "derived_from_skill": "stripe-basics",
+        "category": "payments",
+        "tags": ["scheduled", "trigger:schedule", "stateful", "few-shot"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 10,
+        "prerequisites": [
+          "Stripe connector with read access to /v1/charges",
+          "Engine scheduler reconciler running (#47)",
+          "Persistent workflow state enabled (#51)"
+        ],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "stripe-incremental-charges-via-state",
+          "description": "Daily incremental sync of Stripe charges. Reads `last_synced_charge_id` watermark, fetches only newer charges, writes the new watermark in the same transaction. First run reads default_value=null and pulls the most-recent page.",
+          "trigger": {
+            "kind": "schedule",
+            "cron": "0 9 * * *",
+            "tz": "Europe/Berlin",
+            "business_days_only": true,
+            "skip_dates": []
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "list_new",
+              "method": "GET",
+              "url": "${connector.stripe.base_url}/charges",
+              "query": {
+                "limit": 100,
+                "starting_after": "${state.last_synced_charge_id}"
+              },
+              "state_read": {
+                "key": "last_synced_charge_id",
+                "into_var": "last_synced_charge_id",
+                "default_value": null
+              },
+              "state_write": {
+                "key": "last_synced_charge_id",
+                "value_path": "body.data[last].id"
+              }
+            },
+            {
+              "kind": "transform",
+              "id": "summary",
+              "language": "jsonata",
+              "expression": "( $rows := $.list_new.body.data; { \"new_count\": $count($rows), \"newest_id\": $rows[$count($rows)-1].id, \"window_amount\": $sum($rows.amount) } )"
             }
           ]
         }

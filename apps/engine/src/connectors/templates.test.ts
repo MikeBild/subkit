@@ -156,7 +156,10 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
     // Issue #54 (multi-connector binding via connector_bindings):
     //   stripe   +1 → 18 (new-customer-enrich-notify
     //                     [3 placeholders: stripe + hubspot + slack])
-    expect(counts.stripe).toBe(18);
+    // Workstream A8 (#51 + #47 lifecycle pattern, replaces multi-day wait):
+    //   stripe   +1 → 19 (incremental-charges-via-state
+    //                     [trigger.kind=schedule + state_read + state_write])
+    expect(counts.stripe).toBe(19);
     expect(counts.github).toBe(13);
     expect(counts.postgres).toBe(11);
   });
