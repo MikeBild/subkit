@@ -156,4 +156,16 @@ describe("formatConnectorRecipes", () => {
     expect(block).toContain("`ok`");
     expect(block).not.toContain("null");
   });
+
+  test("truncates to RECIPE_LINES_BUDGET and points to inspect_recipe for the rest", () => {
+    const recipes = Array.from({ length: 30 }, (_, i) => ({
+      slug: `r-${i}`,
+      title: `Recipe ${i}`,
+    }));
+    const block = formatConnectorRecipes("big", { recipes })!;
+    expect(block).toContain("`r-0`");
+    expect(block).toContain("`r-23`");
+    expect(block).not.toContain("`r-24`");
+    expect(block).toContain("… and 6 more");
+  });
 });

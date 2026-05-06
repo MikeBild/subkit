@@ -65,6 +65,33 @@ export const SkillActivationSchema = z
     z
       .object({ kind: z.literal("intent_keyword"), word: z.string().min(1) })
       .openapi("SkillActivationIntentKeyword"),
+
+    // Workflow step kind appears in the tool-call input (the LLM is
+    // currently authoring a workflow that uses the named primitive).
+    // Skills that document a specific step kind (e.g. `wait_for_event`,
+    // `state_read`/`state_write`, `fan_out`) auto-load when the LLM
+    // touches that primitive — the documenting prose lands in context
+    // exactly when it's needed, not on every turn.
+    z
+      .object({
+        kind: z.literal("step_kind"),
+        step_kinds: z
+          .array(
+            z.enum([
+              "request",
+              "transform",
+              "call",
+              "wait",
+              "wait_for_event",
+              "branch",
+              "parallel",
+              "loop",
+              "tool",
+            ]),
+          )
+          .min(1),
+      })
+      .openapi("SkillActivationStepKind"),
   ])
   .openapi("SkillActivation");
 

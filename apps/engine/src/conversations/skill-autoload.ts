@@ -98,8 +98,8 @@ export async function loadActivationCatalog(
 
 /**
  * Slugs to autoload before dispatching `tool` with `input`. Matches
- * `tool`, `tool_arg`, `connector_driver`, `connector_template`, and
- * (via `connector_recipe_match`) recipe-bound activation rules. Does
+ * `tool`, `tool_arg`, `connector_driver`, `connector_template`,
+ * `connector_recipe_match`, and `step_kind` activation rules. Does
  * NOT consider `baseline` or `intent_keyword` rules — those are user-
  * turn signals, not tool-call signals.
  */
@@ -119,6 +119,7 @@ export function autoloadForToolCall(
   // graphql-connectors behavior even when ScopeFacts didn't include
   // them upstream.
   for (const d of inferDriversFromToolInput(ctx.tool, ctx.input)) drivers.add(d.toLowerCase());
+  const stepKinds = new Set(inferStepKindsFromToolInput(ctx.tool, ctx.input));
 
   for (const rec of catalog) {
     if (have.has(rec.slug)) continue;
@@ -128,7 +129,7 @@ export function autoloadForToolCall(
     // tenant overrides) might leak one through. Experimental skills
     // are only loadable via explicit `load_skill(slug)`.
     if (rec.maturity === "experimental") continue;
-    if (matchesToolCall(rec.activates_when, ctx, drivers, templates)) {
+    if (matchesToolCall(rec.activates_when, ctx, drivers, templates, stepKinds)) {
       out.add(rec.slug);
     }
   }
@@ -185,6 +186,7 @@ function matchesToolCall(
   ctx: ToolCallContext,
   drivers: Set<string>,
   templates: Set<string>,
+  stepKinds: Set<string>,
 ): boolean {
   for (const rule of rules) {
     switch (rule.kind) {
@@ -202,6 +204,9 @@ function matchesToolCall(
         break;
       case "connector_recipe_match":
         if (templates.has(rule.template.toLowerCase())) return true;
+        break;
+      case "step_kind":
+        if (rule.step_kinds.some((k) => stepKinds.has(k))) return true;
         break;
       // baseline + intent_keyword are not relevant to tool-call autoload.
       case "baseline":
@@ -236,9 +241,11 @@ function matchesUserTurn(
       case "connector_recipe_match":
         if (templates.has(rule.template.toLowerCase())) return true;
         break;
-      // tool / tool_arg are not relevant to user-turn autoload.
+      // tool / tool_arg / step_kind are not relevant to user-turn autoload —
+      // they only fire on tool-call signals.
       case "tool":
       case "tool_arg":
+      case "step_kind":
         break;
     }
   }
@@ -314,6 +321,43 @@ function inferDriversFromToolInput(tool: string, input: unknown): string[] {
 
 function pickObject(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+/**
+ * Inspect a tool-call input for step-kind hints. Mirrors the
+ * driver-inference path but extracts `step.kind` from `propose_step`
+ * and the recursive shape of `build_workflow.steps[*]` (including
+ * branches / loops / parallel sub-steps). Skills with a `step_kind`
+ * activation rule auto-load when the LLM is currently authoring a
+ * workflow that uses the named primitive.
+ */
+function inferStepKindsFromToolInput(tool: string, input: unknown): string[] {
+  if (!input || typeof input !== "object") return [];
+  const out: string[] = [];
+  const visit = (raw: unknown): void => {
+    const step = pickObject(raw);
+    if (typeof step.kind === "string") out.push(step.kind);
+    if (Array.isArray(step.then_steps)) for (const s of step.then_steps) visit(s);
+    if (Array.isArray(step.else_steps)) for (const s of step.else_steps) visit(s);
+    if (Array.isArray(step.branches))
+      for (const branch of step.branches) {
+        if (Array.isArray(branch)) for (const s of branch) visit(s);
+      }
+    if (Array.isArray(step.body_steps)) for (const s of step.body_steps) visit(s);
+  };
+  if (tool === "propose_step") {
+    visit((input as Record<string, unknown>).step ?? input);
+    return out;
+  }
+  if (tool === "build_workflow" || tool === "edit_workflow_patch") {
+    const stepsRaw = (input as Record<string, unknown>).steps;
+    if (Array.isArray(stepsRaw)) for (const raw of stepsRaw) visit(raw);
+    // edit_workflow_patch may carry adds/removes under different keys.
+    const adds = (input as Record<string, unknown>).step_adds;
+    if (Array.isArray(adds)) for (const raw of adds) visit(raw);
+    return out;
+  }
+  return out;
 }
 
 /**
