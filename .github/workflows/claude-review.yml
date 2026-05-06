@@ -25,7 +25,7 @@ name: claude-review
 #   * skipped on drafts
 #   * skipped on PRs from forks (secrets aren't available there anyway)
 #   * skipped if the PR title contains "[skip-review]"
-#   * --max-budget-usd 5.00 caps API spend per run
+#   * --max-budget-usd 15.00 caps API spend per run
 
 on:
   pull_request:
