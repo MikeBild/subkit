@@ -109,6 +109,8 @@ import { type PagerEntry, TranscriptPager } from "./repl/transcript-pager.tsx";
 import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { classifyVersionSkew, VersionMismatchBanner } from "./repl/version-mismatch-banner.tsx";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
+import { ResizeBoundary } from "./shell/ResizeBoundary.tsx";
+import { ToastQueue } from "./shell/ToastQueue.tsx";
 import { findSlashCommand, type PersonaProbe, renderHelp, searchSlashCommands } from "./slash.ts";
 import {
   buildStatusLine,
@@ -3643,7 +3645,11 @@ export const InkApp: React.FC<InkAppProps> = ({
 
   return (
     <ThemeProvider>
-      <AlternateScreen enabled={altScreen}>{content}</AlternateScreen>
+      <ResizeBoundary>
+        <ToastQueue>
+          <AlternateScreen enabled={altScreen}>{content}</AlternateScreen>
+        </ToastQueue>
+      </ResizeBoundary>
     </ThemeProvider>
   );
 };
