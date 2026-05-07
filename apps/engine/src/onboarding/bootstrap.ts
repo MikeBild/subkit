@@ -414,10 +414,10 @@ export async function consume(
 }
 
 function checkRateLimit(ip: string): boolean {
-  const t = now();
+  const checkedAt = now();
   const entry = ipAttempts.get(ip);
-  if (!entry || t - entry.window_started_at > BOOTSTRAP_WINDOW_MS) {
-    ipAttempts.set(ip, { count: 1, window_started_at: t });
+  if (!entry || checkedAt - entry.window_started_at > BOOTSTRAP_WINDOW_MS) {
+    ipAttempts.set(ip, { count: 1, window_started_at: checkedAt });
     return true;
   }
   if (entry.count >= BOOTSTRAP_MAX_ATTEMPTS) return false;

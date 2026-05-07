@@ -100,6 +100,16 @@ export function cancelConversationAbort(
   return true;
 }
 
+/** Test-only: peek at whether a (tenant, conversation) slot has a live
+ *  registration, without aborting it. Production code never calls this
+ *  — `cancelConversationAbort` is the canonical reader. Exposed so
+ *  unit tests can pin invariants like "the controller is still
+ *  registered while the SSE callback is running" without hooking the
+ *  registry out via prototype inspection. */
+export function __hasConversationAbort(tenantId: string, conversationId: string): boolean {
+  return REGISTRY.has(key(tenantId, conversationId));
+}
+
 export function mergeAbortSignals(signals: AbortSignal[]): AbortSignal {
   const ctrl = new AbortController();
   for (const signal of signals) {

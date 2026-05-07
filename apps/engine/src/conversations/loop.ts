@@ -1286,6 +1286,18 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       // this second branch the loop would surface a 500 to the route
       // handler instead of returning `status: "abandoned"` — exactly
       // the e2e failure caught in PR #147 / run 25498312277.
+      //
+      // LIMITS — the detector covers exactly two cancel sources today:
+      //   1. `isAbortError(err)` matches DOMException AbortError /
+      //      TimeoutError, plus Error/string messages whose word-bounded
+      //      tokens hit `\b(abort(?:ed)?|cancel(?:l?ed)?)\b`.
+      //   2. `signal.reason === CONVERSATION_CANCELLED_REASON` matches
+      //      our route-handler-issued cancel verbatim.
+      // Any future call site that fires `ctrl.abort(otherReason)` —
+      // e.g. `"idle_timeout"`, `"client_disconnected"`, `"budget_exhausted"`
+      // — must extend this branch (and the fallback catch below)
+      // explicitly. Falling through both prongs surfaces the abort as
+      // a 500 to the route handler.
       if (
         turnAbortCtrl.signal.aborted &&
         (isAbortError(primaryErr) || turnAbortCtrl.signal.reason === CONVERSATION_CANCELLED_REASON)

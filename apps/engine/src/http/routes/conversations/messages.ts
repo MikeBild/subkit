@@ -59,13 +59,24 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     // pre-A4 location) re-opens the race the cancel route silently
     // lost.
     const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
-    // #147 review W1: a single outer try/finally guarantees the
-    // controller is unregistered no matter which path throws —
-    // including `buildRuntimeContextFromRequest` and `wantsSSE`,
-    // which run before the inner SSE / non-SSE branches. The
-    // unregister is idempotent on tenant + ctrl mismatch (see
-    // abort.ts `unregisterConversationAbort`), so a single guard is
-    // safe even when the two branches both succeed.
+    // #147 review C-1: ownership of the registered controller transfers
+    // to the SSE callback's own `finally` because Hono's `streamSSE`
+    // does NOT await the callback — it kicks the callback off
+    // fire-and-forget and returns a Response synchronously. An outer
+    // `try { … } finally { unregister(...) }` would fire its `finally`
+    // immediately after `streamSSE` returns and unregister the
+    // controller while the SSE callback is still running, re-opening
+    // the cancel race A4 set out to close.
+    //
+    // The `ownershipTransferred` flag is the seam: set true once
+    // streamSSE has accepted ownership; the outer `finally` skips
+    // unregister and lets the inner `finally` own it. Anything that
+    // throws BEFORE we hand off — `buildRuntimeContextFromRequest`,
+    // `wantsSSE`, `streamSSE` setup itself — leaves the flag false
+    // and the outer `finally` cleans up. The non-SSE path keeps the
+    // outer `finally` because `await svc.appendUserMessage(...)`
+    // keeps the surrounding `try` alive until completion.
+    let ownershipTransferred = false;
     try {
       const baseParams = {
         tenant_id: principal.tenant_id,
@@ -79,7 +90,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       } as const;
 
       if (wantsSSE(c.req.header("accept"))) {
-        return streamSSE(c, async (stream) => {
+        const response = streamSSE(c, async (stream) => {
           try {
             const outcome = await svc.appendUserMessage(
               {
@@ -117,6 +128,12 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
           }
           // biome-ignore lint/suspicious/noExplicitAny: see createRouteSpec branch above.
         }) as any;
+        // streamSSE accepted ownership — defer unregister to the
+        // inner `finally`. Set the flag AFTER `streamSSE` returns
+        // cleanly so a sync throw from streamSSE-setup still triggers
+        // the outer `finally`.
+        ownershipTransferred = true;
+        return response;
       }
 
       let outcome: svc.ConversationTurnOutcome;
@@ -133,7 +150,9 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       }
       return c.json(serializeConversation(outcome), 200);
     } finally {
-      unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+      if (!ownershipTransferred) {
+        unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+      }
     }
   });
 

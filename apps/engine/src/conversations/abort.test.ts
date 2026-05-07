@@ -11,6 +11,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  __hasConversationAbort,
   CONVERSATION_CANCELLED_REASON,
   cancelConversationAbort,
   registerConversationAbort,
@@ -146,5 +147,79 @@ describe("conversation abort registry", () => {
     expect(ctrlB.signal.aborted).toBe(false);
     expect(cancelConversationAbort(TENANT_B, conv)).toBe(true);
     expect(ctrlB.signal.aborted).toBe(true);
+  });
+
+  // ---------- #147 review C-1 — SSE ownership-transfer ------------
+
+  test("SSE ownership-transfer: stale-handle unregister attempts must not zero the new live slot", () => {
+    // The pre-fix bug surfaced only on the SSE path: Hono's
+    // `streamSSE` returns synchronously without awaiting the callback,
+    // so an outer `try { … } finally { unregister(...) }` fired its
+    // `finally` *immediately* after streamSSE returned and tore down
+    // the live slot while the SSE callback was still running. The
+    // fix in `messages.ts` introduces an `ownershipTransferred` flag
+    // that hands the unregister to the inner SSE callback's own
+    // `finally`. This test pins the registry-side invariant the flag
+    // protects — and verifies the same invariant holds even if a
+    // stale handle attempts an unregister.
+    const { tenant, conv } = track(TENANT_A, newConvId());
+    const live = registerConversationAbort(tenant, conv);
+    expect(__hasConversationAbort(tenant, conv)).toBe(true);
+
+    // Simulate the bug-window race: a stale handle (say, from a
+    // previously-overwritten registration) tries to unregister.
+    // unregisterConversationAbort's tenant + ctrl identity check
+    // must reject the call so the live slot stays put.
+    const stale = new AbortController();
+    unregisterConversationAbort(tenant, conv, stale);
+    expect(__hasConversationAbort(tenant, conv)).toBe(true);
+
+    // The live controller is still cancellable — the failure mode
+    // C-1 prevents would surface as `cancelConversationAbort` returning
+    // `false` here.
+    expect(cancelConversationAbort(tenant, conv)).toBe(true);
+    expect(live.signal.aborted).toBe(true);
+  });
+
+  test("ownership transfer: the SSE pattern keeps the slot live through the callback", async () => {
+    // Models the messages-route flow:
+    //   1. register sync,
+    //   2. fire-and-forget callback (this test simulates it),
+    //   3. caller would otherwise unregister immediately after
+    //      streamSSE returns — the `ownershipTransferred` flag
+    //      prevents that.
+    // The invariant pinned here: while the simulated callback is
+    // still running, __hasConversationAbort returns true and the
+    // controller is reachable for cancellation.
+    const { tenant, conv } = track(TENANT_A, newConvId());
+    const ctrl = registerConversationAbort(tenant, conv);
+
+    let callbackEntered = false;
+    let registryWasLiveAtCallbackStart = false;
+    const callbackDone = new Promise<void>((resolve) => {
+      // Mimic streamSSE's fire-and-forget shape — the simulated
+      // route handler returns *before* this resolves.
+      queueMicrotask(() => {
+        callbackEntered = true;
+        registryWasLiveAtCallbackStart = __hasConversationAbort(tenant, conv);
+        unregisterConversationAbort(tenant, conv, ctrl);
+        resolve();
+      });
+    });
+
+    // The route handler returns here without awaiting `callbackDone`.
+    // With the C-1 fix, ownership has transferred to the callback —
+    // so the route's outer cleanup does not unregister.
+    // (Simulated by NOT calling unregisterConversationAbort here.)
+
+    // Cancel arrives in the window between handler return and
+    // callback completion: must still find the controller.
+    expect(cancelConversationAbort(tenant, conv)).toBe(true);
+    expect(ctrl.signal.aborted).toBe(true);
+
+    await callbackDone;
+    expect(callbackEntered).toBe(true);
+    expect(registryWasLiveAtCallbackStart).toBe(true);
+    expect(__hasConversationAbort(tenant, conv)).toBe(false);
   });
 });

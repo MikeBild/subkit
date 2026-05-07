@@ -4,20 +4,18 @@
 // builder and install/restore helpers tests use to freeze and advance
 // time. Production code never imports from this barrel.
 //
-// Per #147 review S6: keeping `FROZEN_NOW`, `DeterministicClock`,
-// `createDeterministicClock`, `installClock`, `restoreClock` here
-// keeps the production surface narrow (just `now` / `setTestNow` /
-// `getNowProvider`) and prevents an accidental production import of
-// `createDeterministicClock` from widening the API surface.
+// Per #147 review S6 + W-4: the barrel deliberately does NOT re-export
+// `now` (the production reader) so that a future production module
+// can't silently depend on `test-helpers/` via this path — the import
+// would have to reach across to `apps/engine/src/utils/clock.ts`
+// directly, where the production surface lives. `setTestNow` and the
+// `NowProvider` type are re-exported because tests legitimately
+// install / type-name the provider; `getTestNow` is kept as a legacy
+// alias to avoid churning ~50 existing test imports.
 
 import { getNowProvider, setTestNow } from "../../utils/clock.ts";
 
-export {
-  getNowProvider,
-  type NowProvider,
-  now,
-  setTestNow,
-} from "../../utils/clock.ts";
+export { type NowProvider, setTestNow } from "../../utils/clock.ts";
 
 /** Fixed reference timestamp: 2023-11-14T22:13:20.000Z. Stable, in the
  *  past, round enough to read in logs. Tests use this as the default
