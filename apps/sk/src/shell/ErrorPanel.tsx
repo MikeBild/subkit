@@ -369,3 +369,24 @@ export function errorToPanel(err: unknown): {
     payload: { message: humanizeRequestError(err) },
   };
 }
+
+/**
+ * Pull a single-line "body" string out of any panel kind. Centralises
+ * the union narrowing so call sites that want to surface an error
+ * elsewhere (toast queue, status line, log row) don't reach into the
+ * payload with double `as`-casts.
+ */
+export function bodyOf(panel: { kind: ErrorPanelKind; payload: unknown }): string {
+  switch (panel.kind) {
+    case "rate-limit":
+    case "network":
+    case "engine":
+    case "auth":
+    case "generic":
+      return (panel.payload as { message: string }).message;
+    case "validation": {
+      const errors = (panel.payload as ValidationPayload).errors;
+      return errors[0]?.message ?? "validation error";
+    }
+  }
+}

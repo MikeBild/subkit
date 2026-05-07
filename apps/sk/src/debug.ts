@@ -68,7 +68,13 @@ export type DebugRecordKind =
   | "sse.frame"
   | "sse.close"
   | "sse.transport_error"
-  | "approval.diff_fetch_failed";
+  | "approval.diff_fetch_failed"
+  // bootstrap.fetch_failed — emitted when /v1/sk/bootstrap rejects
+  // (404 = older engine, 401 = revoked api_key, 500 = engine bug,
+  // network = unreachable). The CLI falls through to the legacy
+  // tiered persona-probe regardless; this record keeps the failure
+  // diagnosable without a packet capture.
+  | "bootstrap.fetch_failed";
 
 export interface DebugCorrelationFields {
   mode?: DebugMode;

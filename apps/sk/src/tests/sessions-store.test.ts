@@ -6,6 +6,7 @@ import {
   appendEvent,
   deleteEvents,
   loadEvents,
+  scrubSecrets,
   sessionEventsPath,
   sessionsDir,
 } from "../domain/sessions/store.ts";
@@ -75,6 +76,29 @@ describe("session JSONL store", () => {
     expect(raw).toMatch(/"kind":"tool_call"/);
     expect(raw).toMatch(/"name":"x"/);
     expect(raw.endsWith("\n")).toBe(true);
+  });
+
+  test("scrubSecrets redacts strings classified as secret-shaped", () => {
+    const ghToken = `ghp_${"a".repeat(40)}`;
+    const out = scrubSecrets({
+      input: ghToken,
+      nested: { deeper: [ghToken, "harmless"] },
+      plain: "hello",
+    });
+    expect(out).toEqual({
+      input: "***redacted***",
+      nested: { deeper: ["***redacted***", "harmless"] },
+      plain: "hello",
+    });
+  });
+
+  test("appendEvent persists redacted secrets, never the raw token", () => {
+    const conv = "secret-conv";
+    const ghToken = `ghp_${"b".repeat(40)}`;
+    appendEvent(conv, { seq: 1, kind: "user_message", data: { text: ghToken } }, { dir });
+    const raw = readFileSync(sessionEventsPath(conv, dir), "utf8");
+    expect(raw).not.toContain(ghToken);
+    expect(raw).toContain("***redacted***");
   });
 
   test("deleteEvents removes the log file", () => {

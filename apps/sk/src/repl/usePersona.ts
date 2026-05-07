@@ -39,11 +39,27 @@ export function usePersona(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Read primitive opts off the bag rather than depending on the
+  // object identity. If a parent passes `opts={ cacheTtlMs: 0 }` as
+  // an inline literal, the object reference changes every render and
+  // the effect would re-fire on every render — the cache stops
+  // working and the engine is hammered. Reviewers caught this in W10.
+  const cacheDir = opts?.cacheDir;
+  const cacheTtlMs = opts?.cacheTtlMs;
+  const forceRefresh = opts?.forceRefresh;
+  const now = opts?.now;
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const snap = await loadBootstrap(client, profile, opts);
+        const optsResolved: BootstrapOptions = {
+          ...(cacheDir !== undefined ? { cacheDir } : {}),
+          ...(cacheTtlMs !== undefined ? { cacheTtlMs } : {}),
+          ...(forceRefresh !== undefined ? { forceRefresh } : {}),
+          ...(now !== undefined ? { now } : {}),
+        };
+        const snap = await loadBootstrap(client, profile, optsResolved);
         if (cancelled) return;
         setSnapshot(snap);
         setLoading(false);
@@ -56,7 +72,7 @@ export function usePersona(
     return () => {
       cancelled = true;
     };
-  }, [client, profile, opts]);
+  }, [client, profile, cacheDir, cacheTtlMs, forceRefresh, now]);
 
   return { snapshot, loading, error };
 }

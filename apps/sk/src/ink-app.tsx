@@ -115,7 +115,7 @@ import { TaskLauncher } from "./repl/task-launcher.tsx";
 import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { classifyVersionSkew, VersionMismatchBanner } from "./repl/version-mismatch-banner.tsx";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
-import { ErrorPanel, errorToPanel } from "./shell/ErrorPanel.tsx";
+import { bodyOf, ErrorPanel, errorToPanel } from "./shell/ErrorPanel.tsx";
 import { type NoticeItem, NoticeStack, type NoticeTone } from "./shell/NoticeStack.tsx";
 import { ResizeBoundary } from "./shell/ResizeBoundary.tsx";
 import { type ToastInput, ToastQueue, useToast } from "./shell/ToastQueue.tsx";
@@ -1467,10 +1467,9 @@ export const InkApp: React.FC<InkAppProps> = ({
           id: `err-${slashName ?? "engine"}-${Date.now().toString(36)}`,
           level: panel.kind === "rate-limit" || panel.kind === "network" ? "warn" : "error",
           title: titleByKind[panel.kind] ?? "error",
-          body:
-            (panel.payload as { message?: string }).message ??
-            (panel.payload as { errors?: Array<{ message: string }> }).errors?.[0]?.message ??
-            headline,
+          // bodyOf() narrows the discriminated union once and returns
+          // a string — no double `as`-cast leaks across the boundary.
+          body: bodyOf(panel) ?? headline,
           ttlMs: 8000,
         };
         toast.push(t);

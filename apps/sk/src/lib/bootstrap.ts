@@ -13,10 +13,12 @@
 // in the help menu*. Stale cache → at worst an unavailable command
 // looks visible until the next bootstrap; never the other way around.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ResolvedProfile } from "../config.ts";
+import { debugLog, serializeDebugError } from "../debug.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { type ResolvedPersonaSnapshot, resolvePersonaShared } from "../persona-probe.ts";
 import type { PersonaProbe } from "../slash.ts";
@@ -109,10 +111,20 @@ export async function loadBootstrap(
     return materialize(persisted, "network");
   } catch (err) {
     // 404 means "older engine without the endpoint". Anything else
-    // (auth, network, 500) — also fall through to the legacy probe so
-    // the REPL still gets *some* persona to gate on. The legacy probe
-    // has its own try/catch and returns a conservative default.
-    void err;
+    // (auth, network, 500) also falls through to the legacy probe
+    // so the REPL still gets *some* persona to gate on. Log at debug
+    // so a 401 mid-bootstrap (e.g. revoked api_key) doesn't masquerade
+    // as a 404 in operator diagnosis. The legacy probe has its own
+    // try/catch and returns a conservative default.
+    debugLog(
+      "bootstrap.fetch_failed",
+      {
+        engine_url: profile.engine_url,
+        tenant: profile.active_tenant_id,
+        error: serializeDebugError(err),
+      },
+      {},
+    );
   }
 
   // Fallback: tiered persona-probe.
@@ -154,12 +166,23 @@ function fromLegacy(snap: ResolvedPersonaSnapshot, fetchedAt: number): SkBootstr
 
 export function bootstrapCachePath(profile: ResolvedProfile, override?: string): string {
   const dir = override ?? join(homedir(), ".sk", "cache");
-  // Profile is keyed by engine_url + tenant + api_key in config; using
-  // `tenant_id`-or-`engine_url` keeps the cache file scoped per-(engine, tenant).
-  // Empty tenant is allowed — admins commonly run without an active tenant.
+  // The cache file is scoped per (engine, tenant, api_key). Earlier
+  // versions only keyed on (engine, tenant), which meant overriding
+  // SUBKIT_API_KEY on the same profile (e.g. `admin runs as themselves
+  // → admin runs as a portal token to repro a bug`) would replay the
+  // previous principal's permission set against the new bearer.
+  //
+  // The fingerprint is the first 8 hex chars of sha256(api_key) — short
+  // enough to keep the filename readable, long enough to make a
+  // cross-token collision implausible (1 in 2^32). The hash itself is
+  // never reversible to the bearer because we only persist the prefix.
   const tenantSlug = (profile.active_tenant_id ?? "global").replace(/[^a-z0-9_-]/gi, "_");
   const engineSlug = profile.engine_url.replace(/[^a-z0-9_-]/gi, "_").slice(-32) || "engine";
-  return join(dir, `bootstrap-${engineSlug}-${tenantSlug}.json`);
+  const tokenFp = createHash("sha256")
+    .update(profile.api_key ?? "")
+    .digest("hex")
+    .slice(0, 8);
+  return join(dir, `bootstrap-${engineSlug}-${tenantSlug}-${tokenFp}.json`);
 }
 
 function readCachedSnapshot(path: string): PersistedSnapshot | null {
@@ -186,8 +209,7 @@ function writeCachedSnapshot(path: string, snap: PersistedSnapshot): void {
 /** Test-only: drop a cached snapshot for a profile. */
 export function _clearBootstrapCacheForTests(profile: ResolvedProfile, cacheDir?: string): void {
   try {
-    const fs = require("node:fs") as typeof import("node:fs");
-    fs.unlinkSync(bootstrapCachePath(profile, cacheDir));
+    unlinkSync(bootstrapCachePath(profile, cacheDir));
   } catch {
     /* fine — already gone */
   }

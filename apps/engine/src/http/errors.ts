@@ -20,12 +20,43 @@ export interface HttpErrorOptions {
   details?: Record<string, unknown>;
 }
 
+/**
+ * Internal sentinel — passed verbatim through the legacy positional
+ * constructor to mark an arg as "this is the new envelope options
+ * shape, not a legacy details bag". Carrying the brand on the value
+ * itself avoids the shape-sniffing heuristic that previously read
+ * `hint` / `retry_after` keys off any details object that happened
+ * to contain them.
+ */
+const ENVELOPE_BRAND = Symbol.for("sk.HttpErrorOptions");
+
+interface BrandedEnvelopeOptions extends HttpErrorOptions {
+  [ENVELOPE_BRAND]: true;
+}
+
 export class HttpError extends Error {
   readonly status: number;
   readonly code: string;
   readonly hint: string | undefined;
   readonly retry_after: number | undefined;
   readonly details: Record<string, unknown> | undefined;
+
+  /**
+   * Preferred form for any throw site that needs to set `hint` /
+   * `retry_after` on the wire. Use this instead of the positional
+   * constructor — the positional path treats its 4th arg as a legacy
+   * `details` bag verbatim, which is what the 50+ existing throw
+   * sites depend on.
+   */
+  static withEnvelope(
+    status: number,
+    code: string,
+    message: string,
+    opts: HttpErrorOptions,
+  ): HttpError {
+    const branded: BrandedEnvelopeOptions = { ...opts, [ENVELOPE_BRAND]: true };
+    return new HttpError(status, code, message, branded as unknown as Record<string, unknown>);
+  }
 
   constructor(
     status: number,
@@ -36,17 +67,16 @@ export class HttpError extends Error {
     super(message);
     this.status = status;
     this.code = code;
-    // Dispatch heuristic: an arg shaped like the new options envelope —
-    // i.e. carrying `hint` or `retry_after` — is treated as `HttpErrorOptions`.
-    // Anything else (including legacy bag-of-details objects that happen to
-    // contain a `details` key) stays in `details` verbatim, preserving
-    // backwards compatibility with the 50+ existing throw sites.
+    // Dispatch by brand only — never by shape. The legacy positional
+    // form (4th arg = details bag) stays the default for every
+    // existing call site; the new envelope path is opt-in via
+    // `HttpError.withEnvelope(...)` which stamps the brand.
     if (
       detailsOrOpts &&
       typeof detailsOrOpts === "object" &&
-      ("hint" in detailsOrOpts || "retry_after" in detailsOrOpts)
+      (detailsOrOpts as { [k: symbol]: unknown })[ENVELOPE_BRAND] === true
     ) {
-      const opts = detailsOrOpts as HttpErrorOptions;
+      const opts = detailsOrOpts as BrandedEnvelopeOptions;
       this.hint = opts.hint;
       this.retry_after = opts.retry_after;
       this.details = opts.details;
@@ -65,6 +95,8 @@ export class HttpError extends Error {
     return body;
   }
 }
+
+export { ENVELOPE_BRAND as _ENVELOPE_BRAND_FOR_TESTS };
 
 export class UnauthorizedError extends HttpError {
   constructor(reason = "missing_or_invalid_credentials") {

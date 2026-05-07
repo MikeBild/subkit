@@ -191,4 +191,25 @@ describe("bootstrapCachePath", () => {
     const p = bootstrapCachePath({ ...PROFILE, active_tenant_id: null }, "/tmp/x");
     expect(p).toContain("global");
   });
+
+  // W11 review fix: cache key must include a token fingerprint so two
+  // different api_keys against the same (engine, tenant) don't share a
+  // cache file (and thus permission allow-set).
+  test("two different api_keys against the same (engine, tenant) get distinct cache files", () => {
+    const a = bootstrapCachePath({ ...PROFILE, api_key: "wf_live_admin1234" }, "/tmp/x");
+    const b = bootstrapCachePath({ ...PROFILE, api_key: "wf_portal_other987" }, "/tmp/x");
+    expect(a).not.toBe(b);
+  });
+
+  test("same api_key produces the same cache file (deterministic)", () => {
+    const a = bootstrapCachePath({ ...PROFILE, api_key: "wf_live_same" }, "/tmp/x");
+    const b = bootstrapCachePath({ ...PROFILE, api_key: "wf_live_same" }, "/tmp/x");
+    expect(a).toBe(b);
+  });
+
+  test("cache file does not embed the raw api_key in its name", () => {
+    const p = bootstrapCachePath({ ...PROFILE, api_key: "wf_live_supersecretkey123" }, "/tmp/x");
+    expect(p).not.toContain("supersecretkey123");
+    expect(p).not.toContain("wf_live_supersecretkey123");
+  });
 });

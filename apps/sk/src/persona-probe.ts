@@ -17,7 +17,16 @@ import type { PersonaProbe } from "./slash.ts";
 /** Permissions worth probing per tier. Lower tiers only probe their
  *  own tier's permissions; higher tiers also probe everything below.
  *  This means a `member` role probes 12 perms instead of 22, and a
- *  `portal` / `enduser` role probes 4 (not 22). */
+ *  `portal` / `enduser` role probes 4 (not 22).
+ *
+ *  CANONICAL LIST: The flattened set of permissions probed across all
+ *  four tiers MUST match `UX_GATING_PERMISSIONS` in
+ *  `apps/engine/src/rbac/ux-gating.ts`. The engine returns its allow-set
+ *  to the CLI in /v1/sk/bootstrap; both sides need to agree on the set
+ *  of permissions worth gating UX visibility on. If you add a tier
+ *  permission below, mirror it in the engine constant. The
+ *  bootstrap-fallback integration test asserts both sides expose the
+ *  same set. */
 const TIER_PERMISSIONS: Record<number, readonly string[]> = {
   1: ["conversation:read", "conversation:write", "memory:write"],
   2: ["conversation:approve", "conversation:list", "mcp:read", "skill:read"],

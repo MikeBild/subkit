@@ -6,50 +6,22 @@
 // whoami + the precomputed allow-set for the well-known UX-gating
 // permissions + a small tenant snapshot + the most recent sessions.
 //
-// Read-only; emits no audit (it's a discovery call). Always returns
-// 200 for an authenticated principal — RBAC is for individual
-// permission decisions, not for "may I bootstrap".
+// Read-only; emits no audit (it's a discovery call). Returns 401 via
+// `requireAuth` for unauthenticated callers; once authenticated, the
+// route returns 200 — RBAC is for individual permission decisions,
+// not for "may I bootstrap". Errors against the recent_sessions
+// query and per-permission RBAC probes are logged at warn so they
+// surface in /v1/diagnostics/errors instead of being silently
+// swallowed.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { conversations, roles, tenants, users } from "../../../db/schema/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
-import { can } from "../../../rbac/index.ts";
+import { logger } from "../../../logging/logger.ts";
+import { can, UX_GATING_PERMISSIONS } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
-
-/**
- * Permissions the `sk` CLI gates slash-command visibility on.
- * Mirrors `apps/sk/src/persona-probe.ts#TIER_PERMISSIONS` so the
- * client can replace tiered probes with this single fetch.
- */
-const UX_GATING_PERMISSIONS = [
-  // Tier 1
-  "conversation:read",
-  "conversation:write",
-  "memory:write",
-  // Tier 2
-  "conversation:approve",
-  "conversation:list",
-  "mcp:read",
-  "skill:read",
-  // Tier 3
-  "conversation:cancel",
-  "conversation:commit",
-  "workflow:read",
-  "workflow:write",
-  "connector:read",
-  "skill:write",
-  "execution:read",
-  "notification:read",
-  // Tier 4
-  "audit:read",
-  "identity:read",
-  "rbac:read",
-  "api_key:read",
-  "portal_token:read",
-  "knowledge:read",
-] as const;
 
 const SkBootstrapWhoamiSchema = z.object({
   id: z.string(),
@@ -160,36 +132,66 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
             permission: perm,
           });
           if (decision.allow) allowedPermissions.push(perm);
-        } catch {
-          // ignore — engine still enforces on the actual call.
+        } catch (err) {
+          // The engine still enforces RBAC on the actual call, so the
+          // operator at worst sees a slash command they can't invoke.
+          // Log so a real failure (db outage, malformed policy row)
+          // shows up in /v1/diagnostics/errors instead of being
+          // silently elided into "permission denied".
+          logger.warn({
+            module: "rbac",
+            action: "sk_bootstrap_can_failed",
+            msg: "rbac probe failed during sk-bootstrap; treating as deny",
+            tenant_id: principal.tenant_id,
+            permission: perm,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }),
     );
 
     // Last 10 conversation rows the principal owns, newest first.
+    // Gated on `conversation:read` (W5 review fix): even though we
+    // filter by `owner_id = principal.id`, surfacing ids + titles
+    // for a principal that has been explicitly denied that
+    // permission would amount to a display-only leak. Skip the
+    // query entirely for those principals.
     let recent: Array<{ id: string; title: string | null; updated_at: Date }> = [];
-    try {
-      recent = await db
-        .select({
-          id: conversations.id,
-          title: conversations.title,
-          updated_at: conversations.updated_at,
-        })
-        .from(conversations)
-        .where(
-          and(
-            eq(conversations.tenant_id, principal.tenant_id),
-            eq(conversations.owner_id, principal.id),
-          ),
-        )
-        .orderBy(desc(conversations.updated_at))
-        .limit(10);
-    } catch {
-      // conversations table is per-tenant; if a tenant has none yet
-      // the query is fine, but if the schema isn't migrated we don't
-      // want bootstrap to fail.
-      recent = [];
-    }
+    const canReadConversations = allowedPermissions.includes("conversation:read");
+    if (!canReadConversations) {
+      // Skip the query; recent stays []. Documented behavior.
+    } else
+      try {
+        recent = await db
+          .select({
+            id: conversations.id,
+            title: conversations.title,
+            updated_at: conversations.updated_at,
+          })
+          .from(conversations)
+          .where(
+            and(
+              eq(conversations.tenant_id, principal.tenant_id),
+              eq(conversations.owner_id, principal.id),
+            ),
+          )
+          .orderBy(desc(conversations.updated_at))
+          .limit(10);
+      } catch (err) {
+        // conversations table is per-tenant; if a tenant has none yet
+        // the query is fine, but if the schema isn't migrated or a
+        // genuine DB outage hits we still don't want bootstrap to
+        // fail. Log so a tenant-isolation regression (e.g. someone
+        // dropping the tenant_id filter above) doesn't go silent.
+        logger.warn({
+          module: "http",
+          action: "sk_bootstrap_recent_sessions_failed",
+          msg: "recent_sessions query failed; returning empty list",
+          tenant_id: principal.tenant_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        recent = [];
+      }
 
     return c.json(
       {

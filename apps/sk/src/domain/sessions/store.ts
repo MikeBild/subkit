@@ -14,9 +14,10 @@
 // (turn boundaries, text deltas, tool calls, errors). The conversation
 // metadata (model, status, owner) stays in `sessions.ts`.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { detectSecretShape } from "../../lib/secret-shape.ts";
 
 export type TurnEventKind =
   | "user_message"
@@ -37,6 +38,32 @@ export interface TurnEvent {
   kind: TurnEventKind;
   /** Free-form payload — every kind defines its own shape. */
   data: Record<string, unknown>;
+}
+
+/**
+ * Walk the event payload and replace any string values that match the
+ * secret-shape classifier (PATs, OAuth tokens, Bearer tokens, etc.)
+ * with `"***redacted***"`. Recursive over nested objects + arrays.
+ *
+ * The append path is per-user disk (mode 0o600 in the user's home
+ * dir), so this is not a tenant-isolation issue, but redacting
+ * obviously-sensitive values keeps the logs safe to share for
+ * support / replay scenarios.
+ */
+export function scrubSecrets(data: unknown): unknown {
+  if (typeof data === "string") {
+    const shape = detectSecretShape(data);
+    return shape.matched ? "***redacted***" : data;
+  }
+  if (Array.isArray(data)) return data.map(scrubSecrets);
+  if (data && typeof data === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+      out[k] = scrubSecrets(v);
+    }
+    return out;
+  }
+  return data;
 }
 
 export interface AppendOptions {
@@ -66,7 +93,12 @@ export function appendEvent(
 ): void {
   const path = sessionEventsPath(conversationId, opts.dir);
   const now = opts.now ?? (() => new Date());
-  const event: TurnEvent = { ...ev, ts: now().toISOString() };
+  // Scrub obviously-secret-shaped strings out of `data` before the
+  // line lands on disk. The classifier only catches well-known token
+  // shapes (PATs, Bearer tokens, OAuth) — callers passing free-form
+  // credentials still own redaction at their layer.
+  const scrubbedData = scrubSecrets(ev.data) as Record<string, unknown>;
+  const event: TurnEvent = { ...ev, data: scrubbedData, ts: now().toISOString() };
   try {
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(path, `${JSON.stringify(event)}\n`, { encoding: "utf8", mode: 0o600 });
@@ -108,8 +140,7 @@ export function loadEvents(conversationId: string, dir?: string): TurnEvent[] {
 export function deleteEvents(conversationId: string, dir?: string): void {
   const path = sessionEventsPath(conversationId, dir);
   try {
-    const fs = require("node:fs") as typeof import("node:fs");
-    fs.unlinkSync(path);
+    unlinkSync(path);
   } catch {
     /* gone already */
   }
