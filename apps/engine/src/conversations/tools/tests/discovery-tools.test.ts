@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { discoveryArtifacts, discoveryRuns, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import {
   approveDiscoveryArtifactTool,
   getDiscoveryArtifactTool,
@@ -14,7 +15,7 @@ import {
 } from "../generated/discovery.ts";
 import type { ToolContext } from "../index.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: TestDb;
 let tenant_id: string;

@@ -12,7 +12,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runDocumentAnalysisFlow } from "../../llm/flows/document-analysis.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -53,11 +53,11 @@ const STRIPE_OPENAPI = JSON.stringify({
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("openapi-to-workflow");
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("44: OpenAPI → workflow (deterministic parser)", () => {
   test("AC1: parses endpoints from OpenAPI JSON, no LLM call", async () => {

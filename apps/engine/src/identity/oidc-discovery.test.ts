@@ -13,6 +13,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import {
   DiscoveryDocSchema,
   fetchDiscovery,
@@ -143,11 +144,11 @@ describe("fetchDiscovery — per-issuer caching", () => {
     );
     // Seed the cache with a fake fetchedAt that is already 5m+1ms in the past.
     const TTL_MS = 5 * 60 * 1_000;
-    const staleNow = Date.now() - TTL_MS - 1;
+    const staleNow = getTestNow() - TTL_MS - 1;
     await fetchDiscovery(new URL(ISSUER), { nowMs: staleNow });
 
     // A second call with present-time nowMs should be treated as a cache miss.
-    const freshNow = Date.now();
+    const freshNow = getTestNow();
     expect(isCached(ISSUER, freshNow)).toBe(false);
   });
 

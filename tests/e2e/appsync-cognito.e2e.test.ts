@@ -35,8 +35,9 @@ import {
 import { upsertCredential } from "../../apps/engine/src/credentials/service.ts";
 import { connectors, tenants } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
+import { getTestNow } from "../../apps/engine/src/test-helpers/determinism/clock.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 const live = process.env.APPSYNC_COGNITO_E2E === "1";
 const EMAIL = process.env.APPSYNC_E2E_EMAIL ?? "";

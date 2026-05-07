@@ -108,7 +108,7 @@ describe("listDraftSnapshots + getDraftSnapshot", () => {
         ctx.db,
       );
       ids.push(s.id);
-      await new Promise((r) => setTimeout(r, 5)); // allow-wall-clock: legacy; review before changing
+      await new Promise((r) => setTimeout(r, 5)); // allow-wall-clock: draft-snapshot persistence ordering across appendSnapshot calls
     }
     const rows = await listDraftSnapshots({ tenant_id, conversation_id: convId }, ctx.db);
     // Newest first == reverse of insert order.

@@ -19,6 +19,7 @@ import { type MockOidcHandle, startMockOidc } from "../auth/providers/tests/fixt
 import { auditLog, sessions, tenants, users } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { flushDiscoveryCache } from "./oidc-discovery.ts";
 import {
   createSession,
@@ -214,7 +215,7 @@ describe("service — portal tokens", () => {
 
 describe("service — sessions", () => {
   test("createSession writes row with correct sliding + absolute TTLs", async () => {
-    const before = Date.now();
+    const before = getTestNow();
     const sess = await createSession({ tenant_id: tenantId, user_id: userId }, testDb.db);
 
     expect(sess.tenant_id).toBe(tenantId);
@@ -252,7 +253,7 @@ describe("service — sessions", () => {
     // Force last_seen_at far into the past.
     await testDb.db
       .update(sessions)
-      .set({ last_seen_at: new Date(Date.now() - SESSION_SLIDING_TTL_MS - 1_000) })
+      .set({ last_seen_at: new Date(getTestNow() - SESSION_SLIDING_TTL_MS - 1_000) })
       .where(eq(sessions.id, sess.id));
 
     const result = await resolveSession(sess.id, testDb.db);
@@ -277,7 +278,7 @@ describe("service — sessions", () => {
     // Force absolute_expires_at to one second ago.
     await testDb.db
       .update(sessions)
-      .set({ absolute_expires_at: new Date(Date.now() - 1_000) })
+      .set({ absolute_expires_at: new Date(getTestNow() - 1_000) })
       .where(eq(sessions.id, sess.id));
 
     const result = await resolveSession(sess.id, testDb.db);
@@ -570,7 +571,7 @@ describe("JIT provisioning — clock-skew tolerance (scenario 5)", () => {
     const issuerBase = `http://127.0.0.1:${port}`;
 
     try {
-      const nowSec = Math.floor(Date.now() / 1000);
+      const nowSec = Math.floor(getTestNow() / 1000);
       // Token expired 1 second ago.
       const id_token = await new SignJWT({ sub: "expired-sub", email: "expired@test.local" })
         .setProtectedHeader({ alg: "RS256", kid: mockKid })
@@ -631,7 +632,7 @@ describe("JIT provisioning — issuer-mismatch rejection (scenario 6)", () => {
     const discoveredIssuer = `http://127.0.0.1:${port}`;
 
     try {
-      const nowSec = Math.floor(Date.now() / 1000);
+      const nowSec = Math.floor(getTestNow() / 1000);
       // Token claims iss = "https://evil.example.com" not matching the
       // discovered issuer.
       const id_token = await new SignJWT({
@@ -694,7 +695,7 @@ describe("JIT provisioning — token without sub (scenario 7)", () => {
     const issuerBase = `http://127.0.0.1:${port}`;
 
     try {
-      const nowSec = Math.floor(Date.now() / 1000);
+      const nowSec = Math.floor(getTestNow() / 1000);
       // Token has no `sub` claim at all.
       const id_token = await new SignJWT({ email: "nosub@test.local" })
         .setProtectedHeader({ alg: "RS256", kid: mockKid })

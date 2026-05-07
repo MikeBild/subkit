@@ -55,7 +55,7 @@ describe("pubsub listener catch-up", () => {
     const d1 = Date.now() + 5_000;
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (Date.now() < d1 && firstReceived.length < 1) {
-      await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: legacy; review before changing
+      await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: pub/sub catch-up propagation across the listener boundary
     }
     expect(firstReceived.length).toBe(1);
 
@@ -103,7 +103,7 @@ describe("pubsub listener catch-up", () => {
     const d2 = Date.now() + 5_000;
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (Date.now() < d2 && secondReceived.length < 3) {
-      await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: legacy; review before changing
+      await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: pub/sub catch-up propagation across the listener boundary
     }
 
     await secondListener.stop();

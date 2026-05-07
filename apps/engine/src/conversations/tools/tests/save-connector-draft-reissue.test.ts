@@ -19,6 +19,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";
+import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { createEmptyDraftDocument, withConnectorProbe } from "../../authoring-state.ts";
 import { setDraftCredential } from "../../persistence/draft-credential-cache.ts";
 import { createConversation } from "../../service.ts";
@@ -330,7 +331,7 @@ describe("save_connector_draft — diagnostic re-issue", () => {
           // window, so force_save is allowed. The cooldown gate
           // (Pass D4) rejects fresh failed probes; this test
           // covers the stale-probe override path.
-          probed_at: new Date(Date.now() - 120_000).toISOString(),
+          probed_at: new Date(getTestNow() - 120_000).toISOString(),
         },
       },
       false,
@@ -396,7 +397,7 @@ describe("save_connector_draft — diagnostic re-issue", () => {
           duration_ms: 1,
           summary: "Probe reached the system but returned HTTP 401.",
           response_preview: "bad credentials",
-          probed_at: new Date().toISOString(),
+          probed_at: new Date(getTestNow()).toISOString(),
         },
       },
       false,
@@ -430,7 +431,7 @@ describe("save_connector_draft — diagnostic re-issue", () => {
     const connectorBefore = draftBefore.connector;
     if (!connectorBefore) throw new Error("connector draft missing");
     // Probe failed two minutes ago — outside the 60s cooldown.
-    const olderThanCooldown = new Date(Date.now() - 120_000).toISOString();
+    const olderThanCooldown = new Date(getTestNow() - 120_000).toISOString();
     const failedProbeDraft = withConnectorProbe(
       draftBefore,
       {

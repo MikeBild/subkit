@@ -92,6 +92,7 @@ describe("conversations/loop", () => {
     if (!elicitationId) throw new Error("expected pending_elicitation_id");
     const resumed = await respondElicitation(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: outcome.conversation.id,
         elicitation_id: elicitationId,
@@ -135,6 +136,7 @@ describe("conversations/loop", () => {
     // Appending another message still works and is a no-op.
     const cont = await appendUserMessage(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: outcome.conversation.id,
         actor_id: ctx.user_id,

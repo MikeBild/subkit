@@ -12,17 +12,17 @@
 // Spec refs: plan docs — §2d BRANCH STEP: Actual Control Flow
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("branch-workflow");
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
   test("AC1+AC3: true branch runs then_steps, else_steps are skipped, status succeeded", async () => {

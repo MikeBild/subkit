@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { auditAwait } from "../../audit/audit.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -38,7 +39,7 @@ function newKey(): { plaintext: string; prefix: string; hash: string } {
 async function seedAudit(action: string, delay = 10): Promise<string> {
   // Force a monotonic gap between rows so ts ordering is deterministic
   // and the cursor walker doesn't trip over ties.
-  await new Promise((r) => setTimeout(r, delay)); // allow-wall-clock: legacy; review before changing
+  await new Promise((r) => setTimeout(r, delay)); // allow-wall-clock: delay-bounded helper used by audit-log retention assertions
   const row = await auditAwait(
     {
       tenant_id: srv.tenantId,
@@ -63,14 +64,14 @@ beforeAll(async () => {
   // the module-load TEST_NOW_MS snapshot — that would zero-width the
   // window since audit rows are written milliseconds AFTER load,
   // landing outside the [snapshot, snapshot] interval).
-  seedStartIso = new Date(Date.now() - 1000).toISOString();
+  seedStartIso = new Date(getTestNow() - 1000).toISOString();
   seededIds = [];
   seededIds.push(await seedAudit("workflow.created"));
   seededIds.push(await seedAudit("workflow.updated"));
   seededIds.push(await seedAudit("workflow.deleted"));
   seededIds.push(await seedAudit("connector.created"));
   seededIds.push(await seedAudit("connector.updated"));
-  seedEndIso = new Date(Date.now() + 1000).toISOString();
+  seedEndIso = new Date(getTestNow() + 1000).toISOString();
 
   // A second (non-admin) member user whose api key should be denied by
   // `audit:read`. Member users inherit the built-in `member` role,

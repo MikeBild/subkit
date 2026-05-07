@@ -5,9 +5,10 @@
 // `conversation.*` helper set is still present.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { getTestNow } from "../../apps/engine/src/test-helpers/determinism/clock.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let env: E2EEnv;
 beforeAll(async () => {

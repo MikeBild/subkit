@@ -12,7 +12,13 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { apiKeys, roles, users } from "../../db/schema/index.ts";
 import { BUILTIN_ROLE_NAMES } from "../../rbac/seed.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -68,11 +74,11 @@ describe("journey: rbac resource grants", () => {
       scopes: ["*"],
     });
     memberApiKey = plaintext;
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   async function asMember(path: string, init: RequestInit = {}) {
     const headers = new Headers(init.headers);

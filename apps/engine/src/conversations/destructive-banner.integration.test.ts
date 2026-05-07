@@ -10,7 +10,8 @@ import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { saveWorkflowDraftTool } from "./tools/save-workflow-draft.ts";
 import type { DraftDocument } from "./types.ts";
 
-const skip = process.env.SKIP_DB_TESTS === "1";
+// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
+const skip = process.env.REQUIRES_PG === "0";
 let ctx: TestDb;
 let tenant_id: string;
 

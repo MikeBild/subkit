@@ -18,7 +18,7 @@ Three test layers. Pick by what the change touches, not by convenience.
 | End-user flow through the `subkit` or `sk` CLI against a live engine | **e2e** | `bun run test:e2e` |
 | Prompting, context assembly, turn routing, authoring gates, or verification contract drift | **eval** | `bun run verify:ai` |
 
-Unit runs with `SKIP_DOCKER=1 SKIP_DB_TESTS=1` — fast, no containers. Use it as your
+Unit runs with `SKIP_DOCKER=1 REQUIRES_PG=0` — fast, no containers. Use it as your
 inner loop.
 
 Integration uses `testcontainers` for a real Postgres. Slower but catches schema and

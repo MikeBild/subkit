@@ -91,6 +91,11 @@
     "description": "Replay a completed execution",
     "resource_type": "execution"
   },
+  {
+    "name": "execution:signal",
+    "description": "POST a wait-for-event signal to a paused execution (e.g. an HITL approval). The signals route also accepts a one-shot HMAC token; this permission gates the bearer-auth path.",
+    "resource_type": "execution"
+  },
 
   {
     "name": "schedule:read",

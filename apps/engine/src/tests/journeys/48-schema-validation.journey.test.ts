@@ -11,7 +11,7 @@
 // Spec refs: plan docs — §2a INPUT: Schema Validation & Coercion
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let workflowId = "";
@@ -45,11 +45,11 @@ beforeAll(async () => {
   if (createRes.status !== 201) throw new Error("seed workflow failed");
   const wf = (await createRes.json()) as { id: string };
   workflowId = wf.id;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("48: Input schema validation — required fields enforced at run start", () => {
   test("AC1: valid input (all required fields present) → status succeeded", async () => {

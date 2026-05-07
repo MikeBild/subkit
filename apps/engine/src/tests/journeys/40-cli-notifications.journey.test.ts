@@ -16,7 +16,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { notificationsCommand } from "../../../../sk/src/commands/notifications.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -220,11 +220,11 @@ let ruleId = "";
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("cli-notifications");
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 40: sk notifications CLI", () => {
   // ---- channels section ----

@@ -4,9 +4,10 @@
 // mock server.
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { runCognitoRefreshTokenGrant, runCognitoUserPasswordGrant } from "../client.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 describe("Cognito User-Password (InitiateAuth)", () => {
   let fetchSpy: ReturnType<typeof spyOn>;

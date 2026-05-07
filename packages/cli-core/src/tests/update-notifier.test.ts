@@ -1,9 +1,10 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { getTestNow } from "../../../../apps/engine/src/test-helpers/determinism/clock.ts";
 import { notifyIfUpdateAvailable } from "../update-notifier.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 // Each test uses a unique binary name so caches don't collide.
 // The notifier creates its cache under ~/.{binaryName}/ so we use
@@ -48,7 +49,7 @@ describe("notifyIfUpdateAvailable", () => {
     // Use a unique name to avoid cache collisions
     const name = `notifier-test-banner-${TEST_NOW_MS}`;
     notifyIfUpdateAvailable(name, fetchImpl);
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: update-notifier debounce window across cache reads
     expect(stderrOutput).toContain("99.0.0");
     expect(stderrOutput).toContain(`${name} update`);
     // Clean up cache dir
@@ -73,7 +74,7 @@ describe("notifyIfUpdateAvailable", () => {
 
     const name = `notifier-test-noop-${TEST_NOW_MS}`;
     notifyIfUpdateAvailable(name, fetchImpl);
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: update-notifier debounce window across cache reads
     expect(stderrOutput).toBe("");
     const { homedir } = await import("node:os");
     cleanupDirs.push(join(homedir(), `.${name}`));
@@ -87,7 +88,7 @@ describe("notifyIfUpdateAvailable", () => {
 
     const name = `notifier-test-error-${TEST_NOW_MS}`;
     notifyIfUpdateAvailable(name, fetchImpl);
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: update-notifier debounce window across cache reads
     expect(stderrOutput).toBe("");
   });
 

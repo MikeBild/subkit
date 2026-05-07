@@ -19,7 +19,7 @@ import { eq } from "drizzle-orm";
 import { createElicitation } from "../../conversations/elicitations.ts";
 import * as conversationsSvc from "../../conversations/service.ts";
 import { conversationElicitations } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -72,11 +72,11 @@ describe("journey: sk-cli elicitation diff surfacing", () => {
       ctx.db,
     );
     elicitationId = elicitation.id;
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1: elicitation row persists the structured diff", async () => {
     const [row] = await ctx.db

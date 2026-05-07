@@ -24,6 +24,7 @@ import type { Db } from "../../db/client.ts";
 import { connectors as connectorsTable, conversations } from "../../db/schema/index.ts";
 import { analyzeConversationAttachments } from "../../llm/flows/analyze-conversation-attachments.ts";
 import { logger } from "../../logging/logger.ts";
+import { now } from "../../utils/clock.ts";
 import {
   withConnectorAuthenticated,
   withConnectorPersisted,
@@ -358,7 +359,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     const probedAtRaw = connector.latest_probe.probed_at;
     const probedAtMs = probedAtRaw ? Date.parse(probedAtRaw) : Number.NaN;
     const haveTimestamp = Number.isFinite(probedAtMs);
-    const ageMs = haveTimestamp ? Date.now() - probedAtMs : 0;
+    const ageMs = haveTimestamp ? now() - probedAtMs : 0;
     const insideCooldown = haveTimestamp && ageMs >= 0 && ageMs < FORCE_SAVE_COOLDOWN_MS;
     if (!haveTimestamp || insideCooldown) {
       const remainingMs = haveTimestamp ? FORCE_SAVE_COOLDOWN_MS - ageMs : FORCE_SAVE_COOLDOWN_MS;
@@ -428,7 +429,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     .update(conversations)
     .set({
       target_connector_id: saved.id,
-      updated_at: new Date(),
+      updated_at: new Date(now()),
     })
     .where(eq(conversations.id, ctx.conversation_id));
 
@@ -636,7 +637,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       version_id: null,
       version: null,
       environment: saved.environment,
-      saved_at: new Date().toISOString(),
+      saved_at: new Date(now()).toISOString(),
     },
     "connector_saved",
   );

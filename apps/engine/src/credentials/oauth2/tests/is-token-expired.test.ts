@@ -3,6 +3,7 @@
 // Default buffer: 5 minutes.
 
 import { describe, expect, test } from "bun:test";
+import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { isTokenExpired } from "../client.ts";
 
 // `isTokenExpired` reads the real `Date.now()` — pin a snapshot at
@@ -10,7 +11,7 @@ import { isTokenExpired } from "../client.ts";
 // hard-coded TEST_NOW_MS = 1_700_000_000_000 expired in 2023 + 1h
 // against any real wall-clock past Nov 2023, which broke the suite
 // permanently as soon as CI ran past that date).
-const NOW_MS = Date.now();
+const NOW_MS = getTestNow();
 
 describe("isTokenExpired", () => {
   test("returns true when bundle is null", () => {

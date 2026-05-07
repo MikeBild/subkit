@@ -1,10 +1,11 @@
 // Resume summary — one-sentence recap + next-best-action across states.
 
 import { describe, expect, test } from "bun:test";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import type { ConversationRecord, DraftDocument } from "../types.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 function conv(overrides: Partial<ConversationRecord> = {}): ConversationRecord {
   return {

@@ -2,9 +2,10 @@
 // a fresh tmpdir path so runs don't touch the user's real ~/.sk.
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getTestNow } from "../../../engine/src/test-helpers/determinism/clock.ts";
 import {
   appendHistory,
   clearHistory,
@@ -14,7 +15,7 @@ import {
   MAX_PROMPT_HISTORY,
 } from "../repl/history-store.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 const dirs: string[] = [];
 function tmpHistoryPath(): string {

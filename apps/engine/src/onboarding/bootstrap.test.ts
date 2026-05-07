@@ -6,6 +6,7 @@ import { auditLog } from "../db/schema/audit.ts";
 import { engineSettings, tenants } from "../db/schema/identity.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { type SeededRoleIds, seedBuiltinRolesAndPermissions } from "../rbac/seed.ts";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 
 // settings/clearCache removed in v3.5 — runtime config moved to subkit.config.json
 const clearCache = (): void => {};
@@ -82,8 +83,8 @@ describe("run() — banner + token mint", () => {
     expect(envelope).toBeDefined();
     expect(envelope!.token_sha256).toBe(_internal.sha256Hex(result.plaintext_token!));
     // 15-minute TTL +/- 5s slop for clock noise during the test.
-    expect(envelope!.expires_at_ms - Date.now()).toBeGreaterThan(BOOTSTRAP_TOKEN_TTL_MS - 5_000);
-    expect(envelope!.expires_at_ms - Date.now()).toBeLessThanOrEqual(BOOTSTRAP_TOKEN_TTL_MS);
+    expect(envelope!.expires_at_ms - getTestNow()).toBeGreaterThan(BOOTSTRAP_TOKEN_TTL_MS - 5_000);
+    expect(envelope!.expires_at_ms - getTestNow()).toBeLessThanOrEqual(BOOTSTRAP_TOKEN_TTL_MS);
   });
 
   test("no-op when sentinel already set (no token, no banner)", async () => {
@@ -213,7 +214,7 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
     );
     await _internal.writeSetting(tdb.db, BOOTSTRAP_TOKEN_KEY, {
       token_sha256: envelope!.token_sha256,
-      expires_at_ms: Date.now() - 1_000,
+      expires_at_ms: getTestNow() - 1_000,
     });
 
     const outcome = await consume(

@@ -10,6 +10,7 @@ import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { log } from "../../logging/logger.ts";
+import { registerConversationAbort, unregisterConversationAbort } from "../abort.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { type RunLoopResult, runLoop } from "../loop.ts";
 import { listBaselineSlugs, loadActivationCatalog } from "../skill-autoload.ts";
@@ -48,6 +49,22 @@ export interface CreateConversationParams {
     actor_email?: string;
     actor_role?: string;
   };
+  /**
+   * Pre-registered AbortController for the initial turn's runLoop.
+   *
+   * Optional because the route handler does NOT know `conversation_id`
+   * before this function inserts the row — there is no synchronous-
+   * accept frame at the route layer that can register a controller
+   * keyed on (tenant, conv) the way `messages.ts` does. When the
+   * caller omits this, `createConversation` registers internally
+   * directly after the row insert (still synchronous from the runLoop
+   * call's perspective) and unregisters in a `finally`. When the
+   * caller supplies one, lifetime ownership stays with the caller.
+   *
+   * Per #148: every `runLoop` call site threads a controller; the
+   * fallback that previously lived inside `runLoop` was retired.
+   */
+  turn_abort_ctrl?: AbortController;
 }
 
 export async function createConversation(
@@ -159,22 +176,36 @@ export async function createConversation(
     }
   }
 
-  const result: RunLoopResult = p.initial_message
-    ? await runLoop({
-        db: exec,
-        tenant_id: p.tenant_id,
-        conversation_id: row.id,
-        actor_id: p.actor_id,
-        connector_id: p.connector_id ?? null,
-        workflow_id: p.workflow_id ?? null,
-        user_message: p.initial_message,
-        user_memory: memory,
-        model_override: p.model ?? null,
-        ...(p.onEvent ? { onEvent: p.onEvent } : {}),
-        ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
-        ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
-      })
-    : { events: [], status: "active" as const };
+  // #148: every runLoop call site threads a controller. Caller may
+  // supply one (rare, since they didn't have `row.id` until just now);
+  // otherwise we register here, immediately after the row insert that
+  // produced the conversation_id, and unregister in `finally`.
+  const ownsAbortRegistration = p.turn_abort_ctrl == null;
+  const turnAbortCtrl = p.turn_abort_ctrl ?? registerConversationAbort(p.tenant_id, row.id);
+  let result: RunLoopResult;
+  try {
+    result = p.initial_message
+      ? await runLoop({
+          db: exec,
+          tenant_id: p.tenant_id,
+          conversation_id: row.id,
+          actor_id: p.actor_id,
+          connector_id: p.connector_id ?? null,
+          workflow_id: p.workflow_id ?? null,
+          user_message: p.initial_message,
+          user_memory: memory,
+          model_override: p.model ?? null,
+          turn_abort_ctrl: turnAbortCtrl,
+          ...(p.onEvent ? { onEvent: p.onEvent } : {}),
+          ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
+          ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
+        })
+      : { events: [], status: "active" as const };
+  } finally {
+    if (ownsAbortRegistration) {
+      unregisterConversationAbort(p.tenant_id, row.id, turnAbortCtrl);
+    }
+  }
 
   // Re-load so status reflects any loop side-effects.
   const updated = await getConversation(p.tenant_id, row.id, exec);

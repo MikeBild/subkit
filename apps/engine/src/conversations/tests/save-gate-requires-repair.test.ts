@@ -8,6 +8,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   withLatestPreview,
   withWorkflowExecution,
@@ -19,7 +20,7 @@ import { saveWorkflowDraftTool } from "../tools/save-workflow-draft.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: ConversationTestCtx;
 

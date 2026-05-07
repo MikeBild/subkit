@@ -58,6 +58,7 @@ describe("conversations/elicitation", () => {
 
     const responded = await respondElicitation(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: outcome.conversation.id,
         elicitation_id: elicitationId,
@@ -138,6 +139,7 @@ describe("conversations/elicitation", () => {
     // First response — should succeed and move the row to resolved.
     await respondElicitation(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: outcome.conversation.id,
         elicitation_id: elicitationId,
@@ -153,6 +155,7 @@ describe("conversations/elicitation", () => {
     await expect(
       respondElicitation(
         {
+          turn_abort_ctrl: new AbortController(),
           tenant_id: ctx.tenant_id,
           conversation_id: outcome.conversation.id,
           elicitation_id: elicitationId,
@@ -184,6 +187,7 @@ describe("conversations/elicitation", () => {
     await expect(
       appendUserMessage(
         {
+          turn_abort_ctrl: new AbortController(),
           tenant_id: ctx.tenant_id,
           conversation_id: outcome.conversation.id,
           actor_id: ctx.user_id,

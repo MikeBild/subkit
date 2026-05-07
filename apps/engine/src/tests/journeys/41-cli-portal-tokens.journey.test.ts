@@ -14,7 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { portalTokensCommand } from "../../../../sk/src/commands/portal-tokens.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -215,11 +215,11 @@ beforeAll(async () => {
   expect(wfRes.status).toBe(201);
   const wf = (await wfRes.json()) as { id: string };
   workflowId = wf.id;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 41: sk portal-tokens CLI", () => {
   test("AC1: portal-tokens list --json returns an array (may be empty)", async () => {

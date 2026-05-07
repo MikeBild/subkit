@@ -27,6 +27,7 @@ import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.t
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { buildDefaultRegistry, createApp } from "../../http/server.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { logger } from "../../logging/logger.ts";
 import { createBoss, disposeBoss, startBoss, stopBoss } from "../../queue/boss.ts";
 import { registerAllHandlers } from "../../queue/handlers/index.ts";
 import {
@@ -46,6 +47,12 @@ import {
   withTestEnv,
 } from "../../test-helpers/determinism/index.ts";
 import { __resetAll as resetCircuitBreakers } from "../../webhooks/outbound/circuit-breaker.ts";
+
+/** Per-hook timeout for every journey `beforeAll` / `afterAll`. Set
+ *  high enough that a slow pg-boss shutdown or test-db drop names
+ *  itself in the structured `journey.teardown.step` log line below
+ *  rather than surfacing as a generic Bun hook timeout. */
+export const JOURNEY_HOOK_TIMEOUT = 60_000;
 
 export interface JourneyCtx {
   tenantId: string;
@@ -237,21 +244,36 @@ export async function createJourneyCtx(
       cleanup: async () => {
         // Run the registered teardown stack in reverse order. Each
         // step swallows errors so one failing step can't block the
-        // rest of cleanup. Per-step timing is logged when
-        // SUBKIT_JOURNEY_TEARDOWN_DIAG=1, so a CI flake names the
-        // slow step instead of just hitting the hook timeout.
-        const diag = process.env.SUBKIT_JOURNEY_TEARDOWN_DIAG === "1";
+        // rest of cleanup. Per-step duration is emitted on every run
+        // (not just under SUBKIT_JOURNEY_TEARDOWN_DIAG) — that way a
+        // CI flake names the slow step in the existing log stream
+        // instead of requiring a re-run with the env var set.
         for (const step of failSafe.reverse()) {
-          const t = diag ? Date.now() : 0;
+          // allow-wall-clock: duration delta for observability — not a
+          // timestamp consumed by the SUT. The tests/journey logger
+          // line below records elapsed teardown time so a CI flake
+          // names the slow step; both reads are local to this for-loop.
+          const t = Date.now();
+          let error: unknown;
           try {
             await step.fn();
-          } catch {
-            /* ignore */
+          } catch (err) {
+            error = err;
           }
-          if (diag) {
-            const dur = Date.now() - t;
-            console.warn(`[journey-teardown] ${label} ${step.name} ${dur}ms`);
-          }
+          const duration_ms = Date.now() - t; // allow-wall-clock: see comment above
+          logger.info({
+            module: "tests.journey",
+            action: "teardown.step",
+            msg: "journey teardown step finished",
+            journey: label,
+            step: step.name,
+            duration_ms,
+            ...(error instanceof Error
+              ? { error: error.message }
+              : error
+                ? { error: String(error) }
+                : {}),
+          });
         }
       },
     };

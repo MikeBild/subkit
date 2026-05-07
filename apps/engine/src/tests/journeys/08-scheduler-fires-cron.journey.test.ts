@@ -14,7 +14,7 @@ import { eq } from "drizzle-orm";
 import { executions, workflowsSchedules } from "../../db/schema/index.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
-import { createJourneyCtx, type JourneyCtx, seedWorkflow } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, seedWorkflow } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let workflowId = "";
@@ -40,12 +40,12 @@ beforeAll(async () => {
 
   reconciler = new SchedulerReconciler({ boss: ctx.boss, db: ctx.db, intervalMs: 5_000 });
   await reconciler.start();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await reconciler.stop();
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: scheduler fires cron", () => {
   test("AC1+AC2: every:1 creates an execution within 5s tagged scheduler", async () => {

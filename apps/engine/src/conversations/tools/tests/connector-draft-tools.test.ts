@@ -25,7 +25,7 @@ beforeAll(async () => {
         return Response.json({ ok: true, service: "local-probe", path: url.pathname });
       }
       if (url.pathname === "/slow") {
-        await new Promise((resolve) => setTimeout(resolve, 250)); // allow-wall-clock: legacy; review before changing
+        await new Promise((resolve) => setTimeout(resolve, 250)); // allow-wall-clock: simulates 250ms upstream RTT for connector-probe timeout assertions
         return Response.json({ ok: true, delayed: true });
       }
       return new Response("not found", { status: 404 });

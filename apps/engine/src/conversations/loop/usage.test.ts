@@ -119,4 +119,19 @@ describe("isAbortError", () => {
     expect(isAbortError(new DOMException("oops", "InvalidStateError"))).toBe(false);
     expect(isAbortError("some other message")).toBe(false);
   });
+
+  // #147 / run 25498312277 — pin the underscore-word-boundary blind
+  // spot. AI SDK rethrows the AbortController's reason verbatim, and
+  // the canonical reason `CONVERSATION_CANCELLED_REASON =
+  // "conversation_cancelled"` has an `_` before `cancelled`. Because
+  // `_` is a word character in JS regex, the `\b` boundary never
+  // triggers — `isAbortError` returns false here. The loop's
+  // dispatch-error catch in `apps/engine/src/conversations/loop.ts`
+  // falls back to a `signal.reason ===` check; this test pins the
+  // blind spot so future readers know the loop's two-way detector
+  // is load-bearing.
+  test("does NOT match the underscore-prefixed conversation_cancelled reason", () => {
+    expect(isAbortError("conversation_cancelled")).toBe(false);
+    expect(isAbortError(new Error("conversation_cancelled"))).toBe(false);
+  });
 });

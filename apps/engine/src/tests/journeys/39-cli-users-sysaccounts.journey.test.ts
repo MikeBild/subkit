@@ -19,7 +19,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { systemAccountsCommand } from "../../../../sk/src/commands/system-accounts.ts";
 import { usersCommand } from "../../../../sk/src/commands/users.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -166,11 +166,11 @@ async function runExpectError(
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("cli-users-sysaccounts");
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 39: sk users CLI", () => {
   test("AC1: users list --json returns >= 1 item; items have id and email", async () => {

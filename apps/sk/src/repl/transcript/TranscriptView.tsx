@@ -37,7 +37,7 @@ export function TranscriptView({
   width,
   stickyBottom = true,
 }: TranscriptViewProps): React.ReactElement {
-  const tokens = useTheme();
+  const _tokens = useTheme();
   const getKey = useMemo(
     () =>
       (i: TranscriptItem): string =>

@@ -7,9 +7,10 @@ import { eq } from "drizzle-orm";
 import { tenants } from "../../db/schema/identity.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { detectChainedWorkflowPatterns } from "../detectors/chained-workflow-pattern.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: TestDb;
 let tenant_id: string;

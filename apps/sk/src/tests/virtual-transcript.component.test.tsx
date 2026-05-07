@@ -116,7 +116,7 @@ describe("<VirtualTranscript>", () => {
       { id: "a", text: "alpha", height: 1 },
       { id: "b", text: "beta", height: 1 },
     ];
-    const counted = (m: Msg, w: number): number => {
+    const counted = (m: Msg, _w: number): number => {
       estimateCalls++;
       return estimateHeight(m);
     };
