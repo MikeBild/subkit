@@ -83,7 +83,6 @@ import {
   MentionPicker,
 } from "./repl/mention-picker.tsx";
 import { MessageContent } from "./repl/message-content.tsx";
-import { type NoticeItem, NoticeStack, type NoticeTone } from "./repl/notices.tsx";
 import { OnboardingWizard } from "./repl/onboarding-wizard.tsx";
 import {
   createPasteStore,
@@ -95,9 +94,17 @@ import {
 import { PendingAttachments } from "./repl/pending-attachments.tsx";
 import { detectProseOptions } from "./repl/prose-options-detector.ts";
 import { createQueue } from "./repl/queue.ts";
-import type { PaneSpec } from "./repl/slash-handler.ts";
+import type { PaneSpec } from "./repl/slash/handler.ts";
+import { SlashSuggest } from "./repl/slash/SlashSuggest.tsx";
 import { Spinner } from "./repl/spinner.tsx";
 import { StarterActions, starterActionsForPersona } from "./repl/starter-actions.tsx";
+import {
+  buildStatusLine,
+  type PermissionMode,
+  resolveRefreshMs,
+  type StatusLineConfig,
+  type StatusLineInput,
+} from "./repl/status-line/render.ts";
 import {
   resolveTaskActionSuggestion,
   starterTaskActionsForPersona,
@@ -105,18 +112,15 @@ import {
   taskActionsForContext,
 } from "./repl/task-actions.ts";
 import { TaskLauncher } from "./repl/task-launcher.tsx";
-import { type PagerEntry, TranscriptPager } from "./repl/transcript-pager.tsx";
 import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { classifyVersionSkew, VersionMismatchBanner } from "./repl/version-mismatch-banner.tsx";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
+import { bodyOf, ErrorPanel, errorToPanel } from "./shell/ErrorPanel.tsx";
+import { type NoticeItem, NoticeStack, type NoticeTone } from "./shell/NoticeStack.tsx";
+import { ResizeBoundary } from "./shell/ResizeBoundary.tsx";
+import { type ToastInput, ToastQueue, useToast } from "./shell/ToastQueue.tsx";
+import { type PagerEntry, TranscriptPager } from "./shell/TranscriptPager.tsx";
 import { findSlashCommand, type PersonaProbe, renderHelp, searchSlashCommands } from "./slash.ts";
-import {
-  buildStatusLine,
-  type PermissionMode,
-  resolveRefreshMs,
-  type StatusLineConfig,
-  type StatusLineInput,
-} from "./status-line.ts";
 
 export interface InkAppProps {
   persona: {
@@ -1432,11 +1436,48 @@ export const InkApp: React.FC<InkAppProps> = ({
     [pushNotice],
   );
   void _showWarning;
+  const toast = useToast();
   const showError = useCallback(
     (message: string) => {
       pushNotice("error", message, true);
     },
     [pushNotice],
+  );
+  /**
+   * Structured-error path: pushes the humanized headline through the
+   * legacy notice strip AND surfaces the new ErrorPanel via the
+   * ToastQueue. Both render — the toast carries the rich envelope
+   * (status, code, hint, retry_after countdown) the legacy strip can't.
+   */
+  const showStructuredError = useCallback(
+    (err: unknown, slashName?: string) => {
+      const headline = humanizeRequestError(err);
+      pushNotice("error", slashName ? `/${slashName}: ${headline}` : headline, true);
+      try {
+        const panel = errorToPanel(err);
+        const titleByKind: Record<string, string> = {
+          "rate-limit": "rate limit",
+          validation: "validation error",
+          network: "network error",
+          engine: "engine error",
+          auth: "auth error",
+          generic: "error",
+        };
+        const t: ToastInput = {
+          id: `err-${slashName ?? "engine"}-${Date.now().toString(36)}`,
+          level: panel.kind === "rate-limit" || panel.kind === "network" ? "warn" : "error",
+          title: titleByKind[panel.kind] ?? "error",
+          // bodyOf() narrows the discriminated union once and returns
+          // a string — no double `as`-cast leaks across the boundary.
+          body: bodyOf(panel) ?? headline,
+          ttlMs: 8000,
+        };
+        toast.push(t);
+      } catch {
+        // Toast is best-effort; legacy notice always fires above.
+      }
+    },
+    [pushNotice, toast],
   );
 
   useEffect(() => {
@@ -1827,7 +1868,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         outcome?.conversationId ?? session.conversationId,
       );
     } catch (err) {
-      showError(humanizeRequestError(err));
+      showStructuredError(err);
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -2074,7 +2115,7 @@ export const InkApp: React.FC<InkAppProps> = ({
               },
               {},
             );
-            showError(`/${cmd.name}: ${humanizeRequestError(err)}`);
+            showStructuredError(err, cmd.name);
           }
         }
         return;
@@ -2227,7 +2268,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         });
         await applyEventStream({ ...optimisticSession, conversationId }, events, conversationId);
       } catch (err) {
-        showError(humanizeRequestError(err));
+        showStructuredError(err);
       } finally {
         busyRef.current = false;
         setBusy(false);
@@ -3622,13 +3663,22 @@ export const InkApp: React.FC<InkAppProps> = ({
         </Box>
       ) : null}
 
-      {/* Fuzzy slash-command suggestions (hidden while a pane is open) */}
+      {/* Fuzzy slash-command suggestions (hidden while a pane is open).
+          The legacy SuggestionList drives ranked picks once the user
+          starts typing; the new SlashSuggest adds the discovery
+          welcome hint when the buffer is empty so first-time users
+          stop guessing at /. */}
       {pane === null && !launcherOpen && !mentionSpec ? (
-        <SuggestionList
-          query={input.value}
-          probe={persona.probe}
-          selectedIndex={slashSelectedIndex}
-        />
+        <>
+          {input.value.length === 0 ? (
+            <SlashSuggest buffer="" cursor={0} persona={persona.probe} showWelcomeHint={true} />
+          ) : null}
+          <SuggestionList
+            query={input.value}
+            probe={persona.probe}
+            selectedIndex={slashSelectedIndex}
+          />
+        </>
       ) : null}
 
       {/* Double-Ctrl-C exit flow (always-on input — even when a pane captures keys) */}
@@ -3643,7 +3693,11 @@ export const InkApp: React.FC<InkAppProps> = ({
 
   return (
     <ThemeProvider>
-      <AlternateScreen enabled={altScreen}>{content}</AlternateScreen>
+      <ResizeBoundary>
+        <ToastQueue>
+          <AlternateScreen enabled={altScreen}>{content}</AlternateScreen>
+        </ToastQueue>
+      </ResizeBoundary>
     </ThemeProvider>
   );
 };

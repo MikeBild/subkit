@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { initialSessionState } from "@cli-core/index.ts";
 import { defaultConfig, loadConfig, resolveProfile, saveConfig, saveProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
-import { handleSlash } from "../repl/slash-handler.ts";
+import { handleSlash } from "../repl/slash/handler.ts";
 
 let dir: string;
 let path: string;

@@ -9,6 +9,13 @@ export interface SettingsAppOptions {
   client: EngineClient;
   tenant?: string;
   initialTab?: string;
+  // R11-W5 review fix: dropped the `profileName` prop. It was
+  // documented as a no-op pending a `SettingsModal` refactor that
+  // would expose `scrollTop` / `expandedKeys` / `partialFieldEdits`
+  // on unmount — but a typed-but-ignored prop is a typed lie.
+  // Re-add when the modal-state threading lands; the
+  // draft-store module + tests at `lib/draft-store.ts` are kept
+  // ready for it.
 }
 
 interface State {
@@ -32,6 +39,12 @@ const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => voi
     pendingRestartKeys: [],
     overrideKeys: [],
   });
+  // R5-W1 + R11-W5: the draft-store integration was a no-op (the
+  // modal didn't expose state on unmount). The `profileName` prop
+  // was dropped (R11-W5). When `SettingsModal` is refactored to
+  // expose `initialDraft` / `onClose(snapshot)`, re-add the prop
+  // and wire the load/save here keyed on the active profile +
+  // tenant. The `lib/draft-store.ts` module + its tests stay ready.
 
   useEffect(() => {
     let cancelled = false;

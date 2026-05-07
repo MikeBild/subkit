@@ -7,6 +7,7 @@ export {
   ConnectorOperationError,
   isConnectorOperationError,
 } from "./connector-operation-error.ts";
+export { type JsonlTrimOptions, trimJsonlFile } from "./jsonl-ring.ts";
 export type { SecretKind, SecretPattern } from "./redaction.ts";
 export {
   redactWithMaxDepth,
@@ -15,6 +16,8 @@ export {
   scrubSecrets,
   scrubString,
 } from "./redaction.ts";
+export type { UxGatingPermission } from "./ux-gating.ts";
+export { UX_GATING_PERMISSIONS } from "./ux-gating.ts";
 export type {
   RoundtripResult,
   ValidationIssue,

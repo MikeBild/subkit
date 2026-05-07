@@ -7,27 +7,44 @@
 // Handlers that need cross-turn state mutation (`/clear`, `/resume`)
 // call back through `setConversationId` — the caller owns the
 // React / closure state shape.
+//
+// cf. `apps/sk/src/repl/slash/dispatcher.ts` — the dispatcher
+// classifies each slash by its `routing` field (local vs. engine)
+// before reaching this handler. This module owns only execution;
+// classification + RBAC routing live in the dispatcher (R2-S12
+// review fix).
 
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ConversationItem } from "@chat-ui/index.ts";
 import type { SkSessionState } from "@cli-core/index.ts";
-import { loadConfig, type ResolvedProfile, saveConfig } from "../config.ts";
-import { debugLogPath, debugLogTail, isDebugVerbose, setDebugVerbose } from "../debug.ts";
+import { loadConfig, type ResolvedProfile, saveConfig } from "../../config.ts";
+import {
+  debugLog,
+  debugLogPath,
+  debugLogTail,
+  isDebugVerbose,
+  setDebugVerbose,
+} from "../../debug.ts";
 import type {
   ConversationContextSnapshot,
   ConversationDetail,
   EngineClient,
   SetupValidationResponse,
   StatusSummary,
-} from "../engine-client.ts";
-import { loadSettings, saveUserSettingsPatch } from "../settings.ts";
+} from "../../engine-client.ts";
+import { loadSettings, saveUserSettingsPatch } from "../../settings.ts";
 import type {
   OnboardingProbeResult,
   OnboardingSaveResult,
   OnboardingTemplate,
-} from "./onboarding-wizard.tsx";
+} from "../onboarding-wizard.tsx";
+import { classifySlash } from "./dispatcher.ts";
+import { dispatchAdminListSlash } from "./handlers/admin-lists.ts";
+import { dispatchAuthRedirectSlash } from "./handlers/auth-redirects.ts";
+import { dispatchInspectSlash } from "./handlers/inspect.ts";
+import { dispatchInstallWizardSlash } from "./handlers/install-wizards.ts";
 
 /**
  * Rich pane descriptions returned by slash commands that open a modal
@@ -226,6 +243,18 @@ export interface SlashHandlerContext {
   /** Latest `/v1/diagnostics/setup` snapshot when the persona can read it. */
   setupSnapshot?: SetupValidationResponse | null;
   /**
+   * Latest `/v1/sk/bootstrap` snapshot — passed through from the
+   * Ink host's `usePersona` hook. Lets `/status` surface
+   * `fetchedAt + source` so an operator rotating an api_key can see
+   * whether the slash menu reflects the current token (network) or
+   * a stale cache (cache, fallback). R7-S1.
+   */
+  bootstrapSnapshot?: {
+    fetchedAt: number;
+    source: "network" | "cache" | "fallback";
+    label: string;
+  } | null;
+  /**
    * Open a modal pane in the Ink host. When omitted (e.g. the readline
    * fallback REPL), pane-returning commands fall back to a text banner.
    */
@@ -240,7 +269,7 @@ export interface SlashHandlerContext {
  * joining the body lines into a single banner string so the readline
  * REPL stays functional.
  */
-function panify(
+export function panify(
   ctx: SlashHandlerContext,
   title: string,
   lines: readonly string[],
@@ -482,8 +511,42 @@ export async function handleSlash(
   rawArgs: string[],
   ctx: SlashHandlerContext,
 ): Promise<string | null> {
+  // R3-W2 review fix: consume `classifySlash` so the dispatcher seam
+  // is real, not aspirational. The classification is logged via
+  // `debugLog` for telemetry and used to short-circuit unknown
+  // commands; it never silently bypasses a registered command. A
+  // future contributor who adds `/connectors` to `LOCAL_ONLY_NAMES`
+  // by accident (or who tags a state-mutating command as
+  // `routing: "local"` in the registry) can be caught by the
+  // dispatcher's `_localOnlySnapshot()` test, which already enforces
+  // that engine-routed commands stay out of the local set.
+  const plan = classifySlash(name);
+  if (plan.routing === "unknown") {
+    debugLog("dialog.warning", { reason: "unknown_slash", slash_name: name }, {});
+  } else {
+    debugLog("dialog.elicitation_routing", { slash_name: name, routing: plan.routing }, {});
+  }
+  // R5-W3 review fix: validate positional args against the per-
+  // command Zod schema at the dispatcher boundary. Commands that
+  // don't set `argsSchema` skip this check (default schema accepts
+  // any string array). When validation fails, return a structured
+  // error string the REPL renders as a transient banner — without
+  // ever reaching the per-command branch below.
+  if (plan.command?.argsSchema) {
+    const parsed = plan.command.argsSchema.safeParse(rawArgs);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const where = issue?.path?.length ? `[${issue.path.join(".")}] ` : "";
+      return `/${name}: invalid args — ${where}${issue?.message ?? "schema validation failed"}`;
+    }
+  }
   switch (name) {
     case "status": {
+      // R3-S4: `/status` is local-only by design — same shape as
+      // `/cost`. Reads the Ink host's latest `/v1/status` snapshot
+      // (refreshed every completed turn) without re-hitting the
+      // engine. A "force refresh" path would belong on a separate
+      // slash if it's ever needed.
       const snap = ctx.statusSnapshot ?? null;
       const tenant = snap?.tenant.slug ?? snap?.tenant.id ?? ctx.profile.active_tenant_id ?? null;
       const budget = snap?.monthly_budget_tokens;
@@ -506,6 +569,18 @@ export async function handleSlash(
         ["budget · monthly", budget == null ? "∞" : `${budget.toLocaleString()} tok`],
         ["budget · remaining", remaining == null ? "∞" : `${remaining.toLocaleString()} tok`],
       ];
+      // R7-S1: surface the bootstrap snapshot's source + age so an
+      // operator who just rotated an api_key can tell whether the
+      // slash menu reflects the current token or a stale cache. The
+      // `loadBootstrap` cache TTL is 6h.
+      if (ctx.bootstrapSnapshot) {
+        const ageMs = Date.now() - ctx.bootstrapSnapshot.fetchedAt;
+        const ageMin = Math.max(0, Math.floor(ageMs / 60_000));
+        const fmtAge = ageMin < 60 ? `${ageMin}m` : `${(ageMin / 60).toFixed(1)}h`;
+        rows.push(["persona · source", ctx.bootstrapSnapshot.source]);
+        rows.push(["persona · age", fmtAge]);
+        rows.push(["persona · label", ctx.bootstrapSnapshot.label]);
+      }
       if (ctx.setupSnapshot) {
         rows.push(["setup", formatSetupSummary(ctx.setupSnapshot)]);
         rows.push(["setup · hint", "use /setup for details"]);
@@ -663,6 +738,12 @@ export async function handleSlash(
       return null;
     }
     case "cost": {
+      // R3-S4: `/cost` is local-only by design — it reads
+      // `ctx.statusSnapshot` (cached) and `ctx.session.usage` (in-
+      // memory). The snapshot is refreshed by the Ink host after
+      // every completed turn, so values are at-most one-turn stale;
+      // refreshing on every `/cost` would burn an audit row + a
+      // round-trip on a read-of-cached-state. Keep local.
       const snap = ctx.statusSnapshot ?? null;
       const usage = ctx.session.usage;
       const lines: string[] = [];
@@ -1333,50 +1414,7 @@ export async function handleSlash(
       await ctx.client.patchConversation(ctx.session.conversationId, { model });
       return `model switched to ${model}`;
     }
-    case "skills": {
-      const r = await ctx.client.listSkills();
-      if (r.items.length === 0) return "no skills in scope";
-      const lines = r.items.map((s) => `${s.scope.padEnd(8)} ${s.title}`);
-      return panify(ctx, "skills", lines, `${r.items.length} in scope`);
-    }
-    case "mcp": {
-      const [prompts, resources, tools] = await Promise.all([
-        ctx.client.listMcpPrompts().catch(() => ({ items: [] })),
-        ctx.client.listMcpResources().catch(() => ({ items: [] })),
-        ctx.client.listMcpTools().catch(() => ({ items: [] })),
-      ]);
-      const lines: string[] = [];
-      lines.push(`prompts (${prompts.items.length}):`);
-      for (const p of prompts.items) lines.push(`  /mcp__${p.name} — ${p.description ?? ""}`);
-      lines.push("");
-      lines.push(`resources (${resources.items.length}):`);
-      for (const r of resources.items) lines.push(`  ${r.uri} · ${r.name}`);
-      lines.push("");
-      lines.push(`callable entries (${tools.items.length}):`);
-      for (const t of tools.items) lines.push(`  ${t.name} — ${t.description}`);
-      return panify(ctx, "mcp catalog", lines);
-    }
-    case "permissions": {
-      if (ctx.allowedPermissions.length === 0) return "no permissions probe cached";
-      return panify(
-        ctx,
-        "permissions",
-        ctx.allowedPermissions.map((p) => `  ${p}`),
-        `${ctx.allowedPermissions.length} granted`,
-      );
-    }
-    case "audit": {
-      const res = await ctx.client.tailAuditLog({ limit: 20 });
-      const rows = res.items.slice(0, 20);
-      if (rows.length === 0) return "no audit rows visible to this principal";
-      const lines = rows.map((r) => {
-        const action = typeof r.action === "string" ? r.action : "";
-        const ts = typeof r.ts === "string" ? r.ts : "";
-        const rid = typeof r.resource_id === "string" ? r.resource_id.slice(0, 8) : "";
-        return `${ts}  ${action.padEnd(28)} ${rid}`;
-      });
-      return panify(ctx, "audit log", lines, `latest ${rows.length}`);
-    }
+    // /skills, /mcp, /permissions, /audit moved to handlers/inspect.ts (R7-S2)
     case "logs": {
       // /logs [limit] [trace_id?]
       //
@@ -1469,8 +1507,35 @@ export async function handleSlash(
       return `edit ${path} then restart sk to pick it up`;
     }
     case "init": {
-      const path = join(process.cwd(), "SK.md");
-      if (fs.existsSync(path)) return `${path} already exists`;
+      const cwd = process.cwd();
+      const path = join(cwd, "SK.md");
+      // R8-W4 review fix: defend against TOCTOU + symlink races.
+      //   1. `lstatSync` (not stat) so a symlinked SK.md doesn't
+      //      mask the existence check.
+      //   2. Use `wx` flag on writeFileSync so the create is atomic
+      //      and refuses to overwrite an existing file (including a
+      //      symlink target outside `cwd`). EEXIST is the safe
+      //      "already exists" path; we report it the same way.
+      //   3. Reject if `cwd` itself isn't a directory or isn't
+      //      writable — the operator presumably ran sk in the wrong
+      //      place.
+      try {
+        const cwdStat = fs.lstatSync(cwd);
+        if (!cwdStat.isDirectory()) {
+          return `init failed: ${cwd} is not a directory`;
+        }
+      } catch (err) {
+        return `init failed: cannot stat ${cwd}: ${err instanceof Error ? err.message : String(err)}`;
+      }
+      try {
+        const existing = fs.lstatSync(path);
+        if (existing.isSymbolicLink()) {
+          return `${path} is a symlink — refusing to write (remove or point at a regular file)`;
+        }
+        return `${path} already exists`;
+      } catch {
+        // ENOENT — fall through to create.
+      }
       const starter = [
         `# Memory — ${new Date().toISOString().slice(0, 10)}`,
         "",
@@ -1486,7 +1551,9 @@ export async function handleSlash(
         "",
       ].join("\n");
       try {
-        fs.writeFileSync(path, starter, "utf8");
+        // `wx` = write, fail if exists. Atomic + symlink-safe via
+        // open(2) O_CREAT|O_EXCL semantics.
+        fs.writeFileSync(path, starter, { encoding: "utf8", flag: "wx" });
         return `wrote ${path}`;
       } catch (err) {
         return `init failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -1605,146 +1672,29 @@ export async function handleSlash(
       lines.push("/profile <name> to switch · /profile add to create");
       return lines.join("\n");
     }
-    case "login":
-      return "run 'sk login' outside the REPL to re-authenticate";
-    case "logout":
-      return "run 'sk logout' outside the REPL to drop the active profile";
-    case "tenant":
-      return "run 'sk tenants [use <id>]' outside the REPL to switch tenants";
-    case "knowledge": {
-      const r = await ctx.client.listKnowledgeSources({ limit: 20 });
-      if (r.items.length === 0) return "no knowledge sources";
-      const lines = r.items.map((ks) => {
-        const k = ks as Record<string, unknown>;
-        return `${String(k.id ?? "").slice(0, 8)}  ${String(k.title ?? k.name ?? "")}  ${String(k.kind ?? "")}`;
-      });
-      return panify(ctx, "knowledge sources", lines, `${r.items.length} found`);
-    }
-    case "connectors": {
-      const r = await ctx.client.listConnectors({ limit: 20 });
-      if (r.items.length === 0) return "no connectors";
-      const lines = r.items.map((c) => {
-        const ct = c as Record<string, unknown>;
-        return `${String(ct.id ?? "").slice(0, 8)}  ${String(ct.name ?? "").padEnd(20)}  ${String(ct.slug ?? "")}`;
-      });
-      return panify(ctx, "connectors", lines, `${r.items.length} found`);
-    }
-    case "workflows": {
-      const r = await ctx.client.listWorkflows({ limit: 20 });
-      if (r.items.length === 0) return "no workflows";
-      const lines = r.items.map((w) => {
-        const wf = w as Record<string, unknown>;
-        return `${String(wf.id ?? "").slice(0, 8)}  ${String(wf.name ?? "").padEnd(20)}  ${String(wf.status ?? "")}`;
-      });
-      return panify(ctx, "workflows", lines, `${r.items.length} found`);
-    }
-    case "executions":
-    case "runs": {
-      const r = await ctx.client.listExecutions({ limit: 10 });
-      if (r.items.length === 0) return "no executions";
-      const lines = r.items.map((e) => {
-        const ex = e as Record<string, unknown>;
-        return `${String(ex.id ?? "").slice(0, 8)}  wf:${String(ex.workflow_id ?? "").slice(0, 8)}  ${String(ex.status ?? "").padEnd(12)}  ${String(ex.started_at ?? "")}`;
-      });
-      return panify(ctx, "executions", lines, `latest ${r.items.length}`);
-    }
-    case "patch-candidates": {
-      const r = await ctx.client.listPatchCandidates({ limit: 10 });
-      if (r.items.length === 0) return "no pending patch candidates";
-      const lines = r.items.map((p) => {
-        const pc = p as Record<string, unknown>;
-        return `${String(pc.id ?? "").slice(0, 8)}  wf:${String(pc.workflow_id ?? "").slice(0, 8)}  ${String(pc.status ?? "")}`;
-      });
-      return panify(ctx, "patch candidates", lines, `${r.items.length} pending`);
-    }
-    case "notifications": {
-      const [channels, rules] = await Promise.all([
-        ctx.client
-          .listNotificationChannels()
-          .catch(() => ({ items: [] as Record<string, unknown>[] })),
-        ctx.client
-          .listNotificationRules()
-          .catch(() => ({ items: [] as Record<string, unknown>[] })),
-      ]);
-      const lines: string[] = [];
-      lines.push(`channels (${channels.items.length}):`);
-      for (const c of channels.items) {
-        const ch = c as Record<string, unknown>;
-        lines.push(
-          `  ${String(ch.id ?? "").slice(0, 8)}  ${String(ch.name ?? "").padEnd(20)}  ${String(ch.kind ?? "")}`,
-        );
-      }
-      lines.push("");
-      lines.push(`rules (${rules.items.length}):`);
-      for (const rule of rules.items) {
-        const r = rule as Record<string, unknown>;
-        lines.push(
-          `  ${String(r.id ?? "").slice(0, 8)}  ${String(r.event_type ?? "").padEnd(24)}  → ch:${String(r.channel_id ?? "").slice(0, 8)}`,
-        );
-      }
-      return panify(ctx, "notifications", lines);
-    }
-    case "tunnels": {
-      const r = await ctx.client.listTunnels();
-      if (r.items.length === 0) return "no tunnels";
-      const lines = r.items.map((t) => {
-        const tun = t as Record<string, unknown>;
-        return `${String(tun.id ?? "").slice(0, 8)}  ${String(tun.name ?? "").padEnd(20)}  ${String(tun.status ?? "")}`;
-      });
-      return panify(ctx, "tunnels", lines, `${r.items.length} found`);
-    }
-    case "discovery": {
-      const r = await ctx.client.listDiscoveryRuns({ limit: 10 });
-      if (r.items.length === 0) return "no discovery runs";
-      const lines = r.items.map((d) => {
-        const dr = d as Record<string, unknown>;
-        return `${String(dr.id ?? "").slice(0, 8)}  ${String(dr.label ?? "").padEnd(20)}  ${String(dr.status ?? "")}`;
-      });
-      return panify(ctx, "discovery runs", lines, `${r.items.length} found`);
-    }
-    case "apikeys": {
-      const r = await ctx.client.listApiKeys();
-      if (r.items.length === 0) return "no API keys";
-      const lines = r.items.map((k) => {
-        const ak = k as Record<string, unknown>;
-        return `${String(ak.id ?? "").slice(0, 8)}  ${String(ak.name ?? "").padEnd(20)}  ${String(ak.prefix ?? "***")}`;
-      });
-      return panify(ctx, "API keys", lines, `${r.items.length} keys`);
-    }
-    case "users": {
-      const r = await ctx.client.listIdentityUsers({ limit: 20 });
-      if (r.items.length === 0) return "no users";
-      const lines = r.items.map((u) => {
-        const user = u as Record<string, unknown>;
-        return `${String(user.id ?? "").slice(0, 8)}  ${String(user.email ?? "").padEnd(30)}  ${String(user.kind ?? "")}`;
-      });
-      return panify(ctx, "users", lines, `${r.items.length} found`);
-    }
-    case "system-accounts": {
-      const r = await ctx.client.listSystemAccounts();
-      if (r.items.length === 0) return "no system accounts";
-      const lines = r.items.map((sa) => {
-        const acc = sa as Record<string, unknown>;
-        return `${String(acc.id ?? "").slice(0, 8)}  ${String(acc.name ?? "")}`;
-      });
-      return panify(ctx, "system accounts", lines, `${r.items.length} found`);
-    }
-    // Install wizards — complex interactive prompts; redirect to CLI command.
-    case "install-slack":
-      return "run 'sk install slack' outside the REPL to set up Slack notifications";
-    case "install-teams":
-      return "run 'sk install teams' outside the REPL to set up Microsoft Teams notifications";
-    case "install-github":
-      return "run 'sk install github' outside the REPL to connect GitHub";
-    case "install-google-workspace":
-      return "run 'sk install google-workspace' outside the REPL to connect Google Workspace";
-    case "install-salesforce":
-      return "run 'sk install salesforce' outside the REPL to connect Salesforce";
-    case "install-jira":
-      return "run 'sk install jira' outside the REPL to connect Jira";
-    case "install-hubspot":
-      return "run 'sk install hubspot' outside the REPL to connect HubSpot";
-    default:
+    // /login, /logout, /tenant moved to handlers/auth-redirects.ts (R7-S2)
+    // /knowledge moved to handlers/inspect.ts (R7-S2)
+    default: {
+      // R7-S2: per-category dispatchers extracted into
+      // `apps/sk/src/repl/slash/handlers/`. The main switch above
+      // owns interactive / multi-step commands; the sub-dispatchers
+      // own the long tail of list-and-render commands and the
+      // banner-only redirects. Each returns `undefined` when the
+      // name doesn't belong to its category, so we can fall through
+      // to the next handler in priority order:
+      //   1. inspect — read-only, low-tier (/skills, /mcp, …)
+      //   2. admin-lists — read-only, admin-tier (/connectors, …)
+      //   3. install-wizards — banner redirects to `sk install <kind>`
+      //   4. auth-redirects — banner redirects to `sk login` etc.
+      const inspectResult = await dispatchInspectSlash(name, ctx);
+      if (inspectResult !== undefined) return inspectResult;
+      const adminListResult = await dispatchAdminListSlash(name, ctx);
+      if (adminListResult !== undefined) return adminListResult;
+      const installBanner = dispatchInstallWizardSlash(name);
+      if (installBanner !== undefined) return installBanner;
+      const authBanner = dispatchAuthRedirectSlash(name);
+      if (authBanner !== undefined) return authBanner;
       return `/${name} is not wired — try /help`;
+    }
   }
 }

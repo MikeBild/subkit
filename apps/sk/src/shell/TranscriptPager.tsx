@@ -5,16 +5,19 @@
 // up/down; Esc or Ctrl+T closes.
 //
 // Implementation: a fixed-position overlay rendered above the normal
-// transcript when active. Uses Ink's Box/Text — no terminal mode
-// switch required (the alt-screen toggle is handled separately by
-// `alt-screen.tsx` for the inspect mode).
+// transcript when active. The visible window is delegated to
+// VirtualTranscript so a 10k-cell history doesn't blow the React
+// reconciler budget on every keystroke; the pager itself owns the
+// scroll cursor and slice math so the existing `g`/`G`/PgUp/PgDn
+// keys stay bound to the same semantics.
 
 import type { ToolCallState } from "@cli-core/index.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { memo, useState } from "react";
-import { DiffCard } from "./diff-cell.tsx";
-import { detectPlanSteps, PlanCard } from "./plan-cell.tsx";
+import { DiffCard } from "../repl/diff-cell.tsx";
+import { detectPlanSteps, PlanCard } from "../repl/plan-cell.tsx";
+import { VirtualTranscript } from "./VirtualTranscript.tsx";
 
 export interface PagerEntry {
   id: string;
@@ -65,9 +68,9 @@ const TranscriptPagerImpl: React.FC<TranscriptPagerProps> = ({
   );
 
   if (!open) return null;
-  // Apply scroll offset by slicing entries — coarse but adequate for a
-  // pager with ≤200 cells. A full virtual-scroll renderer is overkill.
-  const visible = entries.slice(scroll);
+  // Slice from the scroll cursor; VirtualTranscript handles the rest
+  // of the bounding for the visible window.
+  const sliced = entries.slice(Math.min(scroll, Math.max(0, entries.length - 1)));
 
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -81,9 +84,18 @@ const TranscriptPagerImpl: React.FC<TranscriptPagerProps> = ({
           {entries.length} entries · ↑↓ scroll · g/G top/bottom · esc / ctrl-t close
         </Text>
       </Box>
-      {visible.map((entry) => (
-        <PagerEntryRow key={entry.id} entry={entry} />
-      ))}
+      <VirtualTranscript<PagerEntry>
+        items={sliced as PagerEntry[]}
+        getKey={(e) => e.id}
+        // Pager rows vary in height; estimate 6 rows per entry on
+        // average (one header + a few body lines). Sticky-bottom
+        // disabled — the operator owns the scroll position.
+        estimateHeight={() => 6}
+        renderItem={(entry) => <PagerEntryRow entry={entry} />}
+        viewportHeight={Math.max(rows - 4, 8)}
+        width={80}
+        stickyBottom={false}
+      />
       <Box>
         <Text bold color="cyan">
           ──────────────────────────────────────────────────────────────

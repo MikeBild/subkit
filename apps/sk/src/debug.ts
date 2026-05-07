@@ -68,7 +68,37 @@ export type DebugRecordKind =
   | "sse.frame"
   | "sse.close"
   | "sse.transport_error"
-  | "approval.diff_fetch_failed";
+  | "approval.diff_fetch_failed"
+  // bootstrap.fetch_failed — emitted when /v1/sk/bootstrap rejects
+  // (404 = older engine, 401 = revoked api_key, 500 = engine bug,
+  // network = unreachable). The CLI falls through to the legacy
+  // tiered persona-probe regardless; this record keeps the failure
+  // diagnosable without a packet capture.
+  | "bootstrap.fetch_failed"
+  // bootstrap.cache_write_failed — emitted when persisting the
+  // bootstrap snapshot to `~/.sk/cache/bootstrap-*.json` fails
+  // (read-only volume, full disk, EPERM). The CLI keeps working
+  // in-memory; this record surfaces the silent failure so an
+  // operator on a CI runner can grep the debug log for it. R5-W6.
+  | "bootstrap.cache_write_failed"
+  // bootstrap.cache_read_rejected — emitted when the persisted
+  // snapshot fails Zod validation (corrupted file, schema-version
+  // mismatch, unknown extra field). R8-W1. Caller falls through
+  // to a fresh /v1/sk/bootstrap call.
+  | "bootstrap.cache_read_rejected"
+  // settings.schema_fallback — emitted when an engine-served schema
+  // descriptor declares an `enum` field with zero values, which is
+  // invalid in zod. The loader coerces to `z.string()` so the form
+  // renders, but this is a sign that the engine shipped a malformed
+  // descriptor (typically: a connector whose enum source returned
+  // an empty list). R2-S10 review fix.
+  | "settings.schema_fallback"
+  // session.append_failed — emitted when `appendEvent` fails to
+  // write a per-conversation JSONL event (read-only volume, full
+  // disk, EPERM). The REPL keeps running; the event is dropped.
+  // Pairs with `bootstrap.cache_write_failed` so silent disk
+  // failures stay grep-able. R7-S3.
+  | "session.append_failed";
 
 export interface DebugCorrelationFields {
   mode?: DebugMode;

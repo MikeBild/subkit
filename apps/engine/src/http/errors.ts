@@ -7,27 +7,114 @@
 export interface HttpErrorBody {
   code: string;
   message: string;
+  /** Operator-friendly remediation hint. Surfaced verbatim by the sk CLI. */
+  hint?: string;
+  /** Seconds the client should wait before retrying. Set on 429/503. */
+  retry_after?: number;
   details?: Record<string, unknown>;
+}
+
+export interface HttpErrorOptions {
+  hint?: string;
+  retry_after?: number;
+  details?: Record<string, unknown>;
+}
+
+/**
+ * Internal sentinel — passed verbatim through the legacy positional
+ * constructor to mark an arg as "this is the new envelope options
+ * shape, not a legacy details bag". Carrying the brand on the value
+ * itself avoids the shape-sniffing heuristic that previously read
+ * `hint` / `retry_after` keys off any details object that happened
+ * to contain them.
+ *
+ * The symbol now lives in `./_internal.ts` so the public `errors.ts`
+ * module no longer ships it through OpenAPI / IDE autocomplete.
+ * R5-S5.
+ */
+import { ENVELOPE_BRAND } from "./_internal.ts";
+
+interface BrandedEnvelopeOptions extends HttpErrorOptions {
+  [ENVELOPE_BRAND]: true;
 }
 
 export class HttpError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly hint: string | undefined;
+  readonly retry_after: number | undefined;
   readonly details: Record<string, unknown> | undefined;
 
-  constructor(status: number, code: string, message: string, details?: Record<string, unknown>) {
+  /**
+   * Preferred form for any throw site that needs to set `hint` /
+   * `retry_after` on the wire. Use this instead of the positional
+   * constructor — the positional path treats its 4th arg as a legacy
+   * `details` bag verbatim, which is what the 50+ existing throw
+   * sites depend on.
+   *
+   * Trust model (R5-S5 / R6-S4 / R11-S5): the brand symbol is
+   * `Symbol.for("sk.HttpErrorOptions")` (in
+   * `apps/engine/src/http/_internal.ts`), which lives in the global
+   * symbol registry. This is acceptable for in-process trust — the
+   * brand exists to prevent ACCIDENTAL shape-sniffing collisions
+   * when an existing `details` bag happens to contain a `hint` key,
+   * not as a security control against malicious in-process code.
+   * If the trust model ever changes, see the matching note in
+   * `_internal.ts`.
+   */
+  static withEnvelope(
+    status: number,
+    code: string,
+    message: string,
+    opts: HttpErrorOptions,
+  ): HttpError {
+    const branded: BrandedEnvelopeOptions = { ...opts, [ENVELOPE_BRAND]: true };
+    return new HttpError(status, code, message, branded as unknown as Record<string, unknown>);
+  }
+
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    detailsOrOpts?: Record<string, unknown> | HttpErrorOptions,
+  ) {
     super(message);
     this.status = status;
     this.code = code;
-    this.details = details;
+    // Dispatch by brand only — never by shape. The legacy positional
+    // form (4th arg = details bag) stays the default for every
+    // existing call site; the new envelope path is opt-in via
+    // `HttpError.withEnvelope(...)` which stamps the brand.
+    if (
+      detailsOrOpts &&
+      typeof detailsOrOpts === "object" &&
+      (detailsOrOpts as { [k: symbol]: unknown })[ENVELOPE_BRAND] === true
+    ) {
+      const opts = detailsOrOpts as BrandedEnvelopeOptions;
+      this.hint = opts.hint;
+      this.retry_after = opts.retry_after;
+      this.details = opts.details;
+    } else {
+      this.details = detailsOrOpts as Record<string, unknown> | undefined;
+      this.hint = undefined;
+      this.retry_after = undefined;
+    }
   }
 
   toBody(): HttpErrorBody {
     const body: HttpErrorBody = { code: this.code, message: this.message };
+    if (this.hint) body.hint = this.hint;
+    if (this.retry_after != null) body.retry_after = this.retry_after;
     if (this.details) body.details = this.details;
     return body;
   }
 }
+
+// R5-S5: the brand symbol lives in `./_internal.ts`. Middleware
+// imports it directly from there now; this module no longer
+// re-exports it. The `_ENVELOPE_BRAND_FOR_TESTS` re-export was
+// previously the only consumer outside this file — middleware
+// switched to the internal import, so the public surface is clean.
 
 export class UnauthorizedError extends HttpError {
   constructor(reason = "missing_or_invalid_credentials") {

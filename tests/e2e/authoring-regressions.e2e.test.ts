@@ -437,48 +437,51 @@ describe("authoring regressions", () => {
   // isolation block + the runLoop unit suite. Restore once the
   // race window is widened or the test uses a deterministic abort
   // signal instead of `setTimeout`.
-  test.skip("cancelling a slow preview abandons the turn without surfacing a 500", async () => {
-    const created = await createConversation({ title: "preview-cancel" });
-    const conversationId = created.conversation.id;
-    getMockProvider().setConversePlan(conversationId, [
-      {
-        tool: "build_workflow",
-        args: {
-          name: "preview-cancel",
-          slug: `preview-cancel-${TEST_NOW_MS}`,
-          steps: [
-            {
-              id: "fetch",
-              kind: "request",
-              method: "GET",
-              url: `${httpBaseUrl}/slow`,
-            },
-          ],
+  test.skipIf(process.env.SK_RUN_FLAKY_PREVIEW_CANCEL !== "1")(
+    "cancelling a slow preview abandons the turn without surfacing a 500",
+    async () => {
+      const created = await createConversation({ title: "preview-cancel" });
+      const conversationId = created.conversation.id;
+      getMockProvider().setConversePlan(conversationId, [
+        {
+          tool: "build_workflow",
+          args: {
+            name: "preview-cancel",
+            slug: `preview-cancel-${TEST_NOW_MS}`,
+            steps: [
+              {
+                id: "fetch",
+                kind: "request",
+                method: "GET",
+                url: `${httpBaseUrl}/slow`,
+              },
+            ],
+          },
         },
-      },
-      { tool: "dry_run_step", args: { step_id: "fetch", budget_ms: 10_000 } },
-    ]);
+        { tool: "dry_run_step", args: { step_id: "fetch", budget_ms: 10_000 } },
+      ]);
 
-    const turnPromise = fetch(`${env.baseUrl}/v1/conversations/${conversationId}/messages`, {
-      method: "POST",
-      headers: adminHeaders(),
-      body: JSON.stringify({ message: "preview the slow request now" }),
-    });
-    await new Promise((resolve) => setTimeout(resolve, 40)); // allow-wall-clock: legacy; review before changing
-    const cancel = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}/cancel`, {
-      method: "POST",
-      headers: adminHeaders(),
-    });
-    expect(cancel.status).toBe(200);
+      const turnPromise = fetch(`${env.baseUrl}/v1/conversations/${conversationId}/messages`, {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ message: "preview the slow request now" }),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 40)); // allow-wall-clock: legacy; review before changing
+      const cancel = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}/cancel`, {
+        method: "POST",
+        headers: adminHeaders(),
+      });
+      expect(cancel.status).toBe(200);
 
-    const turn = await turnPromise;
-    expect(turn.status).toBe(200);
-    const outcome = (await turn.json()) as { status: string };
-    expect(outcome.status).toBe("abandoned");
+      const turn = await turnPromise;
+      expect(turn.status).toBe(200);
+      const outcome = (await turn.json()) as { status: string };
+      expect(outcome.status).toBe("abandoned");
 
-    const detail = await getConversation(conversationId);
-    expect(detail.conversation.status).toBe("abandoned");
-  });
+      const detail = await getConversation(conversationId);
+      expect(detail.conversation.status).toBe("abandoned");
+    },
+  );
 
   test("tenant isolation blocks reading a foreign conversation id", async () => {
     const [foreignTenant] = await env.db

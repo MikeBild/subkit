@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import { initialSessionState } from "@cli-core/index.ts";
 import type { EngineClient, EngineErrorEntry } from "../engine-client.ts";
-import { handleSlash } from "../repl/slash-handler.ts";
+import { handleSlash } from "../repl/slash/handler.ts";
 
 interface CallSpy {
   query: { limit?: number; trace_id?: string; since?: string };

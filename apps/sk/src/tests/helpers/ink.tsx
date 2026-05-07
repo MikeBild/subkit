@@ -91,7 +91,7 @@ export interface RenderInkInstance {
   /** Wait for a predicate on the stripped frame to hold. */
   waitFor(
     pred: (frame: string) => boolean,
-    opts?: { tries?: number; label?: string },
+    opts?: { tries?: number; label?: string; sleepMs?: number },
   ): Promise<void>;
   /** Flush effects. */
   flush(): Promise<void>;
@@ -119,11 +119,21 @@ export function renderInk(ui: React.ReactElement): RenderInkInstance {
 
   const waitFor = async (
     pred: (frame: string) => boolean,
-    { tries = 100, label = "ink waitFor" }: { tries?: number; label?: string } = {},
+    {
+      tries = 100,
+      label = "ink waitFor",
+      sleepMs = 0,
+    }: { tries?: number; label?: string; sleepMs?: number } = {},
   ): Promise<void> => {
     for (let i = 0; i < tries; i++) {
       if (pred(text())) return;
       await flush();
+      if (sleepMs > 0) {
+        // allow-wall-clock: macrotask waits — callers opt in via
+        // `sleepMs` when the predicate depends on a setTimeout
+        // resolution (e.g. backoff schedules, debounced effects).
+        await new Promise<void>((resolve) => setTimeout(resolve, sleepMs));
+      }
     }
     throw new Error(`${label} timed out after ${tries} polls.\nlast frame:\n${text()}`);
   };
