@@ -269,7 +269,7 @@ declare const db: any;
 declare const id: string;
 
 export async function load() {
-  // tenant-filter:exempt — TODO(audit-2026-06): verify tenant scoping for this site
+  // tenant-filter:exempt — TODO: verify tenant scoping for this site
   return await db.select().from(conversations).where(eq(conversations.id, id));
 }
 `;
