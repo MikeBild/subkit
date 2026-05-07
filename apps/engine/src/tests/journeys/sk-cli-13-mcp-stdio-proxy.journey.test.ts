@@ -25,7 +25,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { EngineClient } from "../../../../sk/src/engine-client.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -180,11 +180,11 @@ interface ToolResponse {
 describe("journey: sk-cli mcp stdio proxy", () => {
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-13-mcp-stdio");
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1: ListTools returns all 5 sk.* tools", async () => {
     const { listTools } = await buildServer();

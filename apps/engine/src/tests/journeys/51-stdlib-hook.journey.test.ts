@@ -20,7 +20,7 @@ import { and, eq } from "drizzle-orm";
 import { requestHooks, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { STDLIB_VERSION } from "../../sandboxes/quickjs/stdlib/index.ts";
 import { scanStdlibDrift } from "../../self-healing/stdlib-drift-scan.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let mock: Server;
@@ -37,12 +37,12 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => mock.listen(0, "127.0.0.1", () => resolve()));
   const addr = mock.address() as AddressInfo;
   mockBase = `http://127.0.0.1:${addr.port}`;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await new Promise<void>((resolve) => mock.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: sk-stdlib before-request hook", () => {
   test("AC1: admin creates an sk-based deny-mutating hook", async () => {

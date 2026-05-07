@@ -19,7 +19,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { skills, workflows, workflowVersions } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 // The SDK `CompleteResult` type only knows about prompt/resource refs,
 // but the Subkit server accepts `ref/tool` as well. We drop to the
@@ -115,11 +115,11 @@ beforeAll(async () => {
     .returning();
   if (!skill) throw new Error("seed skill failed");
   skillId = skill.id;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 20: MCP completion/complete", () => {
   test("AC3: ref/tool returns workflow input_schema property names", async () => {

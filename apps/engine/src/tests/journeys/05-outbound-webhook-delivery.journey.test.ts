@@ -21,7 +21,7 @@ import {
   registerDeliveryWorker,
   type WebhookDeliverJob,
 } from "../../webhooks/outbound/delivery-worker.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 interface MockRx {
   url: string;
@@ -70,13 +70,13 @@ beforeAll(async () => {
   happyRx = await startMockRx(0);
   flakyRx = await startMockRx(1_000);
   breaker.__resetAll();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await happyRx.close();
   await flakyRx.close();
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: outbound webhook delivery", () => {
   test("AC1: signed POST lands at happy receiver and writes a success delivery row", async () => {
@@ -130,50 +130,54 @@ describe("journey: outbound webhook delivery", () => {
     expect(success?.response_code).toBe(200);
   });
 
-  test("AC2: 10 failures open the circuit on the flaky subscription", async () => {
-    const subRes = await journeyFetch(ctx, "/v1/subscriptions", {
-      method: "POST",
-      body: JSON.stringify({
-        event_pattern: "execution.failed",
-        target_url: flakyRx.url,
-        secret: "whsec_flakyaaaaaaaaaaaaaaaaaaaa",
-      }),
-    });
-    const sub = (await subRes.json()) as { id: string };
-    breaker.__resetAll();
-    const { handle } = await registerDeliveryWorker({
-      boss: ctx.boss,
-      db: ctx.db,
-      fetchImpl: fetch,
-      jitter: false,
-      noWork: true,
-    });
-    const before = flakyRx.hits.length;
-    for (let i = 0; i < 10; i += 1) {
-      const job: WebhookDeliverJob = {
-        tenant_id: ctx.tenantId,
-        subscription_id: sub.id,
-        event_id: "00000000-0000-0000-0000-0000000000bb",
-        event_type: "execution.failed",
-        body: '{"type":"execution.failed"}',
-        webhook_id: `msg_journey5_flaky_${i}`,
-        // allow-wall-clock: this test exercises real-time polling or freshness windows.
-        timestamp: Math.floor(Date.now() / 1000),
-        attempt_number: 1,
-      };
-      await handle({
-        id: `j5-flaky-${i}`,
-        name: "webhook.deliver",
-        data: job,
-      } as unknown as Job<WebhookDeliverJob>);
-    }
-    expect(flakyRx.hits.length - before).toBe(10);
-    expect(breaker.isOpen(sub.id)).toBe(true);
+  test(
+    "AC2: 10 failures open the circuit on the flaky subscription",
+    async () => {
+      const subRes = await journeyFetch(ctx, "/v1/subscriptions", {
+        method: "POST",
+        body: JSON.stringify({
+          event_pattern: "execution.failed",
+          target_url: flakyRx.url,
+          secret: "whsec_flakyaaaaaaaaaaaaaaaaaaaa",
+        }),
+      });
+      const sub = (await subRes.json()) as { id: string };
+      breaker.__resetAll();
+      const { handle } = await registerDeliveryWorker({
+        boss: ctx.boss,
+        db: ctx.db,
+        fetchImpl: fetch,
+        jitter: false,
+        noWork: true,
+      });
+      const before = flakyRx.hits.length;
+      for (let i = 0; i < 10; i += 1) {
+        const job: WebhookDeliverJob = {
+          tenant_id: ctx.tenantId,
+          subscription_id: sub.id,
+          event_id: "00000000-0000-0000-0000-0000000000bb",
+          event_type: "execution.failed",
+          body: '{"type":"execution.failed"}',
+          webhook_id: `msg_journey5_flaky_${i}`,
+          // allow-wall-clock: this test exercises real-time polling or freshness windows.
+          timestamp: Math.floor(Date.now() / 1000),
+          attempt_number: 1,
+        };
+        await handle({
+          id: `j5-flaky-${i}`,
+          name: "webhook.deliver",
+          data: job,
+        } as unknown as Job<WebhookDeliverJob>);
+      }
+      expect(flakyRx.hits.length - before).toBe(10);
+      expect(breaker.isOpen(sub.id)).toBe(true);
 
-    const subRows = await ctx.db.select().from(subscriptions).where(eq(subscriptions.id, sub.id));
-    expect(subRows[0]?.consecutive_failures).toBeGreaterThanOrEqual(10);
-    expect(subRows[0]?.circuit_open_until).not.toBeNull();
-  }, 30_000);
+      const subRows = await ctx.db.select().from(subscriptions).where(eq(subscriptions.id, sub.id));
+      expect(subRows[0]?.consecutive_failures).toBeGreaterThanOrEqual(10);
+      expect(subRows[0]?.circuit_open_until).not.toBeNull();
+    },
+    JOURNEY_HOOK_TIMEOUT,
+  );
 
   test("AC3: next delivery is short-circuited with circuit_open", async () => {
     const subRes = await journeyFetch(ctx, "/v1/subscriptions", {

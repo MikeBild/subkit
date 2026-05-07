@@ -11,7 +11,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { apiKeys, roles, systemAccounts } from "../../db/schema/index.ts";
 import { BUILTIN_ROLE_NAMES } from "../../rbac/seed.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -54,10 +54,10 @@ describe("journey: rbac system account scopes", () => {
     ctx = await createJourneyCtx("24-rbac-sys");
     tunnelKey = await seedSystemKey("tunnel-agent-24", BUILTIN_ROLE_NAMES.TUNNEL_AGENT);
     metricsKey = await seedSystemKey("metrics-scraper-24", BUILTIN_ROLE_NAMES.METRICS_SCRAPER);
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   async function req(key: string, path: string, init: RequestInit = {}) {
     const headers = new Headers(init.headers);

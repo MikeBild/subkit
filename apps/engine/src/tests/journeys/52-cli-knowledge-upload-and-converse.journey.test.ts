@@ -31,7 +31,7 @@ import { getDocsSearchCacheStats, invalidateDocsCache } from "../../docs-ingesti
 import { getKnowledgeSearchCacheStats, invalidateKnowledgeCache } from "../../knowledge/service.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -201,11 +201,11 @@ beforeAll(async () => {
   // Hard-reset both caches so AC3 starts from a clean slate.
   invalidateKnowledgeCache(ctx.tenantId);
   invalidateDocsCache(ctx.tenantId, connectorId);
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 52: sk CLI knowledge upload → search → converse", () => {
   // ---------- Gap 8: Markdown upload via CLI ----------

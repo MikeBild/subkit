@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { patchCandidates, workflows } from "../../db/schema/index.ts";
 import { runPatternAnalysis } from "../../skill-candidates/service.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -33,11 +33,11 @@ beforeAll(async () => {
       status: "applied",
     });
   }
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 30_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: skill candidate rejection blocks re-proposal", () => {
   let candidateId: string;

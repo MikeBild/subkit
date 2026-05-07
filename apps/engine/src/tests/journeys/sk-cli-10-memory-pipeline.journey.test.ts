@@ -26,7 +26,7 @@ import type { ResolvedProfile } from "../../../../sk/src/config.ts";
 import { runHeadless } from "../../../../sk/src/headless.ts";
 import { loadMemory } from "../../../../sk/src/memory.ts";
 import { auditLog, conversations } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let tmpWorkspace: string;
@@ -79,12 +79,12 @@ describe("journey: sk-cli memory pipeline", () => {
       "# Project memory\n- prefer JSON response shapes\n- avoid pagination for list endpoints under 100 rows\n",
       "utf8",
     );
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     rmSync(tmpWorkspace, { recursive: true, force: true });
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1: SK.md is forwarded, stored, and audited on first turn", async () => {
     const result = await runHeadless({

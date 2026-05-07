@@ -27,7 +27,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { users } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -150,11 +150,11 @@ describe("journey: sk-cli rbac matrix", () => {
       if (!u) throw new Error(`seed user failed for role ${roleName}`);
       users_by_role[roleName] = u.id;
     }
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   async function canQuery(principalId: string, permission: string): Promise<CanResult> {
     const res = await journeyFetch(ctx, "/v1/rbac/can", {

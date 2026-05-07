@@ -24,7 +24,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, connectors, portalTokens, skills, users } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -100,11 +100,11 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
       allowed_workflows: ["*"],
       expires_at: new Date(TEST_NOW_MS + 3600_000),
     });
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1: admin GET /v1/mcp/{prompts,resources,tools} returns 200", async () => {
     for (const path of ["/v1/mcp/prompts", "/v1/mcp/resources", "/v1/mcp/tools"]) {

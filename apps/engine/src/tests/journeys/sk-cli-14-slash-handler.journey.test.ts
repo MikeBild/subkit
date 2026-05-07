@@ -27,7 +27,7 @@ import { EngineClient } from "../../../../sk/src/engine-client.ts";
 import { handleSlash } from "../../../../sk/src/repl/slash/handler.ts";
 import * as conversationsSvc from "../../conversations/service.ts";
 import { skills } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let client: EngineClient;
@@ -89,11 +89,11 @@ describe("journey: sk-cli slash handler", () => {
     });
 
     session = initialSessionState(null);
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1: /status reports profile + persona + session (multi-line when no openPane host)", async () => {
     const line = await handleSlash("status", [], slashCtx());

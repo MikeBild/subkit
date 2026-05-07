@@ -10,17 +10,17 @@
 // Spec refs: plan docs — §2d PARALLEL STEP fan-out fix
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("parallel-fanout");
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("49: Parallel step — concurrent branches, merged output, skipped in linear walk", () => {
   test("AC1+AC2+AC4: all branches run, status succeeded, output is per-branch array", async () => {

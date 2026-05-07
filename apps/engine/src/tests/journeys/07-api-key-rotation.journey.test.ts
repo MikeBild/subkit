@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { apiKeys, systemAccounts, users } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -45,11 +45,11 @@ beforeAll(async () => {
 
   // Touch unused import so biome doesn't complain.
   void systemAccounts;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 async function probeWith(apiKey: string): Promise<number> {
   const res = await fetch(`${ctx.baseUrl}/v1/identity/tenants`, {

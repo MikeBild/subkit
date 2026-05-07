@@ -13,7 +13,13 @@ import { eq } from "drizzle-orm";
 import { executions, workflowsSchedules } from "../../db/schema/index.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
 
 let ctx: JourneyCtx;
 let mock: Server;
@@ -43,7 +49,7 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => mock.listen(0, "127.0.0.1", () => resolve()));
   const addr = mock.address() as AddressInfo;
   mockBase = `http://127.0.0.1:${addr.port}`;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (scheduleReconciler) await scheduleReconciler.stop();

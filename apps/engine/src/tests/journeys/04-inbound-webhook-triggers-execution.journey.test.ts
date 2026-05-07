@@ -11,7 +11,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { executions } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
 
 const SECRET = "whsec_j4_standardaaaaaaaaaaaaaaaa";
 
@@ -42,11 +48,11 @@ beforeAll(async () => {
     }),
   });
   expect(bindRes.status).toBe(201);
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: inbound webhook triggers execution", () => {
   test("AC1: valid signature accepted and execution enqueued", async () => {

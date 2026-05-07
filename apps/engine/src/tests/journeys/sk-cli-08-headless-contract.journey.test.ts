@@ -24,7 +24,7 @@ import { and, eq } from "drizzle-orm";
 import type { ResolvedProfile } from "../../../../sk/src/config.ts";
 import { runHeadless } from "../../../../sk/src/headless.ts";
 import { auditLog } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -61,11 +61,11 @@ function profileFor(tenantId: string, apiKey: string): ResolvedProfile {
 describe("journey: sk headless output contract", () => {
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-08-headless");
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1: --output text prints one line of assistant text and exits 0", async () => {
     const stdout = makeBuffer();

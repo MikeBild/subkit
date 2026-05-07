@@ -14,7 +14,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
 import { connectors, executions } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let mockDev: Server;
@@ -49,13 +49,13 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => mockProd.listen(0, "127.0.0.1", () => resolve()));
   const addrProd = mockProd.address() as AddressInfo;
   mockProdBase = `http://127.0.0.1:${addrProd.port}`;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await new Promise<void>((resolve) => mockDev.close(() => resolve()));
   await new Promise<void>((resolve) => mockProd.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: dev/prod promotion", () => {
   test("AC1: create dev connector and attach a bearer credential", async () => {

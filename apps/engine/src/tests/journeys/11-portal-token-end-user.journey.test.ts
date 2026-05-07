@@ -25,7 +25,13 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { and, eq } from "drizzle-orm";
 import { auditLog, portalTokens } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -50,11 +56,11 @@ beforeAll(async () => {
     steps: [{ id: "noop", kind: "transform", expression: "$input" }],
   });
   otherWorkflowId = other.id;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: portal token end-user", () => {
   test("AC1: admin issues a scoped portal token and receives plaintext", async () => {

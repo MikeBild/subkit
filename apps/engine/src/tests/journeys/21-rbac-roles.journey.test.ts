@@ -13,7 +13,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, users } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -67,10 +73,10 @@ describe("journey: rbac custom role", () => {
       steps: [{ id: "t1", kind: "transform", expression: '"ok"' }],
     });
     workflowId = wf.id;
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1-AC5: custom role end to end", async () => {
     // AC1: create the ops-engineer role

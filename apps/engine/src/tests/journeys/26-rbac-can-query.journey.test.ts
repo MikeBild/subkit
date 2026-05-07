@@ -11,7 +11,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import { roles, users } from "../../db/schema/index.ts";
 import { BUILTIN_ROLE_NAMES } from "../../rbac/seed.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
 
 let ctx: JourneyCtx;
 let adminUserId = "";
@@ -66,11 +72,11 @@ describe("journey: rbac can query", () => {
       steps: [{ id: "s1", kind: "transform", expression: '"w"' }],
     });
     workflowId = wf.id;
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   async function can(
     principal_id: string,

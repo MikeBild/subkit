@@ -21,7 +21,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import * as conversationsSvc from "../../conversations/service.ts";
 import { auditLog, conversationElicitations, workflows } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -47,11 +47,11 @@ async function countAudit(action: string, resourceId: string): Promise<number> {
 describe("journey: sk-cli elicitation lifecycle", () => {
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-12-approval");
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   async function newCommitConversation(): Promise<{
     conversationId: string;

@@ -41,7 +41,13 @@ import {
   createDeterministicHexFactory,
   createDeterministicUuidFactory,
 } from "../../test-helpers/determinism/ids.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -147,11 +153,11 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     });
     expect(createConn.status).toBe(201);
     tenantAConnectorId = ((await createConn.json()) as { id: string }).id;
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     if (ctx?.cleanup) await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1: Tenant B cannot read/update/delete Tenant A's workflow over HTTP", async () => {
     const get = await fetchAs(ctx, tenantB.apiKey, `/v1/workflows/${tenantAWorkflowId}`);

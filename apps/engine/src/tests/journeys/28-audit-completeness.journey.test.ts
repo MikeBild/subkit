@@ -29,7 +29,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -65,11 +65,11 @@ async function expectAuditRow(action: string, tsFrom: string, extra = ""): Promi
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("28-audit-completeness");
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: audit completeness over mutation routes", () => {
   test("AC1: POST /v1/workflows → workflow.created", async () => {

@@ -11,17 +11,17 @@
 // Spec refs: plan docs — §2e LOOP STEP: Actual Item Iteration
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("loop-iteration");
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("47: Loop step — iterates items, injects item_var and $loop_index", () => {
   test("AC1+AC2+AC5: body runs once per item, item_var accessible, status succeeded", async () => {

@@ -26,7 +26,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { portalTokens, users } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { createJourneyCtx, type JourneyCtx, seedWorkflow } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, seedWorkflow } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -84,11 +84,11 @@ describe("journey: sk-cli portal-token customer", () => {
       allowed_workflows: [workflowId],
       expires_at: new Date(TEST_NOW_MS + 3600_000),
     });
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1: portal-token principal can POST /v1/conversations", async () => {
     const res = await pFetch("/v1/conversations", {

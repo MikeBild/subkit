@@ -6,18 +6,18 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog, discoveryArtifacts } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let runId: string;
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("discovery-api");
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 30_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: discovery API lifecycle", () => {
   test("AC1: create discovery run via multipart", async () => {

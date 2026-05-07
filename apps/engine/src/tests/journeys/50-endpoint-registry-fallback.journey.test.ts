@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { connectorEndpointSchemas } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let mockApi: Server;
@@ -60,12 +60,12 @@ beforeAll(async () => {
     source: "openapi",
     confidence: 95,
   });
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await new Promise<void>((resolve) => mockApi.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("50: registry expected_statuses fallback", () => {
   test("AC1: upstream 201 succeeds when step omits expected_statuses (registry has [201,422])", async () => {

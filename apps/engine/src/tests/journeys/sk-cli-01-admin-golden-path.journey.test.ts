@@ -21,7 +21,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runHeadless } from "../../../../sk/src/headless.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -49,11 +49,11 @@ describe("journey: sk-cli admin golden path", () => {
 
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-01-admin");
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1: runHeadless creates a conversation and emits CONVERSATION_CREATED", async () => {
     const stdoutBuf: string[] = [];

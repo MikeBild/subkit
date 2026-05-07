@@ -68,7 +68,13 @@ import type { StepRunContext } from "../../execution/types.ts";
 import { RunLlmBudget } from "../../llm/accounting/index.ts";
 import { renderAuthoringContextBlock } from "../../llm/core/authoring-context-block.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -76,11 +82,11 @@ let ctx: JourneyCtx;
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("53-session-79bf2cca-regression");
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 53: session-79bf2cca regression set", () => {
   test("AC1: duplicate /respond returns 409 elicitation_already_resolved with the previous decision", async () => {

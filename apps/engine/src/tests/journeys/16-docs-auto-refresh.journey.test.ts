@@ -14,7 +14,7 @@ import { and, eq } from "drizzle-orm";
 import { connectorDocumentChunks, connectors } from "../../db/schema/index.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 interface OpenApiPaths {
   [route: string]: Record<string, { responses: Record<string, { description: string }> }>;
@@ -127,61 +127,69 @@ beforeAll(async () => {
     })
     .returning();
   connectorId = row!.id;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (reconciler) await reconciler.stop();
   await new Promise<void>((resolve) => mock.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 16: docs auto-refresh", () => {
-  test("AC1+AC3: initial ingest happens when reconciler boots", async () => {
-    // 200 ms reconcile cadence so the test doesn't have to wait out
-    // the 60 s production interval.
-    reconciler = new SchedulerReconciler({
-      boss: ctx.boss,
-      db: ctx.db,
-      intervalMs: 200,
-    });
-    await reconciler.start();
+  test(
+    "AC1+AC3: initial ingest happens when reconciler boots",
+    async () => {
+      // 200 ms reconcile cadence so the test doesn't have to wait out
+      // the 60 s production interval.
+      reconciler = new SchedulerReconciler({
+        boss: ctx.boss,
+        db: ctx.db,
+        intervalMs: 200,
+      });
+      await reconciler.start();
 
-    // OpenAPI chunker emits 1 index chunk + 1 chunk per operation, so
-    // a three-path spec lands at 4 chunks total. We poll until the
-    // async ingest job drains.
-    const ok = await waitUntil(async () => (await countChunks()) >= 4, 10_000);
-    expect(ok).toBe(true);
+      // OpenAPI chunker emits 1 index chunk + 1 chunk per operation, so
+      // a three-path spec lands at 4 chunks total. We poll until the
+      // async ingest job drains.
+      const ok = await waitUntil(async () => (await countChunks()) >= 4, 10_000);
+      expect(ok).toBe(true);
 
-    const connector = await fetchConnector();
-    expect(connector.last_ingested_at).not.toBeNull();
-  }, 30_000);
+      const connector = await fetchConnector();
+      expect(connector.last_ingested_at).not.toBeNull();
+    },
+    JOURNEY_HOOK_TIMEOUT,
+  );
 
-  test("AC2+AC4: swap upstream spec, next tick re-ingests and last_ingested_at advances", async () => {
-    const before = await fetchConnector();
-    const beforeChunks = await countChunks();
-    const beforeStamp = before.last_ingested_at?.getTime() ?? 0;
-    expect(beforeChunks).toBeGreaterThanOrEqual(4);
+  test(
+    "AC2+AC4: swap upstream spec, next tick re-ingests and last_ingested_at advances",
+    async () => {
+      const before = await fetchConnector();
+      const beforeChunks = await countChunks();
+      const beforeStamp = before.last_ingested_at?.getTime() ?? 0;
+      expect(beforeChunks).toBeGreaterThanOrEqual(4);
 
-    // Flip the mock's served spec so the next reconciler tick sees the
-    // new shape.
-    currentPaths = fourPathSpec();
+      // Flip the mock's served spec so the next reconciler tick sees the
+      // new shape.
+      currentPaths = fourPathSpec();
 
-    // Give the reconciler two ticks plus the `every:1` minimum to fire.
-    const grew = await waitUntil(async () => {
-      const now = await countChunks();
-      return now > beforeChunks;
-    }, 10_000);
-    expect(grew).toBe(true);
+      // Give the reconciler two ticks plus the `every:1` minimum to fire.
+      const grew = await waitUntil(async () => {
+        const now = await countChunks();
+        return now > beforeChunks;
+      }, 10_000);
+      expect(grew).toBe(true);
 
-    const chunksAfter = await countChunks();
-    // The new ingest adds 1 index chunk + 1 chunk per operation for
-    // the fourth path. Exact arithmetic depends on dedup behaviour, so
-    // we only assert that chunks grew by at least the number of newly
-    // added paths.
-    expect(chunksAfter - beforeChunks).toBeGreaterThanOrEqual(1);
+      const chunksAfter = await countChunks();
+      // The new ingest adds 1 index chunk + 1 chunk per operation for
+      // the fourth path. Exact arithmetic depends on dedup behaviour, so
+      // we only assert that chunks grew by at least the number of newly
+      // added paths.
+      expect(chunksAfter - beforeChunks).toBeGreaterThanOrEqual(1);
 
-    const after = await fetchConnector();
-    const afterStamp = after.last_ingested_at?.getTime() ?? 0;
-    expect(afterStamp).toBeGreaterThan(beforeStamp);
-  }, 30_000);
+      const after = await fetchConnector();
+      const afterStamp = after.last_ingested_at?.getTime() ?? 0;
+      expect(afterStamp).toBeGreaterThan(beforeStamp);
+    },
+    JOURNEY_HOOK_TIMEOUT,
+  );
 });

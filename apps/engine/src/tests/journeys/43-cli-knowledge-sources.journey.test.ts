@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { knowledgeSourcesCommand } from "../../../../sk/src/commands/knowledge-sources.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -201,11 +201,11 @@ beforeAll(async () => {
     tmpFile,
     "The quick brown fox jumps over the lazy dog. This is a test document for knowledge source ingestion.",
   );
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 43: sk knowledge-sources CLI", () => {
   test("AC1: knowledge-sources list returns an array (may be empty)", async () => {

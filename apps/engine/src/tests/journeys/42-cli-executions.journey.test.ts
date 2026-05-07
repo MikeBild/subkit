@@ -16,7 +16,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { defineCommand } from "citty";
 import { executionsCommand } from "../../../../sk/src/commands/executions.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
 
 let ctx: JourneyCtx;
 let wfId = "";
@@ -218,11 +224,11 @@ beforeAll(async () => {
   expect(abortRunResp.status).toBe(202);
   const abortRunData = (await abortRunResp.json()) as { execution_id: string };
   abortExecutionId = abortRunData.execution_id;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 42: sk executions CLI", () => {
   test("AC1: executions list returns an array after seeding a run", async () => {
