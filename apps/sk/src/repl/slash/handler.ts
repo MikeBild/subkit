@@ -1507,8 +1507,35 @@ export async function handleSlash(
       return `edit ${path} then restart sk to pick it up`;
     }
     case "init": {
-      const path = join(process.cwd(), "SK.md");
-      if (fs.existsSync(path)) return `${path} already exists`;
+      const cwd = process.cwd();
+      const path = join(cwd, "SK.md");
+      // R8-W4 review fix: defend against TOCTOU + symlink races.
+      //   1. `lstatSync` (not stat) so a symlinked SK.md doesn't
+      //      mask the existence check.
+      //   2. Use `wx` flag on writeFileSync so the create is atomic
+      //      and refuses to overwrite an existing file (including a
+      //      symlink target outside `cwd`). EEXIST is the safe
+      //      "already exists" path; we report it the same way.
+      //   3. Reject if `cwd` itself isn't a directory or isn't
+      //      writable — the operator presumably ran sk in the wrong
+      //      place.
+      try {
+        const cwdStat = fs.lstatSync(cwd);
+        if (!cwdStat.isDirectory()) {
+          return `init failed: ${cwd} is not a directory`;
+        }
+      } catch (err) {
+        return `init failed: cannot stat ${cwd}: ${err instanceof Error ? err.message : String(err)}`;
+      }
+      try {
+        const existing = fs.lstatSync(path);
+        if (existing.isSymbolicLink()) {
+          return `${path} is a symlink — refusing to write (remove or point at a regular file)`;
+        }
+        return `${path} already exists`;
+      } catch {
+        // ENOENT — fall through to create.
+      }
       const starter = [
         `# Memory — ${new Date().toISOString().slice(0, 10)}`,
         "",
@@ -1524,7 +1551,9 @@ export async function handleSlash(
         "",
       ].join("\n");
       try {
-        fs.writeFileSync(path, starter, "utf8");
+        // `wx` = write, fail if exists. Atomic + symlink-safe via
+        // open(2) O_CREAT|O_EXCL semantics.
+        fs.writeFileSync(path, starter, { encoding: "utf8", flag: "wx" });
         return `wrote ${path}`;
       } catch (err) {
         return `init failed: ${err instanceof Error ? err.message : String(err)}`;

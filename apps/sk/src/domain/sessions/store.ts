@@ -137,6 +137,13 @@ export function appendEvent(
   ev: Omit<TurnEvent, "ts">,
   opts: AppendOptions,
 ): void {
+  // R8-S4: runtime guard for the typecheck-required `tenant` field.
+  // The empty string would survive the type check but land sessions
+  // under `~/.sk/sessions/_/{conv}.jsonl` (the path sanitiser maps
+  // empty input to `_`). Reject loud at the boundary.
+  if (!opts.tenant || opts.tenant.length === 0) {
+    throw new Error("appendEvent: opts.tenant is required and must be non-empty");
+  }
   const path = sessionEventsPath(conversationId, opts.dir, opts.tenant);
   const now = opts.now ?? (() => new Date());
   // Scrub obviously-secret-shaped strings out of `data` before the

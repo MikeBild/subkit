@@ -161,9 +161,18 @@ export function loadPromptRing(
   opts: { tenant?: string | null; limit?: number } = {},
 ): string[] {
   const entries = loadHistory(path);
-  const filtered = opts.tenant
-    ? entries.filter((e) => e.tenant == null || e.tenant === opts.tenant)
-    : entries;
+  // R9-W3 review fix: when a tenant filter is active, ONLY return
+  // rows tagged with that exact tenant. The previous
+  // `e.tenant == null || e.tenant === opts.tenant` filter let
+  // legacy untagged rows (written before R4-W5 made tenant
+  // mandatory on session writes) leak across tenants on any
+  // operator who switches profiles. Rows without a tenant tag are
+  // dropped silently — they're at most a few hundred entries from
+  // pre-R4-W5 sessions and the operator can clear them with
+  // `/history clear`. When no tenant filter is set (e.g. headless
+  // /history dump), all rows are returned including untagged
+  // legacy.
+  const filtered = opts.tenant ? entries.filter((e) => e.tenant === opts.tenant) : entries;
   const limit = opts.limit ?? MAX_PROMPT_HISTORY;
   return filtered.slice(Math.max(0, filtered.length - limit)).map((e) => e.p);
 }

@@ -117,12 +117,17 @@ describe("history-store: clear + prompt ring", () => {
     expect(loadPromptRing(path)).toEqual(["first", "second", "third"]);
   });
 
-  test("loadPromptRing filters by tenant", () => {
+  test("loadPromptRing filters by tenant strictly (R9-W3 — no untagged leak)", () => {
     const path = tmpHistoryPath();
     appendHistory("a", { path, tenant: "acme" });
     appendHistory("b", { path, tenant: "other" });
-    appendHistory("c", { path }); // no tenant — kept
-    expect(loadPromptRing(path, { tenant: "acme" })).toEqual(["a", "c"]);
+    appendHistory("c", { path }); // legacy untagged — DROPPED under filter
+    // Pre-R9-W3 the result was ["a", "c"]: untagged rows leaked
+    // across tenants. Strict tenant filter now returns only rows
+    // tagged with that exact tenant.
+    expect(loadPromptRing(path, { tenant: "acme" })).toEqual(["a"]);
+    // No tenant filter still includes everything (e.g. headless dump).
+    expect(loadPromptRing(path)).toEqual(["a", "b", "c"]);
   });
 
   test("loadPromptRing honors a limit", () => {

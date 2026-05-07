@@ -216,7 +216,12 @@ export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Respons
     // details path so existing throw sites that pass
     // `{ code, details: {...} }` keep surfacing the same
     // `body.details` shape on the wire.
-    if (err.hint || err.retry_after != null) {
+    // R8-S7: presence-test `hint` symmetrically with `retry_after`.
+    // The previous truthy check would silently fall through on
+    // `hint === ""` (no throw site sets it that way today, but the
+    // brand was supposed to encode "this field is set", not "this
+    // field is non-empty").
+    if (err.hint != null || err.retry_after != null) {
       return envelope(
         c,
         err.status,

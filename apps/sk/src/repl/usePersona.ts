@@ -7,12 +7,12 @@
 // → tiered persona-probe), so the first frame is no longer held up
 // by the network.
 
-import { createHash } from "node:crypto";
 import { useEffect, useRef, useState } from "react";
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
 import {
   type BootstrapOptions,
+  fingerprintApiKey,
   loadBootstrap,
   type SkBootstrapSnapshot,
 } from "../lib/bootstrap.ts";
@@ -62,11 +62,10 @@ export function usePersona(
   // true and the persona-aware UI grayed out for a frame. The key
   // is identical whenever (engine_url, tenant, fingerprint(api_key))
   // matches — same identity that drives `bootstrapCachePath`.
-  const apiKeyFp = createHash("sha256")
-    .update(profile.api_key ?? "")
-    .digest("hex")
-    .slice(0, 16);
-  const bootstrapKey = `${profile.engine_url}|${profile.active_tenant_id ?? ""}|${apiKeyFp}`;
+  // R8-S1: hash via the shared `fingerprintApiKey` helper so this
+  // hook and `bootstrapCachePath` agree on what counts as the same
+  // principal. A future bump (8 → 16 → 24 hex) lands in one place.
+  const bootstrapKey = `${profile.engine_url}|${profile.active_tenant_id ?? ""}|${fingerprintApiKey(profile.api_key)}`;
 
   useEffect(() => {
     let cancelled = false;

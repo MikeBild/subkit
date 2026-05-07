@@ -177,12 +177,18 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Approve a pending request_human_approval",
     category: "session",
     requires: "conversation:approve",
+    // R8-W3: 0 args (approve latest) or 1 arg (approval id).
+    argsSchema: z.union([z.tuple([]), z.tuple([z.string().min(1).max(128)])]),
   },
   {
     name: "reject",
     help: "Reject a pending approval (with optional reason)",
     category: "session",
     requires: "conversation:approve",
+    // R8-W3: 0+ args. First arg is approval id (optional);
+    // remaining args are the rejection reason — we don't tightly
+    // bound it, just require non-empty strings if present.
+    argsSchema: z.array(z.string().min(1).max(512)),
   },
   {
     name: "yolo",
@@ -213,6 +219,8 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Show per-step trace for the latest execution (or `/exec <execution_id>`)",
     category: "util",
     requires: "execution:read",
+    // R8-W3 / R9-W2: 0 args (latest) or 1 arg (execution id).
+    argsSchema: z.union([z.tuple([]), z.tuple([z.string().min(1).max(128)])]),
   },
   {
     name: "verbose",

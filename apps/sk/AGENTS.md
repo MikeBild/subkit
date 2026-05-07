@@ -25,6 +25,12 @@ Canonical docs: `docs/03-input-surfaces.md`, `docs/04-authoring.md`.
 - `src/slash.ts` — slash-command registry.
 - `src/status-line.ts` — status line rendering.
 - `src/commands/` — CLI subcommand entrypoints.
+- `src/lib/` — shared CLI utilities (`bootstrap.ts` for the persona
+  snapshot, `secret-shape.ts` for credential redaction). R8-S3.
+- `src/shell/` — Ink-only shell primitives (ToastQueue, ResizeBoundary,
+  VirtualTranscript, ErrorPanel, ThemeProvider).
+- `src/domain/` — persona-facing domain components (connectors,
+  workflows, schema form, sessions JSONL store).
 - `src/tests/` — unit tests.
 
 ## Non-negotiables

@@ -81,6 +81,11 @@ export type DebugRecordKind =
   // in-memory; this record surfaces the silent failure so an
   // operator on a CI runner can grep the debug log for it. R5-W6.
   | "bootstrap.cache_write_failed"
+  // bootstrap.cache_read_rejected — emitted when the persisted
+  // snapshot fails Zod validation (corrupted file, schema-version
+  // mismatch, unknown extra field). R8-W1. Caller falls through
+  // to a fresh /v1/sk/bootstrap call.
+  | "bootstrap.cache_read_rejected"
   // settings.schema_fallback — emitted when an engine-served schema
   // descriptor declares an `enum` field with zero values, which is
   // invalid in zod. The loader coerces to `z.string()` so the form

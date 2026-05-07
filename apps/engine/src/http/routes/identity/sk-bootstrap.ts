@@ -35,6 +35,7 @@ import { conversations, roles, systemAccounts, tenants, users } from "../../../d
 import { resolveEngineUrl } from "../../../llm/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { can, UX_GATING_PERMISSIONS, type UxGatingPermission } from "../../../rbac/index.ts";
+import { HttpError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
@@ -94,10 +95,24 @@ const SkBootstrapFlagsSchema = z.object({}).strict();
 
 // `as const` round-trip: zod's `z.enum(...)` requires a tuple of
 // string literals, so spread + cast preserves the literal narrowing
-// from `UX_GATING_PERMISSIONS`. R4-W2.
+// from `UX_GATING_PERMISSIONS`. R4-W2 originally used a wider
+// `[string, ...string[]]` cast — R9-S3 narrows it to the typed
+// permission tuple so the enum's parsed type is `UxGatingPermission`,
+// not `string`.
 const UxGatingPermissionEnum = z.enum(
-  UX_GATING_PERMISSIONS as unknown as readonly [string, ...string[]],
+  UX_GATING_PERMISSIONS as unknown as readonly [UxGatingPermission, ...UxGatingPermission[]],
 );
+
+// R9-S4: response-side `permissions_checked` is invariant across
+// every request. Allocate the closed array once at module load
+// rather than rebuilding it on every call. Pairs with the R7-W1
+// sort-determinism comment.
+//
+// `Object.freeze` would give a `readonly` array which the Hono
+// response handler refuses to assign (mutable expected). The closed
+// array is kept private via the `// no-export` convention; nothing
+// in this module mutates it.
+const PERMISSIONS_CHECKED_RESPONSE: UxGatingPermission[] = [...UX_GATING_PERMISSIONS];
 
 const SkBootstrapResponseSchema = z
   .object({
@@ -116,6 +131,31 @@ const SkBootstrapResponseSchema = z
     server_time: z.string().describe("Server-side ISO timestamp; lets the CLI sync clocks."),
   })
   .openapi("SkBootstrap");
+
+/**
+ * Defensive guard exposed for unit testing (R9-C1). Returns the
+ * input rows iff EVERY row's `tenant_id` matches `expectedTenantId`;
+ * otherwise returns `[]` and the caller must log the rejection. The
+ * `recent_sessions` SQL filter already constrains `tenant_id`, so
+ * this guard is unreachable today — its job is to defend against a
+ * future refactor that drops the filter. The integration test can't
+ * exercise the heterogeneous-rows path because the DB never produces
+ * one; this helper lets a unit test stub the rows and pin the
+ * "reject the batch" contract.
+ */
+export function enforceTenantMatch<T extends { tenant_id: string }>(
+  rows: readonly T[],
+  expectedTenantId: string,
+):
+  | { rows: readonly T[]; rejected: false }
+  | { rows: readonly []; rejected: true; foreign_tenant_ids: string[] } {
+  const allMatch = rows.every((r) => r.tenant_id === expectedTenantId);
+  if (allMatch) return { rows, rejected: false };
+  const foreign = [
+    ...new Set(rows.filter((r) => r.tenant_id !== expectedTenantId).map((r) => r.tenant_id)),
+  ];
+  return { rows: [], rejected: true, foreign_tenant_ids: foreign };
+}
 
 const route = createRoute({
   method: "get",
@@ -151,7 +191,13 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         principal_kind: String(principal.kind),
       });
-      throw new Error(`unknown principal.kind: ${String(principal.kind)}`);
+      // R9-W4: route through the structured envelope so the operator
+      // gets a `code` + `hint` + `details` instead of a generic
+      // `internal_error`.
+      throw HttpError.withEnvelope(500, "unknown_principal_kind", "principal.kind not recognised", {
+        hint: "this is an engine bug — file an issue with the trace_id",
+        details: { principal_kind: String(principal.kind) },
+      });
     }
     const principalKind: "user" | "system_account" = principal.kind;
 
@@ -195,6 +241,28 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
       .from(tenants)
       .where(eq(tenants.id, principal.tenant_id))
       .limit(1);
+
+    // R8-S5: pair the recent_sessions row-level guard with a
+    // tenant-row guard. If `tenantRow.id !== principal.tenant_id`
+    // the WHERE clause was bypassed somehow — refuse the request
+    // rather than silently coercing into the wrong tenant.
+    if (tenantRow && tenantRow.id !== principal.tenant_id) {
+      logger.warn({
+        module: "http",
+        action: "sk_bootstrap_tenant_row_mismatch",
+        msg: "tenants WHERE filter returned a row for a different tenant_id; refusing request",
+        tenant_id: principal.tenant_id,
+        row_tenant_id: tenantRow.id,
+      });
+      throw HttpError.withEnvelope(
+        500,
+        "tenant_row_mismatch",
+        "tenants query returned a foreign tenant",
+        {
+          hint: "this is an engine bug — file an issue with the trace_id",
+        },
+      );
+    }
 
     // Probe all UX-gating permissions in parallel. `can()` is the
     // authoritative check; failures here resolve to "not allowed"
@@ -275,25 +343,23 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
           )
           .orderBy(desc(conversations.updated_at))
           .limit(10);
-        for (const r of rows) {
-          if (r.tenant_id !== principal.tenant_id) {
-            // Defensive: a row with a different tenant_id reaching
-            // this point means the WHERE filter was bypassed. Refuse
-            // to surface ANY rows rather than partially leaking.
-            logger.warn({
-              module: "http",
-              action: "sk_bootstrap_tenant_mismatch",
-              msg: "recent_sessions row carried foreign tenant_id; rejecting batch",
-              tenant_id: principal.tenant_id,
-              row_tenant_id: r.tenant_id,
-              row_id: r.id,
-            });
-            recent = [];
-            break;
-          }
-        }
-        if (recent.length === 0 && rows.length > 0 && rows[0]?.tenant_id === principal.tenant_id) {
-          recent = rows;
+        // R9-C1 (CRITICAL fix): defensive guard via `enforceTenantMatch`
+        // (testable unit). The previous loop+break+post-check was
+        // structurally broken — heterogeneous `rows` would put every
+        // row back including the foreign one. The helper accepts the
+        // whole batch iff every row matches.
+        const guard = enforceTenantMatch(rows, principal.tenant_id);
+        if (guard.rejected) {
+          logger.warn({
+            module: "http",
+            action: "sk_bootstrap_tenant_mismatch",
+            msg: "recent_sessions rows carried foreign tenant_id; rejecting batch",
+            tenant_id: principal.tenant_id,
+            foreign_tenant_ids: guard.foreign_tenant_ids,
+          });
+          recent = [];
+        } else {
+          recent = [...guard.rows];
         }
       } catch (err) {
         // conversations table is per-tenant; if a tenant has none yet
@@ -331,7 +397,7 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
             : null,
         },
         permissions: allowedPermissions,
-        permissions_checked: [...UX_GATING_PERMISSIONS],
+        permissions_checked: PERMISSIONS_CHECKED_RESPONSE,
         tenant: {
           id: tenantRow?.id ?? principal.tenant_id,
           slug: tenantRow?.slug ?? null,

@@ -18,11 +18,38 @@ import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+import { z } from "zod";
 import type { ResolvedProfile } from "../config.ts";
 import { debugLog, serializeDebugError } from "../debug.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { type ResolvedPersonaSnapshot, resolvePersonaShared } from "../persona-probe.ts";
 import type { PersonaProbe } from "../slash.ts";
+
+/** R8-S2: persisted-snapshot schema version. Bump on any
+ *  field-shape change; readers reject mismatched versions. */
+export const PERSISTED_SNAPSHOT_VERSION = 1 as const;
+
+/** R8-S1: derive a stable, sha256-fingerprinted cache key from a
+ *  profile. Used by both `bootstrapCachePath` and the React
+ *  `usePersona` hook so they can never disagree on what counts as
+ *  "the same principal" (R5-W2 stable bootstrap key). */
+export function fingerprintApiKey(apiKey: string | undefined): string {
+  return createHash("sha256")
+    .update(apiKey ?? "")
+    .digest("hex")
+    .slice(0, 16);
+}
+
+export function bootstrapCacheKey(profile: ResolvedProfile): {
+  engineSlug: string;
+  tenantSlug: string;
+  tokenFp: string;
+} {
+  const tenantSlug = (profile.active_tenant_id ?? "global").replace(/[^a-z0-9_-]/gi, "_");
+  const engineSlug = profile.engine_url.replace(/[^a-z0-9_-]/gi, "_").slice(-32) || "engine";
+  const tokenFp = fingerprintApiKey(profile.api_key);
+  return { engineSlug, tenantSlug, tokenFp };
+}
 
 /** Wire-shape pulled directly from the generated OpenAPI client.
  *  Used by both the consumer types below and `engine-client.ts` so
@@ -67,16 +94,41 @@ export interface BootstrapOptions {
   now?: () => number;
 }
 
-interface PersistedSnapshot {
-  v: 1;
-  label: string;
-  allowed: string[];
-  tenant: string | null;
-  email: string | null;
-  recent_sessions: SkBootstrapWireResponse["recent_sessions"];
-  flags: SkBootstrapFlags;
-  fetched_at: number;
-}
+// R8-W1: Zod schema for the persisted cache file. Reads validate
+// the parsed JSON against this schema and reject the file on
+// mismatch — a corrupted file or stale field shape now fails
+// closed instead of flowing into `materialize()`. The cache file
+// is `0o600` and per-user, so this isn't a tenant boundary, but it
+// is a CLI input boundary per AGENTS.md "Zod at every CLI input".
+const PersistedSnapshotSchema = z
+  .object({
+    v: z.literal(PERSISTED_SNAPSHOT_VERSION),
+    label: z.string(),
+    allowed: z.array(z.string()),
+    tenant: z.string().nullable(),
+    email: z.string().nullable(),
+    recent_sessions: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string().nullable(),
+        updated_at: z.string(),
+        tenant_id: z.string(),
+      }),
+    ),
+    // `flags` is the typed enum object from the engine — empty `{}`
+    // today (R5-S2). The wire shape strictly rejects unknown keys
+    // (engine-side); the cache reader is more permissive (passthrough
+    // record) so a snapshot produced by a newer engine with new
+    // flags doesn't fail to read on an older CLI. The engine-side
+    // strict() is the contract; this is the cache-replay path. The
+    // cast at the materialize() boundary closes the type gap when
+    // `SkBootstrapFlags` is the empty object.
+    flags: z.record(z.string(), z.boolean()),
+    fetched_at: z.number().int().nonnegative(),
+  })
+  .strict();
+
+type PersistedSnapshot = z.infer<typeof PersistedSnapshotSchema>;
 
 /**
  * Resolve the bootstrap snapshot for the active profile. Tries:
@@ -108,7 +160,7 @@ export async function loadBootstrap(
   try {
     const resp = await client.skBootstrap();
     const persisted: PersistedSnapshot = {
-      v: 1,
+      v: PERSISTED_SNAPSHOT_VERSION,
       label: resp.whoami.role_name ?? profile.persona_hint ?? "user",
       allowed: resp.permissions,
       tenant: resp.whoami.tenant_slug ?? resp.whoami.tenant_id ?? null,
@@ -154,7 +206,10 @@ function materialize(
     tenant: p.tenant,
     email: p.email,
     recentSessions: p.recent_sessions,
-    flags: p.flags,
+    // R8-W1: cache schema accepts arbitrary `flags` keys but the
+    // engine-side wire schema is strict. Cast bridges the
+    // permissive-cache → strict-runtime type gap.
+    flags: p.flags as unknown as SkBootstrapFlags,
     fetchedAt: p.fetched_at,
     source,
   };
@@ -190,24 +245,34 @@ export function bootstrapCachePath(profile: ResolvedProfile, override?: string):
   // operator's lifetime of rotated tokens. R3-S3 bumped to 16. The
   // hash itself is never reversible to the bearer because we only
   // persist the prefix.
-  const tenantSlug = (profile.active_tenant_id ?? "global").replace(/[^a-z0-9_-]/gi, "_");
-  const engineSlug = profile.engine_url.replace(/[^a-z0-9_-]/gi, "_").slice(-32) || "engine";
-  const tokenFp = createHash("sha256")
-    .update(profile.api_key ?? "")
-    .digest("hex")
-    .slice(0, 16);
+  // R8-S1: derive the (engine, tenant, fingerprint) triple from the
+  // shared helper so this path and `usePersona`'s `bootstrapKey` can
+  // never disagree on what counts as the same principal.
+  const { engineSlug, tenantSlug, tokenFp } = bootstrapCacheKey(profile);
   return join(dir, `bootstrap-${engineSlug}-${tenantSlug}-${tokenFp}.json`);
 }
 
 function readCachedSnapshot(path: string): PersistedSnapshot | null {
+  let raw: string;
   try {
-    const raw = readFileSync(path, "utf8");
-    const parsed = JSON.parse(raw) as PersistedSnapshot;
-    if (parsed.v !== 1 || !Array.isArray(parsed.allowed)) return null;
-    return parsed;
+    raw = readFileSync(path, "utf8");
   } catch {
     return null;
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  // R8-W1: strict Zod validation. A corrupted file, version
+  // mismatch, or unknown extra field now fails closed.
+  const result = PersistedSnapshotSchema.safeParse(parsed);
+  if (!result.success) {
+    debugLog("bootstrap.cache_read_rejected", { path, error: result.error.message }, {});
+    return null;
+  }
+  return result.data;
 }
 
 function writeCachedSnapshot(path: string, snap: PersistedSnapshot): void {
