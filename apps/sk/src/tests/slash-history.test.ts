@@ -53,12 +53,16 @@ describe("slash history ring", () => {
     expect(loadSlashHistory(path)).toEqual([]);
   });
 
-  test("tenant-filtered read keeps cross-tenant noise out", () => {
+  test("tenant-filtered read drops legacy untagged rows (R10-W1, mirrors R9-W3)", () => {
     appendSlashHistory("/x", { path, tenant: "t1" });
     appendSlashHistory("/y", { path, tenant: "t2" });
     appendSlashHistory("/z", { path, tenant: null });
     const ring = loadSlashRing(path, { tenant: "t1" });
-    // null-tenant entries leak through (engine-agnostic invocations).
-    expect(ring).toEqual(["/x", "/z"]);
+    // Pre-R10-W1: ring was ["/x", "/z"] — untagged rows leaked across
+    // tenants on Ctrl+R fuzzy search. Strict filter now returns only
+    // rows tagged with the exact tenant.
+    expect(ring).toEqual(["/x"]);
+    // No tenant filter still includes everything (e.g. headless dump).
+    expect(loadSlashRing(path)).toEqual(["/x", "/y", "/z"]);
   });
 });

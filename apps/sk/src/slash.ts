@@ -449,32 +449,18 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
 ] as const;
 
-// Typecheck-time invariant — every `requires:` referenced by a slash
-// command MUST be in the canonical `UX_GATING_PERMISSIONS` set, so the
-// bootstrap response actually probes that permission and the user
-// (especially admins) sees the command. Without this assertion a
-// slash like `/onboard` (requires: "connector:write") would be
-// silently filtered out of every persona's allow-set because the
-// engine never reports decisions for permissions the bootstrap
-// doesn't probe. Found via independent review (R6-C1).
-//
-// If this assignment fails to compile, the literal at the failing
-// line in `SLASH_COMMANDS` references a permission that's missing
-// from `@shared/ux-gating#UX_GATING_PERMISSIONS`. Either add it to
-// the canonical list (so admins can see it) or remove the slash
-// from the registry (if the engine permission is genuinely outside
-// the bootstrap probe set).
-import type { UxGatingPermission } from "@shared/ux-gating.ts";
+// Typecheck-time invariant: every slash command's `requires:` must
+// be a member of `UX_GATING_PERMISSIONS`. R10-S3: moved the
+// explainer + mapped-type into its own file. The runtime assignment
+// stays here because anchoring it where `SLASH_COMMANDS` is in scope
+// avoids a runtime import cycle. See
+// `apps/sk/src/slash-permissions-invariant.ts` for the full
+// rationale and the "what to do when this fails to compile" guide.
+import type { AssertSlashRequiresAreInUxGating } from "./slash-permissions-invariant.ts";
 
-type _SlashRequiresMember<T> = T extends { requires: infer R }
-  ? R extends UxGatingPermission
-    ? T
-    : never
-  : T;
-type _AssertSlashRequiresAreInUxGating = {
-  [K in keyof typeof SLASH_COMMANDS]: _SlashRequiresMember<(typeof SLASH_COMMANDS)[K]>;
-};
-const _ASSERT_SLASH_REQUIRES_ARE_IN_UX_GATING: _AssertSlashRequiresAreInUxGating = SLASH_COMMANDS;
+const _ASSERT_SLASH_REQUIRES_ARE_IN_UX_GATING: AssertSlashRequiresAreInUxGating<
+  typeof SLASH_COMMANDS
+> = SLASH_COMMANDS;
 void _ASSERT_SLASH_REQUIRES_ARE_IN_UX_GATING;
 
 export interface PersonaProbe {

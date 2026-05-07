@@ -256,9 +256,11 @@ export function loadSlashRing(
   opts: { tenant?: string | null; limit?: number } = {},
 ): string[] {
   const entries = loadSlashHistory(path);
-  const filtered = opts.tenant
-    ? entries.filter((e) => e.tenant == null || e.tenant === opts.tenant)
-    : entries;
+  // R10-W1 review fix: mirror the R9-W3 strict filter on the
+  // prompt ring — when a tenant filter is active, untagged legacy
+  // rows are dropped (no cross-tenant leak via Ctrl+R fuzzy
+  // search). Without a tenant filter, all rows are returned.
+  const filtered = opts.tenant ? entries.filter((e) => e.tenant === opts.tenant) : entries;
   const limit = opts.limit ?? SLASH_RING_MAX;
   return filtered.slice(Math.max(0, filtered.length - limit)).map((e) => e.s);
 }

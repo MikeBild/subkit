@@ -46,7 +46,15 @@ export function bootstrapCacheKey(profile: ResolvedProfile): {
   tokenFp: string;
 } {
   const tenantSlug = (profile.active_tenant_id ?? "global").replace(/[^a-z0-9_-]/gi, "_");
-  const engineSlug = profile.engine_url.replace(/[^a-z0-9_-]/gi, "_").slice(-32) || "engine";
+  // R10-S5 review fix: previously truncated to last 32 chars to
+  // keep filenames readable. Two engines whose URLs share the last
+  // 32 chars but differ at the front (`engine-old.acme.example/`
+  // vs `engine-new.acme.example/`) collapsed to the same key.
+  // Hash the full URL like the api_key fingerprint and keep a
+  // human-readable host-prefix for grep-friendliness.
+  const hostPrefix = profile.engine_url.replace(/[^a-z0-9_-]/gi, "_").slice(0, 24) || "engine";
+  const urlFp = createHash("sha256").update(profile.engine_url).digest("hex").slice(0, 12);
+  const engineSlug = `${hostPrefix}-${urlFp}`;
   const tokenFp = fingerprintApiKey(profile.api_key);
   return { engineSlug, tenantSlug, tokenFp };
 }
@@ -123,12 +131,40 @@ const PersistedSnapshotSchema = z
     // strict() is the contract; this is the cache-replay path. The
     // cast at the materialize() boundary closes the type gap when
     // `SkBootstrapFlags` is the empty object.
+    //
+    // R10-W3: when the first real flag lands engine-side, also bump
+    // `PERSISTED_SNAPSHOT_VERSION` so older malformed cache files
+    // (which would have any boolean key whatsoever under this
+    // permissive record) get rejected on the next read instead of
+    // smuggling an off-enum boolean into runtime. The version bump
+    // is the migration boundary; the wire schema is the source of
+    // truth for the new shape.
     flags: z.record(z.string(), z.boolean()),
     fetched_at: z.number().int().nonnegative(),
   })
   .strict();
 
 type PersistedSnapshot = z.infer<typeof PersistedSnapshotSchema>;
+
+/** R10-W3: closed allow-list of flag keys the cache reader will
+ *  surface. Today empty (mirrors `SkBootstrapFlagsSchema = z.object({}).strict()`).
+ *  When the first real flag lands engine-side, add its name here
+ *  AND bump `PERSISTED_SNAPSHOT_VERSION` so older malformed caches
+ *  don't smuggle an off-enum boolean into runtime. The
+ *  typecheck-time pin at `_FLAG_KEYS_PIN` ensures this list stays
+ *  in lockstep with the typed `SkBootstrapFlags` object. */
+const KNOWN_FLAG_KEYS: ReadonlySet<string> = new Set<keyof SkBootstrapFlags>([]);
+type _FlagKeysPin = readonly (keyof SkBootstrapFlags)[];
+const _FLAG_KEYS_PIN: _FlagKeysPin = [...KNOWN_FLAG_KEYS] as _FlagKeysPin;
+void _FLAG_KEYS_PIN;
+
+function filterFlagsToKnown(rawFlags: Record<string, boolean>): SkBootstrapFlags {
+  const out: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(rawFlags)) {
+    if (KNOWN_FLAG_KEYS.has(k)) out[k] = v;
+  }
+  return out as unknown as SkBootstrapFlags;
+}
 
 /**
  * Resolve the bootstrap snapshot for the active profile. Tries:
@@ -206,10 +242,16 @@ function materialize(
     tenant: p.tenant,
     email: p.email,
     recentSessions: p.recent_sessions,
-    // R8-W1: cache schema accepts arbitrary `flags` keys but the
-    // engine-side wire schema is strict. Cast bridges the
-    // permissive-cache → strict-runtime type gap.
-    flags: p.flags as unknown as SkBootstrapFlags,
+    // R8-W1 + R10-W3: cache schema accepts arbitrary `flags` keys
+    // but the engine-side wire schema is strict (`.object({}).strict()`
+    // today, will narrow as flags land). Drop any key that isn't on
+    // the wire-shape's allowed set so a tampered cache file can't
+    // smuggle an off-enum boolean into the persona-aware UI. The
+    // wire-shape is the empty object today; future flag additions
+    // mean updating `KNOWN_FLAG_KEYS` below alongside the engine
+    // schema (the typecheck-time invariant in `_FLAG_KEYS_PIN`
+    // catches drift).
+    flags: filterFlagsToKnown(p.flags),
     fetchedAt: p.fetched_at,
     source,
   };

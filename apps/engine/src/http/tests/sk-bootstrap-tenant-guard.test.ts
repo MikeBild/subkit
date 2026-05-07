@@ -31,7 +31,7 @@ describe("enforceTenantMatch (R9-C1 defensive guard)", () => {
     const result = enforceTenantMatch(rows, "t-A");
     expect(result.rejected).toBe(true);
     if (result.rejected) {
-      expect(result.rows).toEqual([]);
+      // R10-S1: rejected variant no longer carries `rows`.
       expect(result.foreign_tenant_ids).toEqual(["t-FOREIGN"]);
     }
   });
@@ -44,7 +44,7 @@ describe("enforceTenantMatch (R9-C1 defensive guard)", () => {
     const result = enforceTenantMatch(rows, "t-A");
     expect(result.rejected).toBe(true);
     if (result.rejected) {
-      expect(result.rows).toEqual([]);
+      // R10-S1: rejected variant no longer carries `rows`.
       expect(result.foreign_tenant_ids).toEqual(["t-FOREIGN"]);
     }
   });
@@ -58,7 +58,7 @@ describe("enforceTenantMatch (R9-C1 defensive guard)", () => {
     const result = enforceTenantMatch(rows, "t-A");
     expect(result.rejected).toBe(true);
     if (result.rejected) {
-      expect(result.foreign_tenant_ids.sort()).toEqual(["t-X", "t-Y"]);
+      expect([...result.foreign_tenant_ids].sort()).toEqual(["t-X", "t-Y"]);
     }
   });
 

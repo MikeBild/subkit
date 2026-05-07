@@ -31,6 +31,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
+import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { conversations, roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 import { logger } from "../../../logging/index.ts";
@@ -147,14 +148,20 @@ export function enforceTenantMatch<T extends { tenant_id: string }>(
   rows: readonly T[],
   expectedTenantId: string,
 ):
-  | { rows: readonly T[]; rejected: false }
-  | { rows: readonly []; rejected: true; foreign_tenant_ids: string[] } {
+  | { rejected: false; rows: readonly T[] }
+  | { rejected: true; foreign_tenant_ids: readonly string[] } {
+  // R10-S1: narrowed discriminator. The rejected variant intentionally
+  // does NOT carry a `rows` field — TypeScript fails the build at any
+  // call site that tries to read `result.rows` without first checking
+  // `!result.rejected`. The runtime tests in
+  // `sk-bootstrap-tenant-guard.test.ts` continue to pin the runtime
+  // shape; this is purely a typecheck-time tightening.
   const allMatch = rows.every((r) => r.tenant_id === expectedTenantId);
-  if (allMatch) return { rows, rejected: false };
+  if (allMatch) return { rejected: false, rows };
   const foreign = [
     ...new Set(rows.filter((r) => r.tenant_id !== expectedTenantId).map((r) => r.tenant_id)),
   ];
-  return { rows: [], rejected: true, foreign_tenant_ids: foreign };
+  return { rejected: true, foreign_tenant_ids: foreign };
 }
 
 const route = createRoute({
@@ -167,6 +174,19 @@ const route = createRoute({
     200: {
       description: "OK",
       content: { "application/json": { schema: SkBootstrapResponseSchema } },
+    },
+    // R10-W2 review fix: declare the error envelopes the route can
+    // actually emit. The global `errorMiddleware` already stamps the
+    // shape at runtime, but generated OpenAPI clients couldn't see
+    // it before. 401 from `requireAuth`, 500 from
+    // `unknown_principal_kind` / `tenant_row_mismatch`.
+    401: {
+      description: "Unauthenticated — no bearer or invalid bearer.",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    500: {
+      description: "Internal — engine bug or schema regression.",
+      content: { "application/json": { schema: ErrorSchema } },
     },
   },
 });

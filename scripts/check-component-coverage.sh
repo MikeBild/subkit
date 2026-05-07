@@ -52,8 +52,15 @@ for dir in "${WATCH_DIRS[@]}"; do
     name="${base%.*}"
     snake="$(snake_case "$name")"
     total=$((total + 1))
+    # R10-W4 review fix: tighter regex. A path-boundary `/` or `"`
+    # before the basename rules out substring collisions where a
+    # test that imports `ToastQueueClient` would have satisfied the
+    # coverage check for `ToastQueue.tsx`. A trailing `[\".]` (path
+    # quote, file extension dot) ensures the basename ends at a
+    # boundary too. The describe-based fallback also requires the
+    # basename to be followed by a non-name character.
     if grep -RIl --include="*.test.ts*" \
-        -E "(from \"\\.\\.?/.*${name}|from \"\\.\\.?/.*${snake}|describe\\(.*${name})" \
+        -E "(from \"[^\"]*[/]${name}[\\\".]|from \"[^\"]*[/]${snake}[\\\".]|describe\\([^)]*\\b${name}[^A-Za-z0-9_])" \
         apps/sk/src/tests "$dir" >/dev/null 2>&1; then
       continue
     fi
