@@ -1178,10 +1178,13 @@
           },
           "flags": {
             "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
+            "properties": {
+              "_unused": {
+                "type": "boolean"
+              }
             },
-            "description": "Persona-visible feature flags."
+            "additionalProperties": false,
+            "description": "Persona-visible feature flags. Keys are drawn from a typed enum."
           },
           "server_time": {
             "type": "string",

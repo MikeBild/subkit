@@ -7476,9 +7476,9 @@ export interface components {
                 title: string | null;
                 updated_at: string;
             }[];
-            /** @description Persona-visible feature flags. */
+            /** @description Persona-visible feature flags. Keys are drawn from a typed enum. */
             flags: {
-                [key: string]: boolean;
+                _unused?: boolean;
             };
             /** @description Server-side ISO timestamp; lets the CLI sync clocks. */
             server_time: string;
