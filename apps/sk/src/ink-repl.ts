@@ -34,7 +34,7 @@ import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { enableBracketedPaste } from "./repl/bracketed-paste.ts";
 import { humanizeRequestError } from "./repl/error-humanize.ts";
-import { handleSlash, type PaneSpec } from "./repl/slash-handler.ts";
+import { handleSlash, type PaneSpec } from "./repl/slash/handler.ts";
 import { runRepl } from "./repl.ts";
 import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";
@@ -47,11 +47,11 @@ export interface InkReplOptions {
   noMemory?: boolean;
 }
 
-// Persona resolution lives in `./persona-probe.ts` so this REPL and
-// the readline REPL share one tier-filtered probe path. Pre-fix each
-// ran its own ~22 rbac:can calls; together that doubled to ~44
-// audit-log rows on every session start.
-import { resolvePersonaShared } from "./persona-probe.ts";
+// Persona resolution: prefer `/v1/sk/bootstrap` (one round-trip for the
+// full UX-gating allow-set) and fall back to the legacy tier-filtered
+// `whoami + rbac:can` fan-out for older engines. `loadBootstrap` owns
+// the disk cache + 3-tier resolution.
+import { loadBootstrap } from "./lib/bootstrap.ts";
 
 interface ResolvedPersona {
   label: string;
@@ -61,13 +61,29 @@ interface ResolvedPersona {
   tenant: string | null;
   /** Email or sub returned by whoami — nice to show in the status line. */
   email: string | null;
+  /** Wall-clock time the bootstrap snapshot was produced (ms). R7-S1
+   *  surfaces this in /status so an operator can see whether the
+   *  cached allow-set is fresh or stale. */
+  fetchedAt: number;
+  /** Where the snapshot came from: network, disk cache, or the
+   *  legacy tiered fallback. R7-S1. */
+  source: "network" | "cache" | "fallback";
 }
 
 async function resolvePersona(
   client: EngineClient,
   profile: ResolvedProfile,
 ): Promise<ResolvedPersona> {
-  return resolvePersonaShared(client, profile);
+  const snap = await loadBootstrap(client, profile);
+  return {
+    label: snap.label,
+    probe: snap.probe,
+    allowed: snap.allowed,
+    tenant: snap.tenant,
+    email: snap.email,
+    fetchedAt: snap.fetchedAt,
+    source: snap.source,
+  };
 }
 
 export async function runInkRepl(opts: InkReplOptions): Promise<number> {
@@ -710,6 +726,8 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         allowed: new Set(),
         tenant: newProfile.active_tenant_id ?? null,
         email: null,
+        fetchedAt: Date.now(),
+        source: "fallback",
       };
     }
     statusSnapshot = await newClient.statusSummary().catch(() => null);
@@ -754,6 +772,16 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         switchProfile: switchProfileFn,
         statusSnapshot,
         setupSnapshot,
+        // R7-S1: pass the bootstrap snapshot so /status surfaces
+        // source + age. `currentPersona` is the materialised
+        // SkBootstrapSnapshot resolved on REPL startup.
+        bootstrapSnapshot: currentPersona
+          ? {
+              fetchedAt: currentPersona.fetchedAt,
+              source: currentPersona.source,
+              label: currentPersona.label,
+            }
+          : null,
         openPane,
       });
       if (line !== null) {

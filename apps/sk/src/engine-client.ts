@@ -3,7 +3,15 @@
 // `hono/client` so the compiled binary stays tight — pulling the
 // engine's `AppType` through Hono drags the entire server module
 // graph in.
+//
+// Naming convention (R5-S4 review note): wire-shape fields stay
+// snake_case to match the engine's OpenAPI surface — `tenant_id`,
+// `tenant_slug`, `retry_after`, `trace_id`. Local-only fields use
+// camelCase. This means TS callers occasionally see `err.retry_after`
+// next to `err.message` / `err.code`; the snake_case names are the
+// authoritative wire shape and are deliberate.
 
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import {
   type DebugCorrelationFields,
   type DebugMode,
@@ -148,12 +156,21 @@ export class SkEngineError extends Error {
   readonly status: number;
   readonly code: string;
   readonly trace_id: string | null;
+  readonly hint: string | null;
+  readonly retry_after: number | null;
   readonly details: unknown;
   readonly body: unknown;
   constructor(status: number, body: unknown) {
     const parsed =
       typeof body === "object" && body !== null
-        ? (body as { code?: unknown; message?: unknown; trace_id?: unknown; details?: unknown })
+        ? (body as {
+            code?: unknown;
+            message?: unknown;
+            trace_id?: unknown;
+            hint?: unknown;
+            retry_after?: unknown;
+            details?: unknown;
+          })
         : null;
     const msg =
       parsed && typeof parsed.message === "string"
@@ -168,6 +185,12 @@ export class SkEngineError extends Error {
     this.trace_id =
       parsed && typeof parsed.trace_id === "string" && parsed.trace_id.length > 0
         ? parsed.trace_id
+        : null;
+    this.hint =
+      parsed && typeof parsed.hint === "string" && parsed.hint.length > 0 ? parsed.hint : null;
+    this.retry_after =
+      parsed && typeof parsed.retry_after === "number" && Number.isFinite(parsed.retry_after)
+        ? Math.max(0, Math.ceil(parsed.retry_after))
         : null;
     this.details = parsed?.details ?? null;
     this.body = body;
@@ -566,6 +589,21 @@ export class EngineClient {
     provider: string;
   }> {
     return this.request("GET", "/v1/identity/whoami");
+  }
+
+  /**
+   * Composite startup payload — replaces the per-permission rbac:can
+   * fan-out the CLI used to issue at session start. Returns the
+   * authenticated principal's whoami snapshot, the precomputed allow-set
+   * for the well-known UX-gating permissions, the tenant snapshot, and
+   * the most recent owned conversations.
+   */
+  skBootstrap(): Promise<components["schemas"]["SkBootstrap"]> {
+    // Return type is the generated OpenAPI schema — single source of
+    // truth shared with `apps/sk/src/lib/bootstrap.ts`. Replaces a
+    // 19-line hand-rolled inline type that the previous review (R4-W1
+    // / R4-S5) flagged as a typo-drift hazard.
+    return this.request("GET", "/v1/sk/bootstrap");
   }
 
   // --------------------------- Conversations ---------------------------

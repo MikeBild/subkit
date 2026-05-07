@@ -1457,6 +1457,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sk/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Composite startup payload for the sk CLI (whoami + permissions + recent sessions) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SkBootstrap"];
+                    };
+                };
+                /** @description Unauthenticated — no bearer or invalid bearer. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Internal — engine bug or schema regression. */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows": {
         parameters: {
             query?: never;
@@ -7412,6 +7466,39 @@ export interface components {
             provider: string;
             base_url: string | null;
             scopes: string[] | null;
+        };
+        SkBootstrap: {
+            whoami: {
+                id: string;
+                /** @enum {string} */
+                kind: "user" | "system_account";
+                tenant_id: string;
+                tenant_slug: string | null;
+                email: string | null;
+                role_name: string | null;
+                provider: string;
+                base_url: string | null;
+                scopes: string[] | null;
+            };
+            /** @description Allowed UX-gating permissions for the principal. */
+            permissions: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "tunnel:read")[];
+            /** @description Stable list of permissions probed; reflects the engine's known UX gating set. */
+            permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "tunnel:read")[];
+            tenant: {
+                id: string;
+                slug: string | null;
+                display_name: string | null;
+            };
+            recent_sessions: {
+                id: string;
+                title: string | null;
+                updated_at: string;
+                tenant_id: string;
+            }[];
+            /** @description Persona-visible feature flags. Keys are drawn from a typed enum. */
+            flags: Record<string, never>;
+            /** @description Server-side ISO timestamp; lets the CLI sync clocks. */
+            server_time: string;
         };
         WorkflowListResponse: {
             items: components["schemas"]["Workflow"][];

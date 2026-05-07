@@ -39,7 +39,7 @@ import {
 import { EngineClient, SkEngineError, SkTransportError } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
-import { handleSlash as handleSharedSlash } from "./repl/slash-handler.ts";
+import { handleSlash as handleSharedSlash } from "./repl/slash/handler.ts";
 import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";
 import { findSlashCommand, type PersonaProbe, renderHelp, SLASH_COMMANDS } from "./slash.ts";
@@ -63,27 +63,29 @@ interface PersonaSnapshot {
   label: string;
   allowed: Set<string>;
   probe: PersonaProbe;
+  /** R7-S1: surface bootstrap freshness in /status. */
+  fetchedAt: number;
+  source: "network" | "cache" | "fallback";
 }
 
-// Persona resolution lives in `./persona-probe.ts` so the readline
-// REPL and the Ink REPL share one tier-filtered probe path. Pre-fix
-// each REPL ran its own ~22 rbac:can calls; doubled to ~44 audit
-// rows on every session start. The shared helper short-circuits on
-// `who.role_name` and only probes the role's tier (and below).
-import {
-  ALL_PROBE_PERMISSIONS as PROBE_PERMISSIONS,
-  resolvePersonaShared,
-} from "./persona-probe.ts";
+import { loadBootstrap } from "./lib/bootstrap.ts";
+// Persona resolution: route through `loadBootstrap` so the readline
+// REPL gets the same one-call UX-gating snapshot the Ink REPL uses.
+// Falls back to the tier-filtered legacy probe for older engines that
+// don't expose `/v1/sk/bootstrap`.
+import { ALL_PROBE_PERMISSIONS as PROBE_PERMISSIONS } from "./persona-probe.ts";
 
 async function resolvePersona(
   client: EngineClient,
   profile: ResolvedProfile,
 ): Promise<PersonaSnapshot> {
-  const snapshot = await resolvePersonaShared(client, profile);
+  const snap = await loadBootstrap(client, profile);
   return {
-    label: snapshot.label,
-    allowed: snapshot.allowed,
-    probe: snapshot.probe,
+    label: snap.label,
+    allowed: snap.allowed,
+    probe: snap.probe,
+    fetchedAt: snap.fetchedAt,
+    source: snap.source,
   };
 }
 // Suppress unused-import lint: `PROBE_PERMISSIONS` is exported for
@@ -644,6 +646,12 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         allowedPermissions: Array.from(persona.allowed),
         statusSnapshot: await client.statusSummary().catch(() => null),
         setupSnapshot: canReadSetup ? await client.setupValidation().catch(() => null) : null,
+        // R7-S1: pass bootstrap freshness through so /status surfaces it.
+        bootstrapSnapshot: {
+          fetchedAt: persona.fetchedAt,
+          source: persona.source,
+          label: persona.label,
+        },
       });
       if (result) line(result);
       return;

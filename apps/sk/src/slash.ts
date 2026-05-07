@@ -17,6 +17,86 @@
 // Claude Code's `src/components/PromptInput/commandSuggestions.ts`.
 
 import Fuse from "fuse.js";
+import { z } from "zod";
+
+/**
+ * Single canonical predicate for "what counts as a slash-name
+ * character" — owned by the registry because the registry decides
+ * which characters are legal in a registered command name. The
+ * cursor-aware scanner in `repl/slash/findPositions.ts` reuses this
+ * to guarantee both surfaces (the catalog + the input scanner)
+ * accept the same alphabet. R1-S6 review fix.
+ */
+export const SLASH_NAME_CHAR_RE = /[A-Za-z0-9_-]/;
+
+/** R5-S3: helper exported alongside the regex so callers consume the
+ *  predicate behind a name. Keeps a future Unicode-class change in
+ *  one place. */
+export function isSlashNameChar(ch: string): boolean {
+  return SLASH_NAME_CHAR_RE.test(ch);
+}
+
+/**
+ * Slash commands tagged `routing: "local"` that DO NOT have a `case`
+ * branch in `apps/sk/src/repl/slash/handler.ts` because the Ink-only
+ * host (`ink-app.tsx`) intercepts them before dispatch.
+ *
+ * R11-S4 review note: the list lives here (next to `SLASH_COMMANDS`)
+ * because it's metadata about the registry, not about dispatch.
+ * `apps/sk/src/repl/slash/dispatcher.ts` re-exports it for the
+ * dispatcher contract test.
+ */
+export const INK_INTERCEPTED_LOCAL_SLASHES = Object.freeze([
+  // /actions opens an Ink modal launcher (apps/sk/src/ink-app.tsx:1760)
+  "actions",
+  // /history is rendered as an Ink-modal panel (apps/sk/src/ink-app.tsx:1731);
+  // `handleSlash` doesn't see it.
+  "history",
+  // /help renders the SLASH_COMMANDS catalog at the Ink host
+  // (apps/sk/src/ink-app.tsx:2004); `handleSlash` doesn't see it.
+  "help",
+  // /exit / /quit are handled at the readline input loop (process exit);
+  // `handleSlash` is never reached for these.
+  "exit",
+] as const);
+
+/**
+ * Engine-routed slashes that are intercepted by the Ink host before
+ * dispatch (different contract from `INK_INTERCEPTED_LOCAL_SLASHES`
+ * which covers `routing: "local"` commands). These commands default
+ * to `routing: "engine"` (so RBAC + audit run on the same path the
+ * LLM tool-call would when they DO go through the engine), but the
+ * Ink host short-circuits with custom in-process UX:
+ *
+ *   - /approve, /reject — handled by the approval-card flow
+ *     (`ink-app.tsx:2020-2057`)
+ *   - /yolo — toggles the destructive-action confirmation gate
+ *     in-session (`ink-app.tsx:2062`)
+ *   - /paste, /attach, /queue, /view — input/transcript-side
+ *     intercepts (`ink-app.tsx:1660,1684,1725,1746`)
+ *
+ * The R11-S1 contract test asserts every `routing: "engine"` slash
+ * either has a `case` in `handler.ts`, lands in a per-category
+ * sub-dispatcher, or appears here.
+ */
+export const INK_INTERCEPTED_ENGINE_SLASHES = Object.freeze([
+  "approve",
+  "reject",
+  "yolo",
+  "paste",
+  "attach",
+  "queue",
+  "view",
+] as const);
+
+/** R5-W3 review fix: every slash command can declare a Zod schema
+ *  for its positional args (`/foo bar baz` → `["bar", "baz"]`).
+ *  Local-only slashes that today parse args ad-hoc (e.g. `/debug`
+ *  accepting `on|off|tail`) get validated at the dispatcher entry,
+ *  closing the "slash boundary has no Zod" gap AGENTS.md flags. The
+ *  default schema, when omitted, is `z.array(z.string())` —
+ *  identity, so existing handlers stay backward-compatible. */
+export const SlashArgsSchemaDefault = z.array(z.string());
 
 export interface SlashCommand {
   name: string;
@@ -26,16 +106,36 @@ export interface SlashCommand {
   requires?: string;
   /** Category for the `/help` listing. */
   category: "session" | "auth" | "context" | "mcp" | "admin" | "util";
+  /**
+   * Where the dispatcher routes this command. Default `"engine"` —
+   * the slash flows through the engine so RBAC + audit run on the
+   * same path the LLM tool-call would. `"local"` means the command
+   * touches only the CLI's session state (no engine effect, no audit
+   * row): /clear, /help, /cost, /verbose, /debug, etc. Setting this
+   * field at registration removes a class of bug where the dispatcher
+   * routes by raw name (`LOCAL_ONLY_NAMES`) and a future name collision
+   * silently bypasses the audited path. Resolves R1-S2 / R2-W4.
+   */
+  routing?: "local" | "engine";
+  /**
+   * Optional Zod schema for the positional argv vector
+   * (`["bar", "baz"]` for `/foo bar baz`). Validated at dispatcher
+   * entry — a malformed call fails before reaching the handler with
+   * a structured Zod error. When omitted, `SlashArgsSchemaDefault`
+   * is used (any string array). R5-W3.
+   */
+  argsSchema?: z.ZodType<readonly string[]>;
 }
 
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
-  { name: "help", help: "Show this cheat sheet", category: "util" },
+  { name: "help", help: "Show this cheat sheet", category: "util", routing: "local" },
   {
     name: "clear",
     aliases: ["new"],
     help: "Start a new conversation",
     category: "session",
     requires: "conversation:write",
+    routing: "local",
   },
   {
     name: "compact",
@@ -108,6 +208,10 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Restore a workflow version — `/restore <version>`",
     category: "session",
     requires: "workflow:write",
+    // R6-W3: exactly one positional arg, the version label
+    // (numeric ordinal or semver-ish). Engine validates the actual
+    // shape; the dispatcher rejects empty/multi-arg calls early.
+    argsSchema: z.tuple([z.string().min(1)]),
   },
   {
     name: "setup",
@@ -126,12 +230,18 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Approve a pending request_human_approval",
     category: "session",
     requires: "conversation:approve",
+    // R8-W3: 0 args (approve latest) or 1 arg (approval id).
+    argsSchema: z.union([z.tuple([]), z.tuple([z.string().min(1).max(128)])]),
   },
   {
     name: "reject",
     help: "Reject a pending approval (with optional reason)",
     category: "session",
     requires: "conversation:approve",
+    // R8-W3: 0+ args. First arg is approval id (optional);
+    // remaining args are the rejection reason — we don't tightly
+    // bound it, just require non-empty strings if present.
+    argsSchema: z.array(z.string().min(1).max(512)),
   },
   {
     name: "yolo",
@@ -144,31 +254,47 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "List tool execution-mode badges, or pin a per-tool override. `/policy` lists; `/policy <tool> <auto|ask|review>` sets; `/policy <tool> reset` clears.",
     category: "session",
     requires: "conversation:write",
+    // R6-W3: 0 args (list); 2 args (`<tool> <auto|ask|review|reset>`).
+    argsSchema: z.union([
+      z.tuple([]),
+      z.tuple([z.string().min(1), z.enum(["auto", "ask", "review", "reset"])]),
+    ]),
   },
-  { name: "status", help: "Print session + persona status", category: "util" },
-  { name: "cost", help: "Show token usage + remaining budget", category: "util" },
+  { name: "status", help: "Print session + persona status", category: "util", routing: "local" },
+  {
+    name: "cost",
+    help: "Show token usage + remaining budget",
+    category: "util",
+    routing: "local",
+  },
   {
     name: "exec",
     help: "Show per-step trace for the latest execution (or `/exec <execution_id>`)",
     category: "util",
     requires: "execution:read",
+    // R8-W3 / R9-W2: 0 args (latest) or 1 arg (execution id).
+    argsSchema: z.union([z.tuple([]), z.tuple([z.string().min(1).max(128)])]),
   },
   {
     name: "verbose",
     help: "Toggle verbose tool-log streaming inline in chat",
     category: "util",
+    routing: "local",
   },
   {
     name: "model",
     help: "Switch the conversation's model",
     category: "session",
     requires: "conversation:write",
+    // R6-W3: exactly one positional arg, the model id (engine validates
+    // the actual ID against the configured route map).
+    argsSchema: z.tuple([z.string().min(1)]),
   },
   { name: "profile", aliases: ["env"], help: "List or switch profiles", category: "auth" },
   { name: "login", help: "Authenticate against the engine", category: "auth" },
   { name: "logout", help: "Drop the active profile", category: "auth" },
   { name: "tenant", help: "List or switch tenants", category: "auth", requires: "identity:read" },
-  { name: "memory", help: "Open SK.md in $EDITOR", category: "context" },
+  { name: "memory", help: "Open SK.md in $EDITOR", category: "context", routing: "local" },
   {
     name: "init",
     help: "Generate a starter SK.md",
@@ -201,13 +327,33 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Tail recent engine errors via /v1/diagnostics/errors — `/logs [limit] [trace_id]`",
     category: "admin",
     requires: "audit:read",
+    // R6-W3: 0, 1, or 2 args. limit (1-200), trace_id (any non-empty
+    // string — engine clamps further).
+    argsSchema: z.union([
+      z.tuple([]),
+      z.tuple([z.string().regex(/^\d+$/, "limit must be a positive integer")]),
+      z.tuple([z.string().regex(/^\d+$/, "limit must be a positive integer"), z.string().min(1)]),
+    ]),
   },
   {
     name: "debug",
     help: "Toggle SK_DEBUG full trace logging — `/debug on|off|tail` or `/debug` for status",
     category: "util",
+    routing: "local",
+    // R5-W3: positional arg, optional, drawn from a closed enum.
+    // `/debug` (no args) shows status; `/debug on|off|tail` flips
+    // verbose state or tails the log. Anything else is rejected.
+    argsSchema: z
+      .union([z.tuple([]), z.tuple([z.enum(["on", "off", "tail"])])])
+      .describe("/debug accepts 0 args or one of on|off|tail"),
   },
-  { name: "exit", aliases: ["quit"], help: "Exit the REPL", category: "util" },
+  {
+    name: "exit",
+    aliases: ["quit"],
+    help: "Exit the REPL",
+    category: "util",
+    routing: "local",
+  },
   { name: "bug", help: "Open a GitHub issue report", category: "util" },
   {
     name: "paste",
@@ -229,6 +375,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     name: "history",
     help: "Show or `clear` the persistent prompt history",
     category: "util",
+    routing: "local",
   },
   {
     name: "export",
@@ -245,6 +392,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     aliases: ["tasks"],
     help: "Open the persona-aware action launcher",
     category: "util",
+    routing: "local",
   },
   // operator list commands
   {
@@ -353,6 +501,20 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "identity:read",
   },
 ] as const;
+
+// Typecheck-time invariant: every slash command's `requires:` must
+// be a member of `UX_GATING_PERMISSIONS`. R10-S3: moved the
+// explainer + mapped-type into its own file. The runtime assignment
+// stays here because anchoring it where `SLASH_COMMANDS` is in scope
+// avoids a runtime import cycle. See
+// `apps/sk/src/slash-permissions-invariant.ts` for the full
+// rationale and the "what to do when this fails to compile" guide.
+import type { AssertSlashRequiresAreInUxGating } from "./slash-permissions-invariant.ts";
+
+const _ASSERT_SLASH_REQUIRES_ARE_IN_UX_GATING: AssertSlashRequiresAreInUxGating<
+  typeof SLASH_COMMANDS
+> = SLASH_COMMANDS;
+void _ASSERT_SLASH_REQUIRES_ARE_IN_UX_GATING;
 
 export interface PersonaProbe {
   allows: (permission: string) => boolean;
