@@ -9,15 +9,13 @@ export interface SettingsAppOptions {
   client: EngineClient;
   tenant?: string;
   initialTab?: string;
-  /**
-   * @experimental — accepted for API stability but currently a no-op.
-   * The draft-store retention path (`apps/sk/src/settings-ui/lib/draft-store.ts`)
-   * is plumbed but `SettingsModal` doesn't yet expose `scrollTop` /
-   * `expandedKeys` / `partialFieldEdits` on unmount, so saving the
-   * snapshot keyed by `(profileName, tenant)` would be empty. The
-   * follow-up that lands modal state threading will start consuming
-   * this prop. R6-W5 review note. */
-  profileName?: string;
+  // R11-W5 review fix: dropped the `profileName` prop. It was
+  // documented as a no-op pending a `SettingsModal` refactor that
+  // would expose `scrollTop` / `expandedKeys` / `partialFieldEdits`
+  // on unmount — but a typed-but-ignored prop is a typed lie.
+  // Re-add when the modal-state threading lands; the
+  // draft-store module + tests at `lib/draft-store.ts` are kept
+  // ready for it.
 }
 
 interface State {
@@ -32,7 +30,6 @@ const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => voi
   client,
   tenant,
   initialTab,
-  profileName,
   onExit,
 }) => {
   const { exit } = useApp();
@@ -42,20 +39,12 @@ const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => voi
     pendingRestartKeys: [],
     overrideKeys: [],
   });
-  // R5-W1 review fix: the draft-store integration was previously a
-  // no-op (loadDraft → saveDraft on cleanup with no modal wiring).
-  // SettingsModal doesn't expose scrollTop / expanded ids on unmount
-  // yet, so retention isn't implementable from here. The
-  // draft-store module + its unit tests are kept as the contract;
-  // wiring it through SettingsModal is left for a follow-up that
-  // also threads `initialDraft` and `onClose(snapshot)`. Removing
-  // the cleanup effect prevents the misleading "draft retained!"
-  // appearance from creating false confidence.
-  //
-  // Once SettingsModal is refactored to consume `initialDraft` and
-  // emit `onClose(snapshot)`, restore the load/save here keyed on
-  // (profileName ?? "default", tenant ?? null).
-  void profileName;
+  // R5-W1 + R11-W5: the draft-store integration was a no-op (the
+  // modal didn't expose state on unmount). The `profileName` prop
+  // was dropped (R11-W5). When `SettingsModal` is refactored to
+  // expose `initialDraft` / `onClose(snapshot)`, re-add the prop
+  // and wire the load/save here keyed on the active profile +
+  // tenant. The `lib/draft-store.ts` module + its tests stay ready.
 
   useEffect(() => {
     let cancelled = false;

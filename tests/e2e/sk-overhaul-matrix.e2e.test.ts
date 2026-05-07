@@ -43,106 +43,32 @@ const E = (): E2EEnv => {
 
 describe("e2e matrix: sk CLI overhaul (live engine)", () => {
   // ----- login flows (#2 / #3 / #4) -----
-  test.skipIf(SKIP_PTY)(
-    "(matrix #2) device login renders the auth flow chrome",
-    async () => {
-      // We can't drive a real device flow in CI, but we can assert the
-      // command surface accepts the args + prints a recognisable header.
-      const r = await runPtyScenario(
-        [
-          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
-          { kind: "send", text: "\x04" }, // EOF
-        ],
-        { persona: E().personas.admin, engineUrl: E().baseUrl },
-      );
-      expect(r.exitCode).toBe(0);
-    },
-    20_000,
+  // R11-W1 review fix: the original (matrix #2..#7) tests ran an
+  // identical "boot, wait for banner, EOF, exitCode === 0" scenario
+  // — they were stubs that didn't actually exercise device login,
+  // api-key login, portal-token login, headless `-p`, `--quiet`, or
+  // `--max-turns`. Stub coverage is worse than missing coverage
+  // because it masquerades as matrix completion. Marked as
+  // `test.todo` until the PTY harness can drive these flows; the
+  // smoke-suite `sk-headless.smoke.ts` already covers `-p` /
+  // `--quiet` / `--max-turns` at the binary level.
+  test.todo(
+    "(matrix #2) device login renders the auth flow chrome — needs device-flow mock harness",
   );
-
-  test.skipIf(SKIP_PTY)(
-    "(matrix #3) api-key login already happens via persona env",
-    async () => {
-      // The boot() harness pre-populates SUBKIT_API_KEY for the persona.
-      // Drive a single read-only command to prove the binary picks it up.
-      const r = await runPtyScenario(
-        [
-          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
-          { kind: "send", text: "\x04" },
-        ],
-        { persona: E().personas.admin, engineUrl: E().baseUrl },
-      );
-      expect(r.exitCode).toBe(0);
-    },
-    20_000,
+  test.todo(
+    "(matrix #3) api-key login boots cleanly — covered by boot() persona harness; matrix entry needs distinct assertion",
   );
-
-  test.skipIf(SKIP_PTY)(
-    "(matrix #4) portal-token login boots and exits clean",
-    async () => {
-      // Portal-token logic is unit-tested in the smoke suite; here we
-      // just confirm the binary doesn't crash with the env shape.
-      const r = await runPtyScenario(
-        [
-          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
-          { kind: "send", text: "\x04" },
-        ],
-        { persona: E().personas.admin, engineUrl: E().baseUrl },
-      );
-      expect(r.exitCode).toBe(0);
-    },
-    20_000,
+  test.todo(
+    "(matrix #4) portal-token login boots and exits clean — needs portal-token mint harness",
   );
-
-  // ----- headless modes (#5 / #6 / #7) -----
-  test.skipIf(SKIP_PTY)(
-    "(matrix #5) headless `sk -p` resolves cleanly",
-    async () => {
-      // The PTY harness drives the no-arg binary entry; headless
-      // (`sk -p`) is binary-level coverage that lives in the smoke
-      // suite. Here we just confirm the interactive boot path is
-      // healthy — banner renders, Ctrl+D exits clean.
-      const r = await runPtyScenario(
-        [
-          { kind: "wait", pattern: "Resume work, create a connector", label: "banner" },
-          { kind: "send", text: "\x04" },
-        ],
-        { persona: E().personas.admin, engineUrl: E().baseUrl },
-      );
-      expect(r.exitCode).toBe(0);
-    },
-    20_000,
+  test.todo(
+    "(matrix #5) headless `sk -p` resolves cleanly — covered by sk-headless.smoke.ts; matrix entry needs PTY-driven equivalent",
   );
-
-  test.skipIf(SKIP_PTY)(
-    "(matrix #6) `--quiet` reduces output",
-    async () => {
-      // Same harness shape; behavior asserted by smoke suite directly.
-      const r = await runPtyScenario(
-        [
-          { kind: "wait", pattern: "Resume work, create a connector", label: "boot" },
-          { kind: "send", text: "\x04" },
-        ],
-        { persona: E().personas.admin, engineUrl: E().baseUrl },
-      );
-      expect(r.exitCode).toBe(0);
-    },
-    20_000,
+  test.todo(
+    "(matrix #6) `--quiet` reduces output — covered by sk-headless.smoke.ts; matrix entry needs PTY-driven equivalent",
   );
-
-  test.skipIf(SKIP_PTY)(
-    "(matrix #7) `--max-turns` arg is honored at boot",
-    async () => {
-      const r = await runPtyScenario(
-        [
-          { kind: "wait", pattern: "Resume work, create a connector", label: "boot" },
-          { kind: "send", text: "\x04" },
-        ],
-        { persona: E().personas.admin, engineUrl: E().baseUrl },
-      );
-      expect(r.exitCode).toBe(0);
-    },
-    20_000,
+  test.todo(
+    "(matrix #7) `--max-turns` arg is honored at boot — covered by sk-headless.smoke.ts; matrix entry needs PTY-driven equivalent",
   );
 
   // ----- slash matrix (#8 / #9 / #10) -----
@@ -182,19 +108,12 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     20_000,
   );
 
-  test.skipIf(SKIP_PTY)(
-    "(matrix #10) enduser persona renders welcome hint",
-    async () => {
-      const r = await runPtyScenario(
-        [
-          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
-          { kind: "send", text: "\x04" },
-        ],
-        { persona: E().personas.enduser, engineUrl: E().baseUrl },
-      );
-      expect(r.exitCode).toBe(0);
-    },
-    20_000,
+  // R11-W1: also a stub — same shape as #2..#7. Real assertion would
+  // grep the rendered welcome banner for the enduser-specific
+  // wording. Marked todo until the PTY harness can capture frame
+  // text reliably for assertion.
+  test.todo(
+    "(matrix #10) enduser persona renders welcome hint — needs frame-text capture in PTY harness",
   );
 
   // ----- onboarding (#11 / #12) -----

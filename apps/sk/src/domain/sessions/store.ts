@@ -201,13 +201,62 @@ function maybeTrimJsonl(path: string, keep: number): void {
 /**
  * Read every event from the conversation's JSONL log. Skips truncated
  * trailing lines. Returns events in the order they were written.
+ *
+ * R11-W3 review fix: `tenant` is now required, mirroring the
+ * `appendEvent` write-side contract (R8-S4). Reading the legacy
+ * flat path requires the explicit `loadLegacyFlatEvents` helper
+ * below — a caller that forgets the tenant on a load can't
+ * silently target the wrong file.
  */
 export function loadEvents(
   conversationId: string,
-  dir?: string,
-  tenant?: string | null,
+  dir: string | undefined,
+  tenant: string,
 ): TurnEvent[] {
-  const path = sessionEventsPath(conversationId, dir, tenant);
+  if (!tenant || tenant.length === 0) {
+    throw new Error("loadEvents: tenant is required and must be non-empty");
+  }
+  return readJsonlEvents(sessionEventsPath(conversationId, dir, tenant));
+}
+
+/** Delete the JSONL log for a conversation. Best-effort. R11-W3:
+ *  `tenant` is required for the same reason as `loadEvents`. */
+export function deleteEvents(
+  conversationId: string,
+  dir: string | undefined,
+  tenant: string,
+): void {
+  if (!tenant || tenant.length === 0) {
+    throw new Error("deleteEvents: tenant is required and must be non-empty");
+  }
+  try {
+    unlinkSync(sessionEventsPath(conversationId, dir, tenant));
+  } catch {
+    /* gone already */
+  }
+}
+
+/**
+ * R11-W3: explicit reader for the legacy flat-layout path
+ * (`~/.sk/sessions/{conv}.jsonl` — no tenant namespace, written
+ * before R4-W5). Use this only when explicitly migrating or
+ * inspecting pre-R4-W5 files; the modern read path is
+ * `loadEvents(conv, dir, tenant)`.
+ */
+export function loadLegacyFlatEvents(conversationId: string, dir?: string): TurnEvent[] {
+  return readJsonlEvents(sessionEventsPath(conversationId, dir));
+}
+
+/** R11-W3: matching delete for legacy flat-layout files. */
+export function deleteLegacyFlatEvents(conversationId: string, dir?: string): void {
+  try {
+    unlinkSync(sessionEventsPath(conversationId, dir));
+  } catch {
+    /* gone already */
+  }
+}
+
+function readJsonlEvents(path: string): TurnEvent[] {
   if (!existsSync(path)) return [];
   let content: string;
   try {
@@ -229,14 +278,4 @@ export function loadEvents(
     }
   }
   return events;
-}
-
-/** Delete the JSONL log for a conversation. Best-effort. */
-export function deleteEvents(conversationId: string, dir?: string, tenant?: string | null): void {
-  const path = sessionEventsPath(conversationId, dir, tenant);
-  try {
-    unlinkSync(path);
-  } catch {
-    /* gone already */
-  }
 }

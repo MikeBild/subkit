@@ -51,6 +51,16 @@ export class HttpError extends Error {
    * constructor — the positional path treats its 4th arg as a legacy
    * `details` bag verbatim, which is what the 50+ existing throw
    * sites depend on.
+   *
+   * Trust model (R5-S5 / R6-S4 / R11-S5): the brand symbol is
+   * `Symbol.for("sk.HttpErrorOptions")` (in
+   * `apps/engine/src/http/_internal.ts`), which lives in the global
+   * symbol registry. This is acceptable for in-process trust — the
+   * brand exists to prevent ACCIDENTAL shape-sniffing collisions
+   * when an existing `details` bag happens to contain a `hint` key,
+   * not as a security control against malicious in-process code.
+   * If the trust model ever changes, see the matching note in
+   * `_internal.ts`.
    */
   static withEnvelope(
     status: number,

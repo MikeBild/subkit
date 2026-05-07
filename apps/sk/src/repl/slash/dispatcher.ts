@@ -27,32 +27,12 @@ export interface SlashDispatchPlan {
   command: SlashCommand | undefined;
 }
 
-/**
- * Slash commands that don't have a `case` branch in `handler.ts` because
- * the Ink-only host (`ink-app.tsx`) intercepts them before dispatch
- * (e.g. `/actions` opens an Ink-modal launcher, `/tasks` is its alias).
- *
- * The contract test in `apps/sk/src/tests/slash-dispatcher.test.ts`
- * asserts that every `routing: "local"` slash either has a handler
- * case OR is on this list — closing the gap R6-W2 surfaced where
- * a readline-mode caller hitting `handleSlash("actions", …)` would
- * fall through to the generic "not wired" banner.
- */
-export const INK_INTERCEPTED_LOCAL_SLASHES = Object.freeze([
-  // /actions opens an Ink modal launcher (apps/sk/src/ink-app.tsx:1760)
-  "actions",
-  // /history is rendered as an Ink-modal panel (apps/sk/src/ink-app.tsx:1731);
-  // `handleSlash` doesn't see it.
-  "history",
-  // /help renders the SLASH_COMMANDS catalog at the Ink host
-  // (apps/sk/src/ink-app.tsx:2004); `handleSlash` doesn't see it.
-  "help",
-  // /exit / /quit are handled at the readline input loop (process exit);
-  // `handleSlash` is never reached for these.
-  "exit",
-  // aliases of the above are NOT on this list — `classifySlash` resolves
-  // aliases to their canonical name first.
-] as const);
+// R11-S4 review fix: `INK_INTERCEPTED_LOCAL_SLASHES` moved to
+// `apps/sk/src/slash.ts` (next to `SLASH_COMMANDS`) because it's
+// metadata about the registry, not about dispatch. Re-exported
+// here for the dispatcher contract test that imports from this
+// file (`apps/sk/src/tests/slash-dispatcher.test.ts`).
+export { INK_INTERCEPTED_LOCAL_SLASHES } from "../../slash.ts";
 
 /**
  * Decide where to route a slash invocation. `local` slashes apply

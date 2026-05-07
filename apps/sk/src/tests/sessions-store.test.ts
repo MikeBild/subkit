@@ -53,7 +53,16 @@ describe("session JSONL store", () => {
   });
 
   test("loadEvents returns [] for an unknown conversation", () => {
-    expect(loadEvents("not-real", dir)).toEqual([]);
+    expect(loadEvents("not-real", dir, "t-test")).toEqual([]);
+  });
+
+  // R11-W3: tenant is required on read path.
+  test("loadEvents rejects missing tenant", () => {
+    expect(() => loadEvents("c-x", dir, "")).toThrow(/tenant is required/);
+  });
+
+  test("deleteEvents rejects missing tenant", () => {
+    expect(() => deleteEvents("c-x", dir, "")).toThrow(/tenant is required/);
   });
 
   test("loadEvents skips truncated trailing lines", () => {

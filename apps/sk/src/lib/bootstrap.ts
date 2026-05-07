@@ -45,13 +45,25 @@ export function bootstrapCacheKey(profile: ResolvedProfile): {
   tenantSlug: string;
   tokenFp: string;
 } {
-  const tenantSlug = (profile.active_tenant_id ?? "global").replace(/[^a-z0-9_-]/gi, "_");
-  // R10-S5 review fix: previously truncated to last 32 chars to
-  // keep filenames readable. Two engines whose URLs share the last
-  // 32 chars but differ at the front (`engine-old.acme.example/`
-  // vs `engine-new.acme.example/`) collapsed to the same key.
-  // Hash the full URL like the api_key fingerprint and keep a
-  // human-readable host-prefix for grep-friendliness.
+  // R11-W4 review fix: the no-tenant sentinel cannot collide with
+  // any sanitised real tenant slug. The sanitiser keeps `[A-Za-z0-9_-]`
+  // and replaces everything else with `_`, so any sentinel that
+  // contains the `__` substring (which a tenant slug pattern
+  // `^[a-z0-9-]+$` cannot produce) is collision-free.
+  const tenantSlug =
+    profile.active_tenant_id == null
+      ? "__no_tenant__"
+      : profile.active_tenant_id.replace(/[^a-z0-9_-]/gi, "_");
+  // engineSlug = `<host-prefix-24>-<sha256(full url)[0..12]>`
+  //
+  // R10-S5 + R11-S2: keeps the cache filename grep-friendly via the
+  // host-prefix while making accidental collisions implausible via
+  // the URL hash. The previous shape — `engine_url.slice(-32)` —
+  // collapsed `engine-old.acme.example/` and `engine-new.acme.example/`
+  // to the same key. Do NOT simplify back to a substring of the URL;
+  // the hash is load-bearing for the host-prefix-collision case.
+  // Hash size: 12 hex (~1 in 2^48 per pair), negligible at one
+  // operator's profile-rotation scale.
   const hostPrefix = profile.engine_url.replace(/[^a-z0-9_-]/gi, "_").slice(0, 24) || "engine";
   const urlFp = createHash("sha256").update(profile.engine_url).digest("hex").slice(0, 12);
   const engineSlug = `${hostPrefix}-${urlFp}`;

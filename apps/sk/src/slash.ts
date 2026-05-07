@@ -36,6 +36,59 @@ export function isSlashNameChar(ch: string): boolean {
   return SLASH_NAME_CHAR_RE.test(ch);
 }
 
+/**
+ * Slash commands tagged `routing: "local"` that DO NOT have a `case`
+ * branch in `apps/sk/src/repl/slash/handler.ts` because the Ink-only
+ * host (`ink-app.tsx`) intercepts them before dispatch.
+ *
+ * R11-S4 review note: the list lives here (next to `SLASH_COMMANDS`)
+ * because it's metadata about the registry, not about dispatch.
+ * `apps/sk/src/repl/slash/dispatcher.ts` re-exports it for the
+ * dispatcher contract test.
+ */
+export const INK_INTERCEPTED_LOCAL_SLASHES = Object.freeze([
+  // /actions opens an Ink modal launcher (apps/sk/src/ink-app.tsx:1760)
+  "actions",
+  // /history is rendered as an Ink-modal panel (apps/sk/src/ink-app.tsx:1731);
+  // `handleSlash` doesn't see it.
+  "history",
+  // /help renders the SLASH_COMMANDS catalog at the Ink host
+  // (apps/sk/src/ink-app.tsx:2004); `handleSlash` doesn't see it.
+  "help",
+  // /exit / /quit are handled at the readline input loop (process exit);
+  // `handleSlash` is never reached for these.
+  "exit",
+] as const);
+
+/**
+ * Engine-routed slashes that are intercepted by the Ink host before
+ * dispatch (different contract from `INK_INTERCEPTED_LOCAL_SLASHES`
+ * which covers `routing: "local"` commands). These commands default
+ * to `routing: "engine"` (so RBAC + audit run on the same path the
+ * LLM tool-call would when they DO go through the engine), but the
+ * Ink host short-circuits with custom in-process UX:
+ *
+ *   - /approve, /reject — handled by the approval-card flow
+ *     (`ink-app.tsx:2020-2057`)
+ *   - /yolo — toggles the destructive-action confirmation gate
+ *     in-session (`ink-app.tsx:2062`)
+ *   - /paste, /attach, /queue, /view — input/transcript-side
+ *     intercepts (`ink-app.tsx:1660,1684,1725,1746`)
+ *
+ * The R11-S1 contract test asserts every `routing: "engine"` slash
+ * either has a `case` in `handler.ts`, lands in a per-category
+ * sub-dispatcher, or appears here.
+ */
+export const INK_INTERCEPTED_ENGINE_SLASHES = Object.freeze([
+  "approve",
+  "reject",
+  "yolo",
+  "paste",
+  "attach",
+  "queue",
+  "view",
+] as const);
+
 /** R5-W3 review fix: every slash command can declare a Zod schema
  *  for its positional args (`/foo bar baz` → `["bar", "baz"]`).
  *  Local-only slashes that today parse args ad-hoc (e.g. `/debug`

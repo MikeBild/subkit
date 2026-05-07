@@ -187,9 +187,18 @@ describe("bootstrapCachePath", () => {
     expect(p).toMatch(/\.json$/);
   });
 
-  test("falls back to 'global' when no tenant is set", () => {
+  test("uses the `__no_tenant__` sentinel slug when no tenant is set (R11-W4)", () => {
     const p = bootstrapCachePath({ ...PROFILE, active_tenant_id: null }, "/tmp/x");
-    expect(p).toContain("global");
+    // The sentinel uses double-underscores, which the sanitiser
+    // (`[^A-Za-z0-9_-]` → `_`) cannot produce from a real tenant
+    // slug, so collisions with sanitised slugs are impossible.
+    expect(p).toContain("__no_tenant__");
+  });
+
+  test("a real tenant slug literally equal to 'global' does not collide with the no-tenant case", () => {
+    const noTenant = bootstrapCachePath({ ...PROFILE, active_tenant_id: null }, "/tmp/x");
+    const namedGlobal = bootstrapCachePath({ ...PROFILE, active_tenant_id: "global" }, "/tmp/x");
+    expect(noTenant).not.toBe(namedGlobal);
   });
 
   // W11 review fix: cache key must include a token fingerprint so two
