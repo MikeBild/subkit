@@ -52,9 +52,10 @@ import {
 } from "../llm/provider-errors.ts";
 import { log, logger } from "../logging/logger.ts";
 import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instrumentation.ts";
+import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import {
   CONVERSATION_CANCELLED_REASON,
-  mergeAbortSignals,
+  isExpectedCancellation,
   registerConversationAbort,
   unregisterConversationAbort,
 } from "./abort.ts";
@@ -73,7 +74,7 @@ import {
   resolveLanguageModel,
 } from "./loop/model-resolver.ts";
 import { committedStopCondition, pausedStopCondition } from "./loop/stop-conditions.ts";
-import { isAbortError, readStepUsage } from "./loop/usage.ts";
+import { readStepUsage } from "./loop/usage.ts";
 import {
   appendMessage,
   buildModelMessages,
@@ -142,10 +143,10 @@ export interface RunLoopParams {
    * falls back to creating + registering its own — identical to the
    * pre-A4 behaviour.
    *
-   * TODO(#146-followup): retire the fallback path once every caller
-   * threads `turn_abort_ctrl` (HTTP messages route is the only one
-   * today; MCP / SSE / CLI + queue surfaces should adopt the same
-   * register-at-request-accept pattern).
+   * Retired by #148 once every caller threads `turn_abort_ctrl`
+   * (HTTP messages route is the only one today; MCP / SSE / CLI +
+   * queue surfaces still pay the original cancel race A4 fixed for
+   * HTTP). The fallback is a transition affordance only.
    */
   turn_abort_ctrl?: AbortController;
 }
@@ -1276,32 +1277,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     try {
       await runOnce(effectiveModel);
     } catch (primaryErr) {
-      // The signal-reason check is the canonical "we initiated this
-      // cancel" detector. `isAbortError` catches DOMException AbortError
-      // and message-shaped abort tokens, but its regex is anchored on
-      // \b word boundaries — `"conversation_cancelled"` (the literal
-      // reason streamText rethrows when the AbortController fires)
-      // has an `_` before `cancelled`, which is a word character, so
-      // \b never triggers and `isAbortError` returns false. Without
-      // this second branch the loop would surface a 500 to the route
-      // handler instead of returning `status: "abandoned"` — exactly
-      // the e2e failure caught in PR #147 / run 25498312277.
-      //
-      // LIMITS — the detector covers exactly two cancel sources today:
-      //   1. `isAbortError(err)` matches DOMException AbortError /
-      //      TimeoutError, plus Error/string messages whose word-bounded
-      //      tokens hit `\b(abort(?:ed)?|cancel(?:l?ed)?)\b`.
-      //   2. `signal.reason === CONVERSATION_CANCELLED_REASON` matches
-      //      our route-handler-issued cancel verbatim.
-      // Any future call site that fires `ctrl.abort(otherReason)` —
-      // e.g. `"idle_timeout"`, `"client_disconnected"`, `"budget_exhausted"`
-      // — must extend this branch (and the fallback catch below)
-      // explicitly. Falling through both prongs surfaces the abort as
-      // a 500 to the route handler.
-      if (
-        turnAbortCtrl.signal.aborted &&
-        (isAbortError(primaryErr) || turnAbortCtrl.signal.reason === CONVERSATION_CANCELLED_REASON)
-      ) {
+      // Cancel-vs-error split — see `abort.ts` header for reason coverage.
+      if (isExpectedCancellation(primaryErr, turnAbortCtrl.signal)) {
         cancelled = true;
       } else {
         const providerKind = classifyProviderError(primaryErr);
@@ -1352,12 +1329,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         try {
           await runOnce(route.fallback);
         } catch (fbErr) {
-          // Same reason-aware detector as the primary catch — see the
-          // comment above for why the reason check is required.
-          if (
-            turnAbortCtrl.signal.aborted &&
-            (isAbortError(fbErr) || turnAbortCtrl.signal.reason === CONVERSATION_CANCELLED_REASON)
-          ) {
+          if (isExpectedCancellation(fbErr, turnAbortCtrl.signal)) {
             cancelled = true;
           } else {
             const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);

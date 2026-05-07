@@ -7174,7 +7174,7 @@
       {
         "slug": "merge-pr-after-approval",
         "title": "Open PR and wait for approval signal (WaitForEventStep)",
-        "description": "Open a pull request, then pause until a reviewer POSTs an `pr_approved` signal to /v1/executions/{execution_id}/signals (typically via a portal-token approval link), then merge. On timeout the recipe records an abandoned outcome and skips the merge. Demonstrates wait_for_event with an explicit `branch` to gate the success vs timeout path — the engine does NOT auto-skip downstream steps on timeout, so the branch is required.",
+        "description": "Open a pull request, then pause until a reviewer POSTs an `pr_approved` signal to /v1/executions/{execution_id}/signals (typically via a portal-token approval link), then merge. On timeout the recipe records an abandoned outcome and skips the merge. Demonstrates wait_for_event with an explicit `branch` to gate the success vs timeout path — the engine does NOT auto-skip downstream steps on timeout, so the branch is required. Timeout layout: the wait step uses 24h (86_400_000 ms) — the per-step bound the reviewer has to respond within — while the workflow envelope is 25h (90_000_000 ms) so the workflow has headroom for the open-PR + merge / abandon transitions to complete after the wait fires. The schema's superRefine enforces `workflow.timeout_ms >= wait_for_event.timeout_ms`, so this padding is required when adapting the recipe.",
         "intent_keywords": ["human in the loop", "reviewer signal gate", "hitl pause then merge"],
         "derived_from_skill": "github-basics",
         "category": "devops",

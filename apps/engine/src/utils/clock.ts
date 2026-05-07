@@ -32,7 +32,14 @@ export function setTestNow(provider: NowProvider | null): void {
   nowOverride = provider;
 }
 
-/** Snapshot the current override; lets test setups stack and restore. */
+/**
+ * Snapshot the current override; lets test setups stack and restore.
+ *
+ * @internal Production code never reads the override slot — the
+ *   sole legitimate consumers are `installClock` / `restoreClock` in
+ *   `apps/engine/src/test-helpers/determinism/clock.ts`. The
+ *   `@internal` tag flags any future production import for review.
+ */
 export function getNowProvider(): NowProvider | null {
   return nowOverride;
 }

@@ -26,11 +26,24 @@
 // horizontally-scaled fleet must front the engine with sticky routing
 // keyed on `conversation_id` (or stand up a shared store) before
 // scaling past one replica; otherwise the `cancel.no_controller`
-// warn is expected on a fraction of cancels and the running turn
+// log line is expected on a fraction of cancels and the running turn
 // drains its own budget. Tracked in docs/08-operations.md (single-
 // replica is the supported topology for the cancel surface today).
+//
+// **Reason coverage for `isExpectedCancellation`.** The two known
+// cancel sources today:
+//   1. `isAbortError(err)` — DOMException AbortError / TimeoutError,
+//      plus Error/string messages whose word-bounded tokens hit
+//      `\b(abort(?:ed)?|cancel(?:l?ed)?)\b`.
+//   2. `signal.reason === CONVERSATION_CANCELLED_REASON` — the literal
+//      reason this module's `cancelConversationAbort` issues.
+// Any future call site that fires `ctrl.abort(otherReason)` —
+// `"idle_timeout"`, `"client_disconnected"`, `"budget_exhausted"` —
+// must extend `isExpectedCancellation` below. Falling through both
+// prongs surfaces the abort as a 500 to the route handler.
 
 import { logger } from "../logging/logger.ts";
+import { isAbortError } from "./loop/usage.ts";
 
 export const CONVERSATION_CANCELLED_REASON = "conversation_cancelled";
 
@@ -76,9 +89,13 @@ export function cancelConversationAbort(
     //     hit a different pod than the turn (see header note).
     // Either way, the DB row write in cancelConversation runs
     // tenant-scoped and is the source of truth for the conversation
-    // status. The warn here is observability for the in-memory layer,
-    // not a correctness signal.
-    logger.warn({
+    // status. Logged at `info` (#147 review W-4) because both legitimate
+    // paths fire it on every cancel: a `warn` would create false-alarm
+    // SRE noise the moment a deployment scales horizontally without
+    // sticky routing. SREs that need to detect a regression here can
+    // alert on a turn that ends `abandoned` despite the in-memory
+    // hand-off missing.
+    logger.info({
       module: "conversations.abort",
       action: "cancel.no_controller",
       msg: "cancel issued but no AbortController registered for conversation",
@@ -100,30 +117,35 @@ export function cancelConversationAbort(
   return true;
 }
 
-/** Test-only: peek at whether a (tenant, conversation) slot has a live
- *  registration, without aborting it. Production code never calls this
- *  — `cancelConversationAbort` is the canonical reader. Exposed so
- *  unit tests can pin invariants like "the controller is still
- *  registered while the SSE callback is running" without hooking the
- *  registry out via prototype inspection. */
+/**
+ * Single-source-of-truth detector for "the turn was cancelled, not
+ * errored." Used by the conversation loop's primary + fallback dispatch
+ * catches; co-located with the registry + reason constant so a future
+ * cancel source is added in exactly one place. See the header `Reason
+ * coverage` block for the contract.
+ *
+ * Returns `true` iff the signal is aborted AND the error / signal-reason
+ * matches one of the recognised cancel shapes.
+ */
+export function isExpectedCancellation(err: unknown, signal: AbortSignal): boolean {
+  if (!signal.aborted) return false;
+  if (isAbortError(err)) return true;
+  if (signal.reason === CONVERSATION_CANCELLED_REASON) return true;
+  return false;
+}
+
+/**
+ * test-only — do not import outside `*.test.ts`. Peeks at whether a
+ * (tenant, conversation) slot has a live registration without aborting
+ * it. Production code never calls this; `cancelConversationAbort` is
+ * the canonical reader. Exposed so unit tests can pin invariants like
+ * "the controller is still registered while the SSE callback is
+ * running" without hooking the registry out via prototype inspection.
+ */
 export function __hasConversationAbort(tenantId: string, conversationId: string): boolean {
   return REGISTRY.has(key(tenantId, conversationId));
 }
 
-export function mergeAbortSignals(signals: AbortSignal[]): AbortSignal {
-  const ctrl = new AbortController();
-  for (const signal of signals) {
-    if (signal.aborted) {
-      ctrl.abort((signal as AbortSignal & { reason?: unknown }).reason ?? "aborted");
-      return ctrl.signal;
-    }
-    signal.addEventListener(
-      "abort",
-      () => {
-        ctrl.abort((signal as AbortSignal & { reason?: unknown }).reason ?? "aborted");
-      },
-      { once: true },
-    );
-  }
-  return ctrl.signal;
-}
+// `mergeAbortSignals` lives in `./_internal/abort-merge.ts` so the
+// conversations barrel at `./index.ts` cannot accidentally re-export
+// it. Loop.ts imports it directly. Per #147 review S-3.
