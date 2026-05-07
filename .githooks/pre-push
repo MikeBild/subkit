@@ -21,15 +21,46 @@
 
 set -e
 
-echo "[pre-push] fast gate — lint + typecheck + build (full tests run in CI)"
+echo "[pre-push] fast gate — lint + typecheck + build + drift (full tests run in CI)"
 
-echo "[pre-push] 1/3 biome (lint)"
+echo "[pre-push] 1/5 biome (lint)"
 bun run lint
 
-echo "[pre-push] 2/3 tsc (typecheck)"
+echo "[pre-push] 2/5 tsc (typecheck)"
 bun run typecheck
 
-echo "[pre-push] 3/3 build all binaries"
+echo "[pre-push] 3/5 openapi-drift (regenerate client; fail on diff)"
+# Without this, adding/changing an engine route lands in main with
+# the generated client at packages/cli-core/src/engine-api/ stale —
+# CI's `check:openapi-drift` then fails on the same diff and the
+# round-trip repeats. Better to catch the drift before the push.
+bun run check:openapi-drift
+
+echo "[pre-push] 4/5 commit-message gate (each new commit on this push)"
+# Walks the commits being pushed via the pre-push stdin range and
+# validates each header against scripts/check-commit-message.sh
+# (header-max-length=100, conventional type-enum, subject-case).
+# Pure bash — no commitlint dependency at push time.
+zero=$(git hash-object --stdin < /dev/null | tr 'a-f0-9' '0')
+msg_failed=0
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue
+  if [ "$remote_sha" = "$zero" ]; then
+    base=$(git merge-base origin/main "$local_sha" 2>/dev/null || true)
+  else
+    base="$remote_sha"
+  fi
+  [ -z "$base" ] && continue
+  if ! bash scripts/check-commit-message.sh --range "$base..$local_sha"; then
+    msg_failed=1
+  fi
+done
+if [ "$msg_failed" -ne 0 ]; then
+  echo "[pre-push] commit-message gate failed; fix the messages before pushing" >&2
+  exit 1
+fi
+
+echo "[pre-push] 5/5 build all binaries"
 bun run build:sk
 bun run build:engine
 
