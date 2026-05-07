@@ -249,6 +249,10 @@ export async function createJourneyCtx(
         // CI flake names the slow step in the existing log stream
         // instead of requiring a re-run with the env var set.
         for (const step of failSafe.reverse()) {
+          // allow-wall-clock: duration delta for observability — not a
+          // timestamp consumed by the SUT. The tests/journey logger
+          // line below records elapsed teardown time so a CI flake
+          // names the slow step; both reads are local to this for-loop.
           const t = Date.now();
           let error: unknown;
           try {
@@ -256,7 +260,7 @@ export async function createJourneyCtx(
           } catch (err) {
             error = err;
           }
-          const duration_ms = Date.now() - t;
+          const duration_ms = Date.now() - t; // allow-wall-clock: see comment above
           logger.info({
             module: "tests.journey",
             action: "teardown.step",

@@ -1,12 +1,13 @@
-// Pin the cancel-race contract from #146 / A4: registration + cancel
-// must always meet via the same registry so a cancel arriving before
-// the first dispatch (the pre-A4 race window) actually aborts the
-// turn instead of silently no-op'ing.
+// Pin the cancel-race contract from #146 / A4 + the cross-tenant
+// isolation contract from #147 review C1: registration + cancel must
+// always meet via the same registry, AND a foreign tenant POSTing
+// against another tenant's conversation_id must not be able to
+// displace the legitimate registration.
 //
 // The integration cover (tests/e2e/authoring-regressions.e2e.test.ts
 // "cancelling a slow preview…") exercises the full HTTP path; this
 // suite pins the bare contract so a future refactor can't quietly
-// reopen the race without flagging a unit-test failure.
+// reopen either race without flagging a unit-test failure.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import {
@@ -18,29 +19,39 @@ import {
 
 describe("conversation abort registry", () => {
   // Each test owns a unique conversation id so the process-local
-  // registry does not leak state between cases.
+  // registry does not leak state between cases. A monotonic counter
+  // is enough — registry slots are also tenant-scoped, and `afterEach`
+  // sweeps everything we registered.
   let nextId = 0;
-  const newId = (): string => `c-${++nextId}-${Math.random().toString(36).slice(2, 8)}`; // allow-random: per-test isolation, no determinism contract
+  const newConvId = (): string => `00000000-0000-4000-8000-${String(++nextId).padStart(12, "0")}`;
+  const TENANT_A = "00000000-0000-4000-8000-aaaaaaaaaaaa";
+  const TENANT_B = "00000000-0000-4000-8000-bbbbbbbbbbbb";
 
+  // Track every (tenant, convId) pair created in this suite so a
+  // failure inside a test still leaves the registry clean.
+  const created: Array<{ tenant: string; conv: string }> = [];
+  function track(tenant: string, conv: string): { tenant: string; conv: string } {
+    created.push({ tenant, conv });
+    return { tenant, conv };
+  }
   afterEach(() => {
-    // Defensive: drop any controllers a test forgot to unregister.
-    for (let i = 1; i <= nextId; i++) unregisterConversationAbort(`c-${i}`);
+    for (const { tenant, conv } of created.splice(0)) {
+      unregisterConversationAbort(tenant, conv);
+    }
   });
 
   test("registerConversationAbort returns a fresh, un-aborted controller", () => {
-    const id = newId();
-    const ctrl = registerConversationAbort(id);
+    const { tenant, conv } = track(TENANT_A, newConvId());
+    const ctrl = registerConversationAbort(tenant, conv);
     expect(ctrl.signal.aborted).toBe(false);
-    unregisterConversationAbort(id, ctrl);
   });
 
   test("cancelConversationAbort returns true and aborts the registered controller", () => {
-    const id = newId();
-    const ctrl = registerConversationAbort(id);
-    expect(cancelConversationAbort(id)).toBe(true);
+    const { tenant, conv } = track(TENANT_A, newConvId());
+    const ctrl = registerConversationAbort(tenant, conv);
+    expect(cancelConversationAbort(tenant, conv)).toBe(true);
     expect(ctrl.signal.aborted).toBe(true);
     expect(ctrl.signal.reason).toBe(CONVERSATION_CANCELLED_REASON);
-    unregisterConversationAbort(id, ctrl);
   });
 
   test("cancel-before-first-dispatch: a cancel issued the same tick as register still aborts the loop's signal", () => {
@@ -51,32 +62,89 @@ describe("conversation abort registry", () => {
     // consumes whatever the handler registered and a same-tick cancel
     // is observable as `signal.aborted` once the loop reaches its
     // first abort-checkable hop.
-    const id = newId();
-    const ctrl = registerConversationAbort(id);
-    const ok = cancelConversationAbort(id);
+    const { tenant, conv } = track(TENANT_A, newConvId());
+    const ctrl = registerConversationAbort(tenant, conv);
+    const ok = cancelConversationAbort(tenant, conv);
     expect(ok).toBe(true);
     expect(ctrl.signal.aborted).toBe(true);
-    unregisterConversationAbort(id, ctrl);
   });
 
-  test("cancelConversationAbort returns false when no controller is registered (regression sentinel)", () => {
-    // With A4 in place this should be unreachable for HTTP-driven
-    // turns. The branch exists so a future regression that re-opens
-    // the race surfaces a `cancel.no_controller` warning in logs
-    // rather than failing silently.
-    const id = newId();
-    expect(cancelConversationAbort(id)).toBe(false);
+  test("cancelConversationAbort returns false when no controller is registered", () => {
+    // Reachable on legitimate paths after the turn has already
+    // completed (controller already unregistered) and on
+    // multi-replica deploys without sticky routing. The DB-side
+    // status flip in cancelConversation is the source of truth; the
+    // warn here is observability for the in-memory layer.
+    const { tenant, conv } = track(TENANT_A, newConvId());
+    expect(cancelConversationAbort(tenant, conv)).toBe(false);
   });
 
   test("unregister is scoped to the controller that owns it (no cross-cancel)", () => {
-    const id = newId();
-    const ctrl1 = registerConversationAbort(id);
-    const ctrl2 = registerConversationAbort(id); // overwrites ctrl1 in registry
+    const { tenant, conv } = track(TENANT_A, newConvId());
+    const ctrl1 = registerConversationAbort(tenant, conv);
+    const ctrl2 = registerConversationAbort(tenant, conv); // overwrites ctrl1 in registry
     // Trying to unregister with the stale handle is a no-op.
-    unregisterConversationAbort(id, ctrl1);
-    expect(cancelConversationAbort(id)).toBe(true);
+    unregisterConversationAbort(tenant, conv, ctrl1);
+    expect(cancelConversationAbort(tenant, conv)).toBe(true);
     expect(ctrl2.signal.aborted).toBe(true);
     expect(ctrl1.signal.aborted).toBe(false);
-    unregisterConversationAbort(id, ctrl2);
+  });
+
+  // ---------- #147 review C1 — cross-tenant isolation -------------
+
+  test("a foreign tenant cannot displace another tenant's registered controller", () => {
+    // The pre-fix bug: the registry was keyed on conversation_id
+    // alone. Tenant A POSTing /messages with Tenant B's UUID
+    // overwrote B's controller; A's appendUserMessage then threw
+    // (tenant-scoped getConversation returns null) and A's `finally`
+    // unregistered the slot — leaving B's loop uncancellable.
+    //
+    // With tenant-scoped keys, A's registration lives in its own
+    // slot and B's controller stays put.
+    const conv = newConvId(); // SAME UUID for both tenants
+    track(TENANT_A, conv);
+    track(TENANT_B, conv);
+
+    const ctrlB = registerConversationAbort(TENANT_B, conv);
+    // Tenant A probes B's conversation id — registers under A's slot.
+    const ctrlA = registerConversationAbort(TENANT_A, conv);
+    expect(ctrlA).not.toBe(ctrlB);
+
+    // A's request completes / errors and unregisters its OWN slot.
+    unregisterConversationAbort(TENANT_A, conv, ctrlA);
+
+    // Tenant B issues cancel — must still find its own controller.
+    expect(cancelConversationAbort(TENANT_B, conv)).toBe(true);
+    expect(ctrlB.signal.aborted).toBe(true);
+    expect(ctrlA.signal.aborted).toBe(false);
+  });
+
+  test("a foreign tenant cancel cannot abort another tenant's controller", () => {
+    const conv = newConvId();
+    track(TENANT_A, conv);
+    track(TENANT_B, conv);
+
+    const ctrlA = registerConversationAbort(TENANT_A, conv);
+    // Tenant B issues cancel against the same UUID — the cancel
+    // route checks tenant ownership first (lifecycle.ts:18), but
+    // even if a regression skipped that check, the tenant-scoped
+    // registry never hands B the lookup for A's slot.
+    expect(cancelConversationAbort(TENANT_B, conv)).toBe(false);
+    expect(ctrlA.signal.aborted).toBe(false);
+  });
+
+  test("registry slots for the same conversation id under different tenants do not interfere", () => {
+    const conv = newConvId();
+    track(TENANT_A, conv);
+    track(TENANT_B, conv);
+
+    const ctrlA = registerConversationAbort(TENANT_A, conv);
+    const ctrlB = registerConversationAbort(TENANT_B, conv);
+    expect(cancelConversationAbort(TENANT_A, conv)).toBe(true);
+    expect(ctrlA.signal.aborted).toBe(true);
+    // B's slot is untouched by A's cancel.
+    expect(ctrlB.signal.aborted).toBe(false);
+    expect(cancelConversationAbort(TENANT_B, conv)).toBe(true);
+    expect(ctrlB.signal.aborted).toBe(true);
   });
 });

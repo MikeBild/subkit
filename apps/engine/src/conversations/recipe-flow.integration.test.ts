@@ -236,7 +236,7 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(toolStep?.cmd).toEqual(["shellcheck", "-"]);
   });
 
-  test("WaitForEventStep recipe — merge-pr-after-approval clones with a signal-driven pause", async () => {
+  test("WaitForEventStep recipe — merge-pr-after-approval clones with a signal-driven pause + explicit branch on timeout", async () => {
     const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
     const result = await startWorkflowFromRecipeTool.execute(
       makeToolCtx({ tenant_id, conversation_id, draft }),
@@ -246,17 +246,34 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     const wf = draft.current.workflow;
     const steps = (wf?.steps ?? []) as Array<{
       kind?: string;
+      id?: string;
       event_name?: string;
       timeout_ms?: number;
-      on_timeout?: string;
+      when?: string;
+      then_steps?: string[];
+      else_steps?: string[];
     }>;
     const wait = steps.find((s) => s.kind === "wait_for_event");
     expect(wait).toBeDefined();
     expect(wait?.event_name).toBe("pr_approved");
     expect(wait?.timeout_ms).toBe(86_400_000);
-    expect(wait?.on_timeout).toBe("abandon");
-    // Fallback step referenced by `on_timeout` must exist, otherwise
-    // the workflow can't actually run on timeout.
-    expect(steps.find((s) => (s as { id?: string }).id === "abandon")).toBeDefined();
+
+    // #147 review W2: WaitForEventStep.on_timeout is declared in the
+    // schema but the runner does NOT honour it for routing — the
+    // workflow must branch explicitly on `timed_out`. The recipe
+    // models that pattern with a `branch` step gating merge vs
+    // abandon, so a future refactor that drops the branch (or
+    // re-introduces the on_timeout-only shape) fails this test
+    // before regressing the recipe.
+    const branch = steps.find((s) => s.kind === "branch");
+    expect(branch).toBeDefined();
+    expect(branch?.when).toContain("timed_out");
+    expect(branch?.then_steps).toEqual(["abandon_on_timeout"]);
+    expect(branch?.else_steps).toEqual(["merge"]);
+
+    // Both downstream targets must exist, otherwise the branch
+    // points at non-existent step ids.
+    expect(steps.find((s) => s.id === "merge")).toBeDefined();
+    expect(steps.find((s) => s.id === "abandon_on_timeout")).toBeDefined();
   });
 });

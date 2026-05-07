@@ -5,10 +5,13 @@
 export {
   CONVERSATION_CANCELLED_REASON,
   cancelConversationAbort,
-  mergeAbortSignals,
   registerConversationAbort,
   unregisterConversationAbort,
 } from "./abort.ts";
+// `mergeAbortSignals` is intentionally not re-exported here — its
+// only consumer (`./loop.ts`) imports it directly from `./abort.ts`,
+// and widening the public surface invites cross-package use that
+// hides ownership of the merged controller's lifetime.
 export * from "./attachments.ts";
 export * from "./parts.ts";
 export * from "./service.ts";

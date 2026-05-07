@@ -225,6 +225,24 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
       }
     }
   });
+
+  // #147 review S7 — JSON round-trip safety for ConnectorTemplate.
+  //
+  // After E.1, `buildTemplateBindingFields` returns the typed
+  // `ConnectorTemplate` directly into a drizzle jsonb column (no
+  // generic widening cast). That works only as long as every field
+  // on `ConnectorTemplate` is JSON-serialisable: the moment a future
+  // Zod-side change introduces a `Date`, a `Map`, or a method on the
+  // schema, the jsonb writer would silently drop or stringify the
+  // value and snapshot reads later would not equal the source. This
+  // test pins the invariant — every catalog entry must round-trip
+  // through `JSON.parse(JSON.stringify(...))` without loss.
+  test("every template round-trips through JSON without loss (jsonb writer safety)", () => {
+    for (const t of templates) {
+      const roundtrip = JSON.parse(JSON.stringify(t));
+      expect(roundtrip).toEqual(t);
+    }
+  });
 });
 
 describe("connector-template catalog — Layer-3 vendor-drift sweep", () => {

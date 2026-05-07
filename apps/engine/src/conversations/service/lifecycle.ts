@@ -5,6 +5,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations } from "../../db/schema/index.ts";
+import { now } from "../../utils/clock.ts";
 import { cancelConversationAbort } from "../abort.ts";
 import type { ConversationRecord, ConversationStatus } from "../types.ts";
 import { rowToRecord } from "./shared.ts";
@@ -17,7 +18,7 @@ export async function cancelConversation(
 ): Promise<ConversationRecord | null> {
   const [row] = await exec
     .update(conversations)
-    .set({ status: "abandoned", updated_at: new Date() })
+    .set({ status: "abandoned", updated_at: new Date(now()) })
     .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
     .returning();
   if (!row) return null;
@@ -33,7 +34,7 @@ export async function cancelConversation(
     },
     exec,
   );
-  cancelConversationAbort(conversation_id);
+  cancelConversationAbort(tenant_id, conversation_id);
   return rowToRecord(row);
 }
 
@@ -151,7 +152,7 @@ export async function patchConversation(
   p: PatchConversationParams,
   exec: Db,
 ): Promise<ConversationRecord | null> {
-  const updates: Partial<typeof conversations.$inferInsert> = { updated_at: new Date() };
+  const updates: Partial<typeof conversations.$inferInsert> = { updated_at: new Date(now()) };
   if (p.model !== undefined) updates.model = p.model;
   if (p.title !== undefined) updates.title = p.title;
   const [row] = await exec

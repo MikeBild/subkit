@@ -50,79 +50,91 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    // #146 / A4: register the AbortController on the synchronous frame
-    // of request-accept so a cancel arriving in the first ~40 ms after
-    // the route is hit always finds a controller. Registering inside
-    // `runLoop` (the pre-A4 location) re-opens the race the cancel
-    // route silently lost.
-    const turnAbortCtrl = registerConversationAbort(id);
-    const baseParams = {
-      tenant_id: principal.tenant_id,
-      conversation_id: id,
-      actor_id: principal.id,
-      message: body.message,
-      turn_abort_ctrl: turnAbortCtrl,
-      ...(body.memory !== undefined ? { memory: body.memory } : {}),
-      ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-      runtime_context: buildRuntimeContextFromRequest(c, principal),
-    } as const;
+    // #146 / A4 + #147 review C1: register the AbortController on the
+    // synchronous frame of request-accept so a cancel arriving in the
+    // first ~40ms always finds a controller. The registry key carries
+    // the principal's tenant id, so a foreign tenant probing another
+    // tenant's UUID lives in its own slot and cannot displace the
+    // legitimate registration. Registering inside `runLoop` (the
+    // pre-A4 location) re-opens the race the cancel route silently
+    // lost.
+    const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
+    // #147 review W1: a single outer try/finally guarantees the
+    // controller is unregistered no matter which path throws —
+    // including `buildRuntimeContextFromRequest` and `wantsSSE`,
+    // which run before the inner SSE / non-SSE branches. The
+    // unregister is idempotent on tenant + ctrl mismatch (see
+    // abort.ts `unregisterConversationAbort`), so a single guard is
+    // safe even when the two branches both succeed.
+    try {
+      const baseParams = {
+        tenant_id: principal.tenant_id,
+        conversation_id: id,
+        actor_id: principal.id,
+        message: body.message,
+        turn_abort_ctrl: turnAbortCtrl,
+        ...(body.memory !== undefined ? { memory: body.memory } : {}),
+        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+        runtime_context: buildRuntimeContextFromRequest(c, principal),
+      } as const;
 
-    if (wantsSSE(c.req.header("accept"))) {
-      return streamSSE(c, async (stream) => {
-        try {
-          const outcome = await svc.appendUserMessage(
-            {
-              ...baseParams,
-              onEvent: (ev: TurnEvent) => {
-                void stream.writeSSE(serializeEvent(ev));
+      if (wantsSSE(c.req.header("accept"))) {
+        return streamSSE(c, async (stream) => {
+          try {
+            const outcome = await svc.appendUserMessage(
+              {
+                ...baseParams,
+                onEvent: (ev: TurnEvent) => {
+                  void stream.writeSSE(serializeEvent(ev));
+                },
               },
-            },
-            db,
-          );
-          await stream.writeSSE(outcomeFrame(outcome));
-        } catch (error) {
-          if (error instanceof svc.PendingElicitationBlockedError) {
+              db,
+            );
+            await stream.writeSSE(outcomeFrame(outcome));
+          } catch (error) {
+            if (error instanceof svc.PendingElicitationBlockedError) {
+              await stream.writeSSE(
+                errorFrame({
+                  code: "pending_elicitation_blocked",
+                  message: error.message,
+                  details: {
+                    conversation_status: "awaiting_input",
+                    pending_elicitation: error.pending_elicitation,
+                  },
+                }),
+              );
+              return;
+            }
+            const err = error as Error;
             await stream.writeSSE(
               errorFrame({
-                code: "pending_elicitation_blocked",
-                message: error.message,
-                details: {
-                  conversation_status: "awaiting_input",
-                  pending_elicitation: error.pending_elicitation,
-                },
+                code: "internal",
+                message: err?.message ?? "internal_error",
               }),
             );
-            return;
+          } finally {
+            unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
-          const err = error as Error;
-          await stream.writeSSE(
-            errorFrame({
-              code: "internal",
-              message: err?.message ?? "internal_error",
-            }),
-          );
-        } finally {
-          unregisterConversationAbort(id, turnAbortCtrl);
-        }
-        // biome-ignore lint/suspicious/noExplicitAny: see createRouteSpec branch above.
-      }) as any;
-    }
-
-    let outcome: svc.ConversationTurnOutcome;
-    try {
-      outcome = await svc.appendUserMessage(baseParams, db);
-    } catch (error) {
-      if (error instanceof svc.PendingElicitationBlockedError) {
-        throw new HttpError(409, "pending_elicitation_blocked", error.message, {
-          conversation_status: "awaiting_input",
-          pending_elicitation: error.pending_elicitation,
-        });
+          // biome-ignore lint/suspicious/noExplicitAny: see createRouteSpec branch above.
+        }) as any;
       }
-      throw error;
+
+      let outcome: svc.ConversationTurnOutcome;
+      try {
+        outcome = await svc.appendUserMessage(baseParams, db);
+      } catch (error) {
+        if (error instanceof svc.PendingElicitationBlockedError) {
+          throw new HttpError(409, "pending_elicitation_blocked", error.message, {
+            conversation_status: "awaiting_input",
+            pending_elicitation: error.pending_elicitation,
+          });
+        }
+        throw error;
+      }
+      return c.json(serializeConversation(outcome), 200);
     } finally {
-      unregisterConversationAbort(id, turnAbortCtrl);
+      unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
     }
-    return c.json(serializeConversation(outcome), 200);
   });
 
   // ---- File attachment route -------------------------------------------------
