@@ -7463,9 +7463,9 @@ export interface components {
                 scopes: string[] | null;
             };
             /** @description Allowed UX-gating permissions for the principal. */
-            permissions: string[];
+            permissions: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "skill:write" | "execution:read" | "notification:read" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read")[];
             /** @description Stable list of permissions probed; reflects the engine's known UX gating set. */
-            permissions_checked: string[];
+            permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "skill:write" | "execution:read" | "notification:read" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read")[];
             tenant: {
                 id: string;
                 slug: string | null;
@@ -7475,6 +7475,7 @@ export interface components {
                 id: string;
                 title: string | null;
                 updated_at: string;
+                tenant_id: string;
             }[];
             /** @description Persona-visible feature flags. Keys are drawn from a typed enum. */
             flags: {
