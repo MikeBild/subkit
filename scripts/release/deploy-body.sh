@@ -9,7 +9,7 @@
 #
 # Expected env on the droplet:
 #   ENGINE_VERSION — semver (e.g. "1.6.7"); pulled from DOCR as
-#                    registry.digitalocean.com/subkit/{engine,migrate}:<ver>
+#                    registry.digitalocean.com/subkit/engine:<ver>
 #   /opt/subkit/.env — bound at rest; contains DATABASE_URL, MASTER_KEY,
 #                      AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL or
 #                      LLM_PROVIDER + matching provider credentials. Not touched here.
@@ -17,13 +17,15 @@
 # Behavior:
 #   1. Log in to DOCR (600 s token), retrying transient registry errors.
 #   2. Capture the currently-running container's ENGINE_VERSION for rollback.
-#   3. Pull the engine + migrate images, retrying transient registry errors.
-#   4. Run migrations (aborts on failure before any engine restart).
-#   5. Re-seed + restart engine (`--no-deps` so the engine is the only thing
-#      recreated — postgres and peers stay live).
-#   6. Poll Docker's HEALTHCHECK status every 5 s for up to 150 s.
+#   3. Pull the engine image, retrying transient registry errors.
+#   4. Recreate engine (`--no-deps` so the engine is the only thing
+#      recreated — postgres and peers stay live). The engine binary
+#      runs migrations + seed in-process on every boot (issue #149);
+#      a migration failure aborts boot and the HEALTHCHECK never goes
+#      `healthy`, which triggers the rollback below.
+#   5. Poll Docker's HEALTHCHECK status every 5 s for up to 150 s.
 #      On failure, restart engine from the previous version and exit non-zero.
-#   7. Bounce Caddy and prune dangling images.
+#   6. Bounce Caddy and prune dangling images.
 #
 # Idempotent: re-running with the same ENGINE_VERSION is a no-op (pull
 # is already up to date, up -d won't recreate a healthy container).
@@ -59,7 +61,7 @@ export ENGINE_VERSION
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 
 compose_pull() {
-  $COMPOSE pull engine migrate
+  $COMPOSE pull engine
 }
 
 # Capture current version for rollback (empty if no engine is running).
@@ -71,11 +73,9 @@ PREV_VERSION=$(
 
 retry 5 5 compose_pull
 
-# Run migrations — abort before touching the engine if they fail.
-$COMPOSE up -d migrate
-$COMPOSE wait migrate || { echo "FATAL: migration failed"; exit 1; }
-
-$COMPOSE up -d seed
+# Recreate engine — migrations + seed run in-process on boot (issue
+# #149).  A migration failure aborts boot via process.exit(1); the
+# container goes unhealthy and the rollback path below catches it.
 $COMPOSE up -d --no-deps engine
 
 # Health check loop — 30 × 5 s = 150 s max.

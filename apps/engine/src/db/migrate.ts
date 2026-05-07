@@ -1,6 +1,14 @@
-// Standalone migration runner. Invoked by `bun run db:migrate`. Reads the
-// migration bundle produced by `drizzle-kit generate` at
-// apps/engine/src/db/migrations and applies it to the target database.
+// Migration runner.
+//
+// The migration set is **embedded** at build time via the
+// `embedded.ts` manifest — each migration's SQL is imported with the
+// `with { type: "text" }` attribute and the journal with
+// `with { type: "json" }`, so `bun build --compile` inlines them into
+// the binary. Every compiled `engine` carries its own journal + SQL
+// bodies as inline string literals; there is no runtime disk read for
+// migrations, no separate `migrate` container, and no way for a
+// parallel migrator to apply a different lineage onto the same
+// database. This is the structural fix for issue #149.
 //
 // Why a custom runner instead of drizzle-orm's `migrate()`?
 // ---------------------------------------------------------
@@ -16,63 +24,34 @@
 // journal `when` less than its predecessor, so `0023_...` was skipped
 // even though its hash was not in the migrations table. The fix here
 // is simple: use **hash-set membership** ("is this migration's hash
-// already in the table?") instead of a timestamp watermark. That's the
-// semantics everyone expects from a migration runner anyway.
+// already in the table?") instead of a timestamp watermark.
 
-import { createHash } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { sql } from "drizzle-orm";
 import { logger } from "../logging/logger.ts";
-import { createDbFromUrl, type Db } from "./client.ts";
+import type { Db } from "./client.ts";
+import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 
-// Migrate runs as a standalone binary (`bun run apps/engine/src/db/migrate.ts`)
-// without going through loadConfig — it would be circular to require a config
-// file just to migrate the database the config file may eventually live in.
-function bootstrapDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("DATABASE_URL is required for `db:migrate`");
-  }
-  return url;
+export interface MigrationReport {
+  applied: number;
+  skipped: number;
+  hash_drift_backfilled: number;
+  total: number;
 }
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_FOLDER = path.join(HERE, "migrations");
-
-interface Migration {
-  idx: number;
-  tag: string;
-  when: number;
-  hash: string;
-  statements: string[];
-}
-
-function readMigrations(folder: string): Migration[] {
-  const journalPath = path.join(folder, "meta", "_journal.json");
-  if (!fs.existsSync(journalPath)) {
-    throw new Error(`Can't find meta/_journal.json at ${journalPath}`);
-  }
-  const journal = JSON.parse(fs.readFileSync(journalPath, "utf8")) as {
-    entries: Array<{ idx: number; tag: string; when: number; breakpoints?: boolean }>;
-  };
-  // Apply in journal order (idx-ascending) regardless of `when` values —
-  // `when` only informs the row `created_at` we write, never the order.
-  const entries = [...journal.entries].sort((a, b) => a.idx - b.idx);
-  return entries.map((e) => {
-    const sqlPath = path.join(folder, `${e.tag}.sql`);
-    const raw = fs.readFileSync(sqlPath, "utf8");
-    const statements = raw
-      .split("--> statement-breakpoint")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-    const hash = createHash("sha256").update(raw).digest("hex");
-    return { idx: e.idx, tag: e.tag, when: e.when, hash, statements };
-  });
+export interface DriftReport {
+  /** Rows present in `drizzle.__drizzle_migrations` whose hash is not
+   *  in this binary's embedded set. Indicates the DB was migrated by a
+   *  different binary lineage — actionable signal for #149. */
+  unknown_in_db: Array<{ row_id: number; hash: string; created_at: number | null }>;
+  /** Embedded migrations whose hash is not in the DB. Informational —
+   *  `runMigrations` would apply these on the same boot. */
+  missing_in_db: Array<{ idx: number; tag: string; hash: string }>;
 }
 
 async function ensureMigrationsTable(db: Db): Promise<void> {
+  // pgcrypto is required for `gen_random_uuid()` defaults. Drizzle does
+  // not emit this automatically when schemas use `.defaultRandom()`.
+  await db.execute(sql`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`);
   await db.execute(sql`CREATE SCHEMA IF NOT EXISTS "drizzle"`);
   await db.execute(
     sql`
@@ -97,7 +76,7 @@ interface AppliedState {
   count: number;
 }
 
-async function readAppliedState(db: Db): Promise<AppliedState> {
+async function readAppliedHashes(db: Db): Promise<AppliedState> {
   const rows = (await db.execute(
     sql`SELECT hash FROM "drizzle"."__drizzle_migrations"`,
   )) as unknown as { rows: Array<{ hash: string }> };
@@ -105,107 +84,132 @@ async function readAppliedState(db: Db): Promise<AppliedState> {
   return { hashes, count: hashes.size };
 }
 
-export async function runMigrations(url: string = bootstrapDatabaseUrl()): Promise<void> {
+/**
+ * Apply embedded migrations to the given database connection.
+ *
+ * Idempotent: re-running on an already-migrated DB is a no-op. Safe to
+ * invoke on every engine boot. The caller owns the connection pool —
+ * this function does not open or close any pools.
+ */
+export async function runMigrations(db: Db): Promise<MigrationReport> {
   logger.info({
     module: "db",
     action: "migrate.started",
-    msg: "applying migrations",
-    migrations_folder: MIGRATIONS_FOLDER,
+    msg: "applying embedded migrations",
+    total: EMBEDDED_MIGRATIONS.length,
   });
 
-  const { pool, db } = createDbFromUrl(url);
-  try {
-    // pgcrypto is required for `gen_random_uuid()` defaults. Drizzle
-    // does not emit this automatically when schemas use `.defaultRandom()`.
-    await pool.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
+  await ensureMigrationsTable(db);
+  const applied = await readAppliedHashes(db);
 
-    const migrations = readMigrations(MIGRATIONS_FOLDER);
-    await ensureMigrationsTable(db);
-    const applied = await readAppliedState(db);
-
-    let appliedCount = 0;
-    let skippedCount = 0;
-    let hashDriftCount = 0;
-    for (const m of migrations) {
-      if (applied.hashes.has(m.hash)) {
-        skippedCount++;
-        continue;
-      }
-      // Positional fallback: the drizzle.__drizzle_migrations table's
-      // SERIAL id increments in journal-idx order, so if `count` already
-      // covers this migration's idx, it was applied under a different
-      // file hash (someone edited the .sql after it was applied).
-      // Treat as applied but backfill the current hash so subsequent
-      // runs see hash parity.
-      if (applied.count > m.idx) {
-        hashDriftCount++;
-        logger.warn({
-          module: "db",
-          action: "migrate.hash_drift",
-          msg: "migration file hash changed since it was applied — backfilling stored hash",
-          idx: m.idx,
-          tag: m.tag,
-          new_hash: m.hash,
-        });
-        await db.execute(
-          sql`UPDATE "drizzle"."__drizzle_migrations" SET hash = ${m.hash} WHERE id = ${m.idx + 1}`,
-        );
-        applied.hashes.add(m.hash);
-        continue;
-      }
-      logger.info({
+  let appliedCount = 0;
+  let skippedCount = 0;
+  let hashDriftCount = 0;
+  for (const m of EMBEDDED_MIGRATIONS) {
+    if (applied.hashes.has(m.hash)) {
+      skippedCount++;
+      continue;
+    }
+    // Positional fallback: the drizzle.__drizzle_migrations table's
+    // SERIAL id increments in journal-idx order, so if `count` already
+    // covers this migration's idx, it was applied under a different
+    // file hash (someone edited the .sql after it was applied). Treat
+    // as applied but backfill the current hash so subsequent runs see
+    // hash parity.
+    if (applied.count > m.idx) {
+      hashDriftCount++;
+      logger.warn({
         module: "db",
-        action: "migrate.applying",
-        msg: "applying migration",
+        action: "migrate.hash_drift",
+        msg: "migration file hash changed since it was applied — backfilling stored hash",
         idx: m.idx,
         tag: m.tag,
-        statement_count: m.statements.length,
+        new_hash: m.hash,
       });
-      await db.transaction(async (tx) => {
-        for (const stmt of m.statements) {
-          await tx.execute(sql.raw(stmt));
-        }
-        await tx.execute(
-          sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at") VALUES (${m.hash}, ${m.when})`,
-        );
-      });
+      await db.execute(
+        sql`UPDATE "drizzle"."__drizzle_migrations" SET hash = ${m.hash} WHERE id = ${m.idx + 1}`,
+      );
       applied.hashes.add(m.hash);
-      applied.count += 1;
-      appliedCount++;
+      continue;
     }
-
     logger.info({
       module: "db",
-      action: "migrate.applied",
-      msg: "migrations applied successfully",
-      applied: appliedCount,
-      skipped: skippedCount,
-      hash_drift_backfilled: hashDriftCount,
-      total: migrations.length,
+      action: "migrate.applying",
+      msg: "applying migration",
+      idx: m.idx,
+      tag: m.tag,
+      statement_count: m.statements.length,
     });
-  } catch (err) {
-    logger.error({
-      module: "db",
-      action: "migrate.failed",
-      msg: "migration failed",
-      error: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : undefined,
+    await db.transaction(async (tx) => {
+      for (const stmt of m.statements) {
+        await tx.execute(sql.raw(stmt));
+      }
+      await tx.execute(
+        sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at") VALUES (${m.hash}, ${m.when})`,
+      );
     });
-    throw err;
-  } finally {
-    await pool.end();
+    applied.hashes.add(m.hash);
+    applied.count += 1;
+    appliedCount++;
   }
+
+  const report: MigrationReport = {
+    applied: appliedCount,
+    skipped: skippedCount,
+    hash_drift_backfilled: hashDriftCount,
+    total: EMBEDDED_MIGRATIONS.length,
+  };
+
+  logger.info({
+    module: "db",
+    action: "migrate.applied",
+    msg: "migrations applied successfully",
+    ...report,
+  });
+
+  return report;
 }
 
-// Entrypoint when run as a script.
-if (import.meta.main) {
-  runMigrations().catch((err) => {
-    logger.fatal({
-      module: "db",
-      action: "migrate.crashed",
-      msg: "migrate script crashed",
-      error: err instanceof Error ? err.message : String(err),
-    });
-    process.exit(1);
-  });
+/**
+ * Compare the database's `drizzle.__drizzle_migrations` rows against
+ * this binary's embedded set. Read-only — does not write anything.
+ *
+ * `unknown_in_db.length > 0` means the DB carries migration rows from
+ * a binary lineage this engine doesn't recognise. That is the #149
+ * symptom: prod had 27 such rows and three subsystems failed because
+ * the schema state didn't match the engine's expectations. Operators
+ * should treat this as a deploy-time alarm.
+ */
+export async function detectDrift(db: Db): Promise<DriftReport> {
+  await ensureMigrationsTable(db);
+  const rows = (await db.execute(
+    sql`SELECT id, hash, created_at FROM "drizzle"."__drizzle_migrations" ORDER BY id`,
+  )) as unknown as {
+    rows: Array<{ id: number; hash: string; created_at: number | null }>;
+  };
+  const dbRows = rows.rows ?? [];
+
+  const embeddedHashes = new Set(EMBEDDED_MIGRATIONS.map((m) => m.hash));
+  const dbHashes = new Set(dbRows.map((r) => r.hash));
+
+  const unknown_in_db = dbRows
+    .filter((r) => !embeddedHashes.has(r.hash))
+    .map((r) => ({
+      row_id: r.id,
+      hash: r.hash,
+      created_at: r.created_at,
+    }));
+
+  const missing_in_db = EMBEDDED_MIGRATIONS.filter((m) => !dbHashes.has(m.hash)).map((m) => ({
+    idx: m.idx,
+    tag: m.tag,
+    hash: m.hash,
+  }));
+
+  return { unknown_in_db, missing_in_db };
+}
+
+/** Read-only accessor for tests + diagnostics. */
+export function listEmbeddedMigrations(): readonly EmbeddedMigration[] {
+  return EMBEDDED_MIGRATIONS;
 }

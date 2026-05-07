@@ -1,12 +1,17 @@
 // `sk doctor` — first-line operator diagnostic.
 //
-// Aggregates four checks the operator hits when "something is wrong":
+// Aggregates the checks an operator hits when "something is wrong":
 //
-//   1. Profile     — does the resolved profile have an engine_url + api_key?
-//   2. Reachability— does GET /v1/health respond + report db_connected?
-//   3. Authn       — does the api_key resolve to a principal? (we hit the
-//                    setup-validation endpoint which requires auth)
-//   4. Setup       — what does /v1/diagnostics/setup say overall + per-section?
+//   1. Profile         — does the resolved profile have an engine_url + api_key?
+//   2. Reachability    — does GET /v1/health respond + report db_connected?
+//   3. Authn           — does the api_key resolve to a principal?
+//   4. Setup           — what does /v1/diagnostics/setup say overall + per-section?
+//   5. Schema drift    — does this engine binary's embedded migration set
+//                        match the rows in `drizzle.__drizzle_migrations`?
+//                        (issue #149)
+//   6. Version match   — does the CLI version match the engine's version?
+//                        Mismatches usually surface as missing routes or
+//                        wire-shape drift.
 //
 // Output is one block per check, color-coded. Exit code:
 //
@@ -19,6 +24,7 @@
 
 import { exitCodeFor } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
+import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
@@ -101,8 +107,10 @@ export const doctorCommand = defineCommand({
 
     // -------- 2. Reachability --------
     let reachability: CheckResult;
+    let lastHealth: Awaited<ReturnType<EngineClient["health"]>> | null = null;
     try {
       const h = await client.health();
+      lastHealth = h;
       reachability = {
         name: "reachability",
         status: h.db_connected ? "ok" : "blocked",
@@ -181,6 +189,109 @@ export const doctorCommand = defineCommand({
           results.push({ name: "setup", status: "warn", detail: "skipped — authn warned" });
         }
       }
+    }
+
+    // -------- 5. Schema drift --------
+    if (reachability.status === "blocked" || profileStatus === "blocked") {
+      results.push({
+        name: "schema_drift",
+        status: "warn",
+        detail: "skipped — fix profile + reachability first",
+      });
+    } else if (lastHealth && !lastHealth.db_schema_drift) {
+      results.push({
+        name: "schema_drift",
+        status: "ok",
+        detail: "engine reports no schema drift (db journal matches embedded set)",
+      });
+    } else {
+      // /v1/health flagged drift OR the field was missing (older engine).
+      // Pull /v1/diagnostics/drift for the actionable detail.
+      try {
+        const report = await client.driftReport();
+        const unknown = report.unknown_in_db.length;
+        const missing = report.missing_in_db.length;
+        if (unknown === 0 && missing === 0) {
+          results.push({
+            name: "schema_drift",
+            status: "ok",
+            detail: `embedded=${report.embedded_migration_count} db=${report.db_migration_count} (in sync)`,
+          });
+        } else {
+          const status: CheckStatus = unknown > 0 ? "blocked" : "warn";
+          const firstHashes = report.unknown_in_db
+            .slice(0, 3)
+            .map((r) => r.hash.slice(0, 12))
+            .join(", ");
+          results.push({
+            name: "schema_drift",
+            status,
+            detail:
+              `embedded=${report.embedded_migration_count} db=${report.db_migration_count} ` +
+              `unknown_in_db=${unknown}${firstHashes ? ` (${firstHashes}…)` : ""} ` +
+              `missing_in_db=${missing}`,
+            hint:
+              unknown > 0
+                ? "DB carries migration rows from a different engine lineage. " +
+                  "Issue #149 — pick a resolution path: (a) port the missing migration " +
+                  "files into this binary's source and ship a new release, or " +
+                  "(b) reset the DB from the embedded set during a maintenance window."
+                : "engine is newer than this DB; restart engine or run `engine --migrate` to apply",
+          });
+        }
+      } catch (err) {
+        if (err instanceof SkEngineError && err.status === 404) {
+          // Older engine without the drift endpoint. Fall back to the
+          // health flag — we only got here because the field was missing
+          // OR true; either way the operator should upgrade.
+          results.push({
+            name: "schema_drift",
+            status: "warn",
+            detail: "engine does not expose /v1/diagnostics/drift",
+            hint: "upgrade the engine to a build that includes the #149 fix",
+          });
+        } else if (err instanceof SkEngineError && err.status === 403) {
+          results.push({
+            name: "schema_drift",
+            status: "warn",
+            detail: "audit:read permission required to read drift report",
+            hint: "use a key with audit:read scope (admin role) to see drift detail",
+          });
+        } else {
+          const detail = err instanceof Error ? err.message : String(err);
+          results.push({
+            name: "schema_drift",
+            status: "warn",
+            detail: `drift report unavailable: ${detail}`,
+          });
+        }
+      }
+    }
+
+    // -------- 6. Version match --------
+    if (lastHealth?.version) {
+      const engineVersion = lastHealth.version;
+      const matches = engineVersion === CLI_VERSION;
+      results.push({
+        name: "version_match",
+        status: matches ? "ok" : "warn",
+        detail: matches
+          ? `cli=${CLI_VERSION} engine=${engineVersion}`
+          : `cli=${CLI_VERSION} engine=${engineVersion} — versions differ`,
+        ...(matches
+          ? {}
+          : {
+              hint:
+                "version mismatches usually surface as missing routes or wire-shape drift; " +
+                "run `sk update` (or download a matching release) so the CLI tracks the engine",
+            }),
+      });
+    } else {
+      results.push({
+        name: "version_match",
+        status: "warn",
+        detail: "engine version unavailable — reachability check blocked",
+      });
     }
 
     const overall = worst(results);

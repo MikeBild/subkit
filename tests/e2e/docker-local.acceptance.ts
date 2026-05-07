@@ -52,24 +52,21 @@ async function waitForHealth(timeoutMs = 120_000): Promise<void> {
 
 function issueAdminKey(): string {
   if (PROVIDED_API_KEY) return PROVIDED_API_KEY;
-  const result = runCommand("docker", [
-    "compose",
-    "run",
-    "--rm",
-    "--entrypoint",
-    "bun",
-    "migrate",
-    "run",
-    "apps/engine/src/db/issue-admin-key.ts",
-    "--tenant",
-    TENANT_SLUG,
-  ]);
+  // After issue #149 the migrate + seed compose services are gone — the
+  // engine binary runs both in-process on every boot, including the
+  // dev-fixtures seed in non-prod (which prints a one-time admin key
+  // for tenant `default`). Grab it from the engine container's logs.
+  const result = runCommand("docker", ["compose", "logs", "engine"]);
   const combined = `${result.stdout}\n${result.stderr}`;
   if (result.status !== 0) {
-    fail(`failed to issue admin key via docker compose:\n${combined}`);
+    fail(`failed to read engine logs:\n${combined}`);
   }
   const match = combined.match(/wf_live_[A-Za-z0-9_-]+/);
-  if (!match) fail(`docker compose did not print an admin key:\n${combined}`);
+  if (!match) {
+    fail(
+      `engine logs did not contain a dev admin key — make sure NODE_ENV != production for this run.\n${combined}`,
+    );
+  }
   return match[0];
 }
 

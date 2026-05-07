@@ -1,0 +1,106 @@
+// Integration test for /v1/diagnostics/drift.
+//
+// Drives a real engine, plants synthetic rows in
+// `drizzle.__drizzle_migrations`, and confirms the route surfaces them
+// to operator clients. Issue #149 — without this surface, drift is
+// invisible until a downstream subsystem fails.
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash, randomBytes } from "node:crypto";
+import { sql } from "drizzle-orm";
+import { apiKeys, users } from "../../db/schema/index.ts";
+import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
+
+let srv: HttpTestServer;
+let memberKey = "";
+
+function sha256Hex(v: string): string {
+  return createHash("sha256").update(v).digest("hex");
+}
+
+function newKey(): { plaintext: string; prefix: string; hash: string } {
+  const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
+  const plaintext = `wf_live_${rand}`;
+  return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
+}
+
+beforeAll(async () => {
+  srv = await createHttpTestServer("diagnostics_drift");
+
+  const [member] = await srv.db
+    .insert(users)
+    .values({
+      tenant_id: srv.tenantId,
+      email: "member-drift@test.local",
+      role: "member",
+    })
+    .returning();
+  if (!member) throw new Error("seed member failed");
+  const key = newKey();
+  await srv.db.insert(apiKeys).values({
+    tenant_id: srv.tenantId,
+    user_id: member.id,
+    prefix: key.prefix,
+    token_sha256: key.hash,
+    scopes: ["*"],
+  });
+  memberKey = key.plaintext;
+});
+
+afterAll(async () => {
+  await srv.cleanup();
+});
+
+function adminHeaders() {
+  return {
+    authorization: `Bearer ${srv.apiKey}`,
+    "content-type": "application/json",
+  } as const;
+}
+
+describe("/v1/diagnostics/drift", () => {
+  test("clean DB reports no drift", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, { headers: adminHeaders() });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      embedded_migration_count: number;
+      db_migration_count: number;
+      unknown_in_db: unknown[];
+      missing_in_db: unknown[];
+    };
+    expect(body.embedded_migration_count).toBe(body.db_migration_count);
+    expect(body.unknown_in_db).toEqual([]);
+    expect(body.missing_in_db).toEqual([]);
+  });
+
+  test("an unknown row surfaces in unknown_in_db", async () => {
+    const fakeHash = "deadbeefcafebabefacefeed".padEnd(64, "0");
+    await srv.db.execute(
+      sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at")
+          VALUES (${fakeHash}, ${999_999_999_999})`,
+    );
+    try {
+      const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, { headers: adminHeaders() });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        unknown_in_db: Array<{ hash: string }>;
+        db_migration_count: number;
+        embedded_migration_count: number;
+      };
+      const hashes = body.unknown_in_db.map((r) => r.hash);
+      expect(hashes).toContain(fakeHash);
+      expect(body.db_migration_count).toBe(body.embedded_migration_count + 1);
+    } finally {
+      await srv.db.execute(
+        sql`DELETE FROM "drizzle"."__drizzle_migrations" WHERE hash = ${fakeHash}`,
+      );
+    }
+  });
+
+  test("audit:read is required — member gets 403", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, {
+      headers: { authorization: `Bearer ${memberKey}` },
+    });
+    expect(res.status).toBe(403);
+  });
+});

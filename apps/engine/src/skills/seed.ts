@@ -1,9 +1,10 @@
-// Disk-backed skill seeding.
+// Embedded skill seeding.
 //
-// Reads Markdown files from `apps/engine/src/conversations/seed/skills/*.md`,
-// parses a minimal YAML front-matter block (only the keys we actually use,
-// so we don't take a dependency on `gray-matter`), and upserts each file as
-// a row in the `skills` table per tenant.
+// The skill-seed Markdown library is **embedded** at build time via the
+// `embed-seeds.macro.ts` Bun macro — every compiled `engine` binary
+// carries the seed contents inline. There is no runtime fs.readdir,
+// no /usr/local/share/subkit/skills directory copy, and no fallback
+// search path.  The seeds ship with the binary, period.
 //
 // Upsert strategy: `(tenant_id, slug)` is unique when slug is non-null. We
 // look up an existing row by that pair; if the SHA-256 content-hash of the
@@ -35,13 +36,10 @@
 //     <markdown body>
 
 import { createHash } from "node:crypto";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { and, eq } from "drizzle-orm";
 import { type Db, getDb } from "../db/client.ts";
 import { skills, tenants } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { EMBEDDED_SKILL_SEEDS } from "./embedded-seeds.ts";
 import {
   type SkillActivation,
   SkillActivationSchema,
@@ -93,9 +91,8 @@ export interface ParseError {
 export interface LoadResult {
   skills: SeededSkill[];
   errors: ParseError[];
-  resolved_dir: string | null;
-  searched_dirs: string[];
-  missing_dirs: string[];
+  /** Number of `*.md` files embedded in the binary at build time. */
+  embedded_count: number;
 }
 
 export interface ApplyOutcome {
@@ -105,25 +102,6 @@ export interface ApplyOutcome {
   unchanged: number;
 }
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const DEFAULT_SEED_DIR = path.resolve(
-  process.cwd(),
-  "apps",
-  "engine",
-  "src",
-  "conversations",
-  "seed",
-  "skills",
-);
-export const DEFAULT_RUNTIME_SEED_DIR = path.resolve(
-  path.dirname(process.execPath),
-  "..",
-  "share",
-  "subkit",
-  "skills",
-);
-const BUNDLE_FALLBACK_SEED_DIR = path.resolve(HERE, "..", "conversations", "seed", "skills");
-
 // Front-matter keys removed in migration 0006. A seed file that still
 // carries any of these fails parse with a typed `legacy_field` error so
 // operators discover the rename loudly during the next boot.
@@ -132,84 +110,35 @@ const BUNDLE_FALLBACK_SEED_DIR = path.resolve(HERE, "..", "conversations", "seed
 // first-class field on every skill row.
 const LEGACY_KEYS = new Set(["auto_load", "trigger_keywords"]);
 
-function uniquePaths(paths: Array<string | null | undefined>): string[] {
-  return [
-    ...new Set(
-      paths.filter((value): value is string => typeof value === "string" && value.length > 0),
-    ),
-  ];
+export interface SeedSource {
+  /** Reference passed back in `ParseError.file` so an operator can
+   *  trace failures back to the on-disk source. */
+  file: string;
+  /** Full file contents — frontmatter + body. */
+  content: string;
 }
 
-export function resolveSkillSeedDirCandidates(
-  env: NodeJS.ProcessEnv = process.env,
-  cwd: string = process.cwd(),
-  execPath: string = process.execPath,
-): string[] {
-  return uniquePaths([
-    env.SK_SEED_SKILLS_DIR,
-    path.resolve(cwd, "apps", "engine", "src", "conversations", "seed", "skills"),
-    path.resolve(path.dirname(execPath), "..", "share", "subkit", "skills"),
-    BUNDLE_FALLBACK_SEED_DIR,
-  ]);
+/**
+ * Parse every Markdown seed embedded in the binary.
+ *
+ * Replaces the previous disk-walk loader. The seed library is now part
+ * of the engine binary (via `embed-seeds.macro.ts`), so this function
+ * never touches the filesystem at runtime.
+ */
+export function loadEmbeddedSkillSeeds(): LoadResult {
+  return loadSkillSeedsFromContent(EMBEDDED_SKILL_SEEDS);
 }
 
-async function resolveSeedDir(candidates: string[]): Promise<{
-  resolved_dir: string | null;
-  searched_dirs: string[];
-  missing_dirs: string[];
-}> {
-  const missing_dirs: string[] = [];
-  for (const candidate of candidates) {
-    try {
-      const stat = await fs.stat(candidate);
-      if (stat.isDirectory()) {
-        return {
-          resolved_dir: candidate,
-          searched_dirs: candidates,
-          missing_dirs,
-        };
-      }
-      missing_dirs.push(candidate);
-    } catch {
-      missing_dirs.push(candidate);
-    }
-  }
-  return {
-    resolved_dir: null,
-    searched_dirs: candidates,
-    missing_dirs,
-  };
-}
-
-export async function loadSkillSeedsFromDisk(dir?: string): Promise<LoadResult> {
+/**
+ * Parse a caller-supplied list of seed sources.  Used by tests to feed
+ * synthetic Markdown without touching the filesystem; production code
+ * should call `loadEmbeddedSkillSeeds()` instead.
+ */
+export function loadSkillSeedsFromContent(files: readonly SeedSource[]): LoadResult {
   const out: SeededSkill[] = [];
   const errors: ParseError[] = [];
-  const searched_dirs = dir ? [dir] : resolveSkillSeedDirCandidates();
-  const resolved = await resolveSeedDir(searched_dirs);
-  if (!resolved.resolved_dir) {
-    logger.info({
-      module: "skills.seed",
-      action: "seed_dir_missing",
-      dir: dir ?? null,
-      searched_dirs: resolved.searched_dirs,
-      missing_dirs: resolved.missing_dirs,
-      msg: "skill seed directory does not exist; skipping",
-    });
-    return {
-      skills: [],
-      errors: [],
-      resolved_dir: null,
-      searched_dirs: resolved.searched_dirs,
-      missing_dirs: resolved.missing_dirs,
-    };
-  }
-  const entries = await fs.readdir(resolved.resolved_dir);
-  for (const name of entries) {
-    if (!name.endsWith(".md")) continue;
-    if (name.toLowerCase() === "readme.md") continue;
-    const file = path.join(resolved.resolved_dir, name);
-    const raw = await fs.readFile(file, "utf8");
-    const parsed = parseFrontmatter(raw, file);
+  for (const entry of files) {
+    const parsed = parseFrontmatter(entry.content, entry.file);
     if ("error" in parsed) {
       errors.push(parsed.error);
       continue;
@@ -219,9 +148,7 @@ export async function loadSkillSeedsFromDisk(dir?: string): Promise<LoadResult> 
   return {
     skills: out,
     errors,
-    resolved_dir: resolved.resolved_dir,
-    searched_dirs: resolved.searched_dirs,
-    missing_dirs: resolved.missing_dirs,
+    embedded_count: files.length,
   };
 }
 

@@ -45,7 +45,7 @@ describe("migration runner", () => {
 
   test("re-running runMigrations on an up-to-date DB is a no-op", async () => {
     const before = await rowCount(ctx);
-    await runMigrations(ctx.url); // must not throw, must not change row count
+    await runMigrations(ctx.db); // must not throw, must not change row count
     const after = await rowCount(ctx);
     expect(after).toBe(before);
   }, 30_000);
@@ -59,7 +59,7 @@ describe("migration runner", () => {
       sql`UPDATE drizzle.__drizzle_migrations SET hash = 'deadbeef_fake_hash_drift' WHERE id = (SELECT max(id) FROM drizzle.__drizzle_migrations)`,
     );
     const before = await rowCount(ctx);
-    await runMigrations(ctx.url); // must not throw
+    await runMigrations(ctx.db); // must not throw
     const after = await rowCount(ctx);
     expect(after).toBe(before);
     const stale = (await ctx.db.execute(
@@ -69,7 +69,7 @@ describe("migration runner", () => {
   }, 30_000);
 
   test("back-to-back runs complete without error", async () => {
-    await runMigrations(ctx.url);
-    await runMigrations(ctx.url);
+    await runMigrations(ctx.db);
+    await runMigrations(ctx.db);
   }, 60_000);
 });

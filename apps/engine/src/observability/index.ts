@@ -19,6 +19,7 @@
 
 export * from "./error-ring.ts";
 export * from "./instrumentation.ts";
+export * from "./log-ring.ts";
 export * from "./metrics.ts";
 export { metricsMiddleware } from "./middleware.ts";
 export * from "./service-metadata.ts";

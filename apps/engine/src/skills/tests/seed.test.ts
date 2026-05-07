@@ -6,19 +6,25 @@
 //   - apply creates row with correct shape
 //   - apply updates body + gates_tools + bumps version when hash differs
 //   - per-tenant isolation: two tenants each get their own row
+//
+// After the #149 refactor the loader no longer reads from disk — every
+// test feeds synthetic seed content via `loadSkillSeedsFromContent`.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { and, eq } from "drizzle-orm";
 import { skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { applySkillSeeds, applySkillSeedsForAllTenants, loadSkillSeedsFromDisk } from "../seed.ts";
+import {
+  applySkillSeeds,
+  applySkillSeedsForAllTenants,
+  loadEmbeddedSkillSeeds,
+  loadSkillSeedsFromContent,
+  type SeedSource,
+} from "../seed.ts";
 
 let ctx: TestDb;
 let tenantA: string;
 let tenantB: string;
-let tmpDir: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("skills_seed");
@@ -32,17 +38,11 @@ beforeAll(async () => {
     .returning();
   tenantA = a!.id;
   tenantB = b!.id;
-  tmpDir = await fs.mkdtemp("/tmp/sk-seed-");
 });
 
 afterAll(async () => {
   await ctx.cleanup();
-  await fs.rm(tmpDir, { recursive: true, force: true });
 });
-
-async function writeSeed(name: string, content: string): Promise<void> {
-  await fs.writeFile(path.join(tmpDir, `${name}.md`), content, "utf8");
-}
 
 function validSeedMd(opts: {
   slug: string;
@@ -70,68 +70,52 @@ function validSeedMd(opts: {
   ].join("\n");
 }
 
-describe("loadSkillSeedsFromDisk — happy path", () => {
-  test("loads all .md files, skips non-md, parses frontmatter", async () => {
-    const dir = await fs.mkdtemp("/tmp/sk-seed-happy-");
-    try {
-      await fs.writeFile(path.join(dir, "a.md"), validSeedMd({ slug: "a", title: "A title" }));
-      await fs.writeFile(
-        path.join(dir, "b.md"),
-        validSeedMd({ slug: "b", gates: ["tool_x"], body: "# B\n\n- item" }),
-      );
-      await fs.writeFile(path.join(dir, "README.txt"), "ignored");
-      const r = await loadSkillSeedsFromDisk(dir);
-      expect(r.errors).toEqual([]);
-      expect(r.skills).toHaveLength(2);
-      const a = r.skills.find((s) => s.slug === "a")!;
-      expect(a.title).toBe("A title");
-      expect(a.gates_tools).toEqual([]);
-      const b = r.skills.find((s) => s.slug === "b")!;
-      expect(b.gates_tools).toEqual(["tool_x"]);
-      expect(b.body).toContain("- item");
-      expect(b.body_hash).toMatch(/^[a-f0-9]{64}$/);
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+function source(name: string, content: string): SeedSource {
+  return { file: `${name}.md`, content };
+}
+
+describe("loadSkillSeedsFromContent — happy path", () => {
+  test("parses every supplied entry, frontmatter intact", () => {
+    const r = loadSkillSeedsFromContent([
+      source("a", validSeedMd({ slug: "a", title: "A title" })),
+      source("b", validSeedMd({ slug: "b", gates: ["tool_x"], body: "# B\n\n- item" })),
+    ]);
+    expect(r.errors).toEqual([]);
+    expect(r.skills).toHaveLength(2);
+    const a = r.skills.find((s) => s.slug === "a")!;
+    expect(a.title).toBe("A title");
+    expect(a.gates_tools).toEqual([]);
+    const b = r.skills.find((s) => s.slug === "b")!;
+    expect(b.gates_tools).toEqual(["tool_x"]);
+    expect(b.body).toContain("- item");
+    expect(b.body_hash).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  test("missing directory returns empty result, not an error", async () => {
-    const r = await loadSkillSeedsFromDisk("/tmp/does-not-exist-seed-dir");
+  test("empty input returns empty result", () => {
+    const r = loadSkillSeedsFromContent([]);
     expect(r.skills).toEqual([]);
     expect(r.errors).toEqual([]);
+    expect(r.embedded_count).toBe(0);
   });
 });
 
-describe("loadSkillSeedsFromDisk — error paths", () => {
-  test("missing frontmatter reports missing_frontmatter", async () => {
-    const dir = await fs.mkdtemp("/tmp/sk-seed-err-");
-    try {
-      await fs.writeFile(path.join(dir, "x.md"), "no frontmatter here");
-      const r = await loadSkillSeedsFromDisk(dir);
-      expect(r.skills).toEqual([]);
-      expect(r.errors).toHaveLength(1);
-      expect(r.errors[0]!.code).toBe("missing_frontmatter");
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+describe("loadSkillSeedsFromContent — error paths", () => {
+  test("missing frontmatter reports missing_frontmatter", () => {
+    const r = loadSkillSeedsFromContent([source("x", "no frontmatter here")]);
+    expect(r.skills).toEqual([]);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]!.code).toBe("missing_frontmatter");
   });
 
-  test("missing required key reports missing_key", async () => {
-    const dir = await fs.mkdtemp("/tmp/sk-seed-err-");
-    try {
-      await fs.writeFile(path.join(dir, "nope.md"), "---\nslug: x\n---\nbody");
-      const r = await loadSkillSeedsFromDisk(dir);
-      expect(r.errors[0]!.code).toBe("missing_key");
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+  test("missing required key reports missing_key", () => {
+    const r = loadSkillSeedsFromContent([source("nope", "---\nslug: x\n---\nbody")]);
+    expect(r.errors[0]!.code).toBe("missing_key");
   });
 
-  test("bad scope reports bad_scope", async () => {
-    const dir = await fs.mkdtemp("/tmp/sk-seed-err-");
-    try {
-      await fs.writeFile(
-        path.join(dir, "weird.md"),
+  test("bad scope reports bad_scope", () => {
+    const r = loadSkillSeedsFromContent([
+      source(
+        "weird",
         [
           "---",
           "slug: w",
@@ -142,19 +126,15 @@ describe("loadSkillSeedsFromDisk — error paths", () => {
           "---",
           "body",
         ].join("\n"),
-      );
-      const r = await loadSkillSeedsFromDisk(dir);
-      expect(r.errors[0]!.code).toBe("bad_scope");
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+      ),
+    ]);
+    expect(r.errors[0]!.code).toBe("bad_scope");
   });
 
-  test("malformed yaml line reports bad_yaml", async () => {
-    const dir = await fs.mkdtemp("/tmp/sk-seed-err-");
-    try {
-      await fs.writeFile(
-        path.join(dir, "y.md"),
+  test("malformed yaml line reports bad_yaml", () => {
+    const r = loadSkillSeedsFromContent([
+      source(
+        "y",
         [
           "---",
           "slug: y",
@@ -166,20 +146,18 @@ describe("loadSkillSeedsFromDisk — error paths", () => {
           "---",
           "body",
         ].join("\n"),
-      );
-      const r = await loadSkillSeedsFromDisk(dir);
-      expect(r.errors[0]!.code).toBe("bad_yaml");
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+      ),
+    ]);
+    expect(r.errors[0]!.code).toBe("bad_yaml");
   });
 });
 
 describe("applySkillSeeds — DB upsert semantics", () => {
   test("inserts rows on first apply, unchanged on second", async () => {
-    await writeSeed("alpha", validSeedMd({ slug: "alpha" }));
-    await writeSeed("beta", validSeedMd({ slug: "beta", gates: ["tool_b"] }));
-    const loaded = await loadSkillSeedsFromDisk(tmpDir);
+    const loaded = loadSkillSeedsFromContent([
+      source("alpha", validSeedMd({ slug: "alpha" })),
+      source("beta", validSeedMd({ slug: "beta", gates: ["tool_b"] })),
+    ]);
     expect(loaded.errors).toEqual([]);
 
     const first = await applySkillSeeds(loaded.skills, tenantA, ctx.db);
@@ -192,7 +170,6 @@ describe("applySkillSeeds — DB upsert semantics", () => {
     expect(second.updated).toBe(0);
     expect(second.unchanged).toBe(2);
 
-    // Every seed row has gates_tools + slug + seed_source stored.
     const rows = await ctx.db.select().from(skills).where(eq(skills.tenant_id, tenantA));
     expect(rows.length).toBe(2);
     for (const row of rows) {
@@ -205,29 +182,30 @@ describe("applySkillSeeds — DB upsert semantics", () => {
   });
 
   test("body change → UPDATE + version bump", async () => {
-    const mdA = validSeedMd({
-      slug: "evolve",
-      body: "# Evolve v1\n\nInitial body.",
-    });
-    const mdB = validSeedMd({
-      slug: "evolve",
-      body: "# Evolve v2\n\nNew body with more detail.",
-    });
-
-    await writeSeed("evolve", mdA);
-    const v1 = await loadSkillSeedsFromDisk(tmpDir);
+    const v1 = loadSkillSeedsFromContent([
+      source(
+        "evolve",
+        validSeedMd({
+          slug: "evolve",
+          body: "# Evolve v1\n\nInitial body.",
+        }),
+      ),
+    ]);
     const a1 = await applySkillSeeds(v1.skills, tenantB, ctx.db);
     expect(a1.inserted).toBeGreaterThan(0);
     const row1 = await oneByTenantSlug(ctx, tenantB, "evolve");
     expect(row1.version).toBe(1);
 
-    await writeSeed("evolve", mdB);
-    const v2 = await loadSkillSeedsFromDisk(tmpDir);
-    const a2 = await applySkillSeeds(
-      v2.skills.filter((s) => s.slug === "evolve"),
-      tenantB,
-      ctx.db,
-    );
+    const v2 = loadSkillSeedsFromContent([
+      source(
+        "evolve",
+        validSeedMd({
+          slug: "evolve",
+          body: "# Evolve v2\n\nNew body with more detail.",
+        }),
+      ),
+    ]);
+    const a2 = await applySkillSeeds(v2.skills, tenantB, ctx.db);
     expect(a2.updated).toBe(1);
     expect(a2.inserted).toBe(0);
     expect(a2.unchanged).toBe(0);
@@ -238,24 +216,15 @@ describe("applySkillSeeds — DB upsert semantics", () => {
   });
 
   test("gates_tools change alone triggers UPDATE", async () => {
-    const mdA = validSeedMd({ slug: "gatechange", gates: [] });
-    const mdB = validSeedMd({ slug: "gatechange", gates: ["g_a", "g_b"] });
+    const l1 = loadSkillSeedsFromContent([
+      source("gatechange", validSeedMd({ slug: "gatechange", gates: [] })),
+    ]);
+    await applySkillSeeds(l1.skills, tenantA, ctx.db);
 
-    await writeSeed("gatechange", mdA);
-    const l1 = await loadSkillSeedsFromDisk(tmpDir);
-    await applySkillSeeds(
-      l1.skills.filter((s) => s.slug === "gatechange"),
-      tenantA,
-      ctx.db,
-    );
-
-    await writeSeed("gatechange", mdB);
-    const l2 = await loadSkillSeedsFromDisk(tmpDir);
-    const r = await applySkillSeeds(
-      l2.skills.filter((s) => s.slug === "gatechange"),
-      tenantA,
-      ctx.db,
-    );
+    const l2 = loadSkillSeedsFromContent([
+      source("gatechange", validSeedMd({ slug: "gatechange", gates: ["g_a", "g_b"] })),
+    ]);
+    const r = await applySkillSeeds(l2.skills, tenantA, ctx.db);
     expect(r.updated).toBe(1);
     const row = await oneByTenantSlug(ctx, tenantA, "gatechange");
     expect(row.gates_tools).toEqual(["g_a", "g_b"]);
@@ -264,17 +233,13 @@ describe("applySkillSeeds — DB upsert semantics", () => {
 
 describe("applySkillSeedsForAllTenants — per-tenant fanout", () => {
   test("each tenant gets its own seed row; updates are isolated", async () => {
-    const mdA = validSeedMd({ slug: "broadcast", body: "# v1" });
-    await writeSeed("broadcast", mdA);
-    const loaded = await loadSkillSeedsFromDisk(tmpDir);
-    const seeds = loaded.skills.filter((s) => s.slug === "broadcast");
+    const loaded = loadSkillSeedsFromContent([
+      source("broadcast", validSeedMd({ slug: "broadcast", body: "# v1" })),
+    ]);
+    const seeds = loaded.skills;
     const outcomes = await applySkillSeedsForAllTenants(seeds, ctx.db);
-    // Both seed tenants should have gotten one insert; other tenants seeded by
-    // the test runner (if any) may also exist, so we only assert our two.
     const a = outcomes.find((o) => o.tenant_id === tenantA)!;
     const b = outcomes.find((o) => o.tenant_id === tenantB)!;
-    // Either insert or update — we don't know prior state within this test
-    // suite — but the row MUST now exist for both.
     expect(a).toBeTruthy();
     expect(b).toBeTruthy();
     const rA = await oneByTenantSlug(ctx, tenantA, "broadcast");
@@ -284,12 +249,11 @@ describe("applySkillSeedsForAllTenants — per-tenant fanout", () => {
   });
 });
 
-describe("loadSkillSeedsFromDisk — migration 0006 contract", () => {
-  test("legacy `auto_load` key reports legacy_field", async () => {
-    const dir = await fs.mkdtemp("/tmp/sk-seed-legacy-");
-    try {
-      await fs.writeFile(
-        path.join(dir, "legacy.md"),
+describe("loadSkillSeedsFromContent — migration 0006 contract", () => {
+  test("legacy `auto_load` key reports legacy_field", () => {
+    const r = loadSkillSeedsFromContent([
+      source(
+        "legacy",
         [
           "---",
           "slug: legacy",
@@ -301,19 +265,15 @@ describe("loadSkillSeedsFromDisk — migration 0006 contract", () => {
           "---",
           "body",
         ].join("\n"),
-      );
-      const r = await loadSkillSeedsFromDisk(dir);
-      expect(r.errors[0]!.code).toBe("legacy_field");
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+      ),
+    ]);
+    expect(r.errors[0]!.code).toBe("legacy_field");
   });
 
-  test("legacy `trigger_keywords` key reports legacy_field", async () => {
-    const dir = await fs.mkdtemp("/tmp/sk-seed-legacy-");
-    try {
-      await fs.writeFile(
-        path.join(dir, "legacy.md"),
+  test("legacy `trigger_keywords` key reports legacy_field", () => {
+    const r = loadSkillSeedsFromContent([
+      source(
+        "legacy",
         [
           "---",
           "slug: legacy",
@@ -325,19 +285,15 @@ describe("loadSkillSeedsFromDisk — migration 0006 contract", () => {
           "---",
           "body",
         ].join("\n"),
-      );
-      const r = await loadSkillSeedsFromDisk(dir);
-      expect(r.errors[0]!.code).toBe("legacy_field");
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+      ),
+    ]);
+    expect(r.errors[0]!.code).toBe("legacy_field");
   });
 
-  test("activates_when parses inline JSON of discriminated objects", async () => {
-    const dir = await fs.mkdtemp("/tmp/sk-seed-aw-");
-    try {
-      await fs.writeFile(
-        path.join(dir, "rich.md"),
+  test("activates_when parses inline JSON of discriminated objects", () => {
+    const r = loadSkillSeedsFromContent([
+      source(
+        "rich",
         [
           "---",
           "slug: rich",
@@ -355,35 +311,31 @@ describe("loadSkillSeedsFromDisk — migration 0006 contract", () => {
           "---",
           "body",
         ].join("\n"),
-      );
-      const r = await loadSkillSeedsFromDisk(dir);
-      expect(r.errors).toEqual([]);
-      const s = r.skills[0]!;
-      expect(s.activates_when).toHaveLength(3);
-      expect(s.activates_when[0]!.kind).toBe("baseline");
-      expect(s.side_effects).toBe("write");
-      expect(s.idempotency).toBe("key_required");
-      expect(s.maturity).toBe("experimental");
-      expect(s.tags).toEqual(["stripe", "payments"]);
-      expect(s.input_schema).toEqual({
-        type: "object",
-        required: ["x"],
-        properties: { x: { type: "string" } },
-      });
-      expect(s.output_schema).toEqual({
-        type: "object",
-        properties: { y: { type: "number" } },
-      });
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+      ),
+    ]);
+    expect(r.errors).toEqual([]);
+    const s = r.skills[0]!;
+    expect(s.activates_when).toHaveLength(3);
+    expect(s.activates_when[0]!.kind).toBe("baseline");
+    expect(s.side_effects).toBe("write");
+    expect(s.idempotency).toBe("key_required");
+    expect(s.maturity).toBe("experimental");
+    expect(s.tags).toEqual(["stripe", "payments"]);
+    expect(s.input_schema).toEqual({
+      type: "object",
+      required: ["x"],
+      properties: { x: { type: "string" } },
+    });
+    expect(s.output_schema).toEqual({
+      type: "object",
+      properties: { y: { type: "number" } },
+    });
   });
 
-  test("malformed activates_when reports bad_activates_when", async () => {
-    const dir = await fs.mkdtemp("/tmp/sk-seed-aw-bad-");
-    try {
-      await fs.writeFile(
-        path.join(dir, "bad.md"),
+  test("malformed activates_when reports bad_activates_when", () => {
+    const r = loadSkillSeedsFromContent([
+      source(
+        "bad",
         [
           "---",
           "slug: bad",
@@ -395,19 +347,15 @@ describe("loadSkillSeedsFromDisk — migration 0006 contract", () => {
           "---",
           "body",
         ].join("\n"),
-      );
-      const r = await loadSkillSeedsFromDisk(dir);
-      expect(r.errors[0]!.code).toBe("bad_activates_when");
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+      ),
+    ]);
+    expect(r.errors[0]!.code).toBe("bad_activates_when");
   });
 
-  test("invalid side_effects reports bad_side_effects", async () => {
-    const dir = await fs.mkdtemp("/tmp/sk-seed-se-bad-");
-    try {
-      await fs.writeFile(
-        path.join(dir, "bad.md"),
+  test("invalid side_effects reports bad_side_effects", () => {
+    const r = loadSkillSeedsFromContent([
+      source(
+        "bad",
         [
           "---",
           "slug: bad",
@@ -419,30 +367,17 @@ describe("loadSkillSeedsFromDisk — migration 0006 contract", () => {
           "---",
           "body",
         ].join("\n"),
-      );
-      const r = await loadSkillSeedsFromDisk(dir);
-      expect(r.errors[0]!.code).toBe("bad_side_effects");
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+      ),
+    ]);
+    expect(r.errors[0]!.code).toBe("bad_side_effects");
   });
 
-  test("every shipped seed file under conversations/seed/skills/ parses cleanly", async () => {
-    const dir = path.resolve(
-      process.cwd(),
-      "apps",
-      "engine",
-      "src",
-      "conversations",
-      "seed",
-      "skills",
-    );
-    const r = await loadSkillSeedsFromDisk(dir);
+  test("every shipped seed file embedded in the binary parses cleanly", () => {
+    const r = loadEmbeddedSkillSeeds();
     const reason = r.errors.length === 0 ? "" : `seed parse errors: ${JSON.stringify(r.errors)}`;
     expect(reason).toBe("");
     expect(r.errors).toEqual([]);
     expect(r.skills.length).toBeGreaterThanOrEqual(20);
-    // Every shipped skill has a slug + activates_when (possibly empty).
     for (const s of r.skills) {
       expect(s.slug.length).toBeGreaterThan(0);
       expect(Array.isArray(s.activates_when)).toBe(true);

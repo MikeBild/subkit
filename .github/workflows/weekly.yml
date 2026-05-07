@@ -62,7 +62,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-      - run: bun run db:migrate
+      # Migrations run in-process on engine boot (issue #149); integration
+      # tests use the embedded runner via the test-setup helper.
       - name: Connector template ingestion URLs
         run: bun test apps/engine/src/connectors/tests/template-urls.test.ts
 
@@ -93,11 +94,5 @@ jobs:
           echo '=== compose ps ==='
           docker compose ps --all || true
           echo
-          echo '=== migrate logs ==='
-          docker compose logs migrate || true
-          echo
-          echo '=== seed logs ==='
-          docker compose logs seed || true
-          echo
-          echo '=== engine logs ==='
+          echo '=== engine logs (migrations + seed run in-process; see migrate.* / seed.* actions) ==='
           docker compose logs engine || true

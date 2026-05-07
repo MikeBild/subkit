@@ -8,10 +8,10 @@
 // This is deliberately stricter than "file exists". The content matters.
 
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_SEED_DIR, loadSkillSeedsFromDisk, type SeededSkill } from "../seed.ts";
+import { loadEmbeddedSkillSeeds, type SeededSkill } from "../seed.ts";
 
-async function loadAll(): Promise<Map<string, SeededSkill>> {
-  const r = await loadSkillSeedsFromDisk(DEFAULT_SEED_DIR);
+function loadAll(): Map<string, SeededSkill> {
+  const r = loadEmbeddedSkillSeeds();
   expect(r.errors).toEqual([]);
   const map = new Map<string, SeededSkill>();
   for (const s of r.skills) map.set(s.slug, s);
@@ -20,7 +20,7 @@ async function loadAll(): Promise<Map<string, SeededSkill>> {
 
 describe("seeded skill catalogue — coverage", () => {
   test("all 10 expected slugs are present", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const expected = [
       "subkit-concepts",
       "workflow-authoring",
@@ -39,7 +39,7 @@ describe("seeded skill catalogue — coverage", () => {
   });
 
   test("every skill has a non-trivial body (>=1000 chars)", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     for (const [slug, s] of skills) {
       expect(s.body.length).toBeGreaterThan(1000);
       expect(s.title.length).toBeGreaterThan(3);
@@ -52,7 +52,7 @@ describe("seeded skill catalogue — coverage", () => {
 
 describe("subkit-concepts — mental model coverage", () => {
   test("mentions every step kind by name", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const concepts = skills.get("subkit-concepts")!;
     const body = concepts.body.toLowerCase();
     const kinds = ["request", "transform", "wait", "branch", "parallel", "loop", "call", "tool"];
@@ -62,7 +62,7 @@ describe("subkit-concepts — mental model coverage", () => {
   });
 
   test("shows the 4 main placeholder token formats", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("subkit-concepts")!.body;
     expect(body).toContain("${cred.");
     expect(body).toContain("${connector.");
@@ -74,7 +74,7 @@ describe("subkit-concepts — mental model coverage", () => {
   });
 
   test("covers envelope shape { data, status_code, headers, error, duration_ms }", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("subkit-concepts")!.body;
     expect(body).toContain("data");
     expect(body).toContain("status_code");
@@ -82,7 +82,7 @@ describe("subkit-concepts — mental model coverage", () => {
   });
 
   test("documents onError mode vocabulary across the catalogue", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     // The primary modes may be split across subkit-concepts.md and
     // error-recovery.md. We require the catalogue, taken as a whole, to
     // teach at least three of the four modes.
@@ -99,7 +99,7 @@ describe("subkit-concepts — mental model coverage", () => {
   });
 
   test("has an explicit 'Common pitfalls' section", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("subkit-concepts")!.body.toLowerCase();
     expect(body).toContain("pitfall");
   });
@@ -107,7 +107,7 @@ describe("subkit-concepts — mental model coverage", () => {
 
 describe("workflow-authoring — recipe coverage", () => {
   test("references the draft → save_workflow_draft path", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("workflow-authoring")!.body;
     expect(body).toContain("save_workflow_draft");
     // Either probe_connector or build_workflow (both new in this phase) should appear:
@@ -118,7 +118,7 @@ describe("workflow-authoring — recipe coverage", () => {
   });
 
   test("explains data_selector vs transform step", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("workflow-authoring")!.body.toLowerCase();
     expect(body).toContain("data_selector");
     expect(body).toContain("transform");
@@ -127,14 +127,14 @@ describe("workflow-authoring — recipe coverage", () => {
 
 describe("data-handling — envelope rule enforced", () => {
   test("explicitly shows $scope.<id>.data (not bare $scope.<id>)", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("data-handling")!.body;
     // positive evidence:
     expect(/\$scope\.[A-Za-z0-9_-]+\.data\b/.test(body)).toBe(true);
   });
 
   test("mentions JSONata", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("data-handling")!.body.toLowerCase();
     expect(body).toContain("jsonata");
   });
@@ -142,7 +142,7 @@ describe("data-handling — envelope rule enforced", () => {
 
 describe("rbac-and-scopes — permission vocabulary", () => {
   test("lists the real subkit permissions", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("rbac-and-scopes")!.body;
     // A representative subset — all of these must appear:
     const perms = [
@@ -159,7 +159,7 @@ describe("rbac-and-scopes — permission vocabulary", () => {
   });
 
   test("mentions test_rbac_expression", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("rbac-and-scopes")!.body;
     expect(body).toContain("test_rbac_expression");
   });
@@ -167,7 +167,7 @@ describe("rbac-and-scopes — permission vocabulary", () => {
 
 describe("error-recovery — numbered recovery routine", () => {
   test("has at least 4 numbered steps", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("error-recovery")!.body;
     // Accept three common shapes: ordered Markdown list ('1. ... 2. ...'),
     // H3 headings with numbers ('### 1. Read'), or '**Step 1**' style.
@@ -179,7 +179,7 @@ describe("error-recovery — numbered recovery routine", () => {
   });
 
   test("lists at least 5 canonical error codes", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("error-recovery")!.body;
     const codes = [
       "placeholder_unresolved",
@@ -196,7 +196,7 @@ describe("error-recovery — numbered recovery routine", () => {
 
 describe("self-healing — patch candidate vocabulary", () => {
   test("explains safe vs unsafe patch classification", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("self-healing")!.body.toLowerCase();
     expect(body).toContain("patch_candidate");
     expect(body).toContain("safe");
@@ -206,7 +206,7 @@ describe("self-healing — patch candidate vocabulary", () => {
 
 describe("connector-specific skills — driver vocabulary", () => {
   test("http-connectors covers the core mutation verbs + GET", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("http-connectors")!.body;
     // At least GET + POST + 2 of {PUT, PATCH, DELETE}. Any combination
     // covers the conceptual spread of safe/unsafe methods.
@@ -217,20 +217,20 @@ describe("connector-specific skills — driver vocabulary", () => {
   });
 
   test("postgres-connectors gives a DSN shape with a placeholder", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("postgres-connectors")!.body;
     expect(body).toContain("postgres://");
     expect(/\$\{cred\./.test(body)).toBe(true);
   });
 
   test("s3-connectors references bucket config", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("s3-connectors")!.body.toLowerCase();
     expect(body).toContain("bucket");
   });
 
   test("graphql-connectors mentions query + variables", async () => {
-    const skills = await loadAll();
+    const skills = loadAll();
     const body = skills.get("graphql-connectors")!.body.toLowerCase();
     expect(body).toContain("query");
     expect(body).toContain("variables");

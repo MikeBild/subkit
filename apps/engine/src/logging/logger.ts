@@ -1,4 +1,5 @@
 import pc from "picocolors";
+import { logRing } from "../observability/log-ring.ts";
 import { getContext } from "./context.ts";
 import { redact } from "./redact.ts";
 
@@ -127,10 +128,30 @@ function shouldLog(level: LogLevel): boolean {
   return LEVEL_WEIGHT[level] >= THRESHOLD;
 }
 
+function recordToRing(level: LogLevel, fields: LogFields): void {
+  // Mirror to the in-memory ring so /v1/diagnostics/logs and the SSE
+  // tail can serve it. Strip module/action/msg for the bag; redact the
+  // rest so sensitive headers don't leak into the diagnostics surface.
+  const { module: m, action: a, msg, ...rest } = fields;
+  const entry = {
+    ts: Date.now(),
+    level,
+    fields: redact(rest) as Record<string, unknown>,
+    ...(typeof m === "string" ? { module: m } : {}),
+    ...(typeof a === "string" ? { action: a } : {}),
+    ...(typeof msg === "string" ? { msg } : {}),
+  };
+  // Preserve trace/tenant/etc context so log tails can be filtered.
+  const ctx = getContext();
+  Object.assign(entry.fields, ctx);
+  logRing.record(entry);
+}
+
 function emit(level: LogLevel, fields: LogFields): void {
   if (!shouldLog(level)) return;
   if (MODE === "pretty") emitPretty(level, fields);
   else emitNdjson(level, fields);
+  recordToRing(level, fields);
 }
 
 /**

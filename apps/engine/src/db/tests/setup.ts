@@ -2,29 +2,25 @@
 //
 // Strategy: CREATE DATABASE per test file. One admin connection drops +
 // re-creates a throwaway database named `test_<pid>_<rand>`, the test file
-// opens its own pool against that database, runs the migration bundle,
-// hands a drizzle client back to the caller, and drops the database in the
-// teardown hook. This is simpler than schema-scoped isolation because
-// drizzle-kit's migration SQL is not search_path-friendly (enum types end
-// up in `public` regardless).
+// opens its own pool against that database, runs the embedded migration
+// bundle (the same one the engine binary uses), hands a drizzle client
+// back to the caller, and drops the database in the teardown hook. This
+// is simpler than schema-scoped isolation because drizzle-kit's
+// migration SQL is not search_path-friendly (enum types end up in
+// `public` regardless).
 //
 // Tests that share a file share a database — bun-test runs tests in a
 // file serially by default. Different files get different databases so
 // parallel file execution is safe.
 
 import { randomBytes } from "node:crypto";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
+import { runMigrations } from "../migrate.ts";
 import * as schema from "../schema/index.ts";
 
 const { Client, Pool } = pg;
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_FOLDER = path.join(HERE, "..", "migrations");
 
 /** Read the admin connection string lazily so tests can override
  *  DATABASE_URL between imports. */
@@ -70,10 +66,10 @@ export async function createTestDb(label: string): Promise<TestDb> {
   // Swallow async errors so a connection hiccup doesn't crash the runner.
   pool.on("error", () => {});
 
-  await pool.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
-
   const db = drizzle(pool, { schema });
-  await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+  // The embedded migration runner installs pgcrypto + the drizzle journal
+  // table itself; no extra prep needed.
+  await runMigrations(db);
 
   // Seed the RBAC catalog + built-in roles so `can()` has something to
   // evaluate even in unit tests that bypass the journey harness.

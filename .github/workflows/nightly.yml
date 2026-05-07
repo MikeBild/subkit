@@ -71,7 +71,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-      - run: bun run db:migrate
+      # Migrations are embedded in the engine binary (issue #149) and
+      # run in-process on boot. Integration tests provision per-file
+      # databases via apps/engine/src/db/tests/setup.ts which calls
+      # the embedded runner directly — no standalone CI step needed.
       - name: Verify ANTHROPIC_API_KEY is set
         run: |
           if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
@@ -137,6 +140,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-      - run: bun run db:migrate
+      # Migrations are embedded in the engine binary (issue #149) and
+      # run in-process on boot. Integration tests provision per-file
+      # databases via apps/engine/src/db/tests/setup.ts which calls
+      # the embedded runner directly — no standalone CI step needed.
       - name: 5 seeded reruns
         run: bun run test:flake
