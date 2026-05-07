@@ -21,7 +21,7 @@
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text } from "ink";
 import { useEffect, useState } from "react";
-import { SkEngineError, SkTransportError } from "../engine-client.ts";
+import type { SkEngineError, SkTransportError } from "../engine-client.ts";
 import {
   classifyEngineError,
   humanizeRequestError,
@@ -309,11 +309,26 @@ function GenericPanel({ payload }: { payload: GenericPayload }): React.ReactElem
  * Centralizes the routing logic so call-sites just say
  * `<ErrorPanel {...errorToPanel(err)} />`.
  */
+function isSkEngineError(err: unknown): err is SkEngineError {
+  // Use `err.name` rather than `instanceof` so that the parallel bun
+  // test runner — which can load engine-client.ts twice and yield two
+  // distinct class identities for the same import specifier — still
+  // routes errors correctly. Same trick as humanizeRequestError.
+  return (
+    err instanceof Error &&
+    err.name === "SkEngineError" &&
+    typeof (err as SkEngineError).status === "number"
+  );
+}
+function isSkTransportError(err: unknown): err is SkTransportError {
+  return err instanceof Error && err.name === "SkTransportError";
+}
+
 export function errorToPanel(err: unknown): {
   kind: ErrorPanelKind;
   payload: ErrorPanelPropsByKind[ErrorPanelKind];
 } {
-  if (err instanceof SkEngineError) {
+  if (isSkEngineError(err)) {
     if (err.status === 429) {
       const payload: RateLimitPayload = {
         message: err.message,
@@ -341,7 +356,7 @@ export function errorToPanel(err: unknown): {
     };
     return { kind: "engine", payload };
   }
-  if (err instanceof SkTransportError) {
+  if (isSkTransportError(err)) {
     return {
       kind: "network",
       payload: { message: err.message },
