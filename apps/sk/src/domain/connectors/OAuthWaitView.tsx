@@ -29,6 +29,20 @@ const OAuthPollResponseSchema = z.object({
 export type OAuthPollResponse = z.infer<typeof OAuthPollResponseSchema>;
 export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
 
+// R5-W4 review fix: validate `authUrl` itself before launching it
+// via `spawn(bin, [authUrl])`. The `spawn(..., { shell: false })`
+// guard prevents shell-injection but it does NOT prevent URL-scheme
+// abuse — `xdg-open file:///etc/passwd` would still launch a file
+// reader if a tampered connector template snuck through. Restrict
+// to plain `http(s)://` and reject `file:`, `javascript:`, `data:`,
+// or anything else exotic.
+export const AuthUrlSchema = z
+  .string()
+  .url()
+  .refine((u) => /^https?:\/\//i.test(u), {
+    message: "authUrl must be http(s); file:/javascript:/data: schemes rejected",
+  });
+
 export interface OAuthWaitViewProps {
   authUrl: string;
   /** Function the view calls to poll the engine. Tests inject a mock
@@ -87,14 +101,24 @@ export function OAuthWaitView({
   openBrowser = defaultOpenBrowser,
 }: OAuthWaitViewProps): React.ReactElement {
   const tokens = useTheme();
-  const [phase, setPhase] = useState<"launching" | "waiting" | "manual">("launching");
-  const [error, setError] = useState<string | null>(null);
+  // Validate the URL up-front. A malformed or unsupported-scheme URL
+  // lands the view in the "manual" phase with an error rather than
+  // launching `xdg-open file:///etc/passwd` or similar. R5-W4.
+  const urlCheck = AuthUrlSchema.safeParse(authUrl);
+  const [phase, setPhase] = useState<"launching" | "waiting" | "manual">(
+    urlCheck.success ? "launching" : "manual",
+  );
+  const [error, setError] = useState<string | null>(
+    urlCheck.success ? null : `rejected authUrl: ${urlCheck.error.issues[0]?.message ?? "invalid"}`,
+  );
   const [attempts, setAttempts] = useState(0);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Step 1 — launch the browser. Failures fall through to the manual
-  // path; the URL is always printed for copy-paste.
+  // path; the URL is always printed for copy-paste. Skips entirely
+  // when the URL didn't pass the scheme check.
   useEffect(() => {
+    if (!urlCheck.success) return undefined;
     let cancelled = false;
     openBrowser(authUrl).then(
       () => {
@@ -109,7 +133,7 @@ export function OAuthWaitView({
     return () => {
       cancelled = true;
     };
-  }, [authUrl, openBrowser]);
+  }, [authUrl, openBrowser, urlCheck.success]);
 
   // Step 2 — poll loop.
   useEffect(() => {

@@ -17,6 +17,7 @@
 // Claude Code's `src/components/PromptInput/commandSuggestions.ts`.
 
 import Fuse from "fuse.js";
+import { z } from "zod";
 
 /**
  * Single canonical predicate for "what counts as a slash-name
@@ -27,6 +28,22 @@ import Fuse from "fuse.js";
  * accept the same alphabet. R1-S6 review fix.
  */
 export const SLASH_NAME_CHAR_RE = /[A-Za-z0-9_-]/;
+
+/** R5-S3: helper exported alongside the regex so callers consume the
+ *  predicate behind a name. Keeps a future Unicode-class change in
+ *  one place. */
+export function isSlashNameChar(ch: string): boolean {
+  return SLASH_NAME_CHAR_RE.test(ch);
+}
+
+/** R5-W3 review fix: every slash command can declare a Zod schema
+ *  for its positional args (`/foo bar baz` → `["bar", "baz"]`).
+ *  Local-only slashes that today parse args ad-hoc (e.g. `/debug`
+ *  accepting `on|off|tail`) get validated at the dispatcher entry,
+ *  closing the "slash boundary has no Zod" gap AGENTS.md flags. The
+ *  default schema, when omitted, is `z.array(z.string())` —
+ *  identity, so existing handlers stay backward-compatible. */
+export const SlashArgsSchemaDefault = z.array(z.string());
 
 export interface SlashCommand {
   name: string;
@@ -47,6 +64,14 @@ export interface SlashCommand {
    * silently bypasses the audited path. Resolves R1-S2 / R2-W4.
    */
   routing?: "local" | "engine";
+  /**
+   * Optional Zod schema for the positional argv vector
+   * (`["bar", "baz"]` for `/foo bar baz`). Validated at dispatcher
+   * entry — a malformed call fails before reaching the handler with
+   * a structured Zod error. When omitted, `SlashArgsSchemaDefault`
+   * is used (any string array). R5-W3.
+   */
+  argsSchema?: z.ZodType<readonly string[]>;
 }
 
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
@@ -235,6 +260,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Toggle SK_DEBUG full trace logging — `/debug on|off|tail` or `/debug` for status",
     category: "util",
     routing: "local",
+    // R5-W3: positional arg, optional, drawn from a closed enum.
+    // `/debug` (no args) shows status; `/debug on|off|tail` flips
+    // verbose state or tails the log. Anything else is rejected.
+    argsSchema: z
+      .union([z.tuple([]), z.tuple([z.enum(["on", "off", "tail"])])])
+      .describe("/debug accepts 0 args or one of on|off|tail"),
   },
   {
     name: "exit",

@@ -13,7 +13,7 @@
 // and this cursor-aware scanner can never disagree on what counts as
 // a legal command-name character.
 
-import { SLASH_NAME_CHAR_RE } from "../../slash.ts";
+import { isSlashNameChar } from "../../slash.ts";
 
 export interface SlashSpan {
   /** Inclusive start index — points to the `/` character. */
@@ -33,7 +33,7 @@ export function findSlashCommandPositions(buffer: string): SlashSpan[] {
     const prev = i === 0 ? "" : (buffer[i - 1] ?? "");
     if (prev !== "" && prev !== "\n" && !/\s/.test(prev)) continue;
     let j = i + 1;
-    while (j < buffer.length && SLASH_NAME_CHAR_RE.test(buffer[j] as string)) j++;
+    while (j < buffer.length && isSlashNameChar(buffer[j] as string)) j++;
     out.push({ start: i, end: j, name: buffer.slice(i + 1, j) });
     i = j;
   }

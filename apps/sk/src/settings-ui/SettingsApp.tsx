@@ -1,8 +1,7 @@
 import { Box, render, Text, useApp, useInput } from "ink";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { EngineClient, SettingLeafEntry } from "../engine-client.ts";
-import { loadDraft, type SettingsDraftSnapshot, saveDraft } from "./lib/draft-store.ts";
 import { groupBySection, leafToFormField } from "./lib/zod-to-form-fields.ts";
 import { SettingsModal } from "./SettingsModal.tsx";
 
@@ -37,25 +36,20 @@ const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => voi
     pendingRestartKeys: [],
     overrideKeys: [],
   });
-  const draftKeyRef = useRef<{ profile: string; tenant: string | null }>({
-    profile: profileName ?? "default",
-    tenant: tenant ?? null,
-  });
-  // Hydrate the retained scroll/expanded state on mount; persist on
-  // unmount so close+reopen lands the operator where they were.
-  const initialDraftRef = useRef<SettingsDraftSnapshot | null>(null);
-  if (initialDraftRef.current === null) {
-    initialDraftRef.current = loadDraft(draftKeyRef.current.profile, draftKeyRef.current.tenant);
-  }
-  useEffect(() => {
-    return () => {
-      // Best-effort persist — if the modal exposed scrollTop/expanded
-      // ids back to us we'd save them; for now we keep the existing
-      // entry alive (loadDraft on next open returns the same snapshot).
-      const current = loadDraft(draftKeyRef.current.profile, draftKeyRef.current.tenant);
-      saveDraft(draftKeyRef.current.profile, draftKeyRef.current.tenant, current);
-    };
-  }, []);
+  // R5-W1 review fix: the draft-store integration was previously a
+  // no-op (loadDraft → saveDraft on cleanup with no modal wiring).
+  // SettingsModal doesn't expose scrollTop / expanded ids on unmount
+  // yet, so retention isn't implementable from here. The
+  // draft-store module + its unit tests are kept as the contract;
+  // wiring it through SettingsModal is left for a follow-up that
+  // also threads `initialDraft` and `onClose(snapshot)`. Removing
+  // the cleanup effect prevents the misleading "draft retained!"
+  // appearance from creating false confidence.
+  //
+  // Once SettingsModal is refactored to consume `initialDraft` and
+  // emit `onClose(snapshot)`, restore the load/save here keyed on
+  // (profileName ?? "default", tenant ?? null).
+  void profileName;
 
   useEffect(() => {
     let cancelled = false;

@@ -510,6 +510,20 @@ export async function handleSlash(
   } else {
     debugLog("dialog.elicitation_routing", { slash_name: name, routing: plan.routing }, {});
   }
+  // R5-W3 review fix: validate positional args against the per-
+  // command Zod schema at the dispatcher boundary. Commands that
+  // don't set `argsSchema` skip this check (default schema accepts
+  // any string array). When validation fails, return a structured
+  // error string the REPL renders as a transient banner — without
+  // ever reaching the per-command branch below.
+  if (plan.command?.argsSchema) {
+    const parsed = plan.command.argsSchema.safeParse(rawArgs);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const where = issue?.path?.length ? `[${issue.path.join(".")}] ` : "";
+      return `/${name}: invalid args — ${where}${issue?.message ?? "schema validation failed"}`;
+    }
+  }
   switch (name) {
     case "status": {
       // R3-S4: `/status` is local-only by design — same shape as

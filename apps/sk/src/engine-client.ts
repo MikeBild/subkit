@@ -3,6 +3,13 @@
 // `hono/client` so the compiled binary stays tight — pulling the
 // engine's `AppType` through Hono drags the entire server module
 // graph in.
+//
+// Naming convention (R5-S4 review note): wire-shape fields stay
+// snake_case to match the engine's OpenAPI surface — `tenant_id`,
+// `tenant_slug`, `retry_after`, `trace_id`. Local-only fields use
+// camelCase. This means TS callers occasionally see `err.retry_after`
+// next to `err.message` / `err.code`; the snake_case names are the
+// authoritative wire shape and are deliberate.
 
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import {

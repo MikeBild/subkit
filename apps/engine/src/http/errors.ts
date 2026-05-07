@@ -27,8 +27,12 @@ export interface HttpErrorOptions {
  * itself avoids the shape-sniffing heuristic that previously read
  * `hint` / `retry_after` keys off any details object that happened
  * to contain them.
+ *
+ * The symbol now lives in `./_internal.ts` so the public `errors.ts`
+ * module no longer ships it through OpenAPI / IDE autocomplete.
+ * R5-S5.
  */
-const ENVELOPE_BRAND = Symbol.for("sk.HttpErrorOptions");
+import { ENVELOPE_BRAND } from "./_internal.ts";
 
 interface BrandedEnvelopeOptions extends HttpErrorOptions {
   [ENVELOPE_BRAND]: true;
@@ -96,7 +100,11 @@ export class HttpError extends Error {
   }
 }
 
-export { ENVELOPE_BRAND as _ENVELOPE_BRAND_FOR_TESTS };
+// R5-S5: the brand symbol lives in `./_internal.ts`. Middleware
+// imports it directly from there now; this module no longer
+// re-exports it. The `_ENVELOPE_BRAND_FOR_TESTS` re-export was
+// previously the only consumer outside this file — middleware
+// switched to the internal import, so the public surface is clean.
 
 export class UnauthorizedError extends HttpError {
   constructor(reason = "missing_or_invalid_credentials") {

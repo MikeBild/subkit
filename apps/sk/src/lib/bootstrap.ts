@@ -214,9 +214,13 @@ function writeCachedSnapshot(path: string, snap: PersistedSnapshot): void {
   try {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify(snap), { mode: 0o600 });
-  } catch {
+  } catch (err) {
     // Cache writes are best-effort. If the disk is full or read-only
     // we fall back to in-memory only — the REPL still works.
+    // R5-W6: surface the failure via debugLog so a CI runner with a
+    // read-only `~/.sk/cache` (or similar) doesn't silently disable
+    // caching forever.
+    debugLog("bootstrap.cache_write_failed", { path, error: serializeDebugError(err) }, {});
   }
 }
 

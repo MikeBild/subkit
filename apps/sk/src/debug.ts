@@ -75,6 +75,12 @@ export type DebugRecordKind =
   // tiered persona-probe regardless; this record keeps the failure
   // diagnosable without a packet capture.
   | "bootstrap.fetch_failed"
+  // bootstrap.cache_write_failed — emitted when persisting the
+  // bootstrap snapshot to `~/.sk/cache/bootstrap-*.json` fails
+  // (read-only volume, full disk, EPERM). The CLI keeps working
+  // in-memory; this record surfaces the silent failure so an
+  // operator on a CI runner can grep the debug log for it. R5-W6.
+  | "bootstrap.cache_write_failed"
   // settings.schema_fallback — emitted when an engine-served schema
   // descriptor declares an `enum` field with zero values, which is
   // invalid in zod. The loader coerces to `z.string()` so the form

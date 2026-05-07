@@ -8,4 +8,5 @@ export * from "./grants.ts";
 export * from "./groups.ts";
 export * from "./roles.ts";
 export * from "./seed.ts";
+export * from "./self-introspection.ts";
 export * from "./ux-gating.ts";

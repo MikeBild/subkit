@@ -81,19 +81,16 @@ const SkBootstrapSessionRefSchema = z.object({
 // in a future flag name fails the response Zod validation rather
 // than silently disabling client-side gating).
 //
-// `_unused` is a reserved placeholder so the object isn't empty
-// (zod won't accept an empty `.object({})` here without a member);
-// when the first real flag lands, replace this member. R4-S2.
-const SkBootstrapFlagsSchema = z
-  .object({
-    // TODO(when first real flag lands): replace `_unused` with the
-    // actual flag and drop this comment block. Today this entry only
-    // exists so `.object({}).partial().strict()` has a member to
-    // narrow against.
-    _unused: z.boolean(),
-  })
-  .partial()
-  .strict();
+// R5-S2 review fix: drop the `_unused` placeholder. zod accepts an
+// empty `.object({}).strict()` just fine; the previous concern was
+// a phantom. The empty strict object means the engine ships
+// `flags: {}` over the wire (zero placeholder fields), unknown keys
+// fail Zod response validation, and the typed enum lives in the
+// generated openapi types as an empty `flags: {}` shape — when the
+// first real flag lands, add it as a property here AND in the CLI
+// consumer types in `apps/sk/src/lib/bootstrap.ts` (drift catcher
+// established by R4-W1).
+const SkBootstrapFlagsSchema = z.object({}).strict();
 
 // `as const` round-trip: zod's `z.enum(...)` requires a tuple of
 // string literals, so spread + cast preserves the literal narrowing

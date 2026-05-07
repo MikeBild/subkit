@@ -7,6 +7,7 @@
 // → tiered persona-probe), so the first frame is no longer held up
 // by the network.
 
+import { createHash } from "node:crypto";
 import { useEffect, useState } from "react";
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
@@ -49,6 +50,20 @@ export function usePersona(
   const forceRefresh = opts?.forceRefresh;
   const now = opts?.now;
 
+  // R5-W2: depend on a stable bootstrap KEY rather than the
+  // `client` / `profile` *references*. A parent that re-creates
+  // EngineClient (e.g. on token rotation, or a remount) used to
+  // re-fire the effect with no token-fingerprint check at the hook
+  // layer; the disk cache absorbed it but `loading` flipped back to
+  // true and the persona-aware UI grayed out for a frame. The key
+  // is identical whenever (engine_url, tenant, fingerprint(api_key))
+  // matches — same identity that drives `bootstrapCachePath`.
+  const apiKeyFp = createHash("sha256")
+    .update(profile.api_key ?? "")
+    .digest("hex")
+    .slice(0, 16);
+  const bootstrapKey = `${profile.engine_url}|${profile.active_tenant_id ?? ""}|${apiKeyFp}`;
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -72,7 +87,12 @@ export function usePersona(
     return () => {
       cancelled = true;
     };
-  }, [client, profile, cacheDir, cacheTtlMs, forceRefresh, now]);
+    // The effect intentionally depends on `bootstrapKey` (a stable
+    // hash of the credential set) rather than `client`/`profile`
+    // identity. `client` and `profile` are still read inside the
+    // effect — they're closed over fresh from the latest render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootstrapKey, cacheDir, cacheTtlMs, forceRefresh, now]);
 
   return { snapshot, loading, error };
 }

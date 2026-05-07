@@ -9,7 +9,8 @@ import { toLlmProviderError } from "../../llm/provider-errors.ts";
 import { logger } from "../../logging/logger.ts";
 import type { CapturedError } from "../../observability/error-ring.ts";
 import { errorRing } from "../../observability/error-ring.ts";
-import { _ENVELOPE_BRAND_FOR_TESTS as ENVELOPE_BRAND, HttpError } from "../errors.ts";
+import { ENVELOPE_BRAND } from "../_internal.ts";
+import { HttpError } from "../errors.ts";
 import type { AppEnv } from "../openapi.ts";
 
 interface EnvelopeOptions {

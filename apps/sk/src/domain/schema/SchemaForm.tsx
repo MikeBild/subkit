@@ -12,6 +12,16 @@
 // `onChange` and use Enter / explicit confirm to commit. The
 // `errors` prop renders field-level engine validation errors below
 // each field by JSONPath.
+//
+// **Today's edit semantics (R5-W7 review note):** form-mode is a
+// read-only inspector — the rendered rows render the current value
+// and surface field-level errors but DO NOT call `onChange`. Code-mode
+// is the edit surface; toggling to it parses-and-edits, then toggling
+// back to form-mode just re-displays the parsed object. The public
+// `onChange` is wired through both branches so a future PR that lands
+// keystroke handling for form-mode rows doesn't change the call-site
+// contract — but until that lands, expect form-mode to remain
+// read-only. Tests pin this behavior in `apps/sk/src/tests/schema-form.component.test.tsx`.
 
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
