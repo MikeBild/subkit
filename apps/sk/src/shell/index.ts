@@ -9,13 +9,16 @@
 // internal re-organization stays behind it.
 
 export type { ThemeName, ThemeTokens } from "@chat-ui/index.ts";
-// Theme re-exports for callers that don't import directly from chat-ui.
+// Theme + keybindings re-exports for callers that don't import directly from chat-ui.
 export {
   defaultTheme,
+  KeybindingProvider,
   PALETTES,
   paletteFor,
   shouldForceNoColor,
   ThemeProvider,
+  useActiveContext,
+  useKeybinding,
   useTheme,
   useThemeControl,
 } from "@chat-ui/index.ts";
@@ -77,9 +80,25 @@ export type { ShellHookOptions, ShellHookResult } from "../repl/status-line/shel
 export { runShellHook } from "../repl/status-line/shell-hook.ts";
 export type { UseStatusLineResult } from "../repl/status-line/useStatusLine.ts";
 export { useStatusLine } from "../repl/status-line/useStatusLine.ts";
+export type { TranscriptItem, TranscriptViewProps } from "../repl/transcript/TranscriptView.tsx";
+// Transcript view wrapper.
+export { TranscriptView } from "../repl/transcript/TranscriptView.tsx";
+export type { UsePersonaResult } from "../repl/usePersona.ts";
+// usePersona hook (replaces blocking persona gate).
+export { usePersona } from "../repl/usePersona.ts";
 export type { SettingsDraftSnapshot } from "../settings-ui/lib/draft-store.ts";
 // Settings draft store.
 export { clearDraft, loadDraft, saveDraft } from "../settings-ui/lib/draft-store.ts";
+export type {
+  EngineFieldDescriptor,
+  EngineSchemaDescriptor,
+  EngineSchemaSource,
+} from "../settings-ui/lib/engine-schema-loader.ts";
+// Engine schema loader (settings UI form mode).
+export {
+  loadEngineSchema,
+  materializeSchema,
+} from "../settings-ui/lib/engine-schema-loader.ts";
 export type {
   AuthPayload,
   EnginePayload,

@@ -58,8 +58,19 @@ import {
 import { EngineClient } from "./engine-client.ts";
 import type { OutputFormat } from "./headless.ts";
 import { runHeadless } from "./headless.ts";
-import { runInkRepl } from "./ink-repl.ts";
 import { runMcpProxy } from "./mcp-proxy.ts";
+
+// `runInkRepl` is loaded lazily — its module graph pulls in Ink, React,
+// every transcript cell, and the slash registry, which is wasteful for
+// `sk -p "..."` (headless) and `sk` invocations on a non-TTY stdout
+// (CI pipes, container exec). The headless checkpoint below dynamically
+// imports the REPL only when we actually need it.
+type RunInkRepl = typeof import("./ink-repl.ts")["runInkRepl"];
+async function loadInkRepl(): Promise<RunInkRepl> {
+  const mod = await import("./ink-repl.ts");
+  return mod.runInkRepl;
+}
+
 import { mostRecentSession } from "./sessions.ts";
 import { renderHelp } from "./slash.ts";
 
@@ -548,8 +559,10 @@ const mainCommand = defineCommand({
 
     // Interactive REPL — runInkRepl renders an Ink rich UI when
     // stdout is a TTY and falls back to the line-based readline loop
-    // for piped stdout / test harnesses.
+    // for piped stdout / test harnesses. Loaded dynamically so the
+    // headless / piped path above doesn't pay for Ink + React import.
     void renderHelp; // keep the import live for tests
+    const runInkRepl = await loadInkRepl();
     const exit = await runInkRepl({
       profile,
       ...(interactivePrompt ? { initialPrompt: interactivePrompt } : {}),

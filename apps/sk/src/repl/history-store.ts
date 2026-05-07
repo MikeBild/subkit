@@ -36,10 +36,26 @@ export interface HistoryEntry {
 
 export const MAX_HISTORY = 500;
 
+/** Bigger cap for the prompt-history ring once Ctrl+R fuzzy-search
+ *  surfaces older entries. The legacy 500 was enough for an interactive
+ *  session but wraps too quickly for power users with months of
+ *  history. Rotates at this many entries via the same write-then-
+ *  rename trim path. */
+export const MAX_PROMPT_HISTORY = 10_000;
+
 /** Default path: `~/.sk/history.jsonl`. */
 export function defaultHistoryPath(): string {
   return join(homedir(), ".sk", "history.jsonl");
 }
+
+/** Default path for the slash-invocation history ring — separate
+ *  file so Ctrl+R `/`-prefixed queries don't compete with prompt
+ *  history for ring slots. */
+export function defaultSlashHistoryPath(): string {
+  return join(homedir(), ".sk", "slash-history.jsonl");
+}
+
+const SLASH_RING_MAX = 1_000;
 
 /**
  * Load the full history file. Missing file → empty list. Malformed
@@ -100,7 +116,7 @@ export function appendHistory(
   };
   const line = `${JSON.stringify(entry)}\n`;
 
-  if (existing.length + 1 <= MAX_HISTORY) {
+  if (existing.length + 1 <= MAX_PROMPT_HISTORY) {
     try {
       appendFileSync(path, line);
     } catch {
@@ -109,7 +125,7 @@ export function appendHistory(
     return;
   }
 
-  const kept = existing.slice(existing.length + 1 - MAX_HISTORY);
+  const kept = existing.slice(existing.length + 1 - MAX_PROMPT_HISTORY);
   kept.push(entry);
   const tmp = `${path}.tmp.${process.pid}`;
   try {
@@ -141,6 +157,101 @@ export function loadPromptRing(
   const filtered = opts.tenant
     ? entries.filter((e) => e.tenant == null || e.tenant === opts.tenant)
     : entries;
-  const limit = opts.limit ?? MAX_HISTORY;
+  const limit = opts.limit ?? MAX_PROMPT_HISTORY;
   return filtered.slice(Math.max(0, filtered.length - limit)).map((e) => e.p);
+}
+
+// ----- Slash-invocation history ring ----------------------------------------
+
+export interface SlashHistoryEntry {
+  /** Unix timestamp (ms). */
+  t: number;
+  /** Raw slash invocation text (e.g. "/connector stripe"). */
+  s: string;
+  tenant?: string | null;
+}
+
+/**
+ * Append a slash invocation. Uses the same dedupe-against-tail rule as
+ * prompt history; rotates at SLASH_RING_MAX entries.
+ */
+export function appendSlashHistory(
+  invocation: string,
+  opts: { path?: string; tenant?: string | null } = {},
+): void {
+  const s = invocation.trim();
+  if (!s.startsWith("/")) return;
+  if (s.length === 0) return;
+  const path = opts.path ?? defaultSlashHistoryPath();
+  try {
+    if (!existsSync(dirname(path))) mkdirSync(dirname(path), { recursive: true });
+  } catch {
+    return;
+  }
+  const existing = loadSlashHistory(path);
+  const last = existing[existing.length - 1];
+  if (last && last.s === s) return;
+  const entry: SlashHistoryEntry = {
+    t: Date.now(),
+    s,
+    ...(opts.tenant !== undefined ? { tenant: opts.tenant } : {}),
+  };
+  if (existing.length + 1 <= SLASH_RING_MAX) {
+    try {
+      appendFileSync(path, `${JSON.stringify(entry)}\n`);
+    } catch {
+      // ignore
+    }
+    return;
+  }
+  const kept = existing.slice(existing.length + 1 - SLASH_RING_MAX);
+  kept.push(entry);
+  const tmp = `${path}.tmp.${process.pid}`;
+  try {
+    writeFileSync(tmp, `${kept.map((e) => JSON.stringify(e)).join("\n")}\n`);
+    renameSync(tmp, path);
+  } catch {
+    // ignore
+  }
+}
+
+export function loadSlashHistory(path: string = defaultSlashHistoryPath()): SlashHistoryEntry[] {
+  if (!existsSync(path)) return [];
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return [];
+  }
+  const out: SlashHistoryEntry[] = [];
+  for (const line of raw.split("\n")) {
+    if (line.trim().length === 0) continue;
+    try {
+      const entry = JSON.parse(line) as SlashHistoryEntry;
+      if (typeof entry.s === "string" && typeof entry.t === "number") out.push(entry);
+    } catch {
+      // skip
+    }
+  }
+  return out;
+}
+
+export function loadSlashRing(
+  path: string = defaultSlashHistoryPath(),
+  opts: { tenant?: string | null; limit?: number } = {},
+): string[] {
+  const entries = loadSlashHistory(path);
+  const filtered = opts.tenant
+    ? entries.filter((e) => e.tenant == null || e.tenant === opts.tenant)
+    : entries;
+  const limit = opts.limit ?? SLASH_RING_MAX;
+  return filtered.slice(Math.max(0, filtered.length - limit)).map((e) => e.s);
+}
+
+export function clearSlashHistory(path: string = defaultSlashHistoryPath()): void {
+  try {
+    if (existsSync(path)) writeFileSync(path, "");
+  } catch {
+    // ignore
+  }
 }
