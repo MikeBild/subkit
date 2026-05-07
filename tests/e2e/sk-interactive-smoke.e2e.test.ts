@@ -57,7 +57,11 @@ function buildExpectScript(steps: readonly ExpectStep[]): string {
     "set timeout 20",
     "match_max 100000",
     "log_user 1",
-    `spawn -noecho -- ${tclQuote(SK_BIN)}`,
+    // No `--` after `-noecho`. expect's `spawn` rejects `--` with
+    // "bad flag" (error is non-fatal, the script continues, the
+    // spawn silently fails, downstream waits time out then exits
+    // 0). Paths with whitespace are already covered by tclQuote.
+    `spawn -noecho ${tclQuote(SK_BIN)}`,
   ];
 
   for (const step of steps) {

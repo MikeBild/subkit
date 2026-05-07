@@ -59,7 +59,13 @@ export function buildExpectScript(
     "set timeout 20",
     "match_max 100000",
     "log_user 1",
-    `spawn -noecho -- ${tclQuote(bin)}`,
+    // expect's `spawn` does not accept `--` as an end-of-flags
+    // sentinel — it errors with "bad flag --". The error is
+    // non-fatal so the script silently continues, the spawn never
+    // happens, and any later assertions pass vacuously on empty
+    // captured output. Quoting the path is sufficient for paths
+    // with whitespace.
+    `spawn -noecho ${tclQuote(bin)}`,
   ];
   for (const step of steps) {
     if (step.kind === "wait") {

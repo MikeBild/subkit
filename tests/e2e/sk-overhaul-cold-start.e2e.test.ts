@@ -17,22 +17,17 @@ import { boot, type E2EEnv, shutdown } from "./setup.ts";
 const HAS_BINARY = existsSync(SK_BIN);
 const HAS_EXPECT = !!EXPECT_BIN;
 
-// IMPORTANT — the shared PTY harness in tests/e2e/_helpers/pty.ts
-// (extracted verbatim from the long-standing
-// tests/e2e/sk-interactive-smoke.e2e.test.ts) emits a TCL line
-// `spawn -noecho -- <bin>` that expect's spawn rejects with
-// "bad flag --". expect treats the TCL error as non-fatal, so the
-// outer script jumps to `expect eof`, matches immediately on the
-// empty stream, exits 0, and any assertion against the captured
-// `visible` string passes vacuously on the empty string. The fix
-// (drop `--`) makes the spawn actually run, but then the binary's
-// auth + boot sequence under the boot()-managed test engine needs
-// extra setup that's out of scope for this overhaul. Until that
-// lands, these tests run only when the operator explicitly opts
-// in via SK_RUN_PTY_E2E=1. The 22 matrix scenarios in
-// sk-overhaul-matrix.e2e.test.ts use the same gate.
-const SK_RUN_PTY_E2E = process.env.SK_RUN_PTY_E2E === "1";
-const SKIP_PTY = !HAS_BINARY || !HAS_EXPECT || !SK_RUN_PTY_E2E;
+// PTY harness — fully working as of this commit:
+//   1) tests/e2e/_helpers/pty.ts dropped the invalid `--` from
+//      `spawn -noecho` so expect actually runs the binary.
+//   2) shell/ResizeBoundary.tsx now sanitizes 0×0 dimensions (what
+//      expect / script PTY emulation reports) to the standard 80×24
+//      fallback. Without that, the Ink tree took the "terminal too
+//      small" branch and never painted under PTY.
+//
+// Wait patterns target literals that actually appear in the welcome
+// banner (apps/sk/src/repl/welcome-banner.tsx).
+const SKIP_PTY = !HAS_BINARY || !HAS_EXPECT;
 
 let env: E2EEnv | null = null;
 
@@ -56,7 +51,7 @@ describe("e2e: sk cold start", () => {
       // exit with the welcome content captured.
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "quick-start" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "banner" },
           { kind: "send", text: "\x04" }, // Ctrl+D
         ],
         { persona: env.personas.admin, engineUrl: env.baseUrl },
@@ -80,7 +75,7 @@ describe("e2e: sk cold start", () => {
       if (!env) throw new Error("env not booted");
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "banner" },
           { kind: "send", text: "\x03" }, // Ctrl+C once
           { kind: "sleep", ms: 50 },
           { kind: "send", text: "\x03" }, // Ctrl+C again exits

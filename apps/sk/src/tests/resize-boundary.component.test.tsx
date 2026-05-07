@@ -1,8 +1,45 @@
 import { describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
 import { Text } from "ink";
-import { ResizeBoundary } from "../shell/ResizeBoundary.tsx";
+import { _sanitizeSizeForTests, ResizeBoundary } from "../shell/ResizeBoundary.tsx";
 import { flush, renderInk } from "./helpers/ink.tsx";
+
+describe("sanitizeSize", () => {
+  test("zero cols/rows fall back to defaults (PTY emulator case)", () => {
+    expect(_sanitizeSizeForTests({ cols: 0, rows: 0 }, { cols: 80, rows: 24 })).toEqual({
+      cols: 80,
+      rows: 24,
+    });
+  });
+
+  test("undefined values fall back to defaults", () => {
+    expect(_sanitizeSizeForTests({}, { cols: 80, rows: 24 })).toEqual({ cols: 80, rows: 24 });
+    expect(
+      _sanitizeSizeForTests({ cols: undefined, rows: undefined }, { cols: 100, rows: 30 }),
+    ).toEqual({ cols: 100, rows: 30 });
+  });
+
+  test("non-zero positive dimensions are honored", () => {
+    expect(_sanitizeSizeForTests({ cols: 120, rows: 40 }, { cols: 80, rows: 24 })).toEqual({
+      cols: 120,
+      rows: 40,
+    });
+  });
+
+  test("zero cols + valid rows substitutes only cols", () => {
+    expect(_sanitizeSizeForTests({ cols: 0, rows: 30 }, { cols: 80, rows: 24 })).toEqual({
+      cols: 80,
+      rows: 30,
+    });
+  });
+
+  test("negative values fall back to defaults", () => {
+    expect(_sanitizeSizeForTests({ cols: -5, rows: -1 }, { cols: 80, rows: 24 })).toEqual({
+      cols: 80,
+      rows: 24,
+    });
+  });
+});
 
 describe("<ResizeBoundary>", () => {
   test("renders children when terminal is large enough", async () => {

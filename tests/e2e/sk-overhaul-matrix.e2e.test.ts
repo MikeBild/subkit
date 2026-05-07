@@ -20,15 +20,10 @@ import { boot, type E2EEnv, shutdown } from "./setup.ts";
 const HAS_BINARY = existsSync(SK_BIN);
 const HAS_EXPECT = !!EXPECT_BIN;
 
-// Gated behind SK_RUN_PTY_E2E=1 because the shared PTY harness has a
-// pre-existing `spawn -noecho --` bug (see the long comment in
-// sk-overhaul-cold-start.e2e.test.ts). Until the harness is fixed
-// AND the binary's auth + boot sequence under boot()'s test engine
-// is taught the right env shape, these scenarios stay opt-in. Each
-// matrix row is otherwise correct in shape — they're scaffolding,
-// not fiction.
-const SK_RUN_PTY_E2E = process.env.SK_RUN_PTY_E2E === "1";
-const SKIP_PTY = !HAS_BINARY || !HAS_EXPECT || !SK_RUN_PTY_E2E;
+// PTY harness fully working as of this commit; see the top-of-file
+// comment in sk-overhaul-cold-start.e2e.test.ts for the two fixes
+// (spawn flag + ResizeBoundary 0×0 sanitization).
+const SKIP_PTY = !HAS_BINARY || !HAS_EXPECT;
 
 let env: E2EEnv | null = null;
 
@@ -55,7 +50,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       // command surface accepts the args + prints a recognisable header.
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" }, // EOF
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -72,7 +67,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       // Drive a single read-only command to prove the binary picks it up.
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -89,7 +84,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       // just confirm the binary doesn't crash with the env shape.
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -103,17 +98,18 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
   test.skipIf(SKIP_PTY)(
     "(matrix #5) headless `sk -p` resolves cleanly",
     async () => {
-      const r = await runPtyScenario([{ kind: "wait", pattern: ".", label: "any-output" }], {
-        persona: E().personas.admin,
-        engineUrl: E().baseUrl,
-        env: {
-          // Drive headless via TCL spawn — the binary itself reads -p
-          // from argv. We use the no-arg PTY entry to keep the harness
-          // contract uniform; headless coverage is in the smoke suite.
-        },
-      });
-      // Either resolves to a frame or exits — both acceptable.
-      expect([0, 1, 2]).toContain(r.exitCode);
+      // The PTY harness drives the no-arg binary entry; headless
+      // (`sk -p`) is binary-level coverage that lives in the smoke
+      // suite. Here we just confirm the interactive boot path is
+      // healthy — banner renders, Ctrl+D exits clean.
+      const r = await runPtyScenario(
+        [
+          { kind: "wait", pattern: "Resume work, create a connector", label: "banner" },
+          { kind: "send", text: "\x04" },
+        ],
+        { persona: E().personas.admin, engineUrl: E().baseUrl },
+      );
+      expect(r.exitCode).toBe(0);
     },
     20_000,
   );
@@ -124,7 +120,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       // Same harness shape; behavior asserted by smoke suite directly.
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "boot" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "boot" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -139,7 +135,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "boot" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "boot" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -155,7 +151,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "/au" },
           { kind: "sleep", ms: 100 },
           { kind: "send", text: "\x03" }, // Ctrl+C cancel
@@ -173,7 +169,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "/" },
           { kind: "sleep", ms: 100 },
           { kind: "send", text: "\x03" },
@@ -191,7 +187,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.enduser, engineUrl: E().baseUrl },
@@ -207,7 +203,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -222,7 +218,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -238,7 +234,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -253,7 +249,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -272,7 +268,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       // configured engine + persona.
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -288,7 +284,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       // Hit a closed port to provoke a transport error.
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         {
@@ -306,7 +302,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -322,7 +318,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           // Send a SIGWINCH-equivalent character pattern; harness can't
           // emit SIGWINCH directly, so we just assert the binary tolerates
           // a quick sequence of input + EOF.
@@ -340,7 +336,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -355,7 +351,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     async () => {
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -372,7 +368,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const PASTE_END = "\x1b[201~";
       const r = await runPtyScenario(
         [
-          { kind: "wait", pattern: "(?i)quick start", label: "ready" },
+          { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: `${PASTE_START}    indented\n\tline\n${PASTE_END}` },
           { kind: "sleep", ms: 50 },
           { kind: "send", text: "\x03" },
