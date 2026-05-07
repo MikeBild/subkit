@@ -63,6 +63,9 @@ interface PersonaSnapshot {
   label: string;
   allowed: Set<string>;
   probe: PersonaProbe;
+  /** R7-S1: surface bootstrap freshness in /status. */
+  fetchedAt: number;
+  source: "network" | "cache" | "fallback";
 }
 
 import { loadBootstrap } from "./lib/bootstrap.ts";
@@ -81,6 +84,8 @@ async function resolvePersona(
     label: snap.label,
     allowed: snap.allowed,
     probe: snap.probe,
+    fetchedAt: snap.fetchedAt,
+    source: snap.source,
   };
 }
 // Suppress unused-import lint: `PROBE_PERMISSIONS` is exported for
@@ -641,6 +646,12 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         allowedPermissions: Array.from(persona.allowed),
         statusSnapshot: await client.statusSummary().catch(() => null),
         setupSnapshot: canReadSetup ? await client.setupValidation().catch(() => null) : null,
+        // R7-S1: pass bootstrap freshness through so /status surfaces it.
+        bootstrapSnapshot: {
+          fetchedAt: persona.fetchedAt,
+          source: persona.source,
+          label: persona.label,
+        },
       });
       if (result) line(result);
       return;
