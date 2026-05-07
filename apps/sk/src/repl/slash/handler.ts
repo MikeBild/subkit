@@ -42,6 +42,8 @@ import type {
 } from "../onboarding-wizard.tsx";
 import { classifySlash } from "./dispatcher.ts";
 import { dispatchAdminListSlash } from "./handlers/admin-lists.ts";
+import { dispatchAuthRedirectSlash } from "./handlers/auth-redirects.ts";
+import { dispatchInspectSlash } from "./handlers/inspect.ts";
 import { dispatchInstallWizardSlash } from "./handlers/install-wizards.ts";
 
 /**
@@ -1412,50 +1414,7 @@ export async function handleSlash(
       await ctx.client.patchConversation(ctx.session.conversationId, { model });
       return `model switched to ${model}`;
     }
-    case "skills": {
-      const r = await ctx.client.listSkills();
-      if (r.items.length === 0) return "no skills in scope";
-      const lines = r.items.map((s) => `${s.scope.padEnd(8)} ${s.title}`);
-      return panify(ctx, "skills", lines, `${r.items.length} in scope`);
-    }
-    case "mcp": {
-      const [prompts, resources, tools] = await Promise.all([
-        ctx.client.listMcpPrompts().catch(() => ({ items: [] })),
-        ctx.client.listMcpResources().catch(() => ({ items: [] })),
-        ctx.client.listMcpTools().catch(() => ({ items: [] })),
-      ]);
-      const lines: string[] = [];
-      lines.push(`prompts (${prompts.items.length}):`);
-      for (const p of prompts.items) lines.push(`  /mcp__${p.name} — ${p.description ?? ""}`);
-      lines.push("");
-      lines.push(`resources (${resources.items.length}):`);
-      for (const r of resources.items) lines.push(`  ${r.uri} · ${r.name}`);
-      lines.push("");
-      lines.push(`callable entries (${tools.items.length}):`);
-      for (const t of tools.items) lines.push(`  ${t.name} — ${t.description}`);
-      return panify(ctx, "mcp catalog", lines);
-    }
-    case "permissions": {
-      if (ctx.allowedPermissions.length === 0) return "no permissions probe cached";
-      return panify(
-        ctx,
-        "permissions",
-        ctx.allowedPermissions.map((p) => `  ${p}`),
-        `${ctx.allowedPermissions.length} granted`,
-      );
-    }
-    case "audit": {
-      const res = await ctx.client.tailAuditLog({ limit: 20 });
-      const rows = res.items.slice(0, 20);
-      if (rows.length === 0) return "no audit rows visible to this principal";
-      const lines = rows.map((r) => {
-        const action = typeof r.action === "string" ? r.action : "";
-        const ts = typeof r.ts === "string" ? r.ts : "";
-        const rid = typeof r.resource_id === "string" ? r.resource_id.slice(0, 8) : "";
-        return `${ts}  ${action.padEnd(28)} ${rid}`;
-      });
-      return panify(ctx, "audit log", lines, `latest ${rows.length}`);
-    }
+    // /skills, /mcp, /permissions, /audit moved to handlers/inspect.ts (R7-S2)
     case "logs": {
       // /logs [limit] [trace_id?]
       //
@@ -1684,33 +1643,28 @@ export async function handleSlash(
       lines.push("/profile <name> to switch · /profile add to create");
       return lines.join("\n");
     }
-    case "login":
-      return "run 'sk login' outside the REPL to re-authenticate";
-    case "logout":
-      return "run 'sk logout' outside the REPL to drop the active profile";
-    case "tenant":
-      return "run 'sk tenants [use <id>]' outside the REPL to switch tenants";
-    case "knowledge": {
-      const r = await ctx.client.listKnowledgeSources({ limit: 20 });
-      if (r.items.length === 0) return "no knowledge sources";
-      const lines = r.items.map((ks) => {
-        const k = ks as Record<string, unknown>;
-        return `${String(k.id ?? "").slice(0, 8)}  ${String(k.title ?? k.name ?? "")}  ${String(k.kind ?? "")}`;
-      });
-      return panify(ctx, "knowledge sources", lines, `${r.items.length} found`);
-    }
+    // /login, /logout, /tenant moved to handlers/auth-redirects.ts (R7-S2)
+    // /knowledge moved to handlers/inspect.ts (R7-S2)
     default: {
       // R7-S2: per-category dispatchers extracted into
       // `apps/sk/src/repl/slash/handlers/`. The main switch above
       // owns interactive / multi-step commands; the sub-dispatchers
       // own the long tail of list-and-render commands and the
-      // install-redirect banners. Each returns `undefined` when the
+      // banner-only redirects. Each returns `undefined` when the
       // name doesn't belong to its category, so we can fall through
-      // to the next handler.
+      // to the next handler in priority order:
+      //   1. inspect — read-only, low-tier (/skills, /mcp, …)
+      //   2. admin-lists — read-only, admin-tier (/connectors, …)
+      //   3. install-wizards — banner redirects to `sk install <kind>`
+      //   4. auth-redirects — banner redirects to `sk login` etc.
+      const inspectResult = await dispatchInspectSlash(name, ctx);
+      if (inspectResult !== undefined) return inspectResult;
       const adminListResult = await dispatchAdminListSlash(name, ctx);
       if (adminListResult !== undefined) return adminListResult;
       const installBanner = dispatchInstallWizardSlash(name);
       if (installBanner !== undefined) return installBanner;
+      const authBanner = dispatchAuthRedirectSlash(name);
+      if (authBanner !== undefined) return authBanner;
       return `/${name} is not wired — try /help`;
     }
   }
