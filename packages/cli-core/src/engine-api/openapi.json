@@ -1228,11 +1228,7 @@
           },
           "flags": {
             "type": "object",
-            "properties": {
-              "_unused": {
-                "type": "boolean"
-              }
-            },
+            "properties": {},
             "additionalProperties": false,
             "description": "Persona-visible feature flags. Keys are drawn from a typed enum."
           },

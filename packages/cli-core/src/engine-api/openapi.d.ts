@@ -7478,9 +7478,7 @@ export interface components {
                 tenant_id: string;
             }[];
             /** @description Persona-visible feature flags. Keys are drawn from a typed enum. */
-            flags: {
-                _unused?: boolean;
-            };
+            flags: Record<string, never>;
             /** @description Server-side ISO timestamp; lets the CLI sync clocks. */
             server_time: string;
         };
