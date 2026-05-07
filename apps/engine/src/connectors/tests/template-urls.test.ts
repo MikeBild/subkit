@@ -17,7 +17,7 @@ describe.skipIf(!RUN_URL_CHECKS)("connector template ingestion URLs", () => {
     test(`${tmpl.slug}: ${tmpl.ingestion_source} URL is reachable`, async () => {
       const url = tmpl.ingestion_url!;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15_000); // allow-wall-clock: legacy; review before changing
+      const timeout = setTimeout(() => controller.abort(), 15_000); // allow-wall-clock: external URL fetch hard-cap for the live-URL audit
       try {
         const res = await fetch(url, {
           method: "HEAD",

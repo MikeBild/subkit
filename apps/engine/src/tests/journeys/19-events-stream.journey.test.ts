@@ -62,7 +62,7 @@ async function collectFrames(
       // race resolves to a no-op, and control flow exits cleanly.
       const timer = new Promise<{ done: true; value: undefined }>(
         (resolve) =>
-          setTimeout(() => resolve({ done: true, value: undefined }), deadline - Date.now() + 50), // allow-wall-clock: legacy; review before changing
+          setTimeout(() => resolve({ done: true, value: undefined }), deadline - Date.now() + 50), // allow-wall-clock: SSE deadline reads real wall-clock — the test asserts the stream closes within budget
       );
       const chunk = (await Promise.race([chunkPromise, timer])) as {
         done?: boolean;

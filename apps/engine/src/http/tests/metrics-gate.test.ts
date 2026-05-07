@@ -100,7 +100,7 @@ describe("/metrics scope gate", () => {
         .from(auditLog)
         .where(and(eq(auditLog.tenant_id, srv.tenantId), eq(auditLog.action, "policy.denied")));
       if (rows.some((r) => r.reason === "scope_missing:metrics:read")) break;
-      await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: legacy; review before changing
+      await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: Prometheus scrape cadence for the metrics-gate health check
     }
     expect(rows.some((r) => r.reason === "scope_missing:metrics:read")).toBe(true);
   });

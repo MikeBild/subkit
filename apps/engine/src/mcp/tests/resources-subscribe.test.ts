@@ -47,7 +47,7 @@ describe("mcp resources/subscribe live updates", () => {
     const deadline = Date.now() + 5_000;
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (received.length === 0 && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: legacy; review before changing
+      await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: MCP resource subscription propagation cadence
     }
     expect(received.length).toBeGreaterThanOrEqual(1);
     expect(received[0]?.uri).toBe(`connector://${id}`);
@@ -74,7 +74,7 @@ describe("mcp resources/subscribe live updates", () => {
     });
 
     // Give the (non-)delivery a moment.
-    await new Promise((r) => setTimeout(r, 200)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 200)); // allow-wall-clock: MCP resource subscription propagation cadence
     expect(received.find((r) => r.uri.includes(ignoredId))).toBeUndefined();
   });
 });

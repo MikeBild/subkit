@@ -49,7 +49,7 @@ describe("notifyIfUpdateAvailable", () => {
     // Use a unique name to avoid cache collisions
     const name = `notifier-test-banner-${TEST_NOW_MS}`;
     notifyIfUpdateAvailable(name, fetchImpl);
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: update-notifier debounce window across cache reads
     expect(stderrOutput).toContain("99.0.0");
     expect(stderrOutput).toContain(`${name} update`);
     // Clean up cache dir
@@ -74,7 +74,7 @@ describe("notifyIfUpdateAvailable", () => {
 
     const name = `notifier-test-noop-${TEST_NOW_MS}`;
     notifyIfUpdateAvailable(name, fetchImpl);
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: update-notifier debounce window across cache reads
     expect(stderrOutput).toBe("");
     const { homedir } = await import("node:os");
     cleanupDirs.push(join(homedir(), `.${name}`));
@@ -88,7 +88,7 @@ describe("notifyIfUpdateAvailable", () => {
 
     const name = `notifier-test-error-${TEST_NOW_MS}`;
     notifyIfUpdateAvailable(name, fetchImpl);
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: update-notifier debounce window across cache reads
     expect(stderrOutput).toBe("");
   });
 

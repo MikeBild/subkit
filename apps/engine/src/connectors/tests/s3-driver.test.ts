@@ -97,7 +97,7 @@ async function startMinio(): Promise<MinioHandle> {
     } catch {
       /* not ready yet */
     }
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: S3 mock fixture warm-up before list-bucket assertions
   }
 
   return {

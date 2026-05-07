@@ -178,7 +178,7 @@ describe("journey: audit query surface", () => {
       // cursor walker otherwise skips ties between rows with identical
       // millisecond timestamps. Production audit writes don't share
       // this problem because they are separated by real work.
-      await new Promise((r) => setTimeout(r, 1)); // allow-wall-clock: legacy; review before changing
+      await new Promise((r) => setTimeout(r, 1)); // allow-wall-clock: yields a tick to the event loop so the audit row is visible to the next read
       await auditAwait(
         {
           tenant_id: ctx.tenantId,

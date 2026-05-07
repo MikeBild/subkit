@@ -16,7 +16,7 @@ let mock: MockServer;
 beforeAll(async () => {
   ctx = await createEngineCtx("abort");
   mock = await createMockServer(async (_, res) => {
-    await new Promise((r) => setTimeout(r, 3000)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 3000)); // allow-wall-clock: deliberately blocks past the abort budget so the abort signal must interrupt it
     jsonResponse(res, 200, { ok: true });
   });
 });
@@ -48,7 +48,7 @@ describe("abort", () => {
       input: null,
     });
     // Wait for the executions row + abort registration to materialize.
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: deliberately blocks past the abort budget so the abort signal must interrupt it
     const { executions } = await import("../../db/schema/index.ts");
     const { eq } = await import("drizzle-orm");
     const rows = await ctx.testDb.db

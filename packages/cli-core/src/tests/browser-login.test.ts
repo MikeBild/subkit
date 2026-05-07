@@ -34,7 +34,7 @@ describe("browser-login", () => {
     });
 
     // Wait for the server to start
-    await new Promise((r) => setTimeout(r, 200)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 200)); // allow-wall-clock: browser-login handshake polling cadence
 
     // Find the port by trying to access the callback with wrong state
     // The login URL printed would contain the port, but since quiet=true
@@ -43,7 +43,7 @@ describe("browser-login", () => {
     try {
       await Promise.race([
         loginPromise,
-        new Promise((_, rej) => setTimeout(() => rej(new Error("test timeout")), 3_000)), // allow-wall-clock: legacy; review before changing
+        new Promise((_, rej) => setTimeout(() => rej(new Error("test timeout")), 3_000)), // allow-wall-clock: browser-login handshake polling cadence
       ]);
     } catch (err) {
       // Expected — either login timeout or our test timeout

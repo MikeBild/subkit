@@ -114,7 +114,7 @@ describe("MentionPicker (component)", () => {
       await ui.waitFor((t) => t.includes("x.ts"));
       await ui.press("enter");
       await ui.press("esc");
-      await new Promise((r) => setTimeout(r, 40)); // allow-wall-clock: legacy; review before changing
+      await new Promise((r) => setTimeout(r, 40)); // allow-wall-clock: Ink renderer settle window after a key event
       expect(onPick).not.toHaveBeenCalled();
       expect(onDismiss).not.toHaveBeenCalled();
     } finally {

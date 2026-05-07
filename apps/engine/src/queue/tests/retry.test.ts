@@ -62,7 +62,7 @@ describe("queue: retries and dead-letter", () => {
 
     // Bounded wait so the test can't hang.
     const guard = new Promise<void>(
-      (_resolve, reject) => setTimeout(() => reject(new Error("dlq never got the job")), 20_000), // allow-wall-clock: legacy; review before changing
+      (_resolve, reject) => setTimeout(() => reject(new Error("dlq never got the job")), 20_000), // allow-wall-clock: DLQ deadline — pg-boss retry policy operates in real wall-clock time
     );
     await Promise.race([donePromise, guard]);
 

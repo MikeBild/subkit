@@ -115,7 +115,7 @@ import { TaskLauncher } from "./repl/task-launcher.tsx";
 import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { classifyVersionSkew, VersionMismatchBanner } from "./repl/version-mismatch-banner.tsx";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
-import { bodyOf, ErrorPanel, errorToPanel } from "./shell/ErrorPanel.tsx";
+import { bodyOf, errorToPanel } from "./shell/ErrorPanel.tsx";
 import { type NoticeItem, NoticeStack, type NoticeTone } from "./shell/NoticeStack.tsx";
 import { ResizeBoundary } from "./shell/ResizeBoundary.tsx";
 import { type ToastInput, ToastQueue, useToast } from "./shell/ToastQueue.tsx";

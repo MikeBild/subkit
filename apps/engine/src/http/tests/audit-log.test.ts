@@ -39,7 +39,7 @@ function newKey(): { plaintext: string; prefix: string; hash: string } {
 async function seedAudit(action: string, delay = 10): Promise<string> {
   // Force a monotonic gap between rows so ts ordering is deterministic
   // and the cursor walker doesn't trip over ties.
-  await new Promise((r) => setTimeout(r, delay)); // allow-wall-clock: legacy; review before changing
+  await new Promise((r) => setTimeout(r, delay)); // allow-wall-clock: delay-bounded helper used by audit-log retention assertions
   const row = await auditAwait(
     {
       tenant_id: srv.tenantId,

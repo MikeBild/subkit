@@ -43,11 +43,23 @@
 // prongs surfaces the abort as a 500 to the route handler.
 
 import { logger } from "../logging/logger.ts";
+import { now } from "../utils/clock.ts";
 import { isAbortError } from "./loop/usage.ts";
 
 export const CONVERSATION_CANCELLED_REASON = "conversation_cancelled";
 
 const REGISTRY = new Map<string, AbortController>();
+
+// Sampling cache for `cancel.no_controller`: maps the registry key to
+// the last-emit timestamp. Multi-replica deploys without sticky
+// routing fire `no_controller` on every cancel that lands on the
+// wrong pod; UI races fire it when the route's `finally` already
+// unregistered. Both are legitimate, expected paths — emitting once
+// per (tenant, conv, second) is enough for an operator to see the
+// signal without flooding logs. Cache trimmed opportunistically; in
+// practice the entry count is bounded by concurrent active turns.
+const NO_CONTROLLER_LOG_DEBOUNCE_MS = 5_000;
+const NO_CONTROLLER_LAST_EMIT = new Map<string, number>();
 
 function key(tenantId: string, conversationId: string): string {
   return `${tenantId}:${conversationId}`;
@@ -92,17 +104,40 @@ export function cancelConversationAbort(
     // status. Logged at `info` (#147 review W-4) because both legitimate
     // paths fire it on every cancel: a `warn` would create false-alarm
     // SRE noise the moment a deployment scales horizontally without
-    // sticky routing. SREs that need to detect a regression here can
-    // alert on a turn that ends `abandoned` despite the in-memory
-    // hand-off missing.
-    logger.info({
-      module: "conversations.abort",
-      action: "cancel.no_controller",
-      msg: "cancel issued but no AbortController registered for conversation",
-      tenant_id: tenantId,
-      conversation_id: conversationId,
-      reason,
-    });
+    // sticky routing.
+    //
+    // Per-(tenant, conv) sampling at 5s windows (#147 round-5 S-3):
+    // a UI that retries cancel rapidly, or a multi-replica fan-out
+    // where every cancel-arriving-on-the-wrong-pod fires the same
+    // line, otherwise produces correlated log spam without adding
+    // signal. The first emission in each window goes through; later
+    // ones are dropped. SREs that need to detect a regression here
+    // alert on `conversations.abort cancel.no_controller` count vs
+    // turn cancels — a high ratio is the regression signal, and the
+    // sampler doesn't suppress that.
+    const k = key(tenantId, conversationId);
+    const lastEmit = NO_CONTROLLER_LAST_EMIT.get(k) ?? 0;
+    const t = now();
+    if (t - lastEmit >= NO_CONTROLLER_LOG_DEBOUNCE_MS) {
+      NO_CONTROLLER_LAST_EMIT.set(k, t);
+      logger.info({
+        module: "conversations.abort",
+        action: "cancel.no_controller",
+        msg: "cancel issued but no AbortController registered for conversation",
+        tenant_id: tenantId,
+        conversation_id: conversationId,
+        reason,
+      });
+    }
+    // Opportunistic trim — keeps the cache from growing unboundedly
+    // when a deployment cycles through many short-lived conversations.
+    if (NO_CONTROLLER_LAST_EMIT.size > 4096) {
+      for (const [cacheKey, cacheTs] of NO_CONTROLLER_LAST_EMIT) {
+        if (t - cacheTs >= NO_CONTROLLER_LOG_DEBOUNCE_MS) {
+          NO_CONTROLLER_LAST_EMIT.delete(cacheKey);
+        }
+      }
+    }
     return false;
   }
   ctrl.abort(reason);
@@ -141,8 +176,19 @@ export function isExpectedCancellation(err: unknown, signal: AbortSignal): boole
  * the canonical reader. Exposed so unit tests can pin invariants like
  * "the controller is still registered while the SSE callback is
  * running" without hooking the registry out via prototype inspection.
+ *
+ * Defence in depth: throws when called outside `NODE_ENV=test` to
+ * surface a bad production import at first call, instead of letting
+ * the function quietly leak the registry's slot state into a runtime
+ * surface that wasn't designed for it.
  */
 export function __hasConversationAbort(tenantId: string, conversationId: string): boolean {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error(
+      "__hasConversationAbort is test-only and must not be called outside NODE_ENV=test. " +
+        "Use cancelConversationAbort from production code; the registry's slot state is not a public surface.",
+    );
+  }
   return REGISTRY.has(key(tenantId, conversationId));
 }
 
