@@ -65,25 +65,22 @@ interface PersonaSnapshot {
   probe: PersonaProbe;
 }
 
-// Persona resolution lives in `./persona-probe.ts` so the readline
-// REPL and the Ink REPL share one tier-filtered probe path. Pre-fix
-// each REPL ran its own ~22 rbac:can calls; doubled to ~44 audit
-// rows on every session start. The shared helper short-circuits on
-// `who.role_name` and only probes the role's tier (and below).
-import {
-  ALL_PROBE_PERMISSIONS as PROBE_PERMISSIONS,
-  resolvePersonaShared,
-} from "./persona-probe.ts";
+import { loadBootstrap } from "./lib/bootstrap.ts";
+// Persona resolution: route through `loadBootstrap` so the readline
+// REPL gets the same one-call UX-gating snapshot the Ink REPL uses.
+// Falls back to the tier-filtered legacy probe for older engines that
+// don't expose `/v1/sk/bootstrap`.
+import { ALL_PROBE_PERMISSIONS as PROBE_PERMISSIONS } from "./persona-probe.ts";
 
 async function resolvePersona(
   client: EngineClient,
   profile: ResolvedProfile,
 ): Promise<PersonaSnapshot> {
-  const snapshot = await resolvePersonaShared(client, profile);
+  const snap = await loadBootstrap(client, profile);
   return {
-    label: snapshot.label,
-    allowed: snapshot.allowed,
-    probe: snapshot.probe,
+    label: snap.label,
+    allowed: snap.allowed,
+    probe: snap.probe,
   };
 }
 // Suppress unused-import lint: `PROBE_PERMISSIONS` is exported for

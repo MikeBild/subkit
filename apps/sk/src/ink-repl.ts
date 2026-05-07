@@ -47,11 +47,11 @@ export interface InkReplOptions {
   noMemory?: boolean;
 }
 
-// Persona resolution lives in `./persona-probe.ts` so this REPL and
-// the readline REPL share one tier-filtered probe path. Pre-fix each
-// ran its own ~22 rbac:can calls; together that doubled to ~44
-// audit-log rows on every session start.
-import { resolvePersonaShared } from "./persona-probe.ts";
+// Persona resolution: prefer `/v1/sk/bootstrap` (one round-trip for the
+// full UX-gating allow-set) and fall back to the legacy tier-filtered
+// `whoami + rbac:can` fan-out for older engines. `loadBootstrap` owns
+// the disk cache + 3-tier resolution.
+import { loadBootstrap } from "./lib/bootstrap.ts";
 
 interface ResolvedPersona {
   label: string;
@@ -67,7 +67,14 @@ async function resolvePersona(
   client: EngineClient,
   profile: ResolvedProfile,
 ): Promise<ResolvedPersona> {
-  return resolvePersonaShared(client, profile);
+  const snap = await loadBootstrap(client, profile);
+  return {
+    label: snap.label,
+    probe: snap.probe,
+    allowed: snap.allowed,
+    tenant: snap.tenant,
+    email: snap.email,
+  };
 }
 
 export async function runInkRepl(opts: InkReplOptions): Promise<number> {
