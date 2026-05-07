@@ -8,7 +8,8 @@ import {
   rejectDiscoveryArtifact,
 } from "../service.ts";
 
-const skip = process.env.SKIP_DB_TESTS === "1";
+// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
+const skip = process.env.REQUIRES_PG === "0";
 
 let testDb: TestDb;
 let tenantId: string;
