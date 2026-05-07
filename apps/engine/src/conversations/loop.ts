@@ -54,12 +54,7 @@ import { log, logger } from "../logging/logger.ts";
 import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instrumentation.ts";
 import { now } from "../utils/clock.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
-import {
-  CONVERSATION_CANCELLED_REASON,
-  isExpectedCancellation,
-  registerConversationAbort,
-  unregisterConversationAbort,
-} from "./abort.ts";
+import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
 import { startNewWorkflowDraft } from "./authoring-state.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
@@ -137,19 +132,16 @@ export interface RunLoopParams {
    */
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   /**
-   * Pre-registered AbortController for this turn. The HTTP route
-   * handler creates and registers it on the synchronous frame of
-   * request-accept (closing the cancel race fixed in #146 / A4); the
-   * loop just consumes it. When omitted (legacy callers), the loop
-   * falls back to creating + registering its own — identical to the
-   * pre-A4 behaviour.
-   *
-   * Retired by #148 once every caller threads `turn_abort_ctrl`
-   * (HTTP messages route is the only one today; MCP / SSE / CLI +
-   * queue surfaces still pay the original cancel race A4 fixed for
-   * HTTP). The fallback is a transition affordance only.
+   * Pre-registered AbortController for this turn. The route / MCP /
+   * service-layer caller registers it on the synchronous frame of
+   * request-accept (or right after row insert in the create flow)
+   * and threads it through. The loop consumes it; lifetime ownership
+   * stays with the caller (whoever registered also unregisters in
+   * their `finally`). Required as of #148 — every caller of
+   * `runLoop` now threads a controller, and the legacy "register
+   * here as a fallback" path was retired.
    */
-  turn_abort_ctrl?: AbortController;
+  turn_abort_ctrl: AbortController;
 }
 
 export interface RunLoopResult {
@@ -168,14 +160,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // via `p.onEvent` when supplied.
   const events: TurnEvent[] = sink.asArrayProxy();
   const budget = p.step_budget ?? DEFAULT_BUDGET;
-  // The HTTP route handler registers synchronously on request accept
-  // (#146 / A4). Honour the caller-supplied controller when present;
-  // legacy callers get the original register-here fallback. The
-  // registry key is tenant-scoped to defeat the cross-tenant
-  // displacement scenario surfaced in #147 review C1.
-  const turnAbortCtrl =
-    p.turn_abort_ctrl ?? registerConversationAbort(p.tenant_id, p.conversation_id);
-  const ownsAbortRegistration = p.turn_abort_ctrl == null;
+  // Caller registers + unregisters on their synchronous-accept frame
+  // (#146 / A4 + #148). The loop only consumes the signal here;
+  // re-registering inside this body would re-open the cancel race.
+  const turnAbortCtrl = p.turn_abort_ctrl;
 
   log.debug({
     module: "conversation",
@@ -1273,472 +1261,466 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   }
 
   void messages; // messages rebuilt per-attempt inside runOnce
+  let cancelled = false;
   try {
-    let cancelled = false;
-    try {
-      await runOnce(effectiveModel);
-    } catch (primaryErr) {
-      // Cancel-vs-error split — see `abort.ts` header for reason coverage.
-      if (isExpectedCancellation(primaryErr, turnAbortCtrl.signal)) {
-        cancelled = true;
-      } else {
-        const providerKind = classifyProviderError(primaryErr);
-        const providerErr = providerKind === "other" ? null : toLlmProviderError(primaryErr);
-        const msg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
-        logger.warn({
-          module: "llm",
-          action: "converse.failed",
-          msg: "streamText primary error",
-          conversation_id: p.conversation_id,
-          model: effectiveModel,
-          kind: providerErr?.kind ?? providerKind,
-          error: msg,
-        });
-        await recordUsage(
-          {
-            tenant_id: p.tenant_id,
-            flow: "converse",
-            model: effectiveModel,
-            prompt_tokens: estimatedPromptTokens,
-            completion_tokens: 0,
-            latency_ms: 0,
-            result: "error",
-            error: msg,
-          },
-          p.db,
-        );
-        const sameProviderQuota =
-          providerErr?.kind === "quota_exhausted" && route.fallback_provider === route.provider;
-        if (
-          !providerErr ||
-          !isFallbackEligible(primaryErr) ||
-          route.fallback === effectiveModel ||
-          sameProviderQuota
-        ) {
-          throw providerErr ?? primaryErr;
-        }
-        logger.warn({
-          module: "llm",
-          action: "fallback.triggered",
-          msg: "llm fallback engaged",
+    await runOnce(effectiveModel);
+  } catch (primaryErr) {
+    // Cancel-vs-error split — see `abort.ts` header for reason coverage.
+    if (isExpectedCancellation(primaryErr, turnAbortCtrl.signal)) {
+      cancelled = true;
+    } else {
+      const providerKind = classifyProviderError(primaryErr);
+      const providerErr = providerKind === "other" ? null : toLlmProviderError(primaryErr);
+      const msg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+      logger.warn({
+        module: "llm",
+        action: "converse.failed",
+        msg: "streamText primary error",
+        conversation_id: p.conversation_id,
+        model: effectiveModel,
+        kind: providerErr?.kind ?? providerKind,
+        error: msg,
+      });
+      await recordUsage(
+        {
+          tenant_id: p.tenant_id,
           flow: "converse",
-          conversation_id: p.conversation_id,
-          primary: effectiveModel,
-          fallback: route.fallback,
-          kind: providerErr.kind,
-        });
-        try {
-          await runOnce(route.fallback);
-        } catch (fbErr) {
-          if (isExpectedCancellation(fbErr, turnAbortCtrl.signal)) {
-            cancelled = true;
-          } else {
-            const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);
-            logger.warn({
-              module: "llm",
-              action: "converse.failed",
-              msg: "streamText fallback error",
-              conversation_id: p.conversation_id,
+          model: effectiveModel,
+          prompt_tokens: estimatedPromptTokens,
+          completion_tokens: 0,
+          latency_ms: 0,
+          result: "error",
+          error: msg,
+        },
+        p.db,
+      );
+      const sameProviderQuota =
+        providerErr?.kind === "quota_exhausted" && route.fallback_provider === route.provider;
+      if (
+        !providerErr ||
+        !isFallbackEligible(primaryErr) ||
+        route.fallback === effectiveModel ||
+        sameProviderQuota
+      ) {
+        throw providerErr ?? primaryErr;
+      }
+      logger.warn({
+        module: "llm",
+        action: "fallback.triggered",
+        msg: "llm fallback engaged",
+        flow: "converse",
+        conversation_id: p.conversation_id,
+        primary: effectiveModel,
+        fallback: route.fallback,
+        kind: providerErr.kind,
+      });
+      try {
+        await runOnce(route.fallback);
+      } catch (fbErr) {
+        if (isExpectedCancellation(fbErr, turnAbortCtrl.signal)) {
+          cancelled = true;
+        } else {
+          const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);
+          logger.warn({
+            module: "llm",
+            action: "converse.failed",
+            msg: "streamText fallback error",
+            conversation_id: p.conversation_id,
+            model: route.fallback,
+            error: fbMsg,
+          });
+          await recordUsage(
+            {
+              tenant_id: p.tenant_id,
+              flow: "converse",
               model: route.fallback,
+              prompt_tokens: estimatedPromptTokens,
+              completion_tokens: 0,
+              latency_ms: 0,
+              result: "error",
               error: fbMsg,
-            });
-            await recordUsage(
+            },
+            p.db,
+          );
+          const typedFallbackErr =
+            classifyProviderError(fbErr) === "other" ? null : toLlmProviderError(fbErr);
+          throw typedFallbackErr ?? fbErr;
+        }
+      }
+    }
+  }
+
+  // Empty-text fallback — when the turn finishes without the model
+  // emitting any assistant prose (e.g. after the loop-guard short-
+  // circuited every subsequent tool attempt), synthesise a short
+  // visible message from the collected tool results. Prior behaviour
+  // rendered assistant_text:"" which surfaced as silence in the CLI
+  // (observed in session 4e6696e3). A visible line is always better
+  // than silence.
+  if (
+    !signals.lastAssistantText &&
+    !signals.pendingElicitation &&
+    !signals.committed &&
+    !turnAbortCtrl.signal.aborted
+  ) {
+    const synthetic = synthesizeFallbackMessage({
+      events,
+      loopWarnings: signals.totalLoopWarnings,
+    });
+    if (synthetic) {
+      const fallbackMessageId = await appendMessage(
+        p.db,
+        p.tenant_id,
+        p.conversation_id,
+        "assistant",
+        { text: synthetic, _synthetic: true, _reason: "empty_turn_fallback" },
+      );
+      events.push({
+        type: "message",
+        role: "assistant",
+        content: { text: synthetic },
+        id: fallbackMessageId,
+        parent_message_id: fallbackMessageId,
+      });
+      signals.lastAssistantText = synthetic;
+      log.warn({
+        module: "conversation",
+        action: "loop.empty_text_synthesized",
+        msg: "turn ended with no assistant text — synthesised fallback from tool results",
+        conversation_id: p.conversation_id,
+        loop_warnings: signals.totalLoopWarnings,
+      });
+    }
+  }
+
+  // Critic / judge pass — terminal-step rubric over whatever the
+  // turn produced (commit, propose, or chat). The critic is
+  // deterministic (structural predicates against the artifact) so
+  // there is no second LLM call here. Verdict is logged + emitted
+  // as an event; a `priorCriticFail` signal flips on so the next
+  // turn's prepareStep escalates one tier up. Re-entry on the same
+  // turn is intentionally NOT done here — it would require
+  // restructuring the runOnce / fallback flow and is left as a
+  // follow-up.
+  let criticVerdict: CriticVerdict | undefined;
+  if (!cancelled && (signals.committed || signals.lastAssistantText)) {
+    // Resolve resource_kind from the draft's active_target. The
+    // earlier code defaulted "none" → "workflow" which gave the
+    // critic a false positive on commits with no active target. Now
+    // we explicitly skip critic dispatch for those.
+    const activeKind = draft.summary?.active_target.kind;
+    const resourceKind: "connector" | "workflow" | null =
+      activeKind === "connector" || activeKind === "workflow" ? activeKind : null;
+
+    // Count validated-checkpoint records that are ok=true. The
+    // checkpoints map lives on the AuthoringState alongside the draft
+    // and is updated by validate_draft / validate_connector_draft /
+    // dry_run_step etc.
+    const validatedStepCount = (() => {
+      const cps = draft.state?.checkpoints ?? {};
+      let n = 0;
+      for (const key of Object.keys(cps)) {
+        if (!/_validated$/.test(key)) continue;
+        const cp = (cps as Record<string, { ok?: boolean | null }>)[key];
+        if (cp?.ok === true) n += 1;
+      }
+      return n;
+    })();
+
+    // Connector-side: auth_type on the connector draft; this is the
+    // mode the persisted row will carry.
+    const connectorAuthMode =
+      resourceKind === "connector" ? (draft.connector?.auth_type ?? null) : null;
+
+    // Workflow-side: the first step's `kind` is the trigger semantic
+    // (subkit doesn't have a separate trigger field — the first step
+    // IS the entry point).
+    const workflowTriggerKind =
+      resourceKind === "workflow"
+        ? (() => {
+            const first = draft.workflow?.steps?.[0] as { kind?: unknown } | undefined;
+            return typeof first?.kind === "string" ? first.kind : null;
+          })()
+        : null;
+
+    const artifact: CriticArtifact | null = signals.committed
+      ? resourceKind === null
+        ? null
+        : {
+            kind: "save_workflow_draft",
+            payload: {
+              resource_kind: resourceKind,
+              resource_id: signals.committed.workflow_id,
+              connector_auth_mode: connectorAuthMode,
+              workflow_trigger_kind: workflowTriggerKind,
+              validated_step_count: validatedStepCount,
+              committed_text: signals.lastAssistantText ?? "",
+              referenced_credentials: [],
+            },
+          }
+      : { kind: "chat", payload: signals.lastAssistantText };
+    if (artifact === null) {
+      // Fall through — no critic dispatch when the commit had no
+      // active target (treat as a no-op rather than mis-shape an
+      // artifact).
+    } else {
+      try {
+        criticVerdict = await runCritic({
+          artifact,
+          ...(p.runtime_context
+            ? {
+                runtimeContext: {
+                  ...(p.runtime_context.engine_url
+                    ? { engine_url: p.runtime_context.engine_url }
+                    : {}),
+                  ...(p.runtime_context.tenant_slug
+                    ? { tenant_slug: p.runtime_context.tenant_slug }
+                    : {}),
+                },
+              }
+            : {}),
+        });
+        if (criticVerdict.verdict === "fail") {
+          stepRouterSignals.priorCriticFail = true;
+        }
+        const failedChecks = criticVerdict.checks
+          ? Object.entries(criticVerdict.checks)
+              .filter(([, v]) => v === false)
+              .map(([k]) => k)
+          : [];
+        logger.info({
+          module: "llm",
+          action: "critic.verdict",
+          msg: `critic verdict: ${criticVerdict.verdict}`,
+          conversation_id: p.conversation_id,
+          tenant_id: p.tenant_id,
+          kind: artifact.kind,
+          verdict: criticVerdict.verdict,
+          confidence: criticVerdict.confidence,
+          reason: criticVerdict.reason,
+          failed_checks: failedChecks,
+          hint: criticVerdict.hint ?? null,
+          will_escalate_next_turn: criticVerdict.verdict === "fail",
+          will_abstain: criticVerdict.verdict === "fail" && criticVerdict.confidence < 0.6,
+        });
+        // Lever 15: confidence-based abstention. When the critic's
+        // confidence is below 0.6 AND the turn committed, surface an
+        // `ask_user_text` elicitation that the operator must answer
+        // before the conversation continues. This does NOT roll back
+        // the commit (the save_workflow_draft tool already wrote the row by
+        // the time the critic runs); it forces the operator to
+        // explicitly confirm or revise. Rate-limited to ONE abstention
+        // per turn so a flaky critic cannot spam elicitations.
+        if (
+          criticVerdict.verdict === "fail" &&
+          criticVerdict.confidence < 0.6 &&
+          signals.committed
+        ) {
+          try {
+            const elicitation = await createElicitation(
               {
                 tenant_id: p.tenant_id,
-                flow: "converse",
-                model: route.fallback,
-                prompt_tokens: estimatedPromptTokens,
-                completion_tokens: 0,
-                latency_ms: 0,
-                result: "error",
-                error: fbMsg,
+                conversation_id: p.conversation_id,
+                tool_call_id: null,
+                tool_name: "ask_user_text",
+                summary: `low-confidence commit: ${criticVerdict.reason}`,
+                input: {
+                  question:
+                    "The critic flagged this commit with low confidence. " +
+                    `Reason: ${criticVerdict.reason}. ` +
+                    `${criticVerdict.hint ? `Suggested fix: ${criticVerdict.hint}. ` : ""}` +
+                    "Confirm the commit, or describe what should change.",
+                  placeholder: "confirm | describe a fix",
+                  metadata: {
+                    source: "critic.abstention",
+                    critic_kind: artifact.kind,
+                    confidence: criticVerdict.confidence,
+                    failed_checks: failedChecks,
+                  },
+                },
+                actor_id: p.actor_id,
               },
               p.db,
             );
-            const typedFallbackErr =
-              classifyProviderError(fbErr) === "other" ? null : toLlmProviderError(fbErr);
-            throw typedFallbackErr ?? fbErr;
+            signals.pendingChildElicitationIds.push(elicitation.id);
+            events.push({
+              type: "activity",
+              phase: "idle",
+              label: `critic abstention · ${criticVerdict.reason}`,
+            });
+            logger.info({
+              module: "llm",
+              action: "critic.abstention.elicited",
+              msg: "low-confidence commit produced an ask_user_text follow-up",
+              conversation_id: p.conversation_id,
+              tenant_id: p.tenant_id,
+              elicitation_id: elicitation.id,
+              confidence: criticVerdict.confidence,
+              failed_checks: failedChecks,
+            });
+          } catch (err) {
+            logger.warn({
+              module: "llm",
+              action: "critic.abstention.elicit_failed",
+              msg: "could not create abstention elicitation — verdict still logged",
+              conversation_id: p.conversation_id,
+              error: err instanceof Error ? err.message : String(err),
+            });
           }
         }
+      } catch (err) {
+        // Critic must not crash the loop — log and continue.
+        logger.warn({
+          module: "llm",
+          action: "critic.threw",
+          conversation_id: p.conversation_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
-    }
+    } // close `else` for artifact !== null
+  }
 
-    // Empty-text fallback — when the turn finishes without the model
-    // emitting any assistant prose (e.g. after the loop-guard short-
-    // circuited every subsequent tool attempt), synthesise a short
-    // visible message from the collected tool results. Prior behaviour
-    // rendered assistant_text:"" which surfaced as silence in the CLI
-    // (observed in session 4e6696e3). A visible line is always better
-    // than silence.
-    if (
-      !signals.lastAssistantText &&
-      !signals.pendingElicitation &&
-      !signals.committed &&
-      !turnAbortCtrl.signal.aborted
-    ) {
-      const synthetic = synthesizeFallbackMessage({
-        events,
-        loopWarnings: signals.totalLoopWarnings,
+  // Resolve final status.
+  let status: RunLoopResult["status"] = "active";
+  let committedWorkflowId: string | undefined;
+  let pendingElicitationId: string | undefined;
+  const rows = await p.db
+    .select()
+    .from(conversations)
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
+    .limit(1);
+  const persistedStatus = rows[0]?.status ?? null;
+  const conversationCancelled =
+    cancelled ||
+    persistedStatus === "abandoned" ||
+    turnAbortCtrl.signal.reason === CONVERSATION_CANCELLED_REASON;
+  let completedStatus: ConversationStatus;
+  if (conversationCancelled) {
+    status = "abandoned";
+    completedStatus = "abandoned";
+  } else if (signals.committed) {
+    status = "committed";
+    committedWorkflowId = signals.committed.workflow_id;
+    completedStatus = "committed";
+  } else if (signals.pendingElicitation || persistedStatus === "awaiting_input") {
+    status = "awaiting_input";
+    pendingElicitationId = signals.pendingElicitation?.elicitation_id;
+    completedStatus = "awaiting_input";
+  } else {
+    if (signals.step >= budget && !signals.pendingElicitation) {
+      log.warn({
+        module: "conversation",
+        action: "loop.budget_exhausted",
+        msg: "turn stopped without done/elicitation/commit (budget reached)",
+        conversation_id: p.conversation_id,
+        step_budget: budget,
       });
-      if (synthetic) {
-        const fallbackMessageId = await appendMessage(
-          p.db,
-          p.tenant_id,
-          p.conversation_id,
-          "assistant",
-          { text: synthetic, _synthetic: true, _reason: "empty_turn_fallback" },
-        );
-        events.push({
-          type: "message",
-          role: "assistant",
-          content: { text: synthetic },
-          id: fallbackMessageId,
-          parent_message_id: fallbackMessageId,
-        });
-        signals.lastAssistantText = synthetic;
-        log.warn({
-          module: "conversation",
-          action: "loop.empty_text_synthesized",
-          msg: "turn ended with no assistant text — synthesised fallback from tool results",
-          conversation_id: p.conversation_id,
-          loop_warnings: signals.totalLoopWarnings,
-        });
-      }
     }
+    completedStatus = "active";
+  }
 
-    // Critic / judge pass — terminal-step rubric over whatever the
-    // turn produced (commit, propose, or chat). The critic is
-    // deterministic (structural predicates against the artifact) so
-    // there is no second LLM call here. Verdict is logged + emitted
-    // as an event; a `priorCriticFail` signal flips on so the next
-    // turn's prepareStep escalates one tier up. Re-entry on the same
-    // turn is intentionally NOT done here — it would require
-    // restructuring the runOnce / fallback flow and is left as a
-    // follow-up.
-    let criticVerdict: CriticVerdict | undefined;
-    if (!cancelled && (signals.committed || signals.lastAssistantText)) {
-      // Resolve resource_kind from the draft's active_target. The
-      // earlier code defaulted "none" → "workflow" which gave the
-      // critic a false positive on commits with no active target. Now
-      // we explicitly skip critic dispatch for those.
-      const activeKind = draft.summary?.active_target.kind;
-      const resourceKind: "connector" | "workflow" | null =
-        activeKind === "connector" || activeKind === "workflow" ? activeKind : null;
-
-      // Count validated-checkpoint records that are ok=true. The
-      // checkpoints map lives on the AuthoringState alongside the draft
-      // and is updated by validate_draft / validate_connector_draft /
-      // dry_run_step etc.
-      const validatedStepCount = (() => {
-        const cps = draft.state?.checkpoints ?? {};
-        let n = 0;
-        for (const key of Object.keys(cps)) {
-          if (!/_validated$/.test(key)) continue;
-          const cp = (cps as Record<string, { ok?: boolean | null }>)[key];
-          if (cp?.ok === true) n += 1;
-        }
-        return n;
-      })();
-
-      // Connector-side: auth_type on the connector draft; this is the
-      // mode the persisted row will carry.
-      const connectorAuthMode =
-        resourceKind === "connector" ? (draft.connector?.auth_type ?? null) : null;
-
-      // Workflow-side: the first step's `kind` is the trigger semantic
-      // (subkit doesn't have a separate trigger field — the first step
-      // IS the entry point).
-      const workflowTriggerKind =
-        resourceKind === "workflow"
-          ? (() => {
-              const first = draft.workflow?.steps?.[0] as { kind?: unknown } | undefined;
-              return typeof first?.kind === "string" ? first.kind : null;
-            })()
-          : null;
-
-      const artifact: CriticArtifact | null = signals.committed
-        ? resourceKind === null
-          ? null
-          : {
-              kind: "save_workflow_draft",
-              payload: {
-                resource_kind: resourceKind,
-                resource_id: signals.committed.workflow_id,
-                connector_auth_mode: connectorAuthMode,
-                workflow_trigger_kind: workflowTriggerKind,
-                validated_step_count: validatedStepCount,
-                committed_text: signals.lastAssistantText ?? "",
-                referenced_credentials: [],
-              },
-            }
-        : { kind: "chat", payload: signals.lastAssistantText };
-      if (artifact === null) {
-        // Fall through — no critic dispatch when the commit had no
-        // active target (treat as a no-op rather than mis-shape an
-        // artifact).
-      } else {
-        try {
-          criticVerdict = await runCritic({
-            artifact,
-            ...(p.runtime_context
-              ? {
-                  runtimeContext: {
-                    ...(p.runtime_context.engine_url
-                      ? { engine_url: p.runtime_context.engine_url }
-                      : {}),
-                    ...(p.runtime_context.tenant_slug
-                      ? { tenant_slug: p.runtime_context.tenant_slug }
-                      : {}),
-                  },
-                }
-              : {}),
-          });
-          if (criticVerdict.verdict === "fail") {
-            stepRouterSignals.priorCriticFail = true;
-          }
-          const failedChecks = criticVerdict.checks
-            ? Object.entries(criticVerdict.checks)
-                .filter(([, v]) => v === false)
-                .map(([k]) => k)
-            : [];
-          logger.info({
-            module: "llm",
-            action: "critic.verdict",
-            msg: `critic verdict: ${criticVerdict.verdict}`,
-            conversation_id: p.conversation_id,
-            tenant_id: p.tenant_id,
-            kind: artifact.kind,
-            verdict: criticVerdict.verdict,
-            confidence: criticVerdict.confidence,
-            reason: criticVerdict.reason,
-            failed_checks: failedChecks,
-            hint: criticVerdict.hint ?? null,
-            will_escalate_next_turn: criticVerdict.verdict === "fail",
-            will_abstain: criticVerdict.verdict === "fail" && criticVerdict.confidence < 0.6,
-          });
-          // Lever 15: confidence-based abstention. When the critic's
-          // confidence is below 0.6 AND the turn committed, surface an
-          // `ask_user_text` elicitation that the operator must answer
-          // before the conversation continues. This does NOT roll back
-          // the commit (the save_workflow_draft tool already wrote the row by
-          // the time the critic runs); it forces the operator to
-          // explicitly confirm or revise. Rate-limited to ONE abstention
-          // per turn so a flaky critic cannot spam elicitations.
-          if (
-            criticVerdict.verdict === "fail" &&
-            criticVerdict.confidence < 0.6 &&
-            signals.committed
-          ) {
-            try {
-              const elicitation = await createElicitation(
-                {
-                  tenant_id: p.tenant_id,
-                  conversation_id: p.conversation_id,
-                  tool_call_id: null,
-                  tool_name: "ask_user_text",
-                  summary: `low-confidence commit: ${criticVerdict.reason}`,
-                  input: {
-                    question:
-                      "The critic flagged this commit with low confidence. " +
-                      `Reason: ${criticVerdict.reason}. ` +
-                      `${criticVerdict.hint ? `Suggested fix: ${criticVerdict.hint}. ` : ""}` +
-                      "Confirm the commit, or describe what should change.",
-                    placeholder: "confirm | describe a fix",
-                    metadata: {
-                      source: "critic.abstention",
-                      critic_kind: artifact.kind,
-                      confidence: criticVerdict.confidence,
-                      failed_checks: failedChecks,
-                    },
-                  },
-                  actor_id: p.actor_id,
-                },
-                p.db,
-              );
-              signals.pendingChildElicitationIds.push(elicitation.id);
-              events.push({
-                type: "activity",
-                phase: "idle",
-                label: `critic abstention · ${criticVerdict.reason}`,
-              });
-              logger.info({
-                module: "llm",
-                action: "critic.abstention.elicited",
-                msg: "low-confidence commit produced an ask_user_text follow-up",
-                conversation_id: p.conversation_id,
-                tenant_id: p.tenant_id,
-                elicitation_id: elicitation.id,
-                confidence: criticVerdict.confidence,
-                failed_checks: failedChecks,
-              });
-            } catch (err) {
-              logger.warn({
-                module: "llm",
-                action: "critic.abstention.elicit_failed",
-                msg: "could not create abstention elicitation — verdict still logged",
-                conversation_id: p.conversation_id,
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
-          }
-        } catch (err) {
-          // Critic must not crash the loop — log and continue.
-          logger.warn({
-            module: "llm",
-            action: "critic.threw",
-            conversation_id: p.conversation_id,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      } // close `else` for artifact !== null
-    }
-
-    // Resolve final status.
-    let status: RunLoopResult["status"] = "active";
-    let committedWorkflowId: string | undefined;
-    let pendingElicitationId: string | undefined;
-    const rows = await p.db
-      .select()
-      .from(conversations)
-      .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
-      .limit(1);
-    const persistedStatus = rows[0]?.status ?? null;
-    const conversationCancelled =
-      cancelled ||
-      persistedStatus === "abandoned" ||
-      turnAbortCtrl.signal.reason === CONVERSATION_CANCELLED_REASON;
-    let completedStatus: ConversationStatus;
-    if (conversationCancelled) {
-      status = "abandoned";
-      completedStatus = "abandoned";
-    } else if (signals.committed) {
-      status = "committed";
-      committedWorkflowId = signals.committed.workflow_id;
-      completedStatus = "committed";
-    } else if (signals.pendingElicitation || persistedStatus === "awaiting_input") {
-      status = "awaiting_input";
-      pendingElicitationId = signals.pendingElicitation?.elicitation_id;
-      completedStatus = "awaiting_input";
-    } else {
-      if (signals.step >= budget && !signals.pendingElicitation) {
-        log.warn({
-          module: "conversation",
-          action: "loop.budget_exhausted",
-          msg: "turn stopped without done/elicitation/commit (budget reached)",
-          conversation_id: p.conversation_id,
-          step_budget: budget,
-        });
+  // Attach turn usage to the `completed` frame (sk status-line
+  // reads `turn_tokens` + `remaining_monthly_budget_tokens`). The
+  // optional `breakdown` carries the per-section token shape from
+  // the assembled prompt so the spinner / `/cost` view can show
+  // skills 4.2k · transcript 6.1k · docs 2.0k · total 14.5k.
+  //
+  // Compute usage BEFORE pushing the frame so live SSE emits the
+  // payload-complete event in one go. Mutating array entries after
+  // a buffered push doesn't re-fire the live emitter.
+  const usageAfter = await monthlyUsage(p.tenant_id, p.db).catch(() => usageBefore);
+  const turnTokens = Math.max(0, usageAfter - usageBefore);
+  const remaining =
+    route.monthly_budget != null ? Math.max(0, route.monthly_budget - usageAfter) : null;
+  const breakdown = prompt?.token_counts
+    ? {
+        system: prompt.token_counts.system,
+        skills: prompt.token_counts.skills,
+        knowledge: prompt.token_counts.knowledge,
+        docs: prompt.token_counts.docs,
+        failures: prompt.token_counts.failures,
+        messages: prompt.token_counts.messages,
+        total: prompt.token_counts.total,
       }
-      completedStatus = "active";
-    }
-
-    // Attach turn usage to the `completed` frame (sk status-line
-    // reads `turn_tokens` + `remaining_monthly_budget_tokens`). The
-    // optional `breakdown` carries the per-section token shape from
-    // the assembled prompt so the spinner / `/cost` view can show
-    // skills 4.2k · transcript 6.1k · docs 2.0k · total 14.5k.
-    //
-    // Compute usage BEFORE pushing the frame so live SSE emits the
-    // payload-complete event in one go. Mutating array entries after
-    // a buffered push doesn't re-fire the live emitter.
-    const usageAfter = await monthlyUsage(p.tenant_id, p.db).catch(() => usageBefore);
-    const turnTokens = Math.max(0, usageAfter - usageBefore);
-    const remaining =
-      route.monthly_budget != null ? Math.max(0, route.monthly_budget - usageAfter) : null;
-    const breakdown = prompt?.token_counts
-      ? {
-          system: prompt.token_counts.system,
-          skills: prompt.token_counts.skills,
-          knowledge: prompt.token_counts.knowledge,
-          docs: prompt.token_counts.docs,
-          failures: prompt.token_counts.failures,
-          messages: prompt.token_counts.messages,
-          total: prompt.token_counts.total,
-        }
-      : undefined;
-    events.push({
-      type: "completed",
-      status: completedStatus,
-      usage: {
-        turn_tokens: turnTokens,
-        remaining_monthly_budget_tokens: remaining,
-        context_cap_tokens: contextCap,
-        ...(breakdown ? { breakdown } : {}),
-      },
-    });
-
-    // P6: emit a per-turn token-usage log line so the operator can grep
-    // engine logs alone (without enabling client-side debug output) to
-    // see which validation/preview cycles burned how many tokens. The
-    // CLI already gets the same breakdown via the `completed` event;
-    // this is the symmetric server-side record.
-    //
-    // Additionally surface the top-N heaviest included skills so when
-    // a turn balloons past expectation (the dca36b29 session showed
-    // breakdown_skills=26661 — ~27k tokens of skill bodies — without
-    // a way to see WHICH skills) operators can identify the heavy
-    // contributors and trim them. Pre-fix this required reading the
-    // included_skill_ids list and looking up each skill body by hand.
-    const topSkillBreakdown = (() => {
-      if (!prompt) return null;
-      const skills = prompt.included_skills ?? [];
-      if (skills.length === 0) return null;
-      const weighed = skills.map((s) => ({
-        id: s.id,
-        slug: s.slug ?? null,
-        title: s.title ?? null,
-        tokens: prompt.token_counts ? Math.round(prompt.token_counts.skills / skills.length) : 0,
-      }));
-      // Recompute per-skill weights using countTokens so the report
-      // is accurate — the sum-divided-by-count above is just a fallback
-      // when a per-skill counter isn't wired up yet.
-      try {
-        for (const w of weighed) {
-          const skill = skills.find((s) => s.id === w.id);
-          if (skill) {
-            w.tokens = countSkillTokens(skill, p.runtime_context);
-          }
-        }
-      } catch {
-        // best-effort — token counter failures must not block turn end
-      }
-      return weighed
-        .sort((a, b) => b.tokens - a.tokens)
-        .slice(0, 5)
-        .map((w) => ({
-          ...(w.slug ? { slug: w.slug } : { id: w.id }),
-          tokens: w.tokens,
-        }));
-    })();
-    logger.info({
-      module: "conversation",
-      action: "dialog.turn_end",
-      tenant_id: p.tenant_id,
-      conversation_id: p.conversation_id,
-      final_status: status,
+    : undefined;
+  events.push({
+    type: "completed",
+    status: completedStatus,
+    usage: {
       turn_tokens: turnTokens,
       remaining_monthly_budget_tokens: remaining,
-      ...(breakdown
-        ? {
-            breakdown_system: breakdown.system,
-            breakdown_skills: breakdown.skills,
-            breakdown_knowledge: breakdown.knowledge,
-            breakdown_docs: breakdown.docs,
-            breakdown_failures: breakdown.failures,
-            breakdown_messages: breakdown.messages,
-            breakdown_total: breakdown.total,
-          }
-        : {}),
-      ...(topSkillBreakdown ? { top_skills_by_tokens: topSkillBreakdown } : {}),
-    });
+      context_cap_tokens: contextCap,
+      ...(breakdown ? { breakdown } : {}),
+    },
+  });
 
-    const out: RunLoopResult = { events, status };
-    if (committedWorkflowId) out.committed_workflow_id = committedWorkflowId;
-    if (pendingElicitationId) out.pending_elicitation_id = pendingElicitationId;
-    return out;
-  } finally {
-    if (ownsAbortRegistration) {
-      unregisterConversationAbort(p.tenant_id, p.conversation_id, turnAbortCtrl);
+  // P6: emit a per-turn token-usage log line so the operator can grep
+  // engine logs alone (without enabling client-side debug output) to
+  // see which validation/preview cycles burned how many tokens. The
+  // CLI already gets the same breakdown via the `completed` event;
+  // this is the symmetric server-side record.
+  //
+  // Additionally surface the top-N heaviest included skills so when
+  // a turn balloons past expectation (the dca36b29 session showed
+  // breakdown_skills=26661 — ~27k tokens of skill bodies — without
+  // a way to see WHICH skills) operators can identify the heavy
+  // contributors and trim them. Pre-fix this required reading the
+  // included_skill_ids list and looking up each skill body by hand.
+  const topSkillBreakdown = (() => {
+    if (!prompt) return null;
+    const skills = prompt.included_skills ?? [];
+    if (skills.length === 0) return null;
+    const weighed = skills.map((s) => ({
+      id: s.id,
+      slug: s.slug ?? null,
+      title: s.title ?? null,
+      tokens: prompt.token_counts ? Math.round(prompt.token_counts.skills / skills.length) : 0,
+    }));
+    // Recompute per-skill weights using countTokens so the report
+    // is accurate — the sum-divided-by-count above is just a fallback
+    // when a per-skill counter isn't wired up yet.
+    try {
+      for (const w of weighed) {
+        const skill = skills.find((s) => s.id === w.id);
+        if (skill) {
+          w.tokens = countSkillTokens(skill, p.runtime_context);
+        }
+      }
+    } catch {
+      // best-effort — token counter failures must not block turn end
     }
-  }
+    return weighed
+      .sort((a, b) => b.tokens - a.tokens)
+      .slice(0, 5)
+      .map((w) => ({
+        ...(w.slug ? { slug: w.slug } : { id: w.id }),
+        tokens: w.tokens,
+      }));
+  })();
+  logger.info({
+    module: "conversation",
+    action: "dialog.turn_end",
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    final_status: status,
+    turn_tokens: turnTokens,
+    remaining_monthly_budget_tokens: remaining,
+    ...(breakdown
+      ? {
+          breakdown_system: breakdown.system,
+          breakdown_skills: breakdown.skills,
+          breakdown_knowledge: breakdown.knowledge,
+          breakdown_docs: breakdown.docs,
+          breakdown_failures: breakdown.failures,
+          breakdown_messages: breakdown.messages,
+          breakdown_total: breakdown.total,
+        }
+      : {}),
+    ...(topSkillBreakdown ? { top_skills_by_tokens: topSkillBreakdown } : {}),
+  });
+
+  const out: RunLoopResult = { events, status };
+  if (committedWorkflowId) out.committed_workflow_id = committedWorkflowId;
+  if (pendingElicitationId) out.pending_elicitation_id = pendingElicitationId;
+  return out;
 }

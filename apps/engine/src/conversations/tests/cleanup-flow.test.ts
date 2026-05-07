@@ -65,6 +65,7 @@ describe("cleanup write tools in the conversation loop", () => {
 
     const first = await appendUserMessage(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.conversation.id,
         actor_id: ctx.user_id,
@@ -83,6 +84,7 @@ describe("cleanup write tools in the conversation loop", () => {
 
     const resumed = await respondElicitation(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.conversation.id,
         elicitation_id: first.result.pending_elicitation_id!,
@@ -130,6 +132,7 @@ describe("cleanup write tools in the conversation loop", () => {
 
     const first = await appendUserMessage(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.conversation.id,
         actor_id: ctx.user_id,
@@ -142,6 +145,7 @@ describe("cleanup write tools in the conversation loop", () => {
 
     const resumed = await respondElicitation(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.conversation.id,
         elicitation_id: first.result.pending_elicitation_id!,

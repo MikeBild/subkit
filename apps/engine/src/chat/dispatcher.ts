@@ -26,6 +26,7 @@
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
 import type { RunLoopResult } from "../conversations/loop.ts";
 import {
   appendUserMessage,
@@ -311,16 +312,23 @@ export async function handleChatEvent(
     const confirmed = m[1] === "approve";
     const elicitation_id = m[2] ?? "";
     const conversation_id = actionValue ?? "";
-    await respondElicitation(
-      {
-        tenant_id,
-        conversation_id,
-        elicitation_id,
-        actor_id: user_id,
-        output: { confirmed },
-      },
-      db,
-    );
+    // #148 — every respondElicitation caller threads a controller.
+    const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+    try {
+      await respondElicitation(
+        {
+          tenant_id,
+          conversation_id,
+          elicitation_id,
+          actor_id: user_id,
+          output: { confirmed },
+          turn_abort_ctrl: turnAbortCtrl,
+        },
+        db,
+      );
+    } finally {
+      unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+    }
     return {
       status: confirmed ? "approved" : "rejected",
       conversation_id,
@@ -538,12 +546,29 @@ export async function handleChatEvent(
   let outcome: RunLoopResult;
   if (existing) {
     conversation_id = existing.conversation_id;
-    const turn = await appendUserMessage(
-      { tenant_id, conversation_id, actor_id: user_id, message: prompt },
-      db,
-    );
-    outcome = turn.result;
+    // #148 — every appendUserMessage caller threads a controller.
+    // Chat dispatch is the same shape as the HTTP messages route:
+    // we know the conversation_id from the lookup above, register
+    // synchronously, unregister in `finally`.
+    const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+    try {
+      const turn = await appendUserMessage(
+        {
+          tenant_id,
+          conversation_id,
+          actor_id: user_id,
+          message: prompt,
+          turn_abort_ctrl: turnAbortCtrl,
+        },
+        db,
+      );
+      outcome = turn.result;
+    } finally {
+      unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+    }
   } else {
+    // createConversation handles its own register-after-row-insert
+    // because the conversation_id doesn't exist before the call.
     const created = await createConversation(
       { tenant_id, actor_id: user_id, initial_message: prompt },
       db,

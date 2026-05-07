@@ -227,19 +227,28 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         ? `${message}\n\n[Attached ${ingestedSources.length} file(s) as knowledge sources]`
         : message;
 
-    const outcome = await svc.appendUserMessage(
-      {
-        tenant_id: principal.tenant_id,
-        conversation_id: id,
-        actor_id: principal.id,
-        message: enrichedMessage,
-        ...(typeof memory === "string" && memory.length > 0 ? { memory } : {}),
-        runtime_context: buildRuntimeContextFromRequest(c, principal),
-      },
-      db,
-    );
+    // #146 / A4 + #148: register synchronously and unregister in
+    // `finally` (non-SSE branch only — this route returns JSON, so the
+    // single outer try/finally is sufficient).
+    const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
+    try {
+      const outcome = await svc.appendUserMessage(
+        {
+          tenant_id: principal.tenant_id,
+          conversation_id: id,
+          actor_id: principal.id,
+          message: enrichedMessage,
+          turn_abort_ctrl: turnAbortCtrl,
+          ...(typeof memory === "string" && memory.length > 0 ? { memory } : {}),
+          runtime_context: buildRuntimeContextFromRequest(c, principal),
+        },
+        db,
+      );
 
-    const serialized = serializeConversation(outcome);
-    return c.json({ ...serialized, ingested_knowledge_source_ids: ingestedSources }, 200);
+      const serialized = serializeConversation(outcome);
+      return c.json({ ...serialized, ingested_knowledge_source_ids: ingestedSources }, 200);
+    } finally {
+      unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+    }
   });
 }

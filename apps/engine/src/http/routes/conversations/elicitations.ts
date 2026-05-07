@@ -9,7 +9,11 @@ import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import * as svc from "../../../conversations/index.ts";
-import { serializeEvent } from "../../../conversations/index.ts";
+import {
+  registerConversationAbort,
+  serializeEvent,
+  unregisterConversationAbort,
+} from "../../../conversations/index.ts";
 import { HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -72,73 +76,91 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id, elicitation_id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const baseParams = {
-      tenant_id: principal.tenant_id,
-      conversation_id: id,
-      elicitation_id,
-      actor_id: principal.id,
-      output: body.output,
-      ...(body.reason ? { reason: body.reason } : {}),
-      ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-    } as const;
+    // #146 / A4 + #148: register synchronously on request-accept so
+    // a cancel arriving in the first ~40ms always finds a controller.
+    // SSE branch transfers ownership to its inner `finally` (Hono's
+    // `streamSSE` does not await its callback); non-SSE branch keeps
+    // the outer `finally`. Same pattern as `messages.ts`.
+    const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
+    let ownershipTransferred = false;
+    try {
+      const baseParams = {
+        tenant_id: principal.tenant_id,
+        conversation_id: id,
+        elicitation_id,
+        actor_id: principal.id,
+        output: body.output,
+        turn_abort_ctrl: turnAbortCtrl,
+        ...(body.reason ? { reason: body.reason } : {}),
+        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+      } as const;
 
-    // SSE branch — when the CLI sends `Accept: text/event-stream`, stream
-    // every TurnEvent the resumed runLoop produces in real time. Pre-fix
-    // this route was JSON-only, so an elicit response that triggered a
-    // 1–2 minute LLM turn left the operator staring at a `summarising N
-    // tool results · 1m43s` spinner with no incremental progress until
-    // the buffered JSON came back. Mirrors the SSE branch on `/messages`
-    // and the create route above.
-    if (wantsSSE(c.req.header("accept"))) {
-      return streamSSE(c, async (stream) => {
-        try {
-          const outcome = await svc.respondElicitation(
-            {
-              ...baseParams,
-              onEvent: (ev) => {
-                void stream.writeSSE(serializeEvent(ev));
+      // SSE branch — when the CLI sends `Accept: text/event-stream`,
+      // stream every TurnEvent the resumed runLoop produces in real
+      // time. Pre-fix this route was JSON-only, so an elicit response
+      // that triggered a 1–2 minute LLM turn left the operator staring
+      // at a `summarising N tool results · 1m43s` spinner with no
+      // incremental progress until the buffered JSON came back.
+      // Mirrors the SSE branch on `/messages`.
+      if (wantsSSE(c.req.header("accept"))) {
+        const response = streamSSE(c, async (stream) => {
+          try {
+            const outcome = await svc.respondElicitation(
+              {
+                ...baseParams,
+                onEvent: (ev) => {
+                  void stream.writeSSE(serializeEvent(ev));
+                },
               },
-            },
-            db,
-          );
-          await stream.writeSSE(outcomeFrame(outcome));
-        } catch (error) {
-          if (error instanceof svc.ElicitationAlreadyResolvedError) {
+              db,
+            );
+            await stream.writeSSE(outcomeFrame(outcome));
+          } catch (error) {
+            if (error instanceof svc.ElicitationAlreadyResolvedError) {
+              await stream.writeSSE(
+                errorFrame({
+                  code: "elicitation_already_resolved",
+                  message: error.message,
+                }),
+              );
+              return;
+            }
+            const err = error as Error;
             await stream.writeSSE(
               errorFrame({
-                code: "elicitation_already_resolved",
-                message: error.message,
+                code: "internal",
+                message: err?.message ?? "internal_error",
               }),
             );
-            return;
+          } finally {
+            unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
-          const err = error as Error;
-          await stream.writeSSE(
-            errorFrame({
-              code: "internal",
-              message: err?.message ?? "internal_error",
-            }),
-          );
-        }
-        // biome-ignore lint/suspicious/noExplicitAny: streamSSE returns a plain Response; the openapi handler wants the typed shape.
-      }) as any;
-    }
-
-    let outcome: Awaited<ReturnType<typeof svc.respondElicitation>>;
-    try {
-      outcome = await svc.respondElicitation(baseParams, db);
-    } catch (error) {
-      if (error instanceof svc.ElicitationAlreadyResolvedError) {
-        throw new HttpError(409, "elicitation_already_resolved", error.message, {
-          elicitation_id: error.elicitation_id,
-          previous_status: error.status,
-          previous_output: error.previous_output,
-          previous_decision_reason: error.previous_decision_reason,
-        });
+          // biome-ignore lint/suspicious/noExplicitAny: streamSSE returns a plain Response; the openapi handler wants the typed shape.
+        }) as any;
+        ownershipTransferred = true;
+        return response;
       }
-      throw error;
+
+      let outcome: Awaited<ReturnType<typeof svc.respondElicitation>>;
+      try {
+        outcome = await svc.respondElicitation(baseParams, db);
+      } catch (error) {
+        if (error instanceof svc.ElicitationAlreadyResolvedError) {
+          throw new HttpError(409, "elicitation_already_resolved", error.message, {
+            elicitation_id: error.elicitation_id,
+            previous_status: error.status,
+            previous_output: error.previous_output,
+            previous_decision_reason: error.previous_decision_reason,
+          });
+        }
+        throw error;
+      }
+      return c.json(serializeConversation(outcome), 200);
+    } finally {
+      if (!ownershipTransferred) {
+        unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+      }
     }
-    return c.json(serializeConversation(outcome), 200);
   });
 
   // Resume-by-tool-call alias. Resolves tool_call_id → elicitation_id
@@ -158,65 +180,80 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!elicit) {
       throw new NotFoundError("elicitation_for_tool_call");
     }
-    const baseParams = {
-      tenant_id: principal.tenant_id,
-      conversation_id: id,
-      elicitation_id: elicit.id,
-      actor_id: principal.id,
-      output: body.output,
-      ...(body.reason ? { reason: body.reason } : {}),
-      ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-    } as const;
+    // #146 / A4 + #148 — same sync-register pattern as the canonical
+    // route above.
+    const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
+    let ownershipTransferred = false;
+    try {
+      const baseParams = {
+        tenant_id: principal.tenant_id,
+        conversation_id: id,
+        elicitation_id: elicit.id,
+        actor_id: principal.id,
+        output: body.output,
+        turn_abort_ctrl: turnAbortCtrl,
+        ...(body.reason ? { reason: body.reason } : {}),
+        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+      } as const;
 
-    if (wantsSSE(c.req.header("accept"))) {
-      return streamSSE(c, async (stream) => {
-        try {
-          const outcome = await svc.respondElicitation(
-            {
-              ...baseParams,
-              onEvent: (ev) => {
-                void stream.writeSSE(serializeEvent(ev));
+      if (wantsSSE(c.req.header("accept"))) {
+        const response = streamSSE(c, async (stream) => {
+          try {
+            const outcome = await svc.respondElicitation(
+              {
+                ...baseParams,
+                onEvent: (ev) => {
+                  void stream.writeSSE(serializeEvent(ev));
+                },
               },
-            },
-            db,
-          );
-          await stream.writeSSE(outcomeFrame(outcome));
-        } catch (error) {
-          if (error instanceof svc.ElicitationAlreadyResolvedError) {
+              db,
+            );
+            await stream.writeSSE(outcomeFrame(outcome));
+          } catch (error) {
+            if (error instanceof svc.ElicitationAlreadyResolvedError) {
+              await stream.writeSSE(
+                errorFrame({
+                  code: "elicitation_already_resolved",
+                  message: error.message,
+                }),
+              );
+              return;
+            }
+            const err = error as Error;
             await stream.writeSSE(
               errorFrame({
-                code: "elicitation_already_resolved",
-                message: error.message,
+                code: "internal",
+                message: err?.message ?? "internal_error",
               }),
             );
-            return;
+          } finally {
+            unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
-          const err = error as Error;
-          await stream.writeSSE(
-            errorFrame({
-              code: "internal",
-              message: err?.message ?? "internal_error",
-            }),
-          );
-        }
-        // biome-ignore lint/suspicious/noExplicitAny: streamSSE returns plain Response.
-      }) as any;
-    }
-
-    let outcome: Awaited<ReturnType<typeof svc.respondElicitation>>;
-    try {
-      outcome = await svc.respondElicitation(baseParams, db);
-    } catch (error) {
-      if (error instanceof svc.ElicitationAlreadyResolvedError) {
-        throw new HttpError(409, "elicitation_already_resolved", error.message, {
-          elicitation_id: error.elicitation_id,
-          previous_status: error.status,
-          previous_output: error.previous_output,
-          previous_decision_reason: error.previous_decision_reason,
-        });
+          // biome-ignore lint/suspicious/noExplicitAny: streamSSE returns plain Response.
+        }) as any;
+        ownershipTransferred = true;
+        return response;
       }
-      throw error;
+
+      let outcome: Awaited<ReturnType<typeof svc.respondElicitation>>;
+      try {
+        outcome = await svc.respondElicitation(baseParams, db);
+      } catch (error) {
+        if (error instanceof svc.ElicitationAlreadyResolvedError) {
+          throw new HttpError(409, "elicitation_already_resolved", error.message, {
+            elicitation_id: error.elicitation_id,
+            previous_status: error.status,
+            previous_output: error.previous_output,
+            previous_decision_reason: error.previous_decision_reason,
+          });
+        }
+        throw error;
+      }
+      return c.json(serializeConversation(outcome), 200);
+    } finally {
+      if (!ownershipTransferred) {
+        unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+      }
     }
-    return c.json(serializeConversation(outcome), 200);
   });
 }
