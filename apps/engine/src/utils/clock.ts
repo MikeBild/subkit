@@ -22,6 +22,11 @@ let nowOverride: NowProvider | null = null;
 /** Read the current wall-clock time. Honours an installed test
  *  override; otherwise falls back to `Date.now()`. */
 export function now(): number {
+  // allow-wall-clock: this IS the seam — every other production
+  // module reads time through `now()` from this file. A future
+  // "scrub all Date.now()" sweep must leave this single call in
+  // place; the override slot above is what makes determinism tests
+  // deterministic in the first place.
   return nowOverride ? nowOverride() : Date.now();
 }
 

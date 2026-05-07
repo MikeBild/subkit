@@ -52,6 +52,7 @@ import {
 } from "../llm/provider-errors.ts";
 import { log, logger } from "../logging/logger.ts";
 import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instrumentation.ts";
+import { now } from "../utils/clock.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import {
   CONVERSATION_CANCELLED_REASON,
@@ -213,7 +214,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     workflowIdForTurn = null;
     await p.db
       .update(conversations)
-      .set({ target_workflow_id: null, updated_at: new Date() })
+      .set({ target_workflow_id: null, updated_at: new Date(now()) })
       .where(
         and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
       );
@@ -785,7 +786,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
    * `model` column so fallback attempts show up as distinct rows.
    */
   async function runOnce(modelId: string): Promise<void> {
-    let lastStepEnd = Date.now();
+    let lastStepEnd = now();
     // Per-turn repair counter for experimental_repairToolCall. See
     // MAX_REPAIRS_PER_TURN constant.
     let turnRepairCount = 0;
@@ -1075,9 +1076,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       },
       onStepFinish: async (step) => {
         const u = readStepUsage(step);
-        const now = Date.now();
-        const latency_ms = Math.max(0, now - lastStepEnd);
-        lastStepEnd = now;
+        const stepEndedAt = now();
+        const latency_ms = Math.max(0, stepEndedAt - lastStepEnd);
+        lastStepEnd = stepEndedAt;
         await recordUsage(
           {
             tenant_id: p.tenant_id,
@@ -1188,9 +1189,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       // tick. Cleared by the for-await drain below when text starts
       // arriving (Layer B then carries visibility). Model identifier
       // intentionally NOT included — operator doesn't need it.
-      const composingStart = Date.now();
+      const composingStart = now();
       let heartbeat: ReturnType<typeof setInterval> | null = setInterval(() => {
-        const elapsedSec = Math.round((Date.now() - composingStart) / 1000);
+        const elapsedSec = Math.round((now() - composingStart) / 1000);
         events.push({
           type: "activity",
           phase: "composing",

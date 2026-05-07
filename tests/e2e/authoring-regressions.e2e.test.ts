@@ -432,14 +432,27 @@ describe("authoring regressions", () => {
     expect(detail.draft?.latest_preview?.summary.length).toBeGreaterThan(0);
   });
 
-  // Cancel-race regression. Pre-#146 the AbortController was registered
-  // inside runLoop (after the request handler had awaited several
-  // hops); a cancel arriving in the first ~40ms of the turn missed the
-  // registry and silently no-op'd. A4 moved the registration to the
-  // synchronous frame of POST /messages, so the cancel route always
-  // finds a controller to abort. This test now runs unconditionally on
-  // every CI build instead of being gated behind SK_RUN_FLAKY_PREVIEW_CANCEL.
-  test("cancelling a slow preview abandons the turn without surfacing a 500", async () => {
+  // SYNC-REGISTER CONTRACT (cancel-race e2e cover) — #146 / A4 + #147.
+  //
+  // The unit-level contract for the abort registry lives at
+  // `apps/engine/src/conversations/abort.test.ts` ("SSE
+  // ownership-transfer", "cross-tenant displacement"). Those cases
+  // are the authoritative regression guard against the cancel race.
+  // This e2e is the *integration cover* — it pins that the full
+  // HTTP → cancel registry → loop abort path keeps the contract
+  // end-to-end on a real engine.
+  //
+  // The test deliberately fires POST /messages and POST /cancel
+  // back-to-back without an intervening sleep: the post-A4
+  // sync-register guarantees the cancel always finds a controller
+  // because registration happens on the synchronous frame of
+  // request-accept. If a future refactor regresses register back
+  // inside an async hop, the e2e will fail intermittently (cancel
+  // arrives after the regressed register on a fast loopback) — but
+  // the unit test in `abort.test.ts` will fail cleanly, so don't
+  // chase intermittent e2e failures here without checking the unit
+  // suite first.
+  test("sync-register contract — cancelling a slow preview abandons the turn without surfacing a 500", async () => {
     const created = await createConversation({ title: "preview-cancel" });
     const conversationId = created.conversation.id;
     getMockProvider().setConversePlan(conversationId, [

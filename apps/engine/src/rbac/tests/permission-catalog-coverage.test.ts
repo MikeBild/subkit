@@ -19,44 +19,56 @@
 //      is renamed and a recipe's prose isn't updated, the next
 //      operator following the recipe sees a 403 they can't resolve
 //      from the recipe alone.
+//
+//   4. Every literal `permission: "slug"` site outside the HTTP
+//      route surface (MCP capabilities, conversation tools, queue
+//      handlers — anywhere that calls `can(...)` with an inline
+//      object) must also reference a catalog slug. Per #147 review
+//      W-2: the `requirePermission` regex above is HTTP-only; MCP
+//      uses the lower-level `can(db, { permission: ... })` shape and
+//      the original test silently passed any drift there.
 
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { Glob } from "bun";
 import { loadBuiltinTemplates } from "../../connectors/templates.ts";
 import { ALL_PERMISSION_NAMES } from "../catalog.ts";
 
-// Walk upward from this file until we find the repo root marker
-// (`package.json` whose `name` is `subkit`). `SUBKIT_REPO_ROOT` env
-// override is honoured first so a CI runner with a non-standard layout
-// can pin it explicitly. Per #147 review W-5 — the previous
-// hard-coded `../../../../..` traversal silently globbed the wrong
-// files if the test ever moved.
+// Repo root resolution. `SUBKIT_REPO_ROOT` env override wins (CI runners
+// with non-standard layouts can pin it); otherwise resolve statically
+// from this file's location and assert at module load that the resolved
+// root contains `apps/engine`. Per #147 review W-5 (rename from the
+// brittle hard-coded `../../../../..`) and S-2 (cheap structural check
+// instead of a parent-walk on every test invocation).
 function resolveRepoRoot(): string {
   const fromEnv = process.env.SUBKIT_REPO_ROOT;
   if (fromEnv && existsSync(resolve(fromEnv, "package.json"))) return fromEnv;
-  let dir = import.meta.dir;
-  for (let i = 0; i < 12; i++) {
-    const pkgPath = resolve(dir, "package.json");
-    if (existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { name?: string };
-        if (pkg.name === "subkit") return dir;
-      } catch {
-        // not parseable — keep walking
-      }
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error(
-    `permission-catalog-coverage: failed to locate the subkit repo root. Set SUBKIT_REPO_ROOT or run from inside the repo.`,
-  );
+  // This file lives at `apps/engine/src/rbac/tests/...` — five levels
+  // up from `import.meta.dir` is the repo root.
+  return resolve(import.meta.dir, "..", "..", "..", "..", "..");
 }
 
 const ROOT = resolveRepoRoot();
+// Sanity-assert at module load: a stale `import.meta.dir` (file moved)
+// or a wrong `SUBKIT_REPO_ROOT` would silently glob the wrong tree.
+// Failing here gives the operator a useful error instead of an empty
+// scan that passes the catalog-coverage gates by accident.
+{
+  const pkgPath = resolve(ROOT, "package.json");
+  let pkgName: string | undefined;
+  try {
+    pkgName = (JSON.parse(readFileSync(pkgPath, "utf8")) as { name?: string }).name;
+  } catch {
+    /* fall through to the existsSync check */
+  }
+  if (pkgName !== "subkit" || !existsSync(resolve(ROOT, "apps/engine"))) {
+    throw new Error(
+      `permission-catalog-coverage: resolved ROOT (${ROOT}) does not look like the subkit repo. ` +
+        `Set SUBKIT_REPO_ROOT or move the test back under apps/engine/src/rbac/tests/.`,
+    );
+  }
+}
 
 // Permission slugs follow `<noun>:<verb>` — the catalog enforces this
 // implicitly via existing entries; this regex is the same shape the
@@ -140,6 +152,53 @@ describe("RBAC permission catalog coverage", () => {
       const out = offenders.map((o) => `  ${o.file}:${o.line}: ${o.snippet}`).join("\n");
       throw new Error(
         `requirePermission(...) called with a non-literal slug — the literal-string catalog gate cannot verify it:\n${out}\n\nUse a literal slug, or add the file to DYNAMIC_ALLOW with a comment.`,
+      );
+    }
+  });
+
+  test('every literal `permission: "slug"` site outside http/routes references a known catalog slug', async () => {
+    // Covers the `can(db, { permission: "slug", ... })` shape used by
+    // MCP capabilities, conversation tools, and any queue handler
+    // that performs an explicit RBAC check. The HTTP `requirePermission`
+    // regex above doesn't see these sites — without this gate, an
+    // MCP equivalent of the #147 / S-4 `execution:signal` miss would
+    // surface only at first runtime call.
+    const globs = [
+      "apps/engine/src/mcp/**/*.ts",
+      "apps/engine/src/conversations/tools/**/*.ts",
+      "apps/engine/src/conversations/services/**/*.ts",
+      "apps/engine/src/connectors/services/**/*.ts",
+      "apps/engine/src/queue/**/*.ts",
+    ];
+    // Match `permission: "slug"` — `can()` arg shape — and exclude
+    // test files (which legitimately reference dummy slugs).
+    const literalRe = /\bpermission:\s*["']([^"']+)["']/g;
+    const offenders: Array<{ file: string; slug: string }> = [];
+    for (const pattern of globs) {
+      const glob = new Glob(pattern);
+      for await (const file of glob.scan({ cwd: ROOT, absolute: false, onlyFiles: true })) {
+        if (file.endsWith(".test.ts") || file.includes("/tests/")) continue;
+        const src = readFileSync(resolve(ROOT, file), "utf8");
+        literalRe.lastIndex = 0;
+        for (const m of src.matchAll(literalRe)) {
+          const slug = m[1] ?? "";
+          // Only flag when the slug is permission-shaped and the
+          // noun matches a catalog resource_type — recipes / log
+          // metadata / audit metadata may legitimately contain
+          // `permission: "..."` for non-RBAC reasons.
+          if (!/^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$/.test(slug)) continue;
+          const noun = slug.split(":")[0];
+          const isResourceNoun = [...catalog].some((p) => p.startsWith(`${noun}:`));
+          if (isResourceNoun && !catalog.has(slug)) {
+            offenders.push({ file, slug });
+          }
+        }
+      }
+    }
+    if (offenders.length > 0) {
+      const out = offenders.map((o) => `  ${o.file}: permission: "${o.slug}"`).join("\n");
+      throw new Error(
+        `permission slug not in apps/engine/src/rbac/permissions.json:\n${out}\n\nAdd the entry or fix the slug.`,
       );
     }
   });

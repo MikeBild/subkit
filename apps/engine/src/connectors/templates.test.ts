@@ -237,6 +237,14 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
   // value and snapshot reads later would not equal the source. This
   // test pins the invariant — every catalog entry must round-trip
   // through `JSON.parse(JSON.stringify(...))` without loss.
+  //
+  // Scope (per #147 round-5 review S-5): this is a *structural* check
+  // only — it catches `Date`/`Map`/method drops at the JSON codec
+  // boundary. It does NOT catch a Zod-side semantic transform (e.g.
+  // `z.string().transform(s => s.toLowerCase())`) where round-trip
+  // succeeds but the parsed shape diverges from the input. That class
+  // of drift is covered by `template-resolver.test.ts` re-parsing
+  // through `parseTemplateSnapshot`.
   test("every template round-trips through JSON without loss (jsonb writer safety)", () => {
     for (const t of templates) {
       const roundtrip = JSON.parse(JSON.stringify(t));
