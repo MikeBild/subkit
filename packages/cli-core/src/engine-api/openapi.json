@@ -1060,6 +1060,144 @@
           "scopes"
         ]
       },
+      "SkBootstrap": {
+        "type": "object",
+        "properties": {
+          "whoami": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "system_account"
+                ]
+              },
+              "tenant_id": {
+                "type": "string"
+              },
+              "tenant_slug": {
+                "type": "string",
+                "nullable": true
+              },
+              "email": {
+                "type": "string",
+                "nullable": true
+              },
+              "role_name": {
+                "type": "string",
+                "nullable": true
+              },
+              "provider": {
+                "type": "string"
+              },
+              "base_url": {
+                "type": "string",
+                "nullable": true
+              },
+              "scopes": {
+                "type": "array",
+                "nullable": true,
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "tenant_id",
+              "tenant_slug",
+              "email",
+              "role_name",
+              "provider",
+              "base_url",
+              "scopes"
+            ]
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowed UX-gating permissions for the principal."
+          },
+          "permissions_checked": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stable list of permissions probed; reflects the engine's known UX gating set."
+          },
+          "tenant": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string",
+                "nullable": true
+              },
+              "display_name": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "slug",
+              "display_name"
+            ]
+          },
+          "recent_sessions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "updated_at": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "updated_at"
+              ]
+            }
+          },
+          "flags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Persona-visible feature flags."
+          },
+          "server_time": {
+            "type": "string",
+            "description": "Server-side ISO timestamp; lets the CLI sync clocks."
+          }
+        },
+        "required": [
+          "whoami",
+          "permissions",
+          "permissions_checked",
+          "tenant",
+          "recent_sessions",
+          "flags",
+          "server_time"
+        ]
+      },
       "WorkflowListResponse": {
         "type": "object",
         "properties": {
@@ -10629,6 +10767,31 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Whoami"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sk/bootstrap": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Composite startup payload for the sk CLI (whoami + permissions + recent sessions)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkBootstrap"
                 }
               }
             }

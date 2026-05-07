@@ -1457,6 +1457,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sk/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Composite startup payload for the sk CLI (whoami + permissions + recent sessions) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SkBootstrap"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows": {
         parameters: {
             query?: never;
@@ -7412,6 +7448,40 @@ export interface components {
             provider: string;
             base_url: string | null;
             scopes: string[] | null;
+        };
+        SkBootstrap: {
+            whoami: {
+                id: string;
+                /** @enum {string} */
+                kind: "user" | "system_account";
+                tenant_id: string;
+                tenant_slug: string | null;
+                email: string | null;
+                role_name: string | null;
+                provider: string;
+                base_url: string | null;
+                scopes: string[] | null;
+            };
+            /** @description Allowed UX-gating permissions for the principal. */
+            permissions: string[];
+            /** @description Stable list of permissions probed; reflects the engine's known UX gating set. */
+            permissions_checked: string[];
+            tenant: {
+                id: string;
+                slug: string | null;
+                display_name: string | null;
+            };
+            recent_sessions: {
+                id: string;
+                title: string | null;
+                updated_at: string;
+            }[];
+            /** @description Persona-visible feature flags. */
+            flags: {
+                [key: string]: boolean;
+            };
+            /** @description Server-side ISO timestamp; lets the CLI sync clocks. */
+            server_time: string;
         };
         WorkflowListResponse: {
             items: components["schemas"]["Workflow"][];
