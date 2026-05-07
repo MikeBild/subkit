@@ -29,6 +29,9 @@
           "db_connected": {
             "type": "boolean"
           },
+          "db_schema_drift": {
+            "type": "boolean"
+          },
           "uptime_seconds": {
             "type": "number"
           },
@@ -43,6 +46,7 @@
           "status",
           "version",
           "db_connected",
+          "db_schema_drift",
           "uptime_seconds"
         ]
       },
@@ -9441,6 +9445,129 @@
           "value",
           "status_hint"
         ]
+      },
+      "DriftReport": {
+        "type": "object",
+        "properties": {
+          "unknown_in_db": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "row_id": {
+                  "type": "integer"
+                },
+                "hash": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "type": "integer",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "row_id",
+                "hash",
+                "created_at"
+              ]
+            }
+          },
+          "missing_in_db": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "idx": {
+                  "type": "integer"
+                },
+                "tag": {
+                  "type": "string"
+                },
+                "hash": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "idx",
+                "tag",
+                "hash"
+              ]
+            }
+          },
+          "engine_version": {
+            "type": "string"
+          },
+          "embedded_migration_count": {
+            "type": "integer"
+          },
+          "db_migration_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unknown_in_db",
+          "missing_in_db",
+          "engine_version",
+          "embedded_migration_count",
+          "db_migration_count"
+        ]
+      },
+      "LogTailResponse": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogRingEntry"
+            }
+          },
+          "next_since_ms": {
+            "type": "integer"
+          },
+          "capacity": {
+            "type": "integer"
+          },
+          "size": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries",
+          "next_since_ms",
+          "capacity",
+          "size"
+        ]
+      },
+      "LogRingEntry": {
+        "type": "object",
+        "properties": {
+          "ts": {
+            "type": "integer"
+          },
+          "level": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "msg": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "ts",
+          "level",
+          "fields"
+        ]
       }
     },
     "parameters": {}
@@ -17527,6 +17654,165 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DiagnosticsSetupResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/diagnostics/drift": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Schema-drift report — embedded vs. applied migration set",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriftReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/diagnostics/logs": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Paginated tail of the engine's in-memory log ring",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0
+            },
+            "required": false,
+            "name": "since",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 2000
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": false,
+            "name": "module",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "required": false,
+            "name": "action",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "trace",
+                "debug",
+                "info",
+                "warn",
+                "error",
+                "fatal"
+              ]
+            },
+            "required": false,
+            "name": "level",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogTailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad query parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

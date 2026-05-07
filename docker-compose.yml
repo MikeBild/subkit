@@ -5,9 +5,12 @@
 #   # or: bun run compose:up
 #
 # Profiles:
-#   (default)  postgres + migrate + seed + engine
+#   (default)  postgres + engine
 #   storage    adds MinIO (S3-compatible object storage)
 #   tunnel     adds the tunnel-agent
+#
+# Migrations + seed run inside the engine binary on every boot — no
+# separate `migrate` or `seed` containers (issue #149).
 #
 # Every value referenced with ${...} has a documented default in
 # .env.example — copy it to .env before first boot.
@@ -90,69 +93,9 @@ services:
     # cpus: 0.5
 
   # ---------------------------------------------------------------------
-  # One-shot migration runner.
-  # Applies drizzle migrations from apps/engine/src/db/migrations and exits.
-  # The engine service depends on this having completed successfully.
-  # ---------------------------------------------------------------------
-  migrate:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.migrate
-    image: subkit/migrate:local
-    restart: "no"
-    networks: [subkit]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      # Point at the compose-internal postgres regardless of what the host
-      # .env file contains (which usually targets localhost).
-      DATABASE_URL: postgres://${POSTGRES_USER:-subkit}:${POSTGRES_PASSWORD:-subkit}@postgres:5432/${POSTGRES_DB:-subkit}
-      MASTER_KEY: ${MASTER_KEY:?MASTER_KEY is required — set it in .env (openssl rand -hex 32)}
-      NODE_ENV: ${NODE_ENV:-production}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LOG_FORMAT: ${LOG_FORMAT:-ndjson}
-    logging: *default-logging
-
-  # ---------------------------------------------------------------------
-  # One-shot seed runner.
-  # Seeds RBAC, default tenant, admin user, and dev fixtures. Idempotent.
-  # ---------------------------------------------------------------------
-  seed:
-    image: subkit/migrate:local
-    # `seed` reuses the migrate image rather than declaring its own
-    # `build:`. Without `pull_policy: never`, `docker compose up --build`
-    # tries to pull `subkit/migrate:local` from a registry on hosts that
-    # don't have it cached yet (CI, fresh clones) and fails before the
-    # `migrate` service finishes building it locally.
-    pull_policy: never
-    entrypoint: ["bun", "run", "apps/engine/src/db/seed.ts"]
-    restart: "no"
-    networks: [subkit]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-subkit}:${POSTGRES_PASSWORD:-subkit}@postgres:5432/${POSTGRES_DB:-subkit}
-      MASTER_KEY: ${MASTER_KEY:?MASTER_KEY is required — set it in .env (openssl rand -hex 32)}
-      NODE_ENV: ${NODE_ENV:-development}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LOG_FORMAT: ${LOG_FORMAT:-ndjson}
-      # No BOOTSTRAP_* env vars — first-run onboarding is driven by the
-      # `POST /v1/setup` route (or `sk init --token`) emitted by the
-      # engine on first boot. See apps/engine/src/onboarding/bootstrap.ts.
-    logging: *default-logging
-
-  # ---------------------------------------------------------------------
   # Engine — the Subkit workflow engine.
+  # Migrations + seed run in-process on boot (issue #149); there are
+  # no separate `migrate` / `seed` services to depend on.
   # ---------------------------------------------------------------------
   engine:
     build:
@@ -177,8 +120,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      seed:
-        condition: service_completed_successfully
     env_file:
       - path: .env
         required: false

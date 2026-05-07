@@ -1,11 +1,15 @@
 import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
 import { serve } from "@hono/node-server";
+import { SYSTEM_TENANT_ID } from "./audit/index.ts";
 import { ChatAdapterRegistry } from "./chat/registry.ts";
 import { closeAllPools } from "./connectors/drivers/postgres.ts";
 import { assertCryptoKeyOrExit } from "./crypto/aes-gcm.ts";
 import { closeDb, getDb } from "./db/client.ts";
+import { type DriftReport, detectDrift, runMigrations } from "./db/migrate.ts";
+import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
 import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
+import { setHealthState } from "./http/health-state.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
@@ -15,15 +19,16 @@ import * as bootstrap from "./onboarding/bootstrap.ts";
 import { startListener, stopListener } from "./pubsub/listener.ts";
 import { startBoss, stopBoss } from "./queue/boss.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
-import { seedBuiltinRolesAndPermissions } from "./rbac/seed.ts";
 import { SchedulerReconciler } from "./scheduler/reconciler.ts";
-import { applySkillSeedsForAllTenants, loadSkillSeedsFromDisk } from "./skills/seed.ts";
+import { applySkillSeedsForAllTenants, loadEmbeddedSkillSeeds } from "./skills/seed.ts";
 import { startTunnelWsServer, type TunnelWsServerHandle } from "./tunnels/ws-server.ts";
 import { setUpdateState } from "./update-state.ts";
 
 const SMOKE_FLAG = "--smoke";
 const SELF_UPDATE_FLAG = "--self-update";
 const CHECK_UPDATE_FLAG = "--check-update";
+const MIGRATE_FLAG = "--migrate";
+const SEED_FLAG = "--seed";
 
 async function runSmoke(): Promise<void> {
   // Read raw process.env. Importing `./env.ts` would trigger the lazy
@@ -120,24 +125,51 @@ async function runServer(): Promise<void> {
   const stopTracing = await startTracing();
   recordBootConsumer("tracing");
 
-  // Engine-essential seed: RBAC permission catalog + 6 builtin roles.
-  // Idempotent and fast (<200ms). Running this on every startup
-  // removes the runtime dependency on the separate `seed` compose
-  // container — auth subsystem now boots without it. Wrapped so a
-  // transient DB blip never blocks engine startup; the next boot
-  // retries.
+  // Apply embedded migrations BEFORE any subsystem touches a table.
+  // Issue #149: this used to be a separate `migrate` compose container
+  // that could ship a different lineage than the engine binary, which
+  // is exactly how prod ended up with 27 unknown migration rows. The
+  // migration set is now compiled into this binary via the
+  // `embed.macro.ts` Bun macro, so engine + migrations are one
+  // bit-for-bit artifact. **Failure here is fatal** — a half-migrated
+  // schema would make every downstream subsystem misbehave the way
+  // wait_reaper / docs_refresh / skills.seed did before this fix.
   try {
-    await seedBuiltinRolesAndPermissions(db);
-    logger.info({
+    await runMigrations(db);
+  } catch (err) {
+    logger.fatal({
       module: "engine",
-      action: "rbac.seed_applied",
-      msg: "RBAC roles + permissions seeded on startup",
+      action: "migrate.failed_aborting_boot",
+      msg: "embedded migrations failed; aborting boot to avoid running on a half-migrated schema",
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
     });
+    process.exit(1);
+  }
+
+  // Drift detection — read-only. If the DB carries migration rows whose
+  // hash isn't in this binary, the schema state was set by a different
+  // engine lineage. We log loudly and surface the flag in /v1/health
+  // (operators see it on the dashboard), but boot continues — the
+  // existing schema may still satisfy this binary's expectations.
+  let drift: DriftReport | null = null;
+  try {
+    drift = await detectDrift(db);
+    if (drift.unknown_in_db.length > 0) {
+      logger.warn({
+        module: "engine",
+        action: "migrate.drift_detected",
+        msg: "DB carries migration rows not present in this binary",
+        unknown_count: drift.unknown_in_db.length,
+        first_hashes: drift.unknown_in_db.slice(0, 10).map((r) => r.hash),
+      });
+    }
+    setHealthState({ schema_drift: drift.unknown_in_db.length > 0 });
   } catch (err) {
     logger.error({
       module: "engine",
-      action: "rbac.seed_failed",
-      msg: "RBAC seed failed; engine will boot but auth may degrade",
+      action: "migrate.drift_check_failed",
+      msg: "drift detection failed (non-fatal)",
       error: err instanceof Error ? err.message : String(err),
     });
   }
@@ -245,28 +277,46 @@ async function runServer(): Promise<void> {
   // Don't keep the event loop alive on this timer alone.
   if (typeof restartReminderTimer.unref === "function") restartReminderTimer.unref();
 
-  // Skill-seed pipeline. Loads the markdown skill library bundled under
-  // conversations/seed/skills/ and upserts each seeded skill into every
-  // tenant. Idempotent + content-hash-gated so unchanged seeds are a no-op
-  // on subsequent boots. Runs in the background so a large skill catalog
+  // RBAC essentials + (NODE_ENV-gated) dev fixtures. Idempotent.
+  // Failure is non-fatal: a transient DB blip might keep auth in a
+  // degraded state, but the next boot retries. Migrations have already
+  // run by this point, so the schema is guaranteed to match the seed
+  // queries — the #149 "skill upsert vs. schema mismatch" path is gone.
+  try {
+    const seedResult = await seedAtBoot(db);
+    for (const key of seedResult.issued_keys) {
+      printIssuedKey(key, { source: "boot" });
+    }
+    logger.info({
+      module: "engine",
+      action: "seed.at_boot_complete",
+      msg: "boot-time seed pass complete",
+      status: seedResult.status,
+      new_keys_issued: seedResult.issued_keys.length,
+    });
+  } catch (err) {
+    logger.error({
+      module: "engine",
+      action: "seed.at_boot_failed",
+      msg: "boot-time seed failed (non-fatal); auth may degrade until next boot",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // Skill-seed pipeline. Loads the markdown skill library embedded in
+  // this binary and upserts each seeded skill into every tenant.
+  // Idempotent + content-hash-gated so unchanged seeds are a no-op on
+  // subsequent boots. Runs in the background so a large skill catalog
   // never delays serving the first HTTP request.
   if (process.env.SK_SEED_SKILLS !== "0") {
     void (async () => {
       try {
-        const loaded = await loadSkillSeedsFromDisk();
-        logger.info({
-          module: "skills.seed",
-          action: "seed.resolved_dir",
-          msg: "skill seed directory resolved",
-          resolved_dir: loaded.resolved_dir,
-          searched_dirs: loaded.searched_dirs,
-          missing_dirs: loaded.missing_dirs,
-        });
+        const loaded = loadEmbeddedSkillSeeds();
         if (loaded.errors.length > 0) {
           logger.warn({
             module: "skills.seed",
             action: "seed.parse_errors",
-            msg: "some skill seeds failed to parse",
+            msg: "some embedded skill seeds failed to parse",
             errors: loaded.errors.map((e) => ({ file: e.file, code: e.code })),
           });
         }
@@ -274,10 +324,8 @@ async function runServer(): Promise<void> {
           logger.info({
             module: "skills.seed",
             action: "seed.empty",
-            msg: "no skill seeds found on disk; skipping",
-            resolved_dir: loaded.resolved_dir,
-            searched_dirs: loaded.searched_dirs,
-            missing_dirs: loaded.missing_dirs,
+            msg: "no skill seeds embedded in this binary; skipping",
+            embedded_count: loaded.embedded_count,
           });
           return;
         }
@@ -297,6 +345,7 @@ async function runServer(): Promise<void> {
           msg: "skill seeds applied across tenants",
           tenants: outcomes.length,
           skills_per_tenant: loaded.skills.length,
+          embedded_count: loaded.embedded_count,
           ...totals,
         });
       } catch (err) {
@@ -437,6 +486,44 @@ async function runServer(): Promise<void> {
   await new Promise<void>(() => {});
 }
 
+/**
+ * Bootstrap shared by `runServer`, `runMigrateOnce`, and `runSeedOnce`.
+ *
+ * `config/loader.ts` is imported dynamically so the smoke / version
+ * argv-only paths don't trigger the lazy `EnvSchema` parse that fires
+ * on first property access. `logging/logger.ts` is dynamic for the
+ * same reason — the configured level/format only matters once
+ * config is loaded. (Review R2-S2: hoisted out of the per-flag
+ * helpers so the dynamic-import pattern lives in one place.)
+ */
+async function loadConfigAndReconfigureLogger(): Promise<void> {
+  const { loadConfig, getConfig } = await import("./config/loader.ts");
+  await loadConfig();
+  const cfg = getConfig();
+  const { reconfigureLogger } = await import("./logging/logger.ts");
+  reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
+}
+
+async function runMigrateOnce(): Promise<void> {
+  await loadConfigAndReconfigureLogger();
+  const db = getDb();
+  await runMigrations(db);
+  await closeDb();
+}
+
+async function runSeedOnce(): Promise<void> {
+  await loadConfigAndReconfigureLogger();
+  const db = getDb();
+  // Migrations run first — operators expect `engine --seed` to be safe
+  // against a fresh DB the same way the boot path is.
+  await runMigrations(db);
+  const result = await seedAtBoot(db);
+  for (const key of result.issued_keys) {
+    printIssuedKey(key, { source: "cli" });
+  }
+  await closeDb();
+}
+
 async function main(): Promise<void> {
   // --check-update: check for updates without installing, exit.
   if (process.argv.includes(CHECK_UPDATE_FLAG)) {
@@ -464,12 +551,71 @@ async function main(): Promise<void> {
     }
   }
 
+  // --migrate: apply embedded migrations and exit. Useful for blue/green
+  // deploys where the operator wants a pre-flight check without booting
+  // the HTTP listener. The default boot path also runs migrations, so
+  // this flag is a convenience, not a requirement.
+  if (process.argv.includes(MIGRATE_FLAG)) {
+    await withContext(
+      {
+        trace_id: newTraceId(),
+        tenant_id: SYSTEM_TENANT_ID,
+        request_source: "cli",
+        actor_id: "migrate",
+      },
+      async () => {
+        try {
+          await runMigrateOnce();
+          process.exit(0);
+        } catch (err) {
+          logger.fatal({
+            module: "engine",
+            action: "migrate.cli_failed",
+            msg: "engine --migrate failed",
+            error: err instanceof Error ? err.message : String(err),
+          });
+          process.exit(1);
+        }
+      },
+    );
+    return;
+  }
+
+  // --seed: idempotent boot-time seed (RBAC + dev fixtures in non-prod).
+  // Replaces the deleted `bun run db:seed` script. Runs migrations
+  // first to keep parity with the default boot path.
+  if (process.argv.includes(SEED_FLAG)) {
+    await withContext(
+      {
+        trace_id: newTraceId(),
+        tenant_id: SYSTEM_TENANT_ID,
+        request_source: "cli",
+        actor_id: "seed",
+      },
+      async () => {
+        try {
+          await runSeedOnce();
+          process.exit(0);
+        } catch (err) {
+          logger.fatal({
+            module: "engine",
+            action: "seed.cli_failed",
+            msg: "engine --seed failed",
+            error: err instanceof Error ? err.message : String(err),
+          });
+          process.exit(1);
+        }
+      },
+    );
+    return;
+  }
+
   const isSmoke = process.argv.includes(SMOKE_FLAG);
 
   await withContext(
     {
       trace_id: newTraceId(),
-      tenant_id: "system",
+      tenant_id: SYSTEM_TENANT_ID,
       request_source: "cli",
       actor_id: "boot",
     },

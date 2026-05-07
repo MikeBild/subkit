@@ -84,8 +84,10 @@ jobs:
       - name: Determinism lint
         run: bun run test:determinism
 
-      - name: Migrate database
-        run: bun run db:migrate
+      # The standalone `bun run db:migrate` step was retired in #149.
+      # Integration tests migrate per-file via `apps/engine/src/db/tests/setup.ts`,
+      # so a separate CI migrate step is redundant. Production migrations
+      # are embedded in the engine binary and run in-process on every boot.
 
       - name: Unit + integration tests
         # `--max-concurrency=4` caps the number of test files bun runs
@@ -95,7 +97,15 @@ jobs:
         # surfacing as 5s timeouts in MCP / chat / tunnel / journey
         # tests that are otherwise green in isolation. The CI runner's
         # 4-core sizing makes 4 the natural ceiling.
-        run: bun test --max-concurrency=4 apps/ packages/
+        #
+        # `--timeout 60000` covers the worst-case `createTestDb`
+        # `beforeAll` on the GH runner (CREATE DATABASE + 14 embedded
+        # migrations applied via per-migration transactions). The
+        # default 5 s exceeds budget on contended runners and surfaces
+        # as `TypeError: undefined is not an object (evaluating
+        # 'ctx.cleanup')` for every downstream test that depends on
+        # the timed-out fixture.
+        run: bun test --max-concurrency=4 --timeout 60000 apps/ packages/
 
       - name: AI eval contract
         run: bun run verify:ai

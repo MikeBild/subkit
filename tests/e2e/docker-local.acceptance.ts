@@ -1,76 +1,15 @@
 #!/usr/bin/env bun
 
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { BASE_URL, fail, REPO_ROOT, readDevApiKey, runCommand, waitForHealth } from "./_helpers.ts";
 
-const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const SK_BIN = path.join(REPO_ROOT, "dist/sk");
-const BASE_URL = process.env.SUBKIT_DOCKER_BASE_URL ?? "http://127.0.0.1:3000";
 const TENANT_SLUG = process.env.SUBKIT_DOCKER_TENANT ?? "default";
-const PROVIDED_API_KEY = process.env.SUBKIT_DOCKER_API_KEY ?? "";
-
-function fail(message: string): never {
-  console.error(`✘ ${message}`);
-  process.exit(1);
-}
-
-function runCommand(
-  cmd: string,
-  args: string[],
-  options: { cwd?: string; env?: Record<string, string | undefined> } = {},
-) {
-  const result = spawnSync(cmd, args, {
-    cwd: options.cwd ?? REPO_ROOT,
-    env: { ...process.env, ...options.env },
-    encoding: "utf8",
-  });
-  return {
-    status: result.status ?? 1,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-  };
-}
-
-async function waitForHealth(timeoutMs = 120_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`${BASE_URL}/v1/health`);
-      if (response.ok) {
-        const body = (await response.json()) as { status?: string; db_connected?: boolean };
-        if (body.status === "ok" && body.db_connected === true) return;
-      }
-    } catch {
-      // wait and retry
-    }
-    await Bun.sleep(2_000);
-  }
-  fail(`engine at ${BASE_URL} did not become healthy within ${timeoutMs}ms`);
-}
 
 function issueAdminKey(): string {
-  if (PROVIDED_API_KEY) return PROVIDED_API_KEY;
-  const result = runCommand("docker", [
-    "compose",
-    "run",
-    "--rm",
-    "--entrypoint",
-    "bun",
-    "migrate",
-    "run",
-    "apps/engine/src/db/issue-admin-key.ts",
-    "--tenant",
-    TENANT_SLUG,
-  ]);
-  const combined = `${result.stdout}\n${result.stderr}`;
-  if (result.status !== 0) {
-    fail(`failed to issue admin key via docker compose:\n${combined}`);
-  }
-  const match = combined.match(/wf_live_[A-Za-z0-9_-]+/);
-  if (!match) fail(`docker compose did not print an admin key:\n${combined}`);
-  return match[0];
+  return readDevApiKey();
 }
 
 async function api<T>(apiKey: string, pathname: string, init: RequestInit = {}): Promise<T> {

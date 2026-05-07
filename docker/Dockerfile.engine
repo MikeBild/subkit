@@ -62,10 +62,18 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tzdata wget \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# Set the runtime working directory to the chown'd config dir. The
+# engine's config loader resolves a relative `subkit.config.json` path
+# against process.cwd() in non-production runs (NODE_ENV=development);
+# previously the cwd was `/app` (root-owned) which made the
+# auto-generated session secret fail with EACCES on every boot.
+WORKDIR /etc/subkit
 
 COPY --from=builder /out/engine /usr/local/bin/engine
-COPY --from=builder /app/apps/engine/src/conversations/seed/skills /usr/local/share/subkit/skills
+# Skill seeds are embedded directly into the engine binary via the
+# `embed-seeds.macro.ts` Bun macro (see issue #149). Older revisions
+# copied them to /usr/local/share/subkit/skills as a runtime fallback;
+# the runtime no longer reads from there.
 
 # Bundled sk + tunnel-agent binaries served by the /install/sk-* and
 # /install/agent-* routes. The build context's docker/binaries/ holds

@@ -11,6 +11,11 @@
 // next to `err.message` / `err.code`; the snake_case names are the
 // authoritative wire shape and are deliberate.
 
+import {
+  DIAGNOSTICS_DRIFT_PATH,
+  DIAGNOSTICS_LOG_STREAM_PATH,
+  DIAGNOSTICS_LOG_TAIL_PATH,
+} from "@cli-core/diagnostics-paths.ts";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import {
   type DebugCorrelationFields,
@@ -529,12 +534,90 @@ export class EngineClient {
   health(): Promise<{
     status: string;
     db_connected: boolean;
+    /** True when the engine observed migration rows on this DB whose
+     *  hash isn't in its embedded set — see issue #149 / `sk doctor`. */
+    db_schema_drift: boolean;
     version?: string;
     uptime_seconds?: number;
     update_available?: boolean;
     latest_version?: string;
   }> {
     return this.request("GET", "/v1/health");
+  }
+
+  // --------------------------- Drift diagnostics ---------------------------
+  /**
+   * Detailed schema-drift report. Backed by `/v1/diagnostics/drift`,
+   * which requires `audit:read`. Surfaces the rows in
+   * `drizzle.__drizzle_migrations` that are unknown to the engine
+   * binary and the embedded migrations whose hash isn't in the DB
+   * (informational — the boot path applies these on the same boot).
+   */
+  driftReport(): Promise<{
+    engine_version: string;
+    embedded_migration_count: number;
+    db_migration_count: number;
+    unknown_in_db: Array<{ row_id: number; hash: string; created_at: number | null }>;
+    missing_in_db: Array<{ idx: number; tag: string; hash: string }>;
+  }> {
+    return this.request("GET", DIAGNOSTICS_DRIFT_PATH);
+  }
+
+  // --------------------------- Engine log tail ---------------------------
+  /**
+   * Pull a window of the engine's in-memory log ring buffer. Returns
+   * raw JSON-line entries (each already structured with module / action
+   * / msg). Backed by `/v1/diagnostics/logs?since=<unix_ms>&limit=<n>`,
+   * which requires `audit:read`.
+   */
+  logsTailWindow(opts: {
+    since_ms?: number;
+    limit?: number;
+    module?: string;
+    action?: string;
+    level?: string;
+  }): Promise<{
+    entries: Array<{
+      ts: number;
+      level: string;
+      module?: string;
+      action?: string;
+      msg?: string;
+      fields?: Record<string, unknown>;
+    }>;
+    next_since_ms: number;
+    capacity: number;
+    size: number;
+  }> {
+    const params = new URLSearchParams();
+    if (typeof opts.since_ms === "number") params.set("since", String(opts.since_ms));
+    if (typeof opts.limit === "number") params.set("limit", String(opts.limit));
+    if (opts.module) params.set("module", opts.module);
+    if (opts.action) params.set("action", opts.action);
+    if (opts.level) params.set("level", opts.level);
+    const qs = params.toString();
+    return this.request("GET", `${DIAGNOSTICS_LOG_TAIL_PATH}${qs ? `?${qs}` : ""}`);
+  }
+
+  /**
+   * Returns the absolute URL the SSE stream lives at. The caller wires
+   * up its own `EventSource`/fetch-stream because each consumer
+   * (Ink REPL, headless CLI tail) has different lifetime semantics.
+   * Bearer auth must be added by the caller.
+   */
+  logsTailStreamUrl(opts: {
+    since_ms?: number;
+    module?: string;
+    action?: string;
+    level?: string;
+  }): string {
+    const params = new URLSearchParams();
+    if (typeof opts.since_ms === "number") params.set("since", String(opts.since_ms));
+    if (opts.module) params.set("module", opts.module);
+    if (opts.action) params.set("action", opts.action);
+    if (opts.level) params.set("level", opts.level);
+    const qs = params.toString();
+    return `${this.base}${DIAGNOSTICS_LOG_STREAM_PATH}${qs ? `?${qs}` : ""}`;
   }
 
   // --------------------------- Status snapshot ---------------------------

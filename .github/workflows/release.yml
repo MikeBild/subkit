@@ -442,18 +442,9 @@ jobs:
             ${{ env.REGISTRY }}/subkit/engine:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Build and push migrate image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.migrate
-          push: true
-          platforms: linux/amd64
-          tags: |
-            ${{ env.REGISTRY }}/subkit/migrate:${{ steps.meta.outputs.version }}
-            ${{ env.REGISTRY }}/subkit/migrate:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      # The migrate image was retired in #149: migrations + seed are
+      # embedded in the engine binary and run in-process on every boot,
+      # so there is no second image to push.
 
   # ── Deploy with health check + rollback ──
 

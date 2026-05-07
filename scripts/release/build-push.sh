@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 #
-# Build and push the engine + migrate images to DigitalOcean
-# Container Registry. Mirrors the `build-and-push` job body in
-# `.github/workflows/release.yml` so local and CI produce byte-for-byte
-# comparable image digests (same Dockerfile, same platform, same tags).
+# Build and push the engine image to DigitalOcean Container Registry.
+# Mirrors the `build-and-push` job body in `.github/workflows/release.yml`
+# so local and CI produce byte-for-byte comparable image digests (same
+# Dockerfile, same platform, same tags).
+#
+# The migrate image was retired in #149 — migrations + seed are
+# embedded in the engine binary and run in-process on boot.
 #
 # Usage:
 #   VERSION=1.6.7 scripts/release/build-push.sh
@@ -14,10 +17,6 @@
 #   doctl authenticated with a PAT that has `registry:update` scope
 #   (read-only PATs 403 on push — this is the one footgun the operator
 #   hit repeatedly this afternoon).
-#
-# Serial build+push is intentional. Docker Desktop's internal HTTP
-# proxy (192.168.65.1:3128) drops large blob uploads when two buildx
-# pushes run concurrently; we saw that today.
 
 set -euo pipefail
 
@@ -50,12 +49,8 @@ build_push() {
     -f "$REPO_ROOT/$dockerfile"
     -t "$REGISTRY/subkit/$image:$tag"
     -t "$REGISTRY/subkit/$image:latest"
+    --build-arg "ENGINE_VERSION=$tag"
   )
-  # engine uses ENGINE_VERSION build arg to stamp /v1/health. migrate
-  # doesn't need it — migrations don't expose a version.
-  if [ "$image" = "engine" ]; then
-    args+=(--build-arg "ENGINE_VERSION=$tag")
-  fi
 
   msg "building + pushing $image:$tag"
   if ! docker buildx build "${args[@]}" --push "$REPO_ROOT"; then
@@ -67,6 +62,5 @@ build_push() {
 
 login_docr
 build_push "$VERSION" docker/Dockerfile.engine engine
-build_push "$VERSION" docker/Dockerfile.migrate migrate
 
-msg "pushed registry.digitalocean.com/subkit/{engine,migrate}:$VERSION and :latest"
+msg "pushed registry.digitalocean.com/subkit/engine:$VERSION and :latest"

@@ -12,9 +12,10 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
 # Changes vs. the base compose:
-#   - engine, migrate, seed: pull from DOCR instead of building locally.
+#   - engine: pulls from DOCR instead of building locally.
 #   - engine: no host port publish; mounts host docker socket for sandbox
-#     spawning; depends on seed completion.
+#     spawning. Migrations + seed run in-process on engine boot
+#     (issue #149) — no separate migrate/seed containers.
 #   - caddy: new reverse proxy fronting engine ports 3000/3001 with always-on
 #     Let's Encrypt TLS.
 #   - postgres: keeps internal port only (no host publish in production).
@@ -31,20 +32,12 @@ services:
   postgres:
     ports: !reset []
 
-  migrate:
-    build: !reset null
-    image: registry.digitalocean.com/subkit/migrate:${ENGINE_VERSION:-latest}
-
   engine:
     build: !reset null
     image: registry.digitalocean.com/subkit/engine:${ENGINE_VERSION:-latest}
     depends_on:
       postgres:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-      seed:
-        condition: service_completed_successfully
     ports: !reset []
     expose:
       - "3000"
@@ -57,11 +50,6 @@ services:
       TUNNEL_ENGINE_URL: ${TUNNEL_ENGINE_URL:-wss://subkit-tunnel.mikebild.dev}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       FIREBASE_LOGIN_URL: ${FIREBASE_LOGIN_URL:-}
-
-  seed:
-    image: registry.digitalocean.com/subkit/migrate:${ENGINE_VERSION:-latest}
-    environment:
-      NODE_ENV: ${NODE_ENV:-production}
 
   caddy:
     image: caddy:2-alpine

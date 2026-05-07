@@ -10,12 +10,16 @@
 //      global skill. No demo connectors or workflows — fresh tenants
 //      start empty. Runs only when NODE_ENV !== "production".
 //
-// `seedTenantBootstrap` is also exported, but is no longer invoked by
-// this script. It is the call-driven primitive used by the first-run
-// `/v1/setup` flow (see `apps/engine/src/onboarding/bootstrap.ts`) — the
-// previous `BOOTSTRAP_*` env-var startup path was retired in #70 once
-// `POST /v1/setup` + `sk init --token` became the supported onboarding
-// surface.
+// `seedTenantBootstrap` is also exported. It is the call-driven primitive
+// used by the first-run `/v1/setup` flow (see
+// `apps/engine/src/onboarding/bootstrap.ts`) — the previous `BOOTSTRAP_*`
+// env-var startup path was retired in #70 once `POST /v1/setup` + `sk
+// init --token` became the supported onboarding surface.
+//
+// `seedAtBoot(db)` is the engine-boot orchestrator: idempotent, called
+// from `runServer()` after migrations have applied. Replaces the old
+// `bun run db:seed` CLI script (issue #149: collapse migrate + seed
+// into the single engine binary).
 //
 // Every created row writes an audit entry. Issued API keys are printed
 // to stdout exactly once with a bright warning — they cannot be recovered.
@@ -25,14 +29,13 @@ import { and, eq, isNull } from "drizzle-orm";
 import pc from "picocolors";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
-import { newTraceId, withContext } from "../logging/context.ts";
 import { logger } from "../logging/logger.ts";
 import {
   backfillRoleIds,
   type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
 } from "../rbac/seed.ts";
-import { closeDb, type Db, getDb } from "./client.ts";
+import type { Db } from "./client.ts";
 import { apiKeys, skills, systemAccounts, tenants, users } from "./schema/index.ts";
 
 const DEFAULT_TENANT_SLUG = "default";
@@ -592,66 +595,47 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
 // Top-level orchestration
 // --------------------------------------------------------------------------
 
-export async function seed(): Promise<SeedResult> {
-  const db = getDb();
+/**
+ * Engine-boot seed. Run after migrations have applied. Idempotent on
+ * every call — safe to invoke unconditionally on every boot.
+ *
+ *   1. RBAC essentials: permission catalog + 6 builtin roles.
+ *   2. (NODE_ENV !== "production") dev fixtures: default tenant +
+ *      admin@local + default-bot system account + starter skill.
+ *
+ * Production tenant bootstrap is **not** part of this path — operators
+ * mint the first tenant via `POST /v1/setup` (or `sk init --token`),
+ * which calls `seedTenantBootstrap` directly with operator-supplied
+ * credentials. See `apps/engine/src/onboarding/bootstrap.ts`.
+ */
+export async function seedAtBoot(db: Db): Promise<SeedResult> {
   const rbacIds = await seedEssentials(db);
-
   const isProd = process.env.NODE_ENV === "production";
-
-  // Production tenant bootstrap is no longer driven from this script —
-  // operators run `POST /v1/setup` (or `sk init --token`) on first boot
-  // (see apps/engine/src/onboarding/bootstrap.ts). This script now
-  // covers only the always-on RBAC essentials and the local-dev
-  // fixtures.
   const devKeys = isProd ? [] : await seedDevFixtures(db, rbacIds);
-
   return {
     status: devKeys.length > 0 ? "seeded" : "already_seeded",
     issued_keys: devKeys,
   };
 }
 
-function printIssuedKey({ label, plaintext, tenant, usage }: IssuedKey): void {
-  const banner = pc.bgYellow(pc.black(` NEW API KEY ISSUED — ${label} `));
+/**
+ * Print an issued API key to stdout exactly once with a bright banner.
+ * Caller (boot path or `engine --seed`) is responsible for the
+ * iteration; the key is unrecoverable after this prints.
+ *
+ * @param key  The newly-minted key payload.
+ * @param opts.source  Provenance tag rendered in the banner so an
+ *   operator running `engine --seed | tee` (or grepping container
+ *   logs) can distinguish a CLI-driven mint from a regular boot
+ *   (review S4). Omit / leave empty to keep the historical banner.
+ */
+export function printIssuedKey(
+  { label, plaintext, tenant, usage }: IssuedKey,
+  opts: { source?: "boot" | "cli" } = {},
+): void {
+  const sourceTag = opts.source ? ` (via ${opts.source})` : "";
+  const banner = pc.bgYellow(pc.black(` NEW API KEY ISSUED — ${label}${sourceTag} `));
   const warn = pc.bold(pc.yellow("This is the ONLY time this key will be shown. Copy it now."));
   const info = pc.dim(`  Tenant: ${tenant}\n  ${usage}`);
   process.stdout.write(`\n${banner}\n${warn}\n\n  ${pc.cyan(plaintext)}\n\n${info}\n\n`);
-}
-
-if (import.meta.main) {
-  await withContext(
-    {
-      trace_id: newTraceId(),
-      tenant_id: "system",
-      request_source: "cli",
-      actor_id: "seed",
-    },
-    async () => {
-      try {
-        const result = await seed();
-        for (const key of result.issued_keys) {
-          printIssuedKey(key);
-        }
-        if (result.status === "already_seeded") {
-          logger.info({
-            module: "db",
-            action: "seed.idempotent",
-            msg: "seed ran with no new rows (idempotent re-run)",
-          });
-        }
-        await closeDb();
-        process.exit(0);
-      } catch (err) {
-        logger.fatal({
-          module: "db",
-          action: "seed.crashed",
-          msg: "seed script crashed",
-          error: err instanceof Error ? err.message : String(err),
-          stack: err instanceof Error ? err.stack : undefined,
-        });
-        await closeDb().catch(() => {});
-        process.exit(1);
-      }
-    },
-  );
 }

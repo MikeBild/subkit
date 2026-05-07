@@ -32,6 +32,7 @@ import { hooksCommand } from "./commands/hooks.ts";
 import { initCommand } from "./commands/init.ts";
 import { installCommand } from "./commands/install.ts";
 import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
+import { logsCommand } from "./commands/logs.ts";
 import { notificationsCommand } from "./commands/notifications.ts";
 import { patchCandidatesCommand } from "./commands/patch-candidates.ts";
 import { portalTokensCommand } from "./commands/portal-tokens.ts";
@@ -473,6 +474,7 @@ const mainCommand = defineCommand({
     rm: skRm,
     health: healthCommand,
     doctor: doctorCommand,
+    logs: logsCommand,
     settings: settingsCommand,
     extract: extractCommand,
     auth: authCommand,
@@ -637,6 +639,7 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   rm: { command: skRm },
   health: { command: healthCommand },
   doctor: { command: doctorCommand },
+  logs: { command: logsCommand, requires: "audit:read" },
   settings: { command: settingsCommand, requires: "settings:read" },
   extract: { command: extractCommand, requires: "conversation:write" },
   auth: { command: authCommand, requires: "connector:write" },
