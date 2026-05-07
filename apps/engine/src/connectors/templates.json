@@ -7020,6 +7020,198 @@
             }
           ]
         }
+      },
+      {
+        "slug": "delegated-triage-via-call",
+        "title": "Delegate triage to a sub-workflow (CallStep)",
+        "description": "File an issue then invoke a tenant-defined `triage-issue` sub-workflow by slug. Demonstrates CallStep — reusable sub-workflows for repeated logic.",
+        "intent_keywords": [
+          "invoke nested workflow",
+          "reusable orchestration",
+          "compose pipelines"
+        ],
+        "derived_from_skill": "github-basics",
+        "category": "devops",
+        "tags": ["call-step", "composition"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [
+          "A sibling workflow with slug `triage-issue` must exist in the same tenant."
+        ],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "github-delegated-triage",
+          "description": "Open an issue, then delegate triage via CallStep.",
+          "input_schema": {
+            "type": "object",
+            "required": ["owner", "repo", "title"],
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" },
+              "title": { "type": "string" },
+              "body": { "type": "string" }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "open",
+              "method": "POST",
+              "url": "${connector.github.base_url}/repos/${input.owner}/${input.repo}/issues",
+              "json_body": {
+                "title": "${input.title}",
+                "body": "${input.body}"
+              }
+            },
+            {
+              "kind": "call",
+              "id": "triage",
+              "workflow_slug": "triage-issue",
+              "input": {
+                "issue_number": "${steps.open.body.number}",
+                "owner": "${input.owner}",
+                "repo": "${input.repo}"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "slug": "lint-pr-changes-via-tool",
+        "title": "Lint PR diff via sandboxed Docker tool (ToolStep)",
+        "description": "Fetch a PR's diff and run ShellCheck inside a Docker sandbox. Demonstrates ToolStep — execute arbitrary CLI tooling against intermediate workflow state without exposing it to the LLM context.",
+        "intent_keywords": [
+          "run cli inside workflow",
+          "containerised linter",
+          "sandboxed shell tool"
+        ],
+        "derived_from_skill": "github-basics",
+        "category": "devops",
+        "tags": ["tool-step", "sandbox"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": ["Tenant has the Docker sandbox enabled."],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "github-lint-pr-via-tool",
+          "description": "Pull a PR diff and lint it inside a sandboxed container.",
+          "input_schema": {
+            "type": "object",
+            "required": ["owner", "repo", "pr_number"],
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" },
+              "pr_number": { "type": "integer" }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "fetch_diff",
+              "method": "GET",
+              "url": "${connector.github.base_url}/repos/${input.owner}/${input.repo}/pulls/${input.pr_number}",
+              "headers": {
+                "Accept": "application/vnd.github.v3.diff"
+              }
+            },
+            {
+              "kind": "tool",
+              "id": "lint",
+              "image": "koalaman/shellcheck:stable",
+              "cmd": ["shellcheck", "-"],
+              "memory_mb": 256,
+              "cpu": 1,
+              "timeout_ms": 30000
+            }
+          ]
+        }
+      },
+      {
+        "slug": "merge-pr-after-approval",
+        "title": "Open PR and wait for approval signal (WaitForEventStep)",
+        "description": "Open a pull request, then pause until an external `pr_approved` signal arrives (typically posted by a reviewer via a portal token), then merge. Demonstrates wait_for_event — human-in-the-loop approval with a 24h timeout fallback.",
+        "intent_keywords": ["human in the loop", "reviewer signal gate", "hitl pause then merge"],
+        "derived_from_skill": "github-basics",
+        "category": "devops",
+        "tags": ["wait-for-event", "hitl"],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [
+          "Reviewer can POST to /v1/workflow_signals with event_name='pr_approved'."
+        ],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "github-pr-with-approval",
+          "description": "Open a PR, wait for approval, then merge.",
+          "timeout_ms": 90000000,
+          "input_schema": {
+            "type": "object",
+            "required": ["owner", "repo", "head", "base", "title"],
+            "properties": {
+              "owner": { "type": "string" },
+              "repo": { "type": "string" },
+              "head": { "type": "string" },
+              "base": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "open_pr",
+              "method": "POST",
+              "url": "${connector.github.base_url}/repos/${input.owner}/${input.repo}/pulls",
+              "json_body": {
+                "title": "${input.title}",
+                "head": "${input.head}",
+                "base": "${input.base}"
+              }
+            },
+            {
+              "kind": "wait_for_event",
+              "id": "await_approval",
+              "event_name": "pr_approved",
+              "match": {
+                "path": "outcome",
+                "equals": "approved"
+              },
+              "timeout_ms": 86400000,
+              "on_timeout": "abandon"
+            },
+            {
+              "kind": "request",
+              "id": "merge",
+              "method": "PUT",
+              "url": "${connector.github.base_url}/repos/${input.owner}/${input.repo}/pulls/${steps.open_pr.body.number}/merge",
+              "json_body": {
+                "merge_method": "squash"
+              }
+            },
+            {
+              "kind": "transform",
+              "id": "abandon",
+              "expression": "{ \"status\": \"timed_out\", \"pr_number\": $.steps.open_pr.body.number }"
+            }
+          ]
+        }
       }
     ],
     "aws_service": null,
