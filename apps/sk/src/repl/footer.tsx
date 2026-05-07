@@ -27,7 +27,7 @@ import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
-import type { PermissionMode } from "../status-line.ts";
+import type { PermissionMode } from "../repl/status-line/render.ts";
 
 export interface FooterProps {
   /** Signed-in user identifier (email, id, or persona label fallback). */

@@ -6,7 +6,7 @@ import { VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
-import type { PermissionMode } from "../status-line.ts";
+import type { PermissionMode } from "../repl/status-line/render.ts";
 
 export interface WelcomeBannerProps {
   persona: string;

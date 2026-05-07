@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { useEffect } from "react";
+import type { StatusLineInput } from "../repl/status-line/render.ts";
 import { _resetShellHookCacheForTests } from "../repl/status-line/shell-hook.ts";
 import { useStatusLine } from "../repl/status-line/useStatusLine.ts";
-import type { StatusLineInput } from "../status-line.ts";
 import { flush, renderInk } from "./helpers/ink.tsx";
 
 const baseInput: StatusLineInput = {

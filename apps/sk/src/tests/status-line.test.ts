@@ -8,7 +8,7 @@ import {
   resolveRefreshMs,
   runStatusLineHook,
   type StatusLineInput,
-} from "../status-line.ts";
+} from "../repl/status-line/render.ts";
 
 const INPUT: StatusLineInput = {
   schema_version: 1,

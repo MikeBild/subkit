@@ -11,7 +11,7 @@
 // session and lives for the lifetime of the process.
 
 import type { EngineClient } from "./engine-client.ts";
-import type { ConnectionState } from "./status-line.ts";
+import type { ConnectionState } from "./repl/status-line/render.ts";
 
 export interface ConnectionPingerOptions {
   client: EngineClient;

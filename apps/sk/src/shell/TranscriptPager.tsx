@@ -15,9 +15,9 @@ import type { ToolCallState } from "@cli-core/index.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { memo, useState } from "react";
-import { VirtualTranscript } from "../shell/VirtualTranscript.tsx";
-import { DiffCard } from "./diff-cell.tsx";
-import { detectPlanSteps, PlanCard } from "./plan-cell.tsx";
+import { DiffCard } from "../repl/diff-cell.tsx";
+import { detectPlanSteps, PlanCard } from "../repl/plan-cell.tsx";
+import { VirtualTranscript } from "./VirtualTranscript.tsx";
 
 export interface PagerEntry {
   id: string;

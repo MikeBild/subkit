@@ -13,21 +13,21 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ConversationItem } from "@chat-ui/index.ts";
 import type { SkSessionState } from "@cli-core/index.ts";
-import { loadConfig, type ResolvedProfile, saveConfig } from "../config.ts";
-import { debugLogPath, debugLogTail, isDebugVerbose, setDebugVerbose } from "../debug.ts";
+import { loadConfig, type ResolvedProfile, saveConfig } from "../../config.ts";
+import { debugLogPath, debugLogTail, isDebugVerbose, setDebugVerbose } from "../../debug.ts";
 import type {
   ConversationContextSnapshot,
   ConversationDetail,
   EngineClient,
   SetupValidationResponse,
   StatusSummary,
-} from "../engine-client.ts";
-import { loadSettings, saveUserSettingsPatch } from "../settings.ts";
+} from "../../engine-client.ts";
+import { loadSettings, saveUserSettingsPatch } from "../../settings.ts";
 import type {
   OnboardingProbeResult,
   OnboardingSaveResult,
   OnboardingTemplate,
-} from "./onboarding-wizard.tsx";
+} from "../onboarding-wizard.tsx";
 
 /**
  * Rich pane descriptions returned by slash commands that open a modal

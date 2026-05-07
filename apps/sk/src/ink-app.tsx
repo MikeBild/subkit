@@ -83,7 +83,6 @@ import {
   MentionPicker,
 } from "./repl/mention-picker.tsx";
 import { MessageContent } from "./repl/message-content.tsx";
-import { type NoticeItem, NoticeStack, type NoticeTone } from "./repl/notices.tsx";
 import { OnboardingWizard } from "./repl/onboarding-wizard.tsx";
 import {
   createPasteStore,
@@ -95,10 +94,17 @@ import {
 import { PendingAttachments } from "./repl/pending-attachments.tsx";
 import { detectProseOptions } from "./repl/prose-options-detector.ts";
 import { createQueue } from "./repl/queue.ts";
+import type { PaneSpec } from "./repl/slash/handler.ts";
 import { SlashSuggest } from "./repl/slash/SlashSuggest.tsx";
-import type { PaneSpec } from "./repl/slash-handler.ts";
 import { Spinner } from "./repl/spinner.tsx";
 import { StarterActions, starterActionsForPersona } from "./repl/starter-actions.tsx";
+import {
+  buildStatusLine,
+  type PermissionMode,
+  resolveRefreshMs,
+  type StatusLineConfig,
+  type StatusLineInput,
+} from "./repl/status-line/render.ts";
 import {
   resolveTaskActionSuggestion,
   starterTaskActionsForPersona,
@@ -106,21 +112,15 @@ import {
   taskActionsForContext,
 } from "./repl/task-actions.ts";
 import { TaskLauncher } from "./repl/task-launcher.tsx";
-import { type PagerEntry, TranscriptPager } from "./repl/transcript-pager.tsx";
 import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { classifyVersionSkew, VersionMismatchBanner } from "./repl/version-mismatch-banner.tsx";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
 import { ErrorPanel, errorToPanel } from "./shell/ErrorPanel.tsx";
+import { type NoticeItem, NoticeStack, type NoticeTone } from "./shell/NoticeStack.tsx";
 import { ResizeBoundary } from "./shell/ResizeBoundary.tsx";
 import { type ToastInput, ToastQueue, useToast } from "./shell/ToastQueue.tsx";
+import { type PagerEntry, TranscriptPager } from "./shell/TranscriptPager.tsx";
 import { findSlashCommand, type PersonaProbe, renderHelp, searchSlashCommands } from "./slash.ts";
-import {
-  buildStatusLine,
-  type PermissionMode,
-  resolveRefreshMs,
-  type StatusLineConfig,
-  type StatusLineInput,
-} from "./status-line.ts";
 
 export interface InkAppProps {
   persona: {

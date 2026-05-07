@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { StatusLineInput } from "../repl/status-line/render.ts";
 import { _resetShellHookCacheForTests, runShellHook } from "../repl/status-line/shell-hook.ts";
-import type { StatusLineInput } from "../status-line.ts";
 
 const baseInput: StatusLineInput = {
   schema_version: 1,

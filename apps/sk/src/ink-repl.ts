@@ -34,7 +34,7 @@ import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { enableBracketedPaste } from "./repl/bracketed-paste.ts";
 import { humanizeRequestError } from "./repl/error-humanize.ts";
-import { handleSlash, type PaneSpec } from "./repl/slash-handler.ts";
+import { handleSlash, type PaneSpec } from "./repl/slash/handler.ts";
 import { runRepl } from "./repl.ts";
 import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";

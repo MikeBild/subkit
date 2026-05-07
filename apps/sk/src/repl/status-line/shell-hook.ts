@@ -5,7 +5,7 @@
 // support so React effects can cancel the hook on unmount, and a
 // last-good cache so a slow hook never leaves the status line empty.
 
-import { runStatusLineHook, type StatusLineInput } from "../../status-line.ts";
+import { runStatusLineHook, type StatusLineInput } from "./render.ts";
 
 export interface ShellHookOptions {
   /** Hook timeout in ms. Default 800. */

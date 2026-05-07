@@ -5,8 +5,8 @@ import type {
   EngineClient,
   SetupValidationResponse,
 } from "../engine-client.ts";
-import type { PaneSpec } from "../repl/slash-handler.ts";
-import { handleSlash } from "../repl/slash-handler.ts";
+import type { PaneSpec } from "../repl/slash/handler.ts";
+import { handleSlash } from "../repl/slash/handler.ts";
 
 function mkCtx(client: EngineClient, conversationId = "conv-1") {
   const session = initialSessionState(conversationId);

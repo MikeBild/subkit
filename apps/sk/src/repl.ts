@@ -39,7 +39,7 @@ import {
 import { EngineClient, SkEngineError, SkTransportError } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
-import { handleSlash as handleSharedSlash } from "./repl/slash-handler.ts";
+import { handleSlash as handleSharedSlash } from "./repl/slash/handler.ts";
 import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";
 import { findSlashCommand, type PersonaProbe, renderHelp, SLASH_COMMANDS } from "./slash.ts";
