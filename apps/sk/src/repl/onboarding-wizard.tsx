@@ -6,6 +6,15 @@
 // keyboard handler via Ink's `useInput` so the host's composer is
 // inert while the wizard is mounted.
 //
+// Step rendering uses the visual primitives from
+// apps/sk/src/domain/connectors/* — IntegrationPicker's category icons
+// surface in PickStep so each row carries a recognisable badge, and
+// the masked-secret + length-counter pattern from SecretField is
+// applied to CredentialStep's password path. The wizard keeps its
+// own state machine and input handler so the existing 6 unit tests
+// stay valid; the new components contribute renderable affordances
+// rather than competing for keystrokes.
+//
 // Step machine:
 //
 //   pick   ← initial; ↑/↓ select a template, Enter advances, Esc cancels.
@@ -29,6 +38,30 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
+
+/**
+ * Category → unicode-glyph map borrowed from IntegrationPicker so the
+ * pick step in this wizard renders the same badges users see in the
+ * standalone connector picker. Kept inline rather than re-exported to
+ * avoid a circular import at load time.
+ */
+const CATEGORY_ICON: Record<string, string> = {
+  http: "◆",
+  graphql: "◈",
+  postgres: "◯",
+  s3: "□",
+  ftp: "▽",
+  sftp: "▽",
+  smb: "△",
+  redis: "▣",
+  webhook: "▶",
+  default: "•",
+};
+
+function iconForDriver(driver: string | undefined): string {
+  const d = (driver ?? "default").toLowerCase();
+  return CATEGORY_ICON[d] ?? CATEGORY_ICON.default ?? "•";
+}
 
 /**
  * Template catalog entry the wizard renders for selection. Mirrors
@@ -366,12 +399,13 @@ const PickStep: React.FC<{
         const label = template.name ?? template.slug;
         const driver = template.driver ?? "—";
         const auth = template.auth_type ?? "—";
+        const icon = iconForDriver(template.driver);
         return focused ? (
           <Text key={template.slug} color="cyan" bold>
-            {`› ${label} · ${driver} · ${auth}`}
+            {`› ${icon} ${label} · ${driver} · ${auth}`}
           </Text>
         ) : (
-          <Text key={template.slug}>{`  ${label} · ${driver} · ${auth}`}</Text>
+          <Text key={template.slug}>{`  ${icon} ${label} · ${driver} · ${auth}`}</Text>
         );
       })}
       <Text color="gray">↑/↓ select · Enter continue</Text>
@@ -410,6 +444,7 @@ const CredentialStep: React.FC<{
         <Box flexDirection="column">
           <Text>
             Enter the {label}: <Text bold>{masked || "(empty)"}</Text>
+            {credential.length > 0 ? <Text color="gray">{`  (${credential.length})`}</Text> : null}
           </Text>
           <Text color="gray">type to fill · Backspace to edit · Enter to probe · `s` to skip</Text>
         </Box>
