@@ -40,6 +40,11 @@ export interface RespondElicitationParams {
    * rendered.
    */
   onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
+  /** Pre-registered AbortController — see RunLoopParams.turn_abort_ctrl.
+   *  Required as of #148: the HTTP route handler / MCP tool path
+   *  registers on the synchronous frame of request-accept and threads
+   *  through. */
+  turn_abort_ctrl: AbortController;
 }
 
 /**
@@ -240,6 +245,7 @@ export async function respondElicitation(
     connector_id: conv.conversation.target_connector_id,
     workflow_id: conv.conversation.target_workflow_id,
     user_message: null,
+    turn_abort_ctrl: p.turn_abort_ctrl,
     ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
   });

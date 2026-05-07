@@ -18,7 +18,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { count, eq } from "drizzle-orm";
 import { executions } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let mock: Server;
@@ -71,12 +71,12 @@ beforeAll(async () => {
     }),
   });
   workflowId = ((await createWf.json()) as { id: string }).id;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await new Promise<void>((resolve) => mock.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 async function connect(): Promise<Client> {
   const transport = new StreamableHTTPClientTransport(new URL(ctx.mcpUrl), {

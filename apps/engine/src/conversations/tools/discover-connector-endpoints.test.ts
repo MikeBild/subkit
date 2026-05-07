@@ -15,13 +15,14 @@ import { tenants } from "../../db/schema/identity.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   discoverConnectorEndpointsTool,
   KNOWLEDGE_SOURCE_TTL_MS,
 } from "./discover-connector-endpoints.ts";
 import type { ToolContext } from "./index.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: TestDb;
 let tenant_id: string;

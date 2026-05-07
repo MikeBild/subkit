@@ -20,7 +20,7 @@ import { apiKeys, systemAccounts } from "../../db/schema/index.ts";
 import { TunnelRegistry } from "../../tunnels/registry.ts";
 import { TunnelDisconnectedError } from "../../tunnels/types.ts";
 import { startTunnelWsServer, type TunnelWsServerHandle } from "../../tunnels/ws-server.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let agentKey = "";
@@ -136,13 +136,13 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => targetServer.listen(0, "127.0.0.1", () => resolve()));
   const addr = targetServer.address() as AddressInfo;
   targetUrl = `http://127.0.0.1:${addr.port}`;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await new Promise<void>((resolve) => targetServer.close(() => resolve()));
   await wsServer.stop();
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: tunneled connector", () => {
   test("AC1: agent registers and registry exposes the target", async () => {

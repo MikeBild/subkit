@@ -26,6 +26,7 @@ import { conversationElicitations, conversations, workflows } from "../../db/sch
 import { runTransformStep } from "../../execution/steps/transform.ts";
 import type { StepRunContext } from "../../execution/types.ts";
 import { RunLlmBudget } from "../../llm/accounting/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   withLatestPreview,
   withWorkflowExecution,
@@ -37,7 +38,7 @@ import type { ToolContext, ToolResult } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: ConversationTestCtx;
 

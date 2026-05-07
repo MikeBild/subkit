@@ -70,6 +70,7 @@ describe("guided authoring conversation loop", () => {
 
     const resumedSave = await respondElicitation(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
         elicitation_id: created.result.pending_elicitation_id!,
@@ -106,6 +107,7 @@ describe("guided authoring conversation loop", () => {
 
     const resumedCommit = await respondElicitation(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
         elicitation_id: resumedSave.result.pending_elicitation_id!,

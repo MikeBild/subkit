@@ -7,7 +7,11 @@ import { streamSSE } from "hono/streaming";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import type { TurnEvent } from "../../../conversations/index.ts";
 import * as svc from "../../../conversations/index.ts";
-import { serializeEvent } from "../../../conversations/index.ts";
+import {
+  registerConversationAbort,
+  serializeEvent,
+  unregisterConversationAbort,
+} from "../../../conversations/index.ts";
 import { createKnowledgeSource } from "../../../knowledge/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { HttpError } from "../../errors.ts";
@@ -46,68 +50,110 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const baseParams = {
-      tenant_id: principal.tenant_id,
-      conversation_id: id,
-      actor_id: principal.id,
-      message: body.message,
-      ...(body.memory !== undefined ? { memory: body.memory } : {}),
-      ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
-      runtime_context: buildRuntimeContextFromRequest(c, principal),
-    } as const;
+    // #146 / A4 + #147 review C1: register the AbortController on the
+    // synchronous frame of request-accept so a cancel arriving in the
+    // first ~40ms always finds a controller. The registry key carries
+    // the principal's tenant id, so a foreign tenant probing another
+    // tenant's UUID lives in its own slot and cannot displace the
+    // legitimate registration. Registering inside `runLoop` (the
+    // pre-A4 location) re-opens the race the cancel route silently
+    // lost.
+    const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
+    // #147 review C-1: ownership of the registered controller transfers
+    // to the SSE callback's own `finally` because Hono's `streamSSE`
+    // does NOT await the callback — it kicks the callback off
+    // fire-and-forget and returns a Response synchronously. An outer
+    // `try { … } finally { unregister(...) }` would fire its `finally`
+    // immediately after `streamSSE` returns and unregister the
+    // controller while the SSE callback is still running, re-opening
+    // the cancel race A4 set out to close.
+    //
+    // The `ownershipTransferred` flag is the seam: set true once
+    // streamSSE has accepted ownership; the outer `finally` skips
+    // unregister and lets the inner `finally` own it. Anything that
+    // throws BEFORE we hand off — `buildRuntimeContextFromRequest`,
+    // `wantsSSE`, `streamSSE` setup itself — leaves the flag false
+    // and the outer `finally` cleans up. The non-SSE path keeps the
+    // outer `finally` because `await svc.appendUserMessage(...)`
+    // keeps the surrounding `try` alive until completion.
+    let ownershipTransferred = false;
+    try {
+      const baseParams = {
+        tenant_id: principal.tenant_id,
+        conversation_id: id,
+        actor_id: principal.id,
+        message: body.message,
+        turn_abort_ctrl: turnAbortCtrl,
+        ...(body.memory !== undefined ? { memory: body.memory } : {}),
+        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+        runtime_context: buildRuntimeContextFromRequest(c, principal),
+      } as const;
 
-    if (wantsSSE(c.req.header("accept"))) {
-      return streamSSE(c, async (stream) => {
-        try {
-          const outcome = await svc.appendUserMessage(
-            {
-              ...baseParams,
-              onEvent: (ev: TurnEvent) => {
-                void stream.writeSSE(serializeEvent(ev));
+      if (wantsSSE(c.req.header("accept"))) {
+        const response = streamSSE(c, async (stream) => {
+          try {
+            const outcome = await svc.appendUserMessage(
+              {
+                ...baseParams,
+                onEvent: (ev: TurnEvent) => {
+                  void stream.writeSSE(serializeEvent(ev));
+                },
               },
-            },
-            db,
-          );
-          await stream.writeSSE(outcomeFrame(outcome));
-        } catch (error) {
-          if (error instanceof svc.PendingElicitationBlockedError) {
+              db,
+            );
+            await stream.writeSSE(outcomeFrame(outcome));
+          } catch (error) {
+            if (error instanceof svc.PendingElicitationBlockedError) {
+              await stream.writeSSE(
+                errorFrame({
+                  code: "pending_elicitation_blocked",
+                  message: error.message,
+                  details: {
+                    conversation_status: "awaiting_input",
+                    pending_elicitation: error.pending_elicitation,
+                  },
+                }),
+              );
+              return;
+            }
+            const err = error as Error;
             await stream.writeSSE(
               errorFrame({
-                code: "pending_elicitation_blocked",
-                message: error.message,
-                details: {
-                  conversation_status: "awaiting_input",
-                  pending_elicitation: error.pending_elicitation,
-                },
+                code: "internal",
+                message: err?.message ?? "internal_error",
               }),
             );
-            return;
+          } finally {
+            unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
-          const err = error as Error;
-          await stream.writeSSE(
-            errorFrame({
-              code: "internal",
-              message: err?.message ?? "internal_error",
-            }),
-          );
-        }
-        // biome-ignore lint/suspicious/noExplicitAny: see createRouteSpec branch above.
-      }) as any;
-    }
-
-    let outcome: svc.ConversationTurnOutcome;
-    try {
-      outcome = await svc.appendUserMessage(baseParams, db);
-    } catch (error) {
-      if (error instanceof svc.PendingElicitationBlockedError) {
-        throw new HttpError(409, "pending_elicitation_blocked", error.message, {
-          conversation_status: "awaiting_input",
-          pending_elicitation: error.pending_elicitation,
-        });
+          // biome-ignore lint/suspicious/noExplicitAny: see createRouteSpec branch above.
+        }) as any;
+        // streamSSE accepted ownership — defer unregister to the
+        // inner `finally`. Set the flag AFTER `streamSSE` returns
+        // cleanly so a sync throw from streamSSE-setup still triggers
+        // the outer `finally`.
+        ownershipTransferred = true;
+        return response;
       }
-      throw error;
+
+      let outcome: svc.ConversationTurnOutcome;
+      try {
+        outcome = await svc.appendUserMessage(baseParams, db);
+      } catch (error) {
+        if (error instanceof svc.PendingElicitationBlockedError) {
+          throw new HttpError(409, "pending_elicitation_blocked", error.message, {
+            conversation_status: "awaiting_input",
+            pending_elicitation: error.pending_elicitation,
+          });
+        }
+        throw error;
+      }
+      return c.json(serializeConversation(outcome), 200);
+    } finally {
+      if (!ownershipTransferred) {
+        unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+      }
     }
-    return c.json(serializeConversation(outcome), 200);
   });
 
   // ---- File attachment route -------------------------------------------------
@@ -181,19 +227,28 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         ? `${message}\n\n[Attached ${ingestedSources.length} file(s) as knowledge sources]`
         : message;
 
-    const outcome = await svc.appendUserMessage(
-      {
-        tenant_id: principal.tenant_id,
-        conversation_id: id,
-        actor_id: principal.id,
-        message: enrichedMessage,
-        ...(typeof memory === "string" && memory.length > 0 ? { memory } : {}),
-        runtime_context: buildRuntimeContextFromRequest(c, principal),
-      },
-      db,
-    );
+    // #146 / A4 + #148: register synchronously and unregister in
+    // `finally` (non-SSE branch only — this route returns JSON, so the
+    // single outer try/finally is sufficient).
+    const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
+    try {
+      const outcome = await svc.appendUserMessage(
+        {
+          tenant_id: principal.tenant_id,
+          conversation_id: id,
+          actor_id: principal.id,
+          message: enrichedMessage,
+          turn_abort_ctrl: turnAbortCtrl,
+          ...(typeof memory === "string" && memory.length > 0 ? { memory } : {}),
+          runtime_context: buildRuntimeContextFromRequest(c, principal),
+        },
+        db,
+      );
 
-    const serialized = serializeConversation(outcome);
-    return c.json({ ...serialized, ingested_knowledge_source_ids: ingestedSources }, 200);
+      const serialized = serializeConversation(outcome);
+      return c.json({ ...serialized, ingested_knowledge_source_ids: ingestedSources }, 200);
+    } finally {
+      unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
+    }
   });
 }

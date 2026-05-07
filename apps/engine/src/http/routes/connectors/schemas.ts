@@ -30,6 +30,13 @@ export const ConnectorSchema = z
     template_name: z.string().nullable(),
     template_source: ConnectorTemplateSourceEnum.nullable(),
     template_version: z.number().int().nullable(),
+    // Public surface deliberately stays `Record<string, unknown>` — the
+    // internal `ConnectorTemplate` shape is allowed to evolve (new
+    // optional fields, schema-version bumps) without breaking
+    // OpenAPI clients pinned against this contract. The producer
+    // (`buildTemplateBindingFields` in connectors/template-resolver.ts)
+    // is internally typed; callers that need the narrower shape
+    // re-validate via `parseTemplateSnapshot`. Per #147 review S4.
     template_snapshot: z.record(z.string(), z.unknown()).nullable(),
     created_at: z.string(),
     updated_at: z.string(),

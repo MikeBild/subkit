@@ -36,7 +36,7 @@ const ITEMS: ConversationItem[] = [
 ];
 
 async function tick(ms = 20): Promise<void> {
-  await new Promise((r) => setTimeout(r, ms)); // allow-wall-clock: legacy; review before changing
+  await new Promise((r) => setTimeout(r, ms)); // allow-wall-clock: Ink renderer settle window after a navigation event
 }
 
 function stripAnsi(frame: string): string {

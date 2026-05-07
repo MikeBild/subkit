@@ -21,9 +21,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { defineCommand } from "citty";
 import { workflowsCommand } from "../../../../sk/src/commands/workflows.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 
@@ -208,11 +209,11 @@ let createdId = "";
 beforeAll(async () => {
   ctx = await createJourneyCtx("cli-workflows");
   writeFileSync(tmpFile, JSON.stringify(fixture));
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 35: sk workflows CLI", () => {
   test("AC1: workflows list returns empty array before any workflows exist", async () => {

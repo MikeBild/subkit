@@ -19,11 +19,12 @@ import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: LlmTestCtx;
 

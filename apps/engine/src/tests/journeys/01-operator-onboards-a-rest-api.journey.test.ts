@@ -18,7 +18,7 @@ import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
 import { auditLog, executions } from "../../db/schema/index.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let mockApi: Server;
@@ -62,12 +62,12 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => mockApi.listen(0, "127.0.0.1", () => resolve()));
   const addr = mockApi.address() as AddressInfo;
   mockBase = `http://127.0.0.1:${addr.port}`;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await new Promise<void>((resolve) => mockApi.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: operator onboards a REST API", () => {
   test("AC1: create connector, ingest OpenAPI docs, search, attach a skill", async () => {
@@ -158,38 +158,45 @@ describe("journey: operator onboards a REST API", () => {
     expect(runBody.output).toBeDefined();
   });
 
-  test("AC3: async run queues via pg-boss and lands terminal + audit", async () => {
-    const asyncRes = await journeyFetch(ctx, "/v1/executions", {
-      method: "POST",
-      body: JSON.stringify({
-        source: "saved",
-        workflow_id: workflowId,
-        input: {},
-        request_source: "api",
-        async: true,
-      }),
-    });
-    expect(asyncRes.status).toBe(202);
-    const asyncBody = (await asyncRes.json()) as { execution_id: string; status: string };
-    expect(asyncBody.status).toBe("queued");
-    const execution_id = asyncBody.execution_id;
+  test(
+    "AC3: async run queues via pg-boss and lands terminal + audit",
+    async () => {
+      const asyncRes = await journeyFetch(ctx, "/v1/executions", {
+        method: "POST",
+        body: JSON.stringify({
+          source: "saved",
+          workflow_id: workflowId,
+          input: {},
+          request_source: "api",
+          async: true,
+        }),
+      });
+      expect(asyncRes.status).toBe(202);
+      const asyncBody = (await asyncRes.json()) as { execution_id: string; status: string };
+      expect(asyncBody.status).toBe("queued");
+      const execution_id = asyncBody.execution_id;
 
-    // Wait for the worker to finish.
-    const finalStatus = await waitFor(
-      async () => {
-        const rows = await ctx.db.select().from(executions).where(eq(executions.id, execution_id));
-        const s = rows[0]?.status ?? "";
-        return ["succeeded", "failed", "aborted", "timed_out"].includes(s) ? s : undefined;
-      },
-      { tries: 150, sleepMs: 100, label: "run terminal" },
-    );
-    expect(finalStatus).toBe("succeeded");
+      // Wait for the worker to finish.
+      const finalStatus = await waitFor(
+        async () => {
+          const rows = await ctx.db
+            .select()
+            .from(executions)
+            .where(eq(executions.id, execution_id));
+          const s = rows[0]?.status ?? "";
+          return ["succeeded", "failed", "aborted", "timed_out"].includes(s) ? s : undefined;
+        },
+        { tries: 150, sleepMs: 100, label: "run terminal" },
+      );
+      expect(finalStatus).toBe("succeeded");
 
-    // At least one audit row for workflow.created or workflow.run lives in the DB.
-    const audits = await ctx.db
-      .select()
-      .from(auditLog)
-      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_type, "workflow")));
-    expect(audits.length).toBeGreaterThanOrEqual(1);
-  }, 30_000);
+      // At least one audit row for workflow.created or workflow.run lives in the DB.
+      const audits = await ctx.db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_type, "workflow")));
+      expect(audits.length).toBeGreaterThanOrEqual(1);
+    },
+    JOURNEY_HOOK_TIMEOUT,
+  );
 });

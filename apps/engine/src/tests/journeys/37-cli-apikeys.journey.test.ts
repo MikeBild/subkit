@@ -15,7 +15,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { apiKeysCommand } from "../../../../sk/src/commands/apikeys.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -205,11 +205,11 @@ beforeAll(async () => {
   };
   seededKeyId = issued.id;
   seededKeyPrefix = issued.prefix;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 37: sk apikeys CLI", () => {
   test("AC1: apikeys list --json returns >= 1 item; each item has id and prefix", async () => {

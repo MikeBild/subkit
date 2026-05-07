@@ -26,7 +26,7 @@ import { __resetBreakers, FAILURE_THRESHOLD } from "../../notifications/circuit-
 import type { NotificationEvent } from "../../notifications/matcher.ts";
 import { __resetRateLimiter } from "../../notifications/rate-limit.ts";
 import { dispatchEvent, type NotificationAdapter } from "../../notifications/service.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 /**
  * Minimal `ChatAdapter` stub. Records every call so the test can count
@@ -105,11 +105,11 @@ function syntheticFailureEvent(): NotificationEvent {
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("notif-rules");
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 beforeEach(async () => {
   __resetBreakers();

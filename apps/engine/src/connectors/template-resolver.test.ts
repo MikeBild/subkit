@@ -65,4 +65,64 @@ describe("buildTemplateBindingFields", () => {
     });
     expect(fields.template_source).toBe("tenant");
   });
+
+  // #147 review W-2 — public Zod-gate parse for the serialized
+  // connector. After E.1 the producer (`buildTemplateBindingFields`)
+  // is internally typed as `ConnectorTemplate`, but the public route
+  // surface deliberately publishes `Record<string, unknown>` (see
+  // http/routes/connectors/schemas.ts). This test pins the contract
+  // through the public Zod gate clients are pinned against — a
+  // future schema-side change that breaks the public surface (e.g.
+  // a non-JSON-serialisable field on the template) fails here, not
+  // at first request.
+  test("ConnectorSchema.parse accepts a serialised connector that carries a template_snapshot", async () => {
+    const { ConnectorSchema, serialize } = await import("../http/routes/connectors/schemas.ts");
+    const fields = buildTemplateBindingFields({
+      id: null,
+      source: "builtin",
+      template: aTemplate,
+    });
+    // Build the smallest ConnectorView that a real GET /v1/connectors/{id}
+    // could return; populate the template-binding fields with the
+    // typed builder output to exercise the un-narrowing through Zod.
+    // The cast through `unknown` is intentional — `ConnectorView`
+    // carries circuit-state fields the route-level test doesn't need
+    // to populate, and the `serialize()` consumer only reads the
+    // template-binding subset.
+    const view: Parameters<typeof serialize>[0] = {
+      id: "00000000-0000-0000-0000-000000000099",
+      tenant_id: "00000000-0000-0000-0000-000000000098",
+      slug: "test-conn",
+      display_name: "Test Connector",
+      driver: aTemplate.driver,
+      environment: "dev",
+      auth_type: "bearer",
+      base_url: aTemplate.base_url,
+      dsn: null,
+      config: {},
+      operator_quirks: {},
+      template_slug: fields.template_slug,
+      template_name: fields.template_name,
+      template_source: fields.template_source,
+      template_version: fields.template_version,
+      template_snapshot: fields.template_snapshot,
+      created_at: new Date(0),
+      updated_at: new Date(0),
+      circuit_state: "closed",
+      circuit_opened_at: null,
+      circuit_failure_count: 0,
+      circuit_threshold: 5,
+      circuit_reset_ms: 60_000,
+    };
+    const serialized = serialize(view);
+    const parsed = ConnectorSchema.safeParse(serialized);
+    if (!parsed.success) {
+      throw new Error(
+        `ConnectorSchema rejected the serialised connector — public route contract drift:\n${JSON.stringify(parsed.error.issues, null, 2)}`,
+      );
+    }
+    // The snapshot survives the un-narrowing.
+    expect(parsed.data.template_slug).toBe(aTemplate.slug);
+    expect(parsed.data.template_snapshot).not.toBeNull();
+  });
 });

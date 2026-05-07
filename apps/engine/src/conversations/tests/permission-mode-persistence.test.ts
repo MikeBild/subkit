@@ -57,6 +57,7 @@ describe("conversation permission mode persistence", () => {
 
     const firstTurn = await appendUserMessage(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
         actor_id: ctx.user_id,
@@ -70,6 +71,7 @@ describe("conversation permission mode persistence", () => {
 
     const resumed = await respondElicitation(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
         elicitation_id: firstTurn.result.pending_elicitation_id!,

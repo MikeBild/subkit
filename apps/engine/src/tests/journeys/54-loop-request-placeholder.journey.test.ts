@@ -23,7 +23,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let mockApi: Server;
@@ -86,12 +86,12 @@ beforeAll(async () => {
   }
   const connector = (await createRes.json()) as { id: string };
   connectorId = connector.id;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await new Promise<void>((resolve) => mockApi.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("54: Loop body + request step + ${item.id} placeholder", () => {
   test("AC1+AC2: ${item.id} resolves per iteration; URLs hit the wire as plain ids", async () => {

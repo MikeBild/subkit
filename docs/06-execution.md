@@ -34,10 +34,17 @@ A Workflow is composed of Steps. sk ships eight Step kinds, covering the range o
 | `loop` | `body[]`, `item_var`; exactly one of `over` or `data_selector` | Iterates a collection, executing `body` per item. `data_selector` is the JS expression form (preferred for new loops, surfaces real exceptions); `over` is the legacy path/JSONata form. |
 | `parallel` | `branches[][]` | Executes multiple step sequences concurrently and merges their results. The engine fans out, awaits all branches, then continues. |
 | `wait` | `duration_ms` (≤ 6 h) | Deliberate delay for polling, rate-limit management, or human-paced flows. |
+| `wait_for_event` | `event_name`, `timeout_ms`; optional `match`, `on_timeout` | Signal-driven HITL pause. The runner inserts a `workflow_waits` checkpoint, polls `workflow_signals` at 1 s cadence, and resumes when a matching signal arrives or `timeout_ms` elapses. The runner does NOT implicitly skip downstream steps on timeout — the workflow author MUST follow the wait with an explicit `branch` step that gates the success vs timeout path on `$.steps.<wait_id>.timed_out`. |
 | `call` | one of `workflow_id` or `workflow_slug`; optional `input` | Invokes another workflow. Recursion is capped by `MAX_CALL_DEPTH` (5). |
 | `tool` | `image`; optional `cmd`, `env`, `cpu`, `memory_mb`, `network_mode`, `workdir` | Runs a sandboxed container. The escape hatch for tightly controlled user-supplied images that should not be embedded in the engine. The `tool` kind here is unrelated to the LLM agentic tool-calling palette. |
 
 Every step also accepts the shared base fields `id`, `on_error` (`fail` \| `continue`), `data_selector`, and `timeout_ms`.
+
+### Wait-for-event timeout pattern
+
+The `wait_for_event` step's `timeout_ms` bounds the per-step wait window. The surrounding `WorkflowDef.timeout_ms` (the workflow envelope) must be ≥ the wait step's bound — the `WorkflowDefSchema` `superRefine` enforces this at save time so a 24 h approval window can't be silently truncated by a 6 h workflow timeout. In practice the envelope should leave headroom for the post-wait merge / abandon transitions; e.g. a 24 h wait inside a 25 h workflow.
+
+Because the runner does not auto-skip downstream steps on timeout, every wait-for-event workflow needs an explicit `branch` step that gates the success vs timeout path. The canonical example is the **`merge-pr-after-approval`** recipe under the GitHub template (`apps/engine/src/connectors/templates.json`): it opens a PR, waits up to 24 h for an external `pr_approved` signal, and routes through a branch step (`when: $boolean($.steps.await_approval.timed_out)`) into either a `merge` request or an `abandon_on_timeout` transform. Cancel-race semantics for human-paused workflows are documented in [`apps/engine/src/conversations/abort.ts`](../apps/engine/src/conversations/abort.ts) (single-replica caveat, tenant-scoped registry, expected reasons).
 
 ---
 

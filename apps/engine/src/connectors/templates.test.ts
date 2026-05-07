@@ -7,6 +7,7 @@
 // must hold across the whole 90-template catalog.
 
 import { describe, expect, test } from "bun:test";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { loadBuiltinTemplates } from "./templates.ts";
 
 const templates = loadBuiltinTemplates();
@@ -159,8 +160,12 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
     // Workstream A8 (#51 + #47 lifecycle pattern, replaces multi-day wait):
     //   stripe   +1 → 19 (incremental-charges-via-state
     //                     [trigger.kind=schedule + state_read + state_write])
+    // Issue #146 / Part D (close KNOWN_UNCOVERED step kinds):
+    //   github   +3 → 16 (delegated-triage-via-call [CallStep],
+    //                     lint-pr-changes-via-tool [ToolStep],
+    //                     merge-pr-after-approval [WaitForEventStep])
     expect(counts.stripe).toBe(19);
-    expect(counts.github).toBe(13);
+    expect(counts.github).toBe(16);
     expect(counts.postgres).toBe(11);
   });
 
@@ -220,6 +225,32 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
       }
     }
   });
+
+  // #147 review S7 — JSON round-trip safety for ConnectorTemplate.
+  //
+  // After E.1, `buildTemplateBindingFields` returns the typed
+  // `ConnectorTemplate` directly into a drizzle jsonb column (no
+  // generic widening cast). That works only as long as every field
+  // on `ConnectorTemplate` is JSON-serialisable: the moment a future
+  // Zod-side change introduces a `Date`, a `Map`, or a method on the
+  // schema, the jsonb writer would silently drop or stringify the
+  // value and snapshot reads later would not equal the source. This
+  // test pins the invariant — every catalog entry must round-trip
+  // through `JSON.parse(JSON.stringify(...))` without loss.
+  //
+  // Scope (per #147 round-5 review S-5): this is a *structural* check
+  // only — it catches `Date`/`Map`/method drops at the JSON codec
+  // boundary. It does NOT catch a Zod-side semantic transform (e.g.
+  // `z.string().transform(s => s.toLowerCase())`) where round-trip
+  // succeeds but the parsed shape diverges from the input. That class
+  // of drift is covered by `template-resolver.test.ts` re-parsing
+  // through `parseTemplateSnapshot`.
+  test("every template round-trips through JSON without loss (jsonb writer safety)", () => {
+    for (const t of templates) {
+      const roundtrip = JSON.parse(JSON.stringify(t));
+      expect(roundtrip).toEqual(t);
+    }
+  });
 });
 
 describe("connector-template catalog — Layer-3 vendor-drift sweep", () => {
@@ -253,7 +284,7 @@ describe("connector-template catalog — Layer-3 vendor-drift sweep", () => {
     // something a PR author should be blocked on. The CI gate stays
     // green; the operator triages from `bun test` output.
     const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
+    const now = getTestNow();
     const stale: { slug: string; verified_at: string | null; reason: string }[] = [];
     for (const t of templates) {
       if (t.verified_at === null) {

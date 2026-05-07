@@ -13,7 +13,7 @@ import { createServer, type Server as HttpServer } from "node:http";
 import { and, desc, eq } from "drizzle-orm";
 import * as jose from "jose";
 import { auditLog, tenants } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let idpServer: HttpServer;
@@ -101,7 +101,7 @@ describe("journey: sk-cli audit provenance", () => {
       .setExpirationTime("5m")
       .setIssuedAt()
       .sign(kp.privateKey);
-  }, 30_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     if (idpServer) {
@@ -110,7 +110,7 @@ describe("journey: sk-cli audit provenance", () => {
     if (ctx) {
       await ctx.cleanup();
     }
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("POST /v1/identity/sessions/oidc with sk-cli user-agent emits SK_CLI_LOGIN", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/identity/sessions/oidc`, {

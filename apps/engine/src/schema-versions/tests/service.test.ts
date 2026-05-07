@@ -92,7 +92,7 @@ describe("schema-versions/service", () => {
       },
       db,
     );
-    await new Promise((r) => setTimeout(r, 10)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 10)); // allow-wall-clock: yields a tick so the schema-version writer commits before the read
     await recordSuccessShape(
       {
         tenant_id: tenantId,

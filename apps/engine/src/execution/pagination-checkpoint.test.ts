@@ -13,6 +13,7 @@ import { eq } from "drizzle-orm";
 import { executionSteps, executions, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import type { RequestStep } from "../workflows/types.ts";
 import {
   type PaginationCheckpoint,
@@ -24,7 +25,7 @@ import { runRequestStep } from "./steps/request.ts";
 import { createMockServer, jsonResponse, type MockServer } from "./tests/setup.ts";
 import type { StepRunContext } from "./types.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let testDb: TestDb;
 let tenantId: string;

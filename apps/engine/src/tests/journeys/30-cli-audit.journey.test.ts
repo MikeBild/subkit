@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { count } from "drizzle-orm";
 import { auditCommand } from "../../../../sk/src/commands/audit.ts";
 import { auditLog } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
 
@@ -208,11 +208,11 @@ beforeAll(async () => {
     headers,
     body: JSON.stringify({ owner_kind: "system_account", owner_id: ctx.systemAccountId }),
   });
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 30: sk audit CLI", () => {
   test("AC1: query --action=workflow.created returns the row", async () => {

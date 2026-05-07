@@ -4,10 +4,11 @@
 
 import { describe, expect, it } from "bun:test";
 import { RunLlmBudget } from "../../llm/accounting/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { runTransformStep } from "../steps/transform.ts";
 import type { StepRunContext } from "../types.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 function mkCtx(): StepRunContext {
   return {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { type CapturedError, createErrorRing } from "../error-ring.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 function mk(overrides: Partial<CapturedError> = {}): CapturedError {
   return {

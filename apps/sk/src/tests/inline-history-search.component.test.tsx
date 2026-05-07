@@ -130,7 +130,7 @@ describe("InlineHistorySearch (component)", () => {
       await ui.type("skills");
       await ui.press("enter");
       await ui.press("esc");
-      await new Promise((r) => setTimeout(r, 40)); // allow-wall-clock: legacy; review before changing
+      await new Promise((r) => setTimeout(r, 40)); // allow-wall-clock: Ink renderer settle window after a key event
       expect(onCommit).not.toHaveBeenCalled();
       expect(onCancel).not.toHaveBeenCalled();
     } finally {

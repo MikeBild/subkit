@@ -13,7 +13,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectorsCommand } from "../../../../sk/src/commands/connectors.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let connectorId = "";
@@ -206,11 +206,11 @@ beforeAll(async () => {
   expect(resp.status).toBe(201);
   const body = (await resp.json()) as { id: string; display_name: string };
   connectorId = body.id;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 30_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 // ---------- tests ----------
 

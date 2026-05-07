@@ -254,6 +254,56 @@ function checkRouteLayering(): Result {
   };
 }
 
+function checkInternalLayering(): Result {
+  // `_internal/` directories are package-private. Same-package siblings
+  // can reach in (e.g. `apps/engine/src/conversations/loop.ts` → `./_internal/abort-merge.ts`),
+  // but a file outside the package must NOT import from another
+  // package's `_internal/` path. Per #147 review S-3 / round-5 S-4
+  // — the directory is the file-system enforcement of layering, this
+  // check makes the contract observable at PR time instead of after a
+  // refactor strands a comment that begged not to widen the surface.
+  const allFiles = listFiles(ENGINE_SRC, (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"));
+  const violations: string[] = [];
+  // Match both `from "…/_internal/…"` and `import("…/_internal/…")` forms.
+  const importRe = /(?:from|import)\s*\(?\s*["']([^"']*?\/_internal\/[^"']+)["']/g;
+  for (const f of allFiles) {
+    const rel = relative(REPO, f);
+    const fileDir = dirname(f);
+    const text = readFileSync(f, "utf8");
+    importRe.lastIndex = 0;
+    for (const match of text.matchAll(importRe)) {
+      const importPath = match[1] ?? "";
+      // Resolve the import to an absolute path. Only relative imports
+      // can target `_internal/` paths; bare-package imports of
+      // `_internal/` would already be a separate problem the routing
+      // catches.
+      if (!importPath.startsWith(".")) continue;
+      const resolved = resolve(fileDir, importPath);
+      // The package boundary is the directory that contains the
+      // `_internal/` segment. Same-package consumers live in or under
+      // the parent of that segment; cross-package imports do not.
+      const segIdx = resolved.lastIndexOf("/_internal/");
+      if (segIdx === -1) continue;
+      const packageRoot = resolved.slice(0, segIdx);
+      if (!f.startsWith(`${packageRoot}/`) && f !== `${packageRoot}.ts`) {
+        violations.push(`${rel}: imports ${importPath}`);
+      }
+    }
+  }
+  if (violations.length === 0) {
+    return {
+      id: "internal_layering",
+      status: "PASS",
+      message: "no cross-package imports of _internal/* paths",
+    };
+  }
+  return {
+    id: "internal_layering",
+    status: "FAIL",
+    message: `${violations.length} cross-package _internal/ imports — file-system layering breached:\n  ${violations.slice(0, 10).join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
+  };
+}
+
 // ---------- size ceilings ----------
 
 function checkFileSize(): Result {
@@ -536,6 +586,7 @@ const CHECKS: Array<() => Result> = [
   checkAiSdkLocality,
   checkJsonataLocality,
   checkRouteLayering,
+  checkInternalLayering,
   checkFileSize,
   checkRouteSize,
   checkTenantFilter,

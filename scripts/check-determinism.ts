@@ -31,8 +31,17 @@
 //   (or a brand new file with any warnings) fails CI. Decreasing counts
 //   are rewarded — the run prints which files improved and exits 0; run
 //   `--update-baseline` to lock the improvement in.
+//
+//   Reset history (#147 review W-5): the baseline was drained from
+//   53 files / 56 tolerated warnings to {} as part of #146 / Part A.
+//   A regression that re-introduces 30+ warnings is a real regression,
+//   not a fresh "0 → 30" shock — read the file's git log if a sudden
+//   spike surprises you (`git log scripts/determinism.baseline.json`).
+//   The aggregate-sum check below blocks any net growth from {}, so a
+//   single warning failing CI is the intended ratchet behaviour, not
+//   a lost-context surprise.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Glob } from "bun";
 
@@ -245,6 +254,7 @@ async function main(): Promise<number> {
   }
 
   let baselineRegressions = 0;
+  let aggregateRegression = 0;
   if (!warnOnly) {
     const baseline = loadBaseline();
     const seenFiles = new Set([...Object.keys(baseline), ...Object.keys(current)]);
@@ -260,20 +270,61 @@ async function main(): Promise<number> {
         improvements.push(`  ${f}: ${before} → ${after} warning(s)`);
       }
     }
+
+    // Aggregate-sum ratchet: catches the per-file laundering case where
+    // a refactor moves warnings from one file to a newly created one
+    // and the per-file diff washes out. A PR can only succeed if the
+    // total tolerated warning count goes down (or stays the same).
+    const totalCurrent = Object.values(current).reduce((a, b) => a + b, 0);
+    const totalBaseline = Object.values(baseline).reduce((a, b) => a + b, 0);
+    if (totalCurrent > totalBaseline) {
+      aggregateRegression = totalCurrent - totalBaseline;
+    }
+    const aggregateLine = `aggregate: ${totalBaseline} → ${totalCurrent} warning(s) across ${Object.keys(current).length} file(s)`;
+
     if (improvements.length > 0) {
       console.log("");
       console.log("baseline improvements (run with --update-baseline to lock in):");
       for (const line of improvements) console.log(line);
+      if (totalCurrent < totalBaseline) {
+        console.log(`  ${aggregateLine}`);
+      }
     }
-    if (regressions.length > 0) {
+    if (regressions.length > 0 || aggregateRegression > 0) {
       console.log("");
       console.log("baseline regressions (new warnings vs. tolerated baseline):");
       for (const line of regressions) console.log(line);
+      if (aggregateRegression > 0) {
+        console.log(`  ${aggregateLine} — aggregate growth blocked`);
+      }
+    }
+
+    // Surface the delta in the GitHub job summary when running in CI
+    // so reviewers see "warnings: 56 → 53 (-3)" without opening the
+    // raw log. Best-effort: if the env var isn't set or the path can't
+    // be written, the regular console output still carries the data.
+    const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+    if (summaryPath) {
+      const direction =
+        totalCurrent < totalBaseline ? "↓" : totalCurrent > totalBaseline ? "↑" : "=";
+      const lines = ["## determinism baseline", "", `${direction} ${aggregateLine}`, ""];
+      if (improvements.length > 0) {
+        lines.push("### improvements", "", ...improvements.map((l) => `-${l}`), "");
+      }
+      if (regressions.length > 0) {
+        lines.push("### regressions", "", ...regressions.map((l) => `-${l}`), "");
+      }
+      try {
+        appendFileSync(summaryPath, `${lines.join("\n")}\n`);
+      } catch {
+        /* best-effort */
+      }
     }
   }
 
   if (!warnOnly && errors.length > 0) return 1;
   if (!warnOnly && baselineRegressions > 0) return 1;
+  if (!warnOnly && aggregateRegression > 0) return 1;
   return 0;
 }
 

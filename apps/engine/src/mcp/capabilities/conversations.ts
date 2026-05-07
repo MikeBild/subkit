@@ -14,6 +14,10 @@
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import {
+  registerConversationAbort,
+  unregisterConversationAbort,
+} from "../../conversations/abort.ts";
 import * as svc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
@@ -132,21 +136,33 @@ export async function handleConversationTool(
       if (typeof conversation_id !== "string" || typeof message !== "string") {
         return errorText("conversation_id and message are required");
       }
-      const outcome = await svc.appendUserMessage(
-        {
-          tenant_id: principal.tenant_id,
-          conversation_id,
-          actor_id: principal.id,
-          message,
-          ...(permission_mode ? { permission_mode } : {}),
-        },
-        db,
-      );
-      return successText({
-        conversation_id: outcome.conversation.id,
-        status: outcome.result.status,
-        events: outcome.result.events,
-      });
+      // #146 / A4 + #148 — register the AbortController on the
+      // synchronous frame of MCP-tool-accept so a cancel arriving in
+      // the first ~40ms always finds a controller. Same pattern as
+      // the HTTP messages route. Unregister in `finally`; the
+      // operation here is non-streaming, so the outer guard is
+      // sufficient (no SSE ownership-transfer needed).
+      const turnAbortCtrl = registerConversationAbort(principal.tenant_id, conversation_id);
+      try {
+        const outcome = await svc.appendUserMessage(
+          {
+            tenant_id: principal.tenant_id,
+            conversation_id,
+            actor_id: principal.id,
+            message,
+            turn_abort_ctrl: turnAbortCtrl,
+            ...(permission_mode ? { permission_mode } : {}),
+          },
+          db,
+        );
+        return successText({
+          conversation_id: outcome.conversation.id,
+          status: outcome.result.status,
+          events: outcome.result.events,
+        });
+      } finally {
+        unregisterConversationAbort(principal.tenant_id, conversation_id, turnAbortCtrl);
+      }
     }
 
     if (name === "conversation.respond_elicitation") {
@@ -155,22 +171,29 @@ export async function handleConversationTool(
       if (typeof conversation_id !== "string" || typeof elicitation_id !== "string") {
         return errorText("conversation_id and elicitation_id are required");
       }
-      const outcome = await svc.respondElicitation(
-        {
-          tenant_id: principal.tenant_id,
-          conversation_id,
-          elicitation_id,
-          actor_id: principal.id,
-          output: args.output,
-          ...(typeof args.reason === "string" ? { reason: args.reason } : {}),
-        },
-        db,
-      );
-      return successText({
-        conversation_id: outcome.conversation.id,
-        status: outcome.result.status,
-        events: outcome.result.events,
-      });
+      // Same sync-register pattern — see `conversation.append` above.
+      const turnAbortCtrl = registerConversationAbort(principal.tenant_id, conversation_id);
+      try {
+        const outcome = await svc.respondElicitation(
+          {
+            tenant_id: principal.tenant_id,
+            conversation_id,
+            elicitation_id,
+            actor_id: principal.id,
+            output: args.output,
+            turn_abort_ctrl: turnAbortCtrl,
+            ...(typeof args.reason === "string" ? { reason: args.reason } : {}),
+          },
+          db,
+        );
+        return successText({
+          conversation_id: outcome.conversation.id,
+          status: outcome.result.status,
+          events: outcome.result.events,
+        });
+      } finally {
+        unregisterConversationAbort(principal.tenant_id, conversation_id, turnAbortCtrl);
+      }
     }
 
     if (name === "conversation.commit") {

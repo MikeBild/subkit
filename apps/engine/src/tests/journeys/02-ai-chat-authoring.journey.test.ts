@@ -21,6 +21,7 @@ import { connectors, conversations, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { buildDefaultRegistry, createApp } from "../../http/server.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { JOURNEY_HOOK_TIMEOUT } from "./setup.ts";
 
 const SIGNING_SECRET = "slack-signing-secret-ABC";
 
@@ -131,11 +132,11 @@ beforeAll(async () => {
       await testDb.cleanup();
     },
   };
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
-}, 30_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: AI chat authoring", () => {
   test("AC1: Slack app_mention with a good HMAC verifies, bad HMAC is denied", async () => {

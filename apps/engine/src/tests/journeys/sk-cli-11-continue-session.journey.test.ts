@@ -28,9 +28,10 @@ import {
   saveSessionMetadata,
 } from "../../../../sk/src/sessions.ts";
 import { auditLog } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 let scratchHome: string;
@@ -59,14 +60,14 @@ describe("journey: sk-cli continue-session cache", () => {
     scratchHome = mkdtempSync(join(tmpdir(), "sk-cont-home-"));
     prevSkHome = process.env.SK_HOME;
     process.env.SK_HOME = scratchHome;
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     if (prevSkHome !== undefined) process.env.SK_HOME = prevSkHome;
     else delete process.env.SK_HOME;
     rmSync(scratchHome, { recursive: true, force: true });
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1: runHeadless writes a session cache entry for a new conversation", async () => {
     const result = await runHeadless({

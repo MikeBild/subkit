@@ -111,6 +111,7 @@ describe("workflow save regressions", () => {
 
     const result = await appendUserMessage(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.id,
         actor_id: ctx.user_id,
@@ -168,6 +169,7 @@ describe("workflow save regressions", () => {
 
     const result = await appendUserMessage(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.id,
         actor_id: ctx.user_id,
@@ -210,6 +212,7 @@ describe("workflow save regressions", () => {
 
     await appendUserMessage(
       {
+        turn_abort_ctrl: new AbortController(),
         tenant_id: ctx.tenant_id,
         conversation_id: created.conversation.id,
         actor_id: ctx.user_id,

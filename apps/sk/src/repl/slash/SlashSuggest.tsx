@@ -16,7 +16,7 @@ import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text } from "ink";
 import { useMemo } from "react";
 import { type PersonaProbe, type SlashCommand, searchSlashCommands } from "../../slash.ts";
-import { findSlashCommandPositions, spanAtCursor } from "./findPositions.ts";
+import { spanAtCursor } from "./findPositions.ts";
 import { resolveSlashCommand } from "./hasCommand.ts";
 
 export interface SlashSuggestProps {

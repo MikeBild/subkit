@@ -32,10 +32,11 @@ import {
   enqueueRepair,
   registerWorkflowRepairHandler,
 } from "../../queue/handlers/workflow-repair.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { runSelfHealingLoop } from "../service.ts";
 import { createSelfHealingCtx, type SelfHealingTestCtx } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: SelfHealingTestCtx;
 
@@ -205,7 +206,7 @@ describe("self-healing/loop — workflow.repair queue", () => {
         await db.select().from(patchCandidates).where(eq(patchCandidates.tenant_id, ctx.tenant_id))
       ).length;
       if (after > countBefore) break;
-      await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: legacy; review before changing
+      await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: self-healing loop debounce window before patch-candidate emission
     }
     expect(after).toBeGreaterThan(countBefore);
   });

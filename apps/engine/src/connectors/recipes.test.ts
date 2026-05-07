@@ -156,11 +156,10 @@ describe("recipe-coverage gate (A1)", () => {
 
   // Step kinds without a shipped recipe today. Each entry must reference an
   // open issue or follow-up that will remove it. Empty set = full coverage.
-  const KNOWN_UNCOVERED = new Set<string>([
-    "call", // TODO: sub-workflow invocation — needs recipe demonstrating CallStep before promotion
-    "tool", // TODO: in-workflow LLM tool call — needs recipe demonstrating ToolStep before promotion
-    "wait_for_event", // TODO: HITL approval recipe — ship alongside #49 wait-for-event step runner
-  ]);
+  // #146 / Part D landed call, tool, wait_for_event recipes against the
+  // GitHub template — every declared StepSchema discriminant now ships
+  // with a demonstrating recipe.
+  const KNOWN_UNCOVERED = new Set<string>([]);
 
   function collectStepKinds(steps: unknown): Set<string> {
     const used = new Set<string>();

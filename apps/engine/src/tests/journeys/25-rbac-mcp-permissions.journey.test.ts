@@ -12,9 +12,16 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { portalTokens, users } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 
@@ -56,11 +63,11 @@ describe("journey: rbac mcp permissions", () => {
       allowed_workflows: [workflowA],
       expires_at: new Date(TEST_NOW_MS + 3600_000),
     });
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   async function canQuery(body: unknown): Promise<{ allow: boolean; source: string | null }> {
     const res = await journeyFetch(ctx, "/v1/rbac/can", {

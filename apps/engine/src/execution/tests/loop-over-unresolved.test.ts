@@ -9,10 +9,11 @@
 
 import { describe, expect, test } from "bun:test";
 import { RunLlmBudget } from "../../llm/accounting/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { runLoopStep } from "../steps/loop.ts";
 import type { StepRunContext } from "../types.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 function ctx(scope: Record<string, unknown>): StepRunContext {
   return {

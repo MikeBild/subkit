@@ -39,6 +39,12 @@ export interface AppendMessageParams {
   };
   /** Client-supplied permission mode for this turn. */
   permission_mode?: ConversationPermissionMode | null;
+  /** Pre-registered AbortController — see RunLoopParams.turn_abort_ctrl.
+   *  Required as of #148: the HTTP route handler / MCP tool path
+   *  registers on the synchronous frame of request-accept and threads
+   *  through. The runLoop fallback that pre-#148 covered missing
+   *  controllers has been retired. */
+  turn_abort_ctrl: AbortController;
 }
 
 export async function appendUserMessage(
@@ -121,6 +127,7 @@ export async function appendUserMessage(
     user_message: p.message,
     user_memory: effectiveMemory,
     model_override: conv.conversation.model,
+    turn_abort_ctrl: p.turn_abort_ctrl,
     ...(p.surface ? { surface: p.surface } : {}),
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
     ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),

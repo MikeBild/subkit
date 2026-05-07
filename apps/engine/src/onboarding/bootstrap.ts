@@ -36,6 +36,7 @@ import { engineSettings, tenants } from "../db/schema/identity.ts";
 import { seedTenantBootstrap, type TenantBootstrapPayload } from "../db/seed.ts";
 import { logger } from "../logging/logger.ts";
 import type { SeededRoleIds } from "../rbac/seed.ts";
+import { now } from "../utils/clock.ts";
 
 /** Storage key for the post-bootstrap sentinel.  Boolean payload.  */
 export const BOOTSTRAP_COMPLETED_KEY = "bootstrap.completed";
@@ -130,7 +131,7 @@ async function writeSetting(db: Db, key: string, value: unknown): Promise<void> 
     .values({ key, value, updated_by: null })
     .onConflictDoUpdate({
       target: engineSettings.key,
-      set: { value, updated_by: null, updated_at: new Date() },
+      set: { value, updated_by: null, updated_at: new Date(now()) },
     });
 }
 
@@ -167,7 +168,7 @@ async function mintToken(db: Db): Promise<{ plaintext: string; expires_at: Date 
   const plaintext = randomBytes(32).toString("hex");
   const envelope: TokenEnvelope = {
     token_sha256: sha256Hex(plaintext),
-    expires_at_ms: Date.now() + BOOTSTRAP_TOKEN_TTL_MS,
+    expires_at_ms: now() + BOOTSTRAP_TOKEN_TTL_MS,
   };
   await writeSetting(db, BOOTSTRAP_TOKEN_KEY, envelope);
   return { plaintext, expires_at: new Date(envelope.expires_at_ms) };
@@ -306,7 +307,7 @@ export async function consume(
     await emitFailure(db, "invalid_token", "no bootstrap token on file", opts);
     return { status: "failed", code: "invalid_token", message: "no active bootstrap token" };
   }
-  if (envelope.expires_at_ms < Date.now()) {
+  if (envelope.expires_at_ms < now()) {
     await emitFailure(db, "token_expired", "bootstrap token expired", opts);
     return { status: "failed", code: "token_expired", message: "bootstrap token expired" };
   }
@@ -413,10 +414,10 @@ export async function consume(
 }
 
 function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
+  const checkedAt = now();
   const entry = ipAttempts.get(ip);
-  if (!entry || now - entry.window_started_at > BOOTSTRAP_WINDOW_MS) {
-    ipAttempts.set(ip, { count: 1, window_started_at: now });
+  if (!entry || checkedAt - entry.window_started_at > BOOTSTRAP_WINDOW_MS) {
+    ipAttempts.set(ip, { count: 1, window_started_at: checkedAt });
     return true;
   }
   if (entry.count >= BOOTSTRAP_MAX_ATTEMPTS) return false;

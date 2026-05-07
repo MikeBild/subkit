@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../db/schema/audit.ts";
 import { executions } from "../db/schema/index.ts";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./recovery.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./tests/setup.ts";
 
@@ -21,7 +22,7 @@ import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./tests/
 // gets reaped (the prior hard-coded TEST_NOW_MS = 1_700_000_000_000
 // expired in Nov 2023 + the test silently broke as soon as CI ran
 // past that date).
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: EngineTestCtx;
 

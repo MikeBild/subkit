@@ -4,6 +4,7 @@
 // added) cannot silently regress.
 
 import { describe, expect, test } from "bun:test";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import {
   CreateSkillSchema,
   SkillActivationSchema,
@@ -13,7 +14,7 @@ import {
   SkillSideEffectsSchema,
 } from "./types.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 describe("SkillActivationSchema — discriminated union", () => {
   test("accepts every kind", () => {

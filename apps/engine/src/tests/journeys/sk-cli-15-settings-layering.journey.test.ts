@@ -29,7 +29,7 @@ import type { ResolvedProfile } from "../../../../sk/src/config.ts";
 import { runHeadless } from "../../../../sk/src/headless.ts";
 import { loadSettings } from "../../../../sk/src/settings.ts";
 import { conversations } from "../../db/schema/index.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let tmpWorkspace: string;
@@ -67,7 +67,7 @@ describe("journey: sk-cli settings layering", () => {
     tmpWorkspace = mkdtempSync(join(tmpdir(), "sk-set-ws-"));
     prevSkHome = process.env.SK_HOME;
     process.env.SK_HOME = userHome;
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
     if (prevSkHome !== undefined) process.env.SK_HOME = prevSkHome;
@@ -75,7 +75,7 @@ describe("journey: sk-cli settings layering", () => {
     rmSync(userHome, { recursive: true, force: true });
     rmSync(tmpWorkspace, { recursive: true, force: true });
     await ctx.cleanup();
-  }, 60_000);
+  }, JOURNEY_HOOK_TIMEOUT);
 
   // Note: we deliberately only exercise project + local layers here
   // because loadSettings walks `homedir()` for the user layer, which

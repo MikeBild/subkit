@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, connectors, credentials, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   deleteCredential,
   getCredentialForConnector,
@@ -9,7 +10,7 @@ import {
   upsertCredential,
 } from "../service.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: TestDb;
 

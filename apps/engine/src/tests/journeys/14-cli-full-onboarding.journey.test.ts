@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { EngineClient } from "../../../../sk/src/engine-client.ts";
-import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
+import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let client: EngineClient;
@@ -41,12 +41,12 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => mock.listen(0, "127.0.0.1", () => resolve()));
   const addr = mock.address() as AddressInfo;
   mockBase = `http://127.0.0.1:${addr.port}`;
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await new Promise<void>((resolve) => mock.close(() => resolve()));
   if (ctx?.cleanup) await ctx.cleanup();
-}, 60_000);
+}, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: CLI full onboarding", () => {
   test("AC1: health reports ok + db_connected", async () => {

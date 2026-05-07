@@ -87,7 +87,7 @@ describe("oauth2 refresh", () => {
     const issuedBefore = mock.issuedCount();
 
     // Wait past expiry; any read after this should trigger refresh.
-    await new Promise((r) => setTimeout(r, 1200)); // allow-wall-clock: legacy; review before changing
+    await new Promise((r) => setTimeout(r, 1200)); // allow-wall-clock: token-refresh skew window for the OAuth2 fixture clock
 
     // Reset the mock's expires_in to a long window so the refreshed
     // token doesn't also immediately expire.

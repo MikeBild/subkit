@@ -17,7 +17,8 @@ import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { startWorkflowFromRecipeTool } from "./tools/start-workflow-from-recipe.ts";
 import type { DraftDocument } from "./types.ts";
 
-const skip = process.env.SKIP_DB_TESTS === "1";
+// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
+const skip = process.env.REQUIRES_PG === "0";
 let ctx: TestDb;
 let tenant_id: string;
 let conversation_id: string;
@@ -194,5 +195,85 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error_code).toBe("connector_bindings_required");
+  });
+
+  // #146 / Part D — recipe-coverage tests for the three step kinds that
+  // were KNOWN_UNCOVERED until this change. Each test goes end-to-end
+  // through `start_workflow_from_recipe`, mirroring the postgres /
+  // stripe coverage above, so the new GitHub recipes are exercised by
+  // the same production tool path the LLM uses at runtime.
+
+  test("CallStep recipe — delegated-triage-via-call clones with a `call` step", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      { template_slug: "github", recipe_slug: "delegated-triage-via-call" },
+    );
+    expect(result.ok).toBe(true);
+    const wf = draft.current.workflow;
+    expect(wf?.derived_from_skill_id).toBe("github-basics");
+    const steps = (wf?.steps ?? []) as Array<{ kind?: string; workflow_slug?: string }>;
+    const callStep = steps.find((s) => s.kind === "call");
+    expect(callStep).toBeDefined();
+    expect(callStep?.workflow_slug).toBe("triage-issue");
+  });
+
+  test("ToolStep recipe — lint-pr-changes-via-tool clones with a `tool` step + Docker image", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      { template_slug: "github", recipe_slug: "lint-pr-changes-via-tool" },
+    );
+    expect(result.ok).toBe(true);
+    const steps = (draft.current.workflow?.steps ?? []) as Array<{
+      kind?: string;
+      image?: string;
+      cmd?: string[];
+    }>;
+    const toolStep = steps.find((s) => s.kind === "tool");
+    expect(toolStep).toBeDefined();
+    expect(toolStep?.image).toBe("koalaman/shellcheck:stable");
+    expect(toolStep?.cmd).toEqual(["shellcheck", "-"]);
+  });
+
+  test("WaitForEventStep recipe — merge-pr-after-approval clones with a signal-driven pause + explicit branch on timeout", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      { template_slug: "github", recipe_slug: "merge-pr-after-approval" },
+    );
+    expect(result.ok).toBe(true);
+    const wf = draft.current.workflow;
+    const steps = (wf?.steps ?? []) as Array<{
+      kind?: string;
+      id?: string;
+      event_name?: string;
+      timeout_ms?: number;
+      when?: string;
+      then_steps?: string[];
+      else_steps?: string[];
+    }>;
+    const wait = steps.find((s) => s.kind === "wait_for_event");
+    expect(wait).toBeDefined();
+    expect(wait?.event_name).toBe("pr_approved");
+    expect(wait?.timeout_ms).toBe(86_400_000);
+
+    // #147 review W2: WaitForEventStep.on_timeout is declared in the
+    // schema but the runner does NOT honour it for routing — the
+    // workflow must branch explicitly on `timed_out`. The recipe
+    // models that pattern with a `branch` step gating merge vs
+    // abandon, so a future refactor that drops the branch (or
+    // re-introduces the on_timeout-only shape) fails this test
+    // before regressing the recipe.
+    const branch = steps.find((s) => s.kind === "branch");
+    expect(branch).toBeDefined();
+    expect(branch?.when).toContain("timed_out");
+    expect(branch?.then_steps).toEqual(["abandon_on_timeout"]);
+    expect(branch?.else_steps).toEqual(["merge"]);
+
+    // Both downstream targets must exist, otherwise the branch
+    // points at non-existent step ids.
+    expect(steps.find((s) => s.id === "merge")).toBeDefined();
+    expect(steps.find((s) => s.id === "abandon_on_timeout")).toBeDefined();
   });
 });

@@ -26,8 +26,9 @@ import { and, eq } from "drizzle-orm";
 import { runDiscoveryCached } from "../../apps/engine/src/connectors/discovery/service.ts";
 import { knowledgeSources, tenants } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
+import { getTestNow } from "../../apps/engine/src/test-helpers/determinism/clock.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 interface MockServer {
   baseUrl: string;
