@@ -17,7 +17,12 @@
 import { DIAGNOSTICS_LOG_STREAM_PATH } from "@cli-core/diagnostics-paths.ts";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { AuditAction, audit } from "../../../audit/index.ts";
+import {
+  AuditAction,
+  auditAwait,
+  DiagnosticsLogsTailedMetadataSchema,
+} from "../../../audit/index.ts";
+import { getDb } from "../../../db/client.ts";
 import { isEntryVisibleToTenant, levelWeight, logRing } from "../../../observability/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -110,28 +115,39 @@ function buildTailOpts(
 export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(tailRoute, async (c) => {
     const principal = requireAuth(c);
+    const db = c.get("db") ?? getDb();
     const q = c.req.valid("query");
     const opts = buildTailOpts(q, principal.tenant_id);
     const entries = logRing.tail(opts);
     const lastTs = entries.length > 0 ? entries[entries.length - 1]!.ts : (q.since ?? 0);
 
-    audit({
-      tenant_id: principal.tenant_id,
-      actor_type: principal.kind === "user" ? "user" : "system_account",
-      actor_id: principal.id,
-      action: AuditAction.DIAGNOSTICS_LOGS_TAILED,
-      resource_type: "log_ring",
-      resource_id: null,
-      result: "success",
-      metadata: {
-        mode: "json",
-        returned: entries.length,
-        ...(q.since !== undefined ? { since_ms: q.since } : {}),
-        ...(q.module ? { module_filter: q.module } : {}),
-        ...(q.action ? { action_filter: q.action } : {}),
-        ...(q.level ? { level_filter: q.level } : {}),
-      },
+    // W1 (review #2): metadata is parsed through the Zod schema so a
+    // future field rename / type change in `audit/types.ts` fails at
+    // the route, not in production. W2: `auditAwait` blocks the
+    // response until the row is durable — diagnostics tails finish in
+    // microseconds, so the latency cost is negligible compared with the
+    // compliance benefit of guaranteeing the row.
+    const metadata = DiagnosticsLogsTailedMetadataSchema.parse({
+      mode: "json",
+      returned: entries.length,
+      ...(q.since !== undefined ? { since_ms: q.since } : {}),
+      ...(q.module ? { module_filter: q.module } : {}),
+      ...(q.action ? { action_filter: q.action } : {}),
+      ...(q.level ? { level_filter: q.level } : {}),
     });
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind === "user" ? "user" : "system_account",
+        actor_id: principal.id,
+        action: AuditAction.DIAGNOSTICS_LOGS_TAILED,
+        resource_type: "log_ring",
+        resource_id: null,
+        result: "success",
+        metadata,
+      },
+      db,
+    );
 
     return c.json(
       {
@@ -155,8 +171,9 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
   // doesn't model streaming responses; we register the SSE route
   // outside the OpenAPI surface but still validate its query bag with
   // the same Zod schema the JSON tail uses.
-  app.get(LOG_STREAM_PATH, (c) => {
+  app.get(LOG_STREAM_PATH, async (c) => {
     const principal = requireAuth(c);
+    const db = c.get("db") ?? getDb();
     const parsed = LogTailQuery.safeParse({
       since: c.req.query("since"),
       limit: c.req.query("limit"),
@@ -165,11 +182,14 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
       level: c.req.query("level"),
     });
     if (!parsed.success) {
+      // S3 (review #2): match the shared `ErrorSchema` envelope so the
+      // CLI / MCP error adapters parse this 400 the same way they parse
+      // every other engine error response.
       return c.json(
         {
-          error: {
-            code: "validation_error",
-            message: "invalid query parameters",
+          code: "validation_error",
+          message: "invalid query parameters",
+          details: {
             issues: parsed.error.issues.map((iss) => ({
               path: iss.path.join("."),
               message: iss.message,
@@ -183,22 +203,28 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
     const tailOpts = buildTailOpts(q, principal.tenant_id, { limit: 1000 });
     const minLevelWeight = q.level ? levelWeight(q.level) : 0;
 
-    audit({
-      tenant_id: principal.tenant_id,
-      actor_type: principal.kind === "user" ? "user" : "system_account",
-      actor_id: principal.id,
-      action: AuditAction.DIAGNOSTICS_LOGS_TAILED,
-      resource_type: "log_ring",
-      resource_id: null,
-      result: "success",
-      metadata: {
-        mode: "stream",
-        ...(q.since !== undefined ? { since_ms: q.since } : {}),
-        ...(q.module ? { module_filter: q.module } : {}),
-        ...(q.action ? { action_filter: q.action } : {}),
-        ...(q.level ? { level_filter: q.level } : {}),
-      },
+    // W1 + W2 (review #2) — parse metadata through the schema, then
+    // await the audit row before opening the stream.
+    const metadata = DiagnosticsLogsTailedMetadataSchema.parse({
+      mode: "stream",
+      ...(q.since !== undefined ? { since_ms: q.since } : {}),
+      ...(q.module ? { module_filter: q.module } : {}),
+      ...(q.action ? { action_filter: q.action } : {}),
+      ...(q.level ? { level_filter: q.level } : {}),
     });
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind === "user" ? "user" : "system_account",
+        actor_id: principal.id,
+        action: AuditAction.DIAGNOSTICS_LOGS_TAILED,
+        resource_type: "log_ring",
+        resource_id: null,
+        result: "success",
+        metadata,
+      },
+      db,
+    );
 
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {

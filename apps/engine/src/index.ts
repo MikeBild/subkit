@@ -1,5 +1,6 @@
 import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
 import { serve } from "@hono/node-server";
+import { SYSTEM_TENANT_ID } from "./audit/index.ts";
 import { ChatAdapterRegistry } from "./chat/registry.ts";
 import { closeAllPools } from "./connectors/drivers/postgres.ts";
 import { assertCryptoKeyOrExit } from "./crypto/aes-gcm.ts";
@@ -485,25 +486,33 @@ async function runServer(): Promise<void> {
   await new Promise<void>(() => {});
 }
 
-async function runMigrateOnce(): Promise<void> {
+/**
+ * Bootstrap shared by `runServer`, `runMigrateOnce`, and `runSeedOnce`.
+ *
+ * `config/loader.ts` is imported dynamically so the smoke / version
+ * argv-only paths don't trigger the lazy `EnvSchema` parse that fires
+ * on first property access. `logging/logger.ts` is dynamic for the
+ * same reason — the configured level/format only matters once
+ * config is loaded. (Review R2-S2: hoisted out of the per-flag
+ * helpers so the dynamic-import pattern lives in one place.)
+ */
+async function loadConfigAndReconfigureLogger(): Promise<void> {
   const { loadConfig, getConfig } = await import("./config/loader.ts");
   await loadConfig();
   const cfg = getConfig();
-  // Reconfigure the logger so the operator sees migrate output in the
-  // same format the rest of the engine uses.
   const { reconfigureLogger } = await import("./logging/logger.ts");
   reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
+}
+
+async function runMigrateOnce(): Promise<void> {
+  await loadConfigAndReconfigureLogger();
   const db = getDb();
   await runMigrations(db);
   await closeDb();
 }
 
 async function runSeedOnce(): Promise<void> {
-  const { loadConfig, getConfig } = await import("./config/loader.ts");
-  await loadConfig();
-  const cfg = getConfig();
-  const { reconfigureLogger } = await import("./logging/logger.ts");
-  reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
+  await loadConfigAndReconfigureLogger();
   const db = getDb();
   // Migrations run first — operators expect `engine --seed` to be safe
   // against a fresh DB the same way the boot path is.
@@ -550,7 +559,7 @@ async function main(): Promise<void> {
     await withContext(
       {
         trace_id: newTraceId(),
-        tenant_id: "system",
+        tenant_id: SYSTEM_TENANT_ID,
         request_source: "cli",
         actor_id: "migrate",
       },
@@ -579,7 +588,7 @@ async function main(): Promise<void> {
     await withContext(
       {
         trace_id: newTraceId(),
-        tenant_id: "system",
+        tenant_id: SYSTEM_TENANT_ID,
         request_source: "cli",
         actor_id: "seed",
       },
@@ -606,7 +615,7 @@ async function main(): Promise<void> {
   await withContext(
     {
       trace_id: newTraceId(),
-      tenant_id: "system",
+      tenant_id: SYSTEM_TENANT_ID,
       request_source: "cli",
       actor_id: "boot",
     },

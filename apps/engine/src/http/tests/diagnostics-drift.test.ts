@@ -7,8 +7,8 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
-import { sql } from "drizzle-orm";
-import { apiKeys, users } from "../../db/schema/index.ts";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -59,7 +59,9 @@ function adminHeaders() {
 }
 
 describe("/v1/diagnostics/drift", () => {
-  test("clean DB reports no drift", async () => {
+  test("clean DB reports no drift and writes a DIAGNOSTICS_DRIFT_READ audit row (review R2-W3)", async () => {
+    // allow-wall-clock: bound for the audit_log SELECT predicate; not a determinism axis
+    const before = new Date();
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, { headers: adminHeaders() });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -71,6 +73,35 @@ describe("/v1/diagnostics/drift", () => {
     expect(body.embedded_migration_count).toBe(body.db_migration_count);
     expect(body.unknown_in_db).toEqual([]);
     expect(body.missing_in_db).toEqual([]);
+
+    // R2-W3: assert the audit row landed in audit_log. With auditAwait
+    // on the route, this is durable before the response was returned.
+    const rows = await srv.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, srv.tenantId),
+          eq(auditLog.action, "diagnostics.drift_read"),
+          gte(auditLog.ts, before),
+        ),
+      )
+      .orderBy(desc(auditLog.ts))
+      .limit(1);
+    expect(rows.length).toBe(1);
+    const row = rows[0]!;
+    expect(row.actor_id).toBe(srv.userId);
+    expect(row.result).toBe("success");
+    const meta = row.metadata as {
+      embedded?: number;
+      db?: number;
+      unknown?: number;
+      missing?: number;
+    };
+    expect(meta.embedded).toBe(body.embedded_migration_count);
+    expect(meta.db).toBe(body.db_migration_count);
+    expect(meta.unknown).toBe(0);
+    expect(meta.missing).toBe(0);
   });
 
   test("an unknown row surfaces in unknown_in_db", async () => {

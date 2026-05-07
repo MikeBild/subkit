@@ -1,18 +1,16 @@
+import { LOG_LEVEL_WEIGHT, type LogLevelName } from "@cli-core/log-levels.ts";
 import pc from "picocolors";
 import { logRing } from "../observability/log-ring.ts";
 import { getContext } from "./context.ts";
 import { redact } from "./redact.ts";
 
-export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
+// Re-export under the engine's historical name so callers don't churn.
+// The map itself lives in `@cli-core/log-levels` so the engine logger,
+// the in-memory ring, and `sk logs` all read the same six entries
+// (review R2-S1).
+export type LogLevel = LogLevelName;
 
-const LEVEL_WEIGHT: Record<LogLevel, number> = {
-  trace: 10,
-  debug: 20,
-  info: 30,
-  warn: 40,
-  error: 50,
-  fatal: 60,
-};
+const LEVEL_WEIGHT = LOG_LEVEL_WEIGHT;
 
 type RenderMode = "pretty" | "ndjson";
 
@@ -132,18 +130,25 @@ function recordToRing(level: LogLevel, fields: LogFields): void {
   // Mirror to the in-memory ring so /v1/diagnostics/logs and the SSE
   // tail can serve it. Strip module/action/msg for the bag; redact the
   // rest so sensitive headers don't leak into the diagnostics surface.
+  //
+  // Field precedence (review R2-W5): explicit fields the caller passed
+  // win over the request-context bag. The previous order assigned
+  // context AFTER `rest`, which silently downgraded an explicit
+  // `logger.info({ tenant_id: "<X>" })` to whatever the surrounding
+  // `withContext` set. The right rule is "spread context first, then
+  // overlay the call's explicit fields" so the call site is always
+  // authoritative.
   const { module: m, action: a, msg, ...rest } = fields;
+  const ctx = getContext() as Record<string, unknown>;
+  const redactedRest = redact(rest) as Record<string, unknown>;
   const entry = {
     ts: Date.now(),
     level,
-    fields: redact(rest) as Record<string, unknown>,
+    fields: { ...ctx, ...redactedRest },
     ...(typeof m === "string" ? { module: m } : {}),
     ...(typeof a === "string" ? { action: a } : {}),
     ...(typeof msg === "string" ? { msg } : {}),
   };
-  // Preserve trace/tenant/etc context so log tails can be filtered.
-  const ctx = getContext();
-  Object.assign(entry.fields, ctx);
   logRing.record(entry);
 }
 
@@ -151,6 +156,15 @@ function emit(level: LogLevel, fields: LogFields): void {
   if (!shouldLog(level)) return;
   if (MODE === "pretty") emitPretty(level, fields);
   else emitNdjson(level, fields);
+  // Suppress the audit-mirror line from the ring (review R2-W4).
+  // `audit/audit.ts` calls `logger.info({ module: "audit", action,
+  // ... })` for every persisted audit row. Without this filter, every
+  // /v1/diagnostics/logs tail produces an `audit.diagnostics.logs_tailed`
+  // ring entry that the next tail observes, creating an unbounded echo
+  // on `sk logs --follow`. The audit row itself is still durable in
+  // `audit_log` and visible via `/v1/audit-log`; we just don't loop
+  // it back through the diagnostics ring.
+  if (fields.module === "audit") return;
   recordToRing(level, fields);
 }
 

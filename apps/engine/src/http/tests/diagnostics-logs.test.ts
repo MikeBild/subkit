@@ -6,7 +6,8 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
-import { apiKeys, users } from "../../db/schema/index.ts";
+import { and, desc, eq, gte } from "drizzle-orm";
+import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { withContext } from "../../logging/context.ts";
 import { logger } from "../../logging/logger.ts";
 import { logRing } from "../../observability/log-ring.ts";
@@ -59,8 +60,9 @@ function adminHeaders() {
 }
 
 describe("/v1/diagnostics/logs", () => {
-  test("paginated tail returns recent entries", async () => {
-    const before = Date.now(); // allow-wall-clock: bound for the live ring tail; not a determinism axis
+  test("paginated tail returns recent entries and writes a DIAGNOSTICS_LOGS_TAILED audit row (review R2-W3)", async () => {
+    const beforeTs = Date.now(); // allow-wall-clock: bound for the live ring tail; not a determinism axis
+    const auditCutoff = new Date();
     logger.warn({
       module: "test_logs",
       action: "fixture_emitted",
@@ -68,7 +70,7 @@ describe("/v1/diagnostics/logs", () => {
       tag: "alpha",
     });
     const res = await fetch(
-      `${srv.baseUrl}/v1/diagnostics/logs?since=${before - 100}&module=test_logs`,
+      `${srv.baseUrl}/v1/diagnostics/logs?since=${beforeTs - 100}&module=test_logs`,
       { headers: adminHeaders() },
     );
     expect(res.status).toBe(200);
@@ -91,6 +93,27 @@ describe("/v1/diagnostics/logs", () => {
     expect(body.capacity).toBeGreaterThan(0);
     expect(body.size).toBeGreaterThan(0);
     expect(body.next_since_ms).toBeGreaterThanOrEqual(matching!.ts);
+
+    // R2-W3: assert the JSON-tail audit row landed.
+    const rows = await srv.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, srv.tenantId),
+          eq(auditLog.action, "diagnostics.logs_tailed"),
+          gte(auditLog.ts, auditCutoff),
+        ),
+      )
+      .orderBy(desc(auditLog.ts))
+      .limit(1);
+    expect(rows.length).toBe(1);
+    const row = rows[0]!;
+    expect(row.actor_id).toBe(srv.userId);
+    const meta = row.metadata as { mode?: string; module_filter?: string; returned?: number };
+    expect(meta.mode).toBe("json");
+    expect(meta.module_filter).toBe("test_logs");
+    expect(typeof meta.returned).toBe("number");
   });
 
   test("audit:read is required — member gets 403", async () => {

@@ -52,14 +52,17 @@ export interface CapturedLog {
  * are sanitized through the logger's redact() pass.
  *
  * Members:
- *   - `"system"`: literal string used by the boot-path
- *     `withContext({ tenant_id: "system", ... })` wrapper.
- *   - `""`:  empty string — defensively treat as missing.
  *   - `SYSTEM_TENANT_ID` ("00000000-0000-0000-0000-000000000000"):
  *     the canonical UUID used by `audit/types.ts` for system-scope
- *     audit writes; some code paths use it in logger context too.
+ *     audit writes AND by the engine boot path's `withContext` wrapper
+ *     (`apps/engine/src/index.ts`). Standardized on the UUID by
+ *     review R2-W6.
+ *   - `""`:  empty string — defensively treat as missing.
+ *   - `"system"`:  legacy literal kept as a defensive fallback for
+ *     out-of-tree forks that may still emit it; the in-tree boot path
+ *     no longer uses it.
  */
-export const SYSTEM_TENANT_TOKENS = new Set<string>(["system", "", SYSTEM_TENANT_ID]);
+export const SYSTEM_TENANT_TOKENS = new Set<string>([SYSTEM_TENANT_ID, "", "system"]);
 
 /**
  * Extract the tenant_id an entry was emitted under. Returns `null`
@@ -106,21 +109,15 @@ export interface LogRing {
   subscribe(handler: (entry: CapturedLog) => void): () => void;
 }
 
-export const LEVEL_WEIGHT: Record<string, number> = {
-  trace: 10,
-  debug: 20,
-  info: 30,
-  warn: 40,
-  error: 50,
-  fatal: 60,
-};
+// Single source: re-export the cli-core helper so the engine logger,
+// the diagnostics route, and the `sk logs` CLI all read the same map
+// (review R2-S1).
+export { logLevelWeight as levelWeight } from "@cli-core/log-levels.ts";
 
-export function levelWeight(level: string): number {
-  return LEVEL_WEIGHT[level.toLowerCase()] ?? 0;
-}
+import { logLevelWeight } from "@cli-core/log-levels.ts";
 
 function weight(level: string): number {
-  return levelWeight(level);
+  return logLevelWeight(level);
 }
 
 export function createLogRing(capacity = DEFAULT_CAPACITY_FROM_ENV()): LogRing {

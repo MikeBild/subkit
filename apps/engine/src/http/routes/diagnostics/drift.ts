@@ -9,7 +9,11 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { AuditAction, audit } from "../../../audit/index.ts";
+import {
+  AuditAction,
+  auditAwait,
+  DiagnosticsDriftReadMetadataSchema,
+} from "../../../audit/index.ts";
 import { getDb } from "../../../db/client.ts";
 import { DriftReportSchema, detectDrift, listEmbeddedMigrations } from "../../../db/migrate.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -53,21 +57,33 @@ export function registerDriftRoute(app: OpenAPIHono<AppEnv>): void {
     const db_migration_count =
       embedded.length - report.missing_in_db.length + report.unknown_in_db.length;
 
-    audit({
-      tenant_id: principal.tenant_id,
-      actor_type: principal.kind === "user" ? "user" : "system_account",
-      actor_id: principal.id,
-      action: AuditAction.DIAGNOSTICS_DRIFT_READ,
-      resource_type: "migrations_journal",
-      resource_id: null,
-      result: "success",
-      metadata: {
-        embedded: embedded.length,
-        db: db_migration_count,
-        unknown: report.unknown_in_db.length,
-        missing: report.missing_in_db.length,
-      },
+    // W1 + W2 (review #2) — parse metadata through the schema, then
+    // await the audit row before returning. Drift reads are
+    // privilege-sensitive; the cost of a guaranteed compliance row
+    // exceeds the negligible latency add.
+    const metadata = DiagnosticsDriftReadMetadataSchema.parse({
+      embedded: embedded.length,
+      db: db_migration_count,
+      unknown: report.unknown_in_db.length,
+      missing: report.missing_in_db.length,
     });
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: principal.kind === "user" ? "user" : "system_account",
+        actor_id: principal.id,
+        action: AuditAction.DIAGNOSTICS_DRIFT_READ,
+        resource_type: "migrations_journal",
+        resource_id: null,
+        result: "success",
+        metadata,
+      },
+      // Bind the audit insert to the request's db handle so the row
+      // lands on the same database the route just read from. In
+      // production `c.get("db")` is the shared `getDb()`; in tests
+      // it's the per-suite handle bound by `createHttpTestServer`.
+      db,
+    );
 
     return c.json(
       {

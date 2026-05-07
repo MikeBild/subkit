@@ -198,13 +198,21 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
 
 /**
  * Compare the database's `drizzle.__drizzle_migrations` rows against
- * this binary's embedded set. Read-only — does not write anything.
+ * this binary's embedded set.
  *
  * `unknown_in_db.length > 0` means the DB carries migration rows from
  * a binary lineage this engine doesn't recognise. That is the #149
  * symptom: prod had 27 such rows and three subsystems failed because
  * the schema state didn't match the engine's expectations. Operators
  * should treat this as a deploy-time alarm.
+ *
+ * Side effect (review R2-S5): the function calls `ensureMigrationsTable`
+ * before reading, which `CREATE EXTENSION IF NOT EXISTS pgcrypto`,
+ * `CREATE SCHEMA IF NOT EXISTS drizzle`, and creates the journal table
+ * if missing. On every boot path migrations run first, so this is a
+ * no-op; on direct calls against a virgin database it primes the
+ * journal table so a follow-up `runMigrations(db)` doesn't re-create
+ * it. The drift report itself is read-only.
  */
 export async function detectDrift(db: Db): Promise<DriftReport> {
   await ensureMigrationsTable(db);
