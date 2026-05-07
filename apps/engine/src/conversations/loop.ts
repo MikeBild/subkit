@@ -134,6 +134,15 @@ export interface RunLoopParams {
    * `tool-policies.ts#resolveToolMode` for the full precedence order.
    */
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  /**
+   * Pre-registered AbortController for this turn. The HTTP route
+   * handler creates and registers it on the synchronous frame of
+   * request-accept (closing the cancel race fixed in #146 / A4); the
+   * loop just consumes it. When omitted (legacy callers), the loop
+   * falls back to creating + registering its own — identical to the
+   * pre-A4 behaviour.
+   */
+  turn_abort_ctrl?: AbortController;
 }
 
 export interface RunLoopResult {
@@ -152,7 +161,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // via `p.onEvent` when supplied.
   const events: TurnEvent[] = sink.asArrayProxy();
   const budget = p.step_budget ?? DEFAULT_BUDGET;
-  const turnAbortCtrl = registerConversationAbort(p.conversation_id);
+  // The HTTP route handler registers synchronously on request accept
+  // (#146 / A4). Honour the caller-supplied controller when present;
+  // legacy callers get the original register-here fallback.
+  const turnAbortCtrl = p.turn_abort_ctrl ?? registerConversationAbort(p.conversation_id);
+  const ownsAbortRegistration = p.turn_abort_ctrl == null;
 
   log.debug({
     module: "conversation",
@@ -1713,6 +1726,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     if (pendingElicitationId) out.pending_elicitation_id = pendingElicitationId;
     return out;
   } finally {
-    unregisterConversationAbort(p.conversation_id, turnAbortCtrl);
+    if (ownsAbortRegistration) {
+      unregisterConversationAbort(p.conversation_id, turnAbortCtrl);
+    }
   }
 }

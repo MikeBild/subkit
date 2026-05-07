@@ -39,6 +39,8 @@ export interface AppendMessageParams {
   };
   /** Client-supplied permission mode for this turn. */
   permission_mode?: ConversationPermissionMode | null;
+  /** Pre-registered AbortController — see RunLoopParams.turn_abort_ctrl. */
+  turn_abort_ctrl?: AbortController;
 }
 
 export async function appendUserMessage(
@@ -125,6 +127,7 @@ export async function appendUserMessage(
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
     ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
     ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
+    ...(p.turn_abort_ctrl ? { turn_abort_ctrl: p.turn_abort_ctrl } : {}),
   });
   const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!updated) throw new Error("conversation disappeared");

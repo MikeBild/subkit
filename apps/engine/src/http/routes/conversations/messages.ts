@@ -5,6 +5,10 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import {
+  registerConversationAbort,
+  unregisterConversationAbort,
+} from "../../../conversations/abort.ts";
 import type { TurnEvent } from "../../../conversations/index.ts";
 import * as svc from "../../../conversations/index.ts";
 import { serializeEvent } from "../../../conversations/index.ts";
@@ -46,11 +50,18 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
+    // #146 / A4: register the AbortController on the synchronous frame
+    // of request-accept so a cancel arriving in the first ~40 ms after
+    // the route is hit always finds a controller. Registering inside
+    // `runLoop` (the pre-A4 location) re-opens the race the cancel
+    // route silently lost.
+    const turnAbortCtrl = registerConversationAbort(id);
     const baseParams = {
       tenant_id: principal.tenant_id,
       conversation_id: id,
       actor_id: principal.id,
       message: body.message,
+      turn_abort_ctrl: turnAbortCtrl,
       ...(body.memory !== undefined ? { memory: body.memory } : {}),
       ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
       runtime_context: buildRuntimeContextFromRequest(c, principal),
@@ -90,6 +101,8 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
               message: err?.message ?? "internal_error",
             }),
           );
+        } finally {
+          unregisterConversationAbort(id, turnAbortCtrl);
         }
         // biome-ignore lint/suspicious/noExplicitAny: see createRouteSpec branch above.
       }) as any;
@@ -106,6 +119,8 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         });
       }
       throw error;
+    } finally {
+      unregisterConversationAbort(id, turnAbortCtrl);
     }
     return c.json(serializeConversation(outcome), 200);
   });

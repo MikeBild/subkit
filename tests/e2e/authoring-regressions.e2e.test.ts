@@ -432,60 +432,54 @@ describe("authoring regressions", () => {
     expect(detail.draft?.latest_preview?.summary.length).toBeGreaterThan(0);
   });
 
-  // Skipped on the audit-cleanup branch — pre-existing flake unrelated
-  // to this PR's scope. The cancel race is timing-sensitive (40ms wait
-  // between POST /messages and POST /cancel before the turn loop gets
-  // a chance to register its abort controller). The CRUD-cancel
-  // contract (cancel returns 200; conversation row → abandoned) is
-  // covered by tests/e2e/authoring-regressions.e2e.test.ts:tenant-
-  // isolation block + the runLoop unit suite. Restore once the
-  // race window is widened or the test uses a deterministic abort
-  // signal instead of `setTimeout`.
-  test.skipIf(process.env.SK_RUN_FLAKY_PREVIEW_CANCEL !== "1")(
-    "cancelling a slow preview abandons the turn without surfacing a 500",
-    async () => {
-      const created = await createConversation({ title: "preview-cancel" });
-      const conversationId = created.conversation.id;
-      getMockProvider().setConversePlan(conversationId, [
-        {
-          tool: "build_workflow",
-          args: {
-            name: "preview-cancel",
-            slug: `preview-cancel-${TEST_NOW_MS}`,
-            steps: [
-              {
-                id: "fetch",
-                kind: "request",
-                method: "GET",
-                url: `${httpBaseUrl}/slow`,
-              },
-            ],
-          },
+  // Cancel-race regression. Pre-#146 the AbortController was registered
+  // inside runLoop (after the request handler had awaited several
+  // hops); a cancel arriving in the first ~40ms of the turn missed the
+  // registry and silently no-op'd. A4 moved the registration to the
+  // synchronous frame of POST /messages, so the cancel route always
+  // finds a controller to abort. This test now runs unconditionally on
+  // every CI build instead of being gated behind SK_RUN_FLAKY_PREVIEW_CANCEL.
+  test("cancelling a slow preview abandons the turn without surfacing a 500", async () => {
+    const created = await createConversation({ title: "preview-cancel" });
+    const conversationId = created.conversation.id;
+    getMockProvider().setConversePlan(conversationId, [
+      {
+        tool: "build_workflow",
+        args: {
+          name: "preview-cancel",
+          slug: `preview-cancel-${TEST_NOW_MS}`,
+          steps: [
+            {
+              id: "fetch",
+              kind: "request",
+              method: "GET",
+              url: `${httpBaseUrl}/slow`,
+            },
+          ],
         },
-        { tool: "dry_run_step", args: { step_id: "fetch", budget_ms: 10_000 } },
-      ]);
+      },
+      { tool: "dry_run_step", args: { step_id: "fetch", budget_ms: 10_000 } },
+    ]);
 
-      const turnPromise = fetch(`${env.baseUrl}/v1/conversations/${conversationId}/messages`, {
-        method: "POST",
-        headers: adminHeaders(),
-        body: JSON.stringify({ message: "preview the slow request now" }),
-      });
-      await new Promise((resolve) => setTimeout(resolve, 40)); // allow-wall-clock: legacy; review before changing
-      const cancel = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}/cancel`, {
-        method: "POST",
-        headers: adminHeaders(),
-      });
-      expect(cancel.status).toBe(200);
+    const turnPromise = fetch(`${env.baseUrl}/v1/conversations/${conversationId}/messages`, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ message: "preview the slow request now" }),
+    });
+    const cancel = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}/cancel`, {
+      method: "POST",
+      headers: adminHeaders(),
+    });
+    expect(cancel.status).toBe(200);
 
-      const turn = await turnPromise;
-      expect(turn.status).toBe(200);
-      const outcome = (await turn.json()) as { status: string };
-      expect(outcome.status).toBe("abandoned");
+    const turn = await turnPromise;
+    expect(turn.status).toBe(200);
+    const outcome = (await turn.json()) as { status: string };
+    expect(outcome.status).toBe("abandoned");
 
-      const detail = await getConversation(conversationId);
-      expect(detail.conversation.status).toBe("abandoned");
-    },
-  );
+    const detail = await getConversation(conversationId);
+    expect(detail.conversation.status).toBe("abandoned");
+  });
 
   test("tenant isolation blocks reading a foreign conversation id", async () => {
     const [foreignTenant] = await env.db
