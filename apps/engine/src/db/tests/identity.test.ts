@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { writeAudit } from "../audit.ts";
 import { apiKeys, auditLog, tenants, users } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: TestDb;
 

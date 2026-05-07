@@ -12,9 +12,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { portalTokens, users } from "../../db/schema/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 

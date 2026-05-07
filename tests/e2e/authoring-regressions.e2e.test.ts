@@ -3,9 +3,10 @@ import { createServer, type Server as HttpServer } from "node:http";
 import { conversations, tenants } from "../../apps/engine/src/db/schema/index.ts";
 import type { ConverseMockStep } from "../../apps/engine/src/llm/mock-provider.ts";
 import { getMockProvider } from "../../apps/engine/src/llm/mock-provider.ts";
+import { getTestNow } from "../../apps/engine/src/test-helpers/determinism/clock.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let env: E2EEnv;
 let httpServer: ReturnType<typeof Bun.serve>;
@@ -26,7 +27,10 @@ beforeAll(async () => {
         return Response.json({ error: "unauthorized" }, { status: 401 });
       }
       if (url.pathname === "/slow") {
-        await new Promise((resolve) => setTimeout(resolve, 250)); // allow-wall-clock: legacy; review before changing
+        // Simulates a 250ms upstream RTT — must exceed the 100ms probe
+        // timeout used by the probe-timeout test below, and long enough
+        // to let the cancel-race test (line ~470) preempt the request.
+        await new Promise((resolve) => setTimeout(resolve, 250)); // allow-wall-clock: simulates slow upstream for probe-timeout + cancel-race tests
         return Response.json({ ok: true, delayed: true });
       }
       return new Response("not found", { status: 404 });

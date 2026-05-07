@@ -8,10 +8,11 @@
 // requires a real DecryptedCredential from the store.
 
 import { describe, expect, test } from "bun:test";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { applyAuthMaterial } from "../drivers/http.ts";
 import type { ConnectorView } from "../types.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 function connector(over: Partial<ConnectorView>): ConnectorView {
   return {

@@ -9,6 +9,7 @@ import {
   users,
 } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { tunnelRegistry } from "../../../tunnels/registry.ts";
 import { fingerprintAgentToken, getTunnel, upsertTunnel } from "../../../tunnels/service.ts";
 import type { TunnelSocket } from "../../../tunnels/types.ts";
@@ -25,7 +26,7 @@ import {
 } from "../generated/writes/cleanup.ts";
 import type { ToolContext } from "../index.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: ConversationTestCtx;
 let memberUserId: string;

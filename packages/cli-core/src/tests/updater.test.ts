@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getTestNow } from "../../../../apps/engine/src/test-helpers/determinism/clock.ts";
 import {
   checkForUpdate,
   defaultUpdaterConfig,
@@ -16,7 +17,7 @@ import {
   writeCache,
 } from "../updater.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 // ── Helpers ──
 

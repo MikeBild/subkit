@@ -27,10 +27,11 @@
 // Spec refs: docs/03-input-surfaces.md, docs/07-security-governance.md, gap-pass-2 Stream D
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 

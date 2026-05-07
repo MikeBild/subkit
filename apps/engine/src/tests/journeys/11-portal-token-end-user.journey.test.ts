@@ -24,9 +24,10 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { and, eq } from "drizzle-orm";
 import { auditLog, portalTokens } from "../../db/schema/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 let workflowId = "";

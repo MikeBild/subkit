@@ -12,10 +12,11 @@ import { connectorDocumentChunks, connectorDocuments, connectors } from "../../d
 import { createBoss, disposeBoss } from "../../queue/boss.ts";
 import { INGEST_DOCS_QUEUE } from "../../queue/handlers/ingest-docs.ts";
 import { isCronDue, SchedulerReconciler } from "../../scheduler/reconciler.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { ingestDocs } from "../service.ts";
 import { createDocsTestCtx, type DocsTestCtx, stubFetch } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 const SPEC_V1 = {
   openapi: "3.0.0",

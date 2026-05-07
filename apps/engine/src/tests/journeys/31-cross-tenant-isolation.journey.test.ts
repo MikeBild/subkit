@@ -36,13 +36,14 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   createDeterministicHexFactory,
   createDeterministicUuidFactory,
 } from "../../test-helpers/determinism/ids.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch, seedWorkflow } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 

@@ -32,10 +32,11 @@ import {
   enqueueRepair,
   registerWorkflowRepairHandler,
 } from "../../queue/handlers/workflow-repair.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { runSelfHealingLoop } from "../service.ts";
 import { createSelfHealingCtx, type SelfHealingTestCtx } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: SelfHealingTestCtx;
 

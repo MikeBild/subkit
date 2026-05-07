@@ -7,6 +7,7 @@
 // must hold across the whole 90-template catalog.
 
 import { describe, expect, test } from "bun:test";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { loadBuiltinTemplates } from "./templates.ts";
 
 const templates = loadBuiltinTemplates();
@@ -253,7 +254,7 @@ describe("connector-template catalog — Layer-3 vendor-drift sweep", () => {
     // something a PR author should be blocked on. The CI gate stays
     // green; the operator triages from `bun test` output.
     const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
+    const now = getTestNow();
     const stale: { slug: string; verified_at: string | null; reason: string }[] = [];
     for (const t of templates) {
       if (t.verified_at === null) {

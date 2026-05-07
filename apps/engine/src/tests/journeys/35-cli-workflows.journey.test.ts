@@ -21,9 +21,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { defineCommand } from "citty";
 import { workflowsCommand } from "../../../../sk/src/commands/workflows.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 

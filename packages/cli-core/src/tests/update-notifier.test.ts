@@ -1,9 +1,10 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { getTestNow } from "../../../../apps/engine/src/test-helpers/determinism/clock.ts";
 import { notifyIfUpdateAvailable } from "../update-notifier.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 // Each test uses a unique binary name so caches don't collide.
 // The notifier creates its cache under ~/.{binaryName}/ so we use

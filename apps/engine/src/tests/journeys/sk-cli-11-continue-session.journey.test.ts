@@ -28,9 +28,10 @@ import {
   saveSessionMetadata,
 } from "../../../../sk/src/sessions.ts";
 import { auditLog } from "../../db/schema/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createJourneyCtx, type JourneyCtx } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 let scratchHome: string;

@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { ResourceUpdatedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { globalEmitter } from "../../pubsub/emitter.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let suite: McpTestSuite;
 

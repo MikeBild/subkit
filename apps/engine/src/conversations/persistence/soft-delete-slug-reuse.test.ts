@@ -10,8 +10,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: TestDb;
 let tenant_id: string;

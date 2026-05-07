@@ -30,9 +30,10 @@ import { connectors } from "../../db/schema/index.ts";
 import { getDocsSearchCacheStats, invalidateDocsCache } from "../../docs-ingestion/service.ts";
 import { getKnowledgeSearchCacheStats, invalidateKnowledgeCache } from "../../knowledge/service.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createJourneyCtx, type JourneyCtx, journeyFetch } from "./setup.ts";
 
-const TEST_NOW_MS = Date.now();
+const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 let tmpFile: string;
