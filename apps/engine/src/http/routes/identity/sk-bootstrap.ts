@@ -47,6 +47,29 @@ const SkBootstrapSessionRefSchema = z.object({
   updated_at: z.string(),
 });
 
+// Closed object of feature flags the bootstrap response is allowed to
+// surface to the CLI. New flags MUST be added as a keyed property
+// here AND mirrored in `apps/sk/src/lib/bootstrap.ts` consumer types
+// so a typo on either side fails to compile. R2-S8 review fix —
+// was previously `record(string, boolean)` which silently absorbed
+// typos.
+//
+// `.partial().strict()` together mean: every flag key is optional in
+// the response (a flag may be omitted when its decision isn't
+// computed for the persona), but NO unknown keys are allowed (a typo
+// in a future flag name fails the response Zod validation rather
+// than silently disabling client-side gating).
+//
+// `_unused` is a reserved placeholder so the object isn't empty
+// (zod won't accept an empty `.object({})` here without a member);
+// when the first real flag lands, replace this member.
+const SkBootstrapFlagsSchema = z
+  .object({
+    _unused: z.boolean(),
+  })
+  .partial()
+  .strict();
+
 const SkBootstrapResponseSchema = z
   .object({
     whoami: SkBootstrapWhoamiSchema,
@@ -56,7 +79,9 @@ const SkBootstrapResponseSchema = z
       .describe("Stable list of permissions probed; reflects the engine's known UX gating set."),
     tenant: SkBootstrapTenantSchema,
     recent_sessions: z.array(SkBootstrapSessionRefSchema),
-    flags: z.record(z.string(), z.boolean()).describe("Persona-visible feature flags."),
+    flags: SkBootstrapFlagsSchema.describe(
+      "Persona-visible feature flags. Keys are drawn from a typed enum.",
+    ),
     server_time: z.string().describe("Server-side ISO timestamp; lets the CLI sync clocks."),
   })
   .openapi("SkBootstrap");
@@ -158,7 +183,13 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
     // query entirely for those principals.
     let recent: Array<{ id: string; title: string | null; updated_at: Date }> = [];
     const canReadConversations = allowedPermissions.includes("conversation:read");
-    if (!canReadConversations) {
+    // R2-S7 review fix: skip the query entirely for non-`user`
+    // principals. `conversations.owner_id` is a free-form UUID column
+    // (apps/engine/src/db/schema/conversations.ts), and only user
+    // principals own conversations today. System accounts and portal
+    // tokens never produce a row, so the query is wasted work — and
+    // the empty array becomes contractual rather than incidental.
+    if (!canReadConversations || principal.kind !== "user") {
       // Skip the query; recent stays []. Documented behavior.
     } else
       try {

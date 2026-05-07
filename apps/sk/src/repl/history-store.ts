@@ -40,7 +40,17 @@ export const MAX_HISTORY = 500;
  *  surfaces older entries. The legacy 500 was enough for an interactive
  *  session but wraps too quickly for power users with months of
  *  history. Rotates at this many entries via the same write-then-
- *  rename trim path. */
+ *  rename trim path.
+ *
+ *  Disk-space note (R1-S7 review): a typical prompt averages ~100 B
+ *  including the JSONL framing, so the bound on `~/.sk/history.jsonl`
+ *  is ~1 MB — 20× the legacy cap, but still trivial on any modern
+ *  filesystem. The trim is incremental (`writeFile + rename`), so the
+ *  worst-case disk use during rotation is `2 × MAX_PROMPT_HISTORY`
+ *  lines for a few ms before the rename completes. No background
+ *  migration is performed for users upgrading from older versions —
+ *  their files keep growing until the cap is hit, then trim normally.
+ */
 export const MAX_PROMPT_HISTORY = 10_000;
 
 /** Default path: `~/.sk/history.jsonl`. */

@@ -324,6 +324,25 @@ function isSkTransportError(err: unknown): err is SkTransportError {
   return err instanceof Error && err.name === "SkTransportError";
 }
 
+/**
+ * Classify a top-level error into a panel kind. This is intentionally
+ * a *different axis* from `classifyEngineError` (R1-S4 review note):
+ *
+ * - `errorToPanel` switches on **transport / status** — `429` →
+ *   rate-limit panel, `401/403` → auth panel, transport errors →
+ *   network panel, `422` with an `errors` array → validation panel,
+ *   everything else → generic engine panel. This decides which panel
+ *   *shell* to render.
+ *
+ * - `classifyEngineError` switches on **per-row semantic content** —
+ *   given a single `RawValidationError`, it labels the row as
+ *   `provider_limit` / `provider_unavailable` / `validation` so the
+ *   ValidationPanel can colour individual rows. The validation panel
+ *   already consumes that classifier internally; `errorToPanel` does
+ *   not duplicate it, it simply picks the panel.
+ *
+ * Both surfaces stay thin: the only branching done here is on `status`.
+ */
 export function errorToPanel(err: unknown): {
   kind: ErrorPanelKind;
   payload: ErrorPanelPropsByKind[ErrorPanelKind];
@@ -345,6 +364,16 @@ export function errorToPanel(err: unknown): {
         ...(err.hint ? { hint: err.hint } : {}),
       };
       return { kind: "auth", payload };
+    }
+    // 422 with a structured `errors` array routes to the validation
+    // panel so per-row severity (via the row classifier) can fire.
+    // Other 4xx/5xx fall through to the generic engine panel.
+    if (err.status === 422 && hasValidationErrors(err.details)) {
+      const payload: ValidationPayload = {
+        errors: err.details.errors,
+        ...(err.hint ? { hint: err.hint } : {}),
+      };
+      return { kind: "validation", payload };
     }
     const payload: EnginePayload = {
       status: err.status,
@@ -368,6 +397,19 @@ export function errorToPanel(err: unknown): {
     kind: "generic",
     payload: { message: humanizeRequestError(err) },
   };
+}
+
+function hasValidationErrors(details: unknown): details is { errors: RawValidationError[] } {
+  if (!details || typeof details !== "object") return false;
+  const errs = (details as { errors?: unknown }).errors;
+  if (!Array.isArray(errs)) return false;
+  return errs.every(
+    (e) =>
+      e &&
+      typeof e === "object" &&
+      typeof (e as { path?: unknown }).path === "string" &&
+      typeof (e as { message?: unknown }).message === "string",
+  );
 }
 
 /**

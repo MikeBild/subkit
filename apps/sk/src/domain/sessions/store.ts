@@ -36,6 +36,10 @@ export interface TurnEvent {
   ts: string;
   /** Event family. */
   kind: TurnEventKind;
+  /** Owning tenant slug or id. Set by `appendEvent` when the caller
+   *  passes `opts.tenant`. Persisted alongside each event so a single
+   *  pasted line still carries its tenant context. R2-W6. */
+  tenant?: string;
   /** Free-form payload — every kind defines its own shape. */
   data: Record<string, unknown>;
 }
@@ -69,6 +73,11 @@ export function scrubSecrets(data: unknown): unknown {
 export interface AppendOptions {
   /** Override the sessions dir (defaults to `~/.sk/sessions`). */
   dir?: string;
+  /** Tenant slug or id — namespaces the on-disk path so a forensic
+   *  reader can immediately tell which tenant owns the JSONL even
+   *  if conversation IDs collide. Strongly recommended for any path
+   *  reachable through a switching profile. R2-W6. */
+  tenant?: string | null;
   /** Inject a clock for tests. */
   now?: () => Date;
 }
@@ -77,8 +86,26 @@ export function sessionsDir(override?: string): string {
   return override ?? join(homedir(), ".sk", "sessions");
 }
 
-export function sessionEventsPath(conversationId: string, dir?: string): string {
-  return join(sessionsDir(dir), `${conversationId}.jsonl`);
+/** Path for a conversation's JSONL log. When `tenant` is provided
+ *  the file lives under `~/.sk/sessions/{tenant}/{conv}.jsonl`;
+ *  otherwise it falls back to the legacy flat layout
+ *  `~/.sk/sessions/{conv}.jsonl` so already-written logs from older
+ *  versions of the CLI keep loading. New writes always specify a
+ *  tenant and get the namespaced path. */
+export function sessionEventsPath(
+  conversationId: string,
+  dir?: string,
+  tenant?: string | null,
+): string {
+  const root = sessionsDir(dir);
+  if (tenant) {
+    // Sanitise: tenants are slugs/uuids in practice, but a malicious
+    // override that contains `..` or `/` could escape. Replace any
+    // non-alphanumeric/`-`/`_` char with `_`.
+    const safe = tenant.replace(/[^A-Za-z0-9_-]/g, "_");
+    return join(root, safe, `${conversationId}.jsonl`);
+  }
+  return join(root, `${conversationId}.jsonl`);
 }
 
 /**
@@ -91,14 +118,24 @@ export function appendEvent(
   ev: Omit<TurnEvent, "ts">,
   opts: AppendOptions = {},
 ): void {
-  const path = sessionEventsPath(conversationId, opts.dir);
+  const path = sessionEventsPath(conversationId, opts.dir, opts.tenant);
   const now = opts.now ?? (() => new Date());
   // Scrub obviously-secret-shaped strings out of `data` before the
   // line lands on disk. The classifier only catches well-known token
   // shapes (PATs, Bearer tokens, OAuth) — callers passing free-form
   // credentials still own redaction at their layer.
   const scrubbedData = scrubSecrets(ev.data) as Record<string, unknown>;
-  const event: TurnEvent = { ...ev, data: scrubbedData, ts: now().toISOString() };
+  // Embed the tenant in the event payload too — even if a forensic
+  // reader receives a single line in isolation (e.g. paste from a
+  // bug report) the tenant context is preserved alongside the
+  // conversation id.
+  const tenant = opts.tenant ?? null;
+  const event: TurnEvent = {
+    ...ev,
+    data: scrubbedData,
+    ts: now().toISOString(),
+    ...(tenant ? { tenant } : {}),
+  };
   try {
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(path, `${JSON.stringify(event)}\n`, { encoding: "utf8", mode: 0o600 });
@@ -111,8 +148,12 @@ export function appendEvent(
  * Read every event from the conversation's JSONL log. Skips truncated
  * trailing lines. Returns events in the order they were written.
  */
-export function loadEvents(conversationId: string, dir?: string): TurnEvent[] {
-  const path = sessionEventsPath(conversationId, dir);
+export function loadEvents(
+  conversationId: string,
+  dir?: string,
+  tenant?: string | null,
+): TurnEvent[] {
+  const path = sessionEventsPath(conversationId, dir, tenant);
   if (!existsSync(path)) return [];
   let content: string;
   try {
@@ -137,8 +178,8 @@ export function loadEvents(conversationId: string, dir?: string): TurnEvent[] {
 }
 
 /** Delete the JSONL log for a conversation. Best-effort. */
-export function deleteEvents(conversationId: string, dir?: string): void {
-  const path = sessionEventsPath(conversationId, dir);
+export function deleteEvents(conversationId: string, dir?: string, tenant?: string | null): void {
+  const path = sessionEventsPath(conversationId, dir, tenant);
   try {
     unlinkSync(path);
   } catch {

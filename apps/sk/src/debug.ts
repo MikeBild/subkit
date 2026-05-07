@@ -74,7 +74,14 @@ export type DebugRecordKind =
   // network = unreachable). The CLI falls through to the legacy
   // tiered persona-probe regardless; this record keeps the failure
   // diagnosable without a packet capture.
-  | "bootstrap.fetch_failed";
+  | "bootstrap.fetch_failed"
+  // settings.schema_fallback — emitted when an engine-served schema
+  // descriptor declares an `enum` field with zero values, which is
+  // invalid in zod. The loader coerces to `z.string()` so the form
+  // renders, but this is a sign that the engine shipped a malformed
+  // descriptor (typically: a connector whose enum source returned
+  // an empty list). R2-S10 review fix.
+  | "settings.schema_fallback";
 
 export interface DebugCorrelationFields {
   mode?: DebugMode;

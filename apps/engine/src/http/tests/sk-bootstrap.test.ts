@@ -111,39 +111,18 @@ describe("GET /v1/sk/bootstrap", () => {
     expect(new Date(body.server_time).getTime()).toBeGreaterThan(0);
   });
 
-  test("permissions_checked is stable and includes UX-gating set", async () => {
+  test("permissions_checked is stable and equals the canonical UX_GATING_PERMISSIONS set", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/sk/bootstrap`, {
       headers: { authorization: `Bearer ${ctx.apiKey}` },
     });
     const body = (await res.json()) as BootstrapResponse;
-    // Mirrors apps/sk/src/persona-probe.ts TIER_PERMISSIONS — keep these
-    // in sync; if either side drifts, this assertion alerts.
-    const expected = [
-      "conversation:read",
-      "conversation:write",
-      "memory:write",
-      "conversation:approve",
-      "conversation:list",
-      "mcp:read",
-      "skill:read",
-      "conversation:cancel",
-      "conversation:commit",
-      "workflow:read",
-      "workflow:write",
-      "connector:read",
-      "skill:write",
-      "execution:read",
-      "notification:read",
-      "audit:read",
-      "identity:read",
-      "rbac:read",
-      "api_key:read",
-      "portal_token:read",
-      "knowledge:read",
-    ];
-    for (const perm of expected) {
-      expect(body.permissions_checked).toContain(perm);
-    }
+    // The engine MUST return exactly the set that
+    // `@shared/ux-gating#UX_GATING_PERMISSIONS` declares — no proper
+    // subsets, no proper supersets. The CLI imports the same constant
+    // from `@shared`, so this is a wire-level pin against drift.
+    const { UX_GATING_PERMISSIONS } = await import("@shared/ux-gating.ts");
+    expect(new Set(body.permissions_checked)).toEqual(new Set(UX_GATING_PERMISSIONS));
+    expect(body.permissions_checked.length).toBe(UX_GATING_PERMISSIONS.length);
   });
 
   test("recent_sessions only includes principal's own conversations", async () => {

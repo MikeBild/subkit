@@ -7,6 +7,12 @@
 // Handlers that need cross-turn state mutation (`/clear`, `/resume`)
 // call back through `setConversationId` — the caller owns the
 // React / closure state shape.
+//
+// cf. `apps/sk/src/repl/slash/dispatcher.ts` — the dispatcher
+// classifies each slash by its `routing` field (local vs. engine)
+// before reaching this handler. This module owns only execution;
+// classification + RBAC routing live in the dispatcher (R2-S12
+// review fix).
 
 import fs from "node:fs";
 import { homedir } from "node:os";

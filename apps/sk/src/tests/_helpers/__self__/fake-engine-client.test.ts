@@ -3,7 +3,7 @@ import {
   ANONYMOUS_PROFILE,
   createFakeEngineClient,
   fakeClientCallCounts,
-} from "./fake-engine-client.ts";
+} from "../fake-engine-client.ts";
 
 describe("createFakeEngineClient", () => {
   test("skBootstrap returns the canned full UX permission set by default", async () => {

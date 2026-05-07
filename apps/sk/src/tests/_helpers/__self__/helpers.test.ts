@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { createFakeClock } from "./clock.ts";
-import { createMockEngineSse } from "./mock-engine-sse.ts";
-import { bootstrapFixture, permissionsFor } from "./persona-fixtures.ts";
+import { createFakeClock } from "../clock.ts";
+import { createMockEngineSse } from "../mock-engine-sse.ts";
+import { bootstrapFixture, permissionsFor } from "../persona-fixtures.ts";
 
 describe("createFakeClock", () => {
   test("starts at the provided epoch", () => {

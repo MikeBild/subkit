@@ -101,6 +101,48 @@ describe("session JSONL store", () => {
     expect(raw).toContain("***redacted***");
   });
 
+  // R2-W6 review fix: tenant-scoped path layout
+  test("sessionEventsPath namespaces by tenant when given", () => {
+    const p = sessionEventsPath("c-1", "/tmp/sk-x", "tenant-A");
+    expect(p).toBe("/tmp/sk-x/tenant-A/c-1.jsonl");
+  });
+
+  test("sessionEventsPath sanitises path-traversal attempts in tenant", () => {
+    const p = sessionEventsPath("c-1", "/tmp/sk-x", "../../etc");
+    expect(p).toBe("/tmp/sk-x/______etc/c-1.jsonl");
+  });
+
+  test("appendEvent embeds the tenant in each event payload", () => {
+    const conv = "tenant-test-conv";
+    appendEvent(
+      conv,
+      { seq: 0, kind: "user_message", data: { text: "hi" } },
+      { dir, tenant: "tenant-A" },
+    );
+    const events = loadEvents(conv, dir, "tenant-A");
+    expect(events.length).toBe(1);
+    expect(events[0]?.tenant).toBe("tenant-A");
+  });
+
+  test("two tenants writing the same conversation id get distinct files", () => {
+    appendEvent(
+      "shared-conv-id",
+      { seq: 0, kind: "user_message", data: { text: "from-A" } },
+      { dir, tenant: "tenant-A" },
+    );
+    appendEvent(
+      "shared-conv-id",
+      { seq: 0, kind: "user_message", data: { text: "from-B" } },
+      { dir, tenant: "tenant-B" },
+    );
+    const a = loadEvents("shared-conv-id", dir, "tenant-A");
+    const b = loadEvents("shared-conv-id", dir, "tenant-B");
+    expect(a.length).toBe(1);
+    expect(b.length).toBe(1);
+    expect(a[0]?.data).toEqual({ text: "from-A" });
+    expect(b[0]?.data).toEqual({ text: "from-B" });
+  });
+
   test("deleteEvents removes the log file", () => {
     appendEvent("c-5", { seq: 0, kind: "user_message", data: {} }, { dir });
     deleteEvents("c-5", dir);

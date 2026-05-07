@@ -28,4 +28,18 @@ describe("classifySlash", () => {
     expect(snap).toContain("help");
     expect(snap).toContain("clear");
   });
+
+  // R1-S2 / R2-W4 regression: the dispatcher must classify by the
+  // command's `routing` field, not by raw name. If a future writer
+  // adds a slash named e.g. `/audit` with `routing: "local"` the
+  // engine-side audit row goes missing — this test pins that the
+  // *registry* is the source, so any such mistake shows up here as
+  // well as in code review.
+  test("derives local routing from each command's `routing` field, not a name list", () => {
+    const snap = _localOnlySnapshot();
+    // Engine-routed commands must NOT appear in the local snapshot.
+    for (const eng of ["audit", "connectors", "workflows", "approve", "reject"]) {
+      expect(snap).not.toContain(eng);
+    }
+  });
 });

@@ -7,7 +7,7 @@
 // 4. Always lets the operator paste a token manually as a fallback —
 //    no browser, no problem.
 
-import { exec } from "node:child_process";
+import { spawn } from "node:child_process";
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import { useEffect, useRef, useState } from "react";
@@ -31,18 +31,36 @@ export interface OAuthWaitViewProps {
   openBrowser?: (url: string) => Promise<void>;
 }
 
+// Argv-style browser launch — never `exec` with string interpolation.
+// Even though `authUrl` originates from the engine (not user TTY input),
+// the AGENTS.md threat-model treats anything launched by the CLI as a
+// boundary. `spawn(bin, [arg], { shell: false })` makes shell metacharacters
+// (`$`, `;`, `|`, backticks, …) inert by passing argv through directly to
+// the OS — there is no shell to interpret them. Resolves R2-W3.
+//
+// Windows special case: the canonical `start` is a `cmd.exe` builtin, not
+// a binary, so we go through `cmd.exe /c start "" <url>` and pass the URL
+// as a separate argv slot. `windowsVerbatimArguments: false` (the default)
+// lets Node escape it correctly.
 function defaultOpenBrowser(url: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const cmd =
-      process.platform === "darwin"
-        ? `open "${url.replace(/"/g, '\\"')}"`
-        : process.platform === "win32"
-          ? `start "" "${url}"`
-          : `xdg-open "${url.replace(/"/g, '\\"')}"`;
-    exec(cmd, (err) => {
-      if (err) reject(err);
-      else resolve();
+    const platform = process.platform;
+    const [bin, args] =
+      platform === "darwin"
+        ? (["open", [url]] as const)
+        : platform === "win32"
+          ? (["cmd.exe", ["/c", "start", "", url]] as const)
+          : (["xdg-open", [url]] as const);
+    const child = spawn(bin, [...args], {
+      shell: false,
+      detached: true,
+      stdio: "ignore",
     });
+    child.once("error", reject);
+    // Don't keep the parent process alive waiting on the child to exit —
+    // the browser, by design, outlives this REPL.
+    child.unref();
+    resolve();
   });
 }
 

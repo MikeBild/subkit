@@ -1,5 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { type ServerType, serve } from "@hono/node-server";
+import { Hono } from "hono";
 import { BadRequestError, ConflictError, HttpError, UnprocessableEntityError } from "../errors.ts";
+import { mapKnownErrorResponse } from "../middleware/error.ts";
+import type { AppEnv } from "../openapi.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 describe("HttpError envelope shape", () => {
@@ -117,5 +121,56 @@ describe("error envelope over HTTP", () => {
       expect(body.hint).toBeUndefined();
       expect(body.retry_after).toBeUndefined();
     }
+  });
+});
+
+// R2-W5 review fix: end-to-end coverage that a 429 emits BOTH the
+// `hint` + `retry_after` body fields AND the `Retry-After` HTTP
+// header in a single response. The unit tests above exercise the
+// envelope construction in isolation; this block stands up the
+// real `errorMiddleware` against a synthetic route that throws
+// `HttpError.withEnvelope(429, …, { hint, retry_after })` and
+// asserts the wire response.
+describe("error envelope wire — 429 hint + retry_after", () => {
+  let server: ServerType;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const app = new Hono<AppEnv>();
+    // Hono's router resolves `app.onError(...)` BEFORE upstream
+    // middleware catch blocks see a synchronously thrown error
+    // (apps/engine/src/http/server.ts:118). The standalone test app
+    // therefore wires the same `mapKnownErrorResponse` mapping the
+    // engine uses — the assertion below pins the wire shape end-to-end.
+    app.onError((err, c) => {
+      const known = mapKnownErrorResponse(c, err);
+      if (known) return known;
+      return c.json({ code: "internal_error", message: String(err) }, 500);
+    });
+    app.get("/__test__/throw-429", () => {
+      throw HttpError.withEnvelope(429, "rate_limited", "slow your roll", {
+        hint: "wait 30s and retry",
+        retry_after: 30,
+      });
+    });
+    server = serve({ fetch: app.fetch, port: 0 });
+    const addr = (server as unknown as { address: () => { port: number } | null }).address();
+    if (!addr || typeof addr !== "object") throw new Error("test server address resolution failed");
+    baseUrl = `http://127.0.0.1:${addr.port}`;
+  });
+
+  afterAll(() => {
+    server?.close();
+  });
+
+  test("body carries `hint` + `retry_after`; header carries `Retry-After`", async () => {
+    const res = await fetch(`${baseUrl}/__test__/throw-429`);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("30");
+    const body = (await res.json()) as ErrorBody;
+    expect(body.code).toBe("rate_limited");
+    expect(body.message).toBe("slow your roll");
+    expect(body.hint).toBe("wait 30s and retry");
+    expect(body.retry_after).toBe(30);
   });
 });

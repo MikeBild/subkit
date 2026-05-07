@@ -10,6 +10,7 @@
 // enum, optional).
 
 import { z } from "zod";
+import { debugLog } from "../../debug.ts";
 
 export interface EngineFieldDescriptor {
   type: "string" | "number" | "boolean" | "enum";
@@ -45,7 +46,19 @@ export function materializeSchema(
       const values = f.enumValues ?? [];
       if (values.length === 0) {
         // empty enum is invalid in zod; coerce to a string fallback.
+        // R2-S10 review fix: also surface this via debugLog so
+        // operators can grep for malformed engine descriptors instead
+        // of getting a free-text input where an enum was expected.
         inner = z.string();
+        debugLog(
+          "settings.schema_fallback",
+          {
+            field: name,
+            descriptor_type: "enum",
+            reason: "empty_enum_values",
+          },
+          {},
+        );
       } else {
         inner = z.enum(values as [string, ...string[]]);
       }

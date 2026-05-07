@@ -18,6 +18,16 @@
 
 import Fuse from "fuse.js";
 
+/**
+ * Single canonical predicate for "what counts as a slash-name
+ * character" — owned by the registry because the registry decides
+ * which characters are legal in a registered command name. The
+ * cursor-aware scanner in `repl/slash/findPositions.ts` reuses this
+ * to guarantee both surfaces (the catalog + the input scanner)
+ * accept the same alphabet. R1-S6 review fix.
+ */
+export const SLASH_NAME_CHAR_RE = /[A-Za-z0-9_-]/;
+
 export interface SlashCommand {
   name: string;
   aliases?: string[];
@@ -26,16 +36,28 @@ export interface SlashCommand {
   requires?: string;
   /** Category for the `/help` listing. */
   category: "session" | "auth" | "context" | "mcp" | "admin" | "util";
+  /**
+   * Where the dispatcher routes this command. Default `"engine"` —
+   * the slash flows through the engine so RBAC + audit run on the
+   * same path the LLM tool-call would. `"local"` means the command
+   * touches only the CLI's session state (no engine effect, no audit
+   * row): /clear, /help, /cost, /verbose, /debug, etc. Setting this
+   * field at registration removes a class of bug where the dispatcher
+   * routes by raw name (`LOCAL_ONLY_NAMES`) and a future name collision
+   * silently bypasses the audited path. Resolves R1-S2 / R2-W4.
+   */
+  routing?: "local" | "engine";
 }
 
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
-  { name: "help", help: "Show this cheat sheet", category: "util" },
+  { name: "help", help: "Show this cheat sheet", category: "util", routing: "local" },
   {
     name: "clear",
     aliases: ["new"],
     help: "Start a new conversation",
     category: "session",
     requires: "conversation:write",
+    routing: "local",
   },
   {
     name: "compact",
@@ -145,8 +167,13 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "session",
     requires: "conversation:write",
   },
-  { name: "status", help: "Print session + persona status", category: "util" },
-  { name: "cost", help: "Show token usage + remaining budget", category: "util" },
+  { name: "status", help: "Print session + persona status", category: "util", routing: "local" },
+  {
+    name: "cost",
+    help: "Show token usage + remaining budget",
+    category: "util",
+    routing: "local",
+  },
   {
     name: "exec",
     help: "Show per-step trace for the latest execution (or `/exec <execution_id>`)",
@@ -157,6 +184,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     name: "verbose",
     help: "Toggle verbose tool-log streaming inline in chat",
     category: "util",
+    routing: "local",
   },
   {
     name: "model",
@@ -168,7 +196,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "login", help: "Authenticate against the engine", category: "auth" },
   { name: "logout", help: "Drop the active profile", category: "auth" },
   { name: "tenant", help: "List or switch tenants", category: "auth", requires: "identity:read" },
-  { name: "memory", help: "Open SK.md in $EDITOR", category: "context" },
+  { name: "memory", help: "Open SK.md in $EDITOR", category: "context", routing: "local" },
   {
     name: "init",
     help: "Generate a starter SK.md",
@@ -206,8 +234,15 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     name: "debug",
     help: "Toggle SK_DEBUG full trace logging — `/debug on|off|tail` or `/debug` for status",
     category: "util",
+    routing: "local",
   },
-  { name: "exit", aliases: ["quit"], help: "Exit the REPL", category: "util" },
+  {
+    name: "exit",
+    aliases: ["quit"],
+    help: "Exit the REPL",
+    category: "util",
+    routing: "local",
+  },
   { name: "bug", help: "Open a GitHub issue report", category: "util" },
   {
     name: "paste",
@@ -229,6 +264,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     name: "history",
     help: "Show or `clear` the persistent prompt history",
     category: "util",
+    routing: "local",
   },
   {
     name: "export",
@@ -245,6 +281,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     aliases: ["tasks"],
     help: "Open the persona-aware action launcher",
     category: "util",
+    routing: "local",
   },
   // operator list commands
   {
