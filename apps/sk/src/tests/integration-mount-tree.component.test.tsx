@@ -176,9 +176,10 @@ describe("sk overhaul — mount tree integration", () => {
     );
     try {
       await ui.waitFor((t) => t.includes("hi from toast"));
-      // Wait long enough for TTL + tick (250ms tick interval) to fire.
-      await new Promise((r) => setTimeout(r, 350));
-      await flush();
+      // Toast TTL is 30ms; the queue prunes on a 250ms setInterval
+      // tick. Both are macrotasks; sleepMs opts into wall-clock
+      // progress for the prune cycle.
+      await ui.waitFor((t) => !t.includes("hi from toast"), { tries: 30, sleepMs: 50 });
       expect(ui.text()).not.toContain("hi from toast");
     } finally {
       ui.unmount();

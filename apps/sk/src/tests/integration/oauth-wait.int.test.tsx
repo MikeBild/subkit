@@ -42,10 +42,10 @@ describe("integration: OAuthWaitView poll loop", () => {
       </ThemeProvider>,
     );
     try {
-      for (let i = 0; i < 60 && credential === null; i++) {
-        await flush();
-        await new Promise((r) => setTimeout(r, 25));
-      }
+      // OAuth poll loop schedules ticks via setTimeout (macrotask).
+      // ui.waitFor's sleepMs opts in to wall-clock progress for this
+      // case via the test helper's `allow-wall-clock` annotation.
+      await ui.waitFor(() => credential !== null, { tries: 100, sleepMs: 10 });
       expect(credential).not.toBeNull();
       expect((credential as unknown as { id: string } | null)?.id).toBe("cred-xyz");
     } finally {
@@ -68,11 +68,8 @@ describe("integration: OAuthWaitView poll loop", () => {
       </ThemeProvider>,
     );
     try {
-      for (let i = 0; i < 60; i++) {
-        await flush();
-        await new Promise((r) => setTimeout(r, 25));
-        if (ui.text().includes("user_denied")) break;
-      }
+      // Same backoff caveat as the complete-poll test — needs sleepMs.
+      await ui.waitFor((t) => t.includes("user_denied"), { tries: 100, sleepMs: 10 });
       expect(ui.text()).toContain("user_denied");
     } finally {
       ui.unmount();
@@ -94,10 +91,9 @@ describe("integration: OAuthWaitView poll loop", () => {
       </ThemeProvider>,
     );
     try {
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 200; i++) {
         await flush();
         if (ui.text().includes("browser launch failed")) break;
-        await new Promise((r) => setTimeout(r, 10));
       }
       expect(ui.text()).toContain("browser launch failed");
     } finally {

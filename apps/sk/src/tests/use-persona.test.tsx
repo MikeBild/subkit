@@ -60,7 +60,7 @@ class FakeClient {
       tenant: { id: "t-test", slug: "t-test", display_name: "T" },
       recent_sessions: [],
       flags: {},
-      server_time: new Date().toISOString(),
+      server_time: "2024-11-14T22:13:20.000Z", // FROZEN_NOW
     });
   }
   whoami(): Promise<{
@@ -126,9 +126,10 @@ describe("usePersona", () => {
       <Probe client={client as unknown as EngineClient} onState={(s) => states.push(s)} />,
     );
     try {
-      for (let i = 0; i < 30 && (states.length === 0 || states[states.length - 1]?.loading); i++) {
+      // Spin flush until the bootstrap microtask resolves; flush() is
+      // the determinism-helper-equivalent setImmediate yield.
+      for (let i = 0; i < 50 && (states.length === 0 || states[states.length - 1]?.loading); i++) {
         await flush();
-        await new Promise((r) => setTimeout(r, 10));
       }
       const final = states[states.length - 1];
       expect(final?.loading).toBe(false);

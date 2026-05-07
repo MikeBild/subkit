@@ -106,10 +106,10 @@ describe("integration: onboarding wizard composition (picker → secret)", () =>
       await ui.type("sk_live_abc");
       await flush();
       await ui.press("enter");
-      // Wait for done callback.
-      for (let i = 0; i < 20 && captured === null; i++) {
+      // Wait for done callback. flush() yields to the microtask queue
+      // so onChange callbacks settle without a wall-clock delay.
+      for (let i = 0; i < 100 && captured === null; i++) {
         await flush();
-        await new Promise((r) => setTimeout(r, 5));
       }
       expect(captured).not.toBeNull();
       expect((captured as unknown as WizardState | null)?.picked?.slug).toBe("stripe");

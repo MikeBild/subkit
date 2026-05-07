@@ -11,10 +11,11 @@ describe("<OAuthWaitView>", () => {
           authUrl="https://login.example.com/oauth?state=abc"
           poll={async () => ({ status: "pending" })}
           onConnected={() => undefined}
-          openBrowser={async () => {
-            // Block the browser launch so we stay in `launching` state long enough to assert.
-            await new Promise((r) => setTimeout(r, 50));
-          }}
+          openBrowser={() =>
+            // Returns a promise that never resolves so we stay in
+            // `launching` state. No wall-clock timer required.
+            new Promise<void>(() => undefined)
+          }
         />
       </ThemeProvider>,
     );
@@ -44,11 +45,11 @@ describe("<OAuthWaitView>", () => {
       </ThemeProvider>,
     );
     try {
-      // Wait for the poll to resolve and the effect to fire.
-      for (let i = 0; i < 40 && credential === null; i++) {
-        await flush();
-        await new Promise((r) => setTimeout(r, 10));
-      }
+      // The poll loop schedules ticks via setTimeout, which is a
+      // macrotask — flush() alone (microtasks) won't advance it.
+      // ui.waitFor's `sleepMs` opts into wall-clock progress for
+      // exactly this case (backoff schedule).
+      await ui.waitFor(() => credential !== null, { tries: 100, sleepMs: 10 });
       expect(credential).not.toBeNull();
       expect((credential as unknown as { id: string } | null)?.id).toBe("cred-1");
     } finally {
@@ -94,11 +95,9 @@ describe("<OAuthWaitView>", () => {
       </ThemeProvider>,
     );
     try {
-      for (let i = 0; i < 40; i++) {
-        await flush();
-        await new Promise((r) => setTimeout(r, 10));
-        if (ui.text().includes("user_denied")) break;
-      }
+      // Same backoff caveat as the complete-poll test above —
+      // setTimeout-based ticks need wall-clock progress.
+      await ui.waitFor((t) => t.includes("user_denied"), { tries: 100, sleepMs: 10 });
       expect(ui.text()).toContain("user_denied");
     } finally {
       ui.unmount();

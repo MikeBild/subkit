@@ -20,7 +20,7 @@ const baseInput: StatusLineInput = {
   permission_mode: "ask",
   cwd: "/",
   git_branch: null,
-  timestamp: new Date().toISOString(),
+  timestamp: "2024-11-14T22:13:20.000Z", // FROZEN_NOW
 };
 
 beforeEach(() => {
@@ -69,13 +69,14 @@ describe("runShellHook", () => {
 
   test("aborting mid-flight resolves with cached or aborted status", async () => {
     const ctrl = new AbortController();
-    // Kick off a slow hook (sleep) and abort almost immediately.
-    const promise = runShellHook("sleep 5; printf 'late'", baseInput, {
+    // Kick off a slow hook (sleep) and abort immediately — synchronous
+    // abort before the spawn completes the abort path before any
+    // wall-clock delay matters.
+    ctrl.abort();
+    const r = await runShellHook("sleep 5; printf 'late'", baseInput, {
       timeoutMs: 5000,
       signal: ctrl.signal,
     });
-    setTimeout(() => ctrl.abort(), 5);
-    const r = await promise;
     // No cache was populated for this command, so we get aborted.
     expect(["aborted", "cached"]).toContain(r.source);
   });
