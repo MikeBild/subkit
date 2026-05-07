@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { SELF_INTROSPECTION_ROUTES } from "../../rbac/index.ts";
 
 const IDENTITY_ROUTES_DIR = "apps/engine/src/http/routes/identity";
+const ROUTES_DIR = "apps/engine/src/http/routes";
 
 // Map filename → expected route slug used in `SELF_INTROSPECTION_ROUTES`.
 // Keep the slug stable across renames; if a file is renamed without
@@ -22,6 +23,16 @@ const FILE_TO_SLUG: Record<string, string> = {
   "providers.ts": "identity-providers",
   "login.ts": "identity-login",
   "sessions-oidc.ts": "identity-sessions-oidc",
+};
+
+// R6-S5: top-level routes that the carve-out also covers (health,
+// metrics) — they don't live under `identity/` but are listed in
+// `SELF_INTROSPECTION_ROUTES`, so the contract test must reach them
+// too. Without this, the entries in the constant were decorative
+// w.r.t. the test.
+const TOP_LEVEL_FILE_TO_SLUG: Record<string, string> = {
+  "health.ts": "health",
+  "metrics.ts": "metrics",
 };
 
 // Files in `routes/identity/` that are NOT route modules (Zod
@@ -50,6 +61,27 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
         violations.push(
           `${file} maps to slug "${slug}" but slug is missing from SELF_INTROSPECTION_ROUTES`,
         );
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // R6-S5: extend the contract to top-level health/metrics so their
+  // entries in `SELF_INTROSPECTION_ROUTES` are real and not just
+  // decorative.
+  test("health.ts and metrics.ts at the route root are on the carve-out list (not gated)", () => {
+    const violations: string[] = [];
+    for (const [file, slug] of Object.entries(TOP_LEVEL_FILE_TO_SLUG)) {
+      const src = readFileSync(join(ROUTES_DIR, file), "utf8");
+      const gated = /requirePermission\s*\(/.test(src);
+      if (gated) {
+        violations.push(
+          `${file} now gates with requirePermission — drop "${slug}" from the carve-out list`,
+        );
+        continue;
+      }
+      if (!SELF_INTROSPECTION_ROUTES.includes(slug as never)) {
+        violations.push(`${file} expected slug "${slug}" missing from SELF_INTROSPECTION_ROUTES`);
       }
     }
     expect(violations).toEqual([]);

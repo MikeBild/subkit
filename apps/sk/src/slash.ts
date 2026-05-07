@@ -155,6 +155,10 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Restore a workflow version — `/restore <version>`",
     category: "session",
     requires: "workflow:write",
+    // R6-W3: exactly one positional arg, the version label
+    // (numeric ordinal or semver-ish). Engine validates the actual
+    // shape; the dispatcher rejects empty/multi-arg calls early.
+    argsSchema: z.tuple([z.string().min(1)]),
   },
   {
     name: "setup",
@@ -191,6 +195,11 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "List tool execution-mode badges, or pin a per-tool override. `/policy` lists; `/policy <tool> <auto|ask|review>` sets; `/policy <tool> reset` clears.",
     category: "session",
     requires: "conversation:write",
+    // R6-W3: 0 args (list); 2 args (`<tool> <auto|ask|review|reset>`).
+    argsSchema: z.union([
+      z.tuple([]),
+      z.tuple([z.string().min(1), z.enum(["auto", "ask", "review", "reset"])]),
+    ]),
   },
   { name: "status", help: "Print session + persona status", category: "util", routing: "local" },
   {
@@ -216,6 +225,9 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Switch the conversation's model",
     category: "session",
     requires: "conversation:write",
+    // R6-W3: exactly one positional arg, the model id (engine validates
+    // the actual ID against the configured route map).
+    argsSchema: z.tuple([z.string().min(1)]),
   },
   { name: "profile", aliases: ["env"], help: "List or switch profiles", category: "auth" },
   { name: "login", help: "Authenticate against the engine", category: "auth" },
@@ -254,6 +266,13 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Tail recent engine errors via /v1/diagnostics/errors — `/logs [limit] [trace_id]`",
     category: "admin",
     requires: "audit:read",
+    // R6-W3: 0, 1, or 2 args. limit (1-200), trace_id (any non-empty
+    // string — engine clamps further).
+    argsSchema: z.union([
+      z.tuple([]),
+      z.tuple([z.string().regex(/^\d+$/, "limit must be a positive integer")]),
+      z.tuple([z.string().regex(/^\d+$/, "limit must be a positive integer"), z.string().min(1)]),
+    ]),
   },
   {
     name: "debug",
@@ -421,6 +440,34 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "identity:read",
   },
 ] as const;
+
+// Typecheck-time invariant — every `requires:` referenced by a slash
+// command MUST be in the canonical `UX_GATING_PERMISSIONS` set, so the
+// bootstrap response actually probes that permission and the user
+// (especially admins) sees the command. Without this assertion a
+// slash like `/onboard` (requires: "connector:write") would be
+// silently filtered out of every persona's allow-set because the
+// engine never reports decisions for permissions the bootstrap
+// doesn't probe. Found via independent review (R6-C1).
+//
+// If this assignment fails to compile, the literal at the failing
+// line in `SLASH_COMMANDS` references a permission that's missing
+// from `@shared/ux-gating#UX_GATING_PERMISSIONS`. Either add it to
+// the canonical list (so admins can see it) or remove the slash
+// from the registry (if the engine permission is genuinely outside
+// the bootstrap probe set).
+import type { UxGatingPermission } from "@shared/ux-gating.ts";
+
+type _SlashRequiresMember<T> = T extends { requires: infer R }
+  ? R extends UxGatingPermission
+    ? T
+    : never
+  : T;
+type _AssertSlashRequiresAreInUxGating = {
+  [K in keyof typeof SLASH_COMMANDS]: _SlashRequiresMember<(typeof SLASH_COMMANDS)[K]>;
+};
+const _ASSERT_SLASH_REQUIRES_ARE_IN_UX_GATING: _AssertSlashRequiresAreInUxGating = SLASH_COMMANDS;
+void _ASSERT_SLASH_REQUIRES_ARE_IN_UX_GATING;
 
 export interface PersonaProbe {
   allows: (permission: string) => boolean;

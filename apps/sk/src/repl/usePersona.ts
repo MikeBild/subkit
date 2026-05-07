@@ -8,7 +8,7 @@
 // by the network.
 
 import { createHash } from "node:crypto";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
 import {
@@ -48,7 +48,11 @@ export function usePersona(
   const cacheDir = opts?.cacheDir;
   const cacheTtlMs = opts?.cacheTtlMs;
   const forceRefresh = opts?.forceRefresh;
-  const now = opts?.now;
+  // R6-S2: stash the `now` callback in a ref so an inline lambda
+  // from a parent doesn't re-fire the bootstrap effect every render.
+  // The closed-over `nowRef.current` is read fresh inside the effect.
+  const nowRef = useRef(opts?.now);
+  nowRef.current = opts?.now;
 
   // R5-W2: depend on a stable bootstrap KEY rather than the
   // `client` / `profile` *references*. A parent that re-creates
@@ -68,6 +72,7 @@ export function usePersona(
     let cancelled = false;
     void (async () => {
       try {
+        const now = nowRef.current;
         const optsResolved: BootstrapOptions = {
           ...(cacheDir !== undefined ? { cacheDir } : {}),
           ...(cacheTtlMs !== undefined ? { cacheTtlMs } : {}),
@@ -87,12 +92,15 @@ export function usePersona(
     return () => {
       cancelled = true;
     };
-    // The effect intentionally depends on `bootstrapKey` (a stable
-    // hash of the credential set) rather than `client`/`profile`
+    // The effect intentionally depends only on `bootstrapKey` and the
+    // primitive opts. `client`, `profile`, and `now` are read fresh
+    // from the latest render via closure / ref so a parent that
+    // re-creates EngineClient or passes an inline `now` lambda
+    // doesn't re-fire the effect (R5-W2 + R6-S2).
     // identity. `client` and `profile` are still read inside the
     // effect — they're closed over fresh from the latest render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bootstrapKey, cacheDir, cacheTtlMs, forceRefresh, now]);
+  }, [bootstrapKey, cacheDir, cacheTtlMs, forceRefresh]);
 
   return { snapshot, loading, error };
 }

@@ -14,18 +14,10 @@
 // (turn boundaries, text deltas, tool calls, errors). The conversation
 // metadata (model, status, owner) stays in `sessions.ts`.
 
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  statSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { trimJsonlFile } from "@shared/jsonl-ring.ts";
 import { detectSecretShape } from "../../lib/secret-shape.ts";
 
 /** Maximum events retained per session JSONL log. After this many
@@ -164,13 +156,14 @@ export function appendEvent(
   try {
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(path, `${JSON.stringify(event)}\n`, { encoding: "utf8", mode: 0o600 });
-    // R5-W5: every ~64 appends, check the line count and trim when
-    // the cap is exceeded. The check is cheap because we only count
-    // newlines via `readFileSync` when the file size suggests we
-    // *might* be over — the threshold is a sentinel, not a hard
-    // boundary. A 1.25 MB file with ~5k events of average 250 B
-    // means we read the file once every ~16 KB grown past the cap.
-    if (statSync(path).size > MAX_EVENTS_PER_SESSION * 64) {
+    // R5-W5 + R6-S1: trigger the trim when the file is plausibly
+    // over the documented cap. Average event size ~250 B → 5,000
+    // events ≈ 1.25 MB. Multiplier `* 256` gives a 1.28 MB
+    // threshold so the trim fires close to the stated cap rather
+    // than 5x earlier (the previous `* 64` threshold gave an
+    // effective cap of ~2,500 events because the file had only
+    // grown to 320 KB before trimming).
+    if (statSync(path).size > MAX_EVENTS_PER_SESSION * 256) {
       maybeTrimJsonl(path, MAX_EVENTS_PER_SESSION);
     }
   } catch {
@@ -178,15 +171,11 @@ export function appendEvent(
   }
 }
 
-/** Trim a JSONL file to the most recent `keep` events via
- *  write-then-rename. Atomic on POSIX: readers either see the old
- *  file or the new one, never a half-written truncation.
- *
- *  R5-S6: this is the third near-identical implementation
- *  (`apps/sk/src/repl/history-store.ts` has two more). When the
- *  next consumer lands, lift this into `packages/shared/src/jsonl-ring.ts`
- *  with the same `(path, keep, halve?)` shape. Today it's local
- *  to keep the change set focused; the duplication is acknowledged. */
+/** Trim the conversation's JSONL log to the most recent
+ *  `keep / 2` events. Delegates the atomic write-then-rename to the
+ *  shared helper at `@shared/jsonl-ring`. The trim halves rather
+ *  than truncates-to-keep so the next size check has headroom
+ *  before firing again. R6-S6 (helper extraction). */
 function maybeTrimJsonl(path: string, keep: number): void {
   let content: string;
   try {
@@ -194,23 +183,7 @@ function maybeTrimJsonl(path: string, keep: number): void {
   } catch {
     return;
   }
-  const lines = content.split("\n").filter((l) => l.length > 0);
-  if (lines.length <= keep) return;
-  // Keep the most recent half — `keep / 2` rather than `keep` so the
-  // trim has room to run before the next forced check.
-  const head = Math.max(0, lines.length - Math.floor(keep / 2));
-  const trimmed = lines.slice(head).join("\n");
-  const tmp = `${path}.tmp-${Date.now()}`;
-  try {
-    writeFileSync(tmp, `${trimmed}\n`, { encoding: "utf8", mode: 0o600 });
-    renameSync(tmp, path);
-  } catch {
-    try {
-      unlinkSync(tmp);
-    } catch {
-      /* nothing left to clean up */
-    }
-  }
+  trimJsonlFile(path, content, Math.floor(keep / 2));
 }
 
 /**

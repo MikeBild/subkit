@@ -27,9 +27,12 @@ export const UX_GATING_PERMISSIONS = [
   "workflow:read",
   "workflow:write",
   "connector:read",
+  "connector:write",
   "skill:write",
   "execution:read",
   "notification:read",
+  "notification:write",
+  "discovery:read",
   // Tier 4 — admin
   "audit:read",
   "identity:read",
@@ -37,6 +40,7 @@ export const UX_GATING_PERMISSIONS = [
   "api_key:read",
   "portal_token:read",
   "knowledge:read",
+  "tunnel:read",
 ] as const;
 
 export type UxGatingPermission = (typeof UX_GATING_PERMISSIONS)[number];

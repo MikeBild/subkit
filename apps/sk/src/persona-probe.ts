@@ -40,9 +40,12 @@ const TIER_PERMISSIONS: Record<number, readonly UxGatingPermission[]> = {
     "workflow:read",
     "workflow:write",
     "connector:read",
+    "connector:write",
     "skill:write",
     "execution:read",
     "notification:read",
+    "notification:write",
+    "discovery:read",
   ],
   4: [
     "audit:read",
@@ -51,6 +54,7 @@ const TIER_PERMISSIONS: Record<number, readonly UxGatingPermission[]> = {
     "api_key:read",
     "portal_token:read",
     "knowledge:read",
+    "tunnel:read",
   ],
 };
 

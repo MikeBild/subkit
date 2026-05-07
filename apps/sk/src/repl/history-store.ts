@@ -14,16 +14,10 @@
 // Every function takes an explicit `path` so tests can point at a
 // tmpdir without touching $HOME.
 
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { trimJsonlFile } from "@shared/jsonl-ring.ts";
 
 export interface HistoryEntry {
   /** Unix timestamp (ms). */
@@ -128,28 +122,31 @@ export function appendHistory(
 
   if (existing.length + 1 <= MAX_PROMPT_HISTORY) {
     try {
-      appendFileSync(path, line);
+      appendFileSync(path, line, { mode: 0o600 });
     } catch {
       // best-effort — silent failure preserves the REPL UX
     }
     return;
   }
 
-  const kept = existing.slice(existing.length + 1 - MAX_PROMPT_HISTORY);
-  kept.push(entry);
-  const tmp = `${path}.tmp.${process.pid}`;
+  // R6-S6: trim via the shared `trimJsonlFile` helper. Build the
+  // post-trim content (existing + new entry, capped at the ring
+  // size) by appending to the file first, then asking the helper to
+  // collapse it. The helper handles atomic write-then-rename + the
+  // explicit 0o600 mode (R6-W1).
   try {
-    writeFileSync(tmp, `${kept.map((e) => JSON.stringify(e)).join("\n")}\n`);
-    renameSync(tmp, path);
+    appendFileSync(path, `${JSON.stringify(entry)}\n`, { mode: 0o600 });
+    const after = readFileSync(path, "utf8");
+    trimJsonlFile(path, after, MAX_PROMPT_HISTORY);
   } catch {
-    // ignore
+    // ignore — best-effort
   }
 }
 
 /** Wipe the history file. Used by a future `/history clear` command. */
 export function clearHistory(path: string = defaultHistoryPath()): void {
   try {
-    if (existsSync(path)) writeFileSync(path, "");
+    if (existsSync(path)) writeFileSync(path, "", { mode: 0o600 });
   } catch {
     // ignore
   }
@@ -208,18 +205,17 @@ export function appendSlashHistory(
   };
   if (existing.length + 1 <= SLASH_RING_MAX) {
     try {
-      appendFileSync(path, `${JSON.stringify(entry)}\n`);
+      appendFileSync(path, `${JSON.stringify(entry)}\n`, { mode: 0o600 });
     } catch {
       // ignore
     }
     return;
   }
-  const kept = existing.slice(existing.length + 1 - SLASH_RING_MAX);
-  kept.push(entry);
-  const tmp = `${path}.tmp.${process.pid}`;
+  // R6-S6: same shared-helper pattern as the prompt ring above.
   try {
-    writeFileSync(tmp, `${kept.map((e) => JSON.stringify(e)).join("\n")}\n`);
-    renameSync(tmp, path);
+    appendFileSync(path, `${JSON.stringify(entry)}\n`, { mode: 0o600 });
+    const after = readFileSync(path, "utf8");
+    trimJsonlFile(path, after, SLASH_RING_MAX);
   } catch {
     // ignore
   }

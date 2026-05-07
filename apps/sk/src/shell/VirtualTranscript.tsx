@@ -95,11 +95,19 @@ export function VirtualTranscript<T>({
     renderedNodes.push(<Box key={key}>{renderItem(item, width)}</Box>);
   }
 
+  // R6-S3: stash `onRendered` in a ref so a parent passing an inline
+  // lambda (`onRendered={(info) => …}`) doesn't re-fire the effect
+  // every render — the closure reads `onRenderedRef.current` fresh
+  // from the latest render. Same hazard pattern as `usePersona`'s
+  // `now` (R6-S2).
+  const onRenderedRef = useRef(onRendered);
+  onRenderedRef.current = onRendered;
   // Fire side-effects for telemetry / tests after commit.
   useEffect(() => {
-    onRendered?.({ renderedKeys, totalHeight });
+    onRenderedRef.current?.({ renderedKeys, totalHeight });
     // We intentionally re-fire only when the slice or width changes.
-  }, [renderedKeys.join("|"), totalHeight, onRendered]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderedKeys.join("|"), totalHeight]);
 
   return <Box flexDirection="column">{renderedNodes}</Box>;
 }
