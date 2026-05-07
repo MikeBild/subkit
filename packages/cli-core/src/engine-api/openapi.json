@@ -10852,6 +10852,26 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthenticated — no bearer or invalid bearer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal — engine bug or schema regression.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }

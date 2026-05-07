@@ -1483,6 +1483,24 @@ export interface paths {
                         "application/json": components["schemas"]["SkBootstrap"];
                     };
                 };
+                /** @description Unauthenticated — no bearer or invalid bearer. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Internal — engine bug or schema regression. */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         put?: never;
