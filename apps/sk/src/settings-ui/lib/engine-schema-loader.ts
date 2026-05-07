@@ -44,22 +44,15 @@ export class EngineSchemaError extends Error {
  * Materialize a Zod schema from an engine descriptor. The shape is
  * compatible with SchemaForm's `_describeFieldsForTests` walker.
  *
- * Strict by default: an empty enum or an unknown field type
- * **throws** an `EngineSchemaError` rather than silently coercing
- * the field to `z.string()` / `z.unknown()`. Permissive fallbacks
- * masked engine bugs as silent CLI regressions (R3-W3 / R4-W3).
- *
- * Pass `permissive: true` to opt back into the legacy fallbacks for
- * the rare callers that need to render a partial schema (e.g. the
- * CLI's bug-report path that wants to dump whatever the engine
- * returned, even if malformed); those callers receive a debug log
- * for each fallback so the malformed shape is still observable.
+ * Strict: an empty enum or an unknown field type **throws** an
+ * `EngineSchemaError` — silent fallbacks were a R3-W3 / R4-W3 bug.
+ * R7-S4: dropped the previous `permissive: true` escape hatch
+ * because no in-tree caller used it (YAGNI). Re-add when a real
+ * bug-report path needs the fallback shape.
  */
 export function materializeSchema(
   d: EngineSchemaDescriptor,
-  opts: { permissive?: boolean } = {},
 ): z.ZodObject<Record<string, z.ZodTypeAny>> {
-  const permissive = opts.permissive === true;
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const [name, f] of Object.entries(d.fields)) {
     let inner: z.ZodTypeAny;
@@ -74,31 +67,24 @@ export function materializeSchema(
           { field: name, descriptor_type: "enum", reason: "empty_enum_values" },
           {},
         );
-        if (!permissive) {
-          throw new EngineSchemaError(
-            name,
-            "empty_enum_values",
-            `field "${name}" is declared as enum but the engine returned no enumValues`,
-          );
-        }
-        inner = z.string();
-      } else {
-        inner = z.enum(values as [string, ...string[]]);
+        throw new EngineSchemaError(
+          name,
+          "empty_enum_values",
+          `field "${name}" is declared as enum but the engine returned no enumValues`,
+        );
       }
+      inner = z.enum(values as [string, ...string[]]);
     } else {
       debugLog(
         "settings.schema_fallback",
         { field: name, descriptor_type: f.type, reason: "unknown_field_type" },
         {},
       );
-      if (!permissive) {
-        throw new EngineSchemaError(
-          name,
-          "unknown_field_type",
-          `field "${name}" has unsupported descriptor type "${f.type}"`,
-        );
-      }
-      inner = z.never();
+      throw new EngineSchemaError(
+        name,
+        "unknown_field_type",
+        `field "${name}" has unsupported descriptor type "${f.type}"`,
+      );
     }
     shape[name] = f.optional ? inner.optional() : inner;
   }

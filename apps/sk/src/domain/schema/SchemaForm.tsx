@@ -38,6 +38,14 @@ export interface SchemaFormError {
 export interface SchemaFormProps<T> {
   schema: z.ZodType<T>;
   value: T;
+  /**
+   * Called when the user commits an edit. **Today only fires from
+   * code-mode** — form-mode is a read-only inspector (R5-W7 / R6-W4).
+   * The prop is exposed unconditionally so consumers don't have to
+   * branch on `mode`; a future PR that adds form-mode keystroke
+   * editing will wire it through this same callback without changing
+   * the public surface.
+   */
   onChange: (next: T) => void;
   mode: SchemaFormMode;
   onModeChange: (m: SchemaFormMode) => void;

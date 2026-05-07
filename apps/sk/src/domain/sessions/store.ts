@@ -18,6 +18,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSy
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { trimJsonlFile } from "@shared/jsonl-ring.ts";
+import { debugLog, serializeDebugError } from "../../debug.ts";
 import { detectSecretShape } from "../../lib/secret-shape.ts";
 
 /** Maximum events retained per session JSONL log. After this many
@@ -166,8 +167,12 @@ export function appendEvent(
     if (statSync(path).size > MAX_EVENTS_PER_SESSION * 256) {
       maybeTrimJsonl(path, MAX_EVENTS_PER_SESSION);
     }
-  } catch {
-    // best-effort
+  } catch (err) {
+    // R7-S3: best-effort write, but surface the failure via debugLog
+    // so a read-only `~/.sk` (CI runner, container with mounted
+    // tmpfs) doesn't silently drop every event. Pairs with
+    // `bootstrap.cache_write_failed`.
+    debugLog("session.append_failed", { path, error: serializeDebugError(err) }, {});
   }
 }
 

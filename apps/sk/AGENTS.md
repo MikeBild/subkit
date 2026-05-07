@@ -39,6 +39,17 @@ Canonical docs: `docs/03-input-surfaces.md`, `docs/04-authoring.md`.
   streaming events are defined on the engine. Don't invent client-side variants.
 - **Slash commands are thin.** Parse args, call a tool on the engine, render the
   result. No heavy client-side processing.
+- **Slash positional args validation is opt-in via `argsSchema`.** Each entry in
+  `apps/sk/src/slash.ts` may declare `argsSchema: z.ZodType<readonly string[]>`;
+  the dispatcher (`apps/sk/src/repl/slash/handler.ts`) validates at the boundary
+  before reaching the per-command branch. Default when omitted is
+  `z.array(z.string())` — identity, accepting any positional shape. Engine
+  tool calls validate again server-side, so a missing `argsSchema` is not a
+  contract violation, but commands that consume `rawArgs[0..n]` directly should
+  declare one so a malformed call surfaces a structured banner instead of an
+  ambiguous engine 422. R5-W3 introduced the field; R7-W3 documents the
+  rollout: add `argsSchema` whenever you touch a slash that takes positional
+  args, but do not gate PRs on retroactively adding schemas to all 40+ entries.
 - **MCP stdio proxy preserves the contract.** When bridging, don't rewrite tool
   results; pass them through.
 - **Profile storage goes through `config.ts`.** Don't read `~/.sk/config.json`

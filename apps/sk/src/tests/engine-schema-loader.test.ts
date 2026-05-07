@@ -57,15 +57,10 @@ describe("engine schema loader", () => {
     );
   });
 
-  test("permissive=true preserves the legacy z.string() fallback for empty enum", () => {
-    const schema = materializeSchema(
-      { fields: { kind: { type: "enum", enumValues: [] } } },
-      { permissive: true },
-    );
-    expect(schema.safeParse({ kind: "anything" }).success).toBe(true);
-  });
-
-  test("unknown field types throw by default", () => {
+  // R7-S4: dropped the `permissive: true` escape hatch — no in-tree
+  // caller used it. Re-add when a real bug-report path needs the
+  // fallback shape.
+  test("unknown field types throw", () => {
     expect(() =>
       materializeSchema({
         fields: {

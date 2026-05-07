@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.ts";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
+import { apiKeys, conversations, systemAccounts, tenants, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -16,6 +17,9 @@ let memberApiKey: string;
 // `principal.kind !== "user"` branch added in R2-S7 that skips the
 // recent_sessions query entirely.
 let systemAccountApiKey: string;
+// R6-W3: also remember the system_account id so we can seed a
+// conversation owned by it and prove the skip path actually fires.
+let systemAccountId: string;
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("sk-bootstrap");
@@ -83,36 +87,29 @@ beforeAll(async () => {
     scopes: ["*"],
   });
   systemAccountApiKey = sk;
+  systemAccountId = sysAcct.id;
+
+  // R6-W3 review fix: seed a conversation owned by the system_account
+  // so the "system_account sees empty recent_sessions" test below
+  // proves the SKIP path is firing (not just "no rows seeded").
+  // Without this seed, the empty result set could be a false-pass.
+  await ctx.db.insert(conversations).values({
+    tenant_id: ctx.tenantId,
+    owner_id: sysAcct.id,
+    title: "system-account-owned-conversation",
+    status: "active",
+  });
 });
 
 afterAll(async () => {
   await ctx.cleanup();
 });
 
-interface BootstrapResponse {
-  whoami: {
-    id: string;
-    kind: "user" | "system_account";
-    tenant_id: string;
-    tenant_slug: string | null;
-    email: string | null;
-    role_name: string | null;
-    provider: string;
-    base_url: string | null;
-    scopes: string[] | null;
-  };
-  permissions: string[];
-  permissions_checked: string[];
-  tenant: { id: string; slug: string | null; display_name: string | null };
-  recent_sessions: Array<{
-    id: string;
-    title: string | null;
-    updated_at: string;
-    tenant_id: string;
-  }>;
-  flags: Record<string, boolean>;
-  server_time: string;
-}
+// R7-W2 review fix: track the actual generated schema rather than a
+// hand-rolled `Record<string, boolean>`. When the first real flag
+// lands, the consumer-side type narrows alongside the engine-side
+// Zod schema (per R5-S2).
+type BootstrapResponse = components["schemas"]["SkBootstrap"];
 
 describe("GET /v1/sk/bootstrap", () => {
   test("no bearer -> 401", async () => {
@@ -230,7 +227,7 @@ describe("GET /v1/sk/bootstrap", () => {
   // change that adds system_account-owned conversations doesn't
   // silently leak ids without the explicit `conversation:read`
   // gate also covering it.
-  test("system_account principal sees `recent_sessions === []` (R2-S7 + R4-S4)", async () => {
+  test("system_account principal sees `recent_sessions === []` (R2-S7 + R4-S4 + R6-W3)", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/sk/bootstrap`, {
       headers: { authorization: `Bearer ${systemAccountApiKey}` },
     });
@@ -238,7 +235,12 @@ describe("GET /v1/sk/bootstrap", () => {
     const body = (await res.json()) as BootstrapResponse;
     expect(body.whoami.kind).toBe("system_account");
     expect(body.whoami.tenant_id).toBe(ctx.tenantId);
+    // Pinned by the seeded conversation in beforeAll: there IS a row
+    // owned by `systemAccountId` in this tenant. The empty array
+    // proves the route's `principal.kind !== "user"` skip path fires
+    // (not absence-of-data). R6-W3.
     expect(body.recent_sessions).toEqual([]);
+    void systemAccountId;
   });
 
   // R4-S3 / R4-W2: the wire-level pin that each `recent_sessions[]`

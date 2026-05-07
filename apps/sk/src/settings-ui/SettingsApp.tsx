@@ -9,8 +9,14 @@ export interface SettingsAppOptions {
   client: EngineClient;
   tenant?: string;
   initialTab?: string;
-  /** Profile name used as the draft-store key. Defaults to "default" so
-   *  callers that don't pass it still get retention scoped per-tenant. */
+  /**
+   * @experimental — accepted for API stability but currently a no-op.
+   * The draft-store retention path (`apps/sk/src/settings-ui/lib/draft-store.ts`)
+   * is plumbed but `SettingsModal` doesn't yet expose `scrollTop` /
+   * `expandedKeys` / `partialFieldEdits` on unmount, so saving the
+   * snapshot keyed by `(profileName, tenant)` would be empty. The
+   * follow-up that lands modal state threading will start consuming
+   * this prop. R6-W5 review note. */
   profileName?: string;
 }
 

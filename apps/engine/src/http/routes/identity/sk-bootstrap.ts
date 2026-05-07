@@ -31,7 +31,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
-import { conversations, roles, tenants, users } from "../../../db/schema/index.ts";
+import { conversations, roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { can, UX_GATING_PERMISSIONS, type UxGatingPermission } from "../../../rbac/index.ts";
@@ -136,9 +136,28 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
 
+    // R6-W2 review fix: narrow `principal.kind` once at the top
+    // rather than casting at the response-build site. The auth layer
+    // produces `"user" | "system_account"` today, but a future
+    // expansion (machine identity? tenant agent?) would silently 500
+    // the route via the response Zod's enum check. Fail loud here
+    // instead — the operator gets a structured 500 with a code, not
+    // a Zod schema error.
+    if (principal.kind !== "user" && principal.kind !== "system_account") {
+      logger.warn({
+        module: "http",
+        action: "sk_bootstrap_unknown_principal_kind",
+        msg: "principal.kind not recognised; refusing to bootstrap",
+        tenant_id: principal.tenant_id,
+        principal_kind: String(principal.kind),
+      });
+      throw new Error(`unknown principal.kind: ${String(principal.kind)}`);
+    }
+    const principalKind: "user" | "system_account" = principal.kind;
+
     let email: string | null = principal.email ?? null;
     let roleName: string | null = null;
-    if (principal.kind === "user") {
+    if (principalKind === "user") {
       const [row] = await db
         .select({
           email: users.email,
@@ -154,7 +173,9 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
         roleName = row.role_name ?? row.role_legacy ?? null;
       }
     } else {
-      const { systemAccounts } = await import("../../../db/schema/index.ts");
+      // R7-W4: hoisted to the static import at the top of the file.
+      // The previous dynamic import was unnecessary, slightly slower
+      // per-call, and broke cold-start tree-shaking analysis.
       const [row] = await db
         .select({ role_name: roles.name })
         .from(systemAccounts)
@@ -178,6 +199,14 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
     // Probe all UX-gating permissions in parallel. `can()` is the
     // authoritative check; failures here resolve to "not allowed"
     // rather than 500'ing the bootstrap call.
+    // R7-W1: keep insertion order deterministic across cache writes
+    // by collecting decisions in a Map keyed on the canonical
+    // `UX_GATING_PERMISSIONS` order, then sorting before responding.
+    // `Promise.all` order of resolution is non-deterministic — the
+    // previous `.push(perm)` racing pattern emitted permissions in
+    // resolution order, which meant two consecutive cache writes
+    // for the same principal could differ on disk. Benign for the
+    // Set-based consumer but inflates cache-diff noise unnecessarily.
     const allowedPermissions: UxGatingPermission[] = [];
     await Promise.all(
       UX_GATING_PERMISSIONS.map(async (perm) => {
@@ -205,6 +234,8 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
         }
       }),
     );
+    // R7-W1: stable lexicographic order across writes.
+    allowedPermissions.sort();
 
     // Last 10 conversation rows the principal owns, newest first.
     // Gated on `conversation:read` (W5 review fix): even though we
@@ -212,20 +243,25 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
     // for a principal that has been explicitly denied that
     // permission would amount to a display-only leak. Skip the
     // query entirely for those principals.
-    let recent: Array<{ id: string; title: string | null; updated_at: Date }> = [];
+    // R6-S1 review fix: flatten the previous empty-if-then-else
+    // shape into a positive guard. Two contracts encoded here:
+    //   - R5: must hold `conversation:read` (display-only leak gate)
+    //   - R2-S7: must be a `user` principal (system_accounts and
+    //     portal-tokens never own conversations today)
+    let recent: Array<{ tenant_id: string; id: string; title: string | null; updated_at: Date }> =
+      [];
     const canReadConversations = allowedPermissions.includes("conversation:read");
-    // R2-S7 review fix: skip the query entirely for non-`user`
-    // principals. `conversations.owner_id` is a free-form UUID column
-    // (apps/engine/src/db/schema/conversations.ts), and only user
-    // principals own conversations today. System accounts and portal
-    // tokens never produce a row, so the query is wasted work — and
-    // the empty array becomes contractual rather than incidental.
-    if (!canReadConversations || principal.kind !== "user") {
-      // Skip the query; recent stays []. Documented behavior.
-    } else
+    if (canReadConversations && principalKind === "user") {
       try {
-        recent = await db
+        // R7-W5 review fix: select `conversations.tenant_id` from the
+        // DB and assert at response-build time that every row matches
+        // `principal.tenant_id`. By query construction these are
+        // equal — but if a future refactor drops the `tenant_id`
+        // filter (the regression the existing comment warns about),
+        // this assertion catches it before a row leaks.
+        const rows = await db
           .select({
+            tenant_id: conversations.tenant_id,
             id: conversations.id,
             title: conversations.title,
             updated_at: conversations.updated_at,
@@ -239,12 +275,31 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
           )
           .orderBy(desc(conversations.updated_at))
           .limit(10);
+        for (const r of rows) {
+          if (r.tenant_id !== principal.tenant_id) {
+            // Defensive: a row with a different tenant_id reaching
+            // this point means the WHERE filter was bypassed. Refuse
+            // to surface ANY rows rather than partially leaking.
+            logger.warn({
+              module: "http",
+              action: "sk_bootstrap_tenant_mismatch",
+              msg: "recent_sessions row carried foreign tenant_id; rejecting batch",
+              tenant_id: principal.tenant_id,
+              row_tenant_id: r.tenant_id,
+              row_id: r.id,
+            });
+            recent = [];
+            break;
+          }
+        }
+        if (recent.length === 0 && rows.length > 0 && rows[0]?.tenant_id === principal.tenant_id) {
+          recent = rows;
+        }
       } catch (err) {
         // conversations table is per-tenant; if a tenant has none yet
         // the query is fine, but if the schema isn't migrated or a
         // genuine DB outage hits we still don't want bootstrap to
-        // fail. Log so a tenant-isolation regression (e.g. someone
-        // dropping the tenant_id filter above) doesn't go silent.
+        // fail. Log so a tenant-isolation regression doesn't go silent.
         logger.warn({
           module: "http",
           action: "sk_bootstrap_recent_sessions_failed",
@@ -254,12 +309,13 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
         });
         recent = [];
       }
+    }
 
     return c.json(
       {
         whoami: {
           id: principal.id,
-          kind: principal.kind as "user" | "system_account",
+          kind: principalKind,
           tenant_id: principal.tenant_id,
           tenant_slug: tenantRow?.slug ?? null,
           email,
@@ -282,9 +338,11 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
           display_name: tenantRow?.display_name ?? null,
         },
         recent_sessions: recent.map((r) => ({
-          // R4-S3: each row stamps the principal's tenant_id (which
-          // matches the row's tenant_id by query construction).
-          tenant_id: principal.tenant_id,
+          // R7-W5: use the row's `tenant_id` directly. The defensive
+          // assertion above guarantees it equals `principal.tenant_id`
+          // (or the batch was rejected entirely), so this propagates
+          // the DB invariant rather than a CLI-side cast.
+          tenant_id: r.tenant_id,
           id: r.id,
           title: r.title,
           updated_at: r.updated_at.toISOString(),

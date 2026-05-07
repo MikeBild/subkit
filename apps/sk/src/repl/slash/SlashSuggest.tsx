@@ -45,7 +45,22 @@ export function SlashSuggest({
 }: SlashSuggestProps): React.ReactElement | null {
   const tokens = useTheme();
 
-  // Empty buffer: welcome hint.
+  // R6-W1 review fix: rules-of-hooks. Both `useMemo` calls below
+  // were originally placed AFTER the `buffer.length === 0` early
+  // return, which meant the hook count jumped from 1 to 3 when the
+  // user typed the first character — corrupting React's hook table.
+  // Hoisting both calls above any early return keeps the count
+  // stable across renders. The empty-buffer branch still returns the
+  // welcome hint; the memos run unconditionally with whatever buffer
+  // value React last committed.
+  const span = useMemo(() => spanAtCursor(buffer, cursor), [buffer, cursor]);
+  const ranked = useMemo(
+    () => (span ? searchSlashCommands(span.name, persona, maxSuggestions) : []),
+    [span, persona, maxSuggestions],
+  );
+
+  // Empty buffer: welcome hint. Computed locally so it doesn't open
+  // a new hook scope; `searchSlashCommands` is pure.
   if (buffer.length === 0) {
     if (!showWelcomeHint) return null;
     const visibleCount = searchSlashCommands("", persona, 999).length;
@@ -59,14 +74,9 @@ export function SlashSuggest({
     );
   }
 
-  // Find the slash span the cursor sits inside.
-  const span = useMemo(() => spanAtCursor(buffer, cursor), [buffer, cursor]);
+  // Cursor is not inside a slash span — render nothing.
   if (!span) return null;
 
-  const ranked = useMemo(
-    () => searchSlashCommands(span.name, persona, maxSuggestions),
-    [span.name, persona, maxSuggestions],
-  );
   const highlighted = highlightForName(span.name, persona, tokens, highlightColor);
 
   return (

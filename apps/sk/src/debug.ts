@@ -87,7 +87,13 @@ export type DebugRecordKind =
   // renders, but this is a sign that the engine shipped a malformed
   // descriptor (typically: a connector whose enum source returned
   // an empty list). R2-S10 review fix.
-  | "settings.schema_fallback";
+  | "settings.schema_fallback"
+  // session.append_failed — emitted when `appendEvent` fails to
+  // write a per-conversation JSONL event (read-only volume, full
+  // disk, EPERM). The REPL keeps running; the event is dropped.
+  // Pairs with `bootstrap.cache_write_failed` so silent disk
+  // failures stay grep-able. R7-S3.
+  | "session.append_failed";
 
 export interface DebugCorrelationFields {
   mode?: DebugMode;
