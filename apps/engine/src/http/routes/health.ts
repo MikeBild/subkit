@@ -7,7 +7,7 @@ import type { Db } from "../../db/client.ts";
 import { getDb } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
 import { getUpdateState } from "../../update-state.ts";
-import { getSchemaDriftFlag } from "../health-state.ts";
+import { getHealthState } from "../health-state.ts";
 import type { AppEnv } from "../openapi.ts";
 import { OPENAPI_INFO } from "../openapi.ts";
 
@@ -75,7 +75,7 @@ export function registerHealthRoute(app: OpenAPIHono<AppEnv>, deps: HealthDeps =
         status: "ok" as const,
         version: OPENAPI_INFO.version,
         db_connected,
-        db_schema_drift: getSchemaDriftFlag(),
+        db_schema_drift: getHealthState().schema_drift,
         uptime_seconds: Math.floor((Date.now() - BOOT_AT) / 1000),
         ...(updateState
           ? {

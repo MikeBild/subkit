@@ -27,6 +27,7 @@
 // already in the table?") instead of a timestamp watermark.
 
 import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { logger } from "../logging/logger.ts";
 import type { Db } from "./client.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
@@ -38,15 +39,35 @@ export interface MigrationReport {
   total: number;
 }
 
-export interface DriftReport {
+/**
+ * Single source of truth for the drift report wire shape — the
+ * `/v1/diagnostics/drift` route imports this schema rather than
+ * redeclaring the columns. Keeps the runtime + the OpenAPI surface
+ * locked together (review W3).
+ */
+export const UnknownInDbRowSchema = z.object({
+  row_id: z.number().int(),
+  hash: z.string(),
+  created_at: z.number().int().nullable(),
+});
+
+export const MissingInDbRowSchema = z.object({
+  idx: z.number().int(),
+  tag: z.string(),
+  hash: z.string(),
+});
+
+export const DriftReportSchema = z.object({
   /** Rows present in `drizzle.__drizzle_migrations` whose hash is not
    *  in this binary's embedded set. Indicates the DB was migrated by a
    *  different binary lineage — actionable signal for #149. */
-  unknown_in_db: Array<{ row_id: number; hash: string; created_at: number | null }>;
+  unknown_in_db: z.array(UnknownInDbRowSchema),
   /** Embedded migrations whose hash is not in the DB. Informational —
    *  `runMigrations` would apply these on the same boot. */
-  missing_in_db: Array<{ idx: number; tag: string; hash: string }>;
-}
+  missing_in_db: z.array(MissingInDbRowSchema),
+});
+
+export type DriftReport = z.infer<typeof DriftReportSchema>;
 
 async function ensureMigrationsTable(db: Db): Promise<void> {
   // pgcrypto is required for `gen_random_uuid()` defaults. Drizzle does
@@ -142,6 +163,11 @@ export async function runMigrations(db: Db): Promise<MigrationReport> {
     });
     await db.transaction(async (tx) => {
       for (const stmt of m.statements) {
+        // Safe `sql.raw`: `stmt` originates from `EMBEDDED_MIGRATIONS`,
+        // i.e. SQL bodies imported with `with { type: "text" }` and
+        // baked into the engine binary at build time. There is no
+        // user-controlled path into this string — drift between source
+        // and embedded set is caught by `migrate-embedded-bundle.test.ts`.
         await tx.execute(sql.raw(stmt));
       }
       await tx.execute(

@@ -7,6 +7,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, users } from "../../db/schema/index.ts";
+import { withContext } from "../../logging/context.ts";
 import { logger } from "../../logging/logger.ts";
 import { logRing } from "../../observability/log-ring.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -97,6 +98,93 @@ describe("/v1/diagnostics/logs", () => {
       headers: { authorization: `Bearer ${memberKey}` },
     });
     expect(res.status).toBe(403);
+  });
+
+  test("rejects malformed `since` query (review W1)", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/logs?since=not-a-number`, {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("audit:read is required for SSE — member gets 403 (review W4)", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/logs/stream`, {
+      headers: { authorization: `Bearer ${memberKey}`, accept: "text/event-stream" },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  test("SSE rejects malformed query bag with 400 instead of opening stream (review W1)", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/logs/stream?level=panic`, {
+      headers: { authorization: `Bearer ${srv.apiKey}`, accept: "text/event-stream" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("tail filters foreign-tenant entries before serving (review W2/W5)", async () => {
+    const FOREIGN_TENANT = "00000000-0000-0000-0000-000000000fee";
+    const before = Date.now(); // allow-wall-clock: ring window bound
+    // Emit one log line under a different tenant context — would have
+    // been visible to this admin without the W2 fix.
+    await withContext(
+      { trace_id: "tenant-leak-test", tenant_id: FOREIGN_TENANT, request_source: "api" },
+      async () => {
+        logger.info({
+          module: "test_tenant_leak",
+          action: "foreign_emitted",
+          msg: "synthetic foreign-tenant entry",
+        });
+      },
+    );
+    // Sanity: the local tenant should not see it.
+    const foreignRes = await fetch(
+      `${srv.baseUrl}/v1/diagnostics/logs?since=${before - 100}&module=test_tenant_leak`,
+      { headers: adminHeaders() },
+    );
+    expect(foreignRes.status).toBe(200);
+    const foreignBody = (await foreignRes.json()) as {
+      entries: Array<{ action?: string; fields?: { tenant_id?: string } }>;
+    };
+    const foreignActions = foreignBody.entries.map((e) => e.action);
+    expect(foreignActions).not.toContain("foreign_emitted");
+
+    // Same tenant context → visible.
+    await withContext(
+      { trace_id: "same-tenant-test", tenant_id: srv.tenantId, request_source: "api" },
+      async () => {
+        logger.info({
+          module: "test_tenant_leak",
+          action: "same_emitted",
+          msg: "synthetic same-tenant entry",
+        });
+      },
+    );
+    const sameRes = await fetch(
+      `${srv.baseUrl}/v1/diagnostics/logs?since=${before - 100}&module=test_tenant_leak`,
+      { headers: adminHeaders() },
+    );
+    const sameBody = (await sameRes.json()) as {
+      entries: Array<{ action?: string }>;
+    };
+    expect(sameBody.entries.map((e) => e.action)).toContain("same_emitted");
+  });
+
+  test("system-scope entries (no tenant_id) remain visible to tenant admins (review W2)", async () => {
+    const before = Date.now(); // allow-wall-clock: ring window bound
+    // Emit without withContext — entry has no tenant_id field. Boot
+    // logs and cross-tenant subsystem logs land here; tenant admins
+    // need them for operator visibility.
+    logger.info({
+      module: "test_system_scope",
+      action: "boot_like",
+      msg: "synthetic system-scope entry",
+    });
+    const res = await fetch(
+      `${srv.baseUrl}/v1/diagnostics/logs?since=${before - 100}&module=test_system_scope`,
+      { headers: adminHeaders() },
+    );
+    const body = (await res.json()) as { entries: Array<{ action?: string }> };
+    expect(body.entries.map((e) => e.action)).toContain("boot_like");
   });
 
   test("SSE stream replays buffered entries then emits live ones", async () => {

@@ -7284,6 +7284,15 @@ export interface paths {
                         "application/json": components["schemas"]["LogTailResponse"];
                     };
                 };
+                /** @description Bad query parameters */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Unauthorized */
                 401: {
                     headers: {
@@ -9717,9 +9726,6 @@ export interface components {
             status_hint: string | null;
         };
         DriftReport: {
-            engine_version: string;
-            embedded_migration_count: number;
-            db_migration_count: number;
             unknown_in_db: {
                 row_id: number;
                 hash: string;
@@ -9730,6 +9736,9 @@ export interface components {
                 tag: string;
                 hash: string;
             }[];
+            engine_version: string;
+            embedded_migration_count: number;
+            db_migration_count: number;
         };
         LogTailResponse: {
             entries: components["schemas"]["LogRingEntry"][];

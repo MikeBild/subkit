@@ -8,7 +8,7 @@ import { type DriftReport, detectDrift, runMigrations } from "./db/migrate.ts";
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
 import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
-import { setSchemaDriftFlag } from "./http/health-state.ts";
+import { setHealthState } from "./http/health-state.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
@@ -163,7 +163,7 @@ async function runServer(): Promise<void> {
         first_hashes: drift.unknown_in_db.slice(0, 10).map((r) => r.hash),
       });
     }
-    setSchemaDriftFlag(drift.unknown_in_db.length > 0);
+    setHealthState({ schema_drift: drift.unknown_in_db.length > 0 });
   } catch (err) {
     logger.error({
       module: "engine",
@@ -284,7 +284,7 @@ async function runServer(): Promise<void> {
   try {
     const seedResult = await seedAtBoot(db);
     for (const key of seedResult.issued_keys) {
-      printIssuedKey(key);
+      printIssuedKey(key, { source: "boot" });
     }
     logger.info({
       module: "engine",
@@ -510,7 +510,7 @@ async function runSeedOnce(): Promise<void> {
   await runMigrations(db);
   const result = await seedAtBoot(db);
   for (const key of result.issued_keys) {
-    printIssuedKey(key);
+    printIssuedKey(key, { source: "cli" });
   }
   await closeDb();
 }

@@ -11,6 +11,11 @@
 // next to `err.message` / `err.code`; the snake_case names are the
 // authoritative wire shape and are deliberate.
 
+import {
+  DIAGNOSTICS_DRIFT_PATH,
+  DIAGNOSTICS_LOG_STREAM_PATH,
+  DIAGNOSTICS_LOG_TAIL_PATH,
+} from "@cli-core/diagnostics-paths.ts";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import {
   type DebugCorrelationFields,
@@ -555,7 +560,7 @@ export class EngineClient {
     unknown_in_db: Array<{ row_id: number; hash: string; created_at: number | null }>;
     missing_in_db: Array<{ idx: number; tag: string; hash: string }>;
   }> {
-    return this.request("GET", "/v1/diagnostics/drift");
+    return this.request("GET", DIAGNOSTICS_DRIFT_PATH);
   }
 
   // --------------------------- Engine log tail ---------------------------
@@ -591,7 +596,7 @@ export class EngineClient {
     if (opts.action) params.set("action", opts.action);
     if (opts.level) params.set("level", opts.level);
     const qs = params.toString();
-    return this.request("GET", `/v1/diagnostics/logs${qs ? `?${qs}` : ""}`);
+    return this.request("GET", `${DIAGNOSTICS_LOG_TAIL_PATH}${qs ? `?${qs}` : ""}`);
   }
 
   /**
@@ -612,7 +617,7 @@ export class EngineClient {
     if (opts.action) params.set("action", opts.action);
     if (opts.level) params.set("level", opts.level);
     const qs = params.toString();
-    return `${this.base}/v1/diagnostics/logs/stream${qs ? `?${qs}` : ""}`;
+    return `${this.base}${DIAGNOSTICS_LOG_STREAM_PATH}${qs ? `?${qs}` : ""}`;
   }
 
   // --------------------------- Status snapshot ---------------------------

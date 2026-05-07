@@ -9449,15 +9449,6 @@
       "DriftReport": {
         "type": "object",
         "properties": {
-          "engine_version": {
-            "type": "string"
-          },
-          "embedded_migration_count": {
-            "type": "integer"
-          },
-          "db_migration_count": {
-            "type": "integer"
-          },
           "unknown_in_db": {
             "type": "array",
             "items": {
@@ -9502,14 +9493,23 @@
                 "hash"
               ]
             }
+          },
+          "engine_version": {
+            "type": "string"
+          },
+          "embedded_migration_count": {
+            "type": "integer"
+          },
+          "db_migration_count": {
+            "type": "integer"
           }
         },
         "required": [
+          "unknown_in_db",
+          "missing_in_db",
           "engine_version",
           "embedded_migration_count",
-          "db_migration_count",
-          "unknown_in_db",
-          "missing_in_db"
+          "db_migration_count"
         ]
       },
       "LogTailResponse": {
@@ -17761,7 +17761,9 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
             },
             "required": false,
             "name": "module",
@@ -17769,7 +17771,9 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
             },
             "required": false,
             "name": "action",
@@ -17799,6 +17803,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LogTailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad query parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

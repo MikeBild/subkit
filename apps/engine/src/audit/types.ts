@@ -325,6 +325,21 @@ export const AuditAction = {
   // every individual setup-step event.
   SETUP_COMPLETED: "setup.completed",
   SETUP_FAILED: "setup.failed",
+
+  // `/v1/diagnostics/logs` and `/v1/diagnostics/logs/stream` — emitted
+  // each time an admin tails the in-memory log ring. The route filters
+  // entries to the principal's tenant + system-scope, but the read
+  // itself is still privilege-sensitive (the ring carries every log
+  // line including connector probes and step traces). Audit rows let
+  // compliance see who tailed logs and when.  Issue #149 / W2.
+  DIAGNOSTICS_LOGS_TAILED: "diagnostics.logs_tailed",
+  // `/v1/diagnostics/drift` — emitted on every drift-report read.
+  // The report exposes migration hashes from `drizzle.__drizzle_migrations`
+  // (process-wide, not tenant-scoped) to any tenant admin, which is
+  // accepted by design (the hash names a SQL file, not tenant data).
+  // The audit row makes the read traceable for compliance the same
+  // way `DIAGNOSTICS_LOGS_TAILED` does.
+  DIAGNOSTICS_DRIFT_READ: "diagnostics.drift_read",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];
@@ -368,6 +383,39 @@ export const ToolPolicyChangedMetadataSchema = z.object({
   request_source: z.enum(["api", "cli", "scheduler", "mcp", "webhook", "tool-chain", "ui"]),
 });
 export type ToolPolicyChangedMetadata = z.infer<typeof ToolPolicyChangedMetadataSchema>;
+
+/** `diagnostics.logs_tailed` metadata. Emitted on every read of
+ *  `/v1/diagnostics/logs` and `/v1/diagnostics/logs/stream`. Pinning
+ *  the shape lets compliance tools query "who tailed the engine ring,
+ *  with which filters, and how much did they see" without joining
+ *  free-form JSON. */
+export const DiagnosticsLogsTailedMetadataSchema = z.object({
+  /** `json` for the paginated tail, `stream` for SSE. */
+  mode: z.union([z.literal("json"), z.literal("stream")]),
+  /** Number of entries returned in the JSON window; absent for SSE
+   *  (the stream is unbounded). */
+  returned: z.number().int().nonnegative().optional(),
+  /** Lower-bound timestamp the operator polled with, if any. */
+  since_ms: z.number().int().nonnegative().optional(),
+  module_filter: z.string().optional(),
+  action_filter: z.string().optional(),
+  level_filter: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).optional(),
+});
+export type DiagnosticsLogsTailedMetadata = z.infer<typeof DiagnosticsLogsTailedMetadataSchema>;
+
+/** `diagnostics.drift_read` metadata. Emitted on every read of
+ *  `/v1/diagnostics/drift`. */
+export const DiagnosticsDriftReadMetadataSchema = z.object({
+  /** Number of migrations baked into the binary. */
+  embedded: z.number().int().nonnegative(),
+  /** Number of rows currently in `drizzle.__drizzle_migrations`. */
+  db: z.number().int().nonnegative(),
+  /** Rows in the DB whose hash isn't in the embedded set. */
+  unknown: z.number().int().nonnegative(),
+  /** Embedded migrations whose hash isn't in the DB. */
+  missing: z.number().int().nonnegative(),
+});
+export type DiagnosticsDriftReadMetadata = z.infer<typeof DiagnosticsDriftReadMetadataSchema>;
 
 export type AuditEntry = {
   id: string;

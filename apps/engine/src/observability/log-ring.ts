@@ -7,6 +7,12 @@
 // writing to stdout/stderr; subscribers receive a copy via the
 // observable interface below.
 //
+// Tenant scoping: entries carry the tenant_id their request context
+// supplied (boot-time + cross-tenant subsystem logs use the sentinel
+// `"system"` or no tenant_id at all). The diagnostics route filters
+// reads to the requesting principal's tenant + system-scope only,
+// so a tenant-scoped admin cannot see another tenant's request lines.
+//
 // Trade-offs:
 //   * In-memory only (process-local). Sufficient for a single-droplet
 //     deploy and avoids touching Postgres. If you scale horizontally,
@@ -14,9 +20,8 @@
 //     API surface stays the same.
 //   * Bounded; defaults to 10 000 entries (override via SK_LOG_RING_SIZE).
 //     Eviction is FIFO.
-//   * Tenant-agnostic. Boot-time logs and many cross-tenant subsystem
-//     logs do not carry a tenant_id, and an operator with `audit:read`
-//     is allowed to see them by design.
+
+import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 
 const DEFAULT_CAPACITY_FROM_ENV = (): number => {
   const raw = process.env.SK_LOG_RING_SIZE;
@@ -38,6 +43,46 @@ export interface CapturedLog {
   fields: Record<string, unknown>;
 }
 
+/**
+ * Sentinel values used by the diagnostics route to mark "no tenant
+ * scope" — boot-time / cross-tenant subsystem logs end up here.
+ * Tenant-scoped admins are allowed to see these in addition to their
+ * own tenant's lines, because (a) they have no other source of
+ * operational visibility into engine boot and (b) the lines themselves
+ * are sanitized through the logger's redact() pass.
+ *
+ * Members:
+ *   - `"system"`: literal string used by the boot-path
+ *     `withContext({ tenant_id: "system", ... })` wrapper.
+ *   - `""`:  empty string — defensively treat as missing.
+ *   - `SYSTEM_TENANT_ID` ("00000000-0000-0000-0000-000000000000"):
+ *     the canonical UUID used by `audit/types.ts` for system-scope
+ *     audit writes; some code paths use it in logger context too.
+ */
+export const SYSTEM_TENANT_TOKENS = new Set<string>(["system", "", SYSTEM_TENANT_ID]);
+
+/**
+ * Extract the tenant_id an entry was emitted under. Returns `null`
+ * when the field is absent (which the route treats as system-scope).
+ */
+export function entryTenantId(entry: CapturedLog): string | null {
+  const v = entry.fields?.tenant_id;
+  if (typeof v !== "string") return null;
+  return v;
+}
+
+/**
+ * Predicate the route uses to decide whether `entry` is visible to
+ * `principal_tenant_id`. Exported so the SSE handler and the
+ * paginated tail apply the same rule.
+ */
+export function isEntryVisibleToTenant(entry: CapturedLog, principal_tenant_id: string): boolean {
+  const t = entryTenantId(entry);
+  if (t === null) return true;
+  if (SYSTEM_TENANT_TOKENS.has(t)) return true;
+  return t === principal_tenant_id;
+}
+
 export interface LogRing {
   record(entry: CapturedLog): void;
   tail(opts?: {
@@ -50,6 +95,10 @@ export interface LogRing {
     action?: string;
     /** Minimum level — entries below this weight are dropped. Optional. */
     min_level?: string;
+    /** Restrict to entries whose `fields.tenant_id` matches this value
+     *  OR is null/`"system"`. The diagnostics route always supplies
+     *  this; tests that exercise the raw ring may omit it. */
+    visible_to_tenant?: string;
   }): CapturedLog[];
   size(): number;
   capacity(): number;
@@ -57,7 +106,7 @@ export interface LogRing {
   subscribe(handler: (entry: CapturedLog) => void): () => void;
 }
 
-const LEVEL_WEIGHT: Record<string, number> = {
+export const LEVEL_WEIGHT: Record<string, number> = {
   trace: 10,
   debug: 20,
   info: 30,
@@ -66,8 +115,12 @@ const LEVEL_WEIGHT: Record<string, number> = {
   fatal: 60,
 };
 
-function weight(level: string): number {
+export function levelWeight(level: string): number {
   return LEVEL_WEIGHT[level.toLowerCase()] ?? 0;
+}
+
+function weight(level: string): number {
+  return levelWeight(level);
 }
 
 export function createLogRing(capacity = DEFAULT_CAPACITY_FROM_ENV()): LogRing {
@@ -79,6 +132,8 @@ export function createLogRing(capacity = DEFAULT_CAPACITY_FROM_ENV()): LogRing {
     if (opts.module && e.module !== opts.module) return false;
     if (opts.action && e.action !== opts.action) return false;
     if (opts.min_level && weight(e.level) < weight(opts.min_level)) return false;
+    if (opts.visible_to_tenant !== undefined && !isEntryVisibleToTenant(e, opts.visible_to_tenant))
+      return false;
     return true;
   };
 

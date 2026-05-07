@@ -622,9 +622,19 @@ export async function seedAtBoot(db: Db): Promise<SeedResult> {
  * Print an issued API key to stdout exactly once with a bright banner.
  * Caller (boot path or `engine --seed`) is responsible for the
  * iteration; the key is unrecoverable after this prints.
+ *
+ * @param key  The newly-minted key payload.
+ * @param opts.source  Provenance tag rendered in the banner so an
+ *   operator running `engine --seed | tee` (or grepping container
+ *   logs) can distinguish a CLI-driven mint from a regular boot
+ *   (review S4). Omit / leave empty to keep the historical banner.
  */
-export function printIssuedKey({ label, plaintext, tenant, usage }: IssuedKey): void {
-  const banner = pc.bgYellow(pc.black(` NEW API KEY ISSUED — ${label} `));
+export function printIssuedKey(
+  { label, plaintext, tenant, usage }: IssuedKey,
+  opts: { source?: "boot" | "cli" } = {},
+): void {
+  const sourceTag = opts.source ? ` (via ${opts.source})` : "";
+  const banner = pc.bgYellow(pc.black(` NEW API KEY ISSUED — ${label}${sourceTag} `));
   const warn = pc.bold(pc.yellow("This is the ONLY time this key will be shown. Copy it now."));
   const info = pc.dim(`  Tenant: ${tenant}\n  ${usage}`);
   process.stdout.write(`\n${banner}\n${warn}\n\n  ${pc.cyan(plaintext)}\n\n${info}\n\n`);

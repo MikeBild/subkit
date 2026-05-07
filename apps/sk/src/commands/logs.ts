@@ -18,6 +18,7 @@
 
 import { exitCodeFor } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
+import { colorizeLogLevel } from "@cli-core/log-levels";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
@@ -31,15 +32,6 @@ interface LogEntry {
   msg?: string;
   fields?: Record<string, unknown>;
 }
-
-const LEVEL_COLORS: Record<string, (s: string) => string> = {
-  trace: pc.gray,
-  debug: pc.cyan,
-  info: pc.green,
-  warn: pc.yellow,
-  error: pc.red,
-  fatal: (s: string) => pc.bgRed(pc.white(s)),
-};
 
 function parseSince(value: string): number {
   // Absolute unix-ms passes through unchanged.
@@ -61,8 +53,7 @@ function parseSince(value: string): number {
 
 function renderPretty(e: LogEntry): string {
   const ts = new Date(e.ts).toISOString();
-  const colorize = LEVEL_COLORS[e.level.toLowerCase()] ?? ((s: string) => s);
-  const lvl = colorize(e.level.toUpperCase().padEnd(5));
+  const lvl = colorizeLogLevel(e.level);
   const moduleAction =
     e.module || e.action ? pc.magenta(`${e.module ?? "?"}.${e.action ?? "?"}`) : "";
   const msg = e.msg ?? "";

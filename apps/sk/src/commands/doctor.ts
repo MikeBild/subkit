@@ -236,7 +236,18 @@ export const doctorCommand = defineCommand({
                   "Issue #149 — pick a resolution path: (a) port the missing migration " +
                   "files into this binary's source and ship a new release, or " +
                   "(b) reset the DB from the embedded set during a maintenance window."
-                : "engine is newer than this DB; restart engine or run `engine --migrate` to apply",
+                : // missing_in_db > 0 with the engine running means the
+                  // boot-time `runMigrations(db)` already ran (otherwise
+                  // boot would have aborted) AND still observed embedded
+                  // migrations the DB doesn't have. That is a silent
+                  // failure of the migrator, not a stale binary — restarting
+                  // does not clear it.  Operator should inspect the
+                  // engine's `migrate.applied` log entries (sk logs
+                  // --module db --action migrate.applied) and the
+                  // missing migration's SQL for a runtime apply error.
+                  "boot-time migrate ran but the DB is still missing embedded migrations — " +
+                  "check `sk logs --module db --action migrate.applying` for the per-tag " +
+                  "apply entries; restarting will not clear this on its own.",
           });
         }
       } catch (err) {

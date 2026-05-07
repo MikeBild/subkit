@@ -9,39 +9,25 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { AuditAction, audit } from "../../../audit/index.ts";
 import { getDb } from "../../../db/client.ts";
-import { detectDrift, listEmbeddedMigrations } from "../../../db/migrate.ts";
+import { DriftReportSchema, detectDrift, listEmbeddedMigrations } from "../../../db/migrate.ts";
+import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { OPENAPI_INFO } from "../../openapi.ts";
 
-const UnknownRow = z.object({
-  row_id: z.number().int(),
-  hash: z.string(),
-  created_at: z.number().int().nullable(),
-});
-
-const MissingRow = z.object({
-  idx: z.number().int(),
-  tag: z.string(),
-  hash: z.string(),
-});
-
-const DriftResponse = z
-  .object({
-    /** Engine binary version that produced this report. */
-    engine_version: z.string(),
-    /** Number of migrations baked into this binary at build time. */
-    embedded_migration_count: z.number().int(),
-    /** Number of rows currently in `drizzle.__drizzle_migrations`. */
-    db_migration_count: z.number().int(),
-    /** Migrations the DB has but this binary doesn't recognise — the
-     *  #149 alarm. */
-    unknown_in_db: z.array(UnknownRow),
-    /** Migrations this binary has but the DB doesn't yet — informational;
-     *  the boot path applies these on the same boot. */
-    missing_in_db: z.array(MissingRow),
-  })
-  .openapi("DriftReport");
+// Reuse the runtime schema as the wire shape — single source of truth
+// (review W3). The route adds three derived fields (engine_version,
+// embedded_migration_count, db_migration_count) so the operator
+// dashboard can render counts without summing client-side.
+const DriftResponse = DriftReportSchema.extend({
+  /** Engine binary version that produced this report. */
+  engine_version: z.string(),
+  /** Number of migrations baked into this binary at build time. */
+  embedded_migration_count: z.number().int(),
+  /** Number of rows currently in `drizzle.__drizzle_migrations`. */
+  db_migration_count: z.number().int(),
+}).openapi("DriftReport");
 
 const route = createRoute({
   method: "get",
@@ -58,6 +44,7 @@ const route = createRoute({
 
 export function registerDriftRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, async (c) => {
+    const principal = requireAuth(c);
     const db = c.get("db") ?? getDb();
     const report = await detectDrift(db);
     const embedded = listEmbeddedMigrations();
@@ -65,6 +52,23 @@ export function registerDriftRoute(app: OpenAPIHono<AppEnv>): void {
     //                                           = (embedded.length - missing_in_db.length) + unknown_in_db.length
     const db_migration_count =
       embedded.length - report.missing_in_db.length + report.unknown_in_db.length;
+
+    audit({
+      tenant_id: principal.tenant_id,
+      actor_type: principal.kind === "user" ? "user" : "system_account",
+      actor_id: principal.id,
+      action: AuditAction.DIAGNOSTICS_DRIFT_READ,
+      resource_type: "migrations_journal",
+      resource_id: null,
+      result: "success",
+      metadata: {
+        embedded: embedded.length,
+        db: db_migration_count,
+        unknown: report.unknown_in_db.length,
+        missing: report.missing_in_db.length,
+      },
+    });
+
     return c.json(
       {
         engine_version: OPENAPI_INFO.version,

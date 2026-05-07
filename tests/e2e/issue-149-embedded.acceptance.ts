@@ -15,65 +15,17 @@
 //      empty `unknown_in_db` / `missing_in_db`.
 //   5. `GET /v1/diagnostics/logs?since=0&module=db&action=migrate.applied`
 //      surfaces the structured boot log for `sk logs --follow`.
+//   6. Contract test for review W6 — `GET /v1/diagnostics/logs/stream`
+//      handshake completes with `text/event-stream`. A path rename in
+//      the engine route or in `cli-core/diagnostics-paths.ts` would
+//      surface as a 404 here.
 
-import { spawnSync } from "node:child_process";
-import path from "node:path";
-
-const REPO_ROOT = path.resolve(import.meta.dir, "../..");
-const BASE_URL = process.env.SUBKIT_DOCKER_BASE_URL ?? "http://127.0.0.1:3000";
-
-function fail(message: string): never {
-  console.error(`✘ ${message}`);
-  process.exit(1);
-}
-
-function ok(message: string): void {
-  console.log(`✓ ${message}`);
-}
-
-function run(cmd: string, args: string[]): { status: number; stdout: string; stderr: string } {
-  const r = spawnSync(cmd, args, { cwd: REPO_ROOT, encoding: "utf8" });
-  return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
-}
-
-async function waitForHealth(timeoutMs = 120_000): Promise<{
-  status: string;
-  db_connected: boolean;
-  db_schema_drift: boolean;
-}> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${BASE_URL}/v1/health`);
-      if (res.ok) {
-        const body = (await res.json()) as {
-          status: string;
-          db_connected: boolean;
-          db_schema_drift: boolean;
-        };
-        if (body.status === "ok" && body.db_connected) return body;
-      }
-    } catch {
-      /* retry */
-    }
-    await Bun.sleep(2_000);
-  }
-  fail(`engine did not become healthy at ${BASE_URL} within ${timeoutMs}ms`);
-}
-
-function readDevApiKey(): string {
-  const provided = process.env.SUBKIT_DOCKER_API_KEY;
-  if (provided) return provided;
-  const r = run("docker", ["compose", "logs", "engine"]);
-  if (r.status !== 0) fail(`failed to read engine logs:\n${r.stdout}\n${r.stderr}`);
-  const m = `${r.stdout}\n${r.stderr}`.match(/wf_live_[A-Za-z0-9_-]+/);
-  if (!m) fail("engine logs did not print a dev admin key (expected NODE_ENV != production)");
-  return m[0];
-}
+import { DIAGNOSTICS_LOG_STREAM_PATH } from "@cli-core/diagnostics-paths.ts";
+import { BASE_URL, fail, ok, readDevApiKey, runCommand, waitForHealth } from "./_helpers.ts";
 
 async function main(): Promise<void> {
   // ----- 1. Compose project layout -----
-  const services = run("docker", ["compose", "config", "--services"]);
+  const services = runCommand("docker", ["compose", "config", "--services"]);
   if (services.status !== 0) fail(`docker compose config failed:\n${services.stderr}`);
   const list = services.stdout
     .split("\n")
@@ -91,7 +43,7 @@ async function main(): Promise<void> {
   ok(`/v1/health → status=ok db_connected=true db_schema_drift=false`);
 
   // ----- 3. Engine logs contain in-process migrate.applied -----
-  const logs = run("docker", ["compose", "logs", "engine"]);
+  const logs = runCommand("docker", ["compose", "logs", "engine"]);
   if (logs.status !== 0) fail(`docker compose logs engine failed:\n${logs.stderr}`);
   const combined = `${logs.stdout}\n${logs.stderr}`;
   if (!/migrate\.applied/.test(combined)) {
@@ -146,6 +98,22 @@ async function main(): Promise<void> {
     );
   }
   ok(`/v1/diagnostics/logs surfaces structured boot log for sk logs --follow`);
+
+  // ----- 6. SSE stream contract -----
+  const ac = new AbortController();
+  const streamRes = await fetch(`${BASE_URL}${DIAGNOSTICS_LOG_STREAM_PATH}?since=${Date.now()}`, {
+    headers: { authorization: `Bearer ${apiKey}`, accept: "text/event-stream" },
+    signal: ac.signal,
+  });
+  ac.abort();
+  if (streamRes.status !== 200) {
+    fail(`${DIAGNOSTICS_LOG_STREAM_PATH} returned ${streamRes.status}`);
+  }
+  const ct = streamRes.headers.get("content-type") ?? "";
+  if (!ct.includes("text/event-stream")) {
+    fail(`${DIAGNOSTICS_LOG_STREAM_PATH} content-type expected text/event-stream, got ${ct}`);
+  }
+  ok(`${DIAGNOSTICS_LOG_STREAM_PATH} returns ${ct} (path constant matches engine route)`);
 
   console.log("\nIssue #149 acceptance: PASS");
 }

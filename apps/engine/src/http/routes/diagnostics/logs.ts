@@ -1,18 +1,35 @@
 // Engine log-tail endpoints.
 //
 //   GET /v1/diagnostics/logs              — paginated window
-//   GET /v1/diagnostics/logs/stream       — SSE live tail
+//   GET /v1/diagnostics/logs/stream       — SSE live tail (LOG_STREAM_PATH)
 //
 // Both backed by the in-memory `logRing` populated by every
 // `logger.*` call. Exists so an operator running `sk logs --follow`
 // can correlate sk-side errors with engine-side log lines without
 // SSH-ing into the engine container. Issue #149 — operator
 // observability of migrate / seed / drift events specifically.
+//
+// Tenant scoping (review W2): the ring is process-wide but every read
+// here filters entries to the principal's tenant + system-scope only,
+// so a tenant-scoped admin cannot tail another tenant's request log.
+// Each tail also writes a `DIAGNOSTICS_LOGS_TAILED` audit row.
 
+import { DIAGNOSTICS_LOG_STREAM_PATH } from "@cli-core/diagnostics-paths.ts";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { logRing } from "../../../observability/index.ts";
+import { AuditAction, audit } from "../../../audit/index.ts";
+import { isEntryVisibleToTenant, levelWeight, logRing } from "../../../observability/index.ts";
+import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
+
+/** Path of the SSE live-tail route. Re-exported from the shared
+ *  `cli-core` constant so the engine and the CLI cannot disagree. */
+export const LOG_STREAM_PATH = DIAGNOSTICS_LOG_STREAM_PATH;
+
+/** Idle heartbeat cadence on the SSE stream. Sub-30s so reverse proxies
+ *  with default idle close (Caddy 30s, ALB 60s) don't half-close the
+ *  stream during quiet periods. */
+const SSE_HEARTBEAT_MS = 15_000;
 
 const LogEntrySchema = z
   .object({
@@ -25,13 +42,17 @@ const LogEntrySchema = z
   })
   .openapi("LogRingEntry");
 
-const LogTailQuery = z.object({
-  since: z.coerce.number().int().nonnegative().optional(),
-  limit: z.coerce.number().int().positive().max(2000).optional(),
-  module: z.string().optional(),
-  action: z.string().optional(),
-  level: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).optional(),
-});
+/** Shared query schema — applied to both the JSON tail and the SSE
+ *  stream so the two surfaces validate identically (review W1). */
+const LogTailQuery = z
+  .object({
+    since: z.coerce.number().int().nonnegative().optional(),
+    limit: z.coerce.number().int().positive().max(2000).optional(),
+    module: z.string().min(1).max(120).optional(),
+    action: z.string().min(1).max(120).optional(),
+    level: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).optional(),
+  })
+  .openapi("LogTailQuery");
 
 const LogTailResponse = z
   .object({
@@ -52,22 +73,66 @@ const tailRoute = createRoute({
   request: { query: LogTailQuery },
   responses: {
     200: { description: "OK", content: { "application/json": { schema: LogTailResponse } } },
+    400: {
+      description: "Bad query parameters",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
+interface FilterOpts {
+  since_ms?: number;
+  limit?: number;
+  module?: string;
+  action?: string;
+  min_level?: string;
+}
+
+function buildTailOpts(
+  q: z.infer<typeof LogTailQuery>,
+  principal_tenant_id: string,
+  defaults: { limit?: number } = {},
+): FilterOpts & { visible_to_tenant: string } {
+  const opts: FilterOpts & { visible_to_tenant: string } = {
+    visible_to_tenant: principal_tenant_id,
+  };
+  if (q.since !== undefined) opts.since_ms = q.since;
+  if (q.limit !== undefined) opts.limit = q.limit;
+  else if (defaults.limit !== undefined) opts.limit = defaults.limit;
+  if (q.module) opts.module = q.module;
+  if (q.action) opts.action = q.action;
+  if (q.level) opts.min_level = q.level;
+  return opts;
+}
+
 export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(tailRoute, async (c) => {
+    const principal = requireAuth(c);
     const q = c.req.valid("query");
-    const opts: Parameters<typeof logRing.tail>[0] = {};
-    if (q.since !== undefined) opts.since_ms = q.since;
-    if (q.limit !== undefined) opts.limit = q.limit;
-    if (q.module) opts.module = q.module;
-    if (q.action) opts.action = q.action;
-    if (q.level) opts.min_level = q.level;
+    const opts = buildTailOpts(q, principal.tenant_id);
     const entries = logRing.tail(opts);
     const lastTs = entries.length > 0 ? entries[entries.length - 1]!.ts : (q.since ?? 0);
+
+    audit({
+      tenant_id: principal.tenant_id,
+      actor_type: principal.kind === "user" ? "user" : "system_account",
+      actor_id: principal.id,
+      action: AuditAction.DIAGNOSTICS_LOGS_TAILED,
+      resource_type: "log_ring",
+      resource_id: null,
+      result: "success",
+      metadata: {
+        mode: "json",
+        returned: entries.length,
+        ...(q.since !== undefined ? { since_ms: q.since } : {}),
+        ...(q.module ? { module_filter: q.module } : {}),
+        ...(q.action ? { action_filter: q.action } : {}),
+        ...(q.level ? { level_filter: q.level } : {}),
+      },
+    });
+
     return c.json(
       {
         entries: entries.map((e) => ({
@@ -88,12 +153,52 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
 
   // SSE live tail. Hand-rolled because @hono/zod-openapi's `c.json`
   // doesn't model streaming responses; we register the SSE route
-  // outside the OpenAPI surface.
-  app.get("/v1/diagnostics/logs/stream", (c) => {
-    const since = Number(c.req.query("since") ?? "0") || 0;
-    const moduleFilter = c.req.query("module") ?? null;
-    const actionFilter = c.req.query("action") ?? null;
-    const levelFilter = c.req.query("level") ?? null;
+  // outside the OpenAPI surface but still validate its query bag with
+  // the same Zod schema the JSON tail uses.
+  app.get(LOG_STREAM_PATH, (c) => {
+    const principal = requireAuth(c);
+    const parsed = LogTailQuery.safeParse({
+      since: c.req.query("since"),
+      limit: c.req.query("limit"),
+      module: c.req.query("module"),
+      action: c.req.query("action"),
+      level: c.req.query("level"),
+    });
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: {
+            code: "validation_error",
+            message: "invalid query parameters",
+            issues: parsed.error.issues.map((iss) => ({
+              path: iss.path.join("."),
+              message: iss.message,
+            })),
+          },
+        },
+        400,
+      );
+    }
+    const q = parsed.data;
+    const tailOpts = buildTailOpts(q, principal.tenant_id, { limit: 1000 });
+    const minLevelWeight = q.level ? levelWeight(q.level) : 0;
+
+    audit({
+      tenant_id: principal.tenant_id,
+      actor_type: principal.kind === "user" ? "user" : "system_account",
+      actor_id: principal.id,
+      action: AuditAction.DIAGNOSTICS_LOGS_TAILED,
+      resource_type: "log_ring",
+      resource_id: null,
+      result: "success",
+      metadata: {
+        mode: "stream",
+        ...(q.since !== undefined ? { since_ms: q.since } : {}),
+        ...(q.module ? { module_filter: q.module } : {}),
+        ...(q.action ? { action_filter: q.action } : {}),
+        ...(q.level ? { level_filter: q.level } : {}),
+      },
+    });
 
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -103,33 +208,21 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
           controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`));
         };
 
-        // 1. Catch-up replay: any buffered entries newer than `since`.
-        const opts: Parameters<typeof logRing.tail>[0] = { since_ms: since, limit: 1000 };
-        if (moduleFilter) opts.module = moduleFilter;
-        if (actionFilter) opts.action = actionFilter;
-        if (levelFilter) opts.min_level = levelFilter;
-        for (const entry of logRing.tail(opts)) {
+        // 1. Catch-up replay: any buffered entries newer than `since`
+        // that the principal is allowed to see.
+        for (const entry of logRing.tail(tailOpts)) {
           send("log", entry);
         }
 
-        // 2. Live subscription. Filtered server-side so the client
-        // doesn't pay for entries it would have dropped.
+        // 2. Live subscription. Filter server-side so the operator
+        // doesn't pay for entries it would have dropped, and so
+        // tenant-A admins can never observe tenant-B request lines
+        // mid-stream.
         const unsub = logRing.subscribe((entry) => {
-          if (moduleFilter && entry.module !== moduleFilter) return;
-          if (actionFilter && entry.action !== actionFilter) return;
-          if (levelFilter) {
-            const weights: Record<string, number> = {
-              trace: 10,
-              debug: 20,
-              info: 30,
-              warn: 40,
-              error: 50,
-              fatal: 60,
-            };
-            const w = weights[entry.level.toLowerCase()] ?? 0;
-            const min = weights[levelFilter] ?? 0;
-            if (w < min) return;
-          }
+          if (q.module && entry.module !== q.module) return;
+          if (q.action && entry.action !== q.action) return;
+          if (minLevelWeight > 0 && levelWeight(entry.level) < minLevelWeight) return;
+          if (!isEntryVisibleToTenant(entry, principal.tenant_id)) return;
           try {
             send("log", entry);
           } catch {
@@ -137,7 +230,7 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
           }
         });
 
-        // 3. Heartbeat every 15 s so proxies don't half-close idle streams.
+        // 3. Heartbeat so reverse proxies don't half-close idle streams.
         const heartbeat = setInterval(() => {
           try {
             controller.enqueue(enc.encode(`: heartbeat ${Date.now()}\n\n`));
@@ -145,7 +238,7 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
             clearInterval(heartbeat);
             unsub();
           }
-        }, 15_000);
+        }, SSE_HEARTBEAT_MS);
         (heartbeat as unknown as { unref?: () => void }).unref?.();
 
         // Tear down when the client disconnects.
