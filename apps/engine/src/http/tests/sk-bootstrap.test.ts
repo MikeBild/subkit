@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { apiKeys, tenants, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -28,7 +28,11 @@ beforeAll(async () => {
     .values({ tenant_id: t2.id, email: "admin-foreign@test.local", role: "admin" })
     .returning();
   if (!u2) throw new Error("seed foreign user failed");
-  const fk = `wf_live_${randomBytes(24).toString("base64url").slice(0, 32)}`;
+  // Deterministic key: stable across test runs so the determinism lint
+  // (no-random-bytes-in-tests) stays green. The first 12 chars are
+  // the `prefix` (UNIQUE in api_keys) — distinct from the member key
+  // below and from setup.ts's randomly-prefixed admin key.
+  const fk = "wf_live_FRG_skbootstrap_foreign_admin_dummy_pad_000";
   await ctx.db.insert(apiKeys).values({
     tenant_id: t2.id,
     user_id: u2.id,
@@ -44,7 +48,7 @@ beforeAll(async () => {
     .values({ tenant_id: ctx.tenantId, email: "member@test.local", role: "member" })
     .returning();
   if (!member) throw new Error("seed member user failed");
-  const mk = `wf_live_${randomBytes(24).toString("base64url").slice(0, 32)}`;
+  const mk = "wf_live_MBR_skbootstrap_primary_member_dummy_pad_000";
   await ctx.db.insert(apiKeys).values({
     tenant_id: ctx.tenantId,
     user_id: member.id,

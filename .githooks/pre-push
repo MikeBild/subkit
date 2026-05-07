@@ -21,22 +21,38 @@
 
 set -e
 
-echo "[pre-push] fast gate — lint + typecheck + build + drift (full tests run in CI)"
+echo "[pre-push] fast gate — lint + typecheck + build + drift + determinism + invariants (full tests run in CI)"
 
-echo "[pre-push] 1/5 biome (lint)"
+echo "[pre-push] 1/7 biome (lint)"
 bun run lint
 
-echo "[pre-push] 2/5 tsc (typecheck)"
+echo "[pre-push] 2/7 tsc (typecheck)"
 bun run typecheck
 
-echo "[pre-push] 3/5 openapi-drift (regenerate client; fail on diff)"
+echo "[pre-push] 3/7 determinism lint (no Date.now / randomBytes / Math.random in *.test.ts)"
+# CI's build job runs `scripts/check-determinism.ts` and fails on
+# `errors > 0`. Running it locally here means a `randomBytes(...)`
+# inside a `.test.ts` (or `Math.random()`, etc.) is caught before
+# push instead of after the CI run. Each error in this lint always
+# fails CI; warnings do not.
+bun run test:determinism
+
+echo "[pre-push] 4/7 audit:invariants (route layering, file size, tenant filter, etc.)"
+# CI's invariants job runs the same script. The most common local-vs-
+# CI drift caught here is `route_layering` (a route file importing a
+# subsystem internal instead of the subsystem's index.ts barrel).
+# Skip pr_template inside the hook (it requires PR_BODY which only
+# CI sets); audit-invariants.ts auto-skips it without env.
+bun run audit:invariants
+
+echo "[pre-push] 5/7 openapi-drift (regenerate client; fail on diff)"
 # Without this, adding/changing an engine route lands in main with
 # the generated client at packages/cli-core/src/engine-api/ stale —
 # CI's `check:openapi-drift` then fails on the same diff and the
 # round-trip repeats. Better to catch the drift before the push.
 bun run check:openapi-drift
 
-echo "[pre-push] 4/5 commit-message gate (each new commit on this push)"
+echo "[pre-push] 6/7 commit-message gate (each new commit on this push)"
 # Walks the commits being pushed via the pre-push stdin range and
 # validates each header against scripts/check-commit-message.sh
 # (header-max-length=100, conventional type-enum, subject-case).
@@ -60,7 +76,7 @@ if [ "$msg_failed" -ne 0 ]; then
   exit 1
 fi
 
-echo "[pre-push] 5/5 build all binaries"
+echo "[pre-push] 7/7 build all binaries"
 bun run build:sk
 bun run build:engine
 

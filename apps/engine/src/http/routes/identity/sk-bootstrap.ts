@@ -18,7 +18,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { conversations, roles, tenants, users } from "../../../db/schema/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { can, UX_GATING_PERMISSIONS } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
