@@ -196,4 +196,67 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     if (result.ok) return;
     expect(result.error_code).toBe("connector_bindings_required");
   });
+
+  // #146 / Part D — recipe-coverage tests for the three step kinds that
+  // were KNOWN_UNCOVERED until this change. Each test goes end-to-end
+  // through `start_workflow_from_recipe`, mirroring the postgres /
+  // stripe coverage above, so the new GitHub recipes are exercised by
+  // the same production tool path the LLM uses at runtime.
+
+  test("CallStep recipe — delegated-triage-via-call clones with a `call` step", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      { template_slug: "github", recipe_slug: "delegated-triage-via-call" },
+    );
+    expect(result.ok).toBe(true);
+    const wf = draft.current.workflow;
+    expect(wf?.derived_from_skill_id).toBe("github-basics");
+    const steps = (wf?.steps ?? []) as Array<{ kind?: string; workflow_slug?: string }>;
+    const callStep = steps.find((s) => s.kind === "call");
+    expect(callStep).toBeDefined();
+    expect(callStep?.workflow_slug).toBe("triage-issue");
+  });
+
+  test("ToolStep recipe — lint-pr-changes-via-tool clones with a `tool` step + Docker image", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      { template_slug: "github", recipe_slug: "lint-pr-changes-via-tool" },
+    );
+    expect(result.ok).toBe(true);
+    const steps = (draft.current.workflow?.steps ?? []) as Array<{
+      kind?: string;
+      image?: string;
+      cmd?: string[];
+    }>;
+    const toolStep = steps.find((s) => s.kind === "tool");
+    expect(toolStep).toBeDefined();
+    expect(toolStep?.image).toBe("koalaman/shellcheck:stable");
+    expect(toolStep?.cmd).toEqual(["shellcheck", "-"]);
+  });
+
+  test("WaitForEventStep recipe — merge-pr-after-approval clones with a signal-driven pause", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      { template_slug: "github", recipe_slug: "merge-pr-after-approval" },
+    );
+    expect(result.ok).toBe(true);
+    const wf = draft.current.workflow;
+    const steps = (wf?.steps ?? []) as Array<{
+      kind?: string;
+      event_name?: string;
+      timeout_ms?: number;
+      on_timeout?: string;
+    }>;
+    const wait = steps.find((s) => s.kind === "wait_for_event");
+    expect(wait).toBeDefined();
+    expect(wait?.event_name).toBe("pr_approved");
+    expect(wait?.timeout_ms).toBe(86_400_000);
+    expect(wait?.on_timeout).toBe("abandon");
+    // Fallback step referenced by `on_timeout` must exist, otherwise
+    // the workflow can't actually run on timeout.
+    expect(steps.find((s) => (s as { id?: string }).id === "abandon")).toBeDefined();
+  });
 });
