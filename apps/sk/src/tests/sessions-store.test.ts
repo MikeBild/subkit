@@ -37,10 +37,14 @@ describe("session JSONL store", () => {
     appendEvent(
       "c-1",
       { seq: 0, kind: "user_message", data: { text: "hello" } },
-      { dir, now: () => new Date("2026-01-01T00:00:00Z") },
+      { dir, tenant: "t-test", now: () => new Date("2026-01-01T00:00:00Z") },
     );
-    appendEvent("c-1", { seq: 1, kind: "assistant_delta", data: { delta: "hi" } }, { dir });
-    const events = loadEvents("c-1", dir);
+    appendEvent(
+      "c-1",
+      { seq: 1, kind: "assistant_delta", data: { delta: "hi" } },
+      { dir, tenant: "t-test" },
+    );
+    const events = loadEvents("c-1", dir, "t-test");
     expect(events.length).toBe(2);
     expect(events[0]?.kind).toBe("user_message");
     expect(events[0]?.ts).toBe("2026-01-01T00:00:00.000Z");
@@ -53,26 +57,34 @@ describe("session JSONL store", () => {
   });
 
   test("loadEvents skips truncated trailing lines", () => {
-    appendEvent("c-2", { seq: 0, kind: "user_message", data: { text: "ok" } }, { dir });
+    appendEvent(
+      "c-2",
+      { seq: 0, kind: "user_message", data: { text: "ok" } },
+      { dir, tenant: "t-test" },
+    );
     // Append a partial line manually to simulate a crash.
     const fs = require("node:fs") as typeof import("node:fs");
-    fs.appendFileSync(sessionEventsPath("c-2", dir), '{"seq": 1, "kind":');
-    const events = loadEvents("c-2", dir);
+    fs.appendFileSync(sessionEventsPath("c-2", dir, "t-test"), '{"seq": 1, "kind":');
+    const events = loadEvents("c-2", dir, "t-test");
     expect(events.length).toBe(1);
     expect(events[0]?.seq).toBe(0);
   });
 
   test("file is mode 0600", () => {
-    appendEvent("c-3", { seq: 0, kind: "user_message", data: {} }, { dir });
+    appendEvent("c-3", { seq: 0, kind: "user_message", data: {} }, { dir, tenant: "t-test" });
     const fs = require("node:fs") as typeof import("node:fs");
-    const stat = fs.statSync(sessionEventsPath("c-3", dir));
+    const stat = fs.statSync(sessionEventsPath("c-3", dir, "t-test"));
     // 0o600 = owner read/write only — last 9 bits should be 0o600
     expect(stat.mode & 0o777).toBe(0o600);
   });
 
   test("appendEvent JSON-encodes the event", () => {
-    appendEvent("c-4", { seq: 0, kind: "tool_call", data: { name: "x" } }, { dir });
-    const raw = readFileSync(sessionEventsPath("c-4", dir), "utf8");
+    appendEvent(
+      "c-4",
+      { seq: 0, kind: "tool_call", data: { name: "x" } },
+      { dir, tenant: "t-test" },
+    );
+    const raw = readFileSync(sessionEventsPath("c-4", dir, "t-test"), "utf8");
     expect(raw).toMatch(/"kind":"tool_call"/);
     expect(raw).toMatch(/"name":"x"/);
     expect(raw.endsWith("\n")).toBe(true);
@@ -95,8 +107,12 @@ describe("session JSONL store", () => {
   test("appendEvent persists redacted secrets, never the raw token", () => {
     const conv = "secret-conv";
     const ghToken = `ghp_${"b".repeat(40)}`;
-    appendEvent(conv, { seq: 1, kind: "user_message", data: { text: ghToken } }, { dir });
-    const raw = readFileSync(sessionEventsPath(conv, dir), "utf8");
+    appendEvent(
+      conv,
+      { seq: 1, kind: "user_message", data: { text: ghToken } },
+      { dir, tenant: "t-test" },
+    );
+    const raw = readFileSync(sessionEventsPath(conv, dir, "t-test"), "utf8");
     expect(raw).not.toContain(ghToken);
     expect(raw).toContain("***redacted***");
   });
@@ -144,8 +160,8 @@ describe("session JSONL store", () => {
   });
 
   test("deleteEvents removes the log file", () => {
-    appendEvent("c-5", { seq: 0, kind: "user_message", data: {} }, { dir });
-    deleteEvents("c-5", dir);
-    expect(loadEvents("c-5", dir)).toEqual([]);
+    appendEvent("c-5", { seq: 0, kind: "user_message", data: {} }, { dir, tenant: "t-test" });
+    deleteEvents("c-5", dir, "t-test");
+    expect(loadEvents("c-5", dir, "t-test")).toEqual([]);
   });
 });

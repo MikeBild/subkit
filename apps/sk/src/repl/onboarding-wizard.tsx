@@ -42,25 +42,13 @@ import { useState } from "react";
 /**
  * Category → unicode-glyph map borrowed from IntegrationPicker so the
  * pick step in this wizard renders the same badges users see in the
- * standalone connector picker. Kept inline rather than re-exported to
- * avoid a circular import at load time.
+ * standalone connector picker. Now lives in a shared module so a
+ * glyph swap or category addition lands in one place. R3-S2.
  */
-const CATEGORY_ICON: Record<string, string> = {
-  http: "◆",
-  graphql: "◈",
-  postgres: "◯",
-  s3: "□",
-  ftp: "▽",
-  sftp: "▽",
-  smb: "△",
-  redis: "▣",
-  webhook: "▶",
-  default: "•",
-};
+import { categoryIconFor } from "../domain/connectors/category-icons.ts";
 
 function iconForDriver(driver: string | undefined): string {
-  const d = (driver ?? "default").toLowerCase();
-  return CATEGORY_ICON[d] ?? CATEGORY_ICON.default ?? "•";
+  return categoryIconFor(driver);
 }
 
 /**

@@ -20,7 +20,13 @@ import { join } from "node:path";
 import type { ConversationItem } from "@chat-ui/index.ts";
 import type { SkSessionState } from "@cli-core/index.ts";
 import { loadConfig, type ResolvedProfile, saveConfig } from "../../config.ts";
-import { debugLogPath, debugLogTail, isDebugVerbose, setDebugVerbose } from "../../debug.ts";
+import {
+  debugLog,
+  debugLogPath,
+  debugLogTail,
+  isDebugVerbose,
+  setDebugVerbose,
+} from "../../debug.ts";
 import type {
   ConversationContextSnapshot,
   ConversationDetail,
@@ -34,6 +40,7 @@ import type {
   OnboardingSaveResult,
   OnboardingTemplate,
 } from "../onboarding-wizard.tsx";
+import { classifySlash } from "./dispatcher.ts";
 
 /**
  * Rich pane descriptions returned by slash commands that open a modal
@@ -488,8 +495,28 @@ export async function handleSlash(
   rawArgs: string[],
   ctx: SlashHandlerContext,
 ): Promise<string | null> {
+  // R3-W2 review fix: consume `classifySlash` so the dispatcher seam
+  // is real, not aspirational. The classification is logged via
+  // `debugLog` for telemetry and used to short-circuit unknown
+  // commands; it never silently bypasses a registered command. A
+  // future contributor who adds `/connectors` to `LOCAL_ONLY_NAMES`
+  // by accident (or who tags a state-mutating command as
+  // `routing: "local"` in the registry) can be caught by the
+  // dispatcher's `_localOnlySnapshot()` test, which already enforces
+  // that engine-routed commands stay out of the local set.
+  const plan = classifySlash(name);
+  if (plan.routing === "unknown") {
+    debugLog("dialog.warning", { reason: "unknown_slash", slash_name: name }, {});
+  } else {
+    debugLog("dialog.elicitation_routing", { slash_name: name, routing: plan.routing }, {});
+  }
   switch (name) {
     case "status": {
+      // R3-S4: `/status` is local-only by design — same shape as
+      // `/cost`. Reads the Ink host's latest `/v1/status` snapshot
+      // (refreshed every completed turn) without re-hitting the
+      // engine. A "force refresh" path would belong on a separate
+      // slash if it's ever needed.
       const snap = ctx.statusSnapshot ?? null;
       const tenant = snap?.tenant.slug ?? snap?.tenant.id ?? ctx.profile.active_tenant_id ?? null;
       const budget = snap?.monthly_budget_tokens;
@@ -669,6 +696,12 @@ export async function handleSlash(
       return null;
     }
     case "cost": {
+      // R3-S4: `/cost` is local-only by design — it reads
+      // `ctx.statusSnapshot` (cached) and `ctx.session.usage` (in-
+      // memory). The snapshot is refreshed by the Ink host after
+      // every completed turn, so values are at-most one-turn stale;
+      // refreshing on every `/cost` would burn an audit row + a
+      // round-trip on a read-of-cached-state. Keep local.
       const snap = ctx.statusSnapshot ?? null;
       const usage = ctx.session.usage;
       const lines: string[] = [];

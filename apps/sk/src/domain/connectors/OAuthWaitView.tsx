@@ -11,18 +11,31 @@ import { spawn } from "node:child_process";
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import { useEffect, useRef, useState } from "react";
+import { z } from "zod";
 
-export interface OAuthPollResponse {
-  status: "pending" | "complete" | "failed";
-  credential?: { id: string; [k: string]: unknown };
-  error?: string;
-}
+// R3-S5 review fix: validate the engine→CLI poll response at the
+// boundary. The credential payload arrives over HTTP and lands in
+// `onConnected` — exactly the kind of "CLI input" AGENTS.md says
+// should be Zod-validated. `passthrough()` keeps unknown extras
+// (e.g. provider-specific identity fields) without dropping them.
+const OAuthCredentialSchema = z.object({ id: z.string() }).passthrough();
+
+const OAuthPollResponseSchema = z.object({
+  status: z.enum(["pending", "complete", "failed"]),
+  credential: OAuthCredentialSchema.optional(),
+  error: z.string().optional(),
+});
+
+export type OAuthPollResponse = z.infer<typeof OAuthPollResponseSchema>;
+export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
 
 export interface OAuthWaitViewProps {
   authUrl: string;
-  /** Function the view calls to poll the engine. Tests inject a mock here. */
-  poll: () => Promise<OAuthPollResponse>;
-  onConnected: (credential: { id: string; [k: string]: unknown }) => void;
+  /** Function the view calls to poll the engine. Tests inject a mock
+   *  here. The returned value is parsed through `OAuthPollResponseSchema`
+   *  before reaching `onConnected`. */
+  poll: () => Promise<unknown>;
+  onConnected: (credential: OAuthCredential) => void;
   onCancel?: () => void;
   /** Initial poll delay (ms). Doubles each attempt up to `maxIntervalMs`. */
   initialIntervalMs?: number;
@@ -107,8 +120,17 @@ export function OAuthWaitView({
     const tick = async (): Promise<void> => {
       if (cancelled) return;
       try {
-        const r = await poll();
+        const raw = await poll();
         if (cancelled) return;
+        // Validate the wire shape at the CLI boundary. A malformed
+        // engine response (legacy server, partial deploy) lands in
+        // `setError` rather than crashing the view.
+        const parsed = OAuthPollResponseSchema.safeParse(raw);
+        if (!parsed.success) {
+          setError(`malformed poll response: ${parsed.error.message}`);
+          return;
+        }
+        const r = parsed.data;
         setAttempts((n) => n + 1);
         if (r.status === "complete" && r.credential) {
           onConnected(r.credential);

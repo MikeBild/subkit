@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { apiKeys, tenants, users } from "../../db/schema/index.ts";
+import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -12,6 +12,10 @@ let ctx: HttpTestServer;
 let foreignTenantId: string;
 let foreignApiKey: string;
 let memberApiKey: string;
+// R4-S4: a system_account principal — exercises the
+// `principal.kind !== "user"` branch added in R2-S7 that skips the
+// recent_sessions query entirely.
+let systemAccountApiKey: string;
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("sk-bootstrap");
@@ -57,6 +61,28 @@ beforeAll(async () => {
     scopes: ["*"],
   });
   memberApiKey = mk;
+
+  // ----- system_account principal in the primary tenant ----------
+  // Exercises the R2-S7 guard: `recent_sessions` is unconditionally
+  // empty for non-`user` principals, regardless of permission set.
+  const [sysAcct] = await ctx.db
+    .insert(systemAccounts)
+    .values({
+      tenant_id: ctx.tenantId,
+      name: "bot-sk-bootstrap-deny-test",
+      description: "exercises R2-S7 system_account branch",
+    })
+    .returning();
+  if (!sysAcct) throw new Error("seed system_account for deny-test failed");
+  const sk = "wf_live_SYS_skbootstrap_system_account_dummy_pad000";
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: ctx.tenantId,
+    system_account_id: sysAcct.id,
+    prefix: sk.slice(0, 12),
+    token_sha256: createHash("sha256").update(sk).digest("hex"),
+    scopes: ["*"],
+  });
+  systemAccountApiKey = sk;
 });
 
 afterAll(async () => {
@@ -78,7 +104,12 @@ interface BootstrapResponse {
   permissions: string[];
   permissions_checked: string[];
   tenant: { id: string; slug: string | null; display_name: string | null };
-  recent_sessions: Array<{ id: string; title: string | null; updated_at: string }>;
+  recent_sessions: Array<{
+    id: string;
+    title: string | null;
+    updated_at: string;
+    tenant_id: string;
+  }>;
   flags: Record<string, boolean>;
   server_time: string;
 }
@@ -190,5 +221,43 @@ describe("GET /v1/sk/bootstrap", () => {
     const body = (await res.json()) as BootstrapResponse;
     expect(body.whoami.tenant_id).toBe(foreignTenantId);
     expect(body.tenant.id).toBe(foreignTenantId);
+  });
+
+  // R4-S4: the deny-path equivalent. A `system_account` principal
+  // never owns conversations (the column is for `user` ids today),
+  // so the route's `principal.kind !== "user"` guard short-circuits
+  // the query and returns []. This pins the contract so a future
+  // change that adds system_account-owned conversations doesn't
+  // silently leak ids without the explicit `conversation:read`
+  // gate also covering it.
+  test("system_account principal sees `recent_sessions === []` (R2-S7 + R4-S4)", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/sk/bootstrap`, {
+      headers: { authorization: `Bearer ${systemAccountApiKey}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as BootstrapResponse;
+    expect(body.whoami.kind).toBe("system_account");
+    expect(body.whoami.tenant_id).toBe(ctx.tenantId);
+    expect(body.recent_sessions).toEqual([]);
+  });
+
+  // R4-S3 / R4-W2: the wire-level pin that each `recent_sessions[]`
+  // row stamps `tenant_id`, plus that the engine's permissions[]
+  // array is restricted to the `UX_GATING_PERMISSIONS` enum (would
+  // fail Zod response validation otherwise — the route'd 500).
+  test("recent_sessions[] rows carry tenant_id; permissions only contains canonical entries", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/sk/bootstrap`, {
+      headers: { authorization: `Bearer ${ctx.apiKey}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as BootstrapResponse;
+    for (const row of body.recent_sessions) {
+      expect(row.tenant_id).toBe(ctx.tenantId);
+    }
+    const { UX_GATING_PERMISSIONS } = await import("@shared/ux-gating.ts");
+    const canonical = new Set<string>(UX_GATING_PERMISSIONS);
+    for (const p of body.permissions) {
+      expect(canonical.has(p)).toBe(true);
+    }
   });
 });

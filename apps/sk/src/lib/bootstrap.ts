@@ -17,11 +17,19 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { ResolvedProfile } from "../config.ts";
 import { debugLog, serializeDebugError } from "../debug.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { type ResolvedPersonaSnapshot, resolvePersonaShared } from "../persona-probe.ts";
 import type { PersonaProbe } from "../slash.ts";
+
+/** Wire-shape pulled directly from the generated OpenAPI client.
+ *  Used by both the consumer types below and `engine-client.ts` so
+ *  a typo in a flag name fails to compile across the whole CLI.
+ *  R4-W1 / R4-S5. */
+export type SkBootstrapWireResponse = components["schemas"]["SkBootstrap"];
+export type SkBootstrapFlags = SkBootstrapWireResponse["flags"];
 
 const DEFAULT_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h
 
@@ -37,9 +45,11 @@ export interface SkBootstrapSnapshot {
   /** User email or sub. Surfaced in the status line. */
   email: string | null;
   /** Recent conversations the principal owns; empty for new users. */
-  recentSessions: Array<{ id: string; title: string | null; updated_at: string }>;
-  /** Persona-visible feature flags. Empty until the engine populates them. */
-  flags: Record<string, boolean>;
+  recentSessions: SkBootstrapWireResponse["recent_sessions"];
+  /** Persona-visible feature flags. Drawn from the generated openapi
+   *  type so a typo on either the engine or CLI side fails to
+   *  compile. R4-W1. */
+  flags: SkBootstrapFlags;
   /** Wall-clock time the snapshot was produced (ms since epoch). */
   fetchedAt: number;
   /** Whether the snapshot came from the network or from disk cache. */
@@ -63,8 +73,8 @@ interface PersistedSnapshot {
   allowed: string[];
   tenant: string | null;
   email: string | null;
-  recent_sessions: Array<{ id: string; title: string | null; updated_at: string }>;
-  flags: Record<string, boolean>;
+  recent_sessions: SkBootstrapWireResponse["recent_sessions"];
+  flags: SkBootstrapFlags;
   fetched_at: number;
 }
 
@@ -172,16 +182,20 @@ export function bootstrapCachePath(profile: ResolvedProfile, override?: string):
   // → admin runs as a portal token to repro a bug`) would replay the
   // previous principal's permission set against the new bearer.
   //
-  // The fingerprint is the first 8 hex chars of sha256(api_key) — short
-  // enough to keep the filename readable, long enough to make a
-  // cross-token collision implausible (1 in 2^32). The hash itself is
-  // never reversible to the bearer because we only persist the prefix.
+  // The fingerprint is the first 16 hex chars of sha256(api_key) —
+  // short enough to keep the filename readable, long enough to make a
+  // cross-token collision negligible (~1 in 2^64). 8 hex (R2-W11
+  // initial fix) was 1-in-2^32 per pair, which is fine for two keys
+  // but starts approaching birthday-bound territory across an
+  // operator's lifetime of rotated tokens. R3-S3 bumped to 16. The
+  // hash itself is never reversible to the bearer because we only
+  // persist the prefix.
   const tenantSlug = (profile.active_tenant_id ?? "global").replace(/[^a-z0-9_-]/gi, "_");
   const engineSlug = profile.engine_url.replace(/[^a-z0-9_-]/gi, "_").slice(-32) || "engine";
   const tokenFp = createHash("sha256")
     .update(profile.api_key ?? "")
     .digest("hex")
-    .slice(0, 8);
+    .slice(0, 16);
   return join(dir, `bootstrap-${engineSlug}-${tenantSlug}-${tokenFp}.json`);
 }
 

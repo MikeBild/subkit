@@ -13,13 +13,28 @@
 // query and per-permission RBAC probes are logged at warn so they
 // surface in /v1/diagnostics/errors instead of being silently
 // swallowed.
+//
+// RBAC carve-out (R3-S1): this route, like `whoami`, intentionally
+// has no `permission:` parameter on the route definition. The
+// engine's general rule is "every route declares an explicit
+// permission"; the documented exception is the *self-introspection*
+// family — `whoami`, `bootstrap`, `health`, `metrics` — where
+// gating on a permission-the-caller-doesn't-have-yet would create a
+// chicken-and-egg problem (you can't discover that you have any
+// permissions if discovery itself requires one). The
+// `audit-invariants` script's `route_layering` check is satisfied
+// because the route imports from `rbac/index.ts` (the subsystem
+// barrel), not from a subsystem internal. If a future tightening
+// adds a `self:read` permission, that gate would land here without
+// affecting clients (every authenticated principal would receive
+// it by default).
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { conversations, roles, tenants, users } from "../../../db/schema/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 import { logger } from "../../../logging/index.ts";
-import { can, UX_GATING_PERMISSIONS } from "../../../rbac/index.ts";
+import { can, UX_GATING_PERMISSIONS, type UxGatingPermission } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
@@ -45,6 +60,12 @@ const SkBootstrapSessionRefSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
   updated_at: z.string(),
+  // R4-S3 review fix: each row carries its tenant_id so a forensic
+  // reader cross-correlating session ids out of context (logs, bug
+  // reports) can immediately tell which tenant a session belonged to.
+  // Always equal to the parent `tenant.id`; the redundancy is
+  // deliberate and load-bearing for incident-response tooling.
+  tenant_id: z.string(),
 });
 
 // Closed object of feature flags the bootstrap response is allowed to
@@ -62,20 +83,33 @@ const SkBootstrapSessionRefSchema = z.object({
 //
 // `_unused` is a reserved placeholder so the object isn't empty
 // (zod won't accept an empty `.object({})` here without a member);
-// when the first real flag lands, replace this member.
+// when the first real flag lands, replace this member. R4-S2.
 const SkBootstrapFlagsSchema = z
   .object({
+    // TODO(when first real flag lands): replace `_unused` with the
+    // actual flag and drop this comment block. Today this entry only
+    // exists so `.object({}).partial().strict()` has a member to
+    // narrow against.
     _unused: z.boolean(),
   })
   .partial()
   .strict();
 
+// `as const` round-trip: zod's `z.enum(...)` requires a tuple of
+// string literals, so spread + cast preserves the literal narrowing
+// from `UX_GATING_PERMISSIONS`. R4-W2.
+const UxGatingPermissionEnum = z.enum(
+  UX_GATING_PERMISSIONS as unknown as readonly [string, ...string[]],
+);
+
 const SkBootstrapResponseSchema = z
   .object({
     whoami: SkBootstrapWhoamiSchema,
-    permissions: z.array(z.string()).describe("Allowed UX-gating permissions for the principal."),
+    permissions: z
+      .array(UxGatingPermissionEnum)
+      .describe("Allowed UX-gating permissions for the principal."),
     permissions_checked: z
-      .array(z.string())
+      .array(UxGatingPermissionEnum)
       .describe("Stable list of permissions probed; reflects the engine's known UX gating set."),
     tenant: SkBootstrapTenantSchema,
     recent_sessions: z.array(SkBootstrapSessionRefSchema),
@@ -147,7 +181,7 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
     // Probe all UX-gating permissions in parallel. `can()` is the
     // authoritative check; failures here resolve to "not allowed"
     // rather than 500'ing the bootstrap call.
-    const allowedPermissions: string[] = [];
+    const allowedPermissions: UxGatingPermission[] = [];
     await Promise.all(
       UX_GATING_PERMISSIONS.map(async (perm) => {
         try {
@@ -235,7 +269,13 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
           role_name: roleName,
           provider: principal.provider,
           base_url: resolveEngineUrl(c.req.raw) ?? null,
-          scopes: Array.isArray(principal.scopes) ? principal.scopes : null,
+          // R4-W4: filter to strings, not just `Array.isArray`. If
+          // legacy data ships a non-string entry (schema migration
+          // miss), the bare cast would 500 the bootstrap call when
+          // the response Zod validator runs.
+          scopes: Array.isArray(principal.scopes)
+            ? principal.scopes.filter((s): s is string => typeof s === "string")
+            : null,
         },
         permissions: allowedPermissions,
         permissions_checked: [...UX_GATING_PERMISSIONS],
@@ -245,6 +285,9 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
           display_name: tenantRow?.display_name ?? null,
         },
         recent_sessions: recent.map((r) => ({
+          // R4-S3: each row stamps the principal's tenant_id (which
+          // matches the row's tenant_id by query construction).
+          tenant_id: principal.tenant_id,
           id: r.id,
           title: r.title,
           updated_at: r.updated_at.toISOString(),

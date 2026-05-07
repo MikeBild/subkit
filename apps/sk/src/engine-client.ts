@@ -4,6 +4,7 @@
 // engine's `AppType` through Hono drags the entire server module
 // graph in.
 
+import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import {
   type DebugCorrelationFields,
   type DebugMode,
@@ -590,25 +591,11 @@ export class EngineClient {
    * for the well-known UX-gating permissions, the tenant snapshot, and
    * the most recent owned conversations.
    */
-  skBootstrap(): Promise<{
-    whoami: {
-      id: string;
-      kind: "user" | "system_account";
-      tenant_id: string;
-      tenant_slug: string | null;
-      email: string | null;
-      role_name: string | null;
-      provider: string;
-      base_url: string | null;
-      scopes: string[] | null;
-    };
-    permissions: string[];
-    permissions_checked: string[];
-    tenant: { id: string; slug: string | null; display_name: string | null };
-    recent_sessions: Array<{ id: string; title: string | null; updated_at: string }>;
-    flags: Record<string, boolean>;
-    server_time: string;
-  }> {
+  skBootstrap(): Promise<components["schemas"]["SkBootstrap"]> {
+    // Return type is the generated OpenAPI schema — single source of
+    // truth shared with `apps/sk/src/lib/bootstrap.ts`. Replaces a
+    // 19-line hand-rolled inline type that the previous review (R4-W1
+    // / R4-S5) flagged as a typo-drift hazard.
     return this.request("GET", "/v1/sk/bootstrap");
   }
 

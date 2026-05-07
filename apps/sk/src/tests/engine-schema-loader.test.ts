@@ -51,8 +51,27 @@ describe("engine schema loader", () => {
     expect(calls).toBe(2);
   });
 
-  test("empty enum coerces to a plain string field (zod-friendly)", () => {
-    const z = materializeSchema({ fields: { kind: { type: "enum", enumValues: [] } } });
-    expect(z.safeParse({ kind: "anything" }).success).toBe(true);
+  test("empty enum throws by default (R3-W3 / R4-W3 — fail loud, not coerce)", () => {
+    expect(() => materializeSchema({ fields: { kind: { type: "enum", enumValues: [] } } })).toThrow(
+      /empty_enum_values|enumValues/i,
+    );
+  });
+
+  test("permissive=true preserves the legacy z.string() fallback for empty enum", () => {
+    const schema = materializeSchema(
+      { fields: { kind: { type: "enum", enumValues: [] } } },
+      { permissive: true },
+    );
+    expect(schema.safeParse({ kind: "anything" }).success).toBe(true);
+  });
+
+  test("unknown field types throw by default", () => {
+    expect(() =>
+      materializeSchema({
+        fields: {
+          x: { type: "object" as unknown as "string" },
+        },
+      }),
+    ).toThrow(/unknown_field_type|unsupported descriptor/i);
   });
 });

@@ -34,22 +34,13 @@ export interface IntegrationPickerProps {
   maxVisible?: number;
 }
 
-const CATEGORY_ICON: Record<string, string> = {
-  http: "◆",
-  graphql: "◈",
-  postgres: "◯",
-  s3: "□",
-  ftp: "▽",
-  sftp: "▽",
-  smb: "△",
-  redis: "▣",
-  webhook: "▶",
-  default: "•",
-};
+// CATEGORY_ICON moved to ./category-icons.ts so both surfaces (the
+// fuzzy picker here and the onboarding wizard at
+// `apps/sk/src/repl/onboarding-wizard.tsx`) share the same map. R3-S2.
+import { categoryIconFor } from "./category-icons.ts";
 
 function iconFor(template: ConnectorTemplate): string {
-  const cat = (template.category ?? "default").toLowerCase();
-  return CATEGORY_ICON[cat] ?? CATEGORY_ICON.default ?? "•";
+  return categoryIconFor(template.category);
 }
 
 export function IntegrationPicker({

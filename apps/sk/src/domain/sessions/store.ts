@@ -36,9 +36,11 @@ export interface TurnEvent {
   ts: string;
   /** Event family. */
   kind: TurnEventKind;
-  /** Owning tenant slug or id. Set by `appendEvent` when the caller
-   *  passes `opts.tenant`. Persisted alongside each event so a single
-   *  pasted line still carries its tenant context. R2-W6. */
+  /** Owning tenant slug or id. Required on every write (R4-W5).
+   *  Persisted alongside each event so a single pasted line still
+   *  carries its tenant context. Optional in the type to allow
+   *  loading legacy flat-layout files written before R4-W5; new
+   *  writes always populate it. */
   tenant?: string;
   /** Free-form payload — every kind defines its own shape. */
   data: Record<string, unknown>;
@@ -75,9 +77,12 @@ export interface AppendOptions {
   dir?: string;
   /** Tenant slug or id — namespaces the on-disk path so a forensic
    *  reader can immediately tell which tenant owns the JSONL even
-   *  if conversation IDs collide. Strongly recommended for any path
-   *  reachable through a switching profile. R2-W6. */
-  tenant?: string | null;
+   *  if conversation IDs collide. R4-W5: now REQUIRED on every
+   *  write so that a caller forgetting to pass it fails the
+   *  typecheck rather than silently landing on the legacy flat
+   *  `~/.sk/sessions/{conv}.jsonl` path. `loadEvents` keeps it
+   *  optional so older flat-layout files stay readable. */
+  tenant: string;
   /** Inject a clock for tests. */
   now?: () => Date;
 }
@@ -116,7 +121,7 @@ export function sessionEventsPath(
 export function appendEvent(
   conversationId: string,
   ev: Omit<TurnEvent, "ts">,
-  opts: AppendOptions = {},
+  opts: AppendOptions,
 ): void {
   const path = sessionEventsPath(conversationId, opts.dir, opts.tenant);
   const now = opts.now ?? (() => new Date());
@@ -129,12 +134,11 @@ export function appendEvent(
   // reader receives a single line in isolation (e.g. paste from a
   // bug report) the tenant context is preserved alongside the
   // conversation id.
-  const tenant = opts.tenant ?? null;
   const event: TurnEvent = {
     ...ev,
     data: scrubbedData,
     ts: now().toISOString(),
-    ...(tenant ? { tenant } : {}),
+    tenant: opts.tenant,
   };
   try {
     mkdirSync(dirname(path), { recursive: true });
