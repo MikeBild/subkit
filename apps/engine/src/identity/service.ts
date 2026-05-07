@@ -17,6 +17,7 @@ import {
   users,
 } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
+import { now } from "../utils/clock.ts";
 import { generateKey, hashKey } from "./api-key.ts";
 import { generatePortalToken } from "./portal-token.ts";
 
@@ -144,7 +145,7 @@ export async function deleteSystemAccount(input: DeleteSystemAccountInput, exec?
   return db.transaction(async (tx) => {
     const [row] = await tx
       .update(systemAccounts)
-      .set({ deleted_at: new Date() })
+      .set({ deleted_at: new Date(now()) })
       .where(
         and(
           eq(systemAccounts.tenant_id, input.tenant_id),
@@ -356,7 +357,7 @@ export async function rotateApiKey(
     // dedicated `rotating_out_at` column so the original `expires_at`
     // (caller-supplied lifetime) is preserved untouched. The api_key
     // provider treats `rotating_out_at <= now()` as a soft revoke.
-    const overlapDeadline = new Date(Date.now() + overlapMs);
+    const overlapDeadline = new Date(now() + overlapMs);
     const [rotatedOut] = await tx
       .update(apiKeys)
       .set({ rotating_out_at: overlapDeadline })
@@ -434,7 +435,7 @@ export async function revokeApiKey(
   return db.transaction(async (tx) => {
     const [row] = await tx
       .update(apiKeys)
-      .set({ revoked_at: new Date() })
+      .set({ revoked_at: new Date(now()) })
       .where(
         and(
           eq(apiKeys.tenant_id, input.tenant_id),
@@ -533,7 +534,7 @@ export async function issuePortalToken(
         prefix: key.prefix,
         token_sha256: key.hash,
         allowed_workflows: input.allowed_workflows,
-        expires_at: new Date(Date.now() + ttlMs),
+        expires_at: new Date(now() + ttlMs),
       })
       .returning();
     assertInsertRow(row, "portal_tokens");
@@ -576,7 +577,7 @@ export async function revokePortalToken(input: RevokePortalTokenInput, exec?: Ex
   return db.transaction(async (tx) => {
     const [row] = await tx
       .update(portalTokens)
-      .set({ revoked_at: new Date() })
+      .set({ revoked_at: new Date(now()) })
       .where(
         and(
           eq(portalTokens.tenant_id, input.tenant_id),
@@ -659,15 +660,15 @@ export async function createSession(
 ): Promise<SessionView> {
   const db = exec ?? getDb();
   return db.transaction(async (tx) => {
-    const now = new Date();
-    const absolute = new Date(now.getTime() + SESSION_ABSOLUTE_TTL_MS);
+    const issuedAt = new Date(now());
+    const absolute = new Date(issuedAt.getTime() + SESSION_ABSOLUTE_TTL_MS);
     const [row] = await tx
       .insert(sessions)
       .values({
         tenant_id: input.tenant_id,
         user_id: input.user_id,
         expires_at: absolute,
-        last_seen_at: now,
+        last_seen_at: issuedAt,
         absolute_expires_at: absolute,
       })
       .returning();
@@ -718,10 +719,10 @@ export async function resolveSession(
   if (!row) return { session: null, reason: "not_found" };
   if (row.revoked_at) return { session: null, reason: "revoked" };
 
-  const now = new Date();
+  const resolvedAt = new Date(now());
   const absolute =
     row.absolute_expires_at ?? new Date(row.created_at.getTime() + SESSION_ABSOLUTE_TTL_MS);
-  if (absolute.getTime() <= now.getTime()) {
+  if (absolute.getTime() <= resolvedAt.getTime()) {
     await auditAwait(
       {
         tenant_id: row.tenant_id,
@@ -740,7 +741,7 @@ export async function resolveSession(
   }
 
   const lastSeen = row.last_seen_at ?? row.created_at;
-  if (now.getTime() - lastSeen.getTime() > SESSION_SLIDING_TTL_MS) {
+  if (resolvedAt.getTime() - lastSeen.getTime() > SESSION_SLIDING_TTL_MS) {
     await auditAwait(
       {
         tenant_id: row.tenant_id,
@@ -765,8 +766,8 @@ export async function resolveSession(
   // is valid for *this* request regardless of whether the update lands.
   const [bumped] = await db
     .update(sessions)
-    .set({ last_seen_at: now })
+    .set({ last_seen_at: resolvedAt })
     .where(eq(sessions.id, row.id))
     .returning();
-  return { session: toSessionView(bumped ?? { ...row, last_seen_at: now }) };
+  return { session: toSessionView(bumped ?? { ...row, last_seen_at: resolvedAt }) };
 }
