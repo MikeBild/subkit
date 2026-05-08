@@ -137,6 +137,15 @@ else
   # the old inode until restart, so the rename is safe.
   if [ -f "$ENGINE_BIN" ]; then
     cp -p "$ENGINE_BIN" "$ENGINE_PREV"
+    # Record the prev binary's reported version so the rollback path
+    # below can refuse a chained-rollback cycle (deploy A fails →
+    # rollback to B; deploy A' also fails → would rollback to A again
+    # without this sentinel, cycling between two broken versions).
+    if [ -n "${PREV_VERSION:-}" ]; then
+      printf '%s\n' "$PREV_VERSION" > "${ENGINE_BIN}.prev.version"
+    else
+      rm -f "${ENGINE_BIN}.prev.version"
+    fi
   fi
   chmod 755 "$ENGINE_NEXT"
   mv "$ENGINE_NEXT" "$ENGINE_BIN"
@@ -170,7 +179,19 @@ else
     if [ "$(date +%s)" -ge "$deadline" ]; then
       echo "FATAL: health timeout after ${HEALTH_TIMEOUT_SECS}s (live='${live:-<unreachable>}', want=${ENGINE_VERSION})"
       if [ -f "$ENGINE_PREV" ]; then
-        echo "Rolling back to ${PREV_VERSION:-prev binary}"
+        # Refuse a chained-rollback cycle: if the prev binary's
+        # recorded version equals the version we just tried to ship,
+        # rolling back would just put us at the same spot. Surface
+        # the cycle and exit — operator must investigate.
+        prev_recorded=""
+        if [ -f "${ENGINE_BIN}.prev.version" ]; then
+          prev_recorded=$(cat "${ENGINE_BIN}.prev.version" 2>/dev/null || echo "")
+        fi
+        if [ -n "$prev_recorded" ] && [ "$prev_recorded" = "$ENGINE_VERSION" ]; then
+          echo "FATAL: rollback would cycle (engine.prev.version=${prev_recorded} == ENGINE_VERSION=${ENGINE_VERSION}). Refusing — investigate before redeploying."
+          exit 1
+        fi
+        echo "Rolling back to ${prev_recorded:-${PREV_VERSION:-prev binary}}"
         mv "$ENGINE_PREV" "$ENGINE_BIN"
         systemctl restart "$SERVICE_UNIT"
       fi
@@ -220,6 +241,13 @@ if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
   # never the response body — defense-in-depth so a future Zod-issue
   # formatter that echoes the offending value can't leak the bootstrap
   # credential into CI deploy logs.
+  # NB: put_setting writes the GLOBAL scope only — no `?tenant=` query
+  # is ever appended. Today every BOOTSTRAP_LLM_* leaf is global per
+  # apps/engine/src/config/schema.ts, so this is correct. If a future
+  # operator adds a tenant-scoped LLM override leaf, this helper must
+  # grow an optional 3rd argument (tenant id) before being called for
+  # that leaf — otherwise the deploy would silently write a tenant
+  # override into the global scope.
   put_setting() {
     local path="$1"
     local raw_value="$2"

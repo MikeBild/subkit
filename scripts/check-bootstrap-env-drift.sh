@@ -59,7 +59,14 @@ while IFS= read -r var; do
   for consumer in "${CONSUMERS[@]}"; do
     abs="$REPO_ROOT/$consumer"
     [[ -f "$abs" ]] || continue
-    if grep -qE "SendEnv=[^\"]*\\b$var\\b" "$abs"; then
+    # `\b` doesn't fire between two word chars (letter/digit/_), so
+    # `\bUSER\b` does NOT match `USERNAME` (the `R↔N` boundary is
+    # internal to a single word). But `\bUSER\b` WOULD match
+    # `USER FOO` and `USER,FOO` (the `R↔space` and `R↔,` boundaries
+    # are word-vs-non-word). We anchor explicitly with the SendEnv
+    # delimiter set ({space, =, ", $}) to drop any ambiguity for
+    # future variables whose names contain regex metachars.
+    if grep -qE "SendEnv=[^\"]*\\b${var}([[:space:]\"=,]|$)" "$abs"; then
       echo "ERROR: $consumer hardcodes $var in a SendEnv= line — must read from deploy/bootstrap-env.list instead"
       errors=$((errors + 1))
     fi

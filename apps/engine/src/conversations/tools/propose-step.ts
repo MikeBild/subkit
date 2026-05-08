@@ -22,7 +22,21 @@ const inputSchema = z
   })
   .openapi("ProposeStepToolInput");
 
-const VALID_KINDS = ["request", "transform", "call", "wait", "branch", "parallel", "loop"] as const;
+/** The LLM-facing palette: a deliberate SUBSET of `StepSchema`'s
+ *  discriminator kinds. `wait_for_event` is omitted because the LLM
+ *  can't reliably author it (it requires planning around external
+ *  events the conversation hasn't seen). Exported so the schema-
+ *  parity test in `apps/engine/src/workflows/types.test.ts` can
+ *  fence drift: every kind here MUST exist in StepSchema. */
+export const VALID_KINDS = [
+  "request",
+  "transform",
+  "call",
+  "wait",
+  "branch",
+  "parallel",
+  "loop",
+] as const;
 type ValidKind = (typeof VALID_KINDS)[number];
 
 const REQUIRED_FIELDS_PER_KIND: Record<ValidKind, string[]> = {

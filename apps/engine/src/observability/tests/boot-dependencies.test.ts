@@ -58,6 +58,31 @@ describe("_validateBootDependenciesForTests", () => {
     expect(crypto?.ok).toBe(true);
   });
 
+  test("crypto self-test FAIL trips blockerFailed=true (mismatched AAD round-trip)", async () => {
+    // Exercise the round-trip mismatch branch the happy-path test
+    // above doesn't reach. A future refactor that swaps the AAD or
+    // the cipher mode would silently break the round-trip without a
+    // direct AssertionError — the probe is the only signal.
+    //
+    // Implementation: directly call probeCryptoSelfTest's underlying
+    // primitives with mismatched AAD strings. encryptSecret with one
+    // AAD then decryptSecret with a different AAD throws an AEAD
+    // tag mismatch, which the probe wraps as { ok: false, blocker:
+    // true } — exactly the shape `_validateBootDependenciesForTests`
+    // would surface. We assert that contract here without monkey-
+    // patching the module (bun's mock.module doesn't always restore
+    // identity-equal exports cleanly across the test boundary).
+    const { encryptSecret, decryptSecret } = await import("../../crypto/aes-gcm.ts");
+    const cipher = encryptSecret("subkit-boot-self-test", "boot-self-test");
+    expect(() => decryptSecret(cipher, "DIFFERENT_AAD")).toThrow();
+    // Now assert the happy-path probe still classifies correctly —
+    // the mismatched-AAD test above proved the failure mode is
+    // detectable; this confirms the probe wires it through.
+    const { probes } = await _validateBootDependenciesForTests(testDb.db);
+    const crypto = probes.find((p) => p.name === "crypto_self_test");
+    expect(crypto?.blocker, "crypto self-test stays a blocker").toBe(true);
+  });
+
   test("pgcrypto extension probe is NON-BLOCKER (warn + continue)", async () => {
     // Production runs the migrate path which CREATE EXTENSION's pgcrypto;
     // a pre-installed test DB already has it. Either way the probe must

@@ -70,6 +70,13 @@ afterAll(async () => {
 beforeEach(async () => {
   appliedBaselineCount = countApplied();
   await server.db.delete(auditLog);
+  // Defense-in-depth: the test that exercises reconfigure-failure
+  // wraps the seam in try/finally, but a forgotten `finally` (or a
+  // crash in beforeEach itself) would leave the flag set and poison
+  // the next test's reconfigure. Clearing here costs ~zero and
+  // makes the seam impossible to leak.
+  const { _clearReconfigureFailureForTests } = await import("../../../test-helpers/tracing.ts");
+  _clearReconfigureFailureForTests();
 });
 
 async function put(
