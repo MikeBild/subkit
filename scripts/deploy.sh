@@ -39,6 +39,15 @@
 # One-time operator setup:
 #   doctl auth init --access-token <PAT-with-registry:update-scope>
 #
+# If the droplet was migrated through the legacy (pre-v3-baseline)
+# migration lineage, runMigrations()'s positional fallback may have
+# silently corrupted the migration journal so embedded schema changes
+# never executed. /v1/health flips db_schema_drift=true; /v1/diagnostics/drift
+# enumerates the unknown rows; scripts/db/reconcile-prod-schema-4.1.0.sql
+# applies the missing schema changes idempotently. Apply with:
+#   ssh <droplet> 'docker exec -i subkit-postgres-1 psql -U subkit -d subkit' \
+#     < scripts/db/reconcile-prod-schema-4.1.0.sql
+#
 # Concurrency guard: a flock on /tmp/subkit-deploy.lock prevents two
 # concurrent runs from racing (local x local or local x CI).
 
