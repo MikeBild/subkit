@@ -28,6 +28,13 @@
 #   DROPLET_USER    SSH user (default: root)
 #   SSH_KEY_PATH    path to the private key (default: ~/.ssh/id_rsa)
 #   DEPLOY_URL      base URL for smoke (default: https://subkit-api.mikebild.dev)
+#   VERIFY_API_KEY  admin API key for authenticated diagnostics smoke
+#                   (Stage 6). Mint on the droplet:
+#                     ssh <droplet> 'docker exec subkit-engine-1 \
+#                       /bin/engine --issue-admin-key'
+#                   Or set SKIP_AUTH_DIAGNOSTICS=1 to skip the
+#                   authenticated half of verify (public smoke +
+#                   /v1/health + remote log scan still run).
 #
 # One-time operator setup:
 #   doctl auth init --access-token <PAT-with-registry:update-scope>

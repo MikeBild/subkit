@@ -3,24 +3,31 @@
 // stdout, for the operator to store in `~/.sk/config.json` or
 // feed to `sk login --api-key <key>`.
 //
-// Usage:
+// Two entry points share the same logic:
 //
-//   bun run apps/engine/src/db/issue-admin-key.ts
-//     → mints a key for tenant slug `default` bound to any admin
-//       user in that tenant. Fails loudly if neither exists.
+//   1. The compiled engine binary on the droplet:
+//        docker exec subkit-engine-1 /bin/engine --issue-admin-key
+//        docker exec subkit-engine-1 /bin/engine --issue-admin-key --tenant my-slug
+//      (see apps/engine/src/index.ts for the flag wiring)
 //
-//   bun run apps/engine/src/db/issue-admin-key.ts --tenant my-slug
-//     → same, but for a specific tenant slug.
+//   2. From a checkout, the same script standalone (uses `bun run`):
+//        bun run apps/engine/src/db/issue-admin-key.ts
+//        bun run apps/engine/src/db/issue-admin-key.ts --tenant my-slug
 //
-// The script is intentionally minimal — it does NOT run migrations,
-// does NOT re-seed, does NOT touch any other row. Safe to run on a
-// live database.
+// Both paths read DATABASE_URL from env. Neither runs migrations,
+// re-seeds, or touches any other row — safe on a live database.
 
 import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { sha256Hex } from "../identity/api-key.ts";
 import { createDbFromUrl } from "./client.ts";
 import { apiKeys, tenants, users } from "./schema/index.ts";
+
+export type IssuedAdminKey = {
+  tenant_slug: string;
+  user_email: string;
+  key_plaintext: string;
+};
 
 function bootstrapDatabaseUrl(): string {
   const url = process.env.DATABASE_URL;
@@ -40,7 +47,7 @@ function generate(): { plaintext: string; prefix: string; hash: string } {
   };
 }
 
-function parseArgs(argv: string[]): { tenantSlug: string } {
+export function parseIssueAdminKeyArgs(argv: string[]): { tenantSlug: string } {
   let tenantSlug = "default";
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--tenant" && argv[i + 1]) {
@@ -51,18 +58,25 @@ function parseArgs(argv: string[]): { tenantSlug: string } {
   return { tenantSlug };
 }
 
-async function main(): Promise<void> {
-  const { tenantSlug } = parseArgs(process.argv.slice(2));
+/**
+ * Mint a new admin API key for the given tenant. Connects with
+ * DATABASE_URL, finds an admin user in the tenant, inserts a key row
+ * with `scopes: ["*"]`, and returns the plaintext + identifying
+ * metadata. Closes the pool before returning.
+ *
+ * Throws if DATABASE_URL is unset, the tenant doesn't exist, or the
+ * tenant has no admin user.
+ */
+export async function issueAdminKey(opts: { tenantSlug: string }): Promise<IssuedAdminKey> {
   const { pool, db } = createDbFromUrl(bootstrapDatabaseUrl());
   try {
     const [tenant] = await db
       .select({ id: tenants.id, slug: tenants.slug })
       .from(tenants)
-      .where(eq(tenants.slug, tenantSlug))
+      .where(eq(tenants.slug, opts.tenantSlug))
       .limit(1);
     if (!tenant) {
-      process.stderr.write(`issue-admin-key: tenant slug '${tenantSlug}' not found\n`);
-      process.exit(2);
+      throw new Error(`tenant slug '${opts.tenantSlug}' not found`);
     }
 
     const [adminUser] = await db
@@ -71,8 +85,7 @@ async function main(): Promise<void> {
       .where(and(eq(users.tenant_id, tenant.id), eq(users.role, "admin")))
       .limit(1);
     if (!adminUser) {
-      process.stderr.write(`issue-admin-key: no admin user found in tenant '${tenantSlug}'\n`);
-      process.exit(2);
+      throw new Error(`no admin user found in tenant '${opts.tenantSlug}'`);
     }
 
     const key = generate();
@@ -84,25 +97,43 @@ async function main(): Promise<void> {
       scopes: ["*"],
     });
 
-    const banner = [
-      "",
-      "----------------------------------------------------------------",
-      " admin api key issued (copy this — it won't be shown again)",
-      "----------------------------------------------------------------",
-      ` tenant:  ${tenant.slug}`,
-      ` user:    ${adminUser.email}`,
-      ` key:     ${key.plaintext}`,
-      "----------------------------------------------------------------",
-      ` next:    sk login --api-key ${key.plaintext}`,
-      "",
-    ].join("\n");
-    process.stdout.write(`${banner}\n`);
+    return {
+      tenant_slug: tenant.slug,
+      user_email: adminUser.email,
+      key_plaintext: key.plaintext,
+    };
   } finally {
     await pool.end();
   }
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`issue-admin-key: ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
-});
+export function formatIssuedKeyBanner(issued: IssuedAdminKey): string {
+  return [
+    "",
+    "----------------------------------------------------------------",
+    " admin api key issued (copy this — it won't be shown again)",
+    "----------------------------------------------------------------",
+    ` tenant:  ${issued.tenant_slug}`,
+    ` user:    ${issued.user_email}`,
+    ` key:     ${issued.key_plaintext}`,
+    "----------------------------------------------------------------",
+    ` next:    sk login --api-key ${issued.key_plaintext}`,
+    "",
+  ].join("\n");
+}
+
+// Standalone-script entry. Skipped when this module is imported (e.g.
+// from index.ts wiring `--issue-admin-key`).
+if (import.meta.main) {
+  const { tenantSlug } = parseIssueAdminKeyArgs(process.argv.slice(2));
+  issueAdminKey({ tenantSlug })
+    .then((issued) => {
+      process.stdout.write(`${formatIssuedKeyBanner(issued)}\n`);
+    })
+    .catch((err: unknown) => {
+      process.stderr.write(
+        `issue-admin-key: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(1);
+    });
+}

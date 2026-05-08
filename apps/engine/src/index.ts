@@ -29,6 +29,7 @@ const SELF_UPDATE_FLAG = "--self-update";
 const CHECK_UPDATE_FLAG = "--check-update";
 const MIGRATE_FLAG = "--migrate";
 const SEED_FLAG = "--seed";
+const ISSUE_ADMIN_KEY_FLAG = "--issue-admin-key";
 
 async function runSmoke(): Promise<void> {
   // Read raw process.env. Importing `./env.ts` would trigger the lazy
@@ -572,6 +573,45 @@ async function main(): Promise<void> {
             module: "engine",
             action: "migrate.cli_failed",
             msg: "engine --migrate failed",
+            error: err instanceof Error ? err.message : String(err),
+          });
+          process.exit(1);
+        }
+      },
+    );
+    return;
+  }
+
+  // --issue-admin-key [--tenant <slug>]: mint a fresh admin API key
+  // against an existing tenant + admin user, print the plaintext once,
+  // exit. Lets operators rotate or bootstrap the verify/diagnostics
+  // key on the droplet without needing the source repo + bun runtime
+  // (e.g. `docker exec subkit-engine-1 /bin/engine --issue-admin-key`).
+  // Does NOT run migrations or seed — safe on a live database.
+  if (process.argv.includes(ISSUE_ADMIN_KEY_FLAG)) {
+    await withContext(
+      {
+        trace_id: newTraceId(),
+        tenant_id: SYSTEM_TENANT_ID,
+        request_source: "cli",
+        actor_id: "issue-admin-key",
+      },
+      async () => {
+        try {
+          const { issueAdminKey, parseIssueAdminKeyArgs, formatIssuedKeyBanner } = await import(
+            "./db/issue-admin-key.ts"
+          );
+          await loadConfigAndReconfigureLogger();
+          const { tenantSlug } = parseIssueAdminKeyArgs(process.argv.slice(2));
+          const issued = await issueAdminKey({ tenantSlug });
+          process.stdout.write(`${formatIssuedKeyBanner(issued)}\n`);
+          await closeDb();
+          process.exit(0);
+        } catch (err) {
+          logger.fatal({
+            module: "engine",
+            action: "issue_admin_key.cli_failed",
+            msg: "engine --issue-admin-key failed",
             error: err instanceof Error ? err.message : String(err),
           });
           process.exit(1);
