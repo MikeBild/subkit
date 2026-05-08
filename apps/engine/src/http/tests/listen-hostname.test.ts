@@ -18,7 +18,6 @@
 //      review" — source-text scan would falsely accept this.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -41,8 +40,11 @@ function bootHttp(hostname: string): Promise<{ address: string; port: number; cl
   app.get("/_probe", (c) => c.text("ok"));
   return new Promise((resolve, reject) => {
     const server = serve({ fetch: app.fetch, port: 0, hostname }, (info) => {
+      // info is the AddressInfo from net.Server.address(). serve()
+      // invokes this callback synchronously once bind succeeds; we
+      // don't need a wall-clock fallback (forbidden by the
+      // determinism lint anyway).
       try {
-        // info is the AddressInfo from net.Server.address()
         resolve({
           address: info.address,
           port: info.port,
@@ -52,18 +54,7 @@ function bootHttp(hostname: string): Promise<{ address: string; port: number; cl
         reject(err);
       }
     });
-    // Fallback in case the listening callback doesn't fire (very rare;
-    // node-server invokes it synchronously after bind).
-    setTimeout(() => {
-      const a = (server.address() as AddressInfo | null) ?? null;
-      if (a) {
-        resolve({
-          address: a.address,
-          port: a.port,
-          close: () => server.close(),
-        });
-      }
-    }, 500);
+    server.on("error", reject);
   });
 }
 

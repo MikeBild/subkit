@@ -227,6 +227,47 @@ describe("/v1/diagnostics/setup", () => {
     expect(res.status).toBe(403);
   });
 
+  test("every Zod-marked secret leaf surfaces as presence or is intentionally omitted", async () => {
+    // Schema-walk parity fence (closes the suggestion that a future
+    // rename of `llm.providers.anthropic.api_key` to `…anthropic.key`
+    // would silently surface as "Missing"). For every leaf in
+    // ConfigSchema marked `meta({ secret: true })`, assert that the
+    // diagnostic response either:
+    //   (a) lists the leaf with value of exactly "configured" or null
+    //       (the setPresence shape — never raw secret material), OR
+    //   (b) omits the leaf entirely (acceptable for irrelevant
+    //       paths — e.g. provider-specific keys when that provider is
+    //       not active; the diagnostic is operator-facing, not an
+    //       audit dump).
+    // The hand-maintained section builders in setup.ts can drift from
+    // the schema; this test catches the drift before a release ships.
+    const { listConfigLeaves, dottedPath } = await import("../../config/walk.ts");
+    const secretPaths = listConfigLeaves()
+      .filter((leaf) => !!leaf.meta.secret)
+      .map((leaf) => dottedPath(leaf));
+    expect(secretPaths.length).toBeGreaterThan(0);
+
+    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      sections: Record<string, { values: Array<{ key: string; value: string | null }> }>;
+    };
+    const surfacedByKey = new Map<string, string | null>();
+    for (const section of Object.values(body.sections)) {
+      for (const v of section.values) surfacedByKey.set(v.key, v.value);
+    }
+    for (const path of secretPaths) {
+      if (!surfacedByKey.has(path)) continue; // (b) intentionally omitted
+      const v = surfacedByKey.get(path);
+      expect(
+        v === "configured" || v === null,
+        `secret leaf ${path} surfaced as ${JSON.stringify(v)} — must be "configured" or null`,
+      ).toBe(true);
+    }
+  });
+
   test("secret-shape values surface as 'configured'/null only — never the underlying secret", async () => {
     // 4.2.0 security regression net: every secret-shape value in the
     // setup diagnostic uses `setPresence("configured" / null)`,

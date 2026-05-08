@@ -17,8 +17,10 @@ bun install
 ## 2. Bring infra up
 
 ```bash
-bun run compose:up          # Postgres + engine
+bun run compose:up          # Postgres only (engine runs on the host via `bun run dev`)
 ```
+
+Local dev uses docker compose for postgres only (and optional MinIO under `--profile storage`); the engine runs on the host via `bun run dev` (step 4). Production hosts run the engine as a systemd-managed binary — see [docs/operations/deploy.md](../operations/deploy.md).
 
 ## 3. Run the quality gate
 

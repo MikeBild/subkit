@@ -1,6 +1,8 @@
 # Quickstart — Operator
 
-You run sk for your team. Goal: engine up, one admin key minted, one connector registered. 10 minutes.
+You run sk for your team. Goal: engine up on a real host, one admin key minted, one connector registered. 15 minutes.
+
+> **Just kicking the tires?** The local-dev path (docker compose, no host) is in [docs/quickstart/developer.md](./developer.md). This page assumes you're standing up an actual production host.
 
 ## 1. Install the `sk` CLI
 
@@ -8,41 +10,47 @@ You run sk for your team. Goal: engine up, one admin key minted, one connector r
 curl -fsSL https://raw.githubusercontent.com/mikebild/subkit/main/scripts/install.sh | bash
 ```
 
-See [docs/03-input-surfaces.md](../03-input-surfaces.md) for Windows and manual platform installs.
-The install script may also place a `subkit` compatibility alias on disk, but the canonical
-command surface is `sk`.
+See [docs/03-input-surfaces.md](../03-input-surfaces.md) for Windows and manual platform installs. The install script may place a `subkit` compatibility alias on disk; the canonical command surface is `sk`.
 
-## 2. Bring the engine up
+## 2. Provision the host (4.2.0 systemd-native)
+
+The engine is a single `bun build --compile` binary deployed under systemd; postgres + caddy are apt-installed. No docker required on the host. The bootstrap script handles everything — DNS, firewall, postgres-16, caddy, the `subkit` system user, the systemd unit. Full guide: [docs/operations/deploy.md](../operations/deploy.md).
 
 ```bash
 git clone https://github.com/mikebild/subkit && cd subkit
-bun run compose:up          # Postgres + engine, all via Docker
+# .env.deploy contains DEPLOY_HOST, SSH_KEY_PATH, optional BOOTSTRAP_LLM_*
+bash scripts/do-bootstrap.sh   # provisions the host
+bash scripts/deploy.sh patch   # builds + ships the engine binary
 ```
 
-The engine listens on `http://localhost:3000` by default. Verify:
+The engine binds 127.0.0.1 only; caddy fronts the public TLS endpoint. Verify:
 
 ```bash
-curl -s http://localhost:3000/v1/health | jq
+curl -s https://${DEPLOY_HOST_FQDN}/v1/health | jq
 ```
 
-## 3. Log in with the seeded admin key (or bootstrap)
+## 3. Mint an admin API key
 
-Local dev brings up postgres via `bun run compose:up` and the engine via `bun run dev`. The engine seeds a `default` tenant plus an `admin@local` admin key on first boot when `NODE_ENV=development`. Grab the key from the engine's stdout/stderr (or `journalctl -u subkit-engine.service` on the host) and log in:
+The first deploy applies migrations on boot but doesn't seed an admin key (no dev-seed in production mode). One-shot mint over SSH:
 
 ```bash
-bun run dev 2>&1 | grep -A1 'NEW API KEY ISSUED — default-bot'
-sk login --engine-url http://localhost:3000 --api-key <wf_live_…>
+ssh -i ${SSH_KEY_PATH} root@${DEPLOY_HOST} \
+  "sudo -u subkit -H bash -c 'set -a; . /etc/subkit/.env; set +a; cd /etc/subkit && /usr/local/bin/engine --issue-admin-key'"
 ```
 
-That key is printed exactly once. If you missed it, `bun run db:issue-admin-key` (locally) or `sudo -u subkit /usr/local/bin/engine --issue-admin-key` (on the host) mints a fresh one without re-running the seed.
-
-**Production-mode first-run instead.** Set `NODE_ENV=production` in `.env` before `bun run compose:up` and the dev seed is skipped — the engine prints a one-time bootstrap-token banner on first boot. Copy the token, then:
+The `-H` + sourced `.env` + `cd /etc/subkit` are required so the CLI finds `DATABASE_URL` / `MASTER_KEY` and persists `subkit.config.json` under `/etc/subkit`, not `/root`. The key is printed exactly once.
 
 ```bash
-sk init --engine-url http://localhost:3000 --token <bootstrap-token>
+sk login --engine-url https://${DEPLOY_HOST_FQDN} --api-key <wf_live_…>
 ```
 
-`sk init` redeems the token, prompts for admin email, tenant name, LLM provider, and LLM API key, and saves an admin profile + the returned `wf_live_…` key.
+Bootstrap LLM provider in one settings write (skip if you set `BOOTSTRAP_LLM_*` in `.env.deploy` — the deploy already PUT them):
+
+```bash
+sk settings set llm.provider '"anthropic"'
+sk settings set llm.providers.anthropic.api_key '"sk-ant-…"'
+sk settings set llm.providers.anthropic.model '"claude-sonnet-4-6"'
+```
 
 ## 4. Register your first connector
 

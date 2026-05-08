@@ -327,12 +327,19 @@ function buildDatastoreSection(snapshot: ReturnType<typeof getConfig>): SetupSec
     );
     recommendations.push("Fix database.url so the engine points at a valid Postgres DSN.");
   }
+  // database.url carries `secret: true` in ConfigSchema (the password
+  // is sensitive, and the username + host identify which prod cluster
+  // the engine points at — operational metadata that non-admin
+  // identity:read principals shouldn't see). Surface presence only.
+  // formatDatabaseUrl is still consulted internally for the
+  // invalid-format check above; the operator-facing string lands in
+  // the issue detail, not in the public value.
   return buildSection(
     "Datastore",
     [
       {
         key: "database.url",
-        value: formatDatabaseUrl(dsn),
+        value: setPresence(dsn),
         status_hint: dsn ? null : "Missing",
       },
     ],

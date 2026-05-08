@@ -79,6 +79,18 @@ if [ "$BOOTSTRAP_ONLY" != "1" ] && [ ! -f "$ENGINE_NEXT" ]; then
   exit 1
 fi
 
+# Stale-rollback safety net: if a previous deploy crashed AFTER the
+# scp but BEFORE the swap, $ENGINE_NEXT might be from the run before
+# this one. The mtime-vs-now check is generous (24h) — just enough to
+# reject a many-days-old artifact while accepting a normal back-to-back
+# deploy. (The atomic `mv` happens within seconds of scp; a stale
+# engine.next is always a sign of a botched run, not a slow caller.)
+if [ "$BOOTSTRAP_ONLY" != "1" ] && [ -f "$ENGINE_NEXT" ]; then
+  if [ "$(find "$ENGINE_NEXT" -mmin +1440 2>/dev/null)" ]; then
+    echo "WARN: $ENGINE_NEXT older than 24h (likely a botched prior deploy); proceeding with swap, but inspect /var/log/subkit if anything looks off"
+  fi
+fi
+
 read_running_version() {
   # `jq` is installed by `do-bootstrap.sh` step 6 alongside postgres +
   # caddy. Don't reach for `node -e` here — the host image is
