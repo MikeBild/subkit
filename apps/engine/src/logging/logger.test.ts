@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { errorFields } from "./logger.ts";
 import { redact } from "./redact.ts";
 
 describe("redact", () => {
@@ -62,5 +63,36 @@ describe("redact", () => {
     };
     const out = redact(input);
     expect(JSON.stringify(out)).toContain("[depth-exceeded]");
+  });
+});
+
+describe("errorFields", () => {
+  test("returns String(err) for non-Error thrown values", () => {
+    expect(errorFields("plain string")).toEqual({ error: "plain string" });
+    expect(errorFields(42)).toEqual({ error: "42" });
+    expect(errorFields(null)).toEqual({ error: "null" });
+  });
+
+  test("surfaces err.cause as a sibling field — drizzle-orm puts the pg error there", () => {
+    const pgErr = new Error("connection terminated unexpectedly");
+    const wrapped = new Error("Failed query: select 1\nparams: ");
+    wrapped.cause = pgErr;
+    const out = errorFields(wrapped);
+    expect(out.error).toBe("Failed query: select 1\nparams: ");
+    expect(out.cause).toBe("connection terminated unexpectedly");
+    expect(typeof out.stack).toBe("string");
+  });
+
+  test("stringifies non-Error causes", () => {
+    const wrapped = new Error("outer");
+    wrapped.cause = { code: "ECONNRESET" };
+    const out = errorFields(wrapped);
+    expect(out.cause).toBe("[object Object]");
+  });
+
+  test("omits cause when undefined", () => {
+    const out = errorFields(new Error("plain"));
+    expect(out.error).toBe("plain");
+    expect(out.cause).toBeUndefined();
   });
 });

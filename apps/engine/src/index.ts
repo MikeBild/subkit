@@ -13,7 +13,7 @@ import { setHealthState } from "./http/health-state.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
-import { logger } from "./logging/logger.ts";
+import { errorFields, logger } from "./logging/logger.ts";
 import { startTracing } from "./observability/tracing.ts";
 import * as bootstrap from "./onboarding/bootstrap.ts";
 import { startListener, stopListener } from "./pubsub/listener.ts";
@@ -171,7 +171,7 @@ async function runServer(): Promise<void> {
       module: "engine",
       action: "migrate.drift_check_failed",
       msg: "drift detection failed (non-fatal)",
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
   }
 
@@ -188,7 +188,7 @@ async function runServer(): Promise<void> {
       module: "engine",
       action: "bootstrap.probe_failed",
       msg: "first-run bootstrap probe failed (non-fatal)",
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
   }
 
@@ -221,7 +221,7 @@ async function runServer(): Promise<void> {
       module: "queue",
       action: "crash_recovery_failed",
       msg: "boot-time crash recovery sweep failed (non-fatal)",
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
   }
 
@@ -246,7 +246,7 @@ async function runServer(): Promise<void> {
       module: "execution",
       action: "wait_reaper.boot_failed",
       msg: "boot-time wait reaper failed (non-fatal)",
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
   }
 
@@ -300,7 +300,7 @@ async function runServer(): Promise<void> {
       module: "engine",
       action: "seed.at_boot_failed",
       msg: "boot-time seed failed (non-fatal); auth may degrade until next boot",
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
   }
 
@@ -354,7 +354,7 @@ async function runServer(): Promise<void> {
           module: "skills.seed",
           action: "seed.failed",
           msg: "skill seed apply failed (non-fatal)",
-          error: err instanceof Error ? err.message : String(err),
+          ...errorFields(err),
         });
       }
     })();

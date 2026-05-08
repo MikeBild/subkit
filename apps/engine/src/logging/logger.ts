@@ -169,6 +169,31 @@ function emit(level: LogLevel, fields: LogFields): void {
 }
 
 /**
+ * Build the structured `error` / `cause` / `stack` fields for a logger call
+ * out of an unknown thrown value. Surfaces `err.cause` as a sibling field
+ * because drizzle-orm's `DrizzleQueryError` wraps the underlying pg
+ * error in `.cause` and only puts the SQL + params in `.message` —
+ * without this helper a `Failed query: …` log line carries no Postgres
+ * reason at all (we hit this on the v4.1.0 deploy, where `err.cause`
+ * was the real signal but had been silently dropped). Spread into the
+ * log fields, e.g.:
+ *
+ *   logger.error({ module: "x", action: "y", msg: "z", ...errorFields(err) });
+ */
+export function errorFields(err: unknown): {
+  error: string;
+  cause?: string;
+  stack?: string;
+} {
+  if (!(err instanceof Error)) return { error: String(err) };
+  const out: { error: string; cause?: string; stack?: string } = { error: err.message };
+  if (err.cause instanceof Error) out.cause = err.cause.message;
+  else if (err.cause !== undefined) out.cause = String(err.cause);
+  if (err.stack) out.stack = err.stack;
+  return out;
+}
+
+/**
  * Core logger. Prefer the domain helpers (`log.http.request.started`, etc.)
  * below for common events so that `module` / `action` stay consistent.
  */

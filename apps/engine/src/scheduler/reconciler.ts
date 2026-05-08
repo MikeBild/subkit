@@ -14,7 +14,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { connectors, knowledgeSources, workflows, workflowsSchedules } from "../db/schema/index.ts";
 import { createExecution } from "../execution/state.ts";
-import { logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/logger.ts";
 import { enqueueIngest, INGEST_DOCS_QUEUE } from "../queue/handlers/ingest-docs.ts";
 import {
   enqueueKnowledgeIngest,
@@ -267,7 +267,7 @@ export class SchedulerReconciler {
           module: "scheduler",
           action: "reconcile_failed",
           msg: "scheduler reconcile pass failed",
-          error: err instanceof Error ? err.message : String(err),
+          ...errorFields(err),
         });
       });
     }, period);
@@ -299,7 +299,7 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "docs_refresh_failed",
         msg: "scheduler docs auto-refresh pass failed",
-        error: err instanceof Error ? err.message : String(err),
+        ...errorFields(err),
       });
     });
     await this.reconcileKnowledgeAutoRefresh().catch((err) => {
@@ -307,7 +307,7 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "knowledge_refresh_failed",
         msg: "scheduler knowledge auto-refresh pass failed",
-        error: err instanceof Error ? err.message : String(err),
+        ...errorFields(err),
       });
     });
     // Workflow schedule fan-out is dedup'd via `last_enqueued_at`. The
@@ -321,7 +321,7 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "schedule_fanout_failed",
         msg: "scheduler workflow schedule fan-out pass failed",
-        error: err instanceof Error ? err.message : String(err),
+        ...errorFields(err),
       });
     });
     const desired = await this.computeDesired();
@@ -361,7 +361,7 @@ export class SchedulerReconciler {
             action: "schedule.fire_failed",
             msg: "every-schedule enqueue failed",
             schedule_key: key,
-            error: err instanceof Error ? err.message : String(err),
+            ...errorFields(err),
           });
         });
       }, def.seconds * 1000);
@@ -456,7 +456,7 @@ export class SchedulerReconciler {
           action: "docs_refresh_enqueue_failed",
           msg: "failed to enqueue auto-refresh ingest",
           connector_id: row.id,
-          error: err instanceof Error ? err.message : String(err),
+          ...errorFields(err),
         });
       }
     }
@@ -581,7 +581,7 @@ export class SchedulerReconciler {
           action: "schedule.fanout_failed",
           msg: "workflow schedule fan-out enqueue failed",
           schedule_id: schedule.id,
-          error: err instanceof Error ? err.message : String(err),
+          ...errorFields(err),
         });
       }
     }
@@ -773,7 +773,7 @@ export class SchedulerReconciler {
           action: "knowledge_refresh_enqueue_failed",
           msg: "failed to enqueue knowledge auto-refresh ingest",
           knowledge_source_id: row.id,
-          error: err instanceof Error ? err.message : String(err),
+          ...errorFields(err),
         });
       }
     }
