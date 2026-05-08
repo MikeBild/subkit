@@ -131,7 +131,7 @@ async function runServer(): Promise<void> {
   // exits 1 if any blocker fails — operator sees one clean error
   // instead of a confusing migrate.* / drift.* downstream failure.
   // Non-blocker degradations log at warn and continue.
-  const { validateBootDependencies } = await import("./boot/dependency-check.ts");
+  const { validateBootDependencies } = await import("./observability/boot-dependencies.ts");
   await validateBootDependencies(db);
 
   // Apply embedded migrations BEFORE any subsystem touches a table.
