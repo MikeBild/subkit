@@ -543,6 +543,14 @@ export interface SetConfigKeyResult {
   requiresRestart: boolean;
   scope: "global" | `tenant:${string}`;
   leafPath: string;
+  /** True iff the leaf was on a hot-reload path (currently only
+   *  `observability.*`) AND the in-process reconfigure threw. The
+   *  on-disk + in-memory write succeeded; the live tracer/exporter
+   *  is the part that didn't pick up the change. Callers (the
+   *  /v1/settings PUT route) must surface this so the operator
+   *  doesn't see `requiresRestart: false` while the running
+   *  process is still on the old config. */
+  reconfigureFailed?: boolean;
 }
 
 async function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -696,11 +704,13 @@ export async function setConfigKey(
     // hot-reload above is dynamic for the same reason. Top-of-file
     // imports would pull the entire OTel surface into every process
     // that touches config (CLI, tests, smoke binary) for no benefit.
+    let reconfigureFailed = false;
     if (leaf.path[0] === "observability") {
       try {
         const { reconfigureTracing } = await import("../observability/tracing.ts");
         await reconfigureTracing();
       } catch (err) {
+        reconfigureFailed = true;
         const { logger } = await import("../logging/logger.ts");
         logger.warn({
           module: "config",
@@ -721,9 +731,13 @@ export async function setConfigKey(
     return {
       before: beforeValue,
       after: validatedValue,
-      requiresRestart,
+      // The on-disk + in-memory write succeeded. Only the live tracer
+      // didn't pick it up — operator must restart for the new config
+      // to take effect, so requiresRestart promotes to true.
+      requiresRestart: requiresRestart || reconfigureFailed,
       scope: opts.tenantId ? `tenant:${opts.tenantId}` : "global",
       leafPath: dottedPath(leaf),
+      reconfigureFailed,
     };
   });
 }

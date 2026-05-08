@@ -33,10 +33,15 @@ import {
 
 /** Narrows a config string to undefined when it is the schema default
  *  (empty string), so the "Missing"/"Not configured" hint logic stays
- *  centralized at the call site. */
+ *  centralized at the call site. Trims surrounding whitespace before
+ *  the presence check AND on the way out — otherwise a leading-space
+ *  `OPENAI_API_KEY=" sk-..."` would surface with the leading space
+ *  intact, which is harmless but inconsistent with the trimmed
+ *  predicate. */
 function present(value: string | undefined | null): string | undefined {
   if (typeof value !== "string") return undefined;
-  return value.trim().length > 0 ? value : undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 // 4.2.0: every secret-shape value in this file uses `setPresence`
@@ -462,10 +467,14 @@ function buildPublicUrlsSection(snapshot: ReturnType<typeof getConfig>): SetupSe
 
 function buildSetupValidation(): SetupResponse {
   // Read getConfig() once per request and thread the snapshot down so
-  // every section sees a coherent point-in-time view of the config —
-  // a concurrent setConfigKey() call mid-build can't flip a leaf
-  // halfway through and produce inconsistent section status.
-  const snapshot = getConfig();
+  // every section sees a coherent point-in-time view of the config.
+  // structuredClone is required: setConfigKey() mutates the live
+  // config tree in place by replacing branches; sub-objects share
+  // refs across reads. Without the deep clone a concurrent
+  // setConfigKey mid-build could still flip a leaf the next builder
+  // reads. The clone is one-shot per request, so the cost amortises
+  // against the 6-section traversal that follows.
+  const snapshot = structuredClone(getConfig());
   const sections = {
     auth: buildAuthSection(snapshot),
     llm: buildLlmSection(snapshot),

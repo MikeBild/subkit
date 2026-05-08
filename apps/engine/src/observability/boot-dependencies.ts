@@ -27,7 +27,7 @@
 // requests in those states. The non-blocker classes (FS write to
 // optional dirs) emit a `warn` and continue.
 
-import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { accessSync, constants, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
@@ -91,9 +91,24 @@ function probeFsWrite(dir: string): ProbeResult {
   // probe confirms (a) the dir exists and (b) the engine user has
   // write access. Local dev runs as the operator's UID and these
   // paths may not exist — that's a non-blocker.
+  //
+  // accessSync(W_OK) FIRST so a misconfigured ACL surfaces as
+  // permission_denied with the offending path. Without this
+  // pre-check, mkdirSync({ recursive: true }) would silently create
+  // the dir as the engine UID and mask the misconfiguration —
+  // operator wouldn't notice until the systemd Group= setting
+  // drifted further and the engine couldn't read its own files.
   const probe = join(dir, ".subkit-boot-probe");
   try {
-    mkdirSync(dir, { recursive: true });
+    try {
+      accessSync(dir, constants.W_OK);
+    } catch {
+      // Dir does not exist (or perms forbid even reading it). If we
+      // can write to the parent we'll create it; otherwise this
+      // probe fails cleanly with the parent's actual error message.
+      mkdirSync(dir, { recursive: true });
+      accessSync(dir, constants.W_OK);
+    }
     writeFileSync(probe, "ok", { mode: 0o600 });
     const back = readFileSync(probe, "utf8");
     unlinkSync(probe);
@@ -149,17 +164,39 @@ function probeRuntime(): ProbeResult {
   return { name: "runtime", ok: true, blocker: false, detail };
 }
 
-/** Production state directories — the systemd unit's `StateDirectory=`
- *  / `ConfigurationDirectory=` keys create these with the right ACL.
- *  Local dev (and the test harness, which runs as the operator's UID)
- *  doesn't have these paths and shouldn't probe them: probing produces
- *  noise warns and pollutes test stdout. The probe runs only when
- *  `NODE_ENV === "production"` — matches the systemd unit's expected
- *  runtime environment. */
-const PROD_STATE_DIRS = ["/etc/subkit", "/var/lib/subkit"];
+/** Production state directories. systemd populates STATE_DIRECTORY +
+ *  CONFIGURATION_DIRECTORY for any unit that declares `StateDirectory=`
+ *  / `ConfigurationDirectory=` (`man 5 systemd.exec`). Reading those
+ *  env vars instead of hard-coding `/etc/subkit` + `/var/lib/subkit`
+ *  keeps the probe in sync with the systemd unit even if the operator
+ *  customizes those keys.
+ *
+ *  Falls back to the documented defaults so a manually-deployed engine
+ *  (no systemd) still gets the probe. The probe runs only when
+ *  `NODE_ENV === "production"` — local dev and the test harness run as
+ *  the operator's UID, those paths may not exist, and probing produces
+ *  noise warns. */
+const FALLBACK_STATE_DIRS = ["/etc/subkit", "/var/lib/subkit"];
 
 function isProduction(): boolean {
   return (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+}
+
+function resolveStateDirs(): string[] {
+  // Both env vars are colon-delimited per `systemd.exec(5)` (matches
+  // PATH conventions). Each value is an absolute path.
+  const fromSystemd = [
+    ...(process.env.CONFIGURATION_DIRECTORY?.split(":") ?? []),
+    ...(process.env.STATE_DIRECTORY?.split(":") ?? []),
+  ]
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (fromSystemd.length > 0) {
+    // De-duplicate: STATE_DIRECTORY and CONFIGURATION_DIRECTORY can
+    // overlap when an operator points both at the same path.
+    return Array.from(new Set(fromSystemd));
+  }
+  return FALLBACK_STATE_DIRS;
 }
 
 /** Single source of truth for the probe set. Both the gate that
@@ -173,7 +210,7 @@ async function runAllProbes(db: Db): Promise<ProbeResult[]> {
     await probeDbExtensions(db),
   ];
   if (isProduction()) {
-    for (const dir of PROD_STATE_DIRS) probes.push(probeFsWrite(dir));
+    for (const dir of resolveStateDirs()) probes.push(probeFsWrite(dir));
   }
   return probes;
 }

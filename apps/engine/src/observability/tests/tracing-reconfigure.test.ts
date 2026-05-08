@@ -6,54 +6,34 @@
 // in setConfigKey() (`leaf.path[0] === "observability"`); the only
 // signal would be operator confusion that "I set
 // observability.langfuse.secret_key but spans still go to the old
-// project". We assert via the structured-logger surface that
-// `tracing.reconfigured` fires for an observability leaf and does NOT
-// fire for an unrelated leaf — observable without booting the OTel
-// SDK (which the test env can't usefully exercise — no exporter is
-// configured).
+// project". We assert via the structured-logger ring (`logRing.tail`)
+// that `tracing.reconfigured` fires for an observability leaf and
+// does NOT fire for an unrelated leaf — observable without booting
+// the OTel SDK (which the test env can't usefully exercise — no
+// exporter is configured).
+//
+// 4.2.0 reviewer feedback: previously this test monkey-patched
+// `process.stdout.write` and JSON-parsed any line starting with `{`.
+// Two problems with that shape: (1) if the logger sink ever changes
+// (pino transport, journald, buffered writer), the test silently
+// passes for the wrong reason; (2) an in-test crash leaks the
+// stdout patch into subsequent suites. The logRing is the engine's
+// canonical structured-log seam — the diagnostics route and `sk
+// logs` both read from it — so asserting via `logRing.tail` tests
+// the same surface operators consume in production.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
+import { logRing } from "../log-ring.ts";
 import { isTracingStarted, reconfigureTracing } from "../tracing.ts";
 
-interface CapturedLog {
-  module?: string;
-  action?: string;
-  msg?: string;
-  [k: string]: unknown;
-}
-
 let dir: string;
-let captured: CapturedLog[];
-let restoreStdout: () => void;
-
-function attachStdoutCapture(buf: CapturedLog[]): () => void {
-  const orig = process.stdout.write.bind(process.stdout);
-  process.stdout.write = ((chunk: string | Uint8Array): boolean => {
-    const s = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
-    for (const line of s.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("{")) continue;
-      try {
-        buf.push(JSON.parse(trimmed) as CapturedLog);
-      } catch {
-        /* not a JSON line */
-      }
-    }
-    return orig(chunk);
-  }) as typeof process.stdout.write;
-  return () => {
-    process.stdout.write = orig as typeof process.stdout.write;
-  };
-}
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "subkit-tracing-reconfigure-"));
-  captured = [];
-  restoreStdout = attachStdoutCapture(captured);
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
@@ -62,10 +42,17 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-  restoreStdout?.();
   _resetConfigForTests();
   rmSync(dir, { recursive: true, force: true });
 });
+
+// Helper: count current matching entries in the ring. since_ms is
+// millisecond-resolution and a previous test's log entry can land in
+// the same tick as the next test's `Date.now()` baseline, so we use
+// before/after deltas instead of a since_ms cutoff.
+function countLogs(opts: { module: string; action: string }): number {
+  return logRing.tail({ module: opts.module, action: opts.action, limit: 10_000 }).length;
+}
 
 describe("observability hot-reload — setConfigKey triggers reconfigureTracing", () => {
   test("reconfigureTracing() does not throw on a no-exporter config (test env baseline)", async () => {
@@ -76,16 +63,15 @@ describe("observability hot-reload — setConfigKey triggers reconfigureTracing"
   });
 
   test("setConfigKey on observability.langfuse.host emits tracing.reconfigured", async () => {
-    captured.length = 0;
+    const before = countLogs({ module: "observability", action: "tracing.reconfigured" });
     await setConfigKey("observability.langfuse.host", "https://lf.example.test", { force: true });
     // The hot-reload block in setConfigKey() awaits reconfigureTracing()
-    // which logs `tracing.reconfigured` on completion. Capturing the
-    // log proves both that the predicate (`leaf.path[0] === "observability"`)
-    // matched AND that the await completed before setConfigKey returned.
-    const reconfigured = captured.filter(
-      (l) => l.module === "observability" && l.action === "tracing.reconfigured",
-    );
-    expect(reconfigured.length).toBeGreaterThanOrEqual(1);
+    // which logs `tracing.reconfigured` on completion. The log sits
+    // behind the await, so observing the count delta proves both that
+    // the predicate (`leaf.path[0] === "observability"`) matched AND
+    // that the await completed before setConfigKey returned.
+    const after = countLogs({ module: "observability", action: "tracing.reconfigured" });
+    expect(after - before).toBeGreaterThanOrEqual(1);
     await setConfigKey("observability.langfuse.host", "", { force: true });
   });
 
@@ -95,44 +81,32 @@ describe("observability hot-reload — setConfigKey triggers reconfigureTracing"
     // _resetLangfuseCache(). A future change that narrows the predicate
     // to `observability.langfuse.*` would silently break OTLP endpoint
     // hot-reloads; this test fences that.
-    captured.length = 0;
+    const before = countLogs({ module: "observability", action: "tracing.reconfigured" });
     await setConfigKey("observability.otlp.endpoint", "https://otlp.example.test", { force: true });
-    const reconfigured = captured.filter(
-      (l) => l.module === "observability" && l.action === "tracing.reconfigured",
-    );
-    expect(reconfigured.length).toBeGreaterThanOrEqual(1);
+    const after = countLogs({ module: "observability", action: "tracing.reconfigured" });
+    expect(after - before).toBeGreaterThanOrEqual(1);
     await setConfigKey("observability.otlp.endpoint", "", { force: true });
   });
 
   test("_resetLangfuseCache is invalidated by an observability.* setConfigKey", async () => {
-    // Prove the cache reset wiring end-to-end: prime the langfuse-spans
-    // module so cachedClient flips from `undefined` (cold) to `null`
-    // (resolved-empty), then trigger an observability.* leaf change,
-    // then re-call getClient via the public surface and confirm the
-    // module's first-call behaviour fires again. We can't introspect
-    // cachedClient directly (module-private), so we instead verify
-    // that `_resetLangfuseCache` is callable AND that a setConfigKey
-    // does not throw in the cache-reset block.
+    // Prove the cache reset wiring end-to-end: invoke a settings
+    // change on an observability.* leaf and confirm the loader's
+    // catch-block warning never fires. Failure here would surface
+    // as a `config / observability.reconfigure_failed` log entry.
     const { _resetLangfuseCache } = await import("../langfuse-spans.ts");
     expect(typeof _resetLangfuseCache).toBe("function");
-    captured.length = 0;
+    const before = countLogs({ module: "config", action: "observability.reconfigure_failed" });
     await setConfigKey("observability.langfuse.public_key", "pk_test", { force: true });
-    // Failure here would surface as an `observability.reconfigure_failed`
-    // log from the loader's catch block — assert it did NOT fire.
-    const failed = captured.filter(
-      (l) => l.module === "config" && l.action === "observability.reconfigure_failed",
-    );
-    expect(failed.length).toBe(0);
+    const after = countLogs({ module: "config", action: "observability.reconfigure_failed" });
+    expect(after - before).toBe(0);
     await setConfigKey("observability.langfuse.public_key", "", { force: true });
   });
 
   test("setConfigKey on a non-observability leaf does NOT emit tracing.reconfigured", async () => {
-    captured.length = 0;
+    const before = countLogs({ module: "observability", action: "tracing.reconfigured" });
     await setConfigKey("errors.ring_size", 256, { force: true });
-    const reconfigured = captured.filter(
-      (l) => l.module === "observability" && l.action === "tracing.reconfigured",
-    );
-    expect(reconfigured.length).toBe(0);
+    const after = countLogs({ module: "observability", action: "tracing.reconfigured" });
+    expect(after - before).toBe(0);
     await setConfigKey("errors.ring_size", 100, { force: true });
   });
 });

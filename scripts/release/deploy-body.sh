@@ -98,6 +98,13 @@ if [ "$BOOTSTRAP_ONLY" = "1" ]; then
   if [ -n "${PREV_VERSION:-}" ]; then
     ENGINE_VERSION="$PREV_VERSION"
   fi
+  # Clean up any stale engine.next from a prior deploy. Without this,
+  # a non-bootstrap deploy that follows would happily move the orphan
+  # binary into place even if the operator didn't ship a fresh build.
+  if [ -f "$ENGINE_NEXT" ]; then
+    rm -f "$ENGINE_NEXT"
+    echo "removed orphan $ENGINE_NEXT (BOOTSTRAP_ONLY skipped its swap)"
+  fi
 else
   # Atomic cutover: rename the running binary to .prev, the new binary
   # into place. systemd `Type=exec` keeps the running process pinned to
@@ -185,9 +192,14 @@ if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
     local body_file
     body_file=$(mktemp)
     local code
+    # X-Subkit-Audit-Source tags the audit row so compliance review
+    # later can tell "deploy bootstrap reset the LLM key" apart from
+    # a hand-typed `sk settings set`. The route validates against a
+    # closed allow-list before stamping it on the audit metadata.
     code=$(curl -sS -o "$body_file" -w '%{http_code}' -X PUT \
       -H "authorization: Bearer ${VERIFY_API_KEY}" \
       -H "content-type: application/json" \
+      -H "x-subkit-audit-source: deploy_bootstrap" \
       -d "{\"value\":${json_value}}" \
       "${HEALTH_URL%/v1/health}/v1/settings/${path}" 2>/dev/null || echo "000")
     case "$code" in

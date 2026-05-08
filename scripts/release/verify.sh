@@ -118,7 +118,11 @@ else
     msg "verifying bootstrap LLM PUT applied (BOOTSTRAP_LLM_PROVIDER=$BOOTSTRAP_LLM_PROVIDER)"
     PROVIDER_BODY=$(curl -fsS --max-time 10 -H "authorization: Bearer $VERIFY_API_KEY" \
       "$DEPLOY_URL/v1/settings/llm.provider" || echo "{}")
-    settled_provider=$(printf '%s' "$PROVIDER_BODY" | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{try{const b=JSON.parse(d); process.stdout.write(String(b.value ?? ''))}catch{process.stdout.write('')}})")
+    # `jq` is installed by do-bootstrap.sh step 6 alongside postgres +
+    # caddy. The previous `node -e` form was a silent failure on
+    # ubuntu-24-04 hosts (no nodejs package), returning "" and tripping
+    # the mismatch branch on every deploy.
+    settled_provider=$(printf '%s' "$PROVIDER_BODY" | jq -r '.value // ""' 2>/dev/null || echo "")
     if [ "$settled_provider" != "$BOOTSTRAP_LLM_PROVIDER" ]; then
       err "bootstrap LLM PUT did not stick — /v1/settings/llm.provider returned '$settled_provider' (expected '$BOOTSTRAP_LLM_PROVIDER'); inspect deploy-body's put_setting output for 4xx skips"
       exit 1

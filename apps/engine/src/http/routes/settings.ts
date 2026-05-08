@@ -338,6 +338,29 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     if (tenant !== undefined) setOpts.tenantId = tenant;
     if (body.force !== undefined) setOpts.force = body.force;
 
+    // Optional X-Subkit-Audit-Source header lets a programmatic caller
+    // tag *why* the settings write happened (e.g. `deploy_bootstrap`
+    // for the deploy-body PUT phase). The audit row's actor_type/id
+    // remain the authenticated principal; this metadata field gives
+    // compliance review a way to separate "operator hand-typed `sk
+    // settings set`" from "automated deploy reset the LLM key", which
+    // are otherwise indistinguishable. Validated against a tight
+    // allow-list so a third-party can't write arbitrary strings into
+    // the audit ledger.
+    const ALLOWED_AUDIT_SOURCES = [
+      "sk_cli",
+      "deploy_bootstrap",
+      "ui",
+      "mcp",
+      "automation",
+    ] as const;
+    type AuditSource = (typeof ALLOWED_AUDIT_SOURCES)[number];
+    const rawAuditSource = c.req.header("x-subkit-audit-source");
+    const auditSource: AuditSource | null =
+      rawAuditSource && (ALLOWED_AUDIT_SOURCES as readonly string[]).includes(rawAuditSource)
+        ? (rawAuditSource as AuditSource)
+        : null;
+
     try {
       const result = await setConfigKey(leaf.path, body.value, setOpts);
 
@@ -364,6 +387,8 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
               scope: result.scope,
               requires_restart: result.requiresRestart,
               force_applied: !!body.force,
+              ...(result.reconfigureFailed ? { reconfigure_failed: true } : {}),
+              ...(auditSource ? { audit_source: auditSource } : {}),
             },
           },
           db,

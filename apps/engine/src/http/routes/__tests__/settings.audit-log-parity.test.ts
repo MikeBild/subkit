@@ -103,6 +103,13 @@ describe("audit_log ↔ setting.applied bijection", () => {
       { path: "mcp.read_only", value: true },
       { path: "spec.allow_private_fetch", value: true },
       { path: "llm.context_1m", value: true },
+      // observability.* leaves carry requiresRestart: false (4.2.0
+      // hot-reload). Sweeping one of them here fences the
+      // hot-reload + audit-log invariant in the same place: the
+      // tracing reconfigure path must NOT short-circuit the audit
+      // row write, AND the bijection check below must still account
+      // for it.
+      { path: "observability.langfuse.host", value: "https://lf.parity.test" },
     ];
 
     for (const w of writes) {

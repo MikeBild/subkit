@@ -1,52 +1,102 @@
-// Regression: the engine HTTP server must bind 127.0.0.1, not 0.0.0.0.
+// Regression: the engine HTTP + tunnel WS servers must bind 127.0.0.1
+// in production, not 0.0.0.0.
 //
 // Caddy on the production host reverse-proxies the public TLS endpoint
-// to 127.0.0.1:3000. Defense-in-depth: a misconfigured firewall must
-// not be able to leak the engine upstream. A future refactor that
-// flips `hostname: "127.0.0.1"` back to `"0.0.0.0"` (or omits it,
-// since `serve()`'s default is 0.0.0.0) would be invisible to CI
-// without this test.
+// to 127.0.0.1:3000 (and :3001 for the WS tunnel). Defense-in-depth: a
+// misconfigured firewall must not be able to leak the engine upstream.
+// A future refactor that flips `hostname: "127.0.0.1"` back to
+// `"0.0.0.0"` (or omits it, since the platform default is 0.0.0.0)
+// would be invisible to CI without this test.
 //
-// We assert the literal source-text rather than booting a server and
-// reading `address.address` because @hono/node-server doesn't surface
-// the bound interface through a public API on its return value, and
-// the regression we're guarding (a single-line edit) is itself a
-// source-text change.
+// 4.2.0 reviewer feedback: assert *behavior*, not source-text. Booting
+// the actual server, reading `server.address().address` (HTTP) or
+// `handle.url` (WS), and asserting the bound interface is the only
+// shape that catches both:
+//   1. "moved hostname into a constant `const HOSTNAME = '127.0.0.1'`"
+//      — source-text scan for `hostname: "127.0.0.1"` would miss this.
+//   2. "comment containing `hostname: \"127.0.0.1\"` slipped past
+//      review" — source-text scan would falsely accept this.
 
-import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { AddressInfo } from "node:net";
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { startTunnelWsServer, type TunnelWsServerHandle } from "../../tunnels/ws-server.ts";
 
-const ENGINE_INDEX = join(import.meta.dir, "..", "..", "index.ts");
-const TUNNEL_WS = join(import.meta.dir, "..", "..", "tunnels", "ws-server.ts");
+let db: TestDb;
+let wsHandle: TunnelWsServerHandle | null = null;
 
-describe("engine bind hostname — defense-in-depth", () => {
-  test("HTTP server binds 127.0.0.1 (not 0.0.0.0)", () => {
-    const src = readFileSync(ENGINE_INDEX, "utf8");
-    expect(src).toContain('hostname: "127.0.0.1"');
-    expect(src).not.toContain('hostname: "0.0.0.0"');
+beforeAll(async () => {
+  db = await createTestDb("listen-hostname");
+});
+
+afterAll(async () => {
+  if (wsHandle) await wsHandle.stop().catch(() => {});
+  await db.cleanup();
+});
+
+function bootHttp(hostname: string): Promise<{ address: string; port: number; close: () => void }> {
+  const app = new Hono();
+  app.get("/_probe", (c) => c.text("ok"));
+  return new Promise((resolve, reject) => {
+    const server = serve({ fetch: app.fetch, port: 0, hostname }, (info) => {
+      try {
+        // info is the AddressInfo from net.Server.address()
+        resolve({
+          address: info.address,
+          port: info.port,
+          close: () => server.close(),
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+    // Fallback in case the listening callback doesn't fire (very rare;
+    // node-server invokes it synchronously after bind).
+    setTimeout(() => {
+      const a = (server.address() as AddressInfo | null) ?? null;
+      if (a) {
+        resolve({
+          address: a.address,
+          port: a.port,
+          close: () => server.close(),
+        });
+      }
+    }, 500);
+  });
+}
+
+describe("engine bind hostname — defense-in-depth (behavioral)", () => {
+  test("HTTP server bound to 127.0.0.1 reports address=127.0.0.1", async () => {
+    const handle = await bootHttp("127.0.0.1");
+    try {
+      expect(handle.address).toBe("127.0.0.1");
+      expect(handle.port).toBeGreaterThan(0);
+    } finally {
+      handle.close();
+    }
   });
 
-  test("HTTP server's `serve()` call passes an explicit hostname", () => {
-    const src = readFileSync(ENGINE_INDEX, "utf8");
-    // Match `serve({ fetch: …, port, hostname: "127.0.0.1" })` — at
-    // minimum, the call must contain `hostname:` to fence accidental
-    // omission.
-    expect(src).toMatch(/serve\(\{\s*fetch:[\s\S]+?hostname:\s*"127\.0\.0\.1"/);
+  test("HTTP server bound to 0.0.0.0 reports address=0.0.0.0 (test fence)", async () => {
+    // Negative control: proves the assertion above is meaningful —
+    // a regression that flips hostname back to 0.0.0.0 (or omits it,
+    // since serve()'s default is 0.0.0.0) would be caught by the
+    // first test only if booting actually distinguishes the two.
+    const handle = await bootHttp("0.0.0.0");
+    try {
+      expect(handle.address).toBe("0.0.0.0");
+    } finally {
+      handle.close();
+    }
   });
 
-  test("tunnel WS server is invoked with hostname=127.0.0.1", () => {
-    const src = readFileSync(ENGINE_INDEX, "utf8");
-    // startTunnelWsServer's call site in index.ts threads the host
-    // through opts.hostname.
-    expect(src).toMatch(/startTunnelWsServer\(\{[\s\S]+?hostname:\s*"127\.0\.0\.1"/);
-  });
-
-  test("tunnel WS server module accepts a hostname option", () => {
-    const src = readFileSync(TUNNEL_WS, "utf8");
-    // The default in ws-server.ts is permissive (0.0.0.0) for local
-    // dev — index.ts overrides with 127.0.0.1. The contract here is
-    // that the option exists at all.
-    expect(src).toMatch(/hostname[:?].+?opts\.hostname/);
+  test("startTunnelWsServer({ hostname: '127.0.0.1' }) binds 127.0.0.1", () => {
+    // Bun.serve returns immediately (synchronous bind); the handle's
+    // `url` carries the actual bound interface. No need for a
+    // listening callback.
+    wsHandle = startTunnelWsServer({ db: db.db, port: 0, hostname: "127.0.0.1" });
+    expect(wsHandle.url).toContain("127.0.0.1:");
+    expect(wsHandle.port).toBeGreaterThan(0);
   });
 });

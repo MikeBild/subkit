@@ -226,4 +226,113 @@ describe("/v1/diagnostics/setup", () => {
     });
     expect(res.status).toBe(403);
   });
+
+  test("secret-shape values surface as 'configured'/null only — never the underlying secret", async () => {
+    // 4.2.0 security regression net: every secret-shape value in the
+    // setup diagnostic uses `setPresence("configured" / null)`,
+    // never `maskSecret` (which leaked 6 hex chars to any
+    // identity:read principal). A later "improve developer
+    // ergonomics" patch that re-introduces maskSecret would silently
+    // re-open the leak; this test fails fast on that.
+    const { getConfig, setConfigKey } = await import("../../config/loader.ts");
+    const before = {
+      anthropic: getConfig().llm.providers.anthropic.api_key,
+      openai: getConfig().llm.providers.openai.api_key,
+      bedrockAccessKeyId: getConfig().llm.providers.bedrock.access_key_id,
+      bedrockSecretKey: getConfig().llm.providers.bedrock.secret_access_key,
+      s3AccessKey: getConfig().storage.s3.access_key,
+      s3SecretKey: getConfig().storage.s3.secret_key,
+    };
+    // Distinct, recognizable fakes so a substring match below would
+    // catch any of them on partial leak.
+    const fakes = {
+      anthropic: "sk-ant-FAKE-LEAK-CANARY-anthro-9f8e7d6c5b4a",
+      openai: "sk-FAKE-LEAK-CANARY-openai-9f8e7d6c5b4a3210",
+      bedrockAccessKeyId: "AKIAFAKEBEDROCKLEAK1",
+      bedrockSecretKey: "fake-bedrock-secret-leak-canary-9f8e7d6c5b4a3210",
+      s3AccessKey: "AKIAFAKES3LEAKCANARY",
+      s3SecretKey: "fake-s3-secret-leak-canary-9f8e7d6c5b4a3210abcd",
+    };
+    await setConfigKey("llm.providers.anthropic.api_key", fakes.anthropic, { force: true });
+    await setConfigKey("llm.providers.openai.api_key", fakes.openai, { force: true });
+    await setConfigKey("llm.providers.bedrock.access_key_id", fakes.bedrockAccessKeyId, {
+      force: true,
+    });
+    await setConfigKey("llm.providers.bedrock.secret_access_key", fakes.bedrockSecretKey, {
+      force: true,
+    });
+    await setConfigKey("storage.s3.access_key", fakes.s3AccessKey, { force: true });
+    await setConfigKey("storage.s3.secret_key", fakes.s3SecretKey, { force: true });
+    try {
+      // identity:read principal (member). The route is gated by
+      // identity:read OR audit:read; a non-admin must NOT see secret
+      // material in any shape (full / masked / first-N chars).
+      const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
+        headers: { authorization: `Bearer ${memberKey}` },
+      });
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      // Hard scan: none of the seeded canaries appear anywhere in the
+      // serialized response, in any prefix length down to 4 chars.
+      // 4 chars is the floor — anything less wouldn't be a meaningful
+      // leak, but every credential-shape secret listed above is at
+      // least 12 chars, so a 6-char prefix (the historical
+      // maskSecret behavior) would clearly flag.
+      for (const [key, value] of Object.entries(fakes)) {
+        for (let prefixLen = value.length; prefixLen >= 4; prefixLen--) {
+          const prefix = value.slice(0, prefixLen);
+          expect(
+            raw.includes(prefix),
+            `${key} prefix(${prefixLen})="${prefix}" must NOT appear in /v1/diagnostics/setup`,
+          ).toBe(false);
+        }
+      }
+      // Positive shape check: every secret-shape leaf either reports
+      // exactly "configured" or null. Hand-list keeps the assertion
+      // resilient to a schema rename (the test fails loudly instead
+      // of silently passing on a missing key).
+      const body = (await (
+        await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
+          headers: { authorization: `Bearer ${memberKey}` },
+        })
+      ).json()) as {
+        sections: {
+          llm: { values: Array<{ key: string; value: string | null }> };
+          storage: { values: Array<{ key: string; value: string | null }> };
+          crypto: { values: Array<{ key: string; value: string | null }> };
+        };
+      };
+      const valueByKey = new Map<string, string | null>();
+      for (const section of [body.sections.llm, body.sections.storage, body.sections.crypto]) {
+        for (const v of section.values) valueByKey.set(v.key, v.value);
+      }
+      const secretLeaves = [
+        "llm.providers.anthropic.api_key",
+        "llm.providers.openai.api_key",
+        "llm.providers.bedrock.access_key_id",
+        "llm.providers.bedrock.secret_access_key",
+        "storage.s3.access_key",
+        "storage.s3.secret_key",
+        "MASTER_KEY",
+      ];
+      for (const key of secretLeaves) {
+        const v = valueByKey.get(key);
+        if (v === undefined) continue; // section may omit the leaf if not relevant for the active provider
+        expect(v === "configured" || v === null, `${key}="${v}" must be "configured" or null`).toBe(
+          true,
+        );
+      }
+    } finally {
+      await setConfigKey("llm.providers.anthropic.api_key", before.anthropic, { force: true });
+      await setConfigKey("llm.providers.openai.api_key", before.openai, { force: true });
+      await setConfigKey("llm.providers.bedrock.access_key_id", before.bedrockAccessKeyId, {
+        force: true,
+      });
+      await setConfigKey("llm.providers.bedrock.secret_access_key", before.bedrockSecretKey, {
+        force: true,
+      });
+      await setConfigKey("storage.s3.access_key", before.s3AccessKey, { force: true });
+      await setConfigKey("storage.s3.secret_key", before.s3SecretKey, { force: true });
+    }
+  });
 });
