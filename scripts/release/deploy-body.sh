@@ -7,110 +7,109 @@
 # pipe this over SSH to the droplet and execute it. Keeping one file
 # means the two paths can't diverge.
 #
-# Expected env on the droplet:
-#   ENGINE_VERSION — semver (e.g. "1.6.7"); pulled from DOCR as
-#                    registry.digitalocean.com/subkit/engine:<ver>
-#   /opt/subkit/.env — bound at rest; contains DATABASE_URL, MASTER_KEY,
-#                      AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL or
-#                      LLM_PROVIDER + matching provider credentials. Not touched here.
+# 4.2.0: systemd-native deploy. Replaces the docker-compose path —
+# subkit no longer ships a docker image. The engine runs as a single
+# `bun build --compile` binary under the `subkit-engine.service` unit;
+# postgres + caddy are apt-installed system services. Deploy = receive
+# a fresh binary on stdin, atomic-swap it, restart the unit, poll
+# /v1/health for the new version. Rollback = swap back the .prev
+# binary saved before the cutover.
+#
+# Caller contract:
+#   - ENGINE_VERSION env var (semver). Stamped into the binary at
+#     build time via `--define BUILD_VERSION=...`; we just compare it
+#     against /v1/health on the droplet.
+#   - The compiled binary is piped to this script's stdin (the laptop
+#     `scripts/deploy.sh` and the CI `release.yml` both do
+#     `cat dist/engine | ssh ... 'ENGINE_VERSION=… bash -s' < deploy-body.sh`
+#     ... actually the binary comes via a separate scp step, see below.
 #
 # Behavior:
-#   1. Log in to DOCR (600 s token), retrying transient registry errors.
-#   2. Capture the currently-running container's ENGINE_VERSION for rollback.
-#   3. Pull the engine image, retrying transient registry errors.
-#   4. Recreate engine (`--no-deps` so the engine is the only thing
-#      recreated — postgres and peers stay live). The engine binary
-#      runs migrations + seed in-process on every boot (issue #149);
-#      a migration failure aborts boot and the HEALTHCHECK never goes
-#      `healthy`, which triggers the rollback below.
-#   5. Poll Docker's HEALTHCHECK status every 5 s for up to 150 s.
-#      On failure, restart engine from the previous version and exit non-zero.
-#   6. Bounce Caddy and prune dangling images.
+#   1. Confirm the new binary is sitting at /usr/local/bin/engine.next
+#      (placed there by the caller's scp). Exit 1 if missing — the
+#      caller didn't ship one.
+#   2. Capture the running engine's reported version from /v1/health
+#      for rollback.
+#   3. Save current binary as /usr/local/bin/engine.prev. Atomic-swap
+#      .next over /usr/local/bin/engine. systemctl restart.
+#   4. Poll http://127.0.0.1:3000/v1/health for `version == ENGINE_VERSION`,
+#      every 5 s for up to 150 s.
+#   5. On failure: swap engine.prev back, restart, exit 1. On success:
+#      keep .prev (next deploy overwrites it) and exit 0.
 #
-# Idempotent: re-running with the same ENGINE_VERSION is a no-op (pull
-# is already up to date, up -d won't recreate a healthy container).
+# Idempotent: re-running with the same ENGINE_VERSION compares the
+# binary's reported version with the running engine — a no-op when
+# they match.
 
 set -euo pipefail
 
-: "${ENGINE_VERSION:?ENGINE_VERSION must be set (e.g. export ENGINE_VERSION=1.6.7)}"
+: "${ENGINE_VERSION:?ENGINE_VERSION must be set (e.g. export ENGINE_VERSION=4.2.0)}"
 
-retry() {
-  local attempts=$1
-  shift
-  local base_delay_secs=$1
-  shift
-  local attempt=1
-  while true; do
-    if "$@"; then
-      return 0
-    fi
-    local status=$?
-    if [ "$attempt" -ge "$attempts" ]; then
-      return "$status"
-    fi
-    echo "retry ${attempt}/${attempts} for: $*"
-    sleep $((base_delay_secs * attempt))
-    attempt=$((attempt + 1))
-  done
+ENGINE_BIN="/usr/local/bin/engine"
+ENGINE_NEXT="${ENGINE_BIN}.next"
+ENGINE_PREV="${ENGINE_BIN}.prev"
+HEALTH_URL="http://127.0.0.1:3000/v1/health"
+SERVICE_UNIT="subkit-engine.service"
+HEALTH_TIMEOUT_SECS="${HEALTH_TIMEOUT_SECS:-150}"
+
+if [ ! -f "$ENGINE_NEXT" ]; then
+  echo "FATAL: $ENGINE_NEXT missing — caller must scp the new binary first"
+  exit 1
+fi
+
+read_running_version() {
+  curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null \
+    | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{try{process.stdout.write(JSON.parse(d).version||'')}catch{process.stdout.write('')}})" \
+    2>/dev/null \
+    || true
 }
 
-cd /opt/subkit
-retry 5 5 doctl registry login --expiry-seconds 600
+PREV_VERSION=$(read_running_version)
+echo "previously running: ${PREV_VERSION:-<none>}"
 
-export ENGINE_VERSION
-COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+# Atomic cutover: rename the running binary to .prev, the new binary
+# into place. systemd `Type=exec` keeps the running process pinned to
+# the old inode until restart, so the rename is safe.
+if [ -f "$ENGINE_BIN" ]; then
+  cp -p "$ENGINE_BIN" "$ENGINE_PREV"
+fi
+chmod 755 "$ENGINE_NEXT"
+mv "$ENGINE_NEXT" "$ENGINE_BIN"
 
-compose_pull() {
-  $COMPOSE pull engine
-}
+# Restart the unit. systemd will re-exec the binary; engine boot runs
+# embedded migrations in-process before the HTTP listener starts, so
+# /v1/health == ENGINE_VERSION implies migrations succeeded.
+systemctl restart "$SERVICE_UNIT"
 
-# Capture current version for rollback (empty if no engine is running).
-PREV_VERSION=$(
-  $COMPOSE ps -q engine 2>/dev/null |
-    xargs -r docker inspect -f '{{index .Config.Env}}' 2>/dev/null |
-    grep -oP 'ENGINE_VERSION=\K[^ ]+' || true
-)
-
-retry 5 5 compose_pull
-
-# Recreate engine — migrations + seed run in-process on boot (issue
-# #149).  A migration failure aborts boot via process.exit(1); the
-# container goes unhealthy and the rollback path below catches it.
-$COMPOSE up -d --no-deps engine
-
-# Health check loop — 30 × 5 s = 150 s max.
-# The prod compose override `!reset []`s the engine's host port publish,
-# so the container is only reachable via the docker network. Use Docker's
-# own HEALTHCHECK state, which matches `docker ps`'s healthy/unhealthy.
-ENGINE_ID=$($COMPOSE ps -q engine)
-for i in $(seq 1 30); do
-  HEALTH=$(docker inspect -f '{{.State.Health.Status}}' "$ENGINE_ID" 2>/dev/null || echo "")
-  if [ "$HEALTH" = "healthy" ]; then
+# Health-poll loop: up to HEALTH_TIMEOUT_SECS waiting for the new
+# version to surface. systemd Restart=on-failure means a crashing
+# binary cycles forever within StartLimitBurst before unit-fail; we
+# don't wait on the unit, only the version flip.
+deadline=$(( $(date +%s) + HEALTH_TIMEOUT_SECS ))
+while :; do
+  live=$(read_running_version)
+  if [ "$live" = "$ENGINE_VERSION" ]; then
     echo "Engine v${ENGINE_VERSION} healthy"
     break
   fi
-  if [ "$i" -eq 30 ]; then
-    echo "FATAL: health check failed after 150s (state: ${HEALTH:-unknown})"
-    if [ -n "$PREV_VERSION" ] && [ "$PREV_VERSION" != "$ENGINE_VERSION" ]; then
-      echo "Rolling back to $PREV_VERSION"
-      export ENGINE_VERSION="$PREV_VERSION"
-      $COMPOSE up -d --no-deps engine
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    echo "FATAL: health timeout after ${HEALTH_TIMEOUT_SECS}s (live='${live:-<unreachable>}', want=${ENGINE_VERSION})"
+    if [ -f "$ENGINE_PREV" ]; then
+      echo "Rolling back to ${PREV_VERSION:-prev binary}"
+      mv "$ENGINE_PREV" "$ENGINE_BIN"
+      systemctl restart "$SERVICE_UNIT"
     fi
     exit 1
   fi
   sleep 5
 done
 
-# Bring caddy up with --no-deps. Without it, compose traverses the
-# dep tree (caddy → engine → postgres) and may decide to recreate
-# postgres if the synced docker-compose.yml differs from what's on
-# disk — even when the postgres service config itself is unchanged.
-# That recreate cuts every engine connection ("terminating connection
-# due to administrator command" + "ECONNREFUSED 172.18.0.2:5432" in
-# pubsub/pg-boss/pool error handlers), and the verify log scan flags
-# them as deploy failures even though the system fully recovers.
-# --no-deps is safe here: engine is already healthy from the prior
-# `up -d --no-deps engine` step, and caddy is the only thing being
-# (re)started in this call.
-$COMPOSE up -d --no-deps caddy
-docker image prune -f
+# Reload caddy in case the Caddyfile was updated by the caller's scp.
+# `caddy reload` is the systemd-managed way; it picks up the on-disk
+# Caddyfile without dropping connections (graceful — no "terminating
+# connection" log noise that the old compose flow caused).
+if systemctl is-active --quiet caddy.service; then
+  systemctl reload caddy.service || true
+fi
+
+echo "deploy complete: engine ${PREV_VERSION:-<none>} → ${ENGINE_VERSION}"

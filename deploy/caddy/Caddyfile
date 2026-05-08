@@ -13,7 +13,7 @@ subkit-api.mikebild.dev {
 		-Server
 	}
 	encode zstd gzip
-	reverse_proxy engine:3000
+	reverse_proxy 127.0.0.1:3000
 }
 
 subkit-tunnel.mikebild.dev {
@@ -26,7 +26,7 @@ subkit-tunnel.mikebild.dev {
 		-Server
 	}
 	handle /v1/tunnels/* {
-		reverse_proxy engine:3001
+		reverse_proxy 127.0.0.1:3001
 	}
 	handle {
 		respond 404

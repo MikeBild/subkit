@@ -586,7 +586,7 @@ async function main(): Promise<void> {
   // against an existing tenant + admin user, print the plaintext once,
   // exit. Lets operators rotate or bootstrap the verify/diagnostics
   // key on the droplet without needing the source repo + bun runtime
-  // (e.g. `docker exec subkit-engine-1 /bin/engine --issue-admin-key`).
+  // (e.g. `sudo -u subkit /usr/local/bin/engine --issue-admin-key`).
   // Does NOT run migrations or seed — safe on a live database.
   if (process.argv.includes(ISSUE_ADMIN_KEY_FLAG)) {
     await withContext(

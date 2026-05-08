@@ -110,7 +110,13 @@ else
 fi
 
 # 5. Engine log tail — last N minutes, any new error/fatal levels.
-log_cmd="cd /opt/subkit && docker compose -f docker-compose.yml -f docker-compose.prod.yml logs engine --since ${LOG_SINCE} 2>&1"
+# 4.2.0 systemd: read journald instead of `docker compose logs`. Same
+# error/fatal grep below; the engine emits NDJSON to stdout/stderr,
+# systemd captures it with the unit name as journal field. Convert
+# the human "2m" / "5m" / "1h" form into journalctl's relative
+# `--since "N seconds ago"` accepted format on the droplet via GNU
+# date -d (no portable journalctl shorthand for "2m").
+log_cmd="journalctl -u subkit-engine.service --since=\"\$(date -u -d '${LOG_SINCE} ago' '+%Y-%m-%d %H:%M:%S')\" --no-pager -o cat 2>&1"
 msg "scanning engine logs for errors in the last ${LOG_SINCE}"
 if [ "$SKIP_REMOTE_LOGS" = "1" ]; then
   msg "SKIP_REMOTE_LOGS=1 — skipping ssh/doctl log verification"

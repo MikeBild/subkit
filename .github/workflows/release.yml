@@ -387,95 +387,83 @@ jobs:
             artifacts/sbom.cdx.json
 
   # ── Docker images ──
-  # Gated: only runs when DigitalOcean registry credentials are set.
-  # Absent-secret + always-fail is a footgun for public repos / forks —
-  # graceful skip lets CLI binary publishing succeed independently.
-
-  # Builds the engine image with sk + tunnel-agent binaries bundled at
-  # /usr/local/share/subkit/binaries — served by /install/sk-* and
-  # /install/agent-*, so any operator can `curl /install | bash`
-  # against an engine without GitHub egress. `needs: build-cli-binaries`
-  # so embed-binaries.sh has matrix artifacts to stage. Same image is
-  # the only product surface — there is no slim-vs-with-cli split.
-
-  build-and-push:
-    name: build-and-push
-    needs: [gate, build-cli-binaries]
+  # 4.2.0: replaces build-and-push (DOCR + Dockerfile.engine) with a
+  # bare `bun build --compile --target=bun-linux-x64`. The deploy job
+  # consumes the binary as an artifact and scp's it to the droplet,
+  # where deploy-body.sh swaps the on-disk binary and `systemctl
+  # restart`s the unit. No DOCR, no compose, no docker.
+  # /install/sk-* and /install/agent-* routes return 404 with a
+  # pointer to GitHub Releases (see install-binary.ts) — operators
+  # without GitHub egress can ship binaries via a separate channel.
+  build-engine-binary:
+    name: build-engine-binary
+    needs: gate
     if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # gh run download in embed-binaries.sh reads the same-run artifacts
-      # produced by build-cli-binaries — same permission as publish-release.
-      actions: read
     outputs:
       version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - run: bun install --frozen-lockfile
       - id: meta
         env:
           RELEASE_REF: ${{ inputs.tag || github.ref_name }}
         run: TAG="${RELEASE_REF#subkit-v}"; echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-      - name: Stage CLI binaries into docker/binaries
+      - name: Compile engine for linux/x86_64
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/release/embed-binaries.sh --from-run "$GITHUB_RUN_ID"
-      - uses: docker/setup-buildx-action@v3
-      - uses: digitalocean/action-doctl@v2
+          ENGINE_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p dist
+          bun build apps/engine/src/index.ts \
+            --compile \
+            --target=bun-linux-x64 \
+            --define "BUILD_VERSION=\"${ENGINE_VERSION}\"" \
+            --outfile dist/engine-linux-x64
+          test -f dist/engine-linux-x64 || { echo "build did not produce dist/engine-linux-x64"; exit 1; }
+      - name: Upload engine binary
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-      - name: Login to DOCR
-        run: doctl registry login --expiry-seconds 1200
-      - name: Build and push engine image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.engine
-          push: true
-          platforms: linux/amd64
-          build-args: |
-            ENGINE_VERSION=${{ steps.meta.outputs.version }}
-          tags: |
-            ${{ env.REGISTRY }}/subkit/engine:${{ steps.meta.outputs.version }}
-            ${{ env.REGISTRY }}/subkit/engine:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      # The migrate image was retired in #149: migrations + seed are
-      # embedded in the engine binary and run in-process on every boot,
-      # so there is no second image to push.
+          name: engine-linux-x64-${{ steps.meta.outputs.version }}
+          path: dist/engine-linux-x64
+          retention-days: 7
 
   # ── Deploy with health check + rollback ──
 
   deploy:
     name: deploy
-    needs: build-and-push
+    needs: build-engine-binary
     if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ needs.build-and-push.outputs.version }}
+      VERSION: ${{ needs.build-engine-binary.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
+      - name: Download engine binary
+        uses: actions/download-artifact@v4
+        with:
+          name: engine-linux-x64-${{ env.VERSION }}
+          path: dist
+      - name: Make engine binary executable
+        run: chmod 755 dist/engine-linux-x64
       # The deploy body lives in `scripts/release/deploy-body.sh` and
-      # is shared with the laptop `scripts/deploy.sh` orchestrator — both
-      # paths pipe this exact file into `bash -s` on the droplet so they
-      # cannot drift. Behavior: doctl registry login → compose pull →
-      # migrate → engine recreate (--no-deps) → Docker HEALTHCHECK poll
-      # with auto-rollback → caddy bounce → prune.
+      # is shared with the laptop `scripts/deploy.sh` orchestrator —
+      # both paths scp the binary + Caddyfile + systemd unit, then pipe
+      # this script into `bash -s` on the droplet. The body atomically
+      # swaps /usr/local/bin/engine, runs `systemctl restart`, and polls
+      # /v1/health. No DOCR, no docker compose.
       - name: Install SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "${{ secrets.DROPLET_HOST }}" >> ~/.ssh/known_hosts
-          # Defaults the per-call options used below: short connect
-          # timeout so a wedged DO routing path fails fast and retries,
-          # ServerAliveInterval so a stalled session doesn't hang for
-          # the full 5min default. Compatible with stock OpenSSH on
-          # Ubuntu 24.04 runners.
           {
             echo "Host *"
             echo "  ConnectTimeout 30"
@@ -483,36 +471,22 @@ jobs:
             echo "  ServerAliveCountMax 4"
           } >> ~/.ssh/config
           chmod 600 ~/.ssh/config
-      # Sync droplet config before the deploy body runs. do-bootstrap.sh
-      # placed these three files at provisioning time — the repo is the
-      # source of truth on every release so additions or removals in the
-      # base compose (e.g. PR #150 dropping the migrate service) actually
-      # land on the droplet, and Caddyfile edits don't drift.
-      #
-      # Retried because DigitalOcean's edge routing occasionally drops
-      # the first SSH handshake from a fresh runner IP, surfacing as
-      # `kex_exchange_identification: read: Connection reset by peer`.
-      # Five attempts with linear backoff cover both transient
-      # connection-resets and droplet-side fail2ban "soft" blocks that
-      # clear within a minute.
-      - name: Sync droplet config (base compose + prod overlay + Caddyfile)
-        # Bare loop, NOT `set -e` + `if`. After `if cmd; then ... fi`,
-        # `$?` post-`fi` is 0 even when the inner command failed — bash
-        # only exposes the inner exit code inside the test position. We
-        # need the actual rc to decide retry vs. terminate.
-        #
-        # Two scp calls per attempt (one for /opt/subkit/, one for
-        # /opt/subkit/caddy/Caddyfile). Either failing trips the retry.
+      # Sync engine binary + Caddyfile + systemd unit before invoking
+      # deploy-body.sh. Three scp calls; any failure trips a retry up
+      # to 5 attempts (transient SSH resets from fresh runner IP).
+      - name: Sync droplet artifacts (binary + Caddyfile + systemd unit)
         run: |
           set +e
           for attempt in 1 2 3 4 5; do
             scp -i ~/.ssh/id_rsa \
-              docker-compose.yml \
-              deploy/docker-compose.prod.yml \
-              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/opt/subkit/" \
+              dist/engine-linux-x64 \
+              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/usr/local/bin/engine.next" \
             && scp -i ~/.ssh/id_rsa \
               deploy/caddy/Caddyfile \
-              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/opt/subkit/caddy/Caddyfile"
+              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/etc/caddy/Caddyfile" \
+            && scp -i ~/.ssh/id_rsa \
+              deploy/systemd/subkit-engine.service \
+              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/etc/systemd/system/subkit-engine.service"
             rc=$?
             if [ "$rc" -eq 0 ]; then
               echo "scp succeeded on attempt $attempt"
@@ -525,6 +499,11 @@ jobs:
             sleep $((attempt * 15))
             echo "scp retry $((attempt + 1)) (rc=$rc)..."
           done
+      - name: systemctl daemon-reload (in case unit changed)
+        run: |
+          ssh -i ~/.ssh/id_rsa \
+            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
+            "systemctl daemon-reload"
       - name: Run deploy-body.sh on droplet
         run: |
           set +e
@@ -541,8 +520,8 @@ jobs:
             # Exit codes 254/255 indicate ssh transport errors —
             # connection reset, host unreachable, banner-exchange
             # timeout. Worth retrying. Anything else is a
-            # deploy-body.sh failure on the droplet (image pull,
-            # healthcheck, migrate) and a retry would just waste time.
+            # deploy-body.sh failure on the droplet (binary swap,
+            # systemctl, healthcheck) and a retry would just waste time.
             if [ "$rc" -ne 255 ] && [ "$rc" -ne 254 ]; then
               echo "deploy-body returned $rc (non-transport) — not retrying"
               exit "$rc"
@@ -557,11 +536,11 @@ jobs:
 
   smoke:
     name: smoke
-    needs: [build-and-push, deploy]
+    needs: [build-engine-binary, deploy]
     if: ${{ vars.DEPLOY_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ needs.build-and-push.outputs.version }}
+      VERSION: ${{ needs.build-engine-binary.outputs.version }}
       URL: ${{ secrets.DEPLOY_URL }}
     steps:
       - uses: actions/checkout@v4

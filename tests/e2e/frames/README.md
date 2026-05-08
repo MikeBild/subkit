@@ -1,15 +1,16 @@
 # sk CLI ANSI frame snapshots
 
-Captured against the live binary at `dist/sk` and the docker engine
-at `http://localhost:3000`. These are the visual reference points
-the plan called for under "Visual diff: capture before/after ANSI
-frames for key screens" (gap #22).
+Captured against the live binary at `dist/sk` and a local engine at
+`http://localhost:3000`. These are the visual reference points the
+plan called for under "Visual diff: capture before/after ANSI frames
+for key screens" (gap #22).
 
 ## How to refresh
 
 ```sh
-docker compose up -d engine                              # ensure live engine
-bun run build:sk                                         # rebuild binary
+docker compose up -d                # postgres only — see docker-compose.yml
+bun run dev                          # engine on host (different terminal)
+bun run build:sk                     # rebuild sk binary
 SUBKIT_ENGINE_URL=http://localhost:3000 ./dist/sk --help > tests/e2e/frames/sk-help.txt 2>&1
 SUBKIT_ENGINE_URL=http://localhost:3000 ./dist/sk health > tests/e2e/frames/sk-health.txt 2>&1
 SUBKIT_ENGINE_URL=http://localhost:3000 ./dist/sk doctor > tests/e2e/frames/sk-doctor.txt 2>&1
