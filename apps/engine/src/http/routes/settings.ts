@@ -347,13 +347,11 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     // are otherwise indistinguishable. Validated against a tight
     // allow-list so a third-party can't write arbitrary strings into
     // the audit ledger.
-    const ALLOWED_AUDIT_SOURCES = [
-      "sk_cli",
-      "deploy_bootstrap",
-      "ui",
-      "mcp",
-      "automation",
-    ] as const;
+    // Keep this list tight — only values with a known caller today.
+    // Adding speculative entries (e.g. "ui", "mcp") would clutter the
+    // audit ledger taxonomy; future callers can extend the allow-list
+    // when they actually plumb the header.
+    const ALLOWED_AUDIT_SOURCES = ["sk_cli", "deploy_bootstrap"] as const;
     type AuditSource = (typeof ALLOWED_AUDIT_SOURCES)[number];
     const rawAuditSource = c.req.header("x-subkit-audit-source");
     const auditSource: AuditSource | null =
