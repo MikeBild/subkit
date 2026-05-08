@@ -218,24 +218,6 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(callStep?.workflow_slug).toBe("triage-issue");
   });
 
-  test("ToolStep recipe — lint-pr-changes-via-tool clones with a `tool` step + Docker image", async () => {
-    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
-    const result = await startWorkflowFromRecipeTool.execute(
-      makeToolCtx({ tenant_id, conversation_id, draft }),
-      { template_slug: "github", recipe_slug: "lint-pr-changes-via-tool" },
-    );
-    expect(result.ok).toBe(true);
-    const steps = (draft.current.workflow?.steps ?? []) as Array<{
-      kind?: string;
-      image?: string;
-      cmd?: string[];
-    }>;
-    const toolStep = steps.find((s) => s.kind === "tool");
-    expect(toolStep).toBeDefined();
-    expect(toolStep?.image).toBe("koalaman/shellcheck:stable");
-    expect(toolStep?.cmd).toEqual(["shellcheck", "-"]);
-  });
-
   test("WaitForEventStep recipe — merge-pr-after-approval clones with a signal-driven pause + explicit branch on timeout", async () => {
     const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
     const result = await startWorkflowFromRecipeTool.execute(

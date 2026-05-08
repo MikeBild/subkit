@@ -161,11 +161,13 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
     //   stripe   +1 → 19 (incremental-charges-via-state
     //                     [trigger.kind=schedule + state_read + state_write])
     // Issue #146 / Part D (close KNOWN_UNCOVERED step kinds):
-    //   github   +3 → 16 (delegated-triage-via-call [CallStep],
-    //                     lint-pr-changes-via-tool [ToolStep],
+    //   github   +2 → 15 (delegated-triage-via-call [CallStep],
     //                     merge-pr-after-approval [WaitForEventStep])
+    // 4.2.0: dropped lint-pr-changes-via-tool [ToolStep] when the
+    //   docker-based sandbox was retired — subkit is a data-workflow
+    //   engine, not a container runtime.
     expect(counts.stripe).toBe(19);
-    expect(counts.github).toBe(16);
+    expect(counts.github).toBe(15);
     expect(counts.postgres).toBe(11);
   });
 

@@ -575,20 +575,6 @@ export const TransformStepSchema = z
   })
   .openapi("TransformStep");
 
-export const ToolStepSchema = z
-  .object({
-    kind: z.literal("tool"),
-    ...baseStep,
-    image: z.string().min(1),
-    cmd: z.array(z.string()).optional(),
-    env: z.record(z.string(), z.string()).optional(),
-    cpu: z.number().positive().max(8).optional(),
-    memory_mb: z.number().int().positive().max(16_384).optional(),
-    network_mode: z.string().optional(),
-    workdir: z.string().optional(),
-  })
-  .openapi("ToolStep");
-
 export const CallStepSchema = z
   .object({
     kind: z.literal("call"),
@@ -713,7 +699,6 @@ export const StepSchema = z.discriminatedUnion("kind", [
   BranchStepSchema,
   ParallelStepSchema,
   LoopStepSchema,
-  ToolStepSchema,
 ]);
 
 export const WorkflowRuntimeSchema = z
@@ -950,5 +935,4 @@ export type WaitForEventStep = z.infer<typeof WaitForEventStepSchema>;
 export type BranchStep = z.infer<typeof BranchStepSchema>;
 export type ParallelStep = z.infer<typeof ParallelStepSchema>;
 export type LoopStep = z.infer<typeof LoopStepSchema>;
-export type ToolStep = z.infer<typeof ToolStepSchema>;
 export type ResponseFilter = z.infer<typeof ResponseFilterSchema>;

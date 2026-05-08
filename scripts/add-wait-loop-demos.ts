@@ -2,10 +2,9 @@
 //
 // Workstream D (continued) — demonstration recipes for WaitStep
 // (short, in-process, ≤6h) and LoopStep.data_selector (JS-arrow form).
-// CallStep + ToolStep + LoopStep `over` form land separately once
-// their executor wiring catches up to the schema (CallStep already
-// runs but needs sub-workflow registration scaffolding to make a
-// realistic recipe).
+// CallStep + LoopStep `over` form land separately once their executor
+// wiring catches up to the schema (CallStep already runs but needs
+// sub-workflow registration scaffolding to make a realistic recipe).
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";

@@ -78,7 +78,6 @@ describe("propose_step", () => {
       "branch",
       "parallel",
       "loop",
-      "tool",
     ]);
     expect(typeof data.message).toBe("string");
     expect(data.message).toContain("`kind`");

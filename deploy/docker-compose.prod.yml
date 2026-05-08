@@ -44,7 +44,6 @@ services:
       - "3001"
     volumes:
       - subkit_blobs:/var/data/blobs
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       ENGINE_VERSION: ${ENGINE_VERSION:-latest}
       TUNNEL_ENGINE_URL: ${TUNNEL_ENGINE_URL:-wss://subkit-tunnel.mikebild.dev}
