@@ -3,8 +3,8 @@
 # Bootstrap env list drift check.
 #
 # `deploy/bootstrap-env.list` is the canonical list of env vars passed
-# from the deploy machine to the host via SSH SendEnv. Three sites
-# read it:
+# from the deploy machine to the host via SSH SendEnv (one-shot per
+# release). Three sites read it:
 #
 #   1. scripts/do-bootstrap.sh            — generates /etc/ssh/sshd_config.d/subkit.conf
 #   2. scripts/deploy.sh                   — builds the SendEnv= ssh option
@@ -13,6 +13,14 @@
 # Each consumer must reference `deploy/bootstrap-env.list` directly so
 # a new variable lands in one place. This check fails if any consumer
 # has drifted to a hardcoded list.
+#
+# Scope note: this list is the BOOTSTRAP channel (transient SSH env on
+# a deploy run). It is NOT the runtime channel — at runtime the engine
+# reads /etc/subkit/.env via systemd's `EnvironmentFile=` directive.
+# DATABASE_URL, MASTER_KEY, PUBLIC_BASE_URL belong to the runtime
+# channel and live in /etc/subkit/.env (seeded by do-bootstrap.sh
+# step 9). Adding e.g. MASTER_KEY here would put the rotation key on
+# the deploy machine's argv every release — exactly the wrong shape.
 #
 # Wired into `bun run verify` as `check:bootstrap-env-drift`.
 

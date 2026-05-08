@@ -578,6 +578,104 @@ function checkPrTemplate(): Result {
   };
 }
 
+function checkSystemdUnitJitFriendly(): Result {
+  // Bun's JIT mints W+X memory pages. The systemd unit must NOT
+  // enable MemoryDenyWriteExecute=yes — doing so silently breaks
+  // the engine on first JIT-compiled function, with no log line
+  // pointing at the unit setting. We accept either an explicit
+  // `MemoryDenyWriteExecute=false` (the current shape) or the
+  // setting being absent entirely (systemd default = false).
+  // A future "let's harden the unit" PR that flips this to `yes`
+  // trips here.
+  const unitPath = "deploy/systemd/subkit-engine.service";
+  let raw: string;
+  try {
+    raw = readFileSync(unitPath, "utf8");
+  } catch (err) {
+    return {
+      id: "systemd_unit_jit_friendly",
+      status: "FAIL",
+      message: `${unitPath} unreadable: ${(err as Error).message}`,
+    };
+  }
+  // Match the directive case-sensitive (systemd is case-sensitive
+  // on directives) and reject only the dangerous values.
+  const re = /^\s*MemoryDenyWriteExecute\s*=\s*(\S+)/m;
+  const m = raw.match(re);
+  if (!m) {
+    return {
+      id: "systemd_unit_jit_friendly",
+      status: "PASS",
+      message: "MemoryDenyWriteExecute absent (systemd default = false); JIT safe",
+    };
+  }
+  const value = (m[1] ?? "").toLowerCase();
+  // systemd accepts these as truthy: yes, true, on, 1
+  const TRUTHY = new Set(["yes", "true", "on", "1"]);
+  if (TRUTHY.has(value)) {
+    return {
+      id: "systemd_unit_jit_friendly",
+      status: "FAIL",
+      message: `${unitPath} sets MemoryDenyWriteExecute=${value} — Bun JIT requires W+X pages and will crash on first jitted function`,
+    };
+  }
+  return {
+    id: "systemd_unit_jit_friendly",
+    status: "PASS",
+    message: `MemoryDenyWriteExecute=${value} (JIT safe)`,
+  };
+}
+
+function checkBootDepsTestSeamGated(): Result {
+  // The underscore-prefixed `_validateBootDependenciesForTests` is
+  // re-exported from `apps/engine/src/test-helpers/boot.ts` so test
+  // imports go through that channel. Production code must not
+  // import it directly from `observability/boot-dependencies.ts`.
+  // A direct import would let a future refactor accidentally swap
+  // the production fatal-on-blocker path for the non-fatal test
+  // variant.
+  const offenders: string[] = [];
+  const roots = ["apps/engine/src", "apps/sk/src", "apps/agent/src", "packages"];
+  for (const root of roots) {
+    const files = listFiles(
+      root,
+      (p) =>
+        (p.endsWith(".ts") || p.endsWith(".tsx")) &&
+        !p.includes("/__tests__/") &&
+        !p.includes("/tests/") &&
+        !p.endsWith(".test.ts") &&
+        !p.endsWith(".test.tsx") &&
+        !p.endsWith("test-helpers/boot.ts"),
+    );
+    for (const f of files) {
+      const raw = readFileSync(f, "utf8");
+      // Direct import of the underscore export from the production
+      // module path. Allowed forms:
+      //   - test files (excluded above)
+      //   - the test-helpers re-export shim (excluded above)
+      // Disallowed: anything else.
+      if (
+        /from\s+["'][^"']*observability\/boot-dependencies(\.ts)?["']/.test(raw) &&
+        /_validateBootDependenciesForTests/.test(raw)
+      ) {
+        offenders.push(f);
+      }
+    }
+  }
+  if (offenders.length === 0) {
+    return {
+      id: "boot_deps_test_seam_gated",
+      status: "PASS",
+      message: "_validateBootDependenciesForTests imported only via test-helpers/boot.ts",
+    };
+  }
+  return {
+    id: "boot_deps_test_seam_gated",
+    status: "FAIL",
+    message: `${offenders.length} non-test file(s) import _validateBootDependenciesForTests directly:\n  ${offenders.join("\n  ")}`,
+  };
+}
+
 // ---------- driver ----------
 
 const CHECKS: Array<() => Result> = [
@@ -594,6 +692,8 @@ const CHECKS: Array<() => Result> = [
   checkNoLiveLlm,
   checkCoverageFloor,
   checkRegressionIsolation,
+  checkSystemdUnitJitFriendly,
+  checkBootDepsTestSeamGated,
   checkPrTemplate,
 ];
 

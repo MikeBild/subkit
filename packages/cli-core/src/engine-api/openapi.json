@@ -462,6 +462,10 @@
           "deploy_bootstrap"
         ]
       },
+      "DeployVersion": {
+        "type": "string",
+        "pattern": "^\\d+\\.\\d+\\.\\d+$"
+      },
       "SettingPutBody": {
         "type": "object",
         "properties": {
@@ -9966,8 +9970,7 @@
           },
           {
             "schema": {
-              "type": "string",
-              "pattern": "^\\d+\\.\\d+\\.\\d+$"
+              "$ref": "#/components/schemas/DeployVersion"
             },
             "required": false,
             "name": "x-subkit-deploy-version",

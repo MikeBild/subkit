@@ -730,8 +730,8 @@ export async function setConfigKey(
         });
       }
       try {
-        const { _resetLangfuseCache } = await import("../observability/langfuse-spans.ts");
-        _resetLangfuseCache();
+        const { resetLangfuseCacheForReload } = await import("../observability/langfuse-spans.ts");
+        resetLangfuseCacheForReload();
       } catch {
         /* langfuse-spans not loaded */
       }

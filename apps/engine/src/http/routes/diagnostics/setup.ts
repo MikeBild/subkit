@@ -19,6 +19,7 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";
+import { BOOTSTRAP_ONLY_ENV_KEYS } from "../../../crypto/aes-gcm.ts";
 import { globalLlmStatus } from "../../../llm/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -406,24 +407,13 @@ function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSecti
   );
 }
 
-/** Env vars that legitimately bypass the `getConfig()` snapshot in
- *  this diagnostic. These are bootstrap-only: consumed by code that
- *  runs BEFORE the config loader (`assertCryptoKeyOrExit` in
- *  apps/engine/src/index.ts). They are intentionally NOT in
- *  subkit.config.json — rotating MASTER_KEY via `sk settings set`
- *  would be a catastrophic foot-gun (every previously-encrypted
- *  credential becomes unreadable on next boot). Adding to this list
- *  is a deliberate decision; reviewers should challenge any new
- *  entry. */
-const BOOTSTRAP_ONLY_ENV_KEYS = ["MASTER_KEY"] as const;
-
 function buildCryptoSection(): SetupSection {
-  // MASTER_KEY is the only bootstrap value still read from env — see
-  // BOOTSTRAP_ONLY_ENV_KEYS above for why.
-  const masterKey = present(process.env.MASTER_KEY);
-  // Touch the constant so a future tree-shake can't claim it's
-  // unused; the comment + named array IS the documentation.
-  void BOOTSTRAP_ONLY_ENV_KEYS;
+  // MASTER_KEY is the only bootstrap value still read from env. The
+  // canonical list is BOOTSTRAP_ONLY_ENV_KEYS in
+  // apps/engine/src/crypto/aes-gcm.ts (next to its actual consumer);
+  // referenced here as the source of truth so a future addition to
+  // that list lands in this diagnostic too.
+  const masterKey = present(process.env[BOOTSTRAP_ONLY_ENV_KEYS[0]]);
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
   if (!masterKey) {

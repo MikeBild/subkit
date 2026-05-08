@@ -138,7 +138,22 @@ export function isTracingStarted(): boolean {
  * exporter on for the first time after boot) — the start path itself
  * checks for the no-config short-circuit.
  */
+/** Test-only seam: when set, the next call to `reconfigureTracing()`
+ *  throws synchronously. Used by audit-parity tests to fence the
+ *  `metadata.reconfigure_failed = true` contract on the audit row.
+ *  Test sets it; reconfigureTracing reads-and-clears it; the throw
+ *  exercises the loader's catch branch. Production callers never set
+ *  this. */
+let _throwOnNextReconfigureForTests = false;
+export function _failNextReconfigureForTests(): void {
+  _throwOnNextReconfigureForTests = true;
+}
+
 export async function reconfigureTracing(): Promise<void> {
+  if (_throwOnNextReconfigureForTests) {
+    _throwOnNextReconfigureForTests = false;
+    throw new Error("forced reconfigure failure (test seam)");
+  }
   const prev = state.shutdown;
   state.started = false;
   delete state.shutdown;

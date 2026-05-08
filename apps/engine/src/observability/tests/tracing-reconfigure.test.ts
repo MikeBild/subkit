@@ -78,7 +78,7 @@ describe("observability hot-reload — setConfigKey triggers reconfigureTracing"
   test("setConfigKey on observability.otlp.endpoint (non-langfuse leaf) also reconfigures", async () => {
     // The hot-reload predicate is `leaf.path[0] === "observability"` —
     // any observability sub-tree must trigger reconfigureTracing() and
-    // _resetLangfuseCache(). A future change that narrows the predicate
+    // resetLangfuseCacheForReload(). A future change that narrows the predicate
     // to `observability.langfuse.*` would silently break OTLP endpoint
     // hot-reloads; this test fences that.
     const before = countLogs({ module: "observability", action: "tracing.reconfigured" });
@@ -88,13 +88,13 @@ describe("observability hot-reload — setConfigKey triggers reconfigureTracing"
     await setConfigKey("observability.otlp.endpoint", "", { force: true });
   });
 
-  test("_resetLangfuseCache is invalidated by an observability.* setConfigKey", async () => {
+  test("resetLangfuseCacheForReload is invalidated by an observability.* setConfigKey", async () => {
     // Prove the cache reset wiring end-to-end: invoke a settings
     // change on an observability.* leaf and confirm the loader's
     // catch-block warning never fires. Failure here would surface
     // as a `config / observability.reconfigure_failed` log entry.
-    const { _resetLangfuseCache } = await import("../langfuse-spans.ts");
-    expect(typeof _resetLangfuseCache).toBe("function");
+    const { resetLangfuseCacheForReload } = await import("../langfuse-spans.ts");
+    expect(typeof resetLangfuseCacheForReload).toBe("function");
     const before = countLogs({ module: "config", action: "observability.reconfigure_failed" });
     await setConfigKey("observability.langfuse.public_key", "pk_test", { force: true });
     const after = countLogs({ module: "config", action: "observability.reconfigure_failed" });

@@ -142,33 +142,76 @@ describe("audit_log ↔ setting.applied bijection", () => {
     expect(appliedLeavesSinceBaseline().length, "applied delta").toBe(0);
   });
 
-  test("rejects an unknown x-subkit-audit-source value with 400 and writes no audit row", async () => {
-    // AuditSourceEnum is a tight z.enum(["sk_cli", "deploy_bootstrap"]).
-    // The terminology gate already bans the historical "automation"
-    // value, but a future PR re-adding it (or any speculative entry)
-    // should fail at the route boundary BEFORE reaching the audit
-    // writer. This test fences both: the 400 response AND the absence
-    // of a row in audit_log.
-    const before = await server.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, "settings.changed"));
-    const url = `${server.baseUrl}/v1/settings/llm.context_1m`;
-    const r = await fetch(url, {
-      method: "PUT",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${server.apiKey}`,
-        "x-subkit-audit-source": "automation",
-      },
-      body: JSON.stringify({ value: true }),
+  // Parametrised over a few invalid forms to widen the discriminator
+  // regression net: hyphen vs underscore (sk-cli vs sk_cli — the right
+  // form), historical banned vocabulary (the v1 channel name retired
+  // in 4.0.x), empty string, mixed case, and not-in-allow-list values
+  // all must 400 before reaching the audit writer.
+  //
+  // Whitespace-only mutations (leading/trailing space) are NOT in
+  // this list because Hono normalizes header values per HTTP semantics
+  // (RFC 7230 §3.2.4): a trimmed header IS the same header. Catching
+  // those would belong on the operator's side (sk CLI sends without
+  // whitespace already).
+  const INVALID_AUDIT_SOURCES = [
+    "automation", // legacy v1 channel name (banned by terminology gate)
+    "sk-cli", // hyphen instead of underscore — common operator typo
+    "SK_CLI", // wrong case
+    "", // empty string
+    "ui", // not in the allow-list
+  ] as const;
+
+  for (const bad of INVALID_AUDIT_SOURCES) {
+    test(`rejects x-subkit-audit-source=${JSON.stringify(bad)} with 400 and writes no audit row`, async () => {
+      const before = await server.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "settings.changed"));
+      const url = `${server.baseUrl}/v1/settings/llm.context_1m`;
+      const r = await fetch(url, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${server.apiKey}`,
+          "x-subkit-audit-source": bad,
+        },
+        body: JSON.stringify({ value: true }),
+      });
+      expect(r.status, `bad value ${JSON.stringify(bad)}`).toBe(400);
+      const after = await server.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "settings.changed"));
+      expect(after.length, `no audit row for ${JSON.stringify(bad)}`).toBe(before.length);
     });
-    expect(r.status).toBe(400);
-    const after = await server.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, "settings.changed"));
-    expect(after.length, "no audit row written for rejected header").toBe(before.length);
+  }
+
+  test("PUT /v1/settings/{path} OpenAPI doc declares the audit-source + deploy-version headers", async () => {
+    // Catches the "future rename of AUDIT_SOURCE_HEADER constant
+    // silently drops the OpenAPI doc / generated client header"
+    // failure mode: the route file uses bracket-key lookup
+    // ([AUDIT_SOURCE_HEADER]: ...), so the OpenAPI parameter name
+    // is derived from the constant's value at module load. A typo
+    // would make the route accept the new name AND the old name
+    // disappear from the spec without breaking any other test.
+    const res = await fetch(`${server.baseUrl}/openapi.json`);
+    expect(res.status).toBe(200);
+    const spec = (await res.json()) as {
+      paths: Record<
+        string,
+        Record<
+          string,
+          {
+            parameters?: Array<{ name?: string; in?: string }>;
+          }
+        >
+      >;
+    };
+    const op = spec.paths?.["/v1/settings/{path}"]?.put;
+    expect(op, "PUT /v1/settings/{path} present in spec").toBeDefined();
+    const headers = (op?.parameters ?? []).filter((p) => p.in === "header").map((p) => p.name);
+    expect(headers).toContain("x-subkit-audit-source");
+    expect(headers).toContain("x-subkit-deploy-version");
   });
 
   test("a malformed x-subkit-deploy-version is rejected with 400 (semver-only)", async () => {
@@ -196,6 +239,47 @@ describe("audit_log ↔ setting.applied bijection", () => {
       .from(auditLog)
       .where(eq(auditLog.action, "settings.changed"));
     expect(after.length, "no audit row written for malformed version").toBe(before.length);
+  });
+
+  test("metadata.reconfigure_failed=true lands in the audit row when reconfigureTracing throws", async () => {
+    // Closes the loop on the W1-from-round-3 promise: setConfigKey
+    // catches a reconfigure throw, sets reconfigureFailed=true, and
+    // the route stamps it on the audit row's metadata. Without this
+    // test, a future refactor that drops the catch (or the metadata
+    // stamp) would leave the operator-visible "live tracer is on the
+    // old config" signal silently broken.
+    const { _failNextReconfigureForTests } = await import("../../../observability/tracing.ts");
+    _failNextReconfigureForTests();
+    const url = `${server.baseUrl}/v1/settings/observability.langfuse.host`;
+    const r = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${server.apiKey}`,
+      },
+      body: JSON.stringify({ value: "https://lf.audit-test.example/" }),
+    });
+    expect(r.status).toBe(200);
+    const rows = await server.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, "settings.changed"));
+    const last = rows[rows.length - 1];
+    expect(last, "audit row landed").toBeDefined();
+    const meta = (last?.metadata ?? {}) as Record<string, unknown>;
+    expect(meta.reconfigure_failed, "metadata.reconfigure_failed").toBe(true);
+    // The route also flips requiresRestart=true so the operator
+    // sees they need to restart for the new tracer config.
+    expect(meta.requires_restart, "metadata.requires_restart").toBe(true);
+    // Reset the leaf so subsequent tests aren't observing a stale URL.
+    await fetch(url, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${server.apiKey}`,
+      },
+      body: JSON.stringify({ value: "" }),
+    });
   });
 
   test("valid x-subkit-audit-source + x-subkit-deploy-version flow into audit metadata", async () => {

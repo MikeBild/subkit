@@ -96,8 +96,17 @@ async function getClient(): Promise<LangfuseClient | null> {
   }
 }
 
-/** Test-only: reset the cached client so a follow-up test can remock env. */
-export function _resetLangfuseCache(): void {
+/** Drop the cached Langfuse client so the next `getClient()` call
+ *  reads the current config. Two callers:
+ *    1. Production hot-reload — `config/loader.ts:setConfigKey` invokes
+ *       this whenever an `observability.*` leaf changes, so the next
+ *       span sends to the newly-configured project.
+ *    2. Tests — let a follow-up test re-mock the env without booting
+ *       a fresh process.
+ *  Renamed from `_resetLangfuseCache` (4.2.0) to drop the underscore-
+ *  prefix-implies-test-only convention; the function carries real
+ *  production weight. */
+export function resetLangfuseCacheForReload(): void {
   cachedClient = undefined;
 }
 

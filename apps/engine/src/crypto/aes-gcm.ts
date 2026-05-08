@@ -174,9 +174,26 @@ export function secureEqual(a: Uint8Array | string, b: Uint8Array | string): boo
 // get the loud-on-boot guarantee via `assertCryptoKeyOrExit()`.
 
 /**
+ * Env vars that intentionally bypass the `getConfig()` snapshot in
+ * the engine: their consumer runs BEFORE the config loader. Today
+ * that's only MASTER_KEY (consumed by `assertCryptoKeyOrExit()`
+ * below). Hot-rotating MASTER_KEY via `sk settings set` would render
+ * every previously-encrypted credential unreadable on next boot, so
+ * the leaf is intentionally NOT in subkit.config.json.
+ *
+ * `apps/engine/src/http/routes/diagnostics/setup.ts:buildCryptoSection`
+ * imports this list to document the exception in its surface; adding
+ * to this list is a deliberate, reviewable change (every caller
+ * grep's the symbol).
+ */
+export const BOOTSTRAP_ONLY_ENV_KEYS = ["MASTER_KEY"] as const;
+
+/**
  * Force a key parse + cache. Call once during server startup so a bad
  * MASTER_KEY surfaces in the boot log, before any request can reach an
- * encrypt/decrypt path.
+ * encrypt/decrypt path. Reads `process.env.MASTER_KEY` because that
+ * env var is the only entry in `BOOTSTRAP_ONLY_ENV_KEYS` — the config
+ * loader has not run yet.
  */
 export function assertCryptoKeyOrExit(): void {
   getKey();

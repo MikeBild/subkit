@@ -10,6 +10,7 @@ import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
 import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
 import { setHealthState } from "./http/health-state.ts";
+import { engineHttpServeOptions, engineTunnelServeOptions } from "./http/listen-hostname.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
@@ -372,13 +373,8 @@ async function runServer(): Promise<void> {
   const port = getConfig().server.port;
   recordBootConsumer("http_server");
 
-  // 4.2.0: bind 127.0.0.1 only. Caddy on the host reverse-proxies
-  // the public-facing TLS endpoint to 127.0.0.1:3000. Defense-in-depth
-  // — the firewall closes :3000 to the public internet, but binding to
-  // localhost means a misconfigured firewall can't leak the engine
-  // upstream. e2e tests use random ports on 127.0.0.1 too (see
-  // tests/e2e/setup.ts), so this is a no-op for them.
-  const server = serve({ fetch: app.fetch, port, hostname: "127.0.0.1" });
+  const opts = engineHttpServeOptions(port);
+  const server = serve({ fetch: app.fetch, port: opts.port, hostname: opts.hostname });
 
   logger.info({
     module: "engine",
@@ -399,12 +395,11 @@ async function runServer(): Promise<void> {
   // when server.tunnel_port is not set.
   let tunnelWs: TunnelWsServerHandle | null = null;
   try {
+    const tunnelOpts = engineTunnelServeOptions(getConfig().server.tunnel_port ?? port + 1);
     tunnelWs = startTunnelWsServer({
       db,
-      port: getConfig().server.tunnel_port ?? port + 1,
-      // Same defense-in-depth as the HTTP server above. Caddy proxies
-      // wss://subkit-tunnel.* → 127.0.0.1:3001.
-      hostname: "127.0.0.1",
+      port: tunnelOpts.port,
+      hostname: tunnelOpts.hostname,
     });
     logger.info({
       module: "engine",

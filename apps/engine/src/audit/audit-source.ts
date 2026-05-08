@@ -41,4 +41,5 @@ export const AUDIT_SOURCE_HEADER = "x-subkit-audit-source";
 export const DEPLOY_VERSION_HEADER = "x-subkit-deploy-version";
 export const DeployVersionSchema = z
   .string()
-  .regex(/^\d+\.\d+\.\d+$/, "must be MAJOR.MINOR.PATCH semver");
+  .regex(/^\d+\.\d+\.\d+$/, "must be MAJOR.MINOR.PATCH semver")
+  .openapi("DeployVersion");

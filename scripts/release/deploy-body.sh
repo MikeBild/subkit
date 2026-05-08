@@ -200,6 +200,10 @@ if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
     local path="$1"
     local raw_value="$2"
     local json_value
+    # `printf '%s'` (not `printf "$raw_value"`): the latter would treat
+    # the value as a format string and a `%` or `\` in a credential
+    # would mangle the body. `printf '%s'` is also safe with embedded
+    # `$` and backticks — none get interpreted.
     json_value=$(printf '%s' "$raw_value" | jq -Rs .)
     local body_file
     body_file=$(mktemp)
@@ -212,13 +216,31 @@ if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
     #      → metadata.deploy_version: ENGINE_VERSION (semver)
     # The route validates both via Zod-typed headers before stamping
     # them on the audit metadata.
-    code=$(curl -sS -o "$body_file" -w '%{http_code}' -X PUT \
-      -H "authorization: Bearer ${VERIFY_API_KEY}" \
-      -H "content-type: application/json" \
-      -H "x-subkit-audit-source: deploy_bootstrap" \
-      -H "x-subkit-deploy-version: ${ENGINE_VERSION}" \
-      -d "{\"value\":${json_value}}" \
-      "${HEALTH_URL%/v1/health}/v1/settings/${path}" 2>/dev/null || echo "000")
+    #
+    # Defense-in-depth on argv exposure: VERIFY_API_KEY (admin bearer)
+    # and the JSON body (which carries BOOTSTRAP_LLM_API_KEY under
+    # `value`) are passed via `--config` (read from a transient file)
+    # and stdin (`--data-binary @-`) respectively — neither lands in
+    # /proc/<pid>/cmdline, where any local user with PROCFS read could
+    # otherwise pick them up for the lifetime of the curl process.
+    local cfg_file
+    cfg_file=$(mktemp)
+    chmod 600 "$cfg_file"
+    # `--config` option lines: one option/value per line, quotes
+    # mandatory on multi-word values. See `man curl` /CONFIG/.
+    {
+      printf 'header = "authorization: Bearer %s"\n' "$VERIFY_API_KEY"
+      printf 'header = "content-type: application/json"\n'
+      printf 'header = "x-subkit-audit-source: deploy_bootstrap"\n'
+      printf 'header = "x-subkit-deploy-version: %s"\n' "$ENGINE_VERSION"
+    } > "$cfg_file"
+    code=$(printf '{"value":%s}' "$json_value" \
+      | curl -sS -o "$body_file" -w '%{http_code}' -X PUT \
+        --config "$cfg_file" \
+        --data-binary @- \
+        "${HEALTH_URL%/v1/health}/v1/settings/${path}" 2>/dev/null \
+      || echo "000")
+    rm -f "$cfg_file"
     # 2xx: applied. Anything else (4xx / 5xx / curl-emitted "000"
     # for connection failure): fail the deploy. Earlier the 4xx
     # branch returned 0 ("skipped") to absorb operator typos in
