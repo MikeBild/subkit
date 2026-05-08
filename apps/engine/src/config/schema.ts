@@ -434,18 +434,6 @@ const ErrorsSection = z
   .prefault({})
   .describe("Error ring buffer");
 
-const DockerSection = z
-  .object({
-    host: z.string().default("").meta(global()),
-    skip: z
-      .boolean()
-      .default(false)
-      .describe("Skip Docker probes; useful for environments without Docker")
-      .meta(global()),
-  })
-  .prefault({})
-  .describe("Docker daemon");
-
 const SpecSection = z
   .object({
     allow_private_fetch: z
@@ -531,7 +519,6 @@ export const ConfigSchema = z
     mcp: McpSection,
     tunnel: TunnelSection,
     errors: ErrorsSection,
-    docker: DockerSection,
     spec: SpecSection,
     queue: QueueSection,
     tokens: TokensSection,

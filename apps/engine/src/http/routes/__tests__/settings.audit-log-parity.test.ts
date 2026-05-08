@@ -102,7 +102,6 @@ describe("audit_log ↔ setting.applied bijection", () => {
       { path: "egress.mode", value: "permissive" },
       { path: "mcp.read_only", value: true },
       { path: "spec.allow_private_fetch", value: true },
-      { path: "docker.skip", value: true },
       { path: "llm.context_1m", value: true },
     ];
 

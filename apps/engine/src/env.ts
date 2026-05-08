@@ -78,8 +78,6 @@ const RETIRED_ENV_KEYS = new Set([
   "S3_OFFLOAD_SECRET_KEY",
   "S3_OFFLOAD_ENDPOINT",
   "S3_OFFLOAD_KEY_PREFIX",
-  // Docker — moved to docker.host
-  "DOCKER_HOST",
   // Chat platforms — moved to platform.*
   "SLACK_SIGNING_SECRET",
   "SLACK_CLIENT_ID",

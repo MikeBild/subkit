@@ -162,14 +162,6 @@ Error ring buffer
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `errors.ring_size` | number | `100` | global | no | no |  |
 
-## docker
-Docker daemon
-
-| path | type | default | scope | sensitive | requiresRestart | description |
-| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `docker.host` | string | `""` | global | no | no |  |
-| `docker.skip` | boolean | `false` | global | no | no | Skip Docker probes; useful for environments without Docker |
-
 ## spec
 Spec fetcher
 

@@ -141,10 +141,6 @@
   "errors": {
     "ring_size": 100
   },
-  "docker": {
-    "host": "",
-    "skip": false
-  },
   "spec": {
     "allow_private_fetch": false
   },
