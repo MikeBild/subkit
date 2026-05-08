@@ -513,13 +513,15 @@ jobs:
           VERIFY_API_KEY: ${{ secrets.VERIFY_API_KEY }}
         # Use ssh `SendEnv` so secrets never appear in the runner's
         # `ps -ef` output during the inlined `FOO='…' bash -s` form.
-        # `do-bootstrap.sh` configures the matching `AcceptEnv` lines
-        # in the host's sshd config.
+        # The list is read from deploy/bootstrap-env.list — same
+        # source `do-bootstrap.sh` consumes when it writes the matching
+        # `AcceptEnv` lines on the host's sshd config.
         run: |
           set +e
+          SEND_ENV=$(grep -vE '^(\s*#|\s*$)' deploy/bootstrap-env.list | tr '\n' ' ' | sed 's/ $//')
           for attempt in 1 2 3 4 5; do
             ssh -i ~/.ssh/id_rsa \
-              -o "SendEnv=ENGINE_VERSION VERIFY_API_KEY BOOTSTRAP_LLM_PROVIDER BOOTSTRAP_LLM_API_KEY BOOTSTRAP_LLM_MODEL BOOTSTRAP_LLM_FALLBACK_PROVIDER BOOTSTRAP_LLM_FALLBACK_MODEL" \
+              -o "SendEnv=$SEND_ENV" \
               "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
               "bash -s" \
               < scripts/release/deploy-body.sh

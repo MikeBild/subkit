@@ -39,12 +39,11 @@ function present(value: string | undefined | null): string | undefined {
   return value.trim().length > 0 ? value : undefined;
 }
 
-function maskSecret(value: string | undefined): string | null {
-  if (!value) return null;
-  if (value.length <= 6) return "*".repeat(value.length);
-  return `${value.slice(0, 4)}…${value.slice(-2)}`;
-}
-
+// 4.2.0: every secret-shape value in this file uses `setPresence`
+// (returns "configured" / null) instead of `maskSecret` (which leaked
+// 6 hex chars to any identity:read principal). The diagnostic
+// surface is reachable to non-admin roles; a strict presence-only
+// view is the only safe shape.
 function setPresence(value: string | undefined): string | null {
   return value ? "configured" : null;
 }
@@ -277,7 +276,11 @@ function buildLlmSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
       },
       {
         key: "llm.providers.bedrock.access_key_id",
-        value: maskSecret(present(bedrock.access_key_id)),
+        // setPresence (not maskSecret) — the diagnostic surface is
+        // reachable to anyone with audit:read OR identity:read; even
+        // 6 hex chars of an AWS access key are too much exposure for
+        // a non-admin role.
+        value: setPresence(present(bedrock.access_key_id)),
         status_hint: present(bedrock.access_key_id) ? null : "Missing",
       },
       {
@@ -364,7 +367,12 @@ function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSecti
       },
       {
         key: "storage.s3.access_key",
-        value: maskSecret(accessKey),
+        // Standardize on setPresence across the section (matches
+        // storage.s3.secret_key below). The S3 access key half of the
+        // pair is also a credential — the previous masked-prefix
+        // exposure leaked the AWS account-recognizable prefix to any
+        // identity:read principal.
+        value: setPresence(accessKey),
         status_hint: accessKey ? null : "Missing",
       },
       {
@@ -409,7 +417,10 @@ function buildCryptoSection(): SetupSection {
     [
       {
         key: "MASTER_KEY",
-        value: maskSecret(masterKey),
+        // setPresence — even 6 hex chars of MASTER_KEY in the
+        // diagnostic surface is too much exposure for a non-admin
+        // identity:read principal.
+        value: setPresence(masterKey),
         status_hint: masterKey ? null : "Missing",
       },
     ],

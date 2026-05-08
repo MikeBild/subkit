@@ -18,13 +18,39 @@ describe("StepSchema — retired `tool` step is rejected", () => {
     expect(result.success).toBe(false);
   });
 
-  test("the seven supported kinds still parse", () => {
+  test("the discriminated union has exactly the supported kinds", () => {
+    // Fence accidental widening: a future PR that adds a new kind
+    // (or re-introduces `tool`) trips this assertion before the new
+    // branch can ship without a corresponding recipe + LLM prompt
+    // update.
+    const options = (StepSchema as unknown as { options: ReadonlyArray<unknown> }).options;
+    const kinds = options
+      .map((o) => {
+        const shape = (o as { shape?: { kind?: { value?: string } } }).shape;
+        return shape?.kind?.value ?? null;
+      })
+      .filter((k): k is string => typeof k === "string")
+      .sort();
+    expect(kinds).toEqual([
+      "branch",
+      "call",
+      "loop",
+      "parallel",
+      "request",
+      "transform",
+      "wait",
+      "wait_for_event",
+    ]);
+  });
+
+  test("the supported kinds still parse", () => {
     const baseFields = { id: "x" };
     const samples: Array<Record<string, unknown>> = [
       { ...baseFields, kind: "request", url: "https://api.example.com" },
       { ...baseFields, kind: "transform", expression: "$" },
       { ...baseFields, kind: "call", workflow_slug: "other" },
       { ...baseFields, kind: "wait", duration_ms: 1000 },
+      { ...baseFields, kind: "wait_for_event", event_name: "approved", timeout_ms: 60000 },
       {
         ...baseFields,
         kind: "branch",

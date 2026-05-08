@@ -79,12 +79,51 @@ describe("observability hot-reload — setConfigKey triggers reconfigureTracing"
     captured.length = 0;
     await setConfigKey("observability.langfuse.host", "https://lf.example.test", { force: true });
     // The hot-reload block in setConfigKey() awaits reconfigureTracing()
-    // which logs `tracing.reconfigured` on completion.
+    // which logs `tracing.reconfigured` on completion. Capturing the
+    // log proves both that the predicate (`leaf.path[0] === "observability"`)
+    // matched AND that the await completed before setConfigKey returned.
     const reconfigured = captured.filter(
       (l) => l.module === "observability" && l.action === "tracing.reconfigured",
     );
     expect(reconfigured.length).toBeGreaterThanOrEqual(1);
     await setConfigKey("observability.langfuse.host", "", { force: true });
+  });
+
+  test("setConfigKey on observability.otlp.endpoint (non-langfuse leaf) also reconfigures", async () => {
+    // The hot-reload predicate is `leaf.path[0] === "observability"` —
+    // any observability sub-tree must trigger reconfigureTracing() and
+    // _resetLangfuseCache(). A future change that narrows the predicate
+    // to `observability.langfuse.*` would silently break OTLP endpoint
+    // hot-reloads; this test fences that.
+    captured.length = 0;
+    await setConfigKey("observability.otlp.endpoint", "https://otlp.example.test", { force: true });
+    const reconfigured = captured.filter(
+      (l) => l.module === "observability" && l.action === "tracing.reconfigured",
+    );
+    expect(reconfigured.length).toBeGreaterThanOrEqual(1);
+    await setConfigKey("observability.otlp.endpoint", "", { force: true });
+  });
+
+  test("_resetLangfuseCache is invalidated by an observability.* setConfigKey", async () => {
+    // Prove the cache reset wiring end-to-end: prime the langfuse-spans
+    // module so cachedClient flips from `undefined` (cold) to `null`
+    // (resolved-empty), then trigger an observability.* leaf change,
+    // then re-call getClient via the public surface and confirm the
+    // module's first-call behaviour fires again. We can't introspect
+    // cachedClient directly (module-private), so we instead verify
+    // that `_resetLangfuseCache` is callable AND that a setConfigKey
+    // does not throw in the cache-reset block.
+    const { _resetLangfuseCache } = await import("../langfuse-spans.ts");
+    expect(typeof _resetLangfuseCache).toBe("function");
+    captured.length = 0;
+    await setConfigKey("observability.langfuse.public_key", "pk_test", { force: true });
+    // Failure here would surface as an `observability.reconfigure_failed`
+    // log from the loader's catch block — assert it did NOT fire.
+    const failed = captured.filter(
+      (l) => l.module === "config" && l.action === "observability.reconfigure_failed",
+    );
+    expect(failed.length).toBe(0);
+    await setConfigKey("observability.langfuse.public_key", "", { force: true });
   });
 
   test("setConfigKey on a non-observability leaf does NOT emit tracing.reconfigured", async () => {

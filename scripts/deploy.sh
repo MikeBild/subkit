@@ -171,7 +171,7 @@ info "repo  : $REPO_ROOT"
 info "tree  : $(git log -1 --pretty=format:'%h %s')"
 info "from  : $CURRENT"
 info "bump  : $LEVEL"
-info "host: ${DEPLOY_HOST:-(via doctl) $DROPLET_NAME}"
+info "host  : ${DEPLOY_HOST:-(via doctl) $DROPLET_NAME}"
 info "deploy: $DEPLOY_URL"
 
 # ---------------------------------------------------------------------------
@@ -304,9 +304,8 @@ else
   # Use ssh `SendEnv` rather than inline `FOO='value' bash -s` so the
   # secrets never appear on the laptop or host `ps -ef` output.
   # `do-bootstrap.sh` configures the matching `AcceptEnv` directives
-  # in /etc/ssh/sshd_config.d/subkit.conf — one line per variable
-  # (sshd silently rejects globs longer than ~256 chars in a single
-  # AcceptEnv line, so we list them explicitly there).
+  # in /etc/ssh/sshd_config.d/subkit.conf from the same source list
+  # (deploy/bootstrap-env.list).
   export ENGINE_VERSION="$NEW"
   export VERIFY_API_KEY="${VERIFY_API_KEY:-}"
   export BOOTSTRAP_LLM_PROVIDER="${BOOTSTRAP_LLM_PROVIDER:-}"
@@ -314,8 +313,14 @@ else
   export BOOTSTRAP_LLM_MODEL="${BOOTSTRAP_LLM_MODEL:-}"
   export BOOTSTRAP_LLM_FALLBACK_PROVIDER="${BOOTSTRAP_LLM_FALLBACK_PROVIDER:-}"
   export BOOTSTRAP_LLM_FALLBACK_MODEL="${BOOTSTRAP_LLM_FALLBACK_MODEL:-}"
+  _BOOTSTRAP_ENV_LIST="$_REPO_ROOT/deploy/bootstrap-env.list"
+  if [ ! -f "$_BOOTSTRAP_ENV_LIST" ]; then
+    fail "deploy/bootstrap-env.list missing — required for SendEnv list"
+    exit 1
+  fi
+  _SEND_ENV=$(grep -vE '^(\s*#|\s*$)' "$_BOOTSTRAP_ENV_LIST" | tr '\n' ' ' | sed 's/ $//')
   ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
-    -o "SendEnv=ENGINE_VERSION VERIFY_API_KEY BOOTSTRAP_LLM_PROVIDER BOOTSTRAP_LLM_API_KEY BOOTSTRAP_LLM_MODEL BOOTSTRAP_LLM_FALLBACK_PROVIDER BOOTSTRAP_LLM_FALLBACK_MODEL" \
+    -o "SendEnv=$_SEND_ENV" \
     "$SSH_TARGET" "bash -s" \
     < "$_SCRIPT_DIR/release/deploy-body.sh"
 fi

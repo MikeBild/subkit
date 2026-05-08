@@ -40,6 +40,13 @@
 # Idempotent: re-running with the same ENGINE_VERSION compares the
 # binary's reported version with the running engine — a no-op when
 # they match.
+#
+# BOOTSTRAP_ONLY=1 — re-runs the post-health PUT /v1/settings/* phase
+# without re-shipping a binary. Useful when the operator added a
+# BOOTSTRAP_LLM_* secret after the first deploy and wants the engine
+# to pick it up without a full release cycle. Skips the binary swap,
+# the systemctl restart, and the health-poll; goes straight to the
+# settings PUTs against the live engine.
 
 set -euo pipefail
 
@@ -159,9 +166,22 @@ if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
   # via `sk settings set`), 2xx logs success. Without this split a
   # 422 "invalid value" silently passed and the deploy looked green
   # while /v1/diagnostics/llm reported `inferred_provider=mock`.
+  #
+  # JSON encoding: pipe the raw string through `jq -Rs .` so embedded
+  # quotes / backslashes / control chars in a credential never blow up
+  # the request body. (Anthropic and Vertex keys haven't carried such
+  # chars historically; OpenAI org strings have.) jq is a hard
+  # preflight at line 53–60 so this can't reach unbounded input.
+  #
+  # Response handling: we only echo the HTTP status code on 4xx/5xx,
+  # never the response body — defense-in-depth so a future Zod-issue
+  # formatter that echoes the offending value can't leak the bootstrap
+  # credential into CI deploy logs.
   put_setting() {
     local path="$1"
-    local json_value="$2"
+    local raw_value="$2"
+    local json_value
+    json_value=$(printf '%s' "$raw_value" | jq -Rs .)
     local body_file
     body_file=$(mktemp)
     local code
@@ -175,10 +195,10 @@ if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
         echo "  PUT /v1/settings/${path} ok ($code)"
         ;;
       4*)
-        echo "  PUT /v1/settings/${path} skipped: $code $(tr -d '\n' < "$body_file")"
+        echo "  PUT /v1/settings/${path} skipped: HTTP ${code}"
         ;;
       *)
-        echo "  PUT /v1/settings/${path} FAILED: $code $(tr -d '\n' < "$body_file")"
+        echo "  PUT /v1/settings/${path} FAILED: HTTP ${code}"
         rm -f "$body_file"
         return 1
         ;;
@@ -186,18 +206,18 @@ if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
     rm -f "$body_file"
     return 0
   }
-  put_setting "llm.provider" "\"${BOOTSTRAP_LLM_PROVIDER}\""
+  put_setting "llm.provider" "${BOOTSTRAP_LLM_PROVIDER}"
   if [ -n "${BOOTSTRAP_LLM_API_KEY:-}" ]; then
-    put_setting "llm.providers.${BOOTSTRAP_LLM_PROVIDER}.api_key" "\"${BOOTSTRAP_LLM_API_KEY}\""
+    put_setting "llm.providers.${BOOTSTRAP_LLM_PROVIDER}.api_key" "${BOOTSTRAP_LLM_API_KEY}"
   fi
   if [ -n "${BOOTSTRAP_LLM_MODEL:-}" ]; then
-    put_setting "llm.providers.${BOOTSTRAP_LLM_PROVIDER}.model" "\"${BOOTSTRAP_LLM_MODEL}\""
+    put_setting "llm.providers.${BOOTSTRAP_LLM_PROVIDER}.model" "${BOOTSTRAP_LLM_MODEL}"
   fi
   if [ -n "${BOOTSTRAP_LLM_FALLBACK_PROVIDER:-}" ]; then
-    put_setting "llm.fallback_provider" "\"${BOOTSTRAP_LLM_FALLBACK_PROVIDER}\""
+    put_setting "llm.fallback_provider" "${BOOTSTRAP_LLM_FALLBACK_PROVIDER}"
   fi
   if [ -n "${BOOTSTRAP_LLM_FALLBACK_MODEL:-}" ]; then
-    put_setting "llm.fallback_model" "\"${BOOTSTRAP_LLM_FALLBACK_MODEL}\""
+    put_setting "llm.fallback_model" "${BOOTSTRAP_LLM_FALLBACK_MODEL}"
   fi
 fi
 

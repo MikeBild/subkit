@@ -56,13 +56,13 @@ decrypt also fails after rotation**. There is no key-rotation envelope today.
    pool you're rotating. New encrypts under the old key during the
    transition will be lost.
    ```sh
-   ssh ${DROPLET} 'systemctl stop subkit-engine.service'
+   ssh ${HOST} 'systemctl stop subkit-engine.service'
    ```
 
 2. **Take a database snapshot.** This is the only path back if rotation
    goes wrong.
    ```sh
-   ssh ${DROPLET} 'pg_dump -Fc subkit > /opt/subkit/backups/pre-rotate-$(date -u +%Y%m%dT%H%M%SZ).dump'
+   ssh ${HOST} 'pg_dump -Fc subkit > /opt/subkit/backups/pre-rotate-$(date -u +%Y%m%dT%H%M%SZ).dump'
    ```
 
 3. **Generate the new key + inject via your secret manager.**
@@ -118,8 +118,8 @@ decrypt also fails after rotation**. There is no key-rotation envelope today.
    (`apps/engine/src/crypto/aes-gcm.ts:48-53`) and exits non-zero if the
    key is malformed.
    ```sh
-   ssh ${DROPLET} 'systemctl start subkit-engine.service'
-   ssh ${DROPLET} 'journalctl -u subkit-engine.service --since "1 minute ago" -n 50'
+   ssh ${HOST} 'systemctl start subkit-engine.service'
+   ssh ${HOST} 'journalctl -u subkit-engine.service --since "1 minute ago" -n 50'
    ```
    `/v1/health` should return `db_connected: true` within 30s.
 

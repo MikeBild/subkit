@@ -20,7 +20,8 @@
 //                        so an operator can correlate a startup against
 //                        the build artifact.
 //
-// Each probe logs `boot.dependency.<name>.{ok,fail}` so structured-log
+// Each probe logs `module: "observability"` (matches the file's
+// subsystem) with `action: "boot.dependency.<name>.{ok,fail}"` so
 // alerting can fire on `_fail` without parsing prose. The blocker
 // classes (DB connect, crypto) exit 1 — the engine cannot serve
 // requests in those states. The non-blocker classes (FS write to
@@ -32,16 +33,6 @@ import { sql } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
-
-const STATE_DIRS = [
-  // engine writes its config file here on first boot via the loader's
-  // auto-create path; without write access subkit.config.json never lands
-  // and every restart re-prompts.
-  "/etc/subkit",
-  // file-storage blobs (FILE_STORAGE_ROOT). Optional in dev, required
-  // in production when storage.s3 is unset.
-  "/var/lib/subkit",
-];
 
 interface ProbeResult {
   name: string;
@@ -158,6 +149,35 @@ function probeRuntime(): ProbeResult {
   return { name: "runtime", ok: true, blocker: false, detail };
 }
 
+/** Production state directories — the systemd unit's `StateDirectory=`
+ *  / `ConfigurationDirectory=` keys create these with the right ACL.
+ *  Local dev (and the test harness, which runs as the operator's UID)
+ *  doesn't have these paths and shouldn't probe them: probing produces
+ *  noise warns and pollutes test stdout. The probe runs only when
+ *  `NODE_ENV === "production"` — matches the systemd unit's expected
+ *  runtime environment. */
+const PROD_STATE_DIRS = ["/etc/subkit", "/var/lib/subkit"];
+
+function isProduction(): boolean {
+  return (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+}
+
+/** Single source of truth for the probe set. Both the gate that
+ *  exits 1 on blocker failure and the test seam that returns the
+ *  outcomes call this; they cannot drift. */
+async function runAllProbes(db: Db): Promise<ProbeResult[]> {
+  const probes: ProbeResult[] = [
+    probeRuntime(),
+    probeCryptoSelfTest(),
+    await probeDbConnect(db),
+    await probeDbExtensions(db),
+  ];
+  if (isProduction()) {
+    for (const dir of PROD_STATE_DIRS) probes.push(probeFsWrite(dir));
+  }
+  return probes;
+}
+
 /**
  * Run every dependency probe, log structured results, and abort boot
  * if any blocker fails. Caller invokes this AFTER assertCryptoKeyOrExit
@@ -166,20 +186,14 @@ function probeRuntime(): ProbeResult {
  * "Failed query" line in migrate logs).
  */
 export async function validateBootDependencies(db: Db): Promise<void> {
-  const probes: ProbeResult[] = [
-    probeRuntime(),
-    probeCryptoSelfTest(),
-    await probeDbConnect(db),
-    await probeDbExtensions(db),
-    ...STATE_DIRS.map((d) => probeFsWrite(d)),
-  ];
+  const probes = await runAllProbes(db);
 
   let blockerFailed = false;
   for (const p of probes) {
     if (p.ok) {
       logger.info({
-        module: "boot.dependency",
-        action: `${p.name}.ok`,
+        module: "observability",
+        action: `boot.dependency.${p.name}.ok`,
         msg: `boot dependency ok: ${p.name}`,
         detail: p.detail ?? null,
       });
@@ -188,15 +202,15 @@ export async function validateBootDependencies(db: Db): Promise<void> {
     if (p.blocker) {
       blockerFailed = true;
       logger.fatal({
-        module: "boot.dependency",
-        action: `${p.name}.fail`,
+        module: "observability",
+        action: `boot.dependency.${p.name}.fail`,
         msg: `boot blocker failed: ${p.name} — engine cannot serve requests`,
         detail: p.detail ?? null,
       });
     } else {
       logger.warn({
-        module: "boot.dependency",
-        action: `${p.name}.fail`,
+        module: "observability",
+        action: `boot.dependency.${p.name}.fail`,
         msg: `boot dependency degraded: ${p.name} — continuing`,
         detail: p.detail ?? null,
       });
@@ -208,8 +222,8 @@ export async function validateBootDependencies(db: Db): Promise<void> {
     // as the last entry before the process exits — easier to grep than
     // hunting through individual probe failures.
     logger.fatal({
-      module: "boot.dependency",
-      action: "boot.aborted",
+      module: "observability",
+      action: "boot.dependency.aborted",
       msg: "one or more boot dependency probes failed; aborting",
     });
     process.exit(1);
@@ -217,19 +231,13 @@ export async function validateBootDependencies(db: Db): Promise<void> {
 }
 
 // Test seam: a non-fatal variant that returns the probe outcomes
-// instead of exit(1)-ing. Used by unit tests so the gate doesn't kill
-// the test runner.
+// instead of exit(1)-ing. Shares `runAllProbes` with the gate above —
+// they cannot drift.
 export async function validateBootDependenciesForTests(db: Db): Promise<{
   blockerFailed: boolean;
   probes: ProbeResult[];
 }> {
-  const probes: ProbeResult[] = [
-    probeRuntime(),
-    probeCryptoSelfTest(),
-    await probeDbConnect(db),
-    await probeDbExtensions(db),
-    ...STATE_DIRS.map((d) => probeFsWrite(d)),
-  ];
+  const probes = await runAllProbes(db);
   return { blockerFailed: probes.some((p) => p.blocker && !p.ok), probes };
 }
 
