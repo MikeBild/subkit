@@ -101,5 +101,16 @@ for i in $(seq 1 30); do
   sleep 5
 done
 
-$COMPOSE up -d caddy
+# Bring caddy up with --no-deps. Without it, compose traverses the
+# dep tree (caddy → engine → postgres) and may decide to recreate
+# postgres if the synced docker-compose.yml differs from what's on
+# disk — even when the postgres service config itself is unchanged.
+# That recreate cuts every engine connection ("terminating connection
+# due to administrator command" + "ECONNREFUSED 172.18.0.2:5432" in
+# pubsub/pg-boss/pool error handlers), and the verify log scan flags
+# them as deploy failures even though the system fully recovers.
+# --no-deps is safe here: engine is already healthy from the prior
+# `up -d --no-deps engine` step, and caddy is the only thing being
+# (re)started in this call.
+$COMPOSE up -d --no-deps caddy
 docker image prune -f
