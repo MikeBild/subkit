@@ -289,6 +289,14 @@ function buildLlmSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
         status_hint: present(bedrock.access_key_id) ? null : "Missing",
       },
       {
+        key: "llm.providers.bedrock.secret_access_key",
+        // Both halves of the AWS credential pair are surfaced so an
+        // operator who only set one sees the gap immediately, instead
+        // of debugging a 4xx from the bedrock SDK.
+        value: setPresence(present(bedrock.secret_access_key)),
+        status_hint: present(bedrock.secret_access_key) ? null : "Missing",
+      },
+      {
         key: "llm.providers.vertex.api_key",
         value: setPresence(present(vertex.api_key)),
         status_hint: present(vertex.api_key) ? null : "Missing",
@@ -515,6 +523,11 @@ const setupRoute = createRoute({
   path: "/v1/diagnostics/setup",
   tags: ["diagnostics"],
   summary: "Operator-facing setup validation for live engine configuration",
+  description:
+    "Returns the GLOBAL config snapshot only — tenant overlays are not represented here. " +
+    "Operators reading this expecting per-tenant `auth.firebase.*` (or any other tenant-scope leaf) " +
+    "should hit `GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins " +
+    "can validate the engine's bootstrap configuration without a tenant context.",
   security: [{ bearerAuth: [] }],
   responses: {
     200: { description: "OK", content: { "application/json": { schema: SetupResponseSchema } } },

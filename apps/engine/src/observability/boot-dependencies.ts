@@ -62,9 +62,15 @@ async function probeDbExtensions(db: Db): Promise<ProbeResult> {
     // extension before migrations run their CREATE TABLE statements
     // (which fail with a confusing "function gen_random_uuid() does not
     // exist" error if the operator's role lacks CREATE EXTENSION).
-    const result = (await db.execute(
+    //
+    // pg_extension is a system catalog; drizzle has no schema model
+    // for it (and adding one for a single probe is overkill). We
+    // only need to know whether ANY row came back — drizzle's
+    // `QueryResult<Record<string, unknown>>` is enough; we never
+    // touch the row's content, so no row-type narrowing is needed.
+    const result = await db.execute(
       sql`SELECT extname FROM pg_extension WHERE extname = 'pgcrypto'`,
-    )) as unknown as { rows: Array<{ extname: string }> };
+    );
     if (result.rows.length === 0) {
       return {
         name: "db_extensions",
@@ -270,7 +276,7 @@ export async function validateBootDependencies(db: Db): Promise<void> {
 // Test seam: a non-fatal variant that returns the probe outcomes
 // instead of exit(1)-ing. Shares `runAllProbes` with the gate above —
 // they cannot drift.
-export async function validateBootDependenciesForTests(db: Db): Promise<{
+export async function _validateBootDependenciesForTests(db: Db): Promise<{
   blockerFailed: boolean;
   probes: ProbeResult[];
 }> {

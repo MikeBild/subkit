@@ -7,7 +7,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { validateBootDependenciesForTests } from "../boot-dependencies.ts";
+import { _validateBootDependenciesForTests } from "../boot-dependencies.ts";
 
 let testDb: TestDb;
 
@@ -19,9 +19,9 @@ afterAll(async () => {
   await testDb.cleanup();
 });
 
-describe("validateBootDependenciesForTests", () => {
+describe("_validateBootDependenciesForTests", () => {
   test("clean DB + valid MASTER_KEY → all probes pass, blockerFailed=false", async () => {
-    const { blockerFailed, probes } = await validateBootDependenciesForTests(testDb.db);
+    const { blockerFailed, probes } = await _validateBootDependenciesForTests(testDb.db);
     expect(blockerFailed).toBe(false);
 
     const byName = new Map(probes.map((p) => [p.name, p]));
@@ -36,7 +36,7 @@ describe("validateBootDependenciesForTests", () => {
     // Recreate after the test so other suites don't observe a closed pool.
     const broken = await createTestDb("boot-dependencies-broken");
     await broken.pool.end();
-    const { blockerFailed, probes } = await validateBootDependenciesForTests(broken.db);
+    const { blockerFailed, probes } = await _validateBootDependenciesForTests(broken.db);
     expect(blockerFailed).toBe(true);
     const dbConnect = probes.find((p) => p.name === "db_connect");
     expect(dbConnect?.ok).toBe(false);
@@ -51,7 +51,7 @@ describe("validateBootDependenciesForTests", () => {
   });
 
   test("crypto self-test is a BLOCKER (round-trips encrypt/decrypt)", async () => {
-    const { probes } = await validateBootDependenciesForTests(testDb.db);
+    const { probes } = await _validateBootDependenciesForTests(testDb.db);
     const crypto = probes.find((p) => p.name === "crypto_self_test");
     expect(crypto).toBeDefined();
     expect(crypto?.blocker).toBe(true);
@@ -63,7 +63,7 @@ describe("validateBootDependenciesForTests", () => {
     // a pre-installed test DB already has it. Either way the probe must
     // be classified as non-blocker so a stale role privilege gap doesn't
     // exit-1 the engine.
-    const { probes } = await validateBootDependenciesForTests(testDb.db);
+    const { probes } = await _validateBootDependenciesForTests(testDb.db);
     const ext = probes.find((p) => p.name === "db_extensions");
     expect(ext).toBeDefined();
     expect(ext?.blocker).toBe(false);
@@ -74,7 +74,7 @@ describe("validateBootDependenciesForTests", () => {
     // probe set must NOT include any fs_write:* entry. Probing /etc/subkit
     // and /var/lib/subkit on a dev laptop emits noise warns and pollutes
     // test stdout.
-    const { probes } = await validateBootDependenciesForTests(testDb.db);
+    const { probes } = await _validateBootDependenciesForTests(testDb.db);
     const fsProbes = probes.filter((p) => p.name.startsWith("fs_write:"));
     expect(fsProbes.length).toBe(0);
   });
@@ -83,7 +83,7 @@ describe("validateBootDependenciesForTests", () => {
     const prev = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
     try {
-      const { probes } = await validateBootDependenciesForTests(testDb.db);
+      const { probes } = await _validateBootDependenciesForTests(testDb.db);
       const fsProbes = probes.filter((p) => p.name.startsWith("fs_write:"));
       expect(fsProbes.length).toBeGreaterThan(0);
       // Even when the dirs aren't writable on the runner, blocker=false

@@ -235,12 +235,42 @@ describe("/v1/diagnostics/setup", () => {
     // diagnostic response either:
     //   (a) lists the leaf with value of exactly "configured" or null
     //       (the setPresence shape — never raw secret material), OR
-    //   (b) omits the leaf entirely (acceptable for irrelevant
-    //       paths — e.g. provider-specific keys when that provider is
-    //       not active; the diagnostic is operator-facing, not an
-    //       audit dump).
-    // The hand-maintained section builders in setup.ts can drift from
-    // the schema; this test catches the drift before a release ships.
+    //   (b) is in KNOWN_OMITTED below — i.e. deliberately not
+    //       surfaced because the diagnostic is *operator-facing
+    //       configuration validation*, not an audit dump.
+    //
+    // Each KNOWN_OMITTED entry carries a comment explaining why; a
+    // future schema addition that should be surfaced will fall
+    // through (a) and trip the assertion. Removing a leaf from the
+    // diagnostic without adding it here will also trip — keeps the
+    // surface deliberate.
+    const KNOWN_OMITTED: Record<string, string> = {
+      "llm.api_key":
+        "Legacy single-provider key (pre-multi-provider). Tenant-scoped overrides go through llm.providers.<p>.api_key; this leaf is reserved for back-compat only.",
+      "auth.oidc.client_secret":
+        "OIDC integration runs in the auth subsystem's own diagnostic surface; not relevant to /v1/diagnostics/setup which targets bootstrap config.",
+      "auth.session.secret":
+        "Auto-generated on first boot if empty (logged once); operators don't author this — surfacing it as 'configured' would just be noise.",
+      "platform.slack.signing_secret":
+        "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
+      "platform.slack.client_secret":
+        "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
+      "platform.teams.app_password":
+        "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
+      "storage.offload.access_key":
+        "Offload-storage is an opt-in feature gate; surfaced from /v1/diagnostics/storage when that subsystem is enabled.",
+      "storage.offload.secret_key":
+        "Offload-storage is an opt-in feature gate; surfaced from /v1/diagnostics/storage when that subsystem is enabled.",
+      "observability.langfuse.secret_key":
+        "Observability secrets surface in /v1/diagnostics/observability (planned). Setup view is bootstrap-config-only.",
+      "mcp.api_key":
+        "MCP routes have their own diagnostic; /v1/diagnostics/setup is intentionally narrower.",
+      "llm.providers.bedrock.session_token":
+        "Optional STS-issued session token; surfaced only when the operator wires temporary AWS credentials. Rarely set in subkit deployments — the diagnostic stays clean for the long-lived-credential 90% case.",
+      "llm.providers.vertex.private_key":
+        "Captured implicitly by the combined `llm.providers.vertex.service_account` presence indicator in the LLM section (which checks client_email + private_key together). Surfacing the bare key path would duplicate that signal.",
+    };
+
     const { listConfigLeaves, dottedPath } = await import("../../config/walk.ts");
     const secretPaths = listConfigLeaves()
       .filter((leaf) => !!leaf.meta.secret)
@@ -259,12 +289,19 @@ describe("/v1/diagnostics/setup", () => {
       for (const v of section.values) surfacedByKey.set(v.key, v.value);
     }
     for (const path of secretPaths) {
-      if (!surfacedByKey.has(path)) continue; // (b) intentionally omitted
-      const v = surfacedByKey.get(path);
-      expect(
-        v === "configured" || v === null,
-        `secret leaf ${path} surfaced as ${JSON.stringify(v)} — must be "configured" or null`,
-      ).toBe(true);
+      if (surfacedByKey.has(path)) {
+        const v = surfacedByKey.get(path);
+        expect(
+          v === "configured" || v === null,
+          `secret leaf ${path} surfaced as ${JSON.stringify(v)} — must be "configured" or null`,
+        ).toBe(true);
+      } else {
+        // Not surfaced — must be explicitly KNOWN_OMITTED with a reason.
+        expect(
+          path in KNOWN_OMITTED,
+          `secret leaf ${path} is not surfaced AND not in KNOWN_OMITTED. Either add it to a section builder (with setPresence) or document the omission in KNOWN_OMITTED with a reason.`,
+        ).toBe(true);
+      }
     }
   });
 

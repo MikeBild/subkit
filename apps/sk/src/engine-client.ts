@@ -262,11 +262,15 @@ export class EngineClient {
     body?: unknown,
     query?: Record<string, string | number | boolean | undefined>,
     debugContext?: DebugCorrelationFields,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
     const qs = buildQuery(query);
     const url = `${this.base}${path}${qs}`;
     const traceId = debugContext?.trace_id ?? this.newClientTraceId();
-    const init: RequestInit = { method, headers: this.headers(undefined, { traceId }) };
+    const init: RequestInit = {
+      method,
+      headers: this.headers(extraHeaders, { traceId }),
+    };
     if (body !== undefined) init.body = typeof body === "string" ? body : JSON.stringify(body);
     const startedAt = Date.now();
     const verbose = isDebugVerbose();
@@ -967,7 +971,18 @@ export class EngineClient {
     const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
     const body: Record<string, unknown> = { value };
     if (opts.force) body.force = true;
-    return this.request("PUT", `/v1/settings/${encodeURIComponent(path)}${qs}`, body);
+    // Tag the audit row with audit_source=sk_cli so compliance review
+    // can distinguish operator-driven settings writes from the
+    // deploy-body bootstrap path. The header is validated by
+    // AuditSourceEnum on the engine route boundary.
+    return this.request(
+      "PUT",
+      `/v1/settings/${encodeURIComponent(path)}${qs}`,
+      body,
+      undefined,
+      undefined,
+      { "x-subkit-audit-source": "sk_cli" },
+    );
   }
 
   getDiagnosticsLlm(): Promise<Record<string, unknown>> {

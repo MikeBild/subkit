@@ -706,6 +706,15 @@ export async function setConfigKey(
     // that touches config (CLI, tests, smoke binary) for no benefit.
     let reconfigureFailed = false;
     if (leaf.path[0] === "observability") {
+      // The reconfigure runs INSIDE withWriteLock on purpose: a second
+      // setConfigKey arriving mid-reconfigure would otherwise see the
+      // new in-memory config but the old running tracer, and could
+      // race with our shutdown→re-init sequence (the OTel SDK is not
+      // safe to start while a previous shutdown is in flight). The
+      // worst case under high settings.changed churn is bounded —
+      // reconfigureTracing's shutdown carries an internal forceFlush
+      // budget (see observability/tracing.ts) so a slow exporter
+      // can't stall the lock indefinitely.
       try {
         const { reconfigureTracing } = await import("../observability/tracing.ts");
         await reconfigureTracing();

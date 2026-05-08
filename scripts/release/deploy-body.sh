@@ -214,12 +214,16 @@ if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
       -H "x-subkit-audit-source: deploy_bootstrap" \
       -d "{\"value\":${json_value}}" \
       "${HEALTH_URL%/v1/health}/v1/settings/${path}" 2>/dev/null || echo "000")
+    # 2xx: applied. 4xx and 5xx: fail the deploy. Earlier the 4xx
+    # branch returned 0 ("skipped") to absorb operator typos in
+    # BOOTSTRAP_LLM_* values, but verify.sh only re-reads
+    # llm.provider — every other field (api_key, model, fallback_*)
+    # would 422 silently and the engine would quietly stay on the
+    # prior value. Better to fail loudly: the operator fixes the env
+    # and re-runs with BOOTSTRAP_ONLY=1, no binary swap needed.
     case "$code" in
       2*)
         echo "  PUT /v1/settings/${path} ok ($code)"
-        ;;
-      4*)
-        echo "  PUT /v1/settings/${path} skipped: HTTP ${code}"
         ;;
       *)
         echo "  PUT /v1/settings/${path} FAILED: HTTP ${code}"

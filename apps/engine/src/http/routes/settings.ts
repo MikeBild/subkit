@@ -89,6 +89,19 @@ const PutBody = z
   })
   .openapi("SettingPutBody");
 
+// Tag the audit row's `metadata.audit_source` so compliance review can
+// separate operator-driven `sk settings set` from automated paths
+// (currently just the deploy-body bootstrap PUT). Validated as a Zod
+// enum at the route boundary — single source of truth — and surfaced
+// on the OpenAPI spec so SDK consumers can discover the contract.
+// Keep this enum tight: only values with a known caller today.
+export const AuditSourceEnum = z.enum(["sk_cli", "deploy_bootstrap"]).openapi("SettingAuditSource");
+export type AuditSource = z.infer<typeof AuditSourceEnum>;
+
+const PutHeaders = z.object({
+  "x-subkit-audit-source": AuditSourceEnum.optional(),
+});
+
 const ValidationFailedSchema = z
   .object({
     code: z.literal("validation_failed"),
@@ -211,6 +224,7 @@ const putRoute = createRoute({
   request: {
     params: PathParam,
     query: TenantQuery,
+    headers: PutHeaders,
     body: { content: { "application/json": { schema: PutBody } } },
   },
   responses: {
@@ -338,26 +352,12 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     if (tenant !== undefined) setOpts.tenantId = tenant;
     if (body.force !== undefined) setOpts.force = body.force;
 
-    // Optional X-Subkit-Audit-Source header lets a programmatic caller
-    // tag *why* the settings write happened (e.g. `deploy_bootstrap`
-    // for the deploy-body PUT phase). The audit row's actor_type/id
-    // remain the authenticated principal; this metadata field gives
-    // compliance review a way to separate "operator hand-typed `sk
-    // settings set`" from "automated deploy reset the LLM key", which
-    // are otherwise indistinguishable. Validated against a tight
-    // allow-list so a third-party can't write arbitrary strings into
-    // the audit ledger.
-    // Keep this list tight — only values with a known caller today.
-    // Adding speculative entries (e.g. "ui", "mcp") would clutter the
-    // audit ledger taxonomy; future callers can extend the allow-list
-    // when they actually plumb the header.
-    const ALLOWED_AUDIT_SOURCES = ["sk_cli", "deploy_bootstrap"] as const;
-    type AuditSource = (typeof ALLOWED_AUDIT_SOURCES)[number];
-    const rawAuditSource = c.req.header("x-subkit-audit-source");
-    const auditSource: AuditSource | null =
-      rawAuditSource && (ALLOWED_AUDIT_SOURCES as readonly string[]).includes(rawAuditSource)
-        ? (rawAuditSource as AuditSource)
-        : null;
+    // X-Subkit-Audit-Source — validated by `AuditSourceEnum` on the
+    // putRoute headers schema, so by the time we read it the value is
+    // either undefined or a known-good enum member. The route
+    // boundary is the only place the header is parsed; downstream
+    // code is type-safe.
+    const auditSource = c.req.valid("header")["x-subkit-audit-source"] ?? null;
 
     try {
       const result = await setConfigKey(leaf.path, body.value, setOpts);
