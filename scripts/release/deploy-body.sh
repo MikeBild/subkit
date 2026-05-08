@@ -112,4 +112,46 @@ if systemctl is-active --quiet caddy.service; then
   systemctl reload caddy.service || true
 fi
 
+# 4.2.0 zero-conf bootstrap. Eat-own-dog-food: instead of editing
+# /etc/subkit/.env to seed LLM provider + key, the deploy reaches
+# the engine over HTTP and PUTs `/v1/settings/*` — the same path the
+# `sk settings set` CLI takes. Idempotent (re-PUT with the same value
+# is a no-op for the audit log). All four bootstrap vars optional;
+# absent vars skip their PUT.
+#
+# Inputs (all optional, set in .env.deploy):
+#   BOOTSTRAP_LLM_PROVIDER      → llm.provider
+#   BOOTSTRAP_LLM_API_KEY       → llm.providers.<provider>.api_key
+#   BOOTSTRAP_LLM_MODEL         → llm.providers.<provider>.model
+#   BOOTSTRAP_LLM_FALLBACK_PROVIDER → llm.fallback_provider
+#   BOOTSTRAP_LLM_FALLBACK_MODEL    → llm.fallback_model
+#   VERIFY_API_KEY              → bearer token for the PUT calls
+if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
+  echo "bootstrap LLM config via /v1/settings/* (eat-own-dog-food)"
+  put_setting() {
+    local path="$1"
+    local json_value="$2"
+    curl -fsS -X PUT \
+      -H "authorization: Bearer ${VERIFY_API_KEY}" \
+      -H "content-type: application/json" \
+      -d "{\"value\":${json_value}}" \
+      "${HEALTH_URL%/v1/health}/v1/settings/${path}" >/dev/null \
+      && echo "  PUT /v1/settings/${path} ok" \
+      || echo "  PUT /v1/settings/${path} failed (continuing — config can be set later via sk settings set)"
+  }
+  put_setting "llm.provider" "\"${BOOTSTRAP_LLM_PROVIDER}\""
+  if [ -n "${BOOTSTRAP_LLM_API_KEY:-}" ]; then
+    put_setting "llm.providers.${BOOTSTRAP_LLM_PROVIDER}.api_key" "\"${BOOTSTRAP_LLM_API_KEY}\""
+  fi
+  if [ -n "${BOOTSTRAP_LLM_MODEL:-}" ]; then
+    put_setting "llm.providers.${BOOTSTRAP_LLM_PROVIDER}.model" "\"${BOOTSTRAP_LLM_MODEL}\""
+  fi
+  if [ -n "${BOOTSTRAP_LLM_FALLBACK_PROVIDER:-}" ]; then
+    put_setting "llm.fallback_provider" "\"${BOOTSTRAP_LLM_FALLBACK_PROVIDER}\""
+  fi
+  if [ -n "${BOOTSTRAP_LLM_FALLBACK_MODEL:-}" ]; then
+    put_setting "llm.fallback_model" "\"${BOOTSTRAP_LLM_FALLBACK_MODEL}\""
+  fi
+fi
+
 echo "deploy complete: engine ${PREV_VERSION:-<none>} → ${ENGINE_VERSION}"

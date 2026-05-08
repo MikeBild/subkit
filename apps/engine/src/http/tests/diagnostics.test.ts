@@ -150,9 +150,9 @@ describe("/v1/diagnostics/errors", () => {
 
 describe("/v1/diagnostics/setup", () => {
   test("returns operator-facing setup validation for admins", async () => {
-    // v3.5: drive the config tree via setConfigKey instead of env vars.
-    // Snapshot prior values so we can restore (other tests in the same
-    // file rely on default config state).
+    // 4.2.0: setup.ts reads exclusively from getConfig() (no envString
+    // calls except MASTER_KEY which is bootstrap-only). Drive the
+    // config tree via setConfigKey and assert the diagnostic flips.
     const { getConfig, setConfigKey } = await import("../../config/loader.ts");
     const before = {
       llmProvider: getConfig().llm.provider,
@@ -164,12 +164,6 @@ describe("/v1/diagnostics/setup", () => {
     await setConfigKey("llm.summarize_provider", "anthropic", { force: true });
     await setConfigKey("llm.providers.anthropic.api_key", "", { force: true });
     await setConfigKey("server.public_base_url", "", { force: true });
-    // Pre-fix env vars the route still reads directly (PUBLIC_BASE_URL
-    // is the only env-driven leaf left in setup.ts as of v3.5; once
-    // the buildPublicUrlsSection migrates to getConfig.server.* this
-    // can be removed).
-    const savedPublicEnv = process.env.PUBLIC_BASE_URL;
-    delete process.env.PUBLIC_BASE_URL;
     try {
       const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
         headers: adminHeaders(),
@@ -201,9 +195,11 @@ describe("/v1/diagnostics/setup", () => {
       expect(body.sections.public_urls.status).toBe("warn");
       expect(body.issues.some((issue) => issue.id === "llm-summarize")).toBe(true);
       expect(body.issues.some((issue) => issue.id === "public-base-url")).toBe(true);
-      expect(body.sections.llm.values.some((value) => value.key === "AI_GATEWAY_API_KEY")).toBe(
-        true,
-      );
+      // Settings-style key naming: every value key matches a settings
+      // path (`sk settings set <key> ...`), not a legacy env var.
+      expect(
+        body.sections.llm.values.some((value) => value.key === "llm.providers.ai_gateway.api_key"),
+      ).toBe(true);
       expect(body.recommendations.length).toBeGreaterThan(0);
     } finally {
       await setConfigKey("llm.provider", before.llmProvider, { force: true });
@@ -214,8 +210,6 @@ describe("/v1/diagnostics/setup", () => {
         force: true,
       });
       await setConfigKey("server.public_base_url", before.publicBaseUrl, { force: true });
-      if (savedPublicEnv === undefined) delete process.env.PUBLIC_BASE_URL;
-      else process.env.PUBLIC_BASE_URL = savedPublicEnv;
     }
   });
 

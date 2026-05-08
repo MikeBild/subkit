@@ -298,8 +298,20 @@ else
     "$SSH_TARGET:/etc/systemd/system/subkit-engine.service"
   ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
     "$SSH_TARGET" "systemctl daemon-reload"
+  # Thread bootstrap LLM config + admin API key through to deploy-body
+  # so the post-health-check `PUT /v1/settings/*` step can run
+  # (eat-own-dog-food: no SSH+env-edit cycle needed). All BOOTSTRAP_*
+  # vars are optional; absent vars skip their PUT.
   ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
-    "$SSH_TARGET" "ENGINE_VERSION='$NEW' bash -s" \
+    "$SSH_TARGET" \
+    "ENGINE_VERSION='$NEW' \
+     VERIFY_API_KEY='${VERIFY_API_KEY:-}' \
+     BOOTSTRAP_LLM_PROVIDER='${BOOTSTRAP_LLM_PROVIDER:-}' \
+     BOOTSTRAP_LLM_API_KEY='${BOOTSTRAP_LLM_API_KEY:-}' \
+     BOOTSTRAP_LLM_MODEL='${BOOTSTRAP_LLM_MODEL:-}' \
+     BOOTSTRAP_LLM_FALLBACK_PROVIDER='${BOOTSTRAP_LLM_FALLBACK_PROVIDER:-}' \
+     BOOTSTRAP_LLM_FALLBACK_MODEL='${BOOTSTRAP_LLM_FALLBACK_MODEL:-}' \
+     bash -s" \
     < "$_SCRIPT_DIR/release/deploy-body.sh"
 fi
 ok "droplet deploy returned"

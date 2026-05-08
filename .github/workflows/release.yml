@@ -505,12 +505,30 @@ jobs:
             "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
             "systemctl daemon-reload"
       - name: Run deploy-body.sh on droplet
+        env:
+          # Bootstrap LLM config (eat-own-dog-food). All optional; absent
+          # secrets skip their PUT. Operators stash these as repo secrets
+          # so the engine self-configures over HTTP after the first
+          # systemd restart, no SSH+env-edit cycle.
+          BOOTSTRAP_LLM_PROVIDER: ${{ secrets.BOOTSTRAP_LLM_PROVIDER }}
+          BOOTSTRAP_LLM_API_KEY: ${{ secrets.BOOTSTRAP_LLM_API_KEY }}
+          BOOTSTRAP_LLM_MODEL: ${{ secrets.BOOTSTRAP_LLM_MODEL }}
+          BOOTSTRAP_LLM_FALLBACK_PROVIDER: ${{ secrets.BOOTSTRAP_LLM_FALLBACK_PROVIDER }}
+          BOOTSTRAP_LLM_FALLBACK_MODEL: ${{ secrets.BOOTSTRAP_LLM_FALLBACK_MODEL }}
+          VERIFY_API_KEY: ${{ secrets.VERIFY_API_KEY }}
         run: |
           set +e
           for attempt in 1 2 3 4 5; do
             ssh -i ~/.ssh/id_rsa \
               "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
-              "ENGINE_VERSION='$VERSION' bash -s" \
+              "ENGINE_VERSION='$VERSION' \
+               VERIFY_API_KEY='$VERIFY_API_KEY' \
+               BOOTSTRAP_LLM_PROVIDER='$BOOTSTRAP_LLM_PROVIDER' \
+               BOOTSTRAP_LLM_API_KEY='$BOOTSTRAP_LLM_API_KEY' \
+               BOOTSTRAP_LLM_MODEL='$BOOTSTRAP_LLM_MODEL' \
+               BOOTSTRAP_LLM_FALLBACK_PROVIDER='$BOOTSTRAP_LLM_FALLBACK_PROVIDER' \
+               BOOTSTRAP_LLM_FALLBACK_MODEL='$BOOTSTRAP_LLM_FALLBACK_MODEL' \
+               bash -s" \
               < scripts/release/deploy-body.sh
             rc=$?
             if [ "$rc" -eq 0 ]; then
