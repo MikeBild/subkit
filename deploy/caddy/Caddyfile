@@ -1,5 +1,8 @@
 {
-	email {$CADDY_ACME_EMAIL}
+	# Caddy substitutes the env var if set, otherwise falls back to the
+	# literal default after the `:`. Operators can override per host with
+	# `CADDY_ACME_EMAIL=... systemctl edit caddy`.
+	email {$CADDY_ACME_EMAIL:mike@mikebild.com}
 	acme_ca https://acme-v02.api.letsencrypt.org/directory
 }
 

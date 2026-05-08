@@ -156,11 +156,16 @@ export DEBIAN_FRONTEND=noninteractive
 
 # Caddy upstream key + repo (the apt-shipped caddy lags upstream and
 # misses recent ACME-DNS plugins).
-if [ ! -f /etc/apt/keyrings/caddy.gpg ]; then
-  install -m 0755 -d /etc/apt/keyrings
+#
+# The cloudsmith-served `debian.deb.txt` references the keyring at
+# /usr/share/keyrings/caddy-stable-archive-keyring.gpg (signed-by= in
+# the .list). We must dearmor to that exact path or apt-update fails
+# with NO_PUBKEY ABA1F9B8875A6661.
+if [ ! -f /usr/share/keyrings/caddy-stable-archive-keyring.gpg ]; then
+  install -m 0755 -d /usr/share/keyrings
   curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
-    | gpg --dearmor -o /etc/apt/keyrings/caddy.gpg
-  chmod a+r /etc/apt/keyrings/caddy.gpg
+    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  chmod a+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
     > /etc/apt/sources.list.d/caddy.list
   apt-get update
