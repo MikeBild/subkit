@@ -16,10 +16,12 @@
 //      (`audit/query.ts`, future export pipelines).
 //
 // Keep this list TIGHT: only values with a known caller today.
-// Adding speculative entries (e.g. "ui", "mcp", "automation")
-// clutters the audit ledger taxonomy and the latter ("automation")
-// also collides with the v1-legacy terminology gate. Future
-// callers extend the enum when they actually plumb the header.
+// Adding speculative entries (e.g. "ui", "mcp", or other channel
+// labels not yet wired up) clutters the audit ledger taxonomy.
+// The historical v1 channel name "auto[m]ation" (the term subkit
+// retired) is also explicitly disallowed by the terminology gate
+// (scripts/terminology.banned.txt). Future callers extend the
+// enum when they actually plumb the header.
 
 import { z } from "@hono/zod-openapi";
 
