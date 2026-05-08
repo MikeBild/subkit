@@ -149,6 +149,33 @@ export function _failNextReconfigureForTests(): void {
   _throwOnNextReconfigureForTests = true;
 }
 
+/** Hard upper bound on the per-call shutdown wait. The OTel
+ *  BatchSpanProcessor + Langfuse SDKs both expose internal forceFlush
+ *  budgets, but those are exporter-side and don't bound the SDK's
+ *  network-export retries. Without this race, a hung Langfuse host
+ *  could pin reconfigureTracing() — and therefore setConfigKey()'s
+ *  global write lock — for 30+ seconds, starving every other settings
+ *  write on the engine. 5 s is well above any healthy shutdown and
+ *  short enough that an unrelated /v1/settings PUT doesn't notice. */
+const RECONFIGURE_SHUTDOWN_TIMEOUT_MS = 5_000;
+
+async function awaitWithTimeout(
+  promise: Promise<unknown>,
+  timeoutMs: number,
+  onTimeout: () => void,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), timeoutMs);
+  });
+  try {
+    const winner = await Promise.race([promise.then(() => "ok" as const), timeoutPromise]);
+    if (winner === "timeout") onTimeout();
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function reconfigureTracing(): Promise<void> {
   if (_throwOnNextReconfigureForTests) {
     _throwOnNextReconfigureForTests = false;
@@ -158,16 +185,33 @@ export async function reconfigureTracing(): Promise<void> {
   state.started = false;
   delete state.shutdown;
   if (prev) {
-    try {
-      await prev();
-    } catch (err) {
-      logger.warn({
-        module: "observability",
-        action: "tracing.reconfigure_shutdown_failed",
-        msg: "tracing shutdown during reconfigure failed (continuing)",
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    await awaitWithTimeout(
+      // Wrap the shutdown in a try-catch — exporter throws are not a
+      // gate, just a degraded-warn (current behavior).
+      Promise.resolve()
+        .then(() => prev())
+        .catch((err) => {
+          logger.warn({
+            module: "observability",
+            action: "tracing.reconfigure_shutdown_failed",
+            msg: "tracing shutdown during reconfigure failed (continuing)",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }),
+      RECONFIGURE_SHUTDOWN_TIMEOUT_MS,
+      () => {
+        // Timeout: log the bounded wait, then fall through to
+        // startTracing() so the new config still takes effect. The
+        // OTel SDK's prior shutdown is not awaited further — its
+        // exporter retries continue in the background and the
+        // process either drains them or exits.
+        logger.warn({
+          module: "observability",
+          action: "tracing.reconfigure_shutdown_timeout",
+          msg: `tracing shutdown exceeded ${RECONFIGURE_SHUTDOWN_TIMEOUT_MS}ms; continuing with re-init`,
+        });
+      },
+    );
   }
   await startTracing();
   logger.info({

@@ -65,9 +65,18 @@ bash scripts/deploy.sh patch
 2. `systemctl restart subkit-engine.service`.
 3. Poll `/v1/health` for up to 150s waiting for the new `version` to appear. On timeout, restore `engine.prev` and exit non-zero.
 4. Reload caddy in case the Caddyfile changed.
-5. If `BOOTSTRAP_LLM_*` env is set, PUT `/v1/settings/llm.provider`, `…llm.providers.<provider>.api_key`, etc. Idempotent. The PUT carries `X-Subkit-Audit-Source: deploy_bootstrap` so the audit row distinguishes deploy resets from operator-driven `sk settings set`.
+5. If `BOOTSTRAP_LLM_*` env is set, PUT `/v1/settings/llm.provider`, `…llm.providers.<provider>.api_key`, etc. Idempotent. The PUT carries two audit-trail headers:
+   - `X-Subkit-Audit-Source: deploy_bootstrap` so the audit row distinguishes deploy resets from operator-driven `sk settings set`.
+   - `X-Subkit-Deploy-Version: <semver>` so compliance review can answer "which release SHA flipped this LLM key?" without joining outside the audit log.
 
 The bootstrap env list ([`deploy/bootstrap-env.list`](../../deploy/bootstrap-env.list)) is the single source of truth — `do-bootstrap.sh`, `scripts/deploy.sh`, and `.github/workflows/release.yml` all read it. New variables land in one file.
+
+### `BOOTSTRAP_ONLY=1` re-PUTs without binary swap
+
+Set `BOOTSTRAP_ONLY=1` to re-run the `/v1/settings/*` phase without shipping a new binary — useful when an operator added a `BOOTSTRAP_LLM_*` value after the prior release and wants the engine to pick it up without a full deploy cycle. Behavior:
+
+- The binary swap + `systemctl restart` + health-poll + caddy reload steps are skipped.
+- `metadata.deploy_version` on the resulting audit row reports the **currently-running** engine's version (read from `/v1/health`), not whatever `ENGINE_VERSION` was set in `.env.deploy`. The intent: a re-PUT against an already-deployed release is attributed to that release in the compliance ledger, not to the next release whose binary hasn't shipped yet.
 
 ## First-deploy: mint an admin key
 

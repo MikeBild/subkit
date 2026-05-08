@@ -258,6 +258,22 @@ if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
       echo "  PUT /v1/settings/${path} ok ($code)"
     else
       echo "  PUT /v1/settings/${path} FAILED: HTTP ${code}"
+      # Common-mode hints so the operator doesn't have to guess. The
+      # hint is one line per known status; unrecognized codes get only
+      # the FAILED line above (no false-positive guidance).
+      case "$code" in
+        401)
+          echo "    hint: VERIFY_API_KEY may be stale. Mint a new admin key on the host:"
+          echo "          ssh root@<host> \"sudo -u subkit -H bash -c 'set -a; . /etc/subkit/.env; set +a; cd /etc/subkit && /usr/local/bin/engine --issue-admin-key'\""
+          echo "          then re-run the deploy with VERIFY_API_KEY set to the printed wf_live_… value."
+          ;;
+        422)
+          echo "    hint: the value failed Zod validation on the route. Check that BOOTSTRAP_LLM_PROVIDER matches one of the engine's supported provider names (anthropic|openai|gemini|azure|bedrock|vertex|ai_gateway|mock) and that BOOTSTRAP_LLM_MODEL is a non-empty string for the chosen provider."
+          ;;
+        403)
+          echo "    hint: VERIFY_API_KEY lacks settings:write OR the cross-tenant guard tripped. Use a system-tenant admin key for global writes."
+          ;;
+      esac
       rm -f "$body_file"
       return 1
     fi

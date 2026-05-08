@@ -104,6 +104,17 @@ function probeFsWrite(dir: string): ProbeResult {
   // the dir as the engine UID and mask the misconfiguration —
   // operator wouldn't notice until the systemd Group= setting
   // drifted further and the engine couldn't read its own files.
+  //
+  // Trust boundary: under systemd the unit's `StateDirectory=` /
+  // `ConfigurationDirectory=` directives pre-create these paths with
+  // the right ownership before ExecStart. The mkdirSync fallback
+  // exists for non-systemd deploys (manual debug-mode boots,
+  // Dockerless local prod). Outside systemd, the fallback CAN mask a
+  // misconfiguration — if the engine is started by root in a context
+  // that drops privileges, a wrong `subkit:subkit` could create the
+  // dir as root:root and the engine wouldn't notice until later. The
+  // production path (systemd) doesn't reach this branch, so the
+  // mask only affects bespoke deployments.
   const probe = join(dir, ".subkit-boot-probe");
   try {
     try {

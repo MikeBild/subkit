@@ -4,6 +4,12 @@
 // `apps/engine/src/api/` and `apps/engine/src/...`.
 
 export {
+  AUDIT_SOURCE_HEADER,
+  AUDIT_SOURCE_VALUES,
+  type AuditSource,
+  DEPLOY_VERSION_HEADER,
+} from "./audit-source.ts";
+export {
   ConnectorOperationError,
   isConnectorOperationError,
 } from "./connector-operation-error.ts";

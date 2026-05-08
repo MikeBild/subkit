@@ -710,11 +710,15 @@ export async function setConfigKey(
       // setConfigKey arriving mid-reconfigure would otherwise see the
       // new in-memory config but the old running tracer, and could
       // race with our shutdown→re-init sequence (the OTel SDK is not
-      // safe to start while a previous shutdown is in flight). The
-      // worst case under high settings.changed churn is bounded —
-      // reconfigureTracing's shutdown carries an internal forceFlush
-      // budget (see observability/tracing.ts) so a slow exporter
-      // can't stall the lock indefinitely.
+      // safe to start while a previous shutdown is in flight).
+      //
+      // Tail-latency bound: reconfigureTracing wraps its
+      // SDK shutdown in `awaitWithTimeout` with a 5 s ceiling
+      // (`RECONFIGURE_SHUTDOWN_TIMEOUT_MS` in
+      // observability/tracing.ts). Even a hung exporter can't pin the
+      // lock past that — the SDK's retry stays in the background and
+      // we proceed to startTracing(). Worst-case unrelated
+      // setConfigKey() waits ≤ 5 s during heavy observability churn.
       try {
         const { reconfigureTracing } = await import("../observability/tracing.ts");
         await reconfigureTracing();

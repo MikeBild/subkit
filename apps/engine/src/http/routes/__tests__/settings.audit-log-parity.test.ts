@@ -248,7 +248,7 @@ describe("audit_log ↔ setting.applied bijection", () => {
     // test, a future refactor that drops the catch (or the metadata
     // stamp) would leave the operator-visible "live tracer is on the
     // old config" signal silently broken.
-    const { _failNextReconfigureForTests } = await import("../../../observability/tracing.ts");
+    const { _failNextReconfigureForTests } = await import("../../../test-helpers/tracing.ts");
     _failNextReconfigureForTests();
     const url = `${server.baseUrl}/v1/settings/observability.langfuse.host`;
     const r = await fetch(url, {

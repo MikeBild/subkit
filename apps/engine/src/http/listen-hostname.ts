@@ -18,14 +18,15 @@
 
 export const ENGINE_LISTEN_HOSTNAME = "127.0.0.1" as const;
 
-/** Returns the @hono/node-server `serve()` options for the engine's
- *  HTTP listener. */
-export function engineHttpServeOptions(port: number): { port: number; hostname: string } {
-  return { port, hostname: ENGINE_LISTEN_HOSTNAME };
-}
-
-/** Returns the `startTunnelWsServer()` options for the engine's
- *  tunnel WebSocket listener. */
-export function engineTunnelServeOptions(port: number): { port: number; hostname: string } {
+/** Listen options for any engine TCP listener — both
+ *  `@hono/node-server`'s `serve()` and `startTunnelWsServer()`
+ *  consume the same `{ port, hostname }` shape, so a single helper
+ *  serves both. The HTTP listener and the tunnel WS listener used
+ *  to have one helper each (`engineHttpServeOptions` /
+ *  `engineTunnelServeOptions`); they were identical, so the round-7
+ *  reviewer collapsed them. The single function reduces what the
+ *  regression test in `apps/engine/src/http/tests/listen-hostname.test.ts`
+ *  has to fence. */
+export function engineServeOptions(port: number): { port: number; hostname: string } {
   return { port, hostname: ENGINE_LISTEN_HOSTNAME };
 }

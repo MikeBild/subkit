@@ -10,7 +10,7 @@ import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
 import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
 import { setHealthState } from "./http/health-state.ts";
-import { engineHttpServeOptions, engineTunnelServeOptions } from "./http/listen-hostname.ts";
+import { engineServeOptions } from "./http/listen-hostname.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
@@ -373,7 +373,7 @@ async function runServer(): Promise<void> {
   const port = getConfig().server.port;
   recordBootConsumer("http_server");
 
-  const opts = engineHttpServeOptions(port);
+  const opts = engineServeOptions(port);
   const server = serve({ fetch: app.fetch, port: opts.port, hostname: opts.hostname });
 
   logger.info({
@@ -395,7 +395,7 @@ async function runServer(): Promise<void> {
   // when server.tunnel_port is not set.
   let tunnelWs: TunnelWsServerHandle | null = null;
   try {
-    const tunnelOpts = engineTunnelServeOptions(getConfig().server.tunnel_port ?? port + 1);
+    const tunnelOpts = engineServeOptions(getConfig().server.tunnel_port ?? port + 1);
     tunnelWs = startTunnelWsServer({
       db,
       port: tunnelOpts.port,

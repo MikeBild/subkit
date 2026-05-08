@@ -626,14 +626,27 @@ function checkSystemdUnitJitFriendly(): Result {
   };
 }
 
-function checkBootDepsTestSeamGated(): Result {
-  // The underscore-prefixed `_validateBootDependenciesForTests` is
-  // re-exported from `apps/engine/src/test-helpers/boot.ts` so test
-  // imports go through that channel. Production code must not
-  // import it directly from `observability/boot-dependencies.ts`.
-  // A direct import would let a future refactor accidentally swap
-  // the production fatal-on-blocker path for the non-fatal test
-  // variant.
+function checkTestSeamsGated(): Result {
+  // Underscore-prefixed test-only exports must be imported through
+  // the corresponding `test-helpers/<x>.ts` re-export shim, never
+  // directly from the production module. Direct imports let a
+  // future refactor accidentally swap a production code path for
+  // the non-fatal test variant. Each entry maps a production-module
+  // suffix to its required test-helpers shim suffix and the
+  // underscore symbol's name.
+  const SEAMS = [
+    {
+      symbol: "_validateBootDependenciesForTests",
+      productionModule: "observability/boot-dependencies",
+      shimEnding: "test-helpers/boot.ts",
+    },
+    {
+      symbol: "_failNextReconfigureForTests",
+      productionModule: "observability/tracing",
+      shimEnding: "test-helpers/tracing.ts",
+    },
+  ] as const;
+
   const offenders: string[] = [];
   const roots = ["apps/engine/src", "apps/sk/src", "apps/agent/src", "packages"];
   for (const root of roots) {
@@ -644,35 +657,35 @@ function checkBootDepsTestSeamGated(): Result {
         !p.includes("/__tests__/") &&
         !p.includes("/tests/") &&
         !p.endsWith(".test.ts") &&
-        !p.endsWith(".test.tsx") &&
-        !p.endsWith("test-helpers/boot.ts"),
+        !p.endsWith(".test.tsx"),
     );
     for (const f of files) {
+      // Each shim re-exports its own symbol — that import is allowed.
+      const shimWhitelist = SEAMS.some((s) => f.endsWith(s.shimEnding));
+      if (shimWhitelist) continue;
       const raw = readFileSync(f, "utf8");
-      // Direct import of the underscore export from the production
-      // module path. Allowed forms:
-      //   - test files (excluded above)
-      //   - the test-helpers re-export shim (excluded above)
-      // Disallowed: anything else.
-      if (
-        /from\s+["'][^"']*observability\/boot-dependencies(\.ts)?["']/.test(raw) &&
-        /_validateBootDependenciesForTests/.test(raw)
-      ) {
-        offenders.push(f);
+      for (const seam of SEAMS) {
+        const importsFromProd = new RegExp(
+          `from\\s+["'][^"']*${seam.productionModule.replace(/\//g, "\\/")}(\\.ts)?["']`,
+        ).test(raw);
+        const usesSymbol = new RegExp(`\\b${seam.symbol}\\b`).test(raw);
+        if (importsFromProd && usesSymbol) {
+          offenders.push(`${f} (symbol=${seam.symbol})`);
+        }
       }
     }
   }
   if (offenders.length === 0) {
     return {
-      id: "boot_deps_test_seam_gated",
+      id: "test_seams_gated",
       status: "PASS",
-      message: "_validateBootDependenciesForTests imported only via test-helpers/boot.ts",
+      message: `${SEAMS.length} test seam(s) imported only via test-helpers/ shims`,
     };
   }
   return {
-    id: "boot_deps_test_seam_gated",
+    id: "test_seams_gated",
     status: "FAIL",
-    message: `${offenders.length} non-test file(s) import _validateBootDependenciesForTests directly:\n  ${offenders.join("\n  ")}`,
+    message: `${offenders.length} non-test file(s) import production test seams directly:\n  ${offenders.join("\n  ")}`,
   };
 }
 
@@ -693,7 +706,7 @@ const CHECKS: Array<() => Result> = [
   checkCoverageFloor,
   checkRegressionIsolation,
   checkSystemdUnitJitFriendly,
-  checkBootDepsTestSeamGated,
+  checkTestSeamsGated,
   checkPrTemplate,
 ];
 

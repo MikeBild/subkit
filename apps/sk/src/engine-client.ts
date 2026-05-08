@@ -17,6 +17,14 @@ import {
   DIAGNOSTICS_LOG_TAIL_PATH,
 } from "@cli-core/diagnostics-paths.ts";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+import { AUDIT_SOURCE_HEADER, type AuditSource } from "@shared/audit-source.ts";
+
+/** The CLI's channel tag on audit_log.metadata.audit_source. The
+ *  engine validates against `AUDIT_SOURCE_VALUES` (shared package)
+ *  at the route boundary; this constant just narrows the union to
+ *  the value sk uses. */
+const SK_CLI_AUDIT_SOURCE = "sk_cli" satisfies AuditSource;
+
 import {
   type DebugCorrelationFields,
   type DebugMode,
@@ -973,15 +981,17 @@ export class EngineClient {
     if (opts.force) body.force = true;
     // Tag the audit row with audit_source=sk_cli so compliance review
     // can distinguish operator-driven settings writes from the
-    // deploy-body bootstrap path. The header is validated by
-    // AuditSourceEnum on the engine route boundary.
+    // deploy-body bootstrap path. Header name + value come from
+    // `@shared/audit-source` — same module the engine route boundary
+    // (apps/engine/src/audit/audit-source.ts) imports from. A future
+    // rename of either lands in one place and propagates here.
     return this.request(
       "PUT",
       `/v1/settings/${encodeURIComponent(path)}${qs}`,
       body,
       undefined,
       undefined,
-      { "x-subkit-audit-source": "sk_cli" },
+      { [AUDIT_SOURCE_HEADER]: SK_CLI_AUDIT_SOURCE },
     );
   }
 

@@ -8,11 +8,12 @@
 // `"0.0.0.0"` (or omits it, since the platform default is 0.0.0.0)
 // would be invisible to CI without this test.
 //
-// Round-6 reviewer feedback: assert against the EXACT helpers the
-// runtime uses, not a parallel copy. `engineHttpServeOptions()` and
-// `engineTunnelServeOptions()` (declared in apps/engine/src/index.ts
-// alongside the actual `serve(...)` call) are the single source of
-// truth; any future refactor that drops the hostname (constant rename,
+// Round-6+7 reviewer feedback: assert against the EXACT helper the
+// runtime uses, not a parallel copy. `engineServeOptions()` (declared
+// in apps/engine/src/http/listen-hostname.ts and called from both the
+// HTTP serve() and the tunnel WS startTunnelWsServer in
+// apps/engine/src/index.ts) is the single source of truth; any
+// future refactor that drops the hostname (constant rename,
 // helper-rewrite that omits it, …) trips this assertion.
 //
 // We also boot a server with each option set and confirm the bound
@@ -24,11 +25,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { startTunnelWsServer, type TunnelWsServerHandle } from "../../tunnels/ws-server.ts";
-import {
-  ENGINE_LISTEN_HOSTNAME,
-  engineHttpServeOptions,
-  engineTunnelServeOptions,
-} from "../listen-hostname.ts";
+import { ENGINE_LISTEN_HOSTNAME, engineServeOptions } from "../listen-hostname.ts";
 
 let db: TestDb;
 let wsHandle: TunnelWsServerHandle | null = null;
@@ -69,26 +66,26 @@ describe("engine bind hostname — defense-in-depth", () => {
     expect(ENGINE_LISTEN_HOSTNAME).toBe("127.0.0.1");
   });
 
-  test("engineHttpServeOptions(port) carries hostname=127.0.0.1", () => {
-    // Asserts the EXACT helper the runtime calls in
-    // apps/engine/src/index.ts:runServer (post-4.2.0 refactor).
-    const opts = engineHttpServeOptions(3000);
-    expect(opts.hostname).toBe(ENGINE_LISTEN_HOSTNAME);
-    expect(opts.port).toBe(3000);
+  test("engineServeOptions(port) carries hostname=127.0.0.1 for both HTTP and tunnel ports", () => {
+    // Asserts the EXACT helper both call sites in
+    // apps/engine/src/index.ts:runServer use (HTTP at line 376 and
+    // tunnel WS at line 398, post-round-7 collapse from two
+    // identical helpers to one). Two distinct port values keep the
+    // signature honest: the helper must echo `port` through, not
+    // accidentally substitute a constant.
+    for (const port of [3000, 3001]) {
+      const opts = engineServeOptions(port);
+      expect(opts.hostname, `hostname for port=${port}`).toBe(ENGINE_LISTEN_HOSTNAME);
+      expect(opts.port, `port=${port}`).toBe(port);
+    }
   });
 
-  test("engineTunnelServeOptions(port) carries hostname=127.0.0.1", () => {
-    const opts = engineTunnelServeOptions(3001);
-    expect(opts.hostname).toBe(ENGINE_LISTEN_HOSTNAME);
-    expect(opts.port).toBe(3001);
-  });
-
-  test("a server booted with engineHttpServeOptions reports the same bind interface", async () => {
+  test("a server booted with engineServeOptions reports the same bind interface", async () => {
     // Closes the loop: prove the helper isn't just a value-equality
     // fence — a real server bound with these options actually listens
     // on 127.0.0.1. Catches the case where the helper is correct but
     // a future call site stops passing it through.
-    const opts = engineHttpServeOptions(0);
+    const opts = engineServeOptions(0);
     const handle = await bootHttp(opts.hostname);
     try {
       expect(handle.address).toBe(ENGINE_LISTEN_HOSTNAME);
@@ -110,8 +107,8 @@ describe("engine bind hostname — defense-in-depth", () => {
     }
   });
 
-  test("startTunnelWsServer with engineTunnelServeOptions binds 127.0.0.1", () => {
-    const opts = engineTunnelServeOptions(0);
+  test("startTunnelWsServer with engineServeOptions binds 127.0.0.1", () => {
+    const opts = engineServeOptions(0);
     wsHandle = startTunnelWsServer({ db: db.db, port: opts.port, hostname: opts.hostname });
     expect(wsHandle.url).toContain(`${ENGINE_LISTEN_HOSTNAME}:`);
     expect(wsHandle.port).toBeGreaterThan(0);
