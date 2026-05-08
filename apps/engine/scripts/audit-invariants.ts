@@ -665,9 +665,14 @@ function checkTestSeamsGated(): Result {
       if (shimWhitelist) continue;
       const raw = readFileSync(f, "utf8");
       for (const seam of SEAMS) {
-        const importsFromProd = new RegExp(
-          `from\\s+["'][^"']*${seam.productionModule.replace(/\//g, "\\/")}(\\.ts)?["']`,
-        ).test(raw);
+        // Escape EVERY regex metachar in the seam's productionModule
+        // (today's entries have only `/`, but a future addition like
+        // `connectors/foo.bar` would silently match wrong files —
+        // `.` is "any char" — without this).
+        const escapedModule = seam.productionModule.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+        const importsFromProd = new RegExp(`from\\s+["'][^"']*${escapedModule}(\\.ts)?["']`).test(
+          raw,
+        );
         const usesSymbol = new RegExp(`\\b${seam.symbol}\\b`).test(raw);
         if (importsFromProd && usesSymbol) {
           offenders.push(`${f} (symbol=${seam.symbol})`);

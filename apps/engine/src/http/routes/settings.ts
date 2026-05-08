@@ -48,6 +48,7 @@ import {
   findLeafByPath,
   listConfigLeaves,
 } from "../../config/walk.ts";
+import { logger } from "../../logging/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -372,6 +373,25 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     const auditSource = headers[AUDIT_SOURCE_HEADER] ?? null;
     const deployVersion = headers[DEPLOY_VERSION_HEADER] ?? null;
 
+    // Surface untagged settings writes so an operator dashboard can
+    // see who is still on a pre-4.2.0 client (or a misconfigured
+    // 4.2.0+ caller). Compliance review queries against
+    // `audit_log.metadata.audit_source` will show a `null` bucket;
+    // this log line maps each null back to a principal_id so the
+    // bucket can be drained over time. Once-per-PUT, info-level —
+    // not a gate, just observability.
+    if (!auditSource) {
+      logger.info({
+        module: "audit",
+        action: "settings.changed.untagged",
+        msg: "settings PUT landed without x-subkit-audit-source — pre-4.2.0 client or misconfigured caller",
+        leaf: leaf.path.join("."),
+        actor_id: principal.id,
+        principal_kind: principal.kind,
+        tenant_id: tenant ?? principal.tenant_id,
+      });
+    }
+
     try {
       const result = await setConfigKey(leaf.path, body.value, setOpts);
 
@@ -414,8 +434,13 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
         // unhandled errors). The previously-applied write remains
         // in effect — rolling it back would require a second write
         // that could itself fail and compound the divergence.
-        const { logger: lg } = await import("../../logging/logger.ts");
-        lg.error({
+        //
+        // Use the static `logger` (not a dynamic import): a dynamic
+        // import that itself throws (filesystem race, ESM module-graph
+        // corruption mid-request) would HIDE the original audit-failure
+        // error — exactly the divergence this catch is supposed to
+        // surface.
+        logger.error({
           module: "config",
           action: "setting.apply_failed",
           msg: "setConfigKey succeeded but audit row write failed; live state and audit_log are out of sync",

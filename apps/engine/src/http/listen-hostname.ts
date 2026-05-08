@@ -19,14 +19,26 @@
 export const ENGINE_LISTEN_HOSTNAME = "127.0.0.1" as const;
 
 /** Listen options for any engine TCP listener — both
- *  `@hono/node-server`'s `serve()` and `startTunnelWsServer()`
- *  consume the same `{ port, hostname }` shape, so a single helper
- *  serves both. The HTTP listener and the tunnel WS listener used
- *  to have one helper each (`engineHttpServeOptions` /
- *  `engineTunnelServeOptions`); they were identical, so the round-7
- *  reviewer collapsed them. The single function reduces what the
- *  regression test in `apps/engine/src/http/tests/listen-hostname.test.ts`
- *  has to fence. */
+ *  `@hono/node-server`'s `serve()` (HTTP request ingress) and
+ *  `startTunnelWsServer()` (tunnel-agent WS ingress) consume the
+ *  same `{ port, hostname }` shape, so one helper serves both.
+ *
+ *  Two listener semantics, ONE default today:
+ *    - HTTP ingress (port 3000) → Caddy reverse-proxies the
+ *      public TLS endpoint to 127.0.0.1:3000.
+ *    - Tunnel WS ingress (port 3001) → Caddy reverse-proxies
+ *      wss://subkit-tunnel.* to 127.0.0.1:3001 and tunnel agents
+ *      dial outbound from a private network.
+ *
+ *  Both default to 127.0.0.1 because Caddy on the same host fronts
+ *  both — defense-in-depth: a misconfigured firewall can't leak
+ *  either upstream. A future deployment that fronts the *tunnel*
+ *  with a separate proxy (load-balanced cluster, dedicated WSS
+ *  endpoint, multi-host setup) will need to opt out by passing an
+ *  explicit `hostname` argument; at that point the right
+ *  refactor is to split this back into `engineHttpServeOptions` /
+ *  `engineTunnelServeOptions`. The collapse to one helper is a
+ *  current-deployment optimisation, not a contract. */
 export function engineServeOptions(port: number): { port: number; hostname: string } {
   return { port, hostname: ENGINE_LISTEN_HOSTNAME };
 }

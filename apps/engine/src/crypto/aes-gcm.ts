@@ -188,6 +188,18 @@ export function secureEqual(a: Uint8Array | string, b: Uint8Array | string): boo
  */
 export const BOOTSTRAP_ONLY_ENV_KEYS = ["MASTER_KEY"] as const;
 
+// Type-level fence: tsc fails if the tuple's shape changes without
+// updating the buildCryptoSection consumer (which renders one row
+// per entry in the diagnostic and currently knows the MASTER_KEY
+// shape). Catches a future addition at typecheck time, not at
+// first-request runtime. The runtime assert in setup.ts is
+// belt-and-braces.
+type _AssertSingleBootstrapEnv = typeof BOOTSTRAP_ONLY_ENV_KEYS extends readonly ["MASTER_KEY"]
+  ? true
+  : never;
+const _bootstrapEnvShapeCheck: _AssertSingleBootstrapEnv = true;
+void _bootstrapEnvShapeCheck;
+
 /**
  * Force a key parse + cache. Call once during server startup so a bad
  * MASTER_KEY surfaces in the boot log, before any request can reach an
