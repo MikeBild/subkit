@@ -126,11 +126,11 @@ Observability
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `observability.langfuse.host` | string | `""` | global | no | yes |  |
-| `observability.langfuse.public_key` | string | `""` | global | no | yes |  |
-| `observability.langfuse.secret_key` | string | `""` | global | yes | yes |  |
-| `observability.otlp.endpoint` | string | `""` | global | no | yes |  |
-| `observability.otlp.service_name` | string | `"subkit"` | global | no | yes |  |
+| `observability.langfuse.host` | string | `""` | global | no | no |  |
+| `observability.langfuse.public_key` | string | `""` | global | no | no |  |
+| `observability.langfuse.secret_key` | string | `""` | global | yes | no |  |
+| `observability.otlp.endpoint` | string | `""` | global | no | no |  |
+| `observability.otlp.service_name` | string | `"subkit"` | global | no | no |  |
 
 ## egress
 Egress filter

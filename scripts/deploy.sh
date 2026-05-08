@@ -242,13 +242,11 @@ stage "build engine binary"
 _REPO_ROOT=$(cd "$_SCRIPT_DIR/.." && pwd)
 _DIST_BIN="$_REPO_ROOT/dist/engine-linux-x64"
 if [ "$DRY_RUN" -eq 1 ]; then
-  info "[dry] bun build apps/engine/src/index.ts --compile --target=bun-linux-x64 --define BUILD_VERSION=\"$NEW\" --outfile $_DIST_BIN"
+  info "[dry] ENGINE_VERSION=$NEW bun run build:engine:linux-x64"
 else
-  run bun build "$_REPO_ROOT/apps/engine/src/index.ts" \
-    --compile \
-    --target=bun-linux-x64 \
-    --define "BUILD_VERSION=\"$NEW\"" \
-    --outfile "$_DIST_BIN"
+  # Delegate to the package.json script so the cross-compile lives in
+  # one place (the same script CI runs).
+  ENGINE_VERSION="$NEW" run bun run build:engine:linux-x64
   if [ ! -f "$_DIST_BIN" ]; then
     fail "build did not produce $_DIST_BIN"
     exit 1

@@ -417,13 +417,11 @@ jobs:
       - name: Compile engine for linux/x86_64
         env:
           ENGINE_VERSION: ${{ steps.meta.outputs.version }}
+        # Same package.json script that scripts/deploy.sh runs locally,
+        # so CI ↔ laptop produce byte-identical binaries.
         run: |
           mkdir -p dist
-          bun build apps/engine/src/index.ts \
-            --compile \
-            --target=bun-linux-x64 \
-            --define "BUILD_VERSION=\"${ENGINE_VERSION}\"" \
-            --outfile dist/engine-linux-x64
+          bun run build:engine:linux-x64
           test -f dist/engine-linux-x64 || { echo "build did not produce dist/engine-linux-x64"; exit 1; }
       - name: Upload engine binary
         uses: actions/upload-artifact@v4

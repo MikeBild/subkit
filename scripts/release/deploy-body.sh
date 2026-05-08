@@ -58,9 +58,13 @@ if [ ! -f "$ENGINE_NEXT" ]; then
 fi
 
 read_running_version() {
+  # `jq` is installed by `do-bootstrap.sh` step 6 alongside postgres +
+  # caddy. Don't reach for `node -e` here — the droplet image is
+  # ubuntu-24-04 with no nodejs package; the curl|node pipe was a
+  # silent failure mode that returned "" forever and burned the full
+  # HEALTH_TIMEOUT_SECS clock before rolling back.
   curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null \
-    | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{try{process.stdout.write(JSON.parse(d).version||'')}catch{process.stdout.write('')}})" \
-    2>/dev/null \
+    | jq -r '.version // empty' 2>/dev/null \
     || true
 }
 
@@ -128,16 +132,37 @@ fi
 #   VERIFY_API_KEY              → bearer token for the PUT calls
 if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
   echo "bootstrap LLM config via /v1/settings/* (eat-own-dog-food)"
+  # Status-coded handler: 5xx fails the deploy (engine misbehaving),
+  # 4xx is a soft-skip (operator typo / scope mismatch — fixable later
+  # via `sk settings set`), 2xx logs success. Without this split a
+  # 422 "invalid value" silently passed and the deploy looked green
+  # while /v1/diagnostics/llm reported `inferred_provider=mock`.
   put_setting() {
     local path="$1"
     local json_value="$2"
-    curl -fsS -X PUT \
+    local body_file
+    body_file=$(mktemp)
+    local code
+    code=$(curl -sS -o "$body_file" -w '%{http_code}' -X PUT \
       -H "authorization: Bearer ${VERIFY_API_KEY}" \
       -H "content-type: application/json" \
       -d "{\"value\":${json_value}}" \
-      "${HEALTH_URL%/v1/health}/v1/settings/${path}" >/dev/null \
-      && echo "  PUT /v1/settings/${path} ok" \
-      || echo "  PUT /v1/settings/${path} failed (continuing — config can be set later via sk settings set)"
+      "${HEALTH_URL%/v1/health}/v1/settings/${path}" 2>/dev/null || echo "000")
+    case "$code" in
+      2*)
+        echo "  PUT /v1/settings/${path} ok ($code)"
+        ;;
+      4*)
+        echo "  PUT /v1/settings/${path} skipped: $code $(tr -d '\n' < "$body_file")"
+        ;;
+      *)
+        echo "  PUT /v1/settings/${path} FAILED: $code $(tr -d '\n' < "$body_file")"
+        rm -f "$body_file"
+        return 1
+        ;;
+    esac
+    rm -f "$body_file"
+    return 0
   }
   put_setting "llm.provider" "\"${BOOTSTRAP_LLM_PROVIDER}\""
   if [ -n "${BOOTSTRAP_LLM_API_KEY:-}" ]; then

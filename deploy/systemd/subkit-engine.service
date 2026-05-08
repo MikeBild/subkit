@@ -23,7 +23,7 @@
 ; docker dependency, so this unit can drop the `docker` group.
 
 [Unit]
-Description=Subkit workflow engine
+Description=Subkit workflow engine (single binary; replaces docker-compose engine since 4.2.0)
 Documentation=https://github.com/MikeBild/subkit
 After=network-online.target postgresql.service
 Wants=network-online.target
@@ -37,17 +37,24 @@ Group=subkit
 ; Single binary — no shell, no node, no bun runtime install needed.
 ExecStart=/usr/local/bin/engine
 
-; Operator-edited env. Optional (`-` prefix); first boot can run with
-; just defaults baked into the schema and the engine will auto-create
-; subkit.config.json at /etc/subkit/.
-EnvironmentFile=-/etc/subkit/.env
+; Operator-edited env. Required (no `-` prefix): MASTER_KEY is
+; consumed before the config loader runs and a missing .env produces
+; a Zod parse failure inside the binary that's only visible via
+; `journalctl`. Letting systemd report the error at unit-load time is
+; easier to diagnose. `do-bootstrap.sh` step 9 places the file.
+EnvironmentFile=/etc/subkit/.env
+
+; Hard-pin the listen ports so an operator override in /etc/subkit/.env
+; can't drift the Caddy upstream silently. If the ports ever need to
+; change they move here AND in deploy/caddy/Caddyfile in lockstep.
+Environment=PORT=3000
+Environment=TUNNEL_PORT=3001
 
 ; Working dir + state. systemd auto-creates these with mode 0750
 ; under the unit's User/Group when the *Directory= keys are set.
 WorkingDirectory=/var/lib/subkit
 StateDirectory=subkit
 ConfigurationDirectory=subkit
-LogsDirectory=subkit
 
 ; Restart policy: process exit -> 5s cooldown -> retry, capped at 3
 ; restarts in 60s before systemd gives up. Operator sees the failure
@@ -73,9 +80,10 @@ MemoryDenyWriteExecute=false
 ; ^ Bun JIT requires write+exec memory; can't enable.
 
 ; Filesystem ACL — engine writes to its config dir (auto-create the
-; config file on first boot), state dir (file-storage blobs, drift
-; reports), and log dir (rotated journal output).
-ReadWritePaths=/etc/subkit /var/lib/subkit /var/log/subkit
+; config file on first boot) and state dir (file-storage blobs, drift
+; reports). Logs go to journald via stdout/stderr — no /var/log/subkit
+; needed.
+ReadWritePaths=/etc/subkit /var/lib/subkit
 
 ; Resource limits — keep boot footprint sane on a small droplet.
 LimitNOFILE=65536

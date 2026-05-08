@@ -123,3 +123,41 @@ export async function startTracing(): Promise<() => Promise<void>> {
 export function isTracingStarted(): boolean {
   return state.started;
 }
+
+/**
+ * Hot-reload the OTel SDK after an `observability.*` config change.
+ *
+ * Shuts down the existing exporter pipeline (best-effort), clears the
+ * started flag, and re-runs startTracing(). Called by setConfigKey()
+ * when an `observability.langfuse.*` or `observability.otlp.*` leaf
+ * is updated, so operators see `sk settings set
+ * observability.langfuse.secret_key '"…"'` take effect on the next
+ * span without a process restart.
+ *
+ * Safe to call when tracing was never started (e.g. operator flips an
+ * exporter on for the first time after boot) — the start path itself
+ * checks for the no-config short-circuit.
+ */
+export async function reconfigureTracing(): Promise<void> {
+  const prev = state.shutdown;
+  state.started = false;
+  delete state.shutdown;
+  if (prev) {
+    try {
+      await prev();
+    } catch (err) {
+      logger.warn({
+        module: "observability",
+        action: "tracing.reconfigure_shutdown_failed",
+        msg: "tracing shutdown during reconfigure failed (continuing)",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  await startTracing();
+  logger.info({
+    module: "observability",
+    action: "tracing.reconfigured",
+    msg: "OpenTelemetry tracer reconfigured from settings.changed",
+  });
+}

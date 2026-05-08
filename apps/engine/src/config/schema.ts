@@ -364,25 +364,24 @@ const ObservabilitySection = z
   .object({
     langfuse: z
       .object({
-        host: optionalUrl.default("").meta(global({ requiresRestart: true })),
-        public_key: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true })),
+        // 4.2.0: requiresRestart=false — setConfigKey() hot-reloads the
+        // OTel SDK + resets the langfuse-spans cache via
+        // reconfigureTracing(). Operators see `sk settings set
+        // observability.langfuse.secret_key '"…"'` take effect on the
+        // next span.
+        host: optionalUrl.default("").meta(global()),
+        public_key: z.string().default("").meta(global()),
         secret_key: z
           .string()
           .default("")
-          .meta(global({ requiresRestart: true, secret: true })),
+          .meta(global({ secret: true })),
       })
       .prefault({})
       .describe("Langfuse trace ingestion"),
     otlp: z
       .object({
-        endpoint: optionalUrl.default("").meta(global({ requiresRestart: true })),
-        service_name: z
-          .string()
-          .default("subkit")
-          .meta(global({ requiresRestart: true })),
+        endpoint: optionalUrl.default("").meta(global()),
+        service_name: z.string().default("subkit").meta(global()),
       })
       .prefault({})
       .describe("OpenTelemetry OTLP exporter"),

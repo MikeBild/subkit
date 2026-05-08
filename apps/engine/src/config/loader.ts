@@ -679,6 +679,39 @@ export async function setConfigKey(
       }
     }
 
+    // Hot-reload OTel + langfuse exporters when an observability.*
+    // leaf changes. Without this, flipping
+    // `observability.langfuse.secret_key` (etc.) wrote the value to
+    // disk but the running tracer kept the old credentials in memory
+    // until the next process restart — which contradicted the
+    // `requiresRestart: false` flag this section now carries. The
+    // tracing reconfigure shuts down the SDK and re-bootstraps from
+    // the updated config; the langfuse-spans cache is reset so the
+    // next `getLangfuse()` reads the new config too. Both calls are
+    // best-effort — never fail a settings write because the tracer
+    // couldn't restart cleanly.
+    if (leaf.path[0] === "observability") {
+      try {
+        const { reconfigureTracing } = await import("../observability/tracing.ts");
+        await reconfigureTracing();
+      } catch (err) {
+        const { logger } = await import("../logging/logger.ts");
+        logger.warn({
+          module: "config",
+          action: "observability.reconfigure_failed",
+          msg: "tracing reconfigure failed after settings.changed",
+          leaf: dottedPath(leaf),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      try {
+        const { _resetLangfuseCache } = await import("../observability/langfuse-spans.ts");
+        _resetLangfuseCache();
+      } catch {
+        /* langfuse-spans not loaded */
+      }
+    }
+
     return {
       before: beforeValue,
       after: validatedValue,

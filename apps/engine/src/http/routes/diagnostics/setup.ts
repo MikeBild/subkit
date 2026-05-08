@@ -385,7 +385,7 @@ function buildCryptoSection(): SetupSection {
   // subkit.config.json — rotating it via `sk settings set` would be a
   // catastrophic foot-gun (every previously-encrypted credential
   // becomes unreadable on next boot).
-  const masterKey = process.env.MASTER_KEY?.trim() || undefined;
+  const masterKey = present(process.env.MASTER_KEY);
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
   if (!masterKey) {
