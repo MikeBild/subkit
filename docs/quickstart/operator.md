@@ -27,14 +27,14 @@ curl -s http://localhost:3000/v1/health | jq
 
 ## 3. Log in with the seeded admin key (or bootstrap)
 
-`bun run compose:up` defaults to `NODE_ENV=development` and seeds a `default` tenant plus an `admin@local` admin key. Grab the key from the seed-container logs and log in:
+Local dev brings up postgres via `bun run compose:up` and the engine via `bun run dev`. The engine seeds a `default` tenant plus an `admin@local` admin key on first boot when `NODE_ENV=development`. Grab the key from the engine's stdout/stderr (or `journalctl -u subkit-engine.service` on the host) and log in:
 
 ```bash
-docker compose logs seed | grep -A1 'NEW API KEY ISSUED — default-bot'
+bun run dev 2>&1 | grep -A1 'NEW API KEY ISSUED — default-bot'
 sk login --engine-url http://localhost:3000 --api-key <wf_live_…>
 ```
 
-That key is printed exactly once. If you missed it, `bun run db:issue-admin-key` mints a fresh one without re-running the seed.
+That key is printed exactly once. If you missed it, `bun run db:issue-admin-key` (locally) or `sudo -u subkit /usr/local/bin/engine --issue-admin-key` (on the host) mints a fresh one without re-running the seed.
 
 **Production-mode first-run instead.** Set `NODE_ENV=production` in `.env` before `bun run compose:up` and the dev seed is skipped — the engine prints a one-time bootstrap-token banner on first boot. Copy the token, then:
 
@@ -64,15 +64,13 @@ Pick from 90 connector templates — see [docs/05-connectors.md](../05-connector
 
 ## How `curl /install | bash` works against your engine
 
-Every released engine image bundles matching `sk` and `tunnel-agent` binaries at `/usr/local/share/subkit/binaries` and serves them at `/install/sk-:platform-:arch`, `/install/agent-:platform-:arch`, and `/install/sha256sums`. Anyone who can reach your engine URL can install the CLI:
+The engine serves install artifacts at `/install/sk-:platform-:arch`, `/install/agent-:platform-:arch`, and `/install/sha256sums`. Anyone who can reach your engine URL can install the CLI:
 
 ```bash
 curl -fsSL https://my-engine.example.com/install | bash
 ```
 
-The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; on `200` it streams from there with `x-subkit-sha256` verification against `${ENGINE_URL}/install/sha256sums`. The `~/.subkit/bin/sk` it lands matches the engine's running version exactly — no version drift.
-
-For local dev or fork builds where `docker/binaries/` is empty, the install routes return 404 and the script falls back to GitHub Releases for the matching tag. Run `bash scripts/release/embed-binaries.sh --from-local` before `docker compose build` to bundle the host's binaries and smoke the full flow locally.
+The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; on `200` it streams from there with `x-subkit-sha256` verification against `${ENGINE_URL}/install/sha256sums`. On `404` (the default for 4.2.0 systemd-deployed engines that don't bundle CLI binaries on the host), the script falls back to the matching GitHub Release. Either way `~/.subkit/bin/sk` matches the engine's running version exactly — no version drift.
 
 ## Next steps
 

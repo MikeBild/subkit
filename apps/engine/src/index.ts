@@ -126,6 +126,14 @@ async function runServer(): Promise<void> {
   const stopTracing = await startTracing();
   recordBootConsumer("tracing");
 
+  // Boot-time dependency validation. Runs every probe (DB connect,
+  // pgcrypto, filesystem write, AES self-test, runtime info) and
+  // exits 1 if any blocker fails — operator sees one clean error
+  // instead of a confusing migrate.* / drift.* downstream failure.
+  // Non-blocker degradations log at warn and continue.
+  const { validateBootDependencies } = await import("./boot/dependency-check.ts");
+  await validateBootDependencies(db);
+
   // Apply embedded migrations BEFORE any subsystem touches a table.
   // Issue #149: this used to be a separate `migrate` compose container
   // that could ship a different lineage than the engine binary, which
@@ -364,12 +372,18 @@ async function runServer(): Promise<void> {
   const port = getConfig().server.port;
   recordBootConsumer("http_server");
 
-  const server = serve({ fetch: app.fetch, port });
+  // 4.2.0: bind 127.0.0.1 only. Caddy on the host reverse-proxies
+  // the public-facing TLS endpoint to 127.0.0.1:3000. Defense-in-depth
+  // — the firewall closes :3000 to the public internet, but binding to
+  // localhost means a misconfigured firewall can't leak the engine
+  // upstream. e2e tests use random ports on 127.0.0.1 too (see
+  // tests/e2e/setup.ts), so this is a no-op for them.
+  const server = serve({ fetch: app.fetch, port, hostname: "127.0.0.1" });
 
   logger.info({
     module: "engine",
     action: "ready",
-    msg: `engine listening on http://0.0.0.0:${port}`,
+    msg: `engine listening on http://127.0.0.1:${port}`,
     port,
     public_base_url: getConfig().server.public_base_url || null,
   });
@@ -388,6 +402,9 @@ async function runServer(): Promise<void> {
     tunnelWs = startTunnelWsServer({
       db,
       port: getConfig().server.tunnel_port ?? port + 1,
+      // Same defense-in-depth as the HTTP server above. Caddy proxies
+      // wss://subkit-tunnel.* → 127.0.0.1:3001.
+      hostname: "127.0.0.1",
     });
     logger.info({
       module: "engine",
@@ -585,7 +602,7 @@ async function main(): Promise<void> {
   // --issue-admin-key [--tenant <slug>]: mint a fresh admin API key
   // against an existing tenant + admin user, print the plaintext once,
   // exit. Lets operators rotate or bootstrap the verify/diagnostics
-  // key on the droplet without needing the source repo + bun runtime
+  // key on the host without needing the source repo + bun runtime
   // (e.g. `sudo -u subkit /usr/local/bin/engine --issue-admin-key`).
   // Does NOT run migrations or seed — safe on a live database.
   if (process.argv.includes(ISSUE_ADMIN_KEY_FLAG)) {

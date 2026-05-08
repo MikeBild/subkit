@@ -24,7 +24,7 @@
 #   - mikebild.dev zone on DO nameservers
 #   - ~/.ssh/subkit_deploy{,.pub} exists (or SSH_KEY_PATH overrides)
 #
-# Note: no DOCR, no DO_TOKEN. The droplet doesn't pull from a registry
+# Note: no DOCR, no DO_TOKEN. The host does not pull from a registry
 # anymore — releases scp the binary directly.
 
 set -euo pipefail
@@ -34,11 +34,11 @@ HOST_API="${HOST_API:-subkit-api}"
 HOST_TUNNEL="${HOST_TUNNEL:-subkit-tunnel}"
 REGION="${REGION:-fra1}"
 SIZE="${SIZE:-s-2vcpu-4gb}"
-DROPLET_NAME="${DROPLET_NAME:-subkit-engine}"
+HOST_NAME="${DROPLET_NAME:-subkit-engine}"
 SSH_KEY_NAME="${SSH_KEY_NAME:-subkit-deploy}"
 SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/subkit_deploy}"
 FIREWALL_NAME="${FIREWALL_NAME:-subkit-engine-fw}"
-DROPLET_IMAGE="${DROPLET_IMAGE:-ubuntu-24-04-x64}"
+HOST_OS_IMAGE="${DROPLET_IMAGE:-ubuntu-24-04-x64}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 say() { printf "\n\033[1;36m==>\033[0m %s\n" "$*"; }
@@ -60,20 +60,23 @@ fi
 echo "   ssh key id: $SSH_KEY_ID"
 
 # --------------------------------------------------------------------------
-say "2. Ensure droplet '$DROPLET_NAME' exists"
-DROPLET_ID=$(doctl compute droplet list --format ID,Name --no-header | awk -v n="$DROPLET_NAME" '$2==n {print $1}')
-if [[ -z "$DROPLET_ID" ]]; then
-  doctl compute droplet create "$DROPLET_NAME" \
-    --image "$DROPLET_IMAGE" \
+say "2. Ensure host '$HOST_NAME' exists"
+# `doctl compute droplet *` is the literal DigitalOcean upstream API
+# (Droplet is DO's product name for a VM). Operator-facing vocabulary
+# elsewhere uses "host"; these lines stay as the API resource name.
+HOST_ID=$(doctl compute droplet list --format ID,Name --no-header | awk -v n="$HOST_NAME" '$2==n {print $1}')
+if [[ -z "$HOST_ID" ]]; then
+  doctl compute droplet create "$HOST_NAME" \
+    --image "$HOST_OS_IMAGE" \
     --size "$SIZE" \
     --region "$REGION" \
     --ssh-keys "$SSH_KEY_ID" \
     --tag-names subkit,engine \
     --wait
-  DROPLET_ID=$(doctl compute droplet list --format ID,Name --no-header | awk -v n="$DROPLET_NAME" '$2==n {print $1}')
+  HOST_ID=$(doctl compute droplet list --format ID,Name --no-header | awk -v n="$HOST_NAME" '$2==n {print $1}')
 fi
-DROPLET_IP=$(doctl compute droplet get "$DROPLET_ID" --format PublicIPv4 --no-header)
-echo "   droplet id: $DROPLET_ID  ip: $DROPLET_IP"
+HOST_IP=$(doctl compute droplet get "$HOST_ID" --format PublicIPv4 --no-header)
+echo "   host id: $HOST_ID  ip: $HOST_IP"
 
 # --------------------------------------------------------------------------
 say "3. Ensure DNS A records on $DOMAIN_ROOT"
@@ -103,8 +106,8 @@ ensure_a_record() {
     fi
   fi
 }
-ensure_a_record "$HOST_API" "$DROPLET_IP"
-ensure_a_record "$HOST_TUNNEL" "$DROPLET_IP"
+ensure_a_record "$HOST_API" "$HOST_IP"
+ensure_a_record "$HOST_TUNNEL" "$HOST_IP"
 
 # --------------------------------------------------------------------------
 say "4. Ensure firewall '$FIREWALL_NAME' exists and attached"
@@ -114,17 +117,17 @@ if [[ -z "$FW_ID" ]]; then
     --name "$FIREWALL_NAME" \
     --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0,address:::/0 protocol:tcp,ports:80,address:0.0.0.0/0,address:::/0 protocol:tcp,ports:443,address:0.0.0.0/0,address:::/0 protocol:udp,ports:443,address:0.0.0.0/0,address:::/0" \
     --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0,address:::/0 protocol:udp,ports:all,address:0.0.0.0/0,address:::/0 protocol:icmp,address:0.0.0.0/0,address:::/0" \
-    --droplet-ids "$DROPLET_ID" \
+    --droplet-ids "$HOST_ID" \
     --format ID --no-header)
 else
-  doctl compute firewall add-droplets "$FW_ID" --droplet-ids "$DROPLET_ID" >/dev/null 2>&1 || true
+  doctl compute firewall add-droplets "$FW_ID" --droplet-ids "$HOST_ID" >/dev/null 2>&1 || true
 fi
 echo "   firewall id: $FW_ID"
 
 # --------------------------------------------------------------------------
-say "5. Wait for SSH on $DROPLET_IP"
+say "5. Wait for SSH on $HOST_IP"
 for i in $(seq 1 30); do
-  if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=3 -i "$SSH_KEY_PATH" root@"$DROPLET_IP" 'true' 2>/dev/null; then
+  if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=3 -i "$SSH_KEY_PATH" root@"$HOST_IP" 'true' 2>/dev/null; then
     echo "   ssh ready"
     break
   fi
@@ -132,11 +135,21 @@ for i in $(seq 1 30); do
   sleep 5
 done
 
-SSH="ssh -o StrictHostKeyChecking=no -i $SSH_KEY_PATH root@$DROPLET_IP"
+SSH="ssh -o StrictHostKeyChecking=no -i $SSH_KEY_PATH root@$HOST_IP"
 SCP="scp -o StrictHostKeyChecking=no -i $SSH_KEY_PATH"
 
 # --------------------------------------------------------------------------
-say "6. Install postgresql-16 + caddy on the droplet"
+say "5b. Pre-flight: host must not be a pre-4.2.0 docker installation"
+# Re-running this script on a host bootstrapped before 4.2.0 (image:
+# docker-20-04, /opt/subkit/docker-compose.yml present) silently apt-
+# installs postgresql alongside the live compose stack. Fail fast
+# instead of producing a dpkg-conflict mess.
+if $SSH 'test -f /opt/subkit/docker-compose.yml'; then
+  die "Pre-4.2.0 docker host detected at /opt/subkit/docker-compose.yml. Create a fresh ubuntu-24-04 host (HOST_NAME=<new-name> $0) and migrate the data via pg_dump. Aborting before apt-installs collide with the running compose stack."
+fi
+
+# --------------------------------------------------------------------------
+say "6. Install postgresql-16 + caddy on the host"
 $SSH 'bash -s' <<'REMOTE'
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
@@ -155,13 +168,42 @@ fi
 
 apt-get install -y postgresql-16 postgresql-client-16 caddy curl jq
 
+# Hard assertion: deploy-body.sh's read_running_version() pipes
+# /v1/health into `jq -r '.version // empty'`. A missing jq means
+# every deploy hangs on the 150 s health timeout. Fail bootstrap
+# instead so the operator notices the gap immediately.
+command -v jq >/dev/null || { echo "FATAL: jq did not install"; exit 1; }
+command -v curl >/dev/null || { echo "FATAL: curl did not install"; exit 1; }
+
 # Postgres should listen only on 127.0.0.1 (engine + caddy share the
 # host network namespace). Default config already binds localhost on
 # the apt package; no edit needed unless you want to confirm.
 systemctl enable --now postgresql
 systemctl enable --now caddy
+
+# Allow the deploy ssh client to forward bootstrap env vars via
+# `SendEnv`. Without these AcceptEnv lines the client falls back to
+# inlining the secrets on the command line where they're visible in
+# the host's `ps -ef` output. One `AcceptEnv` per variable —
+# globbing them all into one line risks sshd silently rejecting the
+# config when the line gets long.
+install -d -m 0755 /etc/ssh/sshd_config.d
+cat >/etc/ssh/sshd_config.d/subkit.conf <<'SSHD'
+# Subkit deploy: accept the bootstrap env vars sent via `ssh -o SendEnv=…`
+# from scripts/deploy.sh and .github/workflows/release.yml. Each var
+# gets its own line so a long line doesn't get silently dropped.
+AcceptEnv ENGINE_VERSION
+AcceptEnv VERIFY_API_KEY
+AcceptEnv BOOTSTRAP_LLM_PROVIDER
+AcceptEnv BOOTSTRAP_LLM_API_KEY
+AcceptEnv BOOTSTRAP_LLM_MODEL
+AcceptEnv BOOTSTRAP_LLM_FALLBACK_PROVIDER
+AcceptEnv BOOTSTRAP_LLM_FALLBACK_MODEL
+SSHD
+chmod 0644 /etc/ssh/sshd_config.d/subkit.conf
+systemctl reload ssh
 REMOTE
-echo "   postgres + caddy installed"
+echo "   postgres + caddy installed; sshd AcceptEnv configured"
 
 # --------------------------------------------------------------------------
 say "7. Create subkit system user + dirs"
@@ -209,18 +251,18 @@ MASTER_KEY=${MASTER_KEY}
 PUBLIC_BASE_URL=https://${HOST_API}.${DOMAIN_ROOT}
 EOF
   warn "Seeded /etc/subkit/.env. Mint an admin API key after first deploy:"
-  warn "   ssh -i $SSH_KEY_PATH root@$DROPLET_IP '/usr/local/bin/engine --issue-admin-key'"
+  warn "   ssh -i $SSH_KEY_PATH root@$HOST_IP '/usr/local/bin/engine --issue-admin-key'"
 fi
 
 # --------------------------------------------------------------------------
 say "10. Install Caddyfile + reload caddy"
-$SCP "$REPO_ROOT/deploy/caddy/Caddyfile" root@"$DROPLET_IP":/etc/caddy/Caddyfile
+$SCP "$REPO_ROOT/deploy/caddy/Caddyfile" root@"$HOST_IP":/etc/caddy/Caddyfile
 $SSH 'systemctl reload caddy'
 echo "   /etc/caddy/Caddyfile synced"
 
 # --------------------------------------------------------------------------
 say "11. Install subkit-engine systemd unit"
-$SCP "$REPO_ROOT/deploy/systemd/subkit-engine.service" root@"$DROPLET_IP":/etc/systemd/system/subkit-engine.service
+$SCP "$REPO_ROOT/deploy/systemd/subkit-engine.service" root@"$HOST_IP":/etc/systemd/system/subkit-engine.service
 $SSH 'systemctl daemon-reload && systemctl enable subkit-engine.service'
 echo "   /etc/systemd/system/subkit-engine.service registered (not started — first deploy ships the binary)"
 
@@ -228,9 +270,9 @@ echo "   /etc/systemd/system/subkit-engine.service registered (not started — f
 say "12. Bootstrap summary"
 cat <<EOF
 
-  Droplet:    $DROPLET_NAME ($DROPLET_IP)
-  DNS:        $HOST_API.$DOMAIN_ROOT  → $DROPLET_IP
-              $HOST_TUNNEL.$DOMAIN_ROOT → $DROPLET_IP
+  Droplet:    $HOST_NAME ($HOST_IP)
+  DNS:        $HOST_API.$DOMAIN_ROOT  → $HOST_IP
+              $HOST_TUNNEL.$DOMAIN_ROOT → $HOST_IP
   Services:   postgresql-16, caddy, subkit-engine.service (enabled)
   Engine bin: /usr/local/bin/engine (deployed by scripts/deploy.sh)
   Env file:   /etc/subkit/.env
@@ -238,9 +280,9 @@ cat <<EOF
 
 Next steps:
   1. From the laptop, run: scripts/deploy.sh minor
-     (builds engine binary, scp's to droplet, systemctl restart)
+     (builds engine binary, scp's to host, systemctl restart)
   2. After first successful deploy, mint an admin key:
-       ssh -i $SSH_KEY_PATH root@$DROPLET_IP \\
+       ssh -i $SSH_KEY_PATH root@$HOST_IP \\
          'sudo -u subkit /usr/local/bin/engine --issue-admin-key'
   3. Configure runtime settings via the sk CLI:
        sk login --engine-url https://$HOST_API.$DOMAIN_ROOT --api-key <key>
@@ -248,9 +290,9 @@ Next steps:
        sk settings set llm.providers.anthropic.api_key '"sk-ant-..."'
 
 GitHub Actions secrets to configure (Settings → Secrets → Actions):
-  DROPLET_HOST       = $DROPLET_IP
-  DROPLET_USER       = root
-  DROPLET_SSH_KEY    = (contents of $SSH_KEY_PATH)
+  DEPLOY_HOST       = $HOST_IP
+  DEPLOY_USER       = root
+  DEPLOY_SSH_KEY    = (contents of $SSH_KEY_PATH)
   DEPLOY_URL         = https://$HOST_API.$DOMAIN_ROOT
 
 EOF

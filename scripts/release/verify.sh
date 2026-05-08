@@ -3,7 +3,7 @@
 # Post-deploy verification. Three stages, all abort-on-fail:
 #
 #   1. Poll /v1/health until `version` matches the just-deployed tag
-#      (proves the droplet actually flipped, not the prior container
+#      (proves the host actually flipped, not the prior container
 #      still serving from the old image).
 #   2. Run the public smoke script against the deploy URL.
 #   3. Run the authenticated remote-health smoke (diagnostics + conversation create).
@@ -107,6 +107,24 @@ else
   ok "diagnostics/llm reachable (inferred_provider=$inferred_provider)"
   ok "diagnostics/setup reachable (status=$setup_status warnings=$warning_count)"
   ok "diagnostics/errors reachable (${error_count} buffered item(s) in query window)"
+
+  # Bootstrap-PUT verification — only fires when the deploy actually
+  # tried to bootstrap the LLM config. Re-reads /v1/settings/llm.provider
+  # and confirms it matches BOOTSTRAP_LLM_PROVIDER. Without this, a
+  # typo'd env (e.g. `anthopic`) made deploy-body's `put_setting` log
+  # a 422 "skipped" line that the deploy log buried, and the engine
+  # quietly stayed on the default provider.
+  if [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
+    msg "verifying bootstrap LLM PUT applied (BOOTSTRAP_LLM_PROVIDER=$BOOTSTRAP_LLM_PROVIDER)"
+    PROVIDER_BODY=$(curl -fsS --max-time 10 -H "authorization: Bearer $VERIFY_API_KEY" \
+      "$DEPLOY_URL/v1/settings/llm.provider" || echo "{}")
+    settled_provider=$(printf '%s' "$PROVIDER_BODY" | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{try{const b=JSON.parse(d); process.stdout.write(String(b.value ?? ''))}catch{process.stdout.write('')}})")
+    if [ "$settled_provider" != "$BOOTSTRAP_LLM_PROVIDER" ]; then
+      err "bootstrap LLM PUT did not stick — /v1/settings/llm.provider returned '$settled_provider' (expected '$BOOTSTRAP_LLM_PROVIDER'); inspect deploy-body's put_setting output for 4xx skips"
+      exit 1
+    fi
+    ok "bootstrap LLM PUT verified (llm.provider=$settled_provider)"
+  fi
 fi
 
 # 5. Engine log tail — last N minutes, any new error/fatal levels.
@@ -114,7 +132,7 @@ fi
 # error/fatal grep below; the engine emits NDJSON to stdout/stderr,
 # systemd captures it with the unit name as journal field. Convert
 # the human "2m" / "5m" / "1h" form into journalctl's relative
-# `--since "N seconds ago"` accepted format on the droplet via GNU
+# `--since "N seconds ago"` accepted format on the host via GNU
 # date -d (no portable journalctl shorthand for "2m").
 log_cmd="journalctl -u subkit-engine.service --since=\"\$(date -u -d '${LOG_SINCE} ago' '+%Y-%m-%d %H:%M:%S')\" --no-pager -o cat 2>&1"
 msg "scanning engine logs for errors in the last ${LOG_SINCE}"

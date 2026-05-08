@@ -3,7 +3,7 @@
 # subkit — laptop deploy orchestrator.
 #
 # Runs the same stages the `.github/workflows/release.yml` pipeline
-# runs, against the same droplet, using the same `deploy-body.sh`, so
+# runs, against the same host, using the same `deploy-body.sh`, so
 # "push a tag" and "run this script" are interchangeable.
 #
 # Usage:
@@ -25,17 +25,17 @@
 #
 # 4.2.0 systemd-native deploy. No DOCR, no `docker buildx`, no compose
 # overlay. The engine is a single bun-compiled binary; postgres + caddy
-# are apt-installed system services. The droplet must already be
+# are apt-installed system services. The target host must already be
 # provisioned by `scripts/do-bootstrap.sh`.
 #
 # Required env (or .env.deploy):
-#   DROPLET_HOST    IP/hostname of the droplet (DROPLET_NAME alt)
-#   DROPLET_USER    SSH user (default: root)
+#   DEPLOY_HOST    IP/hostname of the host (DROPLET_NAME alt)
+#   DEPLOY_USER    SSH user (default: root)
 #   SSH_KEY_PATH    path to the private key (default: ~/.ssh/id_rsa)
 #   DEPLOY_URL      base URL for smoke (default: https://subkit-api.mikebild.dev)
 #   VERIFY_API_KEY  admin API key for authenticated diagnostics smoke
-#                   (Stage 6). Mint on the droplet:
-#                     ssh <droplet> '/usr/local/bin/engine --issue-admin-key'
+#                   (Stage 6). Mint on the host:
+#                     ssh <host> '/usr/local/bin/engine --issue-admin-key'
 #                   Or set SKIP_AUTH_DIAGNOSTICS=1 to skip the
 #                   authenticated half of verify (public smoke +
 #                   /v1/health + remote log scan still run).
@@ -85,9 +85,9 @@ if [ -f "$REPO_ROOT/.env.deploy" ]; then
   source "$REPO_ROOT/.env.deploy"
 fi
 
-DROPLET_HOST="${DROPLET_HOST:-}"
+DEPLOY_HOST="${DEPLOY_HOST:-}"
 DROPLET_NAME="${DROPLET_NAME:-subkit-engine}"
-DROPLET_USER="${DROPLET_USER:-root}"
+DEPLOY_USER="${DEPLOY_USER:-root}"
 SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/id_rsa}"
 DEPLOY_URL="${DEPLOY_URL:-https://subkit-api.mikebild.dev}"
 
@@ -160,8 +160,8 @@ if ! doctl auth list 2>/dev/null | grep -q .; then
   exit 1
 fi
 
-# Sanity: if DROPLET_HOST is set, ensure the SSH key exists.
-if [ -n "$DROPLET_HOST" ] && [ ! -f "$SSH_KEY_PATH" ]; then
+# Sanity: if DEPLOY_HOST is set, ensure the SSH key exists.
+if [ -n "$DEPLOY_HOST" ] && [ ! -f "$SSH_KEY_PATH" ]; then
   fail "SSH key not found at $SSH_KEY_PATH (set SSH_KEY_PATH in .env.deploy)"
   exit 1
 fi
@@ -171,7 +171,7 @@ info "repo  : $REPO_ROOT"
 info "tree  : $(git log -1 --pretty=format:'%h %s')"
 info "from  : $CURRENT"
 info "bump  : $LEVEL"
-info "droplet: ${DROPLET_HOST:-(via doctl) $DROPLET_NAME}"
+info "host: ${DEPLOY_HOST:-(via doctl) $DROPLET_NAME}"
 info "deploy: $DEPLOY_URL"
 
 # ---------------------------------------------------------------------------
@@ -237,7 +237,7 @@ trap rollback_bump EXIT
 # the engine to a static linux/amd64 binary right here on the laptop
 # (Bun's `--target=bun-linux-x64` produces a self-contained executable
 # in ~30 s; the prior docker buildx + DOCR push averaged ~3 min).
-# Stage 5 ships the resulting binary to the droplet via scp.
+# Stage 5 ships the resulting binary to the host via scp.
 stage "build engine binary"
 _REPO_ROOT=$(cd "$_SCRIPT_DIR/.." && pwd)
 _DIST_BIN="$_REPO_ROOT/dist/engine-linux-x64"
@@ -259,25 +259,25 @@ ok "built dist/engine-linux-x64 (engine $NEW)"
 # ---------------------------------------------------------------------------
 # 4.2.0: scp the engine binary + Caddyfile + systemd unit, then run
 # deploy-body.sh which atomically swaps the binary and `systemctl
-# restart`s the unit. No DOCR, no docker compose. The droplet must
+# restart`s the unit. No DOCR, no docker compose. The target host must
 # already be provisioned with `scripts/do-bootstrap.sh` (postgres +
 # caddy + the subkit user/dirs).
-stage "deploy to droplet"
+stage "deploy to host"
 SSH_TARGET=""
-if [ -n "$DROPLET_HOST" ]; then
-  SSH_TARGET="$DROPLET_USER@$DROPLET_HOST"
+if [ -n "$DEPLOY_HOST" ]; then
+  SSH_TARGET="$DEPLOY_USER@$DEPLOY_HOST"
   info "ssh target: $SSH_TARGET (key: $SSH_KEY_PATH)"
 fi
 _CADDYFILE="$_REPO_ROOT/deploy/caddy/Caddyfile"
 _SYSTEMD_UNIT="$_REPO_ROOT/deploy/systemd/subkit-engine.service"
 if [ "$DRY_RUN" -eq 1 ]; then
-  info "[dry] scp $_DIST_BIN → droplet:/usr/local/bin/engine.next"
-  info "[dry] scp $_CADDYFILE → droplet:/etc/caddy/Caddyfile"
-  info "[dry] scp $_SYSTEMD_UNIT → droplet:/etc/systemd/system/subkit-engine.service"
+  info "[dry] scp $_DIST_BIN → host:/usr/local/bin/engine.next"
+  info "[dry] scp $_CADDYFILE → host:/etc/caddy/Caddyfile"
+  info "[dry] scp $_SYSTEMD_UNIT → host:/etc/systemd/system/subkit-engine.service"
   info "[dry] ENGINE_VERSION=$NEW ssh ... 'bash -s' < $_SCRIPT_DIR/release/deploy-body.sh"
 else
   if [ -z "$SSH_TARGET" ]; then
-    fail "DROPLET_HOST is required for deploy (set in .env.deploy)"
+    fail "DEPLOY_HOST is required for deploy (set in .env.deploy)"
     exit 1
   fi
   # Stream the binary up first; deploy-body.sh checks for it before
@@ -300,19 +300,26 @@ else
   # so the post-health-check `PUT /v1/settings/*` step can run
   # (eat-own-dog-food: no SSH+env-edit cycle needed). All BOOTSTRAP_*
   # vars are optional; absent vars skip their PUT.
+  #
+  # Use ssh `SendEnv` rather than inline `FOO='value' bash -s` so the
+  # secrets never appear on the laptop or host `ps -ef` output.
+  # `do-bootstrap.sh` configures the matching `AcceptEnv` directives
+  # in /etc/ssh/sshd_config.d/subkit.conf — one line per variable
+  # (sshd silently rejects globs longer than ~256 chars in a single
+  # AcceptEnv line, so we list them explicitly there).
+  export ENGINE_VERSION="$NEW"
+  export VERIFY_API_KEY="${VERIFY_API_KEY:-}"
+  export BOOTSTRAP_LLM_PROVIDER="${BOOTSTRAP_LLM_PROVIDER:-}"
+  export BOOTSTRAP_LLM_API_KEY="${BOOTSTRAP_LLM_API_KEY:-}"
+  export BOOTSTRAP_LLM_MODEL="${BOOTSTRAP_LLM_MODEL:-}"
+  export BOOTSTRAP_LLM_FALLBACK_PROVIDER="${BOOTSTRAP_LLM_FALLBACK_PROVIDER:-}"
+  export BOOTSTRAP_LLM_FALLBACK_MODEL="${BOOTSTRAP_LLM_FALLBACK_MODEL:-}"
   ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
-    "$SSH_TARGET" \
-    "ENGINE_VERSION='$NEW' \
-     VERIFY_API_KEY='${VERIFY_API_KEY:-}' \
-     BOOTSTRAP_LLM_PROVIDER='${BOOTSTRAP_LLM_PROVIDER:-}' \
-     BOOTSTRAP_LLM_API_KEY='${BOOTSTRAP_LLM_API_KEY:-}' \
-     BOOTSTRAP_LLM_MODEL='${BOOTSTRAP_LLM_MODEL:-}' \
-     BOOTSTRAP_LLM_FALLBACK_PROVIDER='${BOOTSTRAP_LLM_FALLBACK_PROVIDER:-}' \
-     BOOTSTRAP_LLM_FALLBACK_MODEL='${BOOTSTRAP_LLM_FALLBACK_MODEL:-}' \
-     bash -s" \
+    -o "SendEnv=ENGINE_VERSION VERIFY_API_KEY BOOTSTRAP_LLM_PROVIDER BOOTSTRAP_LLM_API_KEY BOOTSTRAP_LLM_MODEL BOOTSTRAP_LLM_FALLBACK_PROVIDER BOOTSTRAP_LLM_FALLBACK_MODEL" \
+    "$SSH_TARGET" "bash -s" \
     < "$_SCRIPT_DIR/release/deploy-body.sh"
 fi
-ok "droplet deploy returned"
+ok "host deploy returned"
 
 # ---------------------------------------------------------------------------
 # Stage 6 — verify
@@ -331,10 +338,11 @@ else
   DEPLOY_URL="$DEPLOY_URL" \
   DROPLET_NAME="$DROPLET_NAME" \
   VERIFY_API_KEY="${VERIFY_API_KEY:-}" \
-  SSH_HOST="${SSH_HOST:-${DROPLET_USER}@${DROPLET_HOST}}" \
+  SSH_HOST="${SSH_HOST:-${DEPLOY_USER}@${DEPLOY_HOST}}" \
   SKIP_AUTH_DIAGNOSTICS="${SKIP_AUTH_DIAGNOSTICS:-0}" \
   SKIP_REMOTE_LOGS="${SKIP_REMOTE_LOGS:-0}" \
   SKIP_SETTINGS_PROBE="${SKIP_SETTINGS_PROBE:-0}" \
+  BOOTSTRAP_LLM_PROVIDER="${BOOTSTRAP_LLM_PROVIDER:-}" \
     "$_SCRIPT_DIR/release/verify.sh"
 fi
 ok "verified"

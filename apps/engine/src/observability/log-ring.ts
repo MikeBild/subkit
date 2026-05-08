@@ -14,7 +14,7 @@
 // so a tenant-scoped admin cannot see another tenant's request lines.
 //
 // Trade-offs:
-//   * In-memory only (process-local). Sufficient for a single-droplet
+//   * In-memory only (process-local). Sufficient for a single-host
 //     deploy and avoids touching Postgres. If you scale horizontally,
 //     swap the implementation for a Loki/CloudWatch sink — the public
 //     API surface stays the same.

@@ -159,33 +159,10 @@ SK_OVERRIDE_LLM_API_KEY=sk-new-key engine
 - A boot warn line lists active overrides so they can't accumulate
   silently across container restarts.
 
-## v3.4.x → v3.5 upgrade
+## `engine_settings` table
 
-Run the export script against the v3.4.x database **before**
-deploying v3.5:
-
-```bash
-DATABASE_URL=postgres://… \
-  bun run apps/engine/scripts/export-legacy-settings.ts \
-  > legacy-settings-export.json
-```
-
-The output captures the old `engine_settings` table + each tenant's
-`tenants.settings` JSONB so you can reference the values when
-populating the new file. **Treat the export as secret** — it
-contains every API key the v3.4.x engine had — and delete it once
-the new file is populated.
-
-The v3.5 migration drops `tenants.settings`. The `engine_settings`
-table is retained but only the bootstrap probe reads/writes it
-(internal sentinel state). After an upgrade you can run
-
-```sql
-DELETE FROM engine_settings
- WHERE key NOT IN ('bootstrap.completed', 'bootstrap.token');
-```
-
-to drop the legacy v3.4.x runtime-config rows. The two retained keys:
+The `engine_settings` table is internal-only — only the bootstrap
+probe reads/writes it for sentinel state. Two keys:
 
 | key | shape | purpose |
 | --- | --- | --- |

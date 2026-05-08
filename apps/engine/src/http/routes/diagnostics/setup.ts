@@ -93,8 +93,8 @@ function formatDatabaseUrl(dsn: string | undefined): string | null {
   }
 }
 
-function buildAuthSection(): SetupSection {
-  const cfg = getConfig().auth;
+function buildAuthSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
+  const cfg = snapshot.auth;
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
   const firebaseProject = present(cfg.firebase.project_id);
@@ -172,9 +172,9 @@ function providerHasCredentials(
   }
 }
 
-function buildLlmSection(): SetupSection {
+function buildLlmSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
   const llmStatus = globalLlmStatus();
-  const cfg = getConfig().llm;
+  const cfg = snapshot.llm;
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
 
@@ -297,8 +297,8 @@ function buildLlmSection(): SetupSection {
   );
 }
 
-function buildDatastoreSection(): SetupSection {
-  const dsn = present(getConfig().database.url);
+function buildDatastoreSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
+  const dsn = present(snapshot.database.url);
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
   if (!dsn) {
@@ -333,8 +333,8 @@ function buildDatastoreSection(): SetupSection {
   );
 }
 
-function buildStorageSection(): SetupSection {
-  const s3 = getConfig().storage.s3;
+function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
+  const s3 = snapshot.storage.s3;
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
   const endpoint = present(s3.endpoint);
@@ -418,8 +418,8 @@ function buildCryptoSection(): SetupSection {
   );
 }
 
-function buildPublicUrlsSection(): SetupSection {
-  const baseUrl = present(getConfig().server.public_base_url);
+function buildPublicUrlsSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
+  const baseUrl = present(snapshot.server.public_base_url);
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
   if (!baseUrl) {
@@ -450,13 +450,18 @@ function buildPublicUrlsSection(): SetupSection {
 }
 
 function buildSetupValidation(): SetupResponse {
+  // Read getConfig() once per request and thread the snapshot down so
+  // every section sees a coherent point-in-time view of the config —
+  // a concurrent setConfigKey() call mid-build can't flip a leaf
+  // halfway through and produce inconsistent section status.
+  const snapshot = getConfig();
   const sections = {
-    auth: buildAuthSection(),
-    llm: buildLlmSection(),
-    datastore: buildDatastoreSection(),
-    storage: buildStorageSection(),
+    auth: buildAuthSection(snapshot),
+    llm: buildLlmSection(snapshot),
+    datastore: buildDatastoreSection(snapshot),
+    storage: buildStorageSection(snapshot),
     crypto: buildCryptoSection(),
-    public_urls: buildPublicUrlsSection(),
+    public_urls: buildPublicUrlsSection(snapshot),
   };
 
   const allSections = Object.values(sections);

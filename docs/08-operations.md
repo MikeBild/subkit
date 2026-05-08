@@ -16,23 +16,16 @@ The standard deployment model is straightforward: one engine service and one Pos
 
 The **Tunnel Agent** is a separate small binary deployed in private networks. When a Connector targets a system behind a firewall or VPN, the Tunnel Agent runs inside that network and opens a persistent outbound WebSocket connection to the engine. No inbound firewall rules are required. The engine routes Connector requests through the open tunnel. The Tunnel Agent is stateless and reconnects automatically on interruption.
 
-### Compose layout
+### Deployment layout
 
-The repository ships two compose files:
+4.2.0 retired the docker-compose production deploy. The engine is now a single `bun build --compile` binary deployed under systemd; postgres + caddy are apt-installed system services on the host.
 
-- **`docker-compose.yml`** at the repo root — local dev. Builds images from source, publishes ports on the host, seeds a development tenant + admin key.
-- **[`deploy/docker-compose.prod.yml`](../deploy/docker-compose.prod.yml)** — production overlay. Pulls images from DigitalOcean Container Registry, drops the host-port publishes for the engine and Postgres, fronts the engine with a Caddy reverse proxy with always-on Let's Encrypt TLS, and mounts the host Docker socket for the sandbox spawner.
+- **Engine** — `/usr/local/bin/engine` managed by `subkit-engine.service` (see [`deploy/systemd/subkit-engine.service`](../deploy/systemd/subkit-engine.service)).
+- **Postgres** — `postgresql-16` apt package, native systemd unit, listening on `127.0.0.1:5432`.
+- **Caddy** — apt package, fronts the engine with always-on Let's Encrypt TLS (see [`deploy/caddy/Caddyfile`](../deploy/caddy/Caddyfile); upstreams `127.0.0.1:3000` for HTTP and `127.0.0.1:3001` for the tunnel WebSocket).
+- **Local dev** — the repo's `docker-compose.yml` brings up postgres only (and an optional MinIO under `--profile storage`); `bun run dev` runs the engine on the host.
 
-On the droplet (`scripts/do-bootstrap.sh` provisions the layout), both files live under `/opt/subkit/` and are stacked with `-f`:
-
-```sh
-docker compose \
-  -f /opt/subkit/docker-compose.yml \
-  -f /opt/subkit/docker-compose.prod.yml \
-  up -d
-```
-
-`scripts/release/deploy-body.sh` runs this exact stacking on every release; the laptop `scripts/deploy.sh` orchestrator pipes the same body file into `bash -s` over SSH. The two paths cannot drift.
+On the host (`scripts/do-bootstrap.sh` provisions the layout), `scripts/release/deploy-body.sh` performs an atomic-binary swap: scp `engine.next` into `/usr/local/bin/`, rename over `engine`, `systemctl restart subkit-engine.service`, poll `/v1/health` for the new version, roll back to `engine.prev` on timeout. The laptop `scripts/deploy.sh` orchestrator pipes the same body file into `bash -s` over SSH so the two paths cannot drift.
 
 ---
 

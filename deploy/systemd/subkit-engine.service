@@ -4,7 +4,7 @@
 ; binary at /usr/local/bin/engine is the same `bun build --compile`
 ; artifact CI publishes; deploy = scp + `systemctl restart`.
 ;
-; Layout on the droplet (matches scripts/do-bootstrap.sh):
+; Layout on the host (matches scripts/do-bootstrap.sh):
 ;   /usr/local/bin/engine          — binary (chmod 755)
 ;   /etc/subkit/.env               — operator env (chmod 600, owned by subkit)
 ;   /etc/subkit/subkit.config.json — runtime config (auto-created on first
@@ -85,7 +85,7 @@ MemoryDenyWriteExecute=false
 ; needed.
 ReadWritePaths=/etc/subkit /var/lib/subkit
 
-; Resource limits — keep boot footprint sane on a small droplet.
+; Resource limits — keep boot footprint sane on a small host.
 LimitNOFILE=65536
 LimitNPROC=4096
 

@@ -153,11 +153,9 @@ describe("recipe-coverage gate (A1)", () => {
     "loop",
   ] as const;
 
-  // Step kinds without a shipped recipe today. Each entry must reference an
-  // open issue or follow-up that will remove it. Empty set = full coverage.
-  // #146 / Part D landed call + wait_for_event recipes against the GitHub
-  // template; 4.2.0 retired the docker-based `tool` step. Every remaining
-  // discriminant ships with a demonstrating recipe.
+  // Step kinds without a shipped recipe today. Empty set = full coverage.
+  // The seven supported kinds (request, transform, call, wait, branch,
+  // parallel, loop) all ship with a demonstrating recipe.
   const KNOWN_UNCOVERED = new Set<string>([]);
 
   function collectStepKinds(steps: unknown): Set<string> {

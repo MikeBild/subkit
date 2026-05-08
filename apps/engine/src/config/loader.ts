@@ -690,6 +690,12 @@ export async function setConfigKey(
     // next `getLangfuse()` reads the new config too. Both calls are
     // best-effort — never fail a settings write because the tracer
     // couldn't restart cleanly.
+    //
+    // Dynamic imports here — observability/tracing.ts lazy-imports the
+    // OTel SDK packages (~10 MB of code), and the matching log/logger
+    // hot-reload above is dynamic for the same reason. Top-of-file
+    // imports would pull the entire OTel surface into every process
+    // that touches config (CLI, tests, smoke binary) for no benefit.
     if (leaf.path[0] === "observability") {
       try {
         const { reconfigureTracing } = await import("../observability/tracing.ts");

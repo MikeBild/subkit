@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Deploy a subkit engine release onto the production droplet.
+# Deploy a subkit engine release onto the production host.
 #
 # This is the single authoritative deploy body: both GitHub Actions
 # (`release.yml`) and the laptop orchestrator (`scripts/deploy.sh`)
-# pipe this over SSH to the droplet and execute it. Keeping one file
+# pipe this over SSH to the host and execute it. Keeping one file
 # means the two paths can't diverge.
 #
 # 4.2.0: systemd-native deploy. Replaces the docker-compose path —
@@ -18,7 +18,7 @@
 # Caller contract:
 #   - ENGINE_VERSION env var (semver). Stamped into the binary at
 #     build time via `--define BUILD_VERSION=...`; we just compare it
-#     against /v1/health on the droplet.
+#     against /v1/health on the host.
 #   - The compiled binary is piped to this script's stdin (the laptop
 #     `scripts/deploy.sh` and the CI `release.yml` both do
 #     `cat dist/engine | ssh ... 'ENGINE_VERSION=… bash -s' < deploy-body.sh`
@@ -51,15 +51,30 @@ ENGINE_PREV="${ENGINE_BIN}.prev"
 HEALTH_URL="http://127.0.0.1:3000/v1/health"
 SERVICE_UNIT="subkit-engine.service"
 HEALTH_TIMEOUT_SECS="${HEALTH_TIMEOUT_SECS:-150}"
+# BOOTSTRAP_ONLY=1 — re-run the post-health PUT /v1/settings/* phase
+# without re-shipping a binary. Useful when the operator added a
+# BOOTSTRAP_LLM_* secret after the first deploy and wants the engine
+# to pick it up without a full release cycle.
+BOOTSTRAP_ONLY="${BOOTSTRAP_ONLY:-0}"
 
-if [ ! -f "$ENGINE_NEXT" ]; then
-  echo "FATAL: $ENGINE_NEXT missing — caller must scp the new binary first"
+# Hard preflight — these are required by every code path below.
+command -v jq >/dev/null || {
+  echo "FATAL: jq missing on host — re-run scripts/do-bootstrap.sh"
+  exit 1
+}
+command -v curl >/dev/null || {
+  echo "FATAL: curl missing on host — re-run scripts/do-bootstrap.sh"
+  exit 1
+}
+
+if [ "$BOOTSTRAP_ONLY" != "1" ] && [ ! -f "$ENGINE_NEXT" ]; then
+  echo "FATAL: $ENGINE_NEXT missing — caller must scp the new binary first (or set BOOTSTRAP_ONLY=1 to skip the binary swap)"
   exit 1
 fi
 
 read_running_version() {
   # `jq` is installed by `do-bootstrap.sh` step 6 alongside postgres +
-  # caddy. Don't reach for `node -e` here — the droplet image is
+  # caddy. Don't reach for `node -e` here — the host image is
   # ubuntu-24-04 with no nodejs package; the curl|node pipe was a
   # silent failure mode that returned "" forever and burned the full
   # HEALTH_TIMEOUT_SECS clock before rolling back.
@@ -71,48 +86,55 @@ read_running_version() {
 PREV_VERSION=$(read_running_version)
 echo "previously running: ${PREV_VERSION:-<none>}"
 
-# Atomic cutover: rename the running binary to .prev, the new binary
-# into place. systemd `Type=exec` keeps the running process pinned to
-# the old inode until restart, so the rename is safe.
-if [ -f "$ENGINE_BIN" ]; then
-  cp -p "$ENGINE_BIN" "$ENGINE_PREV"
-fi
-chmod 755 "$ENGINE_NEXT"
-mv "$ENGINE_NEXT" "$ENGINE_BIN"
-
-# Restart the unit. systemd will re-exec the binary; engine boot runs
-# embedded migrations in-process before the HTTP listener starts, so
-# /v1/health == ENGINE_VERSION implies migrations succeeded.
-systemctl restart "$SERVICE_UNIT"
-
-# Health-poll loop: up to HEALTH_TIMEOUT_SECS waiting for the new
-# version to surface. systemd Restart=on-failure means a crashing
-# binary cycles forever within StartLimitBurst before unit-fail; we
-# don't wait on the unit, only the version flip.
-deadline=$(( $(date +%s) + HEALTH_TIMEOUT_SECS ))
-while :; do
-  live=$(read_running_version)
-  if [ "$live" = "$ENGINE_VERSION" ]; then
-    echo "Engine v${ENGINE_VERSION} healthy"
-    break
+if [ "$BOOTSTRAP_ONLY" = "1" ]; then
+  echo "BOOTSTRAP_ONLY=1 — skipping binary swap, going straight to PUT /v1/settings/*"
+  if [ -n "${PREV_VERSION:-}" ]; then
+    ENGINE_VERSION="$PREV_VERSION"
   fi
-  if [ "$(date +%s)" -ge "$deadline" ]; then
-    echo "FATAL: health timeout after ${HEALTH_TIMEOUT_SECS}s (live='${live:-<unreachable>}', want=${ENGINE_VERSION})"
-    if [ -f "$ENGINE_PREV" ]; then
-      echo "Rolling back to ${PREV_VERSION:-prev binary}"
-      mv "$ENGINE_PREV" "$ENGINE_BIN"
-      systemctl restart "$SERVICE_UNIT"
+else
+  # Atomic cutover: rename the running binary to .prev, the new binary
+  # into place. systemd `Type=exec` keeps the running process pinned to
+  # the old inode until restart, so the rename is safe.
+  if [ -f "$ENGINE_BIN" ]; then
+    cp -p "$ENGINE_BIN" "$ENGINE_PREV"
+  fi
+  chmod 755 "$ENGINE_NEXT"
+  mv "$ENGINE_NEXT" "$ENGINE_BIN"
+
+  # Restart the unit. systemd will re-exec the binary; engine boot runs
+  # embedded migrations in-process before the HTTP listener starts, so
+  # /v1/health == ENGINE_VERSION implies migrations succeeded.
+  systemctl restart "$SERVICE_UNIT"
+
+  # Health-poll loop: up to HEALTH_TIMEOUT_SECS waiting for the new
+  # version to surface. systemd Restart=on-failure means a crashing
+  # binary cycles forever within StartLimitBurst before unit-fail; we
+  # don't wait on the unit, only the version flip.
+  deadline=$(( $(date +%s) + HEALTH_TIMEOUT_SECS ))
+  while :; do
+    live=$(read_running_version)
+    if [ "$live" = "$ENGINE_VERSION" ]; then
+      echo "Engine v${ENGINE_VERSION} healthy"
+      break
     fi
-    exit 1
-  fi
-  sleep 5
-done
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "FATAL: health timeout after ${HEALTH_TIMEOUT_SECS}s (live='${live:-<unreachable>}', want=${ENGINE_VERSION})"
+      if [ -f "$ENGINE_PREV" ]; then
+        echo "Rolling back to ${PREV_VERSION:-prev binary}"
+        mv "$ENGINE_PREV" "$ENGINE_BIN"
+        systemctl restart "$SERVICE_UNIT"
+      fi
+      exit 1
+    fi
+    sleep 5
+  done
+fi
 
 # Reload caddy in case the Caddyfile was updated by the caller's scp.
 # `caddy reload` is the systemd-managed way; it picks up the on-disk
 # Caddyfile without dropping connections (graceful — no "terminating
 # connection" log noise that the old compose flow caused).
-if systemctl is-active --quiet caddy.service; then
+if [ "$BOOTSTRAP_ONLY" != "1" ] && systemctl is-active --quiet caddy.service; then
   systemctl reload caddy.service || true
 fi
 

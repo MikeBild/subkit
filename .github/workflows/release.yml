@@ -40,14 +40,10 @@ permissions:
   actions: write
 
 # Only one release workflow per tag can run at a time — guards against
-# accidental double-fires (e.g. a retag) overwriting each other in DOCR
-# or racing the droplet deploy.
+# accidental double-fires (e.g. a retag) racing the host deploy.
 concurrency:
   group: release-${{ github.event.inputs.tag || github.ref }}
   cancel-in-progress: false
-
-env:
-  REGISTRY: registry.digitalocean.com
 
 jobs:
   # The release gate is the SAME `ci.yml / build` job that protects `main`.
@@ -389,7 +385,7 @@ jobs:
   # ── Docker images ──
   # 4.2.0: replaces build-and-push (DOCR + Dockerfile.engine) with a
   # bare `bun build --compile --target=bun-linux-x64`. The deploy job
-  # consumes the binary as an artifact and scp's it to the droplet,
+  # consumes the binary as an artifact and scp's it to the host,
   # where deploy-body.sh swaps the on-disk binary and `systemctl
   # restart`s the unit. No DOCR, no compose, no docker.
   # /install/sk-* and /install/agent-* routes return 404 with a
@@ -453,15 +449,15 @@ jobs:
       # The deploy body lives in `scripts/release/deploy-body.sh` and
       # is shared with the laptop `scripts/deploy.sh` orchestrator —
       # both paths scp the binary + Caddyfile + systemd unit, then pipe
-      # this script into `bash -s` on the droplet. The body atomically
+      # this script into `bash -s` on the host. The body atomically
       # swaps /usr/local/bin/engine, runs `systemctl restart`, and polls
       # /v1/health. No DOCR, no docker compose.
       - name: Install SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "${{ secrets.DROPLET_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
           {
             echo "Host *"
             echo "  ConnectTimeout 30"
@@ -472,19 +468,19 @@ jobs:
       # Sync engine binary + Caddyfile + systemd unit before invoking
       # deploy-body.sh. Three scp calls; any failure trips a retry up
       # to 5 attempts (transient SSH resets from fresh runner IP).
-      - name: Sync droplet artifacts (binary + Caddyfile + systemd unit)
+      - name: Sync host artifacts (binary + Caddyfile + systemd unit)
         run: |
           set +e
           for attempt in 1 2 3 4 5; do
             scp -i ~/.ssh/id_rsa \
               dist/engine-linux-x64 \
-              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/usr/local/bin/engine.next" \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/usr/local/bin/engine.next" \
             && scp -i ~/.ssh/id_rsa \
               deploy/caddy/Caddyfile \
-              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/etc/caddy/Caddyfile" \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/etc/caddy/Caddyfile" \
             && scp -i ~/.ssh/id_rsa \
               deploy/systemd/subkit-engine.service \
-              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/etc/systemd/system/subkit-engine.service"
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/etc/systemd/system/subkit-engine.service"
             rc=$?
             if [ "$rc" -eq 0 ]; then
               echo "scp succeeded on attempt $attempt"
@@ -500,33 +496,32 @@ jobs:
       - name: systemctl daemon-reload (in case unit changed)
         run: |
           ssh -i ~/.ssh/id_rsa \
-            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "systemctl daemon-reload"
-      - name: Run deploy-body.sh on droplet
+      - name: Run deploy-body.sh on host
         env:
           # Bootstrap LLM config (eat-own-dog-food). All optional; absent
           # secrets skip their PUT. Operators stash these as repo secrets
           # so the engine self-configures over HTTP after the first
           # systemd restart, no SSH+env-edit cycle.
+          ENGINE_VERSION: ${{ env.VERSION }}
           BOOTSTRAP_LLM_PROVIDER: ${{ secrets.BOOTSTRAP_LLM_PROVIDER }}
           BOOTSTRAP_LLM_API_KEY: ${{ secrets.BOOTSTRAP_LLM_API_KEY }}
           BOOTSTRAP_LLM_MODEL: ${{ secrets.BOOTSTRAP_LLM_MODEL }}
           BOOTSTRAP_LLM_FALLBACK_PROVIDER: ${{ secrets.BOOTSTRAP_LLM_FALLBACK_PROVIDER }}
           BOOTSTRAP_LLM_FALLBACK_MODEL: ${{ secrets.BOOTSTRAP_LLM_FALLBACK_MODEL }}
           VERIFY_API_KEY: ${{ secrets.VERIFY_API_KEY }}
+        # Use ssh `SendEnv` so secrets never appear in the runner's
+        # `ps -ef` output during the inlined `FOO='…' bash -s` form.
+        # `do-bootstrap.sh` configures the matching `AcceptEnv` lines
+        # in the host's sshd config.
         run: |
           set +e
           for attempt in 1 2 3 4 5; do
             ssh -i ~/.ssh/id_rsa \
-              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
-              "ENGINE_VERSION='$VERSION' \
-               VERIFY_API_KEY='$VERIFY_API_KEY' \
-               BOOTSTRAP_LLM_PROVIDER='$BOOTSTRAP_LLM_PROVIDER' \
-               BOOTSTRAP_LLM_API_KEY='$BOOTSTRAP_LLM_API_KEY' \
-               BOOTSTRAP_LLM_MODEL='$BOOTSTRAP_LLM_MODEL' \
-               BOOTSTRAP_LLM_FALLBACK_PROVIDER='$BOOTSTRAP_LLM_FALLBACK_PROVIDER' \
-               BOOTSTRAP_LLM_FALLBACK_MODEL='$BOOTSTRAP_LLM_FALLBACK_MODEL' \
-               bash -s" \
+              -o "SendEnv=ENGINE_VERSION VERIFY_API_KEY BOOTSTRAP_LLM_PROVIDER BOOTSTRAP_LLM_API_KEY BOOTSTRAP_LLM_MODEL BOOTSTRAP_LLM_FALLBACK_PROVIDER BOOTSTRAP_LLM_FALLBACK_MODEL" \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              "bash -s" \
               < scripts/release/deploy-body.sh
             rc=$?
             if [ "$rc" -eq 0 ]; then
@@ -536,7 +531,7 @@ jobs:
             # Exit codes 254/255 indicate ssh transport errors —
             # connection reset, host unreachable, banner-exchange
             # timeout. Worth retrying. Anything else is a
-            # deploy-body.sh failure on the droplet (binary swap,
+            # deploy-body.sh failure on the host (binary swap,
             # systemctl, healthcheck) and a retry would just waste time.
             if [ "$rc" -ne 255 ] && [ "$rc" -ne 254 ]; then
               echo "deploy-body returned $rc (non-transport) — not retrying"
