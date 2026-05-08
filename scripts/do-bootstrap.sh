@@ -262,7 +262,10 @@ MASTER_KEY=${MASTER_KEY}
 PUBLIC_BASE_URL=https://${HOST_API}.${DOMAIN_ROOT}
 EOF
   warn "Seeded /etc/subkit/.env. Mint an admin API key after first deploy:"
-  warn "   ssh -i $SSH_KEY_PATH root@$HOST_IP '/usr/local/bin/engine --issue-admin-key'"
+  warn "   ssh -i $SSH_KEY_PATH root@$HOST_IP \\"
+  warn "     \"sudo -u subkit -H bash -c 'set -a; . /etc/subkit/.env; set +a; cd /etc/subkit && /usr/local/bin/engine --issue-admin-key'\""
+  warn "   (the -H + sourced .env + cd are required so the CLI finds DATABASE_URL/MASTER_KEY"
+  warn "    and persists subkit.config.json under /etc/subkit, not /root.)"
 fi
 
 # --------------------------------------------------------------------------
@@ -294,7 +297,7 @@ Next steps:
      (builds engine binary, scp's to host, systemctl restart)
   2. After first successful deploy, mint an admin key:
        ssh -i $SSH_KEY_PATH root@$HOST_IP \\
-         'sudo -u subkit /usr/local/bin/engine --issue-admin-key'
+         "sudo -u subkit -H bash -c 'set -a; . /etc/subkit/.env; set +a; cd /etc/subkit && /usr/local/bin/engine --issue-admin-key'"
   3. Configure runtime settings via the sk CLI:
        sk login --engine-url https://$HOST_API.$DOMAIN_ROOT --api-key <key>
        sk settings set llm.provider '"anthropic"'
