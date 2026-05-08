@@ -248,38 +248,48 @@ describe("audit_log ↔ setting.applied bijection", () => {
     // test, a future refactor that drops the catch (or the metadata
     // stamp) would leave the operator-visible "live tracer is on the
     // old config" signal silently broken.
-    const { _failNextReconfigureForTests } = await import("../../../test-helpers/tracing.ts");
+    const { _failNextReconfigureForTests, _clearReconfigureFailureForTests } = await import(
+      "../../../test-helpers/tracing.ts"
+    );
     _failNextReconfigureForTests();
-    const url = `${server.baseUrl}/v1/settings/observability.langfuse.host`;
-    const r = await fetch(url, {
-      method: "PUT",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${server.apiKey}`,
-      },
-      body: JSON.stringify({ value: "https://lf.audit-test.example/" }),
-    });
-    expect(r.status).toBe(200);
-    const rows = await server.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, "settings.changed"));
-    const last = rows[rows.length - 1];
-    expect(last, "audit row landed").toBeDefined();
-    const meta = (last?.metadata ?? {}) as Record<string, unknown>;
-    expect(meta.reconfigure_failed, "metadata.reconfigure_failed").toBe(true);
-    // The route also flips requiresRestart=true so the operator
-    // sees they need to restart for the new tracer config.
-    expect(meta.requires_restart, "metadata.requires_restart").toBe(true);
-    // Reset the leaf so subsequent tests aren't observing a stale URL.
-    await fetch(url, {
-      method: "PUT",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${server.apiKey}`,
-      },
-      body: JSON.stringify({ value: "" }),
-    });
+    try {
+      const url = `${server.baseUrl}/v1/settings/observability.langfuse.host`;
+      const r = await fetch(url, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${server.apiKey}`,
+        },
+        body: JSON.stringify({ value: "https://lf.audit-test.example/" }),
+      });
+      expect(r.status).toBe(200);
+      const rows = await server.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "settings.changed"));
+      const last = rows[rows.length - 1];
+      expect(last, "audit row landed").toBeDefined();
+      const meta = (last?.metadata ?? {}) as Record<string, unknown>;
+      expect(meta.reconfigure_failed, "metadata.reconfigure_failed").toBe(true);
+      // The route also flips requiresRestart=true so the operator
+      // sees they need to restart for the new tracer config.
+      expect(meta.requires_restart, "metadata.requires_restart").toBe(true);
+      // Reset the leaf so subsequent tests aren't observing a stale URL.
+      await fetch(url, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${server.apiKey}`,
+        },
+        body: JSON.stringify({ value: "" }),
+      });
+    } finally {
+      // Defensive cleanup: even if an assertion above threw and
+      // reconfigureTracing didn't run (and therefore didn't
+      // read-and-clear the flag), we MUST clear it here so the next
+      // unrelated test's reconfigure isn't poisoned.
+      _clearReconfigureFailureForTests();
+    }
   });
 
   test("valid x-subkit-audit-source + x-subkit-deploy-version flow into audit metadata", async () => {

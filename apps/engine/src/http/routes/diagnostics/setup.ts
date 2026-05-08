@@ -408,18 +408,32 @@ function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSecti
 }
 
 function buildCryptoSection(): SetupSection {
-  // MASTER_KEY is the only bootstrap value still read from env. The
-  // canonical list is BOOTSTRAP_ONLY_ENV_KEYS in
-  // apps/engine/src/crypto/aes-gcm.ts (next to its actual consumer);
-  // referenced here as the source of truth so a future addition to
-  // that list lands in this diagnostic too.
-  const masterKey = present(process.env[BOOTSTRAP_ONLY_ENV_KEYS[0]]);
+  // BOOTSTRAP_ONLY_ENV_KEYS in apps/engine/src/crypto/aes-gcm.ts is
+  // the canonical list of env vars consumed BEFORE the config loader.
+  // Today it's exactly ["MASTER_KEY"] and the diagnostic only knows
+  // how to render that one key (length validation, status hint).
+  // If a second var is ever added, this section needs to grow a row
+  // per entry — the assertion below makes that visible at boot
+  // instead of silently surfacing only the first.
+  if (BOOTSTRAP_ONLY_ENV_KEYS.length !== 1 || BOOTSTRAP_ONLY_ENV_KEYS[0] !== "MASTER_KEY") {
+    throw new Error(
+      `BOOTSTRAP_ONLY_ENV_KEYS shape changed (${JSON.stringify(BOOTSTRAP_ONLY_ENV_KEYS)}); update buildCryptoSection to render every entry.`,
+    );
+  }
+  const masterKey = present(process.env.MASTER_KEY);
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
+  // Detect deployment shape: production paths set STATE_DIRECTORY +
+  // CONFIGURATION_DIRECTORY via the systemd unit; local dev does not.
+  const envFilePath =
+    typeof process.env.CONFIGURATION_DIRECTORY === "string" &&
+    process.env.CONFIGURATION_DIRECTORY.length > 0
+      ? `${process.env.CONFIGURATION_DIRECTORY.split(":")[0]}/.env`
+      : ".env (repo root for local dev) or /etc/subkit/.env (systemd)";
   if (!masterKey) {
     issues.push(buildIssue("master-key", "blocker", "Master key", "MASTER_KEY is not set."));
     recommendations.push(
-      "Set MASTER_KEY in /etc/subkit/.env to a 64-hex-character AES-256-GCM key (`openssl rand -hex 32`).",
+      `Set MASTER_KEY in ${envFilePath} to a 64-hex-character AES-256-GCM key (\`openssl rand -hex 32\`).`,
     );
   } else if (!/^[0-9a-fA-F]{64}$/.test(masterKey)) {
     issues.push(

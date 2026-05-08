@@ -14,4 +14,7 @@
 // any future regression to the wrong import path trips
 // `checkTestSeamsGated`.
 
-export { _failNextReconfigureForTests } from "../observability/tracing.ts";
+export {
+  _clearReconfigureFailureForTests,
+  _failNextReconfigureForTests,
+} from "../observability/tracing.ts";

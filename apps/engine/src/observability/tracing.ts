@@ -143,10 +143,18 @@ export function isTracingStarted(): boolean {
  *  `metadata.reconfigure_failed = true` contract on the audit row.
  *  Test sets it; reconfigureTracing reads-and-clears it; the throw
  *  exercises the loader's catch branch. Production callers never set
- *  this. */
+ *  this.
+ *
+ *  Defensive cleanup: tests should always invoke
+ *  `_clearReconfigureFailureForTests()` in a finally block (or
+ *  afterEach) so a thrown assertion doesn't leak the flag into the
+ *  next test's reconfigure. */
 let _throwOnNextReconfigureForTests = false;
 export function _failNextReconfigureForTests(): void {
   _throwOnNextReconfigureForTests = true;
+}
+export function _clearReconfigureFailureForTests(): void {
+  _throwOnNextReconfigureForTests = false;
 }
 
 /** Hard upper bound on the per-call shutdown wait. The OTel

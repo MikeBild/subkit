@@ -97,9 +97,23 @@ read_running_version() {
   # ubuntu-24-04 with no nodejs package; the curl|node pipe was a
   # silent failure mode that returned "" forever and burned the full
   # HEALTH_TIMEOUT_SECS clock before rolling back.
-  curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null \
-    | jq -r '.version // empty' 2>/dev/null \
-    || true
+  #
+  # Distinguish three failure modes so the deploy log surfaces the
+  # actual cause within the 5 s curl timeout instead of the full
+  # 150 s health-poll budget:
+  #   (a) connect failure (curl exit !=0) → empty
+  #   (b) non-JSON response (jq exit !=0) → "<non-json>"
+  #   (c) JSON without .version            → empty (jq // empty)
+  # Callers compare to ENGINE_VERSION; "<non-json>" never matches
+  # the bumped semver, so it surfaces immediately in the polling
+  # loop's mismatch echo.
+  local body
+  body=$(curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null) || return 0
+  if ! printf '%s' "$body" | jq -e . >/dev/null 2>&1; then
+    echo "<non-json>"
+    return 0
+  fi
+  printf '%s' "$body" | jq -r '.version // empty' 2>/dev/null || true
 }
 
 PREV_VERSION=$(read_running_version)
@@ -137,11 +151,21 @@ else
   # binary cycles forever within StartLimitBurst before unit-fail; we
   # don't wait on the unit, only the version flip.
   deadline=$(( $(date +%s) + HEALTH_TIMEOUT_SECS ))
+  non_json_seen=0
   while :; do
     live=$(read_running_version)
     if [ "$live" = "$ENGINE_VERSION" ]; then
       echo "Engine v${ENGINE_VERSION} healthy"
       break
+    fi
+    # Surface a non-JSON response IMMEDIATELY (don't burn the full
+    # HEALTH_TIMEOUT_SECS waiting for a version flip that can't
+    # happen). Common cause: caddy is up but the engine crashed and
+    # caddy is serving its own error page — operator needs the hint.
+    if [ "$live" = "<non-json>" ] && [ "$non_json_seen" = "0" ]; then
+      echo "WARN: /v1/health returned a non-JSON response — engine likely crashed before serving;"
+      echo "      run 'journalctl -u subkit-engine -n 200' on the host to see why."
+      non_json_seen=1
     fi
     if [ "$(date +%s)" -ge "$deadline" ]; then
       echo "FATAL: health timeout after ${HEALTH_TIMEOUT_SECS}s (live='${live:-<unreachable>}', want=${ENGINE_VERSION})"

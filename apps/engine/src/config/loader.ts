@@ -733,11 +733,36 @@ export async function setConfigKey(
           error: err instanceof Error ? err.message : String(err),
         });
       }
+      // Two failure modes here, only one of which is benign:
+      //   (a) dynamic import throws because langfuse-spans is not on
+      //       this binary's import graph (smoke-mode boot, CLI entry
+      //       points that never serve requests). Benign — no client
+      //       to reset.
+      //   (b) resetLangfuseCacheForReload itself throws (a future
+      //       refactor that returns undefined or works against a
+      //       stale handle). NOT benign — the live tracer is
+      //       half-reloaded and an operator who flipped
+      //       observability.langfuse.secret_key would see spans go
+      //       to the old project. We promote this case to
+      //       reconfigureFailed so the audit row + route response
+      //       reflect the half-reload.
       try {
-        const { resetLangfuseCacheForReload } = await import("../observability/langfuse-spans.ts");
-        resetLangfuseCacheForReload();
+        const langfuseModule = await import("../observability/langfuse-spans.ts");
+        try {
+          langfuseModule.resetLangfuseCacheForReload();
+        } catch (err) {
+          reconfigureFailed = true;
+          const { logger } = await import("../logging/logger.ts");
+          logger.warn({
+            module: "config",
+            action: "observability.langfuse_reset_failed",
+            msg: "langfuse cache reset failed after settings.changed",
+            leaf: dottedPath(leaf),
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       } catch {
-        /* langfuse-spans not loaded */
+        /* langfuse-spans module not loaded — benign */
       }
     }
 

@@ -115,7 +115,11 @@ function probeFsWrite(dir: string): ProbeResult {
   // dir as root:root and the engine wouldn't notice until later. The
   // production path (systemd) doesn't reach this branch, so the
   // mask only affects bespoke deployments.
-  const probe = join(dir, ".subkit-boot-probe");
+  // Unique probe filename per process so two simultaneous boots
+  // (a test fixture racing against a prod start, two operators
+  // running --issue-admin-key, …) don't collide on write/read/unlink.
+  // pid + epoch ms is enough; the probe lifetime is sub-millisecond.
+  const probe = join(dir, `.subkit-boot-probe.${process.pid}.${Date.now()}`);
   try {
     try {
       accessSync(dir, constants.W_OK);

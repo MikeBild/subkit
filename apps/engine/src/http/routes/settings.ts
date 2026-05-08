@@ -20,13 +20,18 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
+// Header names + allowed values come from the shared package directly
+// — the engine's audit/audit-source.ts only adds the Zod wrappers.
+import { AUDIT_SOURCE_HEADER, DEPLOY_VERSION_HEADER } from "@shared/audit-source.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
+// `@shared` is a separate package, so importing the constants above
+// satisfies the route_layering invariant. The engine-side Zod
+// wrappers and audit helpers go through the audit subsystem's
+// barrel `index.ts` per AGENTS.md.
 import {
-  AUDIT_SOURCE_HEADER,
   AuditAction,
   AuditSourceEnum,
   auditAwait,
-  DEPLOY_VERSION_HEADER,
   DeployVersionSchema,
 } from "../../audit/index.ts";
 import {
@@ -96,7 +101,7 @@ const PutBody = z
   })
   .openapi("SettingPutBody");
 
-export type { AuditSource } from "../../audit/index.ts";
+export type { AuditSource } from "@shared/audit-source.ts";
 // X-Subkit-Audit-Source + X-Subkit-Deploy-Version are validated as
 // Zod-typed headers on the PUT route boundary; their taxonomy is
 // owned by `audit/audit-source.ts` (re-exported here for downstream
