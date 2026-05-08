@@ -483,12 +483,11 @@ jobs:
             echo "  ServerAliveCountMax 4"
           } >> ~/.ssh/config
           chmod 600 ~/.ssh/config
-      # Sync prod compose overlay before the deploy body runs.
-      # do-bootstrap.sh originally scp'd this file once at droplet
-      # provisioning, which meant config-as-code drifted whenever the
-      # repo's deploy/docker-compose.prod.yml changed (image-variant
-      # switches, port changes, etc.). Sync per release so the file in
-      # the repo is the source of truth for every deploy.
+      # Sync droplet config before the deploy body runs. do-bootstrap.sh
+      # placed these three files at provisioning time — the repo is the
+      # source of truth on every release so additions or removals in the
+      # base compose (e.g. PR #150 dropping the migrate service) actually
+      # land on the droplet, and Caddyfile edits don't drift.
       #
       # Retried because DigitalOcean's edge routing occasionally drops
       # the first SSH handshake from a fresh runner IP, surfacing as
@@ -496,17 +495,24 @@ jobs:
       # Five attempts with linear backoff cover both transient
       # connection-resets and droplet-side fail2ban "soft" blocks that
       # clear within a minute.
-      - name: Sync prod compose overlay to droplet
+      - name: Sync droplet config (base compose + prod overlay + Caddyfile)
         # Bare loop, NOT `set -e` + `if`. After `if cmd; then ... fi`,
         # `$?` post-`fi` is 0 even when the inner command failed — bash
         # only exposes the inner exit code inside the test position. We
         # need the actual rc to decide retry vs. terminate.
+        #
+        # Two scp calls per attempt (one for /opt/subkit/, one for
+        # /opt/subkit/caddy/Caddyfile). Either failing trips the retry.
         run: |
           set +e
           for attempt in 1 2 3 4 5; do
             scp -i ~/.ssh/id_rsa \
+              docker-compose.yml \
               deploy/docker-compose.prod.yml \
-              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/opt/subkit/docker-compose.prod.yml"
+              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/opt/subkit/" \
+            && scp -i ~/.ssh/id_rsa \
+              deploy/caddy/Caddyfile \
+              "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/opt/subkit/caddy/Caddyfile"
             rc=$?
             if [ "$rc" -eq 0 ]; then
               echo "scp succeeded on attempt $attempt"
