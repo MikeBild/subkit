@@ -310,7 +310,20 @@ stage "verify"
 if [ "$DRY_RUN" -eq 1 ]; then
   info "[dry] VERSION=$NEW DEPLOY_URL=$DEPLOY_URL scripts/release/verify.sh"
 else
-  VERSION="$NEW" DEPLOY_URL="$DEPLOY_URL" DROPLET_NAME="$DROPLET_NAME" \
+  # Forward .env.deploy values that verify.sh consumes. `source` of
+  # .env.deploy at the top of this script populates shell variables
+  # but doesn't export them — verify.sh runs as a subprocess, so we
+  # have to thread the auth + SSH knobs through inline. Without this
+  # VERIFY_API_KEY=… in .env.deploy was silently invisible to verify.sh
+  # and the authenticated diagnostics step bailed every release.
+  VERSION="$NEW" \
+  DEPLOY_URL="$DEPLOY_URL" \
+  DROPLET_NAME="$DROPLET_NAME" \
+  VERIFY_API_KEY="${VERIFY_API_KEY:-}" \
+  SSH_HOST="${SSH_HOST:-${DROPLET_USER}@${DROPLET_HOST}}" \
+  SKIP_AUTH_DIAGNOSTICS="${SKIP_AUTH_DIAGNOSTICS:-0}" \
+  SKIP_REMOTE_LOGS="${SKIP_REMOTE_LOGS:-0}" \
+  SKIP_SETTINGS_PROBE="${SKIP_SETTINGS_PROBE:-0}" \
     "$_SCRIPT_DIR/release/verify.sh"
 fi
 ok "verified"
