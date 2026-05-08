@@ -455,7 +455,7 @@
           "expected"
         ]
       },
-      "SettingAuditSource": {
+      "AuditSource": {
         "type": "string",
         "enum": [
           "sk_cli",
@@ -9958,10 +9958,19 @@
           },
           {
             "schema": {
-              "$ref": "#/components/schemas/SettingAuditSource"
+              "$ref": "#/components/schemas/AuditSource"
             },
             "required": false,
             "name": "x-subkit-audit-source",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+\\.\\d+\\.\\d+$"
+            },
+            "required": false,
+            "name": "x-subkit-deploy-version",
             "in": "header"
           }
         ],

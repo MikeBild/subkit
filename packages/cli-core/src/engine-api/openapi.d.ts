@@ -436,7 +436,8 @@ export interface paths {
                     tenant?: string;
                 };
                 header?: {
-                    "x-subkit-audit-source"?: components["schemas"]["SettingAuditSource"];
+                    "x-subkit-audit-source"?: components["schemas"]["AuditSource"];
+                    "x-subkit-deploy-version"?: string;
                 };
                 path: {
                     path: string;
@@ -7442,7 +7443,7 @@ export interface components {
             expected: string;
         };
         /** @enum {string} */
-        SettingAuditSource: "sk_cli" | "deploy_bootstrap";
+        AuditSource: "sk_cli" | "deploy_bootstrap";
         SettingPutBody: {
             value?: unknown;
             force?: boolean;

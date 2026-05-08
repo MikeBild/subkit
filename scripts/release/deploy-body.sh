@@ -204,33 +204,41 @@ if [ -n "${VERIFY_API_KEY:-}" ] && [ -n "${BOOTSTRAP_LLM_PROVIDER:-}" ]; then
     local body_file
     body_file=$(mktemp)
     local code
-    # X-Subkit-Audit-Source tags the audit row so compliance review
-    # later can tell "deploy bootstrap reset the LLM key" apart from
-    # a hand-typed `sk settings set`. The route validates against a
-    # closed allow-list before stamping it on the audit metadata.
+    # X-Subkit-Audit-Source + X-Subkit-Deploy-Version tag the audit row
+    # so compliance review can answer:
+    #   1. "Was this a deploy bootstrap or operator-typed write?"
+    #      → metadata.audit_source: deploy_bootstrap | sk_cli
+    #   2. "Which release SHA flipped this LLM key?"
+    #      → metadata.deploy_version: ENGINE_VERSION (semver)
+    # The route validates both via Zod-typed headers before stamping
+    # them on the audit metadata.
     code=$(curl -sS -o "$body_file" -w '%{http_code}' -X PUT \
       -H "authorization: Bearer ${VERIFY_API_KEY}" \
       -H "content-type: application/json" \
       -H "x-subkit-audit-source: deploy_bootstrap" \
+      -H "x-subkit-deploy-version: ${ENGINE_VERSION}" \
       -d "{\"value\":${json_value}}" \
       "${HEALTH_URL%/v1/health}/v1/settings/${path}" 2>/dev/null || echo "000")
-    # 2xx: applied. 4xx and 5xx: fail the deploy. Earlier the 4xx
+    # 2xx: applied. Anything else (4xx / 5xx / curl-emitted "000"
+    # for connection failure): fail the deploy. Earlier the 4xx
     # branch returned 0 ("skipped") to absorb operator typos in
     # BOOTSTRAP_LLM_* values, but verify.sh only re-reads
     # llm.provider — every other field (api_key, model, fallback_*)
     # would 422 silently and the engine would quietly stay on the
     # prior value. Better to fail loudly: the operator fixes the env
     # and re-runs with BOOTSTRAP_ONLY=1, no binary swap needed.
-    case "$code" in
-      2*)
-        echo "  PUT /v1/settings/${path} ok ($code)"
-        ;;
-      *)
-        echo "  PUT /v1/settings/${path} FAILED: HTTP ${code}"
-        rm -f "$body_file"
-        return 1
-        ;;
-    esac
+    #
+    # Numeric range comparison (not `2*` glob) so a malformed `code`
+    # ("ok", "2", an empty string) routes to the failure branch —
+    # `case 2*` would silently match "2" or any short string starting
+    # with "2".
+    if [ "$code" -ge 200 ] 2>/dev/null && [ "$code" -lt 300 ] 2>/dev/null; then
+      echo "  PUT /v1/settings/${path} ok ($code)"
+    else
+      echo "  PUT /v1/settings/${path} FAILED: HTTP ${code}"
+      rm -f "$body_file"
+      return 1
+    fi
     rm -f "$body_file"
     return 0
   }

@@ -121,8 +121,23 @@ export async function createHttpTestServer(label: string): Promise<HttpTestServe
   const baseUrl = `http://127.0.0.1:${addr.port}`;
 
   const cleanup = async () => {
+    // Force-close idle keep-alive sockets BEFORE close(): native bun
+    // fetch holds keep-alive sockets in a pool and the server's
+    // close() waits for them. On a small suite (3 tests) the pool
+    // drains quickly enough that close() returns sub-second; on a
+    // larger suite (10+) close() can hang past the default 5s
+    // afterAll hook timeout. closeAllConnections() (Node 18+) drops
+    // the pool synchronously so close() then completes immediately.
+    type CloseableServer = {
+      close: (cb: () => void) => void;
+      closeIdleConnections?: () => void;
+      closeAllConnections?: () => void;
+    };
+    const s = server as unknown as CloseableServer;
+    s.closeIdleConnections?.();
+    s.closeAllConnections?.();
     await new Promise<void>((resolve) => {
-      (server as unknown as { close: (cb: () => void) => void }).close(() => resolve());
+      s.close(() => resolve());
     });
     await testDb.cleanup();
   };

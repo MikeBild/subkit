@@ -406,14 +406,24 @@ function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSecti
   );
 }
 
+/** Env vars that legitimately bypass the `getConfig()` snapshot in
+ *  this diagnostic. These are bootstrap-only: consumed by code that
+ *  runs BEFORE the config loader (`assertCryptoKeyOrExit` in
+ *  apps/engine/src/index.ts). They are intentionally NOT in
+ *  subkit.config.json — rotating MASTER_KEY via `sk settings set`
+ *  would be a catastrophic foot-gun (every previously-encrypted
+ *  credential becomes unreadable on next boot). Adding to this list
+ *  is a deliberate decision; reviewers should challenge any new
+ *  entry. */
+const BOOTSTRAP_ONLY_ENV_KEYS = ["MASTER_KEY"] as const;
+
 function buildCryptoSection(): SetupSection {
-  // MASTER_KEY is the only bootstrap value still read from env: the
-  // engine consumes it before the config loader runs (assertCryptoKeyOrExit
-  // in apps/engine/src/index.ts). It is intentionally NOT in
-  // subkit.config.json — rotating it via `sk settings set` would be a
-  // catastrophic foot-gun (every previously-encrypted credential
-  // becomes unreadable on next boot).
+  // MASTER_KEY is the only bootstrap value still read from env — see
+  // BOOTSTRAP_ONLY_ENV_KEYS above for why.
   const masterKey = present(process.env.MASTER_KEY);
+  // Touch the constant so a future tree-shake can't claim it's
+  // unused; the comment + named array IS the documentation.
+  void BOOTSTRAP_ONLY_ENV_KEYS;
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
   if (!masterKey) {

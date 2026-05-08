@@ -115,18 +115,31 @@ function probeFsWrite(dir: string): ProbeResult {
       mkdirSync(dir, { recursive: true });
       accessSync(dir, constants.W_OK);
     }
-    writeFileSync(probe, "ok", { mode: 0o600 });
-    const back = readFileSync(probe, "utf8");
-    unlinkSync(probe);
-    if (back !== "ok") {
-      return {
-        name: `fs_write:${dir}`,
-        ok: false,
-        blocker: false,
-        detail: "round-trip read returned unexpected content",
-      };
+    // Always unlink the probe — even on a round-trip mismatch or a
+    // mid-flight readFileSync throw — so a stale file from one boot
+    // can't mask a real anomaly on the next. unlink is best-effort:
+    // if it fails (probe was never written, or was already removed
+    // by something else), we don't want to mask the underlying
+    // probe failure.
+    try {
+      writeFileSync(probe, "ok", { mode: 0o600 });
+      const back = readFileSync(probe, "utf8");
+      if (back !== "ok") {
+        return {
+          name: `fs_write:${dir}`,
+          ok: false,
+          blocker: false,
+          detail: "round-trip read returned unexpected content",
+        };
+      }
+      return { name: `fs_write:${dir}`, ok: true, blocker: false };
+    } finally {
+      try {
+        unlinkSync(probe);
+      } catch {
+        /* probe file was never written, or already removed — fine */
+      }
     }
-    return { name: `fs_write:${dir}`, ok: true, blocker: false };
   } catch (err) {
     return {
       name: `fs_write:${dir}`,
@@ -161,12 +174,19 @@ function probeCryptoSelfTest(): ProbeResult {
   }
 }
 
+// Bun is provided as an ambient global by the bun runtime. The static
+// type comes from the `bun-types` dev dependency; we don't statically
+// import it here to keep this module's surface free of a runtime
+// dependency. The `<not-bun>` fallback covers the (rare) case where
+// `tsc --noEmit` runs this module under node — purely informational.
+declare const Bun: { version: string } | undefined;
+
 function probeRuntime(): ProbeResult {
   // Surface the Bun version + arch + platform once at boot. Not a
   // gate; just structured forensic info so an operator can correlate
   // a runtime crash against the binary's reported version.
-  const bun = (globalThis as unknown as { Bun?: { version?: string } }).Bun;
-  const detail = `bun=${bun?.version ?? "<not-bun>"} platform=${process.platform} arch=${process.arch}`;
+  const bunVersion = typeof Bun !== "undefined" ? Bun.version : "<not-bun>";
+  const detail = `bun=${bunVersion} platform=${process.platform} arch=${process.arch}`;
   return { name: "runtime", ok: true, blocker: false, detail };
 }
 

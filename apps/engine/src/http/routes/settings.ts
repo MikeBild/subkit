@@ -21,7 +21,14 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../audit/index.ts";
+import {
+  AUDIT_SOURCE_HEADER,
+  AuditAction,
+  AuditSourceEnum,
+  auditAwait,
+  DEPLOY_VERSION_HEADER,
+  DeployVersionSchema,
+} from "../../audit/index.ts";
 import {
   getConfig,
   getDiagnostics,
@@ -89,17 +96,16 @@ const PutBody = z
   })
   .openapi("SettingPutBody");
 
-// Tag the audit row's `metadata.audit_source` so compliance review can
-// separate operator-driven `sk settings set` from automated paths
-// (currently just the deploy-body bootstrap PUT). Validated as a Zod
-// enum at the route boundary — single source of truth — and surfaced
-// on the OpenAPI spec so SDK consumers can discover the contract.
-// Keep this enum tight: only values with a known caller today.
-export const AuditSourceEnum = z.enum(["sk_cli", "deploy_bootstrap"]).openapi("SettingAuditSource");
-export type AuditSource = z.infer<typeof AuditSourceEnum>;
+export type { AuditSource } from "../../audit/index.ts";
+// X-Subkit-Audit-Source + X-Subkit-Deploy-Version are validated as
+// Zod-typed headers on the PUT route boundary; their taxonomy is
+// owned by `audit/audit-source.ts` (re-exported here for downstream
+// imports that came in before the move).
+export { AuditSourceEnum };
 
 const PutHeaders = z.object({
-  "x-subkit-audit-source": AuditSourceEnum.optional(),
+  [AUDIT_SOURCE_HEADER]: AuditSourceEnum.optional(),
+  [DEPLOY_VERSION_HEADER]: DeployVersionSchema.optional(),
 });
 
 const ValidationFailedSchema = z
@@ -352,12 +358,14 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     if (tenant !== undefined) setOpts.tenantId = tenant;
     if (body.force !== undefined) setOpts.force = body.force;
 
-    // X-Subkit-Audit-Source — validated by `AuditSourceEnum` on the
-    // putRoute headers schema, so by the time we read it the value is
-    // either undefined or a known-good enum member. The route
-    // boundary is the only place the header is parsed; downstream
-    // code is type-safe.
-    const auditSource = c.req.valid("header")["x-subkit-audit-source"] ?? null;
+    // X-Subkit-Audit-Source + X-Subkit-Deploy-Version — both validated
+    // by Zod on the putRoute headers schema, so by the time we read
+    // them they're either undefined or known-good. The route boundary
+    // is the only place these headers are parsed; downstream code is
+    // type-safe.
+    const headers = c.req.valid("header");
+    const auditSource = headers[AUDIT_SOURCE_HEADER] ?? null;
+    const deployVersion = headers[DEPLOY_VERSION_HEADER] ?? null;
 
     try {
       const result = await setConfigKey(leaf.path, body.value, setOpts);
@@ -387,6 +395,7 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
               force_applied: !!body.force,
               ...(result.reconfigureFailed ? { reconfigure_failed: true } : {}),
               ...(auditSource ? { audit_source: auditSource } : {}),
+              ...(deployVersion ? { deploy_version: deployVersion } : {}),
             },
           },
           db,
