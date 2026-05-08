@@ -578,6 +578,117 @@ function checkPrTemplate(): Result {
   };
 }
 
+function checkSystemdUnitJitFriendly(): Result {
+  // Bun's JIT mints W+X memory pages. The systemd unit must NOT
+  // enable MemoryDenyWriteExecute=yes — doing so silently breaks
+  // the engine on first JIT-compiled function, with no log line
+  // pointing at the unit setting. We accept either an explicit
+  // `MemoryDenyWriteExecute=false` (the current shape) or the
+  // setting being absent entirely (systemd default = false).
+  // A future "let's harden the unit" PR that flips this to `yes`
+  // trips here.
+  const unitPath = "deploy/systemd/subkit-engine.service";
+  let raw: string;
+  try {
+    raw = readFileSync(unitPath, "utf8");
+  } catch (err) {
+    return {
+      id: "systemd_unit_jit_friendly",
+      status: "FAIL",
+      message: `${unitPath} unreadable: ${(err as Error).message}`,
+    };
+  }
+  // Match the directive case-sensitive (systemd is case-sensitive
+  // on directives) and reject only the dangerous values.
+  const re = /^\s*MemoryDenyWriteExecute\s*=\s*(\S+)/m;
+  const m = raw.match(re);
+  if (!m) {
+    return {
+      id: "systemd_unit_jit_friendly",
+      status: "PASS",
+      message: "MemoryDenyWriteExecute absent (systemd default = false); JIT safe",
+    };
+  }
+  const value = (m[1] ?? "").toLowerCase();
+  // systemd accepts these as truthy: yes, true, on, 1
+  const TRUTHY = new Set(["yes", "true", "on", "1"]);
+  if (TRUTHY.has(value)) {
+    return {
+      id: "systemd_unit_jit_friendly",
+      status: "FAIL",
+      message: `${unitPath} sets MemoryDenyWriteExecute=${value} — Bun JIT requires W+X pages and will crash on first jitted function`,
+    };
+  }
+  return {
+    id: "systemd_unit_jit_friendly",
+    status: "PASS",
+    message: `MemoryDenyWriteExecute=${value} (JIT safe)`,
+  };
+}
+
+function checkTestSeamsGated(): Result {
+  // Underscore-prefixed test-only exports must be imported through
+  // the corresponding `test-helpers/<x>.ts` re-export shim, never
+  // directly from the production module. Direct imports let a
+  // future refactor accidentally swap a production code path for
+  // the non-fatal test variant. Each entry maps a production-module
+  // suffix to its required test-helpers shim suffix and the
+  // underscore symbol's name.
+  const SEAMS = [
+    {
+      symbol: "_validateBootDependenciesForTests",
+      productionModule: "observability/boot-dependencies",
+      shimEnding: "test-helpers/boot.ts",
+    },
+    {
+      symbol: "_failNextReconfigureForTests",
+      productionModule: "observability/tracing",
+      shimEnding: "test-helpers/tracing.ts",
+    },
+  ] as const;
+
+  const offenders: string[] = [];
+  const roots = ["apps/engine/src", "apps/sk/src", "apps/agent/src", "packages"];
+  for (const root of roots) {
+    const files = listFiles(
+      root,
+      (p) =>
+        (p.endsWith(".ts") || p.endsWith(".tsx")) &&
+        !p.includes("/__tests__/") &&
+        !p.includes("/tests/") &&
+        !p.endsWith(".test.ts") &&
+        !p.endsWith(".test.tsx"),
+    );
+    for (const f of files) {
+      // Each shim re-exports its own symbol — that import is allowed.
+      const shimWhitelist = SEAMS.some((s) => f.endsWith(s.shimEnding));
+      if (shimWhitelist) continue;
+      const raw = readFileSync(f, "utf8");
+      for (const seam of SEAMS) {
+        const importsFromProd = new RegExp(
+          `from\\s+["'][^"']*${seam.productionModule.replace(/\//g, "\\/")}(\\.ts)?["']`,
+        ).test(raw);
+        const usesSymbol = new RegExp(`\\b${seam.symbol}\\b`).test(raw);
+        if (importsFromProd && usesSymbol) {
+          offenders.push(`${f} (symbol=${seam.symbol})`);
+        }
+      }
+    }
+  }
+  if (offenders.length === 0) {
+    return {
+      id: "test_seams_gated",
+      status: "PASS",
+      message: `${SEAMS.length} test seam(s) imported only via test-helpers/ shims`,
+    };
+  }
+  return {
+    id: "test_seams_gated",
+    status: "FAIL",
+    message: `${offenders.length} non-test file(s) import production test seams directly:\n  ${offenders.join("\n  ")}`,
+  };
+}
+
 // ---------- driver ----------
 
 const CHECKS: Array<() => Result> = [
@@ -594,6 +705,8 @@ const CHECKS: Array<() => Result> = [
   checkNoLiveLlm,
   checkCoverageFloor,
   checkRegressionIsolation,
+  checkSystemdUnitJitFriendly,
+  checkTestSeamsGated,
   checkPrTemplate,
 ];
 

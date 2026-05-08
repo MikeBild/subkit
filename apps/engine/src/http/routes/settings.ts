@@ -20,8 +20,20 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
+// Header names + allowed values come from the shared package directly
+// — the engine's audit/audit-source.ts only adds the Zod wrappers.
+import { AUDIT_SOURCE_HEADER, DEPLOY_VERSION_HEADER } from "@shared/audit-source.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../audit/index.ts";
+// `@shared` is a separate package, so importing the constants above
+// satisfies the route_layering invariant. The engine-side Zod
+// wrappers and audit helpers go through the audit subsystem's
+// barrel `index.ts` per AGENTS.md.
+import {
+  AuditAction,
+  AuditSourceEnum,
+  auditAwait,
+  DeployVersionSchema,
+} from "../../audit/index.ts";
 import {
   getConfig,
   getDiagnostics,
@@ -88,6 +100,18 @@ const PutBody = z
     force: z.boolean().optional(),
   })
   .openapi("SettingPutBody");
+
+export type { AuditSource } from "@shared/audit-source.ts";
+// X-Subkit-Audit-Source + X-Subkit-Deploy-Version are validated as
+// Zod-typed headers on the PUT route boundary; their taxonomy is
+// owned by `audit/audit-source.ts` (re-exported here for downstream
+// imports that came in before the move).
+export { AuditSourceEnum };
+
+const PutHeaders = z.object({
+  [AUDIT_SOURCE_HEADER]: AuditSourceEnum.optional(),
+  [DEPLOY_VERSION_HEADER]: DeployVersionSchema.optional(),
+});
 
 const ValidationFailedSchema = z
   .object({
@@ -211,6 +235,7 @@ const putRoute = createRoute({
   request: {
     params: PathParam,
     query: TenantQuery,
+    headers: PutHeaders,
     body: { content: { "application/json": { schema: PutBody } } },
   },
   responses: {
@@ -338,6 +363,15 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     if (tenant !== undefined) setOpts.tenantId = tenant;
     if (body.force !== undefined) setOpts.force = body.force;
 
+    // X-Subkit-Audit-Source + X-Subkit-Deploy-Version — both validated
+    // by Zod on the putRoute headers schema, so by the time we read
+    // them they're either undefined or known-good. The route boundary
+    // is the only place these headers are parsed; downstream code is
+    // type-safe.
+    const headers = c.req.valid("header");
+    const auditSource = headers[AUDIT_SOURCE_HEADER] ?? null;
+    const deployVersion = headers[DEPLOY_VERSION_HEADER] ?? null;
+
     try {
       const result = await setConfigKey(leaf.path, body.value, setOpts);
 
@@ -364,6 +398,9 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
               scope: result.scope,
               requires_restart: result.requiresRestart,
               force_applied: !!body.force,
+              ...(result.reconfigureFailed ? { reconfigure_failed: true } : {}),
+              ...(auditSource ? { audit_source: auditSource } : {}),
+              ...(deployVersion ? { deploy_version: deployVersion } : {}),
             },
           },
           db,

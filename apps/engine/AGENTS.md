@@ -92,7 +92,7 @@ eval, integration, build:sk, e2e). See `.claude/commands/verify.md` for the
 per-step breakdown.
 
 If Postgres is not already listening on `localhost:5432`, start it first:
-`docker compose -f docker-compose.dev.yml up -d postgres`.
+`docker compose up -d postgres` (the repo's `docker-compose.yml` is dev-only as of 4.2.0; production runs postgres as the apt-installed system service).
 
 ## Architectural decisions worth recording
 

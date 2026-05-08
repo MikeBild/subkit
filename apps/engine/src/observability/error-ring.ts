@@ -8,7 +8,7 @@
 // engine container.
 //
 // Trade-offs:
-//   * In-memory only (process-local). Sufficient for a single-droplet
+//   * In-memory only (process-local). Sufficient for a single-host
 //     deploy and avoids touching Postgres. If you scale horizontally,
 //     swap the implementation for a tenant-scoped table or shared
 //     log sink — the public API surface stays the same.

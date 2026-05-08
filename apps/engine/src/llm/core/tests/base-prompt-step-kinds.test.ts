@@ -8,19 +8,12 @@
 import { describe, expect, it } from "bun:test";
 import { basePromptFor } from "../context-assembler.ts";
 
-const ALL_KINDS = [
-  "request",
-  "transform",
-  "call",
-  "wait",
-  "branch",
-  "parallel",
-  "loop",
-  "tool",
-] as const;
+// 4.2.0: dropped `tool` (docker-based sandbox retired; subkit is a
+// data-workflow engine, not a container runtime).
+const ALL_KINDS = ["request", "transform", "call", "wait", "branch", "parallel", "loop"] as const;
 
 describe("base prompts — step-kind enumeration + cleanup facts", () => {
-  it("converse prompt (sk_interactive) lists all 8 kinds", async () => {
+  it("converse prompt (sk_interactive) lists all 7 kinds", async () => {
     const p = await basePromptFor("converse", "sk_interactive");
     for (const k of ALL_KINDS) {
       expect(p).toContain(`\`${k}\``);
@@ -29,14 +22,21 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
     expect(p).toContain("propose_step");
   });
 
-  it("converse prompt (mcp) lists all 8 kinds", async () => {
+  it("converse prompt (mcp) lists all 7 kinds", async () => {
     const p = await basePromptFor("converse", "mcp");
     for (const k of ALL_KINDS) expect(p).toContain(`\`${k}\``);
   });
 
-  it("generate prompt lists all 8 kinds (incl. tool)", async () => {
+  it("generate prompt lists all 7 kinds", async () => {
     const p = await basePromptFor("generate");
     for (const k of ALL_KINDS) expect(p).toContain(k);
+  });
+
+  it("generate prompt does NOT mention the retired `tool` kind", async () => {
+    const p = await basePromptFor("generate");
+    // Single bare-word match — "tool" appears in unrelated phrases like
+    // "tool calling", so anchor to the kinds-list comma sequence.
+    expect(p).not.toContain("loop, tool");
   });
 
   it("converse prompt warns against the wrong discriminator key", async () => {

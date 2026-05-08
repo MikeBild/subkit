@@ -14,7 +14,7 @@
 //      `workflow.steps[*].connector_id`.
 //   4. Per-step coverage of `WorkflowDefSchema` primitives — every
 //      step kind (`request`, `transform`, `call`, `wait`, `branch`,
-//      `parallel`, `loop`, `tool`) should have at least one recipe
+//      `parallel`, `loop`) should have at least one recipe
 //      demonstrating it. Pre-F1 only `request` + `transform` were
 //      exercised; CI fails on regressions in this coverage as new
 //      demonstration recipes (Workstream D) land.
@@ -88,16 +88,7 @@ const RECIPE_CATEGORY_ENUM = new Set([
   "other",
 ]);
 
-const STEP_KINDS = [
-  "request",
-  "transform",
-  "call",
-  "wait",
-  "branch",
-  "parallel",
-  "loop",
-  "tool",
-] as const;
+const STEP_KINDS = ["request", "transform", "call", "wait", "branch", "parallel", "loop"] as const;
 
 /**
  * Workflow-level (non-step) primitives the lint also tracks so the
@@ -304,15 +295,14 @@ function lintPrimitiveCoverage(templates: Template[]): Violation[] {
     request: 1,
     transform: 1,
     // Workstream D bumped these to ≥1 via demonstration recipes.
-    // Subsequent D iterations will lift `call` / `tool` once the
-    // relevant executor wiring lands. Never drop a primitive below
-    // its prior baseline — CI fails on regression.
+    // Subsequent D iterations will lift `call` once the relevant
+    // executor wiring lands. Never drop a primitive below its prior
+    // baseline — CI fails on regression.
     branch: 1,
     parallel: 1,
     wait: 1,
     loop: 1,
     call: 0,
-    tool: 0,
     // v1.0 phase 1 + 2 primitives (#46/#47/#53). Each kind has at
     // least one shipped recipe — the eval suite under
     // `apps/engine/eval/fixtures/recipe-*.json` pins those recipes

@@ -18,7 +18,7 @@ Wall-clock budget: ~3–5 minutes on a warm checkout. Up-front caches (Docker la
 Bun install, `dist/sk` artifact) keep repeat runs fast.
 
 If Postgres is not already listening on `localhost:5432`, start it before step 5:
-`docker compose -f docker-compose.dev.yml up -d postgres`.
+`docker compose up -d postgres` (the repo's `docker-compose.yml` is dev-only).
 
 To downgrade the determinism lint to warnings (e.g. while an exception is under
 review), set `SUBKIT_DETERMINISM_WARN=1`.

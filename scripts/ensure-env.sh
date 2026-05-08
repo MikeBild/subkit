@@ -2,11 +2,10 @@
 # Create .env from .env.example with an auto-generated MASTER_KEY if .env
 # does not already exist. Idempotent — safe to call on every compose:up.
 #
-# Also stamps ENGINE_VERSION into .env from package.json so the engine
-# container reports the right version. Without this, the engine binary
-# falls back to `0.0.0-dev` and the CLI shows the "engine is older than
-# this CLI" banner on every compose:up — even right after a build.
-# See scripts/engine-rebuild.sh for the same pattern on the rebuild path.
+# Also stamps ENGINE_VERSION into .env from package.json so `bun run dev`
+# reports the right version. Without this, the engine binary falls back
+# to `0.0.0-dev` and the CLI shows the "engine is older than this CLI"
+# banner on every restart — even right after a fresh checkout.
 set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

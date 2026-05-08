@@ -1,4 +1,4 @@
--- One-shot schema reconciliation for production (or any droplet whose
+-- One-shot schema reconciliation for production (or any host whose
 -- DB came from the legacy migration lineage that pre-dates the v3
 -- baseline embedded in the engine binary).
 --
@@ -23,7 +23,7 @@
 -- EXISTS / DO-block guards so re-running is a no-op.
 --
 -- Apply with:
---   ssh <droplet> 'docker exec -i subkit-postgres-1 psql -U subkit -d subkit' \
+--   ssh <host> 'docker exec -i subkit-postgres-1 psql -U subkit -d subkit' \
 --     < scripts/db/reconcile-prod-schema-4.1.0.sql
 --
 -- After this completes, re-deploying the engine binary will see

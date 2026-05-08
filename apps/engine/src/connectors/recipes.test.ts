@@ -151,14 +151,11 @@ describe("recipe-coverage gate (A1)", () => {
     "branch",
     "parallel",
     "loop",
-    "tool",
   ] as const;
 
-  // Step kinds without a shipped recipe today. Each entry must reference an
-  // open issue or follow-up that will remove it. Empty set = full coverage.
-  // #146 / Part D landed call, tool, wait_for_event recipes against the
-  // GitHub template — every declared StepSchema discriminant now ships
-  // with a demonstrating recipe.
+  // Step kinds without a shipped recipe today. Empty set = full coverage.
+  // The seven supported kinds (request, transform, call, wait, branch,
+  // parallel, loop) all ship with a demonstrating recipe.
   const KNOWN_UNCOVERED = new Set<string>([]);
 
   function collectStepKinds(steps: unknown): Set<string> {
@@ -225,7 +222,6 @@ describe("recipe-coverage gate (A1)", () => {
       "branch",
       "parallel",
       "loop",
-      "tool",
     ]);
     expect([...declared].sort()).toEqual([...expected].sort());
   });

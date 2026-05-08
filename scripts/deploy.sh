@@ -3,7 +3,7 @@
 # subkit — laptop deploy orchestrator.
 #
 # Runs the same stages the `.github/workflows/release.yml` pipeline
-# runs, against the same droplet, using the same `deploy-body.sh`, so
+# runs, against the same host, using the same `deploy-body.sh`, so
 # "push a tag" and "run this script" are interchangeable.
 #
 # Usage:
@@ -18,35 +18,27 @@
 #   1. Preflight    — clean tree, main branch, creds present, flock
 #   2. Gate         — lint + typecheck + unit tests
 #   3. Bump         — version.sh; local commit + local tag (not pushed)
-#   4. Build+push   — build-push.sh (engine + migrate → DOCR)
-#   5. Deploy       — ssh droplet 'bash -s' < deploy-body.sh
+#   4. Build        — bun build --compile --target=bun-linux-x64 → dist/engine-linux-x64
+#   5. Deploy       — scp binary + Caddyfile + systemd unit; ssh runs deploy-body.sh
 #   6. Verify       — verify.sh (health poll + smoke + log scan)
 #   7. Publish      — git push origin main <tag>
 #
+# 4.2.0 systemd-native deploy. No DOCR, no `docker buildx`, no compose
+# overlay. The engine is a single bun-compiled binary; postgres + caddy
+# are apt-installed system services. The target host must already be
+# provisioned by `scripts/do-bootstrap.sh`.
+#
 # Required env (or .env.deploy):
-#   DROPLET_HOST    IP/hostname of the droplet (DROPLET_NAME alt)
-#   DROPLET_USER    SSH user (default: root)
+#   DEPLOY_HOST    IP/hostname of the host (DROPLET_NAME alt)
+#   DEPLOY_USER    SSH user (default: root)
 #   SSH_KEY_PATH    path to the private key (default: ~/.ssh/id_rsa)
 #   DEPLOY_URL      base URL for smoke (default: https://subkit-api.mikebild.dev)
 #   VERIFY_API_KEY  admin API key for authenticated diagnostics smoke
-#                   (Stage 6). Mint on the droplet:
-#                     ssh <droplet> 'docker exec subkit-engine-1 \
-#                       /bin/engine --issue-admin-key'
+#                   (Stage 6). Mint on the host:
+#                     ssh <host> '/usr/local/bin/engine --issue-admin-key'
 #                   Or set SKIP_AUTH_DIAGNOSTICS=1 to skip the
 #                   authenticated half of verify (public smoke +
 #                   /v1/health + remote log scan still run).
-#
-# One-time operator setup:
-#   doctl auth init --access-token <PAT-with-registry:update-scope>
-#
-# If the droplet was migrated through the legacy (pre-v3-baseline)
-# migration lineage, runMigrations()'s positional fallback may have
-# silently corrupted the migration journal so embedded schema changes
-# never executed. /v1/health flips db_schema_drift=true; /v1/diagnostics/drift
-# enumerates the unknown rows; scripts/db/reconcile-prod-schema-4.1.0.sql
-# applies the missing schema changes idempotently. Apply with:
-#   ssh <droplet> 'docker exec -i subkit-postgres-1 psql -U subkit -d subkit' \
-#     < scripts/db/reconcile-prod-schema-4.1.0.sql
 #
 # Concurrency guard: a flock on /tmp/subkit-deploy.lock prevents two
 # concurrent runs from racing (local x local or local x CI).
@@ -93,9 +85,9 @@ if [ -f "$REPO_ROOT/.env.deploy" ]; then
   source "$REPO_ROOT/.env.deploy"
 fi
 
-DROPLET_HOST="${DROPLET_HOST:-}"
+DEPLOY_HOST="${DEPLOY_HOST:-}"
 DROPLET_NAME="${DROPLET_NAME:-subkit-engine}"
-DROPLET_USER="${DROPLET_USER:-root}"
+DEPLOY_USER="${DEPLOY_USER:-root}"
 SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/id_rsa}"
 DEPLOY_URL="${DEPLOY_URL:-https://subkit-api.mikebild.dev}"
 
@@ -168,8 +160,8 @@ if ! doctl auth list 2>/dev/null | grep -q .; then
   exit 1
 fi
 
-# Sanity: if DROPLET_HOST is set, ensure the SSH key exists.
-if [ -n "$DROPLET_HOST" ] && [ ! -f "$SSH_KEY_PATH" ]; then
+# Sanity: if DEPLOY_HOST is set, ensure the SSH key exists.
+if [ -n "$DEPLOY_HOST" ] && [ ! -f "$SSH_KEY_PATH" ]; then
   fail "SSH key not found at $SSH_KEY_PATH (set SSH_KEY_PATH in .env.deploy)"
   exit 1
 fi
@@ -179,7 +171,7 @@ info "repo  : $REPO_ROOT"
 info "tree  : $(git log -1 --pretty=format:'%h %s')"
 info "from  : $CURRENT"
 info "bump  : $LEVEL"
-info "droplet: ${DROPLET_HOST:-(via doctl) $DROPLET_NAME}"
+info "host  : ${DEPLOY_HOST:-(via doctl) $DROPLET_NAME}"
 info "deploy: $DEPLOY_URL"
 
 # ---------------------------------------------------------------------------
@@ -239,69 +231,100 @@ rollback_bump() {
 trap rollback_bump EXIT
 
 # ---------------------------------------------------------------------------
-# Stage 4 — build + push engine + migrate
+# Stage 4 — build engine binary for linux/x86_64
 # ---------------------------------------------------------------------------
-stage "build + push → DOCR"
+# 4.2.0: replaces the old build-push.sh DOCR pipeline. We cross-compile
+# the engine to a static linux/amd64 binary right here on the laptop
+# (Bun's `--target=bun-linux-x64` produces a self-contained executable
+# in ~30 s; the prior docker buildx + DOCR push averaged ~3 min).
+# Stage 5 ships the resulting binary to the host via scp.
+stage "build engine binary"
+_REPO_ROOT=$(cd "$_SCRIPT_DIR/.." && pwd)
+_DIST_BIN="$_REPO_ROOT/dist/engine-linux-x64"
 if [ "$DRY_RUN" -eq 1 ]; then
-  info "[dry] VERSION=$NEW scripts/release/build-push.sh"
+  info "[dry] ENGINE_VERSION=$NEW bun run build:engine:linux-x64"
 else
-  VERSION="$NEW" "$_SCRIPT_DIR/release/build-push.sh"
-fi
-ok "images pushed: registry.digitalocean.com/subkit/{engine,migrate}:$NEW"
-
-# ---------------------------------------------------------------------------
-# Stage 5 — deploy via SSH (executes the same file CI uses)
-# ---------------------------------------------------------------------------
-stage "deploy to droplet"
-SSH_TARGET=""
-if [ -n "$DROPLET_HOST" ]; then
-  SSH_TARGET="$DROPLET_USER@$DROPLET_HOST"
-  info "ssh target: $SSH_TARGET (key: $SSH_KEY_PATH)"
-fi
-if [ "$DRY_RUN" -eq 1 ]; then
-  info "[dry] scp docker-compose.yml + deploy/docker-compose.prod.yml + deploy/caddy/Caddyfile → droplet:/opt/subkit/"
-  info "[dry] ENGINE_VERSION=$NEW ssh ... 'bash -s' < $_SCRIPT_DIR/release/deploy-body.sh"
-else
-  # Sync droplet config before the deploy body runs. do-bootstrap.sh
-  # placed these three files at provisioning time — the repo is the
-  # source of truth on every release so additions or removals in the
-  # base compose (e.g. PR #150 dropping the migrate service) actually
-  # land on the droplet. Mirrors the equivalent step in
-  # .github/workflows/release.yml so the CI and laptop paths can't drift.
-  _REPO_ROOT=$(cd "$_SCRIPT_DIR/.." && pwd)
-  _BASE_COMPOSE="$_REPO_ROOT/docker-compose.yml"
-  _PROD_COMPOSE="$_REPO_ROOT/deploy/docker-compose.prod.yml"
-  _CADDYFILE="$_REPO_ROOT/deploy/caddy/Caddyfile"
-  if [ -n "$SSH_TARGET" ]; then
-    scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
-      "$_BASE_COMPOSE" "$_PROD_COMPOSE" \
-      "$SSH_TARGET:/opt/subkit/"
-    scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
-      "$_CADDYFILE" \
-      "$SSH_TARGET:/opt/subkit/caddy/Caddyfile"
-    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
-      "$SSH_TARGET" "ENGINE_VERSION='$NEW' bash -s" \
-      < "$_SCRIPT_DIR/release/deploy-body.sh"
-  else
-    # Fallback: use doctl compute ssh (matches what verify.sh uses).
-    # doctl's ssh wrapper doesn't forward stdin cleanly for 'bash -s',
-    # so we cat-pipe each file then exec the deploy body.
-    doctl compute ssh "$DROPLET_NAME" --ssh-command \
-      "cat > /opt/subkit/docker-compose.yml" \
-      < "$_BASE_COMPOSE"
-    doctl compute ssh "$DROPLET_NAME" --ssh-command \
-      "cat > /opt/subkit/docker-compose.prod.yml" \
-      < "$_PROD_COMPOSE"
-    doctl compute ssh "$DROPLET_NAME" --ssh-command \
-      "cat > /opt/subkit/caddy/Caddyfile" \
-      < "$_CADDYFILE"
-    TMP_REMOTE="/tmp/subkit-deploy-body.$NEW.sh"
-    doctl compute ssh "$DROPLET_NAME" --ssh-command \
-      "cat > $TMP_REMOTE && chmod +x $TMP_REMOTE && ENGINE_VERSION='$NEW' bash $TMP_REMOTE && rm -f $TMP_REMOTE" \
-      < "$_SCRIPT_DIR/release/deploy-body.sh"
+  # Delegate to the package.json script so the cross-compile lives in
+  # one place (the same script CI runs).
+  ENGINE_VERSION="$NEW" run bun run build:engine:linux-x64
+  if [ ! -f "$_DIST_BIN" ]; then
+    fail "build did not produce $_DIST_BIN"
+    exit 1
   fi
 fi
-ok "droplet deploy returned"
+ok "built dist/engine-linux-x64 (engine $NEW)"
+
+# ---------------------------------------------------------------------------
+# Stage 5 — deploy via SSH
+# ---------------------------------------------------------------------------
+# 4.2.0: scp the engine binary + Caddyfile + systemd unit, then run
+# deploy-body.sh which atomically swaps the binary and `systemctl
+# restart`s the unit. No DOCR, no docker compose. The target host must
+# already be provisioned with `scripts/do-bootstrap.sh` (postgres +
+# caddy + the subkit user/dirs).
+stage "deploy to host"
+SSH_TARGET=""
+if [ -n "$DEPLOY_HOST" ]; then
+  SSH_TARGET="$DEPLOY_USER@$DEPLOY_HOST"
+  info "ssh target: $SSH_TARGET (key: $SSH_KEY_PATH)"
+fi
+_CADDYFILE="$_REPO_ROOT/deploy/caddy/Caddyfile"
+_SYSTEMD_UNIT="$_REPO_ROOT/deploy/systemd/subkit-engine.service"
+if [ "$DRY_RUN" -eq 1 ]; then
+  info "[dry] scp $_DIST_BIN → host:/usr/local/bin/engine.next"
+  info "[dry] scp $_CADDYFILE → host:/etc/caddy/Caddyfile"
+  info "[dry] scp $_SYSTEMD_UNIT → host:/etc/systemd/system/subkit-engine.service"
+  info "[dry] ENGINE_VERSION=$NEW ssh ... 'bash -s' < $_SCRIPT_DIR/release/deploy-body.sh"
+else
+  if [ -z "$SSH_TARGET" ]; then
+    fail "DEPLOY_HOST is required for deploy (set in .env.deploy)"
+    exit 1
+  fi
+  # Stream the binary up first; deploy-body.sh checks for it before
+  # touching the running engine.
+  scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
+    "$_DIST_BIN" \
+    "$SSH_TARGET:/usr/local/bin/engine.next"
+  # Caddyfile + systemd unit: re-synced every release so the repo
+  # stays the source of truth. systemd `daemon-reload` runs only when
+  # the unit changed; the deploy body handles that detection.
+  scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
+    "$_CADDYFILE" \
+    "$SSH_TARGET:/etc/caddy/Caddyfile"
+  scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
+    "$_SYSTEMD_UNIT" \
+    "$SSH_TARGET:/etc/systemd/system/subkit-engine.service"
+  ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
+    "$SSH_TARGET" "systemctl daemon-reload"
+  # Thread bootstrap LLM config + admin API key through to deploy-body
+  # so the post-health-check `PUT /v1/settings/*` step can run
+  # (eat-own-dog-food: no SSH+env-edit cycle needed). All BOOTSTRAP_*
+  # vars are optional; absent vars skip their PUT.
+  #
+  # Use ssh `SendEnv` rather than inline `FOO='value' bash -s` so the
+  # secrets never appear on the laptop or host `ps -ef` output.
+  # `do-bootstrap.sh` configures the matching `AcceptEnv` directives
+  # in /etc/ssh/sshd_config.d/subkit.conf from the same source list
+  # (deploy/bootstrap-env.list).
+  export ENGINE_VERSION="$NEW"
+  export VERIFY_API_KEY="${VERIFY_API_KEY:-}"
+  export BOOTSTRAP_LLM_PROVIDER="${BOOTSTRAP_LLM_PROVIDER:-}"
+  export BOOTSTRAP_LLM_API_KEY="${BOOTSTRAP_LLM_API_KEY:-}"
+  export BOOTSTRAP_LLM_MODEL="${BOOTSTRAP_LLM_MODEL:-}"
+  export BOOTSTRAP_LLM_FALLBACK_PROVIDER="${BOOTSTRAP_LLM_FALLBACK_PROVIDER:-}"
+  export BOOTSTRAP_LLM_FALLBACK_MODEL="${BOOTSTRAP_LLM_FALLBACK_MODEL:-}"
+  _BOOTSTRAP_ENV_LIST="$_REPO_ROOT/deploy/bootstrap-env.list"
+  if [ ! -f "$_BOOTSTRAP_ENV_LIST" ]; then
+    fail "deploy/bootstrap-env.list missing — required for SendEnv list"
+    exit 1
+  fi
+  _SEND_ENV=$(grep -vE '^(\s*#|\s*$)' "$_BOOTSTRAP_ENV_LIST" | tr '\n' ' ' | sed 's/ $//')
+  ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new \
+    -o "SendEnv=$_SEND_ENV" \
+    "$SSH_TARGET" "bash -s" \
+    < "$_SCRIPT_DIR/release/deploy-body.sh"
+fi
+ok "host deploy returned"
 
 # ---------------------------------------------------------------------------
 # Stage 6 — verify
@@ -320,10 +343,11 @@ else
   DEPLOY_URL="$DEPLOY_URL" \
   DROPLET_NAME="$DROPLET_NAME" \
   VERIFY_API_KEY="${VERIFY_API_KEY:-}" \
-  SSH_HOST="${SSH_HOST:-${DROPLET_USER}@${DROPLET_HOST}}" \
+  SSH_HOST="${SSH_HOST:-${DEPLOY_USER}@${DEPLOY_HOST}}" \
   SKIP_AUTH_DIAGNOSTICS="${SKIP_AUTH_DIAGNOSTICS:-0}" \
   SKIP_REMOTE_LOGS="${SKIP_REMOTE_LOGS:-0}" \
   SKIP_SETTINGS_PROBE="${SKIP_SETTINGS_PROBE:-0}" \
+  BOOTSTRAP_LLM_PROVIDER="${BOOTSTRAP_LLM_PROVIDER:-}" \
     "$_SCRIPT_DIR/release/verify.sh"
 fi
 ok "verified"

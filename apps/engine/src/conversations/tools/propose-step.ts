@@ -22,16 +22,7 @@ const inputSchema = z
   })
   .openapi("ProposeStepToolInput");
 
-const VALID_KINDS = [
-  "request",
-  "transform",
-  "call",
-  "wait",
-  "branch",
-  "parallel",
-  "loop",
-  "tool",
-] as const;
+const VALID_KINDS = ["request", "transform", "call", "wait", "branch", "parallel", "loop"] as const;
 type ValidKind = (typeof VALID_KINDS)[number];
 
 const REQUIRED_FIELDS_PER_KIND: Record<ValidKind, string[]> = {
@@ -42,7 +33,6 @@ const REQUIRED_FIELDS_PER_KIND: Record<ValidKind, string[]> = {
   branch: ["id", "kind", "when", "then_steps"],
   parallel: ["id", "kind", "branches"],
   loop: ["id", "kind", "over", "body"],
-  tool: ["id", "kind", "image"],
 };
 
 const EXAMPLE_PER_KIND: Record<ValidKind, Record<string, unknown>> = {
@@ -84,17 +74,11 @@ const EXAMPLE_PER_KIND: Record<ValidKind, Record<string, unknown>> = {
     body: ["process_order"],
     item_var: "order",
   },
-  tool: {
-    id: "convert_pdf",
-    kind: "tool",
-    image: "ghcr.io/example/pdf2text:1.0",
-    cmd: ["--in", "/work/in.pdf", "--out", "/work/out.txt"],
-  },
 };
 
 const DESCRIPTION = [
   "Append (or replace by id) one step in the draft workflow and validate.",
-  "REQUIRED: each step has `id` (unique string) and `kind` (one of: request, transform, call, wait, branch, parallel, loop, tool).",
+  "REQUIRED: each step has `id` (unique string) and `kind` (one of: request, transform, call, wait, branch, parallel, loop).",
   "Do NOT use `type`, `@type`, or invented kinds (`trigger.*`, `flow.*`, `util.*`). Those will fail.",
   "Placeholder grammar — only `${cred|connector|input|scope|item|...}`. Mustache `{{ ... }}` is rejected.",
   "Examples:",

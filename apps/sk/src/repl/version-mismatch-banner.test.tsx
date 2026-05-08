@@ -40,7 +40,7 @@ describe("classifyVersionSkew", () => {
 });
 
 describe("VersionMismatchBanner", () => {
-  test("renders engine_older message with the rebuild hint", () => {
+  test("renders engine_older message with the restart hint", () => {
     const { lastFrame } = render(
       <VersionMismatchBanner
         snapshot={{ cliVersion: "3.2.1", engineVersion: "3.2.0", severity: "engine_older" }}
@@ -50,7 +50,7 @@ describe("VersionMismatchBanner", () => {
     expect(frame).toContain("engine is older");
     expect(frame).toContain("3.2.1");
     expect(frame).toContain("3.2.0");
-    expect(frame).toContain("docker:engine:rebuild");
+    expect(frame).toContain("bun run dev");
   });
 
   test("renders cli_older message with the upgrade hint", () => {

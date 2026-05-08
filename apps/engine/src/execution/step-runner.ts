@@ -15,7 +15,6 @@ import { runBranchStep } from "./steps/branch.ts";
 import { runLoopStep } from "./steps/loop.ts";
 import { runParallelStep } from "./steps/parallel.ts";
 import { runRequestStep } from "./steps/request.ts";
-import { runToolStep } from "./steps/tool.ts";
 import { runTransformStep } from "./steps/transform.ts";
 import { runWaitStep } from "./steps/wait.ts";
 import { runWaitForEventStep } from "./steps/wait-for-event.ts";
@@ -200,9 +199,6 @@ export async function runStep(
       break;
     case "call":
       result = await callRunner({ ctx, step });
-      break;
-    case "tool":
-      result = await runToolStep({ ctx, step });
       break;
     default: {
       const _exhaustive: never = step;

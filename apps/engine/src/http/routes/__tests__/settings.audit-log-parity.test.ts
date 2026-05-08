@@ -18,33 +18,35 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
+import { logRing } from "../../../observability/log-ring.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
 let server: HttpTestServer;
 let cfgDir: string;
-let captured: { module?: string; action?: string; leaf?: string; [k: string]: unknown }[];
-let restoreStdout: () => void;
+// Snapshot of `setting.applied` log count taken in beforeEach. Each
+// test asserts against `appliedSinceBaseline()` so a previous test's
+// entries don't leak into the current count. Replaces the prior
+// process.stdout.write monkey-patch (which leaked nested wrappers
+// across tests and timed out cleanup once the suite grew).
+let appliedBaselineCount = 0;
 
-function attachStdoutCapture(
-  buf: { module?: string; action?: string; leaf?: string; [k: string]: unknown }[],
-): () => void {
-  const orig = process.stdout.write.bind(process.stdout);
-  process.stdout.write = ((chunk: string | Uint8Array): boolean => {
-    const s = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
-    for (const line of s.split("\n")) {
-      const t = line.trim();
-      if (!t.startsWith("{")) continue;
-      try {
-        buf.push(JSON.parse(t));
-      } catch {
-        /* not JSON */
-      }
-    }
-    return orig(chunk);
-  }) as typeof process.stdout.write;
-  return () => {
-    process.stdout.write = orig as typeof process.stdout.write;
-  };
+function countApplied(): number {
+  return logRing.tail({
+    module: "config",
+    action: "setting.applied",
+    limit: 10_000,
+  }).length;
+}
+
+function appliedLeavesSinceBaseline(): string[] {
+  // Newest-first; reverse so insertion order matches the writes loop.
+  // `leaf` lives under `fields` per CapturedLog (module/action/msg
+  // are top-level; everything else after the logger's redact pass
+  // lands in fields).
+  const tail = logRing
+    .tail({ module: "config", action: "setting.applied", limit: 10_000 })
+    .reverse();
+  return tail.slice(appliedBaselineCount).map((e) => String(e.fields?.leaf ?? ""));
 }
 
 beforeAll(async () => {
@@ -55,6 +57,8 @@ beforeAll(async () => {
     configPathOverride: join(cfgDir, "subkit.config.json"),
   });
   server = await createHttpTestServer("settings-audit-parity");
+  const { reconfigureLogger } = await import("../../../logging/logger.ts");
+  reconfigureLogger({ level: "info", format: "ndjson" });
 });
 
 afterAll(async () => {
@@ -64,15 +68,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  captured = [];
-  restoreStdout = attachStdoutCapture(captured);
+  appliedBaselineCount = countApplied();
   await server.db.delete(auditLog);
-  const { reconfigureLogger } = await import("../../../logging/logger.ts");
-  reconfigureLogger({ level: "info", format: "ndjson" });
-});
-
-afterAll(() => {
-  restoreStdout?.();
 });
 
 async function put(
@@ -102,8 +99,14 @@ describe("audit_log ↔ setting.applied bijection", () => {
       { path: "egress.mode", value: "permissive" },
       { path: "mcp.read_only", value: true },
       { path: "spec.allow_private_fetch", value: true },
-      { path: "docker.skip", value: true },
       { path: "llm.context_1m", value: true },
+      // observability.* leaves carry requiresRestart: false (4.2.0
+      // hot-reload). Sweeping one of them here fences the
+      // hot-reload + audit-log invariant in the same place: the
+      // tracing reconfigure path must NOT short-circuit the audit
+      // row write, AND the bijection check below must still account
+      // for it.
+      { path: "observability.langfuse.host", value: "https://lf.parity.test" },
     ];
 
     for (const w of writes) {
@@ -117,12 +120,12 @@ describe("audit_log ↔ setting.applied bijection", () => {
       .where(eq(auditLog.action, "settings.changed"));
     expect(rows.length, "audit row count").toBe(writes.length);
 
-    const applied = captured.filter((l) => l.module === "config" && l.action === "setting.applied");
-    expect(applied.length, "setting.applied log count").toBe(writes.length);
+    const appliedLeaves = appliedLeavesSinceBaseline();
+    expect(appliedLeaves.length, "setting.applied log count").toBe(writes.length);
 
     // Bijection: every (path) appears in both sets exactly once.
     const auditPaths = rows.map((r) => r.resource_id).sort();
-    const logPaths = applied.map((l) => l.leaf as string).sort();
+    const logPaths = appliedLeaves.slice().sort();
     const expected = writes.map((w) => w.path).sort();
     expect(auditPaths).toEqual(expected);
     expect(logPaths).toEqual(expected);
@@ -136,8 +139,181 @@ describe("audit_log ↔ setting.applied bijection", () => {
       .from(auditLog)
       .where(eq(auditLog.action, "settings.changed"));
     expect(rows.length).toBe(0);
-    const applied = captured.filter((l) => l.module === "config" && l.action === "setting.applied");
-    expect(applied.length).toBe(0);
+    expect(appliedLeavesSinceBaseline().length, "applied delta").toBe(0);
+  });
+
+  // Parametrised over a few invalid forms to widen the discriminator
+  // regression net: hyphen vs underscore (sk-cli vs sk_cli — the right
+  // form), historical banned vocabulary (the v1 channel name retired
+  // in 4.0.x), empty string, mixed case, and not-in-allow-list values
+  // all must 400 before reaching the audit writer.
+  //
+  // Whitespace-only mutations (leading/trailing space) are NOT in
+  // this list because Hono normalizes header values per HTTP semantics
+  // (RFC 7230 §3.2.4): a trimmed header IS the same header. Catching
+  // those would belong on the operator's side (sk CLI sends without
+  // whitespace already).
+  const INVALID_AUDIT_SOURCES = [
+    "automation", // legacy v1 channel name (banned by terminology gate)
+    "sk-cli", // hyphen instead of underscore — common operator typo
+    "SK_CLI", // wrong case
+    "", // empty string
+    "ui", // not in the allow-list
+  ] as const;
+
+  for (const bad of INVALID_AUDIT_SOURCES) {
+    test(`rejects x-subkit-audit-source=${JSON.stringify(bad)} with 400 and writes no audit row`, async () => {
+      const before = await server.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "settings.changed"));
+      const url = `${server.baseUrl}/v1/settings/llm.context_1m`;
+      const r = await fetch(url, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${server.apiKey}`,
+          "x-subkit-audit-source": bad,
+        },
+        body: JSON.stringify({ value: true }),
+      });
+      expect(r.status, `bad value ${JSON.stringify(bad)}`).toBe(400);
+      const after = await server.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "settings.changed"));
+      expect(after.length, `no audit row for ${JSON.stringify(bad)}`).toBe(before.length);
+    });
+  }
+
+  test("PUT /v1/settings/{path} OpenAPI doc declares the audit-source + deploy-version headers", async () => {
+    // Catches the "future rename of AUDIT_SOURCE_HEADER constant
+    // silently drops the OpenAPI doc / generated client header"
+    // failure mode: the route file uses bracket-key lookup
+    // ([AUDIT_SOURCE_HEADER]: ...), so the OpenAPI parameter name
+    // is derived from the constant's value at module load. A typo
+    // would make the route accept the new name AND the old name
+    // disappear from the spec without breaking any other test.
+    const res = await fetch(`${server.baseUrl}/openapi.json`);
+    expect(res.status).toBe(200);
+    const spec = (await res.json()) as {
+      paths: Record<
+        string,
+        Record<
+          string,
+          {
+            parameters?: Array<{ name?: string; in?: string }>;
+          }
+        >
+      >;
+    };
+    const op = spec.paths?.["/v1/settings/{path}"]?.put;
+    expect(op, "PUT /v1/settings/{path} present in spec").toBeDefined();
+    const headers = (op?.parameters ?? []).filter((p) => p.in === "header").map((p) => p.name);
+    expect(headers).toContain("x-subkit-audit-source");
+    expect(headers).toContain("x-subkit-deploy-version");
+  });
+
+  test("a malformed x-subkit-deploy-version is rejected with 400 (semver-only)", async () => {
+    // DeployVersionSchema requires MAJOR.MINOR.PATCH. A pre-release
+    // suffix or non-numeric segment must 400 — the audit ledger
+    // stays trivially queryable on the version column.
+    const before = await server.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, "settings.changed"));
+    const url = `${server.baseUrl}/v1/settings/llm.context_1m`;
+    const r = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${server.apiKey}`,
+        "x-subkit-audit-source": "deploy_bootstrap",
+        "x-subkit-deploy-version": "4.2.0-rc.1+build123",
+      },
+      body: JSON.stringify({ value: true }),
+    });
+    expect(r.status).toBe(400);
+    const after = await server.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, "settings.changed"));
+    expect(after.length, "no audit row written for malformed version").toBe(before.length);
+  });
+
+  test("metadata.reconfigure_failed=true lands in the audit row when reconfigureTracing throws", async () => {
+    // Closes the loop on the W1-from-round-3 promise: setConfigKey
+    // catches a reconfigure throw, sets reconfigureFailed=true, and
+    // the route stamps it on the audit row's metadata. Without this
+    // test, a future refactor that drops the catch (or the metadata
+    // stamp) would leave the operator-visible "live tracer is on the
+    // old config" signal silently broken.
+    const { _failNextReconfigureForTests, _clearReconfigureFailureForTests } = await import(
+      "../../../test-helpers/tracing.ts"
+    );
+    _failNextReconfigureForTests();
+    try {
+      const url = `${server.baseUrl}/v1/settings/observability.langfuse.host`;
+      const r = await fetch(url, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${server.apiKey}`,
+        },
+        body: JSON.stringify({ value: "https://lf.audit-test.example/" }),
+      });
+      expect(r.status).toBe(200);
+      const rows = await server.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.action, "settings.changed"));
+      const last = rows[rows.length - 1];
+      expect(last, "audit row landed").toBeDefined();
+      const meta = (last?.metadata ?? {}) as Record<string, unknown>;
+      expect(meta.reconfigure_failed, "metadata.reconfigure_failed").toBe(true);
+      // The route also flips requiresRestart=true so the operator
+      // sees they need to restart for the new tracer config.
+      expect(meta.requires_restart, "metadata.requires_restart").toBe(true);
+      // Reset the leaf so subsequent tests aren't observing a stale URL.
+      await fetch(url, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${server.apiKey}`,
+        },
+        body: JSON.stringify({ value: "" }),
+      });
+    } finally {
+      // Defensive cleanup: even if an assertion above threw and
+      // reconfigureTracing didn't run (and therefore didn't
+      // read-and-clear the flag), we MUST clear it here so the next
+      // unrelated test's reconfigure isn't poisoned.
+      _clearReconfigureFailureForTests();
+    }
+  });
+
+  test("valid x-subkit-audit-source + x-subkit-deploy-version flow into audit metadata", async () => {
+    const url = `${server.baseUrl}/v1/settings/llm.context_1m`;
+    const r = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${server.apiKey}`,
+        "x-subkit-audit-source": "deploy_bootstrap",
+        "x-subkit-deploy-version": "4.2.0",
+      },
+      body: JSON.stringify({ value: true }),
+    });
+    expect(r.status).toBe(200);
+    const rows = await server.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, "settings.changed"));
+    const last = rows[rows.length - 1];
+    expect(last, "audit row landed").toBeDefined();
+    const meta = (last?.metadata ?? {}) as Record<string, unknown>;
+    expect(meta.audit_source).toBe("deploy_bootstrap");
+    expect(meta.deploy_version).toBe("4.2.0");
   });
 
   test("409 restart-required (production, no force) emits zero audit rows and zero applied logs", async () => {
@@ -151,10 +327,7 @@ describe("audit_log ↔ setting.applied bijection", () => {
         .from(auditLog)
         .where(eq(auditLog.action, "settings.changed"));
       expect(rows.length).toBe(0);
-      const applied = captured.filter(
-        (l) => l.module === "config" && l.action === "setting.applied",
-      );
-      expect(applied.length).toBe(0);
+      expect(appliedLeavesSinceBaseline().length, "applied delta").toBe(0);
     } finally {
       if (prev === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = prev;

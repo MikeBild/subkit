@@ -543,6 +543,14 @@ export interface SetConfigKeyResult {
   requiresRestart: boolean;
   scope: "global" | `tenant:${string}`;
   leafPath: string;
+  /** True iff the leaf was on a hot-reload path (currently only
+   *  `observability.*`) AND the in-process reconfigure threw. The
+   *  on-disk + in-memory write succeeded; the live tracer/exporter
+   *  is the part that didn't pick up the change. Callers (the
+   *  /v1/settings PUT route) must surface this so the operator
+   *  doesn't see `requiresRestart: false` while the running
+   *  process is still on the old config. */
+  reconfigureFailed?: boolean;
 }
 
 async function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -679,12 +687,95 @@ export async function setConfigKey(
       }
     }
 
+    // Hot-reload OTel + langfuse exporters when an observability.*
+    // leaf changes. Without this, flipping
+    // `observability.langfuse.secret_key` (etc.) wrote the value to
+    // disk but the running tracer kept the old credentials in memory
+    // until the next process restart — which contradicted the
+    // `requiresRestart: false` flag this section now carries. The
+    // tracing reconfigure shuts down the SDK and re-bootstraps from
+    // the updated config; the langfuse-spans cache is reset so the
+    // next `getLangfuse()` reads the new config too. Both calls are
+    // best-effort — never fail a settings write because the tracer
+    // couldn't restart cleanly.
+    //
+    // Dynamic imports here — observability/tracing.ts lazy-imports the
+    // OTel SDK packages (~10 MB of code), and the matching log/logger
+    // hot-reload above is dynamic for the same reason. Top-of-file
+    // imports would pull the entire OTel surface into every process
+    // that touches config (CLI, tests, smoke binary) for no benefit.
+    let reconfigureFailed = false;
+    if (leaf.path[0] === "observability") {
+      // The reconfigure runs INSIDE withWriteLock on purpose: a second
+      // setConfigKey arriving mid-reconfigure would otherwise see the
+      // new in-memory config but the old running tracer, and could
+      // race with our shutdown→re-init sequence (the OTel SDK is not
+      // safe to start while a previous shutdown is in flight).
+      //
+      // Tail-latency bound: reconfigureTracing wraps its
+      // SDK shutdown in `awaitWithTimeout` with a 5 s ceiling
+      // (`RECONFIGURE_SHUTDOWN_TIMEOUT_MS` in
+      // observability/tracing.ts). Even a hung exporter can't pin the
+      // lock past that — the SDK's retry stays in the background and
+      // we proceed to startTracing(). Worst-case unrelated
+      // setConfigKey() waits ≤ 5 s during heavy observability churn.
+      try {
+        const { reconfigureTracing } = await import("../observability/tracing.ts");
+        await reconfigureTracing();
+      } catch (err) {
+        reconfigureFailed = true;
+        const { logger } = await import("../logging/logger.ts");
+        logger.warn({
+          module: "config",
+          action: "observability.reconfigure_failed",
+          msg: "tracing reconfigure failed after settings.changed",
+          leaf: dottedPath(leaf),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      // Two failure modes here, only one of which is benign:
+      //   (a) dynamic import throws because langfuse-spans is not on
+      //       this binary's import graph (smoke-mode boot, CLI entry
+      //       points that never serve requests). Benign — no client
+      //       to reset.
+      //   (b) resetLangfuseCacheForReload itself throws (a future
+      //       refactor that returns undefined or works against a
+      //       stale handle). NOT benign — the live tracer is
+      //       half-reloaded and an operator who flipped
+      //       observability.langfuse.secret_key would see spans go
+      //       to the old project. We promote this case to
+      //       reconfigureFailed so the audit row + route response
+      //       reflect the half-reload.
+      try {
+        const langfuseModule = await import("../observability/langfuse-spans.ts");
+        try {
+          langfuseModule.resetLangfuseCacheForReload();
+        } catch (err) {
+          reconfigureFailed = true;
+          const { logger } = await import("../logging/logger.ts");
+          logger.warn({
+            module: "config",
+            action: "observability.langfuse_reset_failed",
+            msg: "langfuse cache reset failed after settings.changed",
+            leaf: dottedPath(leaf),
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } catch {
+        /* langfuse-spans module not loaded — benign */
+      }
+    }
+
     return {
       before: beforeValue,
       after: validatedValue,
-      requiresRestart,
+      // The on-disk + in-memory write succeeded. Only the live tracer
+      // didn't pick it up — operator must restart for the new config
+      // to take effect, so requiresRestart promotes to true.
+      requiresRestart: requiresRestart || reconfigureFailed,
       scope: opts.tenantId ? `tenant:${opts.tenantId}` : "global",
       leafPath: dottedPath(leaf),
+      reconfigureFailed,
     };
   });
 }

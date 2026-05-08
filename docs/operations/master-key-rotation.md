@@ -56,14 +56,13 @@ decrypt also fails after rotation**. There is no key-rotation envelope today.
    pool you're rotating. New encrypts under the old key during the
    transition will be lost.
    ```sh
-   ssh ${DROPLET} 'docker compose -f /opt/subkit/docker-compose.yml \
-     -f /opt/subkit/docker-compose.prod.yml stop engine'
+   ssh ${HOST} 'systemctl stop subkit-engine.service'
    ```
 
 2. **Take a database snapshot.** This is the only path back if rotation
    goes wrong.
    ```sh
-   ssh ${DROPLET} 'pg_dump -Fc subkit > /opt/subkit/backups/pre-rotate-$(date -u +%Y%m%dT%H%M%SZ).dump'
+   ssh ${HOST} 'pg_dump -Fc subkit > /opt/subkit/backups/pre-rotate-$(date -u +%Y%m%dT%H%M%SZ).dump'
    ```
 
 3. **Generate the new key + inject via your secret manager.**
@@ -119,8 +118,8 @@ decrypt also fails after rotation**. There is no key-rotation envelope today.
    (`apps/engine/src/crypto/aes-gcm.ts:48-53`) and exits non-zero if the
    key is malformed.
    ```sh
-   ssh ${DROPLET} 'docker compose -f /opt/subkit/docker-compose.yml \
-     -f /opt/subkit/docker-compose.prod.yml up -d engine'
+   ssh ${HOST} 'systemctl start subkit-engine.service'
+   ssh ${HOST} 'journalctl -u subkit-engine.service --since "1 minute ago" -n 50'
    ```
    `/v1/health` should return `db_connected: true` within 30s.
 
@@ -154,7 +153,7 @@ decrypt also fails after rotation**. There is no key-rotation envelope today.
 ## Downtime window
 
 Step 1 (freeze) → step 5 (boot on new key) is **mandatory downtime** —
-typically 5–15 minutes for a single droplet. Steps 6–9 are
+typically 5–15 minutes for a single host. Steps 6–9 are
 operator-driven re-onboarding and run in parallel with the engine
 running normally; tenants will see broken connectors, webhook
 signatures, chat-platform integrations, OIDC sign-ins, and tenant LLM

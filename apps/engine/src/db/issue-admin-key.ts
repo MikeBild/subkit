@@ -5,9 +5,9 @@
 //
 // Two entry points share the same logic:
 //
-//   1. The compiled engine binary on the droplet:
-//        docker exec subkit-engine-1 /bin/engine --issue-admin-key
-//        docker exec subkit-engine-1 /bin/engine --issue-admin-key --tenant my-slug
+//   1. The compiled engine binary on the host (systemd-deployed):
+//        sudo -u subkit /usr/local/bin/engine --issue-admin-key
+//        sudo -u subkit /usr/local/bin/engine --issue-admin-key --tenant my-slug
 //      (see apps/engine/src/index.ts for the flag wiring)
 //
 //   2. From a checkout, the same script standalone (uses `bun run`):

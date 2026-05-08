@@ -3,7 +3,7 @@
 // absent, and no integration test should hit a real Langfuse instance.
 
 import { beforeEach, describe, expect, test } from "bun:test";
-import { _resetLangfuseCache, redactPayload, startToolSpan } from "../langfuse-spans.ts";
+import { redactPayload, resetLangfuseCacheForReload, startToolSpan } from "../langfuse-spans.ts";
 
 describe("redactPayload — sensitive key masking", () => {
   test("top-level sensitive keys are replaced with [REDACTED]", () => {
@@ -147,7 +147,7 @@ describe("redactPayload — type preservation", () => {
 
 describe("startToolSpan — no-op when Langfuse keys are absent", () => {
   beforeEach(() => {
-    _resetLangfuseCache();
+    resetLangfuseCacheForReload();
     delete process.env.LANGFUSE_SECRET_KEY;
     delete process.env.LANGFUSE_PUBLIC_KEY;
   });

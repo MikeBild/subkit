@@ -24,7 +24,7 @@ An Execution is an immutable record. It captures the specific Workflow version t
 
 ## Step Kinds
 
-A Workflow is composed of Steps. sk ships eight Step kinds, covering the range of patterns that enterprise workflows require. The discriminator field is `kind`; the schema source of truth is [`apps/engine/src/workflows/types.ts`](../apps/engine/src/workflows/types.ts) (`StepSchema`).
+A Workflow is composed of Steps. sk ships seven Step kinds, covering the range of patterns that enterprise workflows require. The discriminator field is `kind`; the schema source of truth is [`apps/engine/src/workflows/types.ts`](../apps/engine/src/workflows/types.ts) (`StepSchema`). 4.2.0 retired the `tool` kind (docker-based sandbox runner) — subkit is a data-workflow engine, not a container runtime.
 
 | `kind` | Required fields | Behaviour |
 |---|---|---|
@@ -36,7 +36,6 @@ A Workflow is composed of Steps. sk ships eight Step kinds, covering the range o
 | `wait` | `duration_ms` (≤ 6 h) | Deliberate delay for polling, rate-limit management, or human-paced flows. |
 | `wait_for_event` | `event_name`, `timeout_ms`; optional `match`, `on_timeout` | Signal-driven HITL pause. The runner inserts a `workflow_waits` checkpoint, polls `workflow_signals` at 1 s cadence, and resumes when a matching signal arrives or `timeout_ms` elapses. The runner does NOT implicitly skip downstream steps on timeout — the workflow author MUST follow the wait with an explicit `branch` step that gates the success vs timeout path on `$.steps.<wait_id>.timed_out`. |
 | `call` | one of `workflow_id` or `workflow_slug`; optional `input` | Invokes another workflow. Recursion is capped by `MAX_CALL_DEPTH` (5). |
-| `tool` | `image`; optional `cmd`, `env`, `cpu`, `memory_mb`, `network_mode`, `workdir` | Runs a sandboxed container. The escape hatch for tightly controlled user-supplied images that should not be embedded in the engine. The `tool` kind here is unrelated to the LLM agentic tool-calling palette. |
 
 Every step also accepts the shared base fields `id`, `on_error` (`fail` \| `continue`), `data_selector`, and `timeout_ms`.
 

@@ -10,6 +10,7 @@ import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
 import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
 import { setHealthState } from "./http/health-state.ts";
+import { engineServeOptions } from "./http/listen-hostname.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
@@ -125,6 +126,14 @@ async function runServer(): Promise<void> {
   // exporter env vars are set.
   const stopTracing = await startTracing();
   recordBootConsumer("tracing");
+
+  // Boot-time dependency validation. Runs every probe (DB connect,
+  // pgcrypto, filesystem write, AES self-test, runtime info) and
+  // exits 1 if any blocker fails — operator sees one clean error
+  // instead of a confusing migrate.* / drift.* downstream failure.
+  // Non-blocker degradations log at warn and continue.
+  const { validateBootDependencies } = await import("./observability/boot-dependencies.ts");
+  await validateBootDependencies(db);
 
   // Apply embedded migrations BEFORE any subsystem touches a table.
   // Issue #149: this used to be a separate `migrate` compose container
@@ -364,12 +373,13 @@ async function runServer(): Promise<void> {
   const port = getConfig().server.port;
   recordBootConsumer("http_server");
 
-  const server = serve({ fetch: app.fetch, port });
+  const opts = engineServeOptions(port);
+  const server = serve({ fetch: app.fetch, port: opts.port, hostname: opts.hostname });
 
   logger.info({
     module: "engine",
     action: "ready",
-    msg: `engine listening on http://0.0.0.0:${port}`,
+    msg: `engine listening on http://127.0.0.1:${port}`,
     port,
     public_base_url: getConfig().server.public_base_url || null,
   });
@@ -385,9 +395,11 @@ async function runServer(): Promise<void> {
   // when server.tunnel_port is not set.
   let tunnelWs: TunnelWsServerHandle | null = null;
   try {
+    const tunnelOpts = engineServeOptions(getConfig().server.tunnel_port ?? port + 1);
     tunnelWs = startTunnelWsServer({
       db,
-      port: getConfig().server.tunnel_port ?? port + 1,
+      port: tunnelOpts.port,
+      hostname: tunnelOpts.hostname,
     });
     logger.info({
       module: "engine",
@@ -585,8 +597,8 @@ async function main(): Promise<void> {
   // --issue-admin-key [--tenant <slug>]: mint a fresh admin API key
   // against an existing tenant + admin user, print the plaintext once,
   // exit. Lets operators rotate or bootstrap the verify/diagnostics
-  // key on the droplet without needing the source repo + bun runtime
-  // (e.g. `docker exec subkit-engine-1 /bin/engine --issue-admin-key`).
+  // key on the host without needing the source repo + bun runtime
+  // (e.g. `sudo -u subkit /usr/local/bin/engine --issue-admin-key`).
   // Does NOT run migrations or seed — safe on a live database.
   if (process.argv.includes(ISSUE_ADMIN_KEY_FLAG)) {
     await withContext(

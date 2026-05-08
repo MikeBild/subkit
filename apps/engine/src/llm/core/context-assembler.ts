@@ -112,7 +112,7 @@ const BASE_SYSTEM_PROMPTS: Record<Exclude<LlmFlow, "converse">, string> = {
     "You are the subkit workflow engine's generate flow.",
     "Turn the user's description into a typed WorkflowDef draft.",
     "A WorkflowDef has a `name`, optional `slug` / `description`, and an ordered `steps[]` array.",
-    "Each step has `kind` (one of: request, transform, call, wait, branch, parallel, loop, tool) and a unique `id`.",
+    "Each step has `kind` (one of: request, transform, call, wait, branch, parallel, loop) and a unique `id`.",
     "Prefer `request` steps with `connector_id` + `path` when a connector is in scope.",
     "Always ground your draft in the provided Skills and connector docs. Never invent endpoints or parameters.",
     "Emit exactly one JSON object matching the WorkflowDef schema. No surrounding prose.",

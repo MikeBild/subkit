@@ -435,7 +435,10 @@ export interface paths {
                 query?: {
                     tenant?: string;
                 };
-                header?: never;
+                header?: {
+                    "x-subkit-audit-source"?: components["schemas"]["AuditSource"];
+                    "x-subkit-deploy-version"?: components["schemas"]["DeployVersion"];
+                };
                 path: {
                     path: string;
                 };
@@ -7151,7 +7154,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Operator-facing setup validation for live engine configuration */
+        /**
+         * Operator-facing setup validation for live engine configuration
+         * @description Returns the GLOBAL config snapshot only — tenant overlays are not represented here. Operators reading this expecting per-tenant `auth.firebase.*` (or any other tenant-scope leaf) should hit `GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins can validate the engine's bootstrap configuration without a tenant context.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -7436,6 +7442,9 @@ export interface components {
             path: string[];
             expected: string;
         };
+        /** @enum {string} */
+        AuditSource: "sk_cli" | "deploy_bootstrap";
+        DeployVersion: string;
         SettingPutBody: {
             value?: unknown;
             force?: boolean;

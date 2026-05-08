@@ -455,6 +455,17 @@
           "expected"
         ]
       },
+      "AuditSource": {
+        "type": "string",
+        "enum": [
+          "sk_cli",
+          "deploy_bootstrap"
+        ]
+      },
+      "DeployVersion": {
+        "type": "string",
+        "pattern": "^\\d+\\.\\d+\\.\\d+$"
+      },
       "SettingPutBody": {
         "type": "object",
         "properties": {
@@ -9948,6 +9959,22 @@
             "required": false,
             "name": "tenant",
             "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/AuditSource"
+            },
+            "required": false,
+            "name": "x-subkit-audit-source",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/DeployVersion"
+            },
+            "required": false,
+            "name": "x-subkit-deploy-version",
+            "in": "header"
           }
         ],
         "requestBody": {
@@ -17642,6 +17669,7 @@
           "diagnostics"
         ],
         "summary": "Operator-facing setup validation for live engine configuration",
+        "description": "Returns the GLOBAL config snapshot only — tenant overlays are not represented here. Operators reading this expecting per-tenant `auth.firebase.*` (or any other tenant-scope leaf) should hit `GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins can validate the engine's bootstrap configuration without a tenant context.",
         "security": [
           {
             "bearerAuth": []

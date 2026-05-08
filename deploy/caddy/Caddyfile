@@ -1,5 +1,8 @@
 {
-	email {$CADDY_ACME_EMAIL}
+	# Caddy substitutes the env var if set, otherwise falls back to the
+	# literal default after the `:`. Operators can override per host with
+	# `CADDY_ACME_EMAIL=... systemctl edit caddy`.
+	email {$CADDY_ACME_EMAIL:mike@mikebild.com}
 	acme_ca https://acme-v02.api.letsencrypt.org/directory
 }
 
@@ -13,7 +16,7 @@ subkit-api.mikebild.dev {
 		-Server
 	}
 	encode zstd gzip
-	reverse_proxy engine:3000
+	reverse_proxy 127.0.0.1:3000
 }
 
 subkit-tunnel.mikebild.dev {
@@ -26,7 +29,7 @@ subkit-tunnel.mikebild.dev {
 		-Server
 	}
 	handle /v1/tunnels/* {
-		reverse_proxy engine:3001
+		reverse_proxy 127.0.0.1:3001
 	}
 	handle {
 		respond 404

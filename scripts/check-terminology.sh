@@ -51,7 +51,8 @@ else
     if grep -RniE "\\b${word}\\b" \
         apps/engine/src apps/sk/src apps/agent/src packages \
         --include='*.ts' --include='*.tsx' \
-        --exclude-dir=tests --exclude-dir=test --exclude-dir=fixtures --exclude-dir=node_modules \
+        --exclude-dir=tests --exclude-dir=test --exclude-dir=__tests__ \
+        --exclude-dir=fixtures --exclude-dir=node_modules \
         --exclude-dir=out --exclude-dir=dist --exclude-dir=seed \
         2>/dev/null | grep -vE '(self-healing/policy\.ts)' ; then
       echo "ERROR: banned term '${word}' still appears in engine/sk/agent/packages TypeScript source" >&2

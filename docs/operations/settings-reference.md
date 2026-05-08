@@ -126,11 +126,11 @@ Observability
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `observability.langfuse.host` | string | `""` | global | no | yes |  |
-| `observability.langfuse.public_key` | string | `""` | global | no | yes |  |
-| `observability.langfuse.secret_key` | string | `""` | global | yes | yes |  |
-| `observability.otlp.endpoint` | string | `""` | global | no | yes |  |
-| `observability.otlp.service_name` | string | `"subkit"` | global | no | yes |  |
+| `observability.langfuse.host` | string | `""` | global | no | no |  |
+| `observability.langfuse.public_key` | string | `""` | global | no | no |  |
+| `observability.langfuse.secret_key` | string | `""` | global | yes | no |  |
+| `observability.otlp.endpoint` | string | `""` | global | no | no |  |
+| `observability.otlp.service_name` | string | `"subkit"` | global | no | no |  |
 
 ## egress
 Egress filter
@@ -161,14 +161,6 @@ Error ring buffer
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `errors.ring_size` | number | `100` | global | no | no |  |
-
-## docker
-Docker daemon
-
-| path | type | default | scope | sensitive | requiresRestart | description |
-| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `docker.host` | string | `""` | global | no | no |  |
-| `docker.skip` | boolean | `false` | global | no | no | Skip Docker probes; useful for environments without Docker |
 
 ## spec
 Spec fetcher

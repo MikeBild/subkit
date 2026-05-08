@@ -3,5 +3,9 @@
 // route_layering check at apps/engine/scripts/audit-invariants.ts.
 
 export * from "./audit.ts";
+// `audit-source.ts` exports Zod schemas only (constants + types live
+// in `@shared/audit-source`); re-exported here so existing
+// `from "../../audit"` imports keep working without churn.
+export * from "./audit-source.ts";
 export * from "./query.ts";
 export * from "./types.ts";

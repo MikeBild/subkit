@@ -1,0 +1,96 @@
+; Subkit engine — single-binary workflow engine.
+;
+; Replaces the docker-compose `engine` service for production. The
+; binary at /usr/local/bin/engine is the same `bun build --compile`
+; artifact CI publishes; deploy = scp + `systemctl restart`.
+;
+; Layout on the host (matches scripts/do-bootstrap.sh):
+;   /usr/local/bin/engine          — binary (chmod 755)
+;   /etc/subkit/.env               — operator env (chmod 600, owned by subkit)
+;   /etc/subkit/subkit.config.json — runtime config (auto-created on first
+;                                    boot if absent; engine reads it via
+;                                    apps/engine/src/config/loader.ts)
+;   /var/lib/subkit/blobs          — file storage
+;
+; Ops:
+;   sudo systemctl daemon-reload
+;   sudo systemctl enable --now subkit-engine
+;   sudo systemctl status subkit-engine
+;   sudo journalctl -u subkit-engine -f
+;
+; The engine is a data-workflow runtime — no docker socket, no
+; container spawning. The 4.2.0 retire of the `tool` step removed the
+; docker dependency, so this unit can drop the `docker` group.
+
+[Unit]
+Description=Subkit workflow engine (single binary; replaces docker-compose engine since 4.2.0)
+Documentation=https://github.com/MikeBild/subkit
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=exec
+User=subkit
+Group=subkit
+
+; Single binary — no shell, no node, no bun runtime install needed.
+ExecStart=/usr/local/bin/engine
+
+; Operator-edited env. Required (no `-` prefix): MASTER_KEY is
+; consumed before the config loader runs and a missing .env produces
+; a Zod parse failure inside the binary that's only visible via
+; `journalctl`. Letting systemd report the error at unit-load time is
+; easier to diagnose. `do-bootstrap.sh` step 9 places the file.
+EnvironmentFile=/etc/subkit/.env
+
+; Hard-pin the listen ports so an operator override in /etc/subkit/.env
+; can't drift the Caddy upstream silently. If the ports ever need to
+; change they move here AND in deploy/caddy/Caddyfile in lockstep.
+Environment=PORT=3000
+Environment=TUNNEL_PORT=3001
+
+; Working dir + state. systemd auto-creates these with mode 0750
+; under the unit's User/Group when the *Directory= keys are set.
+WorkingDirectory=/var/lib/subkit
+StateDirectory=subkit
+ConfigurationDirectory=subkit
+
+; Restart policy: process exit -> 5s cooldown -> retry, capped at 3
+; restarts in 60s before systemd gives up. Operator sees the failure
+; in `systemctl status` and journalctl.
+Restart=on-failure
+RestartSec=5s
+StartLimitInterval=60s
+StartLimitBurst=3
+
+; Hardening — least privilege, no shell escape paths.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+; ^ Bun JIT requires write+exec memory; can't enable.
+
+; Filesystem ACL — engine writes to its config dir (auto-create the
+; config file on first boot) and state dir (file-storage blobs, drift
+; reports). Logs go to journald via stdout/stderr — no /var/log/subkit
+; needed.
+ReadWritePaths=/etc/subkit /var/lib/subkit
+
+; Resource limits — keep boot footprint sane on a small host.
+LimitNOFILE=65536
+LimitNPROC=4096
+
+; Network — engine listens on 3000 (HTTP) + 3001 (tunnel WS).
+; Caddy in front handles 443→3000 and 443→3001 routing.
+
+[Install]
+WantedBy=multi-user.target

@@ -123,3 +123,108 @@ export async function startTracing(): Promise<() => Promise<void>> {
 export function isTracingStarted(): boolean {
   return state.started;
 }
+
+/**
+ * Hot-reload the OTel SDK after an `observability.*` config change.
+ *
+ * Shuts down the existing exporter pipeline (best-effort), clears the
+ * started flag, and re-runs startTracing(). Called by setConfigKey()
+ * when an `observability.langfuse.*` or `observability.otlp.*` leaf
+ * is updated, so operators see `sk settings set
+ * observability.langfuse.secret_key '"…"'` take effect on the next
+ * span without a process restart.
+ *
+ * Safe to call when tracing was never started (e.g. operator flips an
+ * exporter on for the first time after boot) — the start path itself
+ * checks for the no-config short-circuit.
+ */
+/** Test-only seam: when set, the next call to `reconfigureTracing()`
+ *  throws synchronously. Used by audit-parity tests to fence the
+ *  `metadata.reconfigure_failed = true` contract on the audit row.
+ *  Test sets it; reconfigureTracing reads-and-clears it; the throw
+ *  exercises the loader's catch branch. Production callers never set
+ *  this.
+ *
+ *  Defensive cleanup: tests should always invoke
+ *  `_clearReconfigureFailureForTests()` in a finally block (or
+ *  afterEach) so a thrown assertion doesn't leak the flag into the
+ *  next test's reconfigure. */
+let _throwOnNextReconfigureForTests = false;
+export function _failNextReconfigureForTests(): void {
+  _throwOnNextReconfigureForTests = true;
+}
+export function _clearReconfigureFailureForTests(): void {
+  _throwOnNextReconfigureForTests = false;
+}
+
+/** Hard upper bound on the per-call shutdown wait. The OTel
+ *  BatchSpanProcessor + Langfuse SDKs both expose internal forceFlush
+ *  budgets, but those are exporter-side and don't bound the SDK's
+ *  network-export retries. Without this race, a hung Langfuse host
+ *  could pin reconfigureTracing() — and therefore setConfigKey()'s
+ *  global write lock — for 30+ seconds, starving every other settings
+ *  write on the engine. 5 s is well above any healthy shutdown and
+ *  short enough that an unrelated /v1/settings PUT doesn't notice. */
+const RECONFIGURE_SHUTDOWN_TIMEOUT_MS = 5_000;
+
+async function awaitWithTimeout(
+  promise: Promise<unknown>,
+  timeoutMs: number,
+  onTimeout: () => void,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), timeoutMs);
+  });
+  try {
+    const winner = await Promise.race([promise.then(() => "ok" as const), timeoutPromise]);
+    if (winner === "timeout") onTimeout();
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export async function reconfigureTracing(): Promise<void> {
+  if (_throwOnNextReconfigureForTests) {
+    _throwOnNextReconfigureForTests = false;
+    throw new Error("forced reconfigure failure (test seam)");
+  }
+  const prev = state.shutdown;
+  state.started = false;
+  delete state.shutdown;
+  if (prev) {
+    await awaitWithTimeout(
+      // Wrap the shutdown in a try-catch — exporter throws are not a
+      // gate, just a degraded-warn (current behavior).
+      Promise.resolve()
+        .then(() => prev())
+        .catch((err) => {
+          logger.warn({
+            module: "observability",
+            action: "tracing.reconfigure_shutdown_failed",
+            msg: "tracing shutdown during reconfigure failed (continuing)",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }),
+      RECONFIGURE_SHUTDOWN_TIMEOUT_MS,
+      () => {
+        // Timeout: log the bounded wait, then fall through to
+        // startTracing() so the new config still takes effect. The
+        // OTel SDK's prior shutdown is not awaited further — its
+        // exporter retries continue in the background and the
+        // process either drains them or exits.
+        logger.warn({
+          module: "observability",
+          action: "tracing.reconfigure_shutdown_timeout",
+          msg: `tracing shutdown exceeded ${RECONFIGURE_SHUTDOWN_TIMEOUT_MS}ms; continuing with re-init`,
+        });
+      },
+    );
+  }
+  await startTracing();
+  logger.info({
+    module: "observability",
+    action: "tracing.reconfigured",
+    msg: "OpenTelemetry tracer reconfigured from settings.changed",
+  });
+}

@@ -1,0 +1,27 @@
+# Single source of truth for bootstrap env vars passed via SSH SendEnv.
+#
+# Three sites must keep this list in lockstep:
+#   1. scripts/do-bootstrap.sh  — writes /etc/ssh/sshd_config.d/subkit.conf
+#                                 with one `AcceptEnv <NAME>` per variable
+#                                 (sshd silently rejects globs longer than
+#                                 ~256 chars in a single AcceptEnv line).
+#   2. scripts/deploy.sh        — passes `-o SendEnv=<comma-list>` to ssh.
+#   3. .github/workflows/release.yml — same SendEnv option.
+#
+# This file is the canonical list. Each script reads it directly so a
+# new variable lands in one place. Format: one variable per line,
+# blank lines and `#` comments ignored.
+
+# Engine release coordinates.
+ENGINE_VERSION
+
+# Admin bearer for the post-health PUT /v1/settings/* phase.
+VERIFY_API_KEY
+
+# Bootstrap LLM provisioning — eat-own-dog-food path. All optional;
+# absent vars skip their PUT.
+BOOTSTRAP_LLM_PROVIDER
+BOOTSTRAP_LLM_API_KEY
+BOOTSTRAP_LLM_MODEL
+BOOTSTRAP_LLM_FALLBACK_PROVIDER
+BOOTSTRAP_LLM_FALLBACK_MODEL

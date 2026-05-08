@@ -94,7 +94,7 @@ const VersionMismatchBannerImpl: React.FC<VersionMismatchBannerProps> = ({ snaps
   const glyph = isEngineOlder ? "↻" : "⚠";
   const color = isEngineOlder ? "yellow" : "red";
   const message = isEngineOlder
-    ? `${glyph} engine is older than this CLI (engine v${snapshot.engineVersion} · CLI v${snapshot.cliVersion}) — rebuild the engine container (\`bun run docker:engine:rebuild\`) to pick up the latest fixes`
+    ? `${glyph} engine is older than this CLI (engine v${snapshot.engineVersion} · CLI v${snapshot.cliVersion}) — restart the engine to pick up the latest fixes (local dev: \`bun run dev\`; production host: \`scripts/deploy.sh patch\`)`
     : `${glyph} CLI is older than the engine (CLI v${snapshot.cliVersion} · engine v${snapshot.engineVersion}) — upgrade sk (\`bun install -g @subkit/sk@latest\` or rebuild from source)`;
   return (
     <Box>

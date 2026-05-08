@@ -3,15 +3,23 @@
 //
 // Surfaces the live engine configuration grouped by section (auth,
 // llm, datastore, storage, crypto, public_urls). Each section returns
-// a status (ok / warn / blocked), the full set of relevant env values
-// (secrets masked), and a structured issue list with remediation
-// recommendations. Exists so operators / portal UI / `/setup` slash
-// commands can answer "is the engine production-ready?" without
-// ssh-ing in.
+// a status (ok / warn / blocked), the relevant settings (secrets
+// masked), and a structured issue list with remediation hints. Exists
+// so operators / portal UI / `sk settings configure` can answer
+// "is the engine production-ready?" without ssh-ing in.
+//
+// 4.2.0: this file used to read 33 env vars directly via envString().
+// That made `sk settings set …` (which writes to subkit.config.json)
+// silently invisible — the diagnostic kept reporting "Missing" even
+// after the operator flipped the leaf via the CLI. Everything reads
+// `getConfig()` now. The single exception is `MASTER_KEY`: it stays
+// in env because it's a bootstrap-only value the engine consumes
+// before the config loader runs.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";
+import { BOOTSTRAP_ONLY_ENV_KEYS } from "../../../crypto/aes-gcm.ts";
 import { globalLlmStatus } from "../../../llm/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -24,17 +32,24 @@ import {
   type SetupValue,
 } from "./schemas.ts";
 
-function envString(key: string): string | undefined {
-  const value = process.env[key];
-  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+/** Narrows a config string to undefined when it is the schema default
+ *  (empty string), so the "Missing"/"Not configured" hint logic stays
+ *  centralized at the call site. Trims surrounding whitespace before
+ *  the presence check AND on the way out — otherwise a leading-space
+ *  `OPENAI_API_KEY=" sk-..."` would surface with the leading space
+ *  intact, which is harmless but inconsistent with the trimmed
+ *  predicate. */
+function present(value: string | undefined | null): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function maskSecret(value: string | undefined): string | null {
-  if (!value) return null;
-  if (value.length <= 6) return "*".repeat(value.length);
-  return `${value.slice(0, 4)}…${value.slice(-2)}`;
-}
-
+// 4.2.0: every secret-shape value in this file uses `setPresence`
+// (returns "configured" / null) instead of `maskSecret` (which leaked
+// 6 hex chars to any identity:read principal). The diagnostic
+// surface is reachable to non-admin roles; a strict presence-only
+// view is the only safe shape.
 function setPresence(value: string | undefined): string | null {
   return value ? "configured" : null;
 }
@@ -69,10 +84,6 @@ function buildSection(
   };
 }
 
-function _compactJoin(items: readonly string[]): string {
-  return items.join(" ");
-}
-
 function formatDatabaseUrl(dsn: string | undefined): string | null {
   if (!dsn) return null;
   try {
@@ -87,44 +98,46 @@ function formatDatabaseUrl(dsn: string | undefined): string | null {
   }
 }
 
-function buildAuthSection(): SetupSection {
+function buildAuthSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
+  const cfg = snapshot.auth;
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
-  const firebaseProject = envString("FIREBASE_PROJECT_ID");
-  const firebaseLoginUrl = envString("FIREBASE_LOGIN_URL");
+  const firebaseProject = present(cfg.firebase.project_id);
+  const firebaseLoginUrl = present(cfg.firebase.login_url);
   if (Boolean(firebaseProject) !== Boolean(firebaseLoginUrl)) {
     issues.push(
       buildIssue(
         "auth-firebase-partial",
         "warning",
         "Firebase login",
-        "FIREBASE_PROJECT_ID and FIREBASE_LOGIN_URL should be set together or both unset.",
+        "auth.firebase.project_id and auth.firebase.login_url should be set together or both unset.",
       ),
     );
     recommendations.push(
-      "Complete the Firebase login pair or unset the partial value before the next deploy.",
+      "Run `sk settings set auth.firebase.project_id ...` + `sk settings set auth.firebase.login_url ...` to complete the pair (or unset both).",
     );
   }
+  const oidcIssuer = present(cfg.oidc.issuer_url);
   return buildSection(
     "Auth",
     [
       {
-        key: "AUTH_MODES",
+        key: "auth_modes",
         value: "api_key, portal_token, bearer",
         status_hint: null,
       },
       {
-        key: "OIDC_ISSUER_URL",
-        value: envString("OIDC_ISSUER_URL") ?? null,
-        status_hint: envString("OIDC_ISSUER_URL") ? null : "Not configured",
+        key: "auth.oidc.issuer_url",
+        value: oidcIssuer ?? null,
+        status_hint: oidcIssuer ? null : "Not configured",
       },
       {
-        key: "FIREBASE_PROJECT_ID",
+        key: "auth.firebase.project_id",
         value: firebaseProject ?? null,
         status_hint: firebaseProject ? null : "Not configured",
       },
       {
-        key: "FIREBASE_LOGIN_URL",
+        key: "auth.firebase.login_url",
         value: firebaseLoginUrl ?? null,
         status_hint: firebaseLoginUrl ? null : "Not configured",
       },
@@ -164,16 +177,16 @@ function providerHasCredentials(
   }
 }
 
-function buildLlmSection(): SetupSection {
+function buildLlmSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
   const llmStatus = globalLlmStatus();
+  const cfg = snapshot.llm;
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
 
-  // Validation now lives in ConfigSchema + model-init's validateProviderSetup
+  // Validation lives in ConfigSchema + model-init's validateProviderSetup
   // — boot fails on bad config so this section reports the live status from
   // globalLlmStatus(). The blocker surface comes from `inferred_provider ===
   // "unconfigured"` which globalLlmStatus already encodes.
-  const cfg = getConfig().llm;
   if (llmStatus.inferred_provider === "unconfigured") {
     issues.push(
       buildIssue(
@@ -189,9 +202,8 @@ function buildLlmSection(): SetupSection {
   }
 
   // Summarize-route blocker fires when the override picks a provider
-  // but its credentials are absent. v3.4's `listLlmEnvironmentIssues`
-  // bundled this check; v3.5 derives it from the same globalLlmStatus
-  // flags that drive the credential badges below.
+  // but its credentials are absent. Same shape as the primary check —
+  // both derive from the globalLlmStatus flags below.
   if (
     cfg.summarize_provider &&
     cfg.summarize_provider !== "mock" &&
@@ -210,74 +222,91 @@ function buildLlmSection(): SetupSection {
     );
   }
 
+  const ai = cfg.providers.ai_gateway;
+  const anthropic = cfg.providers.anthropic;
+  const openai = cfg.providers.openai;
+  const gemini = cfg.providers.gemini;
+  const azure = cfg.providers.azure;
+  const bedrock = cfg.providers.bedrock;
+  const vertex = cfg.providers.vertex;
+
   const gatewayReady = llmStatus.gateway_key_set && llmStatus.gateway_model_set;
   const primaryRoute = gatewayReady
-    ? `gateway · ${envString("AI_GATEWAY_MODEL") ?? "(model missing)"}`
-    : `${llmStatus.provider_env ?? llmStatus.inferred_provider} · ${envString("LLM_PRIMARY") ?? llmStatus.default_primary}`;
-  const fallbackRoute = llmStatus.fallback_provider_env
-    ? `${llmStatus.fallback_provider_env} · ${envString("LLM_FALLBACK") ?? llmStatus.default_fallback}`
+    ? `gateway · ${present(ai.model) ?? "(model missing)"}`
+    : `${cfg.provider} · ${present(cfg.model) ?? llmStatus.default_primary}`;
+  const fallbackRoute = cfg.fallback_provider
+    ? `${cfg.fallback_provider} · ${present(cfg.fallback_model) ?? llmStatus.default_fallback}`
     : gatewayReady
       ? "same as primary gateway route"
       : "same as primary provider";
   const summarizeRoute =
-    llmStatus.summarize_provider_env || llmStatus.summarize_model
-      ? `${llmStatus.summarize_provider_env ?? llmStatus.summarize_inferred_provider} · ${llmStatus.summarize_model ?? envString("SUMMARIZE_MODEL") ?? envString("LLM_PRIMARY") ?? llmStatus.default_primary}`
+    cfg.summarize_provider || present(cfg.summarize_model)
+      ? `${cfg.summarize_provider ?? cfg.provider} · ${present(cfg.summarize_model) ?? present(cfg.model) ?? llmStatus.default_primary}`
       : "inherits the primary route";
 
   return buildSection(
     "LLM",
     [
-      { key: "PRIMARY_ROUTE", value: primaryRoute, status_hint: null },
-      { key: "FALLBACK_ROUTE", value: fallbackRoute, status_hint: null },
-      { key: "SUMMARIZE_ROUTE", value: summarizeRoute, status_hint: null },
+      { key: "llm.primary_route", value: primaryRoute, status_hint: null },
+      { key: "llm.fallback_route", value: fallbackRoute, status_hint: null },
+      { key: "llm.summarize_route", value: summarizeRoute, status_hint: null },
       {
-        key: "AI_GATEWAY_MODEL",
-        value: envString("AI_GATEWAY_MODEL") ?? null,
-        status_hint: envString("AI_GATEWAY_MODEL") ? null : "Not configured",
+        key: "llm.providers.ai_gateway.model",
+        value: present(ai.model) ?? null,
+        status_hint: present(ai.model) ? null : "Not configured",
       },
       {
-        key: "AI_GATEWAY_API_KEY",
-        value: setPresence(envString("AI_GATEWAY_API_KEY")),
-        status_hint: envString("AI_GATEWAY_API_KEY") ? null : "Missing",
+        key: "llm.providers.ai_gateway.api_key",
+        value: setPresence(present(ai.api_key)),
+        status_hint: present(ai.api_key) ? null : "Missing",
       },
       {
-        key: "ANTHROPIC_API_KEY",
-        value: setPresence(envString("ANTHROPIC_API_KEY")),
-        status_hint: envString("ANTHROPIC_API_KEY") ? null : "Missing",
+        key: "llm.providers.anthropic.api_key",
+        value: setPresence(present(anthropic.api_key)),
+        status_hint: present(anthropic.api_key) ? null : "Missing",
       },
       {
-        key: "OPENAI_API_KEY",
-        value: setPresence(envString("OPENAI_API_KEY")),
-        status_hint: envString("OPENAI_API_KEY") ? null : "Missing",
+        key: "llm.providers.openai.api_key",
+        value: setPresence(present(openai.api_key)),
+        status_hint: present(openai.api_key) ? null : "Missing",
       },
       {
-        key: "GEMINI_API_KEY",
-        value: setPresence(envString("GEMINI_API_KEY")),
-        status_hint: envString("GEMINI_API_KEY") ? null : "Missing",
+        key: "llm.providers.gemini.api_key",
+        value: setPresence(present(gemini.api_key)),
+        status_hint: present(gemini.api_key) ? null : "Missing",
       },
       {
-        key: "AZURE_API_KEY",
-        value: setPresence(envString("AZURE_API_KEY")),
-        status_hint: envString("AZURE_API_KEY") ? null : "Missing",
+        key: "llm.providers.azure.api_key",
+        value: setPresence(present(azure.api_key)),
+        status_hint: present(azure.api_key) ? null : "Missing",
       },
       {
-        key: "AWS_ACCESS_KEY_ID",
-        value: maskSecret(envString("AWS_ACCESS_KEY_ID")),
-        status_hint: envString("AWS_ACCESS_KEY_ID") ? null : "Missing",
+        key: "llm.providers.bedrock.access_key_id",
+        // setPresence (not maskSecret) — the diagnostic surface is
+        // reachable to anyone with audit:read OR identity:read; even
+        // 6 hex chars of an AWS access key are too much exposure for
+        // a non-admin role.
+        value: setPresence(present(bedrock.access_key_id)),
+        status_hint: present(bedrock.access_key_id) ? null : "Missing",
       },
       {
-        key: "VERTEX_API_KEY",
-        value: setPresence(envString("VERTEX_API_KEY")),
-        status_hint: envString("VERTEX_API_KEY") ? null : "Missing",
+        key: "llm.providers.bedrock.secret_access_key",
+        // Both halves of the AWS credential pair are surfaced so an
+        // operator who only set one sees the gap immediately, instead
+        // of debugging a 4xx from the bedrock SDK.
+        value: setPresence(present(bedrock.secret_access_key)),
+        status_hint: present(bedrock.secret_access_key) ? null : "Missing",
       },
       {
-        key: "VERTEX_SERVICE_ACCOUNT",
-        value:
-          envString("VERTEX_CLIENT_EMAIL") && envString("VERTEX_PRIVATE_KEY") ? "configured" : null,
+        key: "llm.providers.vertex.api_key",
+        value: setPresence(present(vertex.api_key)),
+        status_hint: present(vertex.api_key) ? null : "Missing",
+      },
+      {
+        key: "llm.providers.vertex.service_account",
+        value: present(vertex.client_email) && present(vertex.private_key) ? "configured" : null,
         status_hint:
-          envString("VERTEX_CLIENT_EMAIL") && envString("VERTEX_PRIVATE_KEY")
-            ? null
-            : "Not configured",
+          present(vertex.client_email) && present(vertex.private_key) ? null : "Not configured",
       },
     ],
     issues,
@@ -285,32 +314,41 @@ function buildLlmSection(): SetupSection {
   );
 }
 
-function buildDatastoreSection(): SetupSection {
+function buildDatastoreSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
+  const dsn = present(snapshot.database.url);
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
-  const dsn = envString("DATABASE_URL");
   if (!dsn) {
     issues.push(
-      buildIssue("database-url", "blocker", "Database connection", "DATABASE_URL is not set."),
+      buildIssue("database-url", "blocker", "Database connection", "database.url is not set."),
     );
-    recommendations.push("Set DATABASE_URL to the tenant-scoped Postgres connection string.");
+    recommendations.push(
+      "Set database.url to the tenant-scoped Postgres connection string (or the DATABASE_URL bootstrap env).",
+    );
   } else if (formatDatabaseUrl(dsn) === "invalid DATABASE_URL") {
     issues.push(
       buildIssue(
         "database-url-invalid",
         "blocker",
         "Database connection",
-        "DATABASE_URL is present but cannot be parsed as a URL.",
+        "database.url is present but cannot be parsed as a URL.",
       ),
     );
-    recommendations.push("Fix DATABASE_URL so the engine points at a valid Postgres DSN.");
+    recommendations.push("Fix database.url so the engine points at a valid Postgres DSN.");
   }
+  // database.url carries `secret: true` in ConfigSchema (the password
+  // is sensitive, and the username + host identify which prod cluster
+  // the engine points at — operational metadata that non-admin
+  // identity:read principals shouldn't see). Surface presence only.
+  // formatDatabaseUrl is still consulted internally for the
+  // invalid-format check above; the operator-facing string lands in
+  // the issue detail, not in the public value.
   return buildSection(
     "Datastore",
     [
       {
-        key: "DATABASE_URL",
-        value: formatDatabaseUrl(dsn),
+        key: "database.url",
+        value: setPresence(dsn),
         status_hint: dsn ? null : "Missing",
       },
     ],
@@ -319,12 +357,13 @@ function buildDatastoreSection(): SetupSection {
   );
 }
 
-function buildStorageSection(): SetupSection {
+function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
+  const s3 = snapshot.storage.s3;
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
-  const endpoint = envString("S3_ENDPOINT");
-  const accessKey = envString("S3_ACCESS_KEY");
-  const secretKey = envString("S3_SECRET_KEY");
+  const endpoint = present(s3.endpoint);
+  const accessKey = present(s3.access_key);
+  const secretKey = present(s3.secret_key);
   const partial =
     [endpoint, accessKey, secretKey].some(Boolean) &&
     ![endpoint, accessKey, secretKey].every(Boolean);
@@ -334,26 +373,31 @@ function buildStorageSection(): SetupSection {
         "s3-partial",
         "warning",
         "Object storage",
-        "S3 configuration is partial. Set S3_ENDPOINT, S3_ACCESS_KEY, and S3_SECRET_KEY together or remove the partial values.",
+        "S3 configuration is partial. Set storage.s3.{endpoint,access_key,secret_key} together or remove the partial values.",
       ),
     );
-    recommendations.push("Complete the S3 triplet or unset it before the next deploy.");
+    recommendations.push("Complete the storage.s3 triplet or unset it before the next deploy.");
   }
   return buildSection(
     "Object storage",
     [
       {
-        key: "S3_ENDPOINT",
+        key: "storage.s3.endpoint",
         value: endpoint ?? null,
         status_hint: endpoint ? null : "Not configured",
       },
       {
-        key: "S3_ACCESS_KEY",
-        value: maskSecret(accessKey),
+        key: "storage.s3.access_key",
+        // Standardize on setPresence across the section (matches
+        // storage.s3.secret_key below). The S3 access key half of the
+        // pair is also a credential — the previous masked-prefix
+        // exposure leaked the AWS account-recognizable prefix to any
+        // identity:read principal.
+        value: setPresence(accessKey),
         status_hint: accessKey ? null : "Missing",
       },
       {
-        key: "S3_SECRET_KEY",
+        key: "storage.s3.secret_key",
         value: setPresence(secretKey),
         status_hint: secretKey ? null : "Missing",
       },
@@ -364,12 +408,33 @@ function buildStorageSection(): SetupSection {
 }
 
 function buildCryptoSection(): SetupSection {
+  // BOOTSTRAP_ONLY_ENV_KEYS in apps/engine/src/crypto/aes-gcm.ts is
+  // the canonical list of env vars consumed BEFORE the config loader.
+  // Today it's exactly ["MASTER_KEY"] and the diagnostic only knows
+  // how to render that one key (length validation, status hint).
+  // If a second var is ever added, this section needs to grow a row
+  // per entry — the assertion below makes that visible at boot
+  // instead of silently surfacing only the first.
+  if (BOOTSTRAP_ONLY_ENV_KEYS.length !== 1 || BOOTSTRAP_ONLY_ENV_KEYS[0] !== "MASTER_KEY") {
+    throw new Error(
+      `BOOTSTRAP_ONLY_ENV_KEYS shape changed (${JSON.stringify(BOOTSTRAP_ONLY_ENV_KEYS)}); update buildCryptoSection to render every entry.`,
+    );
+  }
+  const masterKey = present(process.env.MASTER_KEY);
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
-  const masterKey = envString("MASTER_KEY");
+  // Detect deployment shape: production paths set STATE_DIRECTORY +
+  // CONFIGURATION_DIRECTORY via the systemd unit; local dev does not.
+  const envFilePath =
+    typeof process.env.CONFIGURATION_DIRECTORY === "string" &&
+    process.env.CONFIGURATION_DIRECTORY.length > 0
+      ? `${process.env.CONFIGURATION_DIRECTORY.split(":")[0]}/.env`
+      : ".env (repo root for local dev) or /etc/subkit/.env (systemd)";
   if (!masterKey) {
     issues.push(buildIssue("master-key", "blocker", "Master key", "MASTER_KEY is not set."));
-    recommendations.push("Set MASTER_KEY to a 64-hex-character AES-256-GCM key.");
+    recommendations.push(
+      `Set MASTER_KEY in ${envFilePath} to a 64-hex-character AES-256-GCM key (\`openssl rand -hex 32\`).`,
+    );
   } else if (!/^[0-9a-fA-F]{64}$/.test(masterKey)) {
     issues.push(
       buildIssue(
@@ -386,7 +451,10 @@ function buildCryptoSection(): SetupSection {
     [
       {
         key: "MASTER_KEY",
-        value: maskSecret(masterKey),
+        // setPresence — even 6 hex chars of MASTER_KEY in the
+        // diagnostic surface is too much exposure for a non-admin
+        // identity:read principal.
+        value: setPresence(masterKey),
         status_hint: masterKey ? null : "Missing",
       },
     ],
@@ -395,26 +463,28 @@ function buildCryptoSection(): SetupSection {
   );
 }
 
-function buildPublicUrlsSection(): SetupSection {
+function buildPublicUrlsSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
+  const baseUrl = present(snapshot.server.public_base_url);
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
-  const baseUrl = envString("PUBLIC_BASE_URL");
   if (!baseUrl) {
     issues.push(
       buildIssue(
         "public-base-url",
         "warning",
         "Public base URL",
-        "PUBLIC_BASE_URL is not set. External webhook links, chat deeplinks, and operator copy-paste URLs may be wrong.",
+        "server.public_base_url is not set. External webhook links, chat deeplinks, and operator copy-paste URLs may be wrong.",
       ),
     );
-    recommendations.push("Set PUBLIC_BASE_URL to the externally reachable engine URL.");
+    recommendations.push(
+      "Run `sk settings set server.public_base_url '\"https://...\"'` with the externally reachable engine URL.",
+    );
   }
   return buildSection(
     "Public URLs",
     [
       {
-        key: "PUBLIC_BASE_URL",
+        key: "server.public_base_url",
         value: baseUrl ?? null,
         status_hint: baseUrl ? null : "Missing",
       },
@@ -425,13 +495,22 @@ function buildPublicUrlsSection(): SetupSection {
 }
 
 function buildSetupValidation(): SetupResponse {
+  // Read getConfig() once per request and thread the snapshot down so
+  // every section sees a coherent point-in-time view of the config.
+  // structuredClone is required: setConfigKey() mutates the live
+  // config tree in place by replacing branches; sub-objects share
+  // refs across reads. Without the deep clone a concurrent
+  // setConfigKey mid-build could still flip a leaf the next builder
+  // reads. The clone is one-shot per request, so the cost amortises
+  // against the 6-section traversal that follows.
+  const snapshot = structuredClone(getConfig());
   const sections = {
-    auth: buildAuthSection(),
-    llm: buildLlmSection(),
-    datastore: buildDatastoreSection(),
-    storage: buildStorageSection(),
+    auth: buildAuthSection(snapshot),
+    llm: buildLlmSection(snapshot),
+    datastore: buildDatastoreSection(snapshot),
+    storage: buildStorageSection(snapshot),
     crypto: buildCryptoSection(),
-    public_urls: buildPublicUrlsSection(),
+    public_urls: buildPublicUrlsSection(snapshot),
   };
 
   const allSections = Object.values(sections);
@@ -458,6 +537,11 @@ const setupRoute = createRoute({
   path: "/v1/diagnostics/setup",
   tags: ["diagnostics"],
   summary: "Operator-facing setup validation for live engine configuration",
+  description:
+    "Returns the GLOBAL config snapshot only — tenant overlays are not represented here. " +
+    "Operators reading this expecting per-tenant `auth.firebase.*` (or any other tenant-scope leaf) " +
+    "should hit `GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins " +
+    "can validate the engine's bootstrap configuration without a tenant context.",
   security: [{ bearerAuth: [] }],
   responses: {
     200: { description: "OK", content: { "application/json": { schema: SetupResponseSchema } } },

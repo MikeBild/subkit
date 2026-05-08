@@ -90,7 +90,13 @@ export function startTunnelWsServer(opts: TunnelWsServerOptions): TunnelWsServer
 
   const server = bun.serve({
     port: opts.port ?? 0,
-    hostname: opts.hostname ?? "0.0.0.0",
+    // Default to 127.0.0.1: the production runtime explicitly passes
+    // `engineServeOptions(port).hostname` (which is also 127.0.0.1)
+    // and Caddy fronts public TLS. A caller that omits `hostname`
+    // entirely (test fixture, hand-rolled debug script, …) gets the
+    // same defense-in-depth — no one accidentally exposes the WS
+    // port. Callers that want a public bind opt in explicitly.
+    hostname: opts.hostname ?? "127.0.0.1",
     async fetch(req: Request, srv: BunLikeServer) {
       try {
         const url = new URL(req.url);
