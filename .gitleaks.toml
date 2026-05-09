@@ -1,0 +1,29 @@
+# Extend the default gitleaks ruleset rather than replacing it.
+# Only narrow allowlists for known-fake canary tokens shipped as test
+# fixtures live here.
+[extend]
+useDefault = true
+
+# Diagnostics leak-canary test fixtures.
+#
+# `apps/engine/src/http/tests/diagnostics.test.ts` is the engine's
+# secret-leak regression net for the `/v1/diagnostics/setup` route. It
+# seeds deliberate, recognizable fakes (with `FAKE` and `LEAK`/`CANARY`
+# markers in the literal string) into the config and asserts that the
+# response body never echoes them back at any prefix length. Without an
+# allowlist, gitleaks's default `aws-access-token` rule flags the seed
+# values themselves on every push because they start with `AKIA` and
+# match the canonical AWS access-key-id shape.
+#
+# The allowlist is scoped by both path AND regex so it cannot mask a
+# real leak: only strings that contain the canary markers in this one
+# test file are exempted.
+[[allowlists]]
+description = "diagnostics leak-canary fakes — intentional, self-labelled test fixtures"
+targetRules = ["aws-access-token"]
+paths = [
+  '''apps/engine/src/http/tests/diagnostics\.test\.ts''',
+]
+regexes = [
+  '''AKIA(FAKE|TEST)[A-Z0-9]*(LEAK|CANARY)[A-Z0-9]*''',
+]

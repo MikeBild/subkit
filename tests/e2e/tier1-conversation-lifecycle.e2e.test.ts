@@ -193,8 +193,16 @@ describe.skipIf(!SHOULD_RUN)(
       // tool palette + Zod validators + draft snapshotting all ran.
       expect(tools).toContain("start_connector_from_description");
 
-      // If the LLM completed the round-trip, a connector row exists.
-      if (tools.includes("save_workflow_draft")) {
+      // Connector-existence gate. The floor above enforces that
+      // start_connector_from_description was dispatched; the prompt then
+      // tells the LLM to "continue through the normal probe/save path",
+      // so a fresh row in `connectors` must exist by end-of-conversation.
+      // The previous gate (`save_workflow_draft` ∈ tools) was incoherent
+      // for a connector test — it deferred the existence check to whether
+      // the LLM happened to also build a workflow on top, which let an
+      // actual no-op connector save (the failure mode we're guarding) go
+      // undetected on every run where the model skipped the workflow.
+      if (tools.includes("start_connector_from_description")) {
         const after = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
           headers: adminAuth(),
         }).then((r) => r.json() as Promise<{ items: Array<{ slug: string; name: string }> }>);

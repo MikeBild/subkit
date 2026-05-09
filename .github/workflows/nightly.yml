@@ -52,7 +52,17 @@ jobs:
       LLM_PROVIDER: anthropic
       # Pin the model so model-side regressions are observable.
       # Bumping this is an intentional decision, not a drift surface.
-      ANTHROPIC_MODEL: claude-haiku-4-5-20251001
+      #
+      # Sonnet 4.6, not Haiku 4.5: the tier-1 prompts require multi-step
+      # tool ordering (`propose_step` → `validate_draft` → `ask_user_confirm`
+      # → `save_*`). Haiku 4.5 reliably short-circuits to `ask_user_confirm`
+      # and commits an empty draft in <1 s, leaving the floor assertion
+      # (`tools` contains the leading tool name) failing 4/4 nightlies.
+      # Sonnet 4.6 follows the prescribed sequence at the cost of ~6× the
+      # vendor spend per run (~$0.30 vs ~$0.05). The whole point of this
+      # nightly is to catch real LLM-quality regressions in the engine's
+      # tool palette, so the model has to be capable enough to follow it.
+      ANTHROPIC_MODEL: claude-sonnet-4-6
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       SKIP_DOCKER: "1"
       TZ: UTC
@@ -85,14 +95,14 @@ jobs:
       - name: Build sk binary
         run: bun run build:sk
       - name: Tier 1.x e2e (real LLM)
-        # Real LLM tests probe whether claude-haiku-4-5 actually picks
-        # the prescribed tool call out of the open palette. The model's
-        # routing varies between identical calls, so a single test run
-        # is a noisy signal. History on this workflow has shown ~50%
-        # flake rate; a single retry left ~25% nightly noise. Three
-        # attempts with 30 s backoff drops false-fail rate to ≤12.5%
-        # while still surfacing real LLM-quality regressions that fail
-        # consistently across all attempts.
+        # Real LLM tests probe whether the configured model actually
+        # picks the prescribed tool call out of the open palette. The
+        # model's routing varies between identical calls, so a single
+        # test run is a noisy signal. History on this workflow has
+        # shown ~50% flake rate; a single retry left ~25% nightly
+        # noise. Three attempts with 30 s backoff drops false-fail
+        # rate to ≤12.5% while still surfacing real LLM-quality
+        # regressions that fail consistently across all attempts.
         run: |
           set +e
           for attempt in 1 2 3; do
