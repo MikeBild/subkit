@@ -34,6 +34,23 @@ by an agent. See `AGENTS.md` for the canonical repo-wide contract and
   Drift detection, bounded repair loop, Execution Fixture dry-runs, Patch Candidates.
   Never auto-apply.
 
+## sk REPL surface (consolidated in #159)
+
+- `/settings` opens a 10-tab palette in-process: `Settings · Status · Config · Usage ·
+  Stats · Skills · Permissions · Knowledge · Profile · Admin`. The Admin tab is
+  hidden unless the principal holds an admin-scoped permission.
+- Slash registry lives in `apps/sk/src/slash.ts`; deleted-slash redirects in
+  `apps/sk/src/repl/slash/dispatcher.ts:REMOVED_SLASH_GUIDANCE`. Permanent
+  guidance for slashes subkit intentionally never ships (`/agents`, `/fast`,
+  `/plan`, `/diff`, `/output-style`, `/rewind`).
+- Engine settings groups added: `repl.permissionMode`, `ui.{theme,personality,
+  title.format,statusline.format}`, `notifications.push.{enabled,thresholdSec,
+  quietHoursStart,quietHoursEnd}`. Resolved per principal in
+  `skBootstrap.prefs`.
+- Engine fork-from-message route: `POST /v1/conversations/{id}/fork-from-message/{message_id}`
+  copies messages 0..N into a new conversation; reachable from the `/resume`
+  rewind sub-mode (toggle with `t`).
+
 ## Sub-agents (not skills, but related)
 
 Specialists under `.claude/agents/`:

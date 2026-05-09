@@ -174,3 +174,20 @@ Token budget
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `tokens.monthly_budget` | number | `0` | tenant | no | no | Hard cap on tokens consumed per calendar month. 0 = unlimited. |
+
+## repl
+sk REPL session preferences
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `repl.permissionMode` | enum("ask" \| "auto" \| "plan" \| "yolo") | `"ask"` | tenant | no | no | Default sk REPL permission mode: ask \| auto \| plan \| yolo. Operator can change at any time via /settings → Permissions or Shift-Tab. |
+
+## ui
+REPL chrome preferences
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `ui.personality` | enum("concise" \| "balanced" \| "verbose") | `"balanced"` | tenant | no | no | Assistant response style: concise \| balanced \| verbose. |
+| `ui.statusline.format` | enum("minimal" \| "compact" \| "detailed") | `"compact"` | tenant | no | no | Status-line layout: minimal \| compact \| detailed. |
+| `ui.theme` | enum("auto" \| "light" \| "dark" \| "high-contrast") | `"auto"` | tenant | no | no | REPL color theme: auto \| light \| dark \| high-contrast. |
+| `ui.title.format` | enum("session-id" \| "tenant-session" \| "model-tenant-session") | `"session-id"` | tenant | no | no | Window-title format used by the sk REPL. |

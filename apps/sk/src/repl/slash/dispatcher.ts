@@ -46,6 +46,52 @@ export function classifySlash(name: string): SlashDispatchPlan {
   return { routing: cmd.routing ?? "engine", command: cmd };
 }
 
+/**
+ * M13 of #159 — one-release guidance for slashes that have been
+ * removed from the registry (or that callers occasionally try to use
+ * because they exist in another tool). Returns the guidance line when
+ * the bare name matches; null otherwise.
+ *
+ * The guidance map covers two cohorts:
+ *
+ *  1. **Removed in the consolidation pass** — slashes that pre-M13 had
+ *     a registered command but were collapsed into a hub (e.g. `/health`
+ *     → `/audit`, `/install-slack` → `/install`). Once one minor
+ *     release has shipped with the guidance, the entries are deleted —
+ *     per repo memory rule "no backwards-compat shims".
+ *
+ *  2. **Agentic-coding slashes that intentionally don't exist in sk**
+ *     (`/agents`, `/fast`, `/plan`, `/diff`, `/output-style`,
+ *     `/rewind`). These never had a registration; the guidance is
+ *     permanent because the question keeps coming up.
+ */
+export const REMOVED_SLASH_GUIDANCE: Readonly<Record<string, string>> = Object.freeze({
+  // G11 cohort — actually removed in the M13 destructive pass.
+  "install-slack": "moved into `/install`",
+  "install-teams": "moved into `/install`",
+  "install-github": "moved into `/install`",
+  "install-google-workspace": "moved into `/install`",
+  "install-salesforce": "moved into `/install`",
+  "install-jira": "moved into `/install`",
+  "install-hubspot": "moved into `/install`",
+  // Agentic-coding slashes that subkit intentionally does NOT ship.
+  // Permanent guidance — these were never registered.
+  agents:
+    "subkit has no subagent routing — Skills, Knowledge Sources, and Connectors fill those niches; see `/skills` and `/knowledge`",
+  fast: "subkit uses a single configured model — see `model` setting via `/model`",
+  plan: "agentic-coding pattern; subkit's analogue is `/draft` for connector + workflow YAML",
+  diff: "subkit does not edit user code; patch-candidate diffs render inside `/approvals`",
+  "output-style":
+    "subkit output is conversational, not code-generative; theme + status line are in `/settings → Config`",
+  rewind:
+    "term collides with `workflows restore`; conversation rewind is `/resume → press t` (M10)",
+});
+
+export function removedSlashGuidance(name: string): string | null {
+  const hint = REMOVED_SLASH_GUIDANCE[name];
+  return hint ?? null;
+}
+
 /** Test-only: snapshot of the local-only set, derived from the
  *  registry. Used by the dispatcher tests so accidental additions
  *  surface in PR review. */

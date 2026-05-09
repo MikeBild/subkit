@@ -208,9 +208,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Restore a workflow version — `/restore <version>`",
     category: "session",
     requires: "workflow:write",
-    // R6-W3: exactly one positional arg, the version label
-    // (numeric ordinal or semver-ish). Engine validates the actual
-    // shape; the dispatcher rejects empty/multi-arg calls early.
     argsSchema: z.tuple([z.string().min(1)]),
   },
   {
@@ -254,7 +251,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "List tool execution-mode badges, or pin a per-tool override. `/policy` lists; `/policy <tool> <auto|ask|review>` sets; `/policy <tool> reset` clears.",
     category: "session",
     requires: "conversation:write",
-    // R6-W3: 0 args (list); 2 args (`<tool> <auto|ask|review|reset>`).
     argsSchema: z.union([
       z.tuple([]),
       z.tuple([z.string().min(1), z.enum(["auto", "ask", "review", "reset"])]),
@@ -272,7 +268,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Show per-step trace for the latest execution (or `/exec <execution_id>`)",
     category: "util",
     requires: "execution:read",
-    // R8-W3 / R9-W2: 0 args (latest) or 1 arg (execution id).
     argsSchema: z.union([z.tuple([]), z.tuple([z.string().min(1).max(128)])]),
   },
   {
@@ -286,8 +281,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Switch the conversation's model",
     category: "session",
     requires: "conversation:write",
-    // R6-W3: exactly one positional arg, the model id (engine validates
-    // the actual ID against the configured route map).
     argsSchema: z.tuple([z.string().min(1)]),
   },
   { name: "profile", aliases: ["env"], help: "List or switch profiles", category: "auth" },
@@ -327,8 +320,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Tail recent engine errors via /v1/diagnostics/errors — `/logs [limit] [trace_id]`",
     category: "admin",
     requires: "audit:read",
-    // R6-W3: 0, 1, or 2 args. limit (1-200), trace_id (any non-empty
-    // string — engine clamps further).
     argsSchema: z.union([
       z.tuple([]),
       z.tuple([z.string().regex(/^\d+$/, "limit must be a positive integer")]),
@@ -340,9 +331,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Toggle SK_DEBUG full trace logging — `/debug on|off|tail` or `/debug` for status",
     category: "util",
     routing: "local",
-    // R5-W3: positional arg, optional, drawn from a closed enum.
-    // `/debug` (no args) shows status; `/debug on|off|tail` flips
-    // verbose state or tails the log. Anything else is rejected.
     argsSchema: z
       .union([z.tuple([]), z.tuple([z.enum(["on", "off", "tail"])])])
       .describe("/debug accepts 0 args or one of on|off|tail"),
@@ -354,7 +342,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "util",
     routing: "local",
   },
-  { name: "bug", help: "Open a GitHub issue report", category: "util" },
+  {
+    name: "feedback",
+    aliases: ["bug"],
+    help: "Send logs + free-text to maintainers",
+    category: "util",
+  },
   {
     name: "paste",
     help: "Insert clipboard content (text or image) as a paste ref",
@@ -394,6 +387,50 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "util",
     routing: "local",
   },
+  // M9 of #159 — universal chat-REPL muscle-memory slashes.
+  {
+    name: "copy",
+    help: "Copy the last assistant message (markdown) to the clipboard",
+    category: "util",
+    routing: "local",
+  },
+  {
+    name: "rename",
+    help: "Rename the current session — `/rename <new-title>`",
+    category: "session",
+    requires: "conversation:write",
+    argsSchema: z.tuple([z.string().min(1, "title cannot be empty")]).rest(z.string()),
+  },
+  {
+    name: "fork",
+    help: "Fork the current session into a new conversation",
+    category: "session",
+    requires: "conversation:write",
+  },
+  {
+    name: "mention",
+    help: "Open the inline @-mention fuzzy picker (file / connector / workflow)",
+    category: "context",
+    routing: "local",
+  },
+  // M2 of #159 — open the 10-tab settings palette inside the REPL.
+  // Passes sessionId / permissionMode / token counters to the modal so
+  // the Status tab renders real values.
+  {
+    name: "settings",
+    aliases: ["preferences"],
+    help: "Open the 10-tab settings palette (Status / Config / Usage / Stats / Skills / Permissions / Knowledge / Profile / Admin)",
+    category: "util",
+    routing: "local",
+  },
+  // M12 of #159 — mobile / portal connect via QR code.
+  {
+    name: "session",
+    help: "Mint a short-lived portal token + render a QR code — `/session <workflow-id>`",
+    category: "auth",
+    requires: "portal_token:read",
+    argsSchema: z.tuple([z.string().min(1, "workflow id required")]).rest(z.string()),
+  },
   // operator list commands
   {
     name: "connectors",
@@ -422,7 +459,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
   {
     name: "notifications",
-    help: "List notification channels and rules",
+    help: "Toggle OS push, configure thresholds + channels",
     category: "admin",
     requires: "notification:read",
   },
@@ -432,46 +469,13 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "admin",
     requires: "discovery:read",
   },
-  // install wizards (run via CLI: `sk install <service>`)
+  // M13/G11 + H4 of #159: per-service install-* slashes were collapsed
+  // into a single `/install` picker that opens the existing onboarding
+  // wizard (template picker → credential prompt → probe → save). Their
+  // guidance redirects live in `dispatcher.ts:REMOVED_SLASH_GUIDANCE`.
   {
-    name: "install-slack",
-    help: "Guided setup for Slack notifications — runs 'sk install slack'",
-    category: "context",
-    requires: "notification:write",
-  },
-  {
-    name: "install-teams",
-    help: "Guided setup for Microsoft Teams notifications",
-    category: "context",
-    requires: "notification:write",
-  },
-  {
-    name: "install-github",
-    help: "Guided setup for GitHub connector",
-    category: "context",
-    requires: "connector:write",
-  },
-  {
-    name: "install-google-workspace",
-    help: "Guided setup for Google Workspace connector",
-    category: "context",
-    requires: "connector:write",
-  },
-  {
-    name: "install-salesforce",
-    help: "Guided setup for Salesforce connector",
-    category: "context",
-    requires: "connector:write",
-  },
-  {
-    name: "install-jira",
-    help: "Guided setup for Jira connector",
-    category: "context",
-    requires: "connector:write",
-  },
-  {
-    name: "install-hubspot",
-    help: "Guided setup for HubSpot connector",
+    name: "install",
+    help: "Pick a connector template and run the install wizard inline (alias for /onboard)",
     category: "context",
     requires: "connector:write",
   },

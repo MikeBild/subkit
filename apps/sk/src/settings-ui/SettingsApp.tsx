@@ -24,6 +24,24 @@ interface State {
   items: SettingLeafEntry[];
   pendingRestartKeys: string[];
   overrideKeys: string[];
+  isAdmin: boolean;
+}
+
+// Admin-tab visibility predicate. Mirrors the issue's
+// "tenant.admin or any of the admin-scoped permissions" rule. Server-side
+// RBAC still enforces every mutation; this gate is purely UX.
+const ADMIN_PERMISSIONS = new Set([
+  "rbac:read",
+  "api_key:read",
+  "audit:read",
+  "identity:read",
+  "portal_token:read",
+]);
+function isAdminFromPermissions(perms: readonly string[]): boolean {
+  for (const p of perms) {
+    if (ADMIN_PERMISSIONS.has(p)) return true;
+  }
+  return false;
 }
 
 const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => void }> = ({
@@ -38,6 +56,7 @@ const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => voi
     items: [],
     pendingRestartKeys: [],
     overrideKeys: [],
+    isAdmin: false,
   });
   // R5-W1 + R11-W5: the draft-store integration was a no-op (the
   // modal didn't expose state on unmount). The `profileName` prop
@@ -51,13 +70,24 @@ const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => voi
     (async () => {
       try {
         const opts: { tenant?: string } = tenant ? { tenant } : {};
-        const res = await client.listSettings(opts);
+        // Fetch settings + bootstrap (for admin-permission probe) in parallel.
+        // skBootstrap failure is non-fatal: we degrade to non-admin (no Admin
+        // tab) and surface the settings list either way.
+        const [settingsRes, bootstrap] = await Promise.all([
+          client.listSettings(opts),
+          client
+            .skBootstrap()
+            .then((b) => b)
+            .catch(() => null),
+        ]);
         if (cancelled) return;
+        const perms = bootstrap?.permissions ?? [];
         setState({
           loading: false,
-          items: res.items,
-          pendingRestartKeys: res.diagnostics.pending_restart_keys,
-          overrideKeys: res.diagnostics.override_keys,
+          items: settingsRes.items,
+          pendingRestartKeys: settingsRes.diagnostics.pending_restart_keys,
+          overrideKeys: settingsRes.diagnostics.override_keys,
+          isAdmin: isAdminFromPermissions(perms),
         });
       } catch (err) {
         if (cancelled) return;
@@ -67,6 +97,7 @@ const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => voi
           items: [],
           pendingRestartKeys: [],
           overrideKeys: [],
+          isAdmin: false,
         });
       }
     })();
@@ -110,6 +141,7 @@ const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => voi
     pendingRestartKeys: state.pendingRestartKeys,
     overrideKeys: state.overrideKeys,
     client,
+    isAdmin: state.isAdmin,
     onExit: (code) => {
       exit();
       onExit(code);

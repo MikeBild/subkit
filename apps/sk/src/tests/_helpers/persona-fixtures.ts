@@ -69,6 +69,17 @@ export function bootstrapFixture(persona: PersonaFixture): SkBootstrapSnapshot {
     email: `${persona}@fixture.local`,
     recentSessions: [],
     flags: {},
+    prefs: {
+      permissionMode: "ask",
+      theme: "auto",
+      personality: "balanced",
+      titleFormat: "session-id",
+      statuslineFormat: "compact",
+      pushNotifyEnabled: false,
+      pushNotifyThresholdSec: 30,
+      quietHoursStart: "",
+      quietHoursEnd: "",
+    },
     fetchedAt: 1_700_000_000_000,
     source: "network",
   };

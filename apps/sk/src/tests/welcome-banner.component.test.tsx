@@ -74,4 +74,78 @@ describe("WelcomeBanner (component)", () => {
       ui.unmount();
     }
   });
+
+  test("whatsNew prop renders a 'what's new:' row when provided", async () => {
+    const ui = renderInk(
+      <WelcomeBanner
+        persona="admin"
+        tenant="acme"
+        engineUrl="http://localhost:3000"
+        whatsNew="v4.3 ships /settings tab palette"
+      />,
+    );
+    try {
+      await ui.waitFor((t) => t.includes("what's new:"));
+      const txt = ui.text();
+      expect(txt).toContain("what's new:");
+      expect(txt).toContain("v4.3 ships /settings tab palette");
+    } finally {
+      ui.unmount();
+    }
+  });
+
+  test("whatsNew row is omitted when prop is null/undefined", async () => {
+    const ui = renderInk(
+      <WelcomeBanner
+        persona="admin"
+        tenant="acme"
+        engineUrl="http://localhost:3000"
+        whatsNew={null}
+      />,
+    );
+    try {
+      await ui.waitFor((t) => t.includes("admin@acme"));
+      expect(ui.text()).not.toContain("what's new:");
+    } finally {
+      ui.unmount();
+    }
+  });
+
+  test("signedIn=false replaces persona slot with /profile sign-in hint", async () => {
+    const ui = renderInk(
+      <WelcomeBanner
+        persona="anonymous"
+        tenant={null}
+        engineUrl="http://localhost:3000"
+        signedIn={false}
+      />,
+    );
+    try {
+      await ui.waitFor((t) => t.includes("not signed in"));
+      const txt = ui.text();
+      expect(txt).toContain("not signed in");
+      expect(txt).toContain("/profile");
+      expect(txt).toContain("to sign in");
+      expect(txt).not.toContain("anonymous · ");
+    } finally {
+      ui.unmount();
+    }
+  });
+
+  test("signedIn=true (default) keeps existing persona/tenant render", async () => {
+    const ui = renderInk(
+      <WelcomeBanner
+        persona="admin"
+        tenant="acme"
+        engineUrl="http://localhost:3000"
+        signedIn={true}
+      />,
+    );
+    try {
+      await ui.waitFor((t) => t.includes("admin@acme"));
+      expect(ui.text()).not.toContain("not signed in");
+    } finally {
+      ui.unmount();
+    }
+  });
 });

@@ -448,6 +448,99 @@ const TokensSection = z
   .prefault({})
   .describe("Token budget");
 
+// G4 closure of #159 M6 — sk REPL session preferences. Tenant-scoped so
+// each operator picks a default permission mode that the next REPL run
+// honors at startup. The four-value union mirrors PermissionMode in the
+// CLI; the Permissions tab in /settings writes here.
+const ReplSection = z
+  .object({
+    permissionMode: z
+      .enum(["ask", "auto", "plan", "yolo"])
+      .default("ask")
+      .describe(
+        "Default sk REPL permission mode: ask | auto | plan | yolo. Operator can change at any time via /settings → Permissions or Shift-Tab.",
+      )
+      .meta(tenant()),
+  })
+  .prefault({})
+  .describe("sk REPL session preferences");
+
+// H1 closure of #159 — sk REPL push-notification preferences.
+// Tenant-scoped so each operator picks their own threshold + opt-in.
+// `quietHoursStart` and `quietHoursEnd` are 24h "HH:MM" wall-clock
+// strings (local timezone) that the CLI uses to suppress emits. An
+// empty string disables the time-window check.
+const NotificationsSection = z
+  .object({
+    push: z
+      .object({
+        enabled: z
+          .boolean()
+          .default(false)
+          .describe("OS push notifications for long-running execution completion.")
+          .meta(tenant()),
+        thresholdSec: z
+          .number()
+          .int()
+          .positive()
+          .max(3600)
+          .default(30)
+          .describe("Minimum elapsed turn seconds before a notification fires.")
+          .meta(tenant()),
+        quietHoursStart: z
+          .string()
+          .default("")
+          .describe("Quiet-hours window start (HH:MM, local TZ). Empty disables the window.")
+          .meta(tenant()),
+        quietHoursEnd: z
+          .string()
+          .default("")
+          .describe("Quiet-hours window end (HH:MM, local TZ). Empty disables the window.")
+          .meta(tenant()),
+      })
+      .prefault({}),
+  })
+  .prefault({})
+  .describe("sk REPL notification preferences");
+
+// G5 closure of #159 M11 — UI value pickers (theme, personality, title,
+// statusline). Tenant-scoped so each operator's REPL runs with their
+// preferred chrome. The Config tab opens the matching ValuePicker
+// component when one of these rows is selected.
+const UiSection = z
+  .object({
+    theme: z
+      .enum(["auto", "light", "dark", "high-contrast"])
+      .default("auto")
+      .describe("REPL color theme: auto | light | dark | high-contrast.")
+      .meta(tenant()),
+    personality: z
+      .enum(["concise", "balanced", "verbose"])
+      .default("balanced")
+      .describe("Assistant response style: concise | balanced | verbose.")
+      .meta(tenant()),
+    title: z
+      .object({
+        format: z
+          .enum(["session-id", "tenant-session", "model-tenant-session"])
+          .default("session-id")
+          .describe("Window-title format used by the sk REPL.")
+          .meta(tenant()),
+      })
+      .prefault({}),
+    statusline: z
+      .object({
+        format: z
+          .enum(["minimal", "compact", "detailed"])
+          .default("compact")
+          .describe("Status-line layout: minimal | compact | detailed.")
+          .meta(tenant()),
+      })
+      .prefault({}),
+  })
+  .prefault({})
+  .describe("REPL chrome preferences");
+
 const TenantOverlaySchema = z
   .object({
     llm: z
@@ -485,6 +578,39 @@ const TenantOverlaySchema = z
       .optional(),
     queue: z.object({ concurrency: z.number().int().positive().max(64).optional() }).optional(),
     tokens: z.object({ monthly_budget: z.number().int().nonnegative().optional() }).optional(),
+    repl: z
+      .object({
+        permissionMode: z.enum(["ask", "auto", "plan", "yolo"]).optional(),
+      })
+      .optional(),
+    notifications: z
+      .object({
+        push: z
+          .object({
+            enabled: z.boolean().optional(),
+            thresholdSec: z.number().int().positive().max(3600).optional(),
+            quietHoursStart: z.string().optional(),
+            quietHoursEnd: z.string().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+    ui: z
+      .object({
+        theme: z.enum(["auto", "light", "dark", "high-contrast"]).optional(),
+        personality: z.enum(["concise", "balanced", "verbose"]).optional(),
+        title: z
+          .object({
+            format: z.enum(["session-id", "tenant-session", "model-tenant-session"]).optional(),
+          })
+          .optional(),
+        statusline: z
+          .object({
+            format: z.enum(["minimal", "compact", "detailed"]).optional(),
+          })
+          .optional(),
+      })
+      .optional(),
   })
   .describe("Per-tenant overrides — only scope:tenant leaves may appear");
 
@@ -504,6 +630,9 @@ export const ConfigSchema = z
     spec: SpecSection,
     queue: QueueSection,
     tokens: TokensSection,
+    repl: ReplSection,
+    ui: UiSection,
+    notifications: NotificationsSection,
     tenants: z
       .record(z.string(), TenantOverlaySchema)
       .prefault({})
@@ -514,7 +643,7 @@ export const ConfigSchema = z
 export type Config = z.infer<typeof ConfigSchema>;
 export type TenantOverlay = z.infer<typeof TenantOverlaySchema>;
 
-const TENANT_OVERLAY_KEYS = ["llm", "queue", "tokens"] as const;
+const TENANT_OVERLAY_KEYS = ["llm", "queue", "tokens", "repl", "ui", "notifications"] as const;
 export type TenantOverlayKey = (typeof TENANT_OVERLAY_KEYS)[number];
 export const TENANT_OVERLAY_SECTION_KEYS: ReadonlyArray<TenantOverlayKey> = TENANT_OVERLAY_KEYS;
 
@@ -534,5 +663,8 @@ export const SECTION_ORDER = [
   "spec",
   "queue",
   "tokens",
+  "repl",
+  "ui",
+  "notifications",
 ] as const;
 export type SectionKey = (typeof SECTION_ORDER)[number];

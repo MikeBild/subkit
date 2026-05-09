@@ -22,7 +22,8 @@ Canonical docs: `docs/03-input-surfaces.md`, `docs/04-authoring.md`.
   (`~/.sk/config.json`).
 - `src/sessions.ts`, `src/memory.ts`, `src/mentions.ts` — conversation-session
   state, local memory, @-mentions.
-- `src/slash.ts` — slash-command registry.
+- `src/slash.ts` — slash-command registry. Consolidated in #159: `/install-slack`, `/install-teams`, `/install-github`, `/install-google-workspace`, `/install-salesforce`, `/install-jira`, `/install-hubspot` were collapsed into a single `/install` picker (their guidance redirects live in `src/repl/slash/dispatcher.ts:REMOVED_SLASH_GUIDANCE`).
+- `src/settings-ui/` — `/settings` 10-tab palette. Tabs: `Settings · Status · Config · Usage · Stats · Skills · Permissions · Knowledge · Profile · Admin`. The `Admin` tab is hidden unless the principal holds at least one admin-scoped permission (`rbac:read`, `api_key:read`, `audit:read`, `identity:read`, `portal_token:read`); server-side RBAC enforces independently. Embeddable as `SettingsPane` from the REPL via the `kind: "settings"` PaneSpec.
 - `src/status-line.ts` — status line rendering.
 - `src/commands/` — CLI subcommand entrypoints.
 - `src/lib/` — shared CLI utilities (`bootstrap.ts` for the persona

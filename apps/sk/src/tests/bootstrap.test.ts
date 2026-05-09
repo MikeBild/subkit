@@ -32,6 +32,17 @@ interface BootstrapResp {
   tenant: { id: string; slug: string | null; display_name: string | null };
   recent_sessions: Array<{ id: string; title: string | null; updated_at: string }>;
   flags: Record<string, boolean>;
+  prefs: {
+    permissionMode: "ask" | "auto" | "plan" | "yolo";
+    theme: "auto" | "light" | "dark" | "high-contrast";
+    personality: "concise" | "balanced" | "verbose";
+    titleFormat: "session-id" | "tenant-session" | "model-tenant-session";
+    statuslineFormat: "minimal" | "compact" | "detailed";
+    pushNotifyEnabled: boolean;
+    pushNotifyThresholdSec: number;
+    quietHoursStart: string;
+    quietHoursEnd: string;
+  };
   server_time: string;
 }
 
@@ -103,6 +114,17 @@ const successResp: BootstrapResp = {
   tenant: { id: "t-test", slug: "t-test", display_name: "Test" },
   recent_sessions: [],
   flags: {},
+  prefs: {
+    permissionMode: "ask",
+    theme: "auto",
+    personality: "balanced",
+    titleFormat: "session-id",
+    statuslineFormat: "compact",
+    pushNotifyEnabled: false,
+    pushNotifyThresholdSec: 30,
+    quietHoursStart: "",
+    quietHoursEnd: "",
+  },
   server_time: "2024-11-14T22:13:20.000Z", // FROZEN_NOW (1_700_000_000_000)
 };
 
@@ -126,7 +148,8 @@ describe("loadBootstrap", () => {
     await loadBootstrap(client as unknown as EngineClient, PROFILE, { cacheDir });
     expect(client.bootstrapCalls).toBe(1);
     const cached = JSON.parse(readFileSync(path, "utf8")) as { v: number; allowed: string[] };
-    expect(cached.v).toBe(1);
+    // H1 of #159 follow-up — bumped to 2 when `prefs` was added.
+    expect(cached.v).toBe(2);
     expect(cached.allowed).toEqual(["conversation:read", "workflow:read"]);
 
     const snap2 = await loadBootstrap(client as unknown as EngineClient, PROFILE, { cacheDir });

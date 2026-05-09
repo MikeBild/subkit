@@ -1243,6 +1243,88 @@
             "additionalProperties": false,
             "description": "Persona-visible feature flags. Keys are drawn from a typed enum."
           },
+          "prefs": {
+            "type": "object",
+            "properties": {
+              "permissionMode": {
+                "type": "string",
+                "enum": [
+                  "ask",
+                  "auto",
+                  "plan",
+                  "yolo"
+                ],
+                "description": "Default REPL permission mode."
+              },
+              "theme": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "light",
+                  "dark",
+                  "high-contrast"
+                ],
+                "description": "REPL color theme."
+              },
+              "personality": {
+                "type": "string",
+                "enum": [
+                  "concise",
+                  "balanced",
+                  "verbose"
+                ],
+                "description": "Assistant response style."
+              },
+              "titleFormat": {
+                "type": "string",
+                "enum": [
+                  "session-id",
+                  "tenant-session",
+                  "model-tenant-session"
+                ],
+                "description": "Window-title format used by the sk REPL."
+              },
+              "statuslineFormat": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "compact",
+                  "detailed"
+                ],
+                "description": "Status-line layout."
+              },
+              "pushNotifyEnabled": {
+                "type": "boolean",
+                "description": "Push-notify on long-running execution completion."
+              },
+              "pushNotifyThresholdSec": {
+                "type": "integer",
+                "minimum": 0,
+                "exclusiveMinimum": true,
+                "description": "Threshold in seconds before notify() fires."
+              },
+              "quietHoursStart": {
+                "type": "string",
+                "description": "Quiet-hours window start (HH:MM, local TZ). Empty disables."
+              },
+              "quietHoursEnd": {
+                "type": "string",
+                "description": "Quiet-hours window end (HH:MM, local TZ). Empty disables."
+              }
+            },
+            "required": [
+              "permissionMode",
+              "theme",
+              "personality",
+              "titleFormat",
+              "statuslineFormat",
+              "pushNotifyEnabled",
+              "pushNotifyThresholdSec",
+              "quietHoursStart",
+              "quietHoursEnd"
+            ],
+            "description": "REPL + UI preferences resolved for this principal."
+          },
           "server_time": {
             "type": "string",
             "description": "Server-side ISO timestamp; lets the CLI sync clocks."
@@ -1255,6 +1337,7 @@
           "tenant",
           "recent_sessions",
           "flags",
+          "prefs",
           "server_time"
         ]
       },
@@ -7448,6 +7531,32 @@
             "maximum": 50
           }
         }
+      },
+      "ForkFromMessageResponse": {
+        "type": "object",
+        "properties": {
+          "conversation": {
+            "$ref": "#/components/schemas/Conversation"
+          },
+          "source_conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "anchor_message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "copied_message_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "conversation",
+          "source_conversation_id",
+          "anchor_message_id",
+          "copied_message_count"
+        ]
       },
       "ToolPoliciesResponse": {
         "type": "object",
@@ -15048,6 +15157,61 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CompactConversationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/fork-from-message/{message_id}": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Fork a conversation, copying messages up to and including the anchor",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "message_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForkFromMessageResponse"
                 }
               }
             }

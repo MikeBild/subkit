@@ -146,5 +146,18 @@
   "tokens": {
     "monthly_budget": 0
   },
+  "repl": {
+    "permissionMode": "ask"
+  },
+  "ui": {
+    "theme": "auto",
+    "personality": "balanced",
+    "title": {
+      "format": "session-id"
+    },
+    "statusline": {
+      "format": "compact"
+    }
+  },
   "tenants": {}
 }

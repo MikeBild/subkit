@@ -51,7 +51,7 @@ export interface InkReplOptions {
 // full UX-gating allow-set) and fall back to the legacy tier-filtered
 // `whoami + rbac:can` fan-out for older engines. `loadBootstrap` owns
 // the disk cache + 3-tier resolution.
-import { loadBootstrap } from "./lib/bootstrap.ts";
+import { loadBootstrap, type SkBootstrapSnapshot } from "./lib/bootstrap.ts";
 
 interface ResolvedPersona {
   label: string;
@@ -68,6 +68,8 @@ interface ResolvedPersona {
   /** Where the snapshot came from: network, disk cache, or the
    *  legacy tiered fallback. R7-S1. */
   source: "network" | "cache" | "fallback";
+  /** Engine-resolved REPL/UI/notification prefs. H1 closure of #159 G3. */
+  prefs: SkBootstrapSnapshot["prefs"];
 }
 
 async function resolvePersona(
@@ -83,6 +85,7 @@ async function resolvePersona(
     email: snap.email,
     fetchedAt: snap.fetchedAt,
     source: snap.source,
+    prefs: snap.prefs,
   };
 }
 
@@ -728,6 +731,17 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         email: null,
         fetchedAt: Date.now(),
         source: "fallback",
+        prefs: {
+          permissionMode: "ask",
+          theme: "auto",
+          personality: "balanced",
+          titleFormat: "session-id",
+          statuslineFormat: "compact",
+          pushNotifyEnabled: false,
+          pushNotifyThresholdSec: 30,
+          quietHoursStart: "",
+          quietHoursEnd: "",
+        },
       };
     }
     statusSnapshot = await newClient.statusSummary().catch(() => null);
@@ -876,6 +890,15 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       onSlash,
       onSelectConversation,
       onCancelConversation: (id: string) => currentClient.cancelConversation(id),
+      // G2 closure of #159 M4 — the embedded /settings pane needs an
+      // EngineClient to fetch the settings list. Pass the active client
+      // through so the modal renders inside the REPL with REPL state.
+      engineClient: currentClient,
+      // H1 closure of #159 G3 — pass the engine-resolved push/notification
+      // prefs so applyEventStream can call notify() without an env-var
+      // hop. When the engine is older than #159 the snapshot's prefs
+      // come from `fromLegacy()` defaults.
+      prefs: active.persona.prefs,
     });
   };
 

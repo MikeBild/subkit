@@ -5003,6 +5003,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/conversations/{id}/fork-from-message/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fork a conversation, copying messages up to and including the anchor */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    message_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ForkFromMessageResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/conversations/{id}/tool-policies": {
         parameters: {
             query?: never;
@@ -7545,6 +7593,42 @@ export interface components {
             }[];
             /** @description Persona-visible feature flags. Keys are drawn from a typed enum. */
             flags: Record<string, never>;
+            /** @description REPL + UI preferences resolved for this principal. */
+            prefs: {
+                /**
+                 * @description Default REPL permission mode.
+                 * @enum {string}
+                 */
+                permissionMode: "ask" | "auto" | "plan" | "yolo";
+                /**
+                 * @description REPL color theme.
+                 * @enum {string}
+                 */
+                theme: "auto" | "light" | "dark" | "high-contrast";
+                /**
+                 * @description Assistant response style.
+                 * @enum {string}
+                 */
+                personality: "concise" | "balanced" | "verbose";
+                /**
+                 * @description Window-title format used by the sk REPL.
+                 * @enum {string}
+                 */
+                titleFormat: "session-id" | "tenant-session" | "model-tenant-session";
+                /**
+                 * @description Status-line layout.
+                 * @enum {string}
+                 */
+                statuslineFormat: "minimal" | "compact" | "detailed";
+                /** @description Push-notify on long-running execution completion. */
+                pushNotifyEnabled: boolean;
+                /** @description Threshold in seconds before notify() fires. */
+                pushNotifyThresholdSec: number;
+                /** @description Quiet-hours window start (HH:MM, local TZ). Empty disables. */
+                quietHoursStart: string;
+                /** @description Quiet-hours window end (HH:MM, local TZ). Empty disables. */
+                quietHoursEnd: string;
+            };
             /** @description Server-side ISO timestamp; lets the CLI sync clocks. */
             server_time: string;
         };
@@ -9148,6 +9232,14 @@ export interface components {
         };
         CompactConversationBody: {
             keep_last?: number;
+        };
+        ForkFromMessageResponse: {
+            conversation: components["schemas"]["Conversation"];
+            /** Format: uuid */
+            source_conversation_id: string;
+            /** Format: uuid */
+            anchor_message_id: string;
+            copied_message_count: number;
         };
         ToolPoliciesResponse: {
             policies: {

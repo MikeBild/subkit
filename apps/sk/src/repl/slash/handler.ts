@@ -40,11 +40,10 @@ import type {
   OnboardingSaveResult,
   OnboardingTemplate,
 } from "../onboarding-wizard.tsx";
-import { classifySlash } from "./dispatcher.ts";
+import { classifySlash, removedSlashGuidance } from "./dispatcher.ts";
 import { dispatchAdminListSlash } from "./handlers/admin-lists.ts";
 import { dispatchAuthRedirectSlash } from "./handlers/auth-redirects.ts";
 import { dispatchInspectSlash } from "./handlers/inspect.ts";
-import { dispatchInstallWizardSlash } from "./handlers/install-wizards.ts";
 
 /**
  * Rich pane descriptions returned by slash commands that open a modal
@@ -222,6 +221,18 @@ export type PaneSpec =
         tone?: "ok" | "warn" | "fail" | "info";
         rows: ReadonlyArray<readonly [string, string | number | null | undefined]>;
       }>;
+    }
+  | {
+      // /settings opened from the REPL — host renders SettingsModal
+      // in-process with the operator's REPL state piped in so the
+      // Status tab shows real session id / permission mode / tokens.
+      kind: "settings";
+      initialTab?: string;
+      sessionId?: string | null;
+      sessionTitle?: string | null;
+      permissionMode?: "ask" | "auto" | "plan" | "yolo";
+      sessionTokens?: number | null;
+      weekTokens?: number | null;
     };
 
 export interface SlashHandlerContext {
@@ -523,6 +534,13 @@ export async function handleSlash(
   const plan = classifySlash(name);
   if (plan.routing === "unknown") {
     debugLog("dialog.warning", { reason: "unknown_slash", slash_name: name }, {});
+    // M13 of #159 — short-circuit removed/never-shipped slashes with
+    // a one-line guidance message pointing at the new home. The
+    // guidance map lives in the dispatcher to keep the registry pure;
+    // entries decay one release after the actual delete pass per
+    // "no backwards-compat shims".
+    const hint = removedSlashGuidance(name);
+    if (hint) return `/${name} ${hint}`;
   } else {
     debugLog("dialog.elicitation_routing", { slash_name: name, routing: plan.routing }, {});
   }
@@ -610,6 +628,7 @@ export async function handleSlash(
       }
       return panify(ctx, "setup", formatSetupLines(setup), formatSetupSummary(setup));
     }
+    case "install":
     case "onboard": {
       // Fetch the template catalog up-front so the wizard mounts with
       // a ready list. Picking a template is the first step; the
@@ -1290,6 +1309,106 @@ export async function handleSlash(
       ctx.setConversationId(null);
       return "session cleared";
     }
+    case "copy": {
+      // Find the most recent assistant message in the in-memory transcript
+      // and write it to the operator's clipboard via OSC 52.
+      const msgs = ctx.session.messages;
+      let last: (typeof msgs)[number] | null = null;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (m && m.role === "assistant") {
+          last = m;
+          break;
+        }
+      }
+      if (!last) return "/copy: no assistant message yet";
+      const text = typeof last.content === "string" ? last.content : "";
+      if (!text) return "/copy: last assistant message is empty";
+      const { osc52Copy } = await import("@cli-core/clipboard.ts");
+      const ok = osc52Copy(text);
+      return ok
+        ? `copied last assistant message (${text.length} chars) to clipboard`
+        : "/copy failed: clipboard not writable on this terminal";
+    }
+    case "rename": {
+      if (!ctx.session.conversationId) return "/rename: no active conversation";
+      const title = rawArgs.join(" ").trim();
+      if (!title) return "/rename: usage `/rename <new-title>`";
+      try {
+        await ctx.client.patchConversation(ctx.session.conversationId, { title });
+        return `session renamed to "${title}"`;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return `/rename failed: ${msg}`;
+      }
+    }
+    case "fork": {
+      // The engine has no first-class fork endpoint. The current
+      // conversation is preserved server-side; the local session is
+      // detached so the next prompt starts a fresh conversation, and
+      // the operator can `/resume` back to the original via the
+      // session picker. M10 of #159 will add the deeper "fork from
+      // turn N" flow once the engine grows the dedicated route.
+      const previous = ctx.session.conversationId;
+      ctx.setConversationId(null);
+      return previous
+        ? `forked from ${previous} — original preserved; type the next prompt to start the new branch`
+        : "no session to fork from";
+    }
+    case "mention": {
+      return "tip: type `@` in the composer to open the inline mention picker (file / connector / workflow)";
+    }
+    case "settings":
+    case "preferences": {
+      if (!ctx.openPane) {
+        return "/settings is only available in the Ink REPL — use `sk settings` for the standalone CLI";
+      }
+      const pane: Extract<PaneSpec, { kind: "settings" }> = { kind: "settings" };
+      if (rawArgs[0]) pane.initialTab = rawArgs[0];
+      if (ctx.session.conversationId) pane.sessionId = ctx.session.conversationId;
+      if (ctx.session.usage && typeof ctx.session.usage.turn_tokens === "number") {
+        pane.sessionTokens = ctx.session.usage.turn_tokens;
+      }
+      ctx.openPane(pane);
+      return null;
+    }
+    case "session": {
+      // Mint a portal token scoped to the workflow id provided in args
+      // and render a terminal QR + URL. The token is short-lived
+      // (15 min default) and tenant-scoped via the engine's existing
+      // /v1/identity/portal-tokens audit invariants. M12 of #159.
+      const workflowId = rawArgs[0];
+      if (!workflowId) {
+        return "/session usage: `/session <workflow-id>` — engine requires at least one workflow scope per portal token";
+      }
+      try {
+        const me = await ctx.client.whoami();
+        const issued = (await ctx.client.issuePortalToken({
+          user_id: me.id,
+          allowed_workflows: [workflowId],
+          ttl_minutes: 15,
+        })) as {
+          id: string;
+          plaintext_token?: string;
+          prefix?: string;
+          expires_at: string;
+        };
+        const token = issued.plaintext_token ?? "";
+        if (!token) return "/session: engine did not return a token";
+        const url = `${ctx.profile.engine_url.replace(/\/$/, "")}/portal#token=${token}`;
+        // Render the QR async; qrcode-terminal logs to stdout. We
+        // await it via a Promise wrapper so the slash response includes
+        // the URL only — the QR is already on stdout when this returns.
+        const qrcode = await import("qrcode-terminal");
+        await new Promise<void>((resolve) => {
+          qrcode.default.generate(url, { small: true }, () => resolve());
+        });
+        return `portal token issued (15 min) — ${url}\nscan the QR above with your phone to connect; expires at ${issued.expires_at}`;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return `/session failed: ${msg}`;
+      }
+    }
     case "export": {
       // Render the current session transcript to a Markdown file in
       // the current working directory. Covers user/assistant messages,
@@ -1631,6 +1750,7 @@ export async function handleSlash(
       }
       return `edit ${join(homedir(), ".sk", "settings.json")} or run /config in the Ink REPL for a guided form`;
     }
+    case "feedback":
     case "bug": {
       return "report issues at https://github.com/subkit/subkit/issues";
     }
@@ -1690,8 +1810,6 @@ export async function handleSlash(
       if (inspectResult !== undefined) return inspectResult;
       const adminListResult = await dispatchAdminListSlash(name, ctx);
       if (adminListResult !== undefined) return adminListResult;
-      const installBanner = dispatchInstallWizardSlash(name);
-      if (installBanner !== undefined) return installBanner;
       const authBanner = dispatchAuthRedirectSlash(name);
       if (authBanner !== undefined) return authBanner;
       return `/${name} is not wired — try /help`;

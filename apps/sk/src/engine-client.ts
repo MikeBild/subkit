@@ -786,6 +786,27 @@ export class EngineClient {
   ): Promise<ConversationSummary> {
     return this.request("PATCH", `/v1/conversations/${id}`, body);
   }
+  /**
+   * Fork a conversation at a specific message id. Creates a new
+   * conversation copying messages up to and including the anchor.
+   * G10 closure of #159 M10.
+   */
+  forkConversationFromMessage(
+    id: string,
+    message_id: string,
+  ): Promise<{
+    conversation: ConversationSummary;
+    source_conversation_id: string;
+    anchor_message_id: string;
+    copied_message_count: number;
+  }> {
+    return this.request(
+      "POST",
+      `/v1/conversations/${encodeURIComponent(id)}/fork-from-message/${encodeURIComponent(
+        message_id,
+      )}`,
+    );
+  }
   compactConversation(
     id: string,
     body: { keep_last?: number } = {},

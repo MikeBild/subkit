@@ -32,6 +32,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { getConfig } from "../../../config/loader.ts";
 import { conversations, roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 import { logger } from "../../../logging/index.ts";
@@ -115,6 +116,34 @@ const UxGatingPermissionEnum = z.enum(
 // in this module mutates it.
 const PERMISSIONS_CHECKED_RESPONSE: UxGatingPermission[] = [...UX_GATING_PERMISSIONS];
 
+// G4 + G5 closure of #159 — REPL + UI preferences resolved from
+// the global defaults overlaid with the principal's tenant overrides.
+// The CLI consumes these on startup so its initial render reflects
+// what the operator picked in /settings → Permissions / Config.
+const SkBootstrapPrefsSchema = z
+  .object({
+    permissionMode: z
+      .enum(["ask", "auto", "plan", "yolo"])
+      .describe("Default REPL permission mode."),
+    theme: z.enum(["auto", "light", "dark", "high-contrast"]).describe("REPL color theme."),
+    personality: z.enum(["concise", "balanced", "verbose"]).describe("Assistant response style."),
+    titleFormat: z
+      .enum(["session-id", "tenant-session", "model-tenant-session"])
+      .describe("Window-title format used by the sk REPL."),
+    statuslineFormat: z.enum(["minimal", "compact", "detailed"]).describe("Status-line layout."),
+    pushNotifyEnabled: z.boolean().describe("Push-notify on long-running execution completion."),
+    pushNotifyThresholdSec: z
+      .number()
+      .int()
+      .positive()
+      .describe("Threshold in seconds before notify() fires."),
+    quietHoursStart: z
+      .string()
+      .describe("Quiet-hours window start (HH:MM, local TZ). Empty disables."),
+    quietHoursEnd: z.string().describe("Quiet-hours window end (HH:MM, local TZ). Empty disables."),
+  })
+  .describe("REPL + UI preferences resolved for this principal.");
+
 const SkBootstrapResponseSchema = z
   .object({
     whoami: SkBootstrapWhoamiSchema,
@@ -129,6 +158,7 @@ const SkBootstrapResponseSchema = z
     flags: SkBootstrapFlagsSchema.describe(
       "Persona-visible feature flags. Keys are drawn from a typed enum.",
     ),
+    prefs: SkBootstrapPrefsSchema,
     server_time: z.string().describe("Server-side ISO timestamp; lets the CLI sync clocks."),
   })
   .openapi("SkBootstrap");
@@ -434,9 +464,44 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
           updated_at: r.updated_at.toISOString(),
         })),
         flags: {},
+        prefs: resolvePrefs(principal.tenant_id),
         server_time: new Date().toISOString(),
       },
       200,
     );
   });
+}
+
+/**
+ * G4 + G5 closure of #159 — resolve REPL + UI preferences for the
+ * bootstrap response. Reads the global defaults from the loaded config,
+ * then overlays the principal's tenant-specific overrides (if any).
+ */
+function resolvePrefs(tenantId: string): {
+  permissionMode: "ask" | "auto" | "plan" | "yolo";
+  theme: "auto" | "light" | "dark" | "high-contrast";
+  personality: "concise" | "balanced" | "verbose";
+  titleFormat: "session-id" | "tenant-session" | "model-tenant-session";
+  statuslineFormat: "minimal" | "compact" | "detailed";
+  pushNotifyEnabled: boolean;
+  pushNotifyThresholdSec: number;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+} {
+  const cfg = getConfig();
+  const overlay = cfg.tenants?.[tenantId];
+  return {
+    permissionMode: overlay?.repl?.permissionMode ?? cfg.repl.permissionMode,
+    theme: overlay?.ui?.theme ?? cfg.ui.theme,
+    personality: overlay?.ui?.personality ?? cfg.ui.personality,
+    titleFormat: overlay?.ui?.title?.format ?? cfg.ui.title.format,
+    statuslineFormat: overlay?.ui?.statusline?.format ?? cfg.ui.statusline.format,
+    pushNotifyEnabled: overlay?.notifications?.push?.enabled ?? cfg.notifications.push.enabled,
+    pushNotifyThresholdSec:
+      overlay?.notifications?.push?.thresholdSec ?? cfg.notifications.push.thresholdSec,
+    quietHoursStart:
+      overlay?.notifications?.push?.quietHoursStart ?? cfg.notifications.push.quietHoursStart,
+    quietHoursEnd:
+      overlay?.notifications?.push?.quietHoursEnd ?? cfg.notifications.push.quietHoursEnd,
+  };
 }

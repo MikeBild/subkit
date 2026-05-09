@@ -4,8 +4,9 @@
 //   POST /v1/conversations/{id}/cancel
 //   GET  /v1/conversations/{id}/context-snapshot
 //   POST /v1/conversations/{id}/compact
+//   POST /v1/conversations/{id}/fork-from-message/{message_id}
 
-import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import * as svc from "../../../conversations/index.ts";
 import { NotFoundError } from "../../errors.ts";
@@ -17,6 +18,20 @@ import {
   ContextSnapshotSchema,
   ConversationSchema,
 } from "./schemas.ts";
+
+const ForkFromMessageParam = z.object({
+  id: z.string().uuid(),
+  message_id: z.string().uuid(),
+});
+
+const ForkFromMessageResponse = z
+  .object({
+    conversation: ConversationSchema,
+    source_conversation_id: z.string().uuid(),
+    anchor_message_id: z.string().uuid(),
+    copied_message_count: z.number().int().nonnegative(),
+  })
+  .openapi("ForkFromMessageResponse");
 
 const cancelRoute = createRoute({
   method: "post",
@@ -45,6 +60,22 @@ const contextSnapshotRoute = createRoute({
     200: {
       description: "OK",
       content: { "application/json": { schema: ContextSnapshotSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const forkFromMessageRoute = createRoute({
+  method: "post",
+  path: "/v1/conversations/{id}/fork-from-message/{message_id}",
+  tags: ["conversations"],
+  summary: "Fork a conversation, copying messages up to and including the anchor",
+  security: [{ bearerAuth: [] }],
+  request: { params: ForkFromMessageParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: ForkFromMessageResponse } },
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -102,6 +133,23 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
+    return c.json(result, 200);
+  });
+
+  app.openapi(forkFromMessageRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id, message_id } = c.req.valid("param");
+    const result = await svc.forkConversation(
+      {
+        tenant_id: principal.tenant_id,
+        source_conversation_id: id,
+        anchor_message_id: message_id,
+        actor_id: principal.id,
+      },
+      db,
+    );
+    if (!result) throw new NotFoundError("conversation");
     return c.json(result, 200);
   });
 }
