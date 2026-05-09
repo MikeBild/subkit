@@ -117,7 +117,7 @@ Read matrix (every collection responds 200 + JSON):
   `/v1/identity/users`, `/v1/identity/system-accounts`,
   `/v1/identity/tenants`, `/v1/identity/whoami`,
   `/v1/webhooks/inbound`, `/v1/executions`, `/v1/subscriptions`,
-  `/v1/notifications/{channels,rules,deliveries}`, `/v1/tunnels`,
+  `/v1/notifications/{channels,rules,deliveries}`,
   `/v1/patch-candidates`, `/v1/rbac/{permissions,roles}`,
   `/v1/mcp/{tools,prompts,resources}`,
   `/v1/diagnostics/{errors,llm}`
@@ -199,7 +199,6 @@ Admin command groups exposed from `apps/sk/src/index.ts`:
 | `sk hooks` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk subscriptions` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk events` | `tier3-subkit-matrix.e2e.test.ts` |
-| `sk tunnels` | `subkit-cli.e2e.test.ts`, `tier3-subkit-matrix.e2e.test.ts` |
 | `sk notifications` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk diagnostics` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk install` | `tier3-subkit-matrix.e2e.test.ts` |
@@ -213,9 +212,6 @@ Admin command groups exposed from `apps/sk/src/index.ts`:
 | `sk portal-tokens` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk users` | `tier3-subkit-matrix.e2e.test.ts` |
 | `sk system-accounts` | `tier3-subkit-matrix.e2e.test.ts` |
-
-The tunnel-agent binary (`apps/agent`) is a separate concern — not
-covered here, tracked separately.
 
 ## Continuous coverage rules
 

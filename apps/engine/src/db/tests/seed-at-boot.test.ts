@@ -5,7 +5,7 @@
 // the deleted `bun run db:seed` script (issue #149).
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { eq, isNull } from "drizzle-orm";
+import { eq, isNull, like } from "drizzle-orm";
 import { permissions, roles, tenants, users } from "../schema/index.ts";
 import { seedAtBoot } from "../seed.ts";
 import { createTestDb, type TestDb } from "./setup.ts";
@@ -56,7 +56,22 @@ describe("seedAtBoot (development)", () => {
     const perms = await ctx.db.select().from(permissions);
     expect(perms.length).toBeGreaterThan(0);
     const builtinRoles = await ctx.db.select().from(roles).where(isNull(roles.tenant_id));
-    expect(builtinRoles.length).toBe(6);
+    expect(builtinRoles.length).toBe(5);
+  });
+
+  test("no tunnel:* permissions and no tunnel_agent role survive on a fresh DB", async () => {
+    // Defence-in-depth against the orphan-RBAC failure mode that
+    // 0014_drop_tunnels.sql exists to prevent: a fresh DB must not
+    // surface tunnel:* permissions or the tunnel_agent built-in role,
+    // regardless of how the seeder evolves. Pairs with the negative
+    // assertion in the cli-rbac journey for the upgraded-DB path.
+    const ghostPerms = await ctx.db
+      .select()
+      .from(permissions)
+      .where(like(permissions.name, "tunnel:%"));
+    expect(ghostPerms.length).toBe(0);
+    const ghostRoles = await ctx.db.select().from(roles).where(eq(roles.name, "tunnel_agent"));
+    expect(ghostRoles.length).toBe(0);
   });
 });
 

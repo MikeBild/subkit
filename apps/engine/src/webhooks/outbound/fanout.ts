@@ -76,8 +76,6 @@ const DEFAULT_SEVERITY: Record<string, NotificationSeverity> = {
   "workflow.updated": "info",
   "patch.proposed": "warn",
   "api_key.rotated": "info",
-  "tunnel.connected": "info",
-  "tunnel.disconnected": "warn",
 };
 
 function extractSeverity(type: string, payload: unknown): NotificationSeverity {

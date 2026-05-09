@@ -11,7 +11,6 @@ export const LISTENER_CHANNELS: OutboxChannel[] = [
   "conversation.stream",
   "event.emitted",
   "notification.emitted",
-  "tunnel.state",
 ];
 
 /** Full event envelope delivered to local subscribers. */

@@ -78,12 +78,12 @@ describe("sk CLI admin commands", () => {
       expect(perms.some((p) => p.name === "workflow:read")).toBe(true);
     });
 
-    test("roles list returns 6 built-in roles", async () => {
+    test("roles list returns 5 built-in roles", async () => {
       const roles = await runJson<Array<{ name: string; is_builtin: boolean }>>(
         ["rbac", "roles", "list"],
         { env },
       );
-      expect(roles.length).toBeGreaterThanOrEqual(6);
+      expect(roles.length).toBeGreaterThanOrEqual(5);
       const names = roles.map((r) => r.name);
       expect(names).toContain("admin");
       expect(names).toContain("member");
@@ -222,16 +222,6 @@ describe("sk CLI admin commands", () => {
       const out = await run(["audit", "query"], { env });
       // Seed created tenant, users, system accounts, api keys.
       expect(out.length).toBeGreaterThan(0);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // tunnels
-  // ---------------------------------------------------------------------------
-  describe("tunnels", () => {
-    test("list starts empty", async () => {
-      const out = await run(["tunnels", "list"], { env });
-      expect(out).toContain("no rows");
     });
   });
 

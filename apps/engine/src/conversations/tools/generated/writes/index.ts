@@ -19,7 +19,6 @@ export {
   deleteConnectorTool,
   deleteKnowledgeSourceTool,
   deleteSubscriptionTool,
-  deleteTunnelTool,
   deleteWorkflowTool,
   revokeApiKeyTool,
   revokePortalTokenTool,

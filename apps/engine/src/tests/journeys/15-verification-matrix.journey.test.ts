@@ -197,16 +197,6 @@ describe("journey: verification matrix (docs/33)", () => {
     expect([200, 404]).toContain(res.status);
   });
 
-  test("10. Tunneled connector — registry + service reachable", async () => {
-    // Full end-to-end coverage is exercised in journey 10. This rollup
-    // checks the two entry points the connector driver needs: the shared
-    // tunnel registry and the tunnel service helpers.
-    const registry = await import("../../tunnels/registry.ts");
-    const service = await import("../../tunnels/service.ts");
-    expect(typeof registry.TunnelRegistry).toBe("function");
-    expect(typeof service.upsertTunnel).toBe("function");
-  });
-
   test("11. Schedules — insert row, reconciler fires within 5s", async () => {
     const wf = await seedWorkflow(ctx, {
       slug: "scheduled-matrix",

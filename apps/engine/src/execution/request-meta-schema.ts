@@ -41,7 +41,6 @@ const ConnectorResolutionSummarySchema = z
       "oauth2_static",
       "oauth2_refreshed",
     ]),
-    tunnel_target: z.string().nullable().optional(),
     base_url: z.string().nullable().optional(),
   })
   .openapi("ConnectorResolutionSummary");
@@ -53,7 +52,6 @@ const HttpRequestMetaSchema = z
     url: z.string().nullable(),
     status: z.number().int().optional(),
     bytes_in: z.number().int().optional(),
-    tunnel_target: z.string().nullable().optional(),
     idempotency_key: z.string().optional(),
     connector: ConnectorResolutionSummarySchema,
     digest: RequestDigestSchema.optional(),

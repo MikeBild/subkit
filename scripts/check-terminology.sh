@@ -49,13 +49,13 @@ else
     # domain vocabulary when contrasting subkit with other categories — the
     # gate enforces TypeScript identifiers and generated API surfaces only.
     if grep -RniE "\\b${word}\\b" \
-        apps/engine/src apps/sk/src apps/agent/src packages \
+        apps/engine/src apps/sk/src packages \
         --include='*.ts' --include='*.tsx' \
         --exclude-dir=tests --exclude-dir=test --exclude-dir=__tests__ \
         --exclude-dir=fixtures --exclude-dir=node_modules \
         --exclude-dir=out --exclude-dir=dist --exclude-dir=seed \
         2>/dev/null | grep -vE '(self-healing/policy\.ts)' ; then
-      echo "ERROR: banned term '${word}' still appears in engine/sk/agent/packages TypeScript source" >&2
+      echo "ERROR: banned term '${word}' still appears in engine/sk/packages TypeScript source" >&2
       fail=1
     fi
   done

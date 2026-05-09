@@ -139,12 +139,6 @@ jobs:
             runner: macos-14
             target: ""
             entry: apps/sk/src/index.ts
-          - binary: tunnel-agent
-            os: darwin
-            arch: arm64
-            runner: macos-14
-            target: ""
-            entry: apps/agent/src/index.ts
           - binary: engine
             os: darwin
             arch: arm64
@@ -160,12 +154,6 @@ jobs:
             runner: macos-14
             target: bun-darwin-x64
             entry: apps/sk/src/index.ts
-          - binary: tunnel-agent
-            os: darwin
-            arch: x64
-            runner: macos-14
-            target: bun-darwin-x64
-            entry: apps/agent/src/index.ts
           - binary: engine
             os: darwin
             arch: x64
@@ -179,12 +167,6 @@ jobs:
             runner: ubuntu-latest
             target: ""
             entry: apps/sk/src/index.ts
-          - binary: tunnel-agent
-            os: linux
-            arch: x64
-            runner: ubuntu-latest
-            target: ""
-            entry: apps/agent/src/index.ts
           - binary: engine
             os: linux
             arch: x64
@@ -198,12 +180,6 @@ jobs:
             runner: ubuntu-latest
             target: bun-linux-arm64
             entry: apps/sk/src/index.ts
-          - binary: tunnel-agent
-            os: linux
-            arch: arm64
-            runner: ubuntu-latest
-            target: bun-linux-arm64
-            entry: apps/agent/src/index.ts
           - binary: engine
             os: linux
             arch: arm64
@@ -221,12 +197,6 @@ jobs:
             runner: ubuntu-latest
             target: bun-windows-x64
             entry: apps/sk/src/index.ts
-          - binary: tunnel-agent
-            os: windows
-            arch: x64
-            runner: ubuntu-latest
-            target: bun-windows-x64
-            entry: apps/agent/src/index.ts
           - binary: engine
             os: windows
             arch: x64
@@ -326,7 +296,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          for binary in sk tunnel-agent engine; do
+          for binary in sk engine; do
             for os in darwin linux windows; do
               for arch in x64 arm64; do
                 if [ "$os" = "windows" ] && [ "$arch" = "arm64" ]; then continue; fi
@@ -377,7 +347,6 @@ jobs:
           tag_name: ${{ inputs.tag || github.ref_name }}
           files: |
             artifacts/*/sk_*
-            artifacts/*/tunnel-agent_*
             artifacts/*/engine_*
             artifacts/SHA256SUMS
             artifacts/sbom.cdx.json
@@ -388,9 +357,9 @@ jobs:
   # consumes the binary as an artifact and scp's it to the host,
   # where deploy-body.sh swaps the on-disk binary and `systemctl
   # restart`s the unit. No DOCR, no compose, no docker.
-  # /install/sk-* and /install/agent-* routes return 404 with a
-  # pointer to GitHub Releases (see install-binary.ts) — operators
-  # without GitHub egress can ship binaries via a separate channel.
+  # /install/sk-* routes return 404 with a pointer to GitHub Releases
+  # (see install-binary.ts) — operators without GitHub egress can ship
+  # binaries via a separate channel.
   build-engine-binary:
     name: build-engine-binary
     needs: gate

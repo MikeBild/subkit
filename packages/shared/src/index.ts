@@ -1,5 +1,5 @@
-// Shared types between engine, CLI, and tunnel agent. Apps consume these via
-// the `@shared/*` tsconfig path mapping. Add types here only when more than
+// Shared types between engine and CLI. Apps consume these via the
+// `@shared/*` tsconfig path mapping. Add types here only when more than
 // one app needs the same shape — engine-internal types stay in
 // `apps/engine/src/api/` and `apps/engine/src/...`.
 

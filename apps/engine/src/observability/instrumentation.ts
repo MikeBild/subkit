@@ -133,19 +133,6 @@ export function setOutboxCursorLag(args: {
   });
 }
 
-export function setTunnelConnected(args: {
-  tenant_id: string;
-  target: string;
-  connected: boolean;
-}): void {
-  safe(() => {
-    getMetrics().set(METRIC_NAMES.TUNNEL_CONNECTED, args.connected ? 1 : 0, {
-      tenant_id: args.tenant_id,
-      target: args.target,
-    });
-  });
-}
-
 export function recordPatchCandidate(args: { classification: string; decision: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.PATCH_CANDIDATES_TOTAL, {

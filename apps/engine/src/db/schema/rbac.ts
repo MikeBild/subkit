@@ -5,7 +5,7 @@
 //   - `permissions.name` is the stable identifier (e.g. `workflow:run`)
 //     referenced by route middleware and the `can()` evaluator.
 //   - `roles.tenant_id` is nullable: NULL means a built-in global role
-//     (`admin`, `member`, `enduser`, `tunnel_agent`, `metrics_scraper`).
+//     (`admin`, `member`, `enduser`, `metrics_scraper`).
 //     Tenant-scoped custom roles carry the owning tenant id.
 //   - `resource_grants` gives a single (subject, resource, permission)
 //     tuple granted to a user/system_account/group with optional TTL.

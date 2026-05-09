@@ -139,7 +139,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
       "delete_connector",
       "delete_knowledge_source",
       "delete_subscription",
-      "delete_tunnel",
       "revoke_api_key",
       "revoke_portal_token",
     ] as const;

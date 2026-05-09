@@ -1,4 +1,4 @@
-// Self-update module for `sk`, `subkit`, `engine`, and `tunnel-agent` binaries.
+// Self-update module for `sk`, `subkit`, and `engine` binaries.
 // Downloads new versions from GitHub Releases, verifies SHA256
 // checksums, and replaces the running binary in-place.
 

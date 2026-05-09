@@ -161,7 +161,6 @@ const ConnectorResolutionSummarySchema = z
     requested_environment: z.enum(["dev", "prod"]),
     resolved_environment: z.enum(["dev", "prod"]),
     auth_method: AppliedAuthMethodEnum,
-    tunnel_target: z.string().nullable().optional(),
     base_url: z.string().nullable().optional(),
   })
   .openapi("ConnectorResolutionSummary");

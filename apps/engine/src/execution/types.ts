@@ -169,7 +169,6 @@ export type RequestMeta =
       url: string | null;
       status?: number;
       bytes_in?: number;
-      tunnel_target?: string | null;
       idempotency_key?: string;
       connector: ConnectorResolutionSummary;
       unresolved_placeholders?: string[];
@@ -338,7 +337,7 @@ export type AppliedAuthMethod =
 
 /** Per-connector rollup in `RunResult.connector_resolutions`. One entry per
  *  unique (step_key, connector_id) pair — lets debuggers see at a glance
- *  which driver / auth / environment / tunnel each step actually used. */
+ *  which driver / auth / environment each step actually used. */
 export interface ConnectorResolutionSummary {
   step_key: string;
   connector_id: string;
@@ -347,7 +346,6 @@ export interface ConnectorResolutionSummary {
   requested_environment: ExecutionMode;
   resolved_environment: ExecutionMode;
   auth_method: AppliedAuthMethod;
-  tunnel_target?: string | null;
   base_url?: string | null;
 }
 

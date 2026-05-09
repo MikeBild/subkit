@@ -63,7 +63,6 @@ the file only needs to carry overrides:
   "observability": { "langfuse": { "secret_key": "…" }, "otlp": { "endpoint": "…" } },
   "egress":        { "mode": "permissive", "provider_hosts_extra": [] },
   "mcp":     { "read_only": false },
-  "tunnel":  { "registry_max": 100 },
   "errors":  { "ring_size": 100 },
   "docker":  { "host": "", "skip": false },
   "spec":    { "allow_private_fetch": false },

@@ -9,7 +9,7 @@
 // it, and `slashCommandsForPersona` filters the slash out for
 // EVERY user — including admins. A previous version of the registry
 // had this exact drift for `connector:write`, `notification:write`,
-// `tunnel:read`, and `discovery:read`, silently hiding 8+ commands.
+// and `discovery:read`, silently hiding 8+ commands.
 //
 // **What to do when the assignment in `slash.ts` fails to compile**:
 // the failing position references a `SlashCommand.requires` literal

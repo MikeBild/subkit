@@ -14,7 +14,6 @@ subsystem directory that owns them. For a full subsystem table, see `AGENTS.md`.
 |---|---|---|
 | Add a connector template (e.g. Stripe, HubSpot) | `docs/05-connectors.md`, `docs/04-authoring.md` | `apps/engine/src/connectors/templates.json`, `template-skills.json` |
 | Add OAuth2 to a template | `docs/05-connectors.md`, `docs/07-security-governance.md` | `apps/engine/src/oauth2/`, `credentials/` |
-| Private network / on-prem source | `docs/05-connectors.md` | `apps/engine/src/tunnels/`, `apps/agent/` |
 | Inbound webhook from external system | `docs/03-input-surfaces.md` | `apps/engine/src/webhooks/`, `http/` |
 | Outbound webhook (signed, retried) | `docs/03-input-surfaces.md` | `apps/engine/src/webhooks/`, `outbox/` |
 

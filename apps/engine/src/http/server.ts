@@ -69,7 +69,6 @@ import { registerSkillCandidateRoutes } from "./routes/skill-candidates.ts";
 import { registerSkillRoutes } from "./routes/skills.ts";
 import { registerStatusRoute } from "./routes/status.ts";
 import { registerSubscriptionRoutes } from "./routes/subscriptions.ts";
-import { registerTunnelRoutes } from "./routes/tunnels.ts";
 import { registerWorkflowRoutes } from "./routes/workflows.ts";
 
 export interface CreateAppOptions {
@@ -220,7 +219,6 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerSubscriptionRoutes(app);
   registerNotificationRoutes(app);
   registerEventRoutes(app);
-  registerTunnelRoutes(app);
   registerRbacRoutes(app);
   registerAuditLogRoutes(app);
   registerDiagnosticsRoutes(app);

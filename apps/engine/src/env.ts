@@ -27,7 +27,6 @@ const RETIRED_ENV_KEYS = new Set([
   "LOG_LEVEL",
   "LOG_FORMAT",
   "PORT",
-  "TUNNEL_PORT",
   "PUBLIC_BASE_URL",
   "DATABASE_URL", // bridge: still consulted as a fallback when database.url is absent
   // LLM — moved to llm.* and llm.providers.*
@@ -106,8 +105,6 @@ const RETIRED_ENV_KEYS = new Set([
   "SUBKIT_LLM_PROVIDER_HOSTS_EXTRA",
   "SUBKIT_ALLOW_PRIVATE_SPEC_FETCH",
   "SUBKIT_PUBLIC_BASE_URL",
-  // Tunnel
-  "SUBKIT_TUNNEL_REGISTRY_MAX",
   // Feature flags
   "LLM_CONTEXT_1M",
   "SK_ERROR_RING_SIZE",

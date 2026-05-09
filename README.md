@@ -141,7 +141,7 @@ Full conceptual documentation in [`docs/`](docs/):
 | [Concepts](docs/02-concepts.md) | Authoritative glossary for every domain term |
 | [Input Surfaces](docs/03-input-surfaces.md) | CLI, API, MCP, Chat, Webhooks — in depth |
 | [AI-Assisted Authoring](docs/04-authoring.md) | Conversations, skills, knowledge, multi-provider |
-| [Connectors & Integration](docs/05-connectors.md) | Drivers, templates, auth, tunnels |
+| [Connectors & Integration](docs/05-connectors.md) | Drivers, templates, auth |
 | [Workflow Execution](docs/06-execution.md) | Engine, step kinds, scheduling, self-healing |
 | [Security & Governance](docs/07-security-governance.md) | Identity, RBAC, audit, compliance |
 | [Deployment & Operations](docs/08-operations.md) | Installation, observability, resource limits |

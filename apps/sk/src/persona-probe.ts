@@ -54,7 +54,6 @@ const TIER_PERMISSIONS: Record<number, readonly UxGatingPermission[]> = {
     "api_key:read",
     "portal_token:read",
     "knowledge:read",
-    "tunnel:read",
   ],
 };
 

@@ -17,8 +17,6 @@ import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
-import { tunnelRegistry } from "../../tunnels/registry.ts";
-import type { TunnelResponse } from "../../tunnels/types.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
@@ -338,10 +336,6 @@ export interface ResolvedRequestPlan {
    *  re-running the lookup. */
   credential_id: string | null;
   auth_method: AppliedAuthMethod;
-  // When set, the request step should forward this request through the
-  // named tunnel target instead of doing a direct `fetch`. The value is
-  // the target name registered by the agent during the register frame.
-  tunnel_target?: string;
 }
 
 /**
@@ -390,7 +384,6 @@ export async function buildRequestPlan(
   for (const [k, v] of Object.entries(query)) {
     url.searchParams.set(k, String(v));
   }
-  const cfg = (p.connector.config ?? {}) as { tunnel_target?: unknown };
   const plan: ResolvedRequestPlan = {
     url,
     headers,
@@ -399,16 +392,8 @@ export async function buildRequestPlan(
     credential_id: credentialId,
     auth_method: deriveAppliedAuthMethod(credential, oauth2Refreshed),
   };
-  if (typeof cfg.tunnel_target === "string" && cfg.tunnel_target.length > 0) {
-    plan.tunnel_target = cfg.tunnel_target;
-  }
-  // SSRF guard: block private/loopback/link-local targets unless the
-  // operator authorised the path via a registered tunnel. Must run AFTER
-  // tunnel_target is resolved so the tunnel exemption kicks in.
-  assertEgressAllowed(url, {
-    tenant_id: p.tenant_id,
-    tunnel_target: plan.tunnel_target ?? null,
-  });
+  // SSRF guard: block private/loopback/link-local targets.
+  assertEgressAllowed(url, { tenant_id: p.tenant_id });
   log.connector.request.planned({
     connector_id: p.connector.id,
     auth_type: p.connector.auth_type,
@@ -416,7 +401,6 @@ export async function buildRequestPlan(
     url: scrubUrl(url),
     has_credential: credential !== null,
     oauth2_refreshed: oauth2Refreshed,
-    tunnel_target: plan.tunnel_target ?? null,
   });
   return plan;
 }
@@ -427,7 +411,6 @@ export interface HttpExecutionResult {
   body: unknown;
   bytes_in: number;
   url: string;
-  tunnel_target?: string;
 }
 
 /**
@@ -652,7 +635,6 @@ export async function executePlannedHttpRequest(params: {
   headers: Record<string, string>;
   body?: unknown;
   signal: AbortSignal;
-  tunnel_target?: string;
   /** When set, the dispatch path runs SigV4 signing right before
    *  `fetch` — sigv4 needs the URL + method + body to compute the
    *  canonical request, so it can't run earlier. */
@@ -671,38 +653,6 @@ export async function executePlannedHttpRequest(params: {
   // as a transient connection error and retries 5×. Reject up front
   // so the operator sees a single, accurate `request_invalid` error.
   validateOutboundHeaders(params.headers);
-  if (params.tunnel_target) {
-    const effectiveBody =
-      params.body !== undefined && params.body !== null && params.method !== "GET"
-        ? typeof params.body === "string"
-          ? params.body
-          : JSON.stringify(params.body)
-        : null;
-    const headers = { ...params.headers };
-    if (effectiveBody !== null && !headers["content-type"] && !headers["Content-Type"]) {
-      headers["content-type"] = "application/json";
-    }
-    injectTraceContext(headers);
-    const tunnelRes = await fetchViaTunnel({
-      tenant_id: params.tenant_id,
-      tunnel_target: params.tunnel_target,
-      method: params.method,
-      url: params.url,
-      headers,
-      body: effectiveBody,
-    });
-    const text = tunnelRes.body ?? "";
-    const contentType =
-      tunnelRes.headers["content-type"] ?? tunnelRes.headers["Content-Type"] ?? "";
-    return {
-      status: tunnelRes.status,
-      headers: tunnelRes.headers,
-      body: parseResponseBody(text, contentType),
-      bytes_in: Buffer.byteLength(text, "utf8"),
-      url: params.url.toString(),
-      tunnel_target: params.tunnel_target,
-    };
-  }
 
   const headers = { ...params.headers };
   const init: RequestInit = {
@@ -747,7 +697,6 @@ export async function executePlannedHttpRequest(params: {
     body: parseResponseBody(text, res.headers.get("content-type") ?? ""),
     bytes_in: Buffer.byteLength(text, "utf8"),
     url: params.url.toString(),
-    ...(params.tunnel_target ? { tunnel_target: params.tunnel_target } : {}),
   };
 }
 
@@ -815,41 +764,8 @@ export async function executeConnectorHttpRequest(params: {
     headers: plan.headers,
     body: params.body,
     signal,
-    ...(plan.tunnel_target ? { tunnel_target: plan.tunnel_target } : {}),
     ...(sigv4Args ? { sigv4: sigv4Args } : {}),
   });
-}
-
-/**
- * Forward a fully-prepared HTTP request through a registered tunnel.
- * The caller is expected to have built `plan.headers` + `plan.url` via
- * `buildRequestPlan`, so credentials are already injected. The agent
- * just relays the request against its local target.
- */
-export async function fetchViaTunnel(params: {
-  tenant_id: string;
-  tunnel_target: string;
-  method: string;
-  url: URL;
-  headers: Record<string, string>;
-  body?: string | null;
-  timeoutMs?: number;
-}): Promise<TunnelResponse> {
-  const pathAndQuery = `${params.url.pathname}${params.url.search}`;
-  const opts: { timeoutMs?: number } = {};
-  if (params.timeoutMs !== undefined) opts.timeoutMs = params.timeoutMs;
-  return await tunnelRegistry.forwardRequest(
-    params.tenant_id,
-    params.tunnel_target,
-    {
-      target: params.tunnel_target,
-      method: params.method,
-      path: pathAndQuery,
-      headers: params.headers,
-      body: params.body ?? null,
-    },
-    opts,
-  );
 }
 
 export interface HttpProbeResult {

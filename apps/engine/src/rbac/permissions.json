@@ -148,19 +148,6 @@
     "resource_type": "inbound_hook"
   },
 
-  { "name": "tunnel:read", "description": "Read tunnel definitions", "resource_type": "tunnel" },
-  {
-    "name": "tunnel:write",
-    "description": "Create or update tunnel definitions",
-    "resource_type": "tunnel"
-  },
-  { "name": "tunnel:delete", "description": "Delete a tunnel", "resource_type": "tunnel" },
-  {
-    "name": "tunnel:agent",
-    "description": "Connect a tunnel agent WebSocket",
-    "resource_type": "tunnel"
-  },
-
   {
     "name": "identity:read",
     "description": "Read tenant identity rows",

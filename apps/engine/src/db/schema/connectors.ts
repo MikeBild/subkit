@@ -61,7 +61,6 @@ export const connectors = pgTable(
     template_source: connectorTemplateSourceEnum("template_source"),
     template_version: integer("template_version"),
     template_snapshot: jsonb("template_snapshot").$type<Record<string, unknown>>(),
-    tunnel_id: uuid("tunnel_id"),
     auto_refresh_cron: text("auto_refresh_cron"),
     last_ingested_at: timestamp("last_ingested_at", { withTimezone: true }),
     circuit_state: text("circuit_state").notNull().default("closed"),

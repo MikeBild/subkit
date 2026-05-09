@@ -166,7 +166,6 @@ describe("MetricsRegistry", () => {
       METRIC_NAMES.QUEUE_DEPTH,
       METRIC_NAMES.QUEUE_LAG_MS,
       METRIC_NAMES.OUTBOX_CURSOR_LAG,
-      METRIC_NAMES.TUNNEL_CONNECTED,
       METRIC_NAMES.PROCESS_UPTIME_SECONDS,
     ];
     const requiredHistograms = [

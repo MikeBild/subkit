@@ -108,8 +108,6 @@ describe("conversation tools — registration", () => {
     "get_inbound_hook",
     "list_subscriptions",
     "get_subscription",
-    "list_tunnels",
-    "get_tunnel",
     "get_engine_status",
     // Discovery (2 read + 1 write)
     "list_discovery_artifacts",
@@ -121,7 +119,6 @@ describe("conversation tools — registration", () => {
     "delete_connector",
     "delete_knowledge_source",
     "delete_subscription",
-    "delete_tunnel",
     "revoke_api_key",
     "revoke_portal_token",
     "approve_skill_candidate",

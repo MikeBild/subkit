@@ -4,7 +4,7 @@
 // Acceptance criteria:
 //   - AC1: `subkit rbac permissions list --json` returns >= 50 permissions
 //          including workflow:run, audit:read, rbac:write.
-//   - AC2: `subkit rbac roles list --json` includes the 6 built-in roles.
+//   - AC2: `subkit rbac roles list --json` includes the 5 built-in roles.
 //   - AC3: `subkit rbac roles create <name>` creates a tenant role.
 //   - AC4: `subkit rbac roles grant <role_id> <permission>` attaches a
 //          permission to the role.
@@ -211,8 +211,12 @@ describe("journey 29: subkit rbac CLI", () => {
     expect(names).toContain("admin");
     expect(names).toContain("member");
     expect(names).toContain("enduser");
-    expect(names).toContain("tunnel_agent");
     expect(names).toContain("metrics_scraper");
+    // Negative assertion: the migration-driven cleanup in
+    // 0014_drop_tunnels.sql must have removed the legacy `tunnel_agent`
+    // builtin role on upgraded DBs. This trips if the cleanup block
+    // is dropped or the seeder reintroduces the role.
+    expect(names).not.toContain("tunnel_agent");
   });
 
   test("AC3+AC4: roles create + grant permission", async () => {

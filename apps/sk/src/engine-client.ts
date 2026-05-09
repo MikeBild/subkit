@@ -151,7 +151,6 @@ export interface ConnectorResolutionSummary {
     | "basic"
     | "oauth2_static"
     | "oauth2_refreshed";
-  tunnel_target?: string | null;
   base_url?: string | null;
 }
 
@@ -1380,20 +1379,6 @@ export class EngineClient {
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", "/v1/events", undefined, query);
-  }
-
-  // -------------------- Tunnels --------------------
-  listTunnels(): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/tunnels");
-  }
-  getTunnel(id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/tunnels/${encodeURIComponent(id)}`);
-  }
-  createTunnel(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/tunnels", body);
-  }
-  deleteTunnel(id: string): Promise<void> {
-    return this.request("DELETE", `/v1/tunnels/${encodeURIComponent(id)}`);
   }
 
   // -------------------- API Keys --------------------

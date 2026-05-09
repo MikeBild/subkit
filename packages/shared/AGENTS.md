@@ -5,8 +5,8 @@ Overrides and extends the root `AGENTS.md`. When rules conflict, this file wins.
 ## Purpose
 
 `packages/shared/` is the cross-surface shared layer. It exports reusable domain
-types and pure helpers used by `apps/engine/`, `apps/sk/`, `apps/agent/`, and
-supporting packages. It is the **one place** where those surfaces agree on shape.
+types and pure helpers used by `apps/engine/`, `apps/sk/`, and supporting
+packages. It is the **one place** where those surfaces agree on shape.
 
 ## Strict rules
 

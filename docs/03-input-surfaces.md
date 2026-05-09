@@ -23,7 +23,7 @@ The sk CLI is the primary human-facing authoring tool and the canonical operator
 - *Authoring*: `/connector`, `/connectors`, `/workflow`, `/workflows`, `/templates`, `/versions`, `/approve`, `/approvals`, `/reject`, `/draft`, `/context`, `/run`, `/list`, `/restore`, `/policy`, `/yolo` (force-skip checkpoint gates), `/patch-candidates`, `/discovery`, `/actions`, `/queue`, `/history`, `/view`, `/export`, `/attach`, `/paste`.
 - *Session*: `/help`, `/clear`, `/compact`, `/resume`, `/exit`, `/init`, `/setup`, `/onboard`, `/profile`, `/model`, `/status`, `/cost`, `/verbose`, `/debug`, `/bug`, `/logs`, `/config`, `/aliases`, `/env`, `/exec`.
 - *Identity & access*: `/login`, `/logout`, `/auth`, `/apikeys`, `/audit`, `/admin`, `/tenant`, `/users`, `/system-accounts`, `/permissions`.
-- *AI context*: `/skills`, `/knowledge`, `/mcp`, `/memory`, `/notifications`, `/tunnels`, `/executions`.
+- *AI context*: `/skills`, `/knowledge`, `/mcp`, `/memory`, `/notifications`, `/executions`.
 - *Vendor install helpers*: `/install-slack`, `/install-teams`, `/install-github`, `/install-google-workspace`, `/install-salesforce`, `/install-jira`, `/install-hubspot`.
 
 Each command's full surface lives next to its handler; this list is the canonical index.

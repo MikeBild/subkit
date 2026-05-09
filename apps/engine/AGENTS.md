@@ -7,10 +7,9 @@ When rules conflict, the more specific file wins (this one).
 
 `apps/engine/` owns the server: HTTP API, MCP server, queue workers, scheduler,
 pub/sub, connector drivers, AI flows, self-healing, audit log, RBAC. It's the only
-surface with domain logic. `sk` (`apps/sk/`) and the tunnel agent (`apps/agent/`) are
-thin wrappers on top of it.
+surface with domain logic. `sk` (`apps/sk/`) is a thin wrapper on top of it.
 
-See the subsystem table in `../../AGENTS.md` for the 37 directories and their
+See the subsystem table in `../../AGENTS.md` for the 40 directories and their
 responsibilities.
 
 ## Non-negotiables
@@ -77,7 +76,7 @@ responsibilities.
 
 ## When adding a new subsystem
 
-Ask first. 37 directories already cover the concerns subkit owns. If you think
+Ask first. 40 directories already cover the concerns subkit owns. If you think
 you need a new one:
 
 1. Confirm it doesn't fit in an existing directory.
@@ -109,10 +108,6 @@ along three axes that each demand a separate runtime:
 - **`apps/sk/`** — CLI wrapper. Single-tenant, single-user, runs on an
   operator's laptop. Talks to engine over HTTP only. Independent release
   cadence; sk versions ≠ engine versions.
-- **`apps/agent/`** — Tunnel egress agent. Runs in the customer's network
-  to expose private resources (intranet APIs, on-prem databases) back to a
-  hosted engine. Different process, different security boundary, must be
-  shippable as a single static binary.
 - **`packages/chat-ui/`** — Browser-only React frontend. Different runtime,
   different deploy target.
 

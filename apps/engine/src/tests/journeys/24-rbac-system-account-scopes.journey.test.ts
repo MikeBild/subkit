@@ -1,9 +1,8 @@
 // User story: As an operator, I want machine accounts to inherit
 // narrow roles rather than being implicit admins.
 // Acceptance criteria:
-//   - AC1: A tunnel_agent system account is denied workflow:write.
-//   - AC2: A metrics_scraper system account is denied workflow:read.
-//   - AC3: The default-bot system account remains full admin.
+//   - AC1: A metrics_scraper system account is denied workflow:read.
+//   - AC2: The default-bot system account remains full admin.
 // Spec refs: gap-pass-2 C7 / C8
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -47,12 +46,10 @@ async function seedSystemKey(name: string, builtinRoleName: string): Promise<str
 }
 
 describe("journey: rbac system account scopes", () => {
-  let tunnelKey = "";
   let metricsKey = "";
 
   beforeAll(async () => {
     ctx = await createJourneyCtx("24-rbac-sys");
-    tunnelKey = await seedSystemKey("tunnel-agent-24", BUILTIN_ROLE_NAMES.TUNNEL_AGENT);
     metricsKey = await seedSystemKey("metrics-scraper-24", BUILTIN_ROLE_NAMES.METRICS_SCRAPER);
   }, JOURNEY_HOOK_TIMEOUT);
   afterAll(async () => {
@@ -66,24 +63,12 @@ describe("journey: rbac system account scopes", () => {
     return fetch(`${ctx.baseUrl}${path}`, { ...init, headers });
   }
 
-  test("AC1: tunnel_agent cannot create workflows", async () => {
-    const res = await req(tunnelKey, "/v1/workflows", {
-      method: "POST",
-      body: JSON.stringify({
-        name: "nope",
-        slug: "nope",
-        steps: [{ id: "s", kind: "transform", expression: '"nope"' }],
-      }),
-    });
-    expect(res.status).toBe(403);
-  });
-
-  test("AC2: metrics_scraper cannot list workflows", async () => {
+  test("AC1: metrics_scraper cannot list workflows", async () => {
     const res = await req(metricsKey, "/v1/workflows");
     expect(res.status).toBe(403);
   });
 
-  test("AC3: default-bot (admin) retains full access", async () => {
+  test("AC2: default-bot (admin) retains full access", async () => {
     // The journey bootstrap seeds the admin API key under ctx.apiKey.
     const res = await req(ctx.apiKey, "/v1/workflows");
     expect(res.status).toBe(200);

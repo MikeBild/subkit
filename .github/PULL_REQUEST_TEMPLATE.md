@@ -16,18 +16,6 @@ Read AGENTS.md if any of the rules are unclear.
 
 -
 
-## Audit phase / section
-
-<!--
-  Active architecture audit: docs/audits/2026-05-architecture-audit.md
-  The audit-invariants CI check requires all three lines below to be present.
-  If this PR is unrelated to the audit, fill in `unrelated` / `n/a` / `none`.
--->
-
-**Audit phase:** <!-- 1 | 2 | 3 | 4 | 5 | 6 | unrelated -->
-**Section reference:** <!-- e.g. docs/audits/2026-05-architecture-audit.md#42 — or `n/a` -->
-**Verification touched:** <!-- which §6.4 invariants this PR moves — or `none` -->
-
 ## Quality gate
 
 - [ ] `bun run verify` is green locally (lint + typecheck + terminology + audit:invariants + openapi-drift + determinism + test:unit + verify:ai + test:integration + build:sk + test:e2e).

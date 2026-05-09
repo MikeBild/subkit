@@ -125,7 +125,7 @@ Every Step in the `RunResult` carries a `request_meta` object with driver-specif
 - `status` — HTTP status code (or HTTP status of the GraphQL endpoint).
 - `bytes_in` — response body size in bytes.
 - `retry_count` — retries consumed before success or failure (also surfaced at top level).
-- `connector` — a sub-object with `connector_id`, `connector_slug`, `driver`, `requested_environment`, `resolved_environment`, `auth_method`, `base_url`, and optional `tunnel_target`.
+- `connector` — a sub-object with `connector_id`, `connector_slug`, `driver`, `requested_environment`, `resolved_environment`, `auth_method`, and `base_url`.
 
 `auth_method` is observable at request time, not configured: it distinguishes `oauth2_static` (cached token still fresh) from `oauth2_refreshed` (a stale token was rotated inline before the request went out). Debugging a mysteriously failing credential becomes a lookup in the run result rather than a server-side hunt.
 

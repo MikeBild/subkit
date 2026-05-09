@@ -362,7 +362,7 @@ register(restoreDraftSnapshotTool);
 // workflows, connectors, executions, skills, skill-candidates,
 // patch-candidates, knowledge-sources, audit, metrics, identity
 // (whoami + users + api-keys + portal-tokens + system-accounts),
-// rbac (roles + permissions), hooks, subscriptions, tunnels, status.
+// rbac (roles + permissions), hooks, subscriptions, status.
 import { ALL_GENERATED_READ_TOOLS } from "./generated/index.ts";
 import { ALL_GENERATED_WRITE_TOOLS } from "./generated/writes/index.ts";
 

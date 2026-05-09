@@ -216,12 +216,6 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
     reason: "Permanent subscription deletion",
   },
   {
-    name: "delete_tunnel",
-    defaultMode: "confirm_before_execution",
-    confirmationKind: "destructive",
-    reason: "Permanent tunnel deletion",
-  },
-  {
     name: "delete_schedule",
     defaultMode: "confirm_before_execution",
     confirmationKind: "destructive",
@@ -363,7 +357,6 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   { name: "list_executions", defaultMode: "auto" },
   { name: "list_schedules", defaultMode: "auto" },
   { name: "list_subscriptions", defaultMode: "auto" },
-  { name: "list_tunnels", defaultMode: "auto" },
   { name: "list_knowledge_sources", defaultMode: "auto" },
   { name: "list_skills", defaultMode: "auto" },
   { name: "list_all_skills", defaultMode: "auto" },
@@ -383,7 +376,6 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   { name: "get_workflow", defaultMode: "auto" },
   { name: "get_execution", defaultMode: "auto" },
   { name: "get_subscription", defaultMode: "auto" },
-  { name: "get_tunnel", defaultMode: "auto" },
   { name: "get_knowledge_source", defaultMode: "auto" },
   { name: "get_skill", defaultMode: "auto" },
   { name: "get_skill_candidate", defaultMode: "auto" },

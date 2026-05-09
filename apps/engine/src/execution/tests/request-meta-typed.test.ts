@@ -17,7 +17,6 @@ const stubConnector: ConnectorResolutionSummary = {
   resolved_environment: "dev",
   auth_method: "bearer",
   base_url: "https://example.test",
-  tunnel_target: null,
 };
 
 describe("RequestMeta · driver-discriminated union", () => {

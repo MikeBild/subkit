@@ -16,7 +16,6 @@ export const DANGEROUS_TOOLS = [
   "delete_connector",
   "delete_knowledge_source",
   "delete_subscription",
-  "delete_tunnel",
   "revoke_api_key",
   "revoke_portal_token",
   "approve_patch_candidate",

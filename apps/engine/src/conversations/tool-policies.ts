@@ -327,10 +327,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     defaultMode: "confirm_before_execution",
     buildPendingOutput: (input) => pickFields(input, ["subscription_id"]),
   },
-  delete_tunnel: {
-    defaultMode: "confirm_before_execution",
-    buildPendingOutput: (input) => pickFields(input, ["tunnel_id", "name"]),
-  },
   revoke_api_key: {
     defaultMode: "confirm_before_execution",
     buildPendingOutput: (input) => pickFields(input, ["api_key_id", "prefix"]),

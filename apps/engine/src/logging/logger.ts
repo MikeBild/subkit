@@ -403,9 +403,4 @@ export const log = {
     reconciled: (ctx: Ctx) => logger.debug({ module: "scheduler", action: "reconciled", ...ctx }),
     lifecycle: (ctx: Ctx) => logger.info({ module: "scheduler", action: "lifecycle", ...ctx }),
   },
-  tunnel: {
-    auth: (ctx: Ctx) => logger.info({ module: "tunnel", action: "auth", ...ctx }),
-    register: (ctx: Ctx) => logger.info({ module: "tunnel", action: "register", ...ctx }),
-    forward: (ctx: Ctx) => logger.debug({ module: "tunnel", action: "forward", ...ctx }),
-  },
 } as const;

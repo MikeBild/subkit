@@ -8,7 +8,6 @@
 //   - IPv4-mapped IPv6 in BOTH dotted (`::ffff:10.0.0.1`) and hex
 //     (`::ffff:a00:1`) forms — Node's URL parser produces hex.
 //   - Permissive mode still blocks `localhost`/`0.0.0.0`.
-//   - Tunnel exemption skips the check entirely.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { assertEgressAllowed, EgressBlockedError, isPrivateOrLoopback } from "./egress-guard.ts";
@@ -175,44 +174,6 @@ describe("assertEgressAllowed (permissive mode)", () => {
     expect(() => assertEgressAllowed("http://0.0.0.0/x", { mode: "permissive" })).toThrow(
       EgressBlockedError,
     );
-  });
-});
-
-describe("assertEgressAllowed (tunnel exemption)", () => {
-  test("tunnel_target skips the entire check, even for the AWS metadata endpoint", () => {
-    expect(() =>
-      assertEgressAllowed("http://169.254.169.254/latest/meta-data/", {
-        mode: "strict",
-        tunnel_target: "agent-1",
-      }),
-    ).not.toThrow();
-    expect(() =>
-      assertEgressAllowed("http://10.0.0.1/internal", {
-        mode: "strict",
-        tunnel_target: "agent-1",
-      }),
-    ).not.toThrow();
-    expect(() =>
-      assertEgressAllowed("http://[fc00::1]/x", {
-        mode: "strict",
-        tunnel_target: "agent-1",
-      }),
-    ).not.toThrow();
-  });
-
-  test("empty / null tunnel_target falls through to the normal check", () => {
-    expect(() =>
-      assertEgressAllowed("http://10.0.0.1/x", {
-        mode: "strict",
-        tunnel_target: "",
-      }),
-    ).toThrow(EgressBlockedError);
-    expect(() =>
-      assertEgressAllowed("http://10.0.0.1/x", {
-        mode: "strict",
-        tunnel_target: null,
-      }),
-    ).toThrow(EgressBlockedError);
   });
 });
 

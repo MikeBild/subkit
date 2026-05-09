@@ -68,16 +68,6 @@ End-User Credentials extend this model for multi-user scenarios. An individual u
 
 ---
 
-## Tunnels: Private Network Access
-
-Many enterprise systems are not publicly reachable. They live behind firewalls, inside VPCs, or on-premises. sk's Tunnel mechanism solves this without requiring operators to open inbound firewall rules or expose internal services to the internet.
-
-A small agent binary — the Tunnel Agent — runs inside the private network. It opens an outbound WebSocket connection to the sk engine and registers the internal services it can reach. When a workflow Step needs to call one of those services, the engine routes the request through the open Tunnel connection. From the network's perspective, only an outbound connection was made.
-
-The security model is deliberate. No inbound firewall rules are required. The Tunnel Agent is a proxy only — it forwards requests but makes no authorization decisions. All authorization is handled by the sk engine, using the same RBAC and policy layer that governs every other request. Connections are authenticated and encrypted end-to-end.
-
----
-
 ## Schema Versions and Drift
 
 External APIs change. Fields are renamed, endpoints move, new error codes appear, response shapes evolve. A Connector that worked last month may not work the same way today.

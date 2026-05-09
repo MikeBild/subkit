@@ -82,6 +82,6 @@ The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; on `200` it st
 
 ## Next steps
 
-- [docs/05-connectors.md](../05-connectors.md) — connector management, credentials, OAuth2, and private-network tunnels.
+- [docs/05-connectors.md](../05-connectors.md) — connector management, credentials, and OAuth2.
 - [docs/07-security-governance.md](../07-security-governance.md) — RBAC, identity setup (OIDC/SSO), API key rotation, and Before-Request Hooks.
 - [docs/08-operations.md](../08-operations.md) — observability, resource limits, self-healing, and backup strategy.

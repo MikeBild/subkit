@@ -86,7 +86,7 @@ export interface paths {
         };
         /**
          * Bundled SHA256SUMS for the binaries shipped in this image
-         * @description Returns the verbatim SHA256SUMS file for the `sk` and `tunnel-agent` binaries bundled in this engine image. 404 when the slim image is in use; clients should fall back to https://github.com/MikeBild/subkit/releases for the matching tag.
+         * @description Returns the verbatim SHA256SUMS file for the `sk` binary bundled in this engine image. 404 when the slim image is in use; clients should fall back to https://github.com/MikeBild/subkit/releases for the matching tag.
          */
         get: {
             parameters: {
@@ -133,15 +133,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Bundled sk / tunnel-agent binary
-         * @description Streams a CLI binary bundled in the engine-with-cli image variant. Returns 404 with a pointer body when the bundle is absent, the asset name is malformed, or the requested platform/arch is not built. Verifies bytes via the `x-subkit-sha256` response header.
+         * Bundled sk binary
+         * @description Streams the sk CLI binary bundled in the engine-with-cli image variant. Returns 404 with a pointer body when the bundle is absent, the asset name is malformed, or the requested platform/arch is not built. Verifies bytes via the `x-subkit-sha256` response header.
          */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Asset slug. Grammar: `(sk|agent)-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built. */
+                    /** @description Asset slug. Grammar: `sk-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built. */
                     asset: string;
                 };
                 cookie?: never;
@@ -6768,142 +6768,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/tunnels": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List tunnels */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["TunnelListResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        /** Pre-register a tunnel row (no live socket) */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["CreateTunnelBody"];
-                };
-            };
-            responses: {
-                /** @description Created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Tunnel"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tunnels/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Fetch a tunnel */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Tunnel"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        /** Delete a tunnel */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Deleted */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/audit-log": {
         parameters: {
             query?: never;
@@ -7614,9 +7478,9 @@ export interface components {
                 scopes: string[] | null;
             };
             /** @description Allowed UX-gating permissions for the principal. */
-            permissions: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "tunnel:read")[];
+            permissions: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read")[];
             /** @description Stable list of permissions probed; reflects the engine's known UX gating set. */
-            permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "tunnel:read")[];
+            permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read")[];
             tenant: {
                 id: string;
                 slug: string | null;
@@ -7745,7 +7609,6 @@ export interface components {
             url: string | null;
             status?: number;
             bytes_in?: number;
-            tunnel_target?: string | null;
             idempotency_key?: string;
             connector: components["schemas"]["ConnectorResolutionSummary"];
             digest?: components["schemas"]["RequestDigest"];
@@ -7769,7 +7632,6 @@ export interface components {
             resolved_environment: "dev" | "prod";
             /** @enum {string} */
             auth_method: "none" | "bearer" | "header" | "query" | "basic" | "oauth2_static" | "oauth2_refreshed";
-            tunnel_target?: string | null;
             base_url?: string | null;
         };
         RequestDigest: {
@@ -9595,39 +9457,11 @@ export interface components {
         };
         EmitEventBody: {
             /** @enum {string} */
-            type: "execution.succeeded" | "execution.failed" | "workflow.updated" | "connector.oauth.refreshed" | "patch.proposed" | "apikey.rotated" | "tunnel.connected" | "tunnel.disconnected" | "conversation.committed";
+            type: "execution.succeeded" | "execution.failed" | "workflow.updated" | "connector.oauth.refreshed" | "patch.proposed" | "apikey.rotated" | "conversation.committed";
             payload: {
                 [key: string]: unknown;
             };
             channel?: string;
-        };
-        TunnelListResponse: {
-            items: components["schemas"]["Tunnel"][];
-            next_cursor?: string | null;
-        };
-        Tunnel: {
-            id: string;
-            tenant_id: string;
-            name: string;
-            /** @enum {string} */
-            state: "registered" | "connected" | "disconnected";
-            last_seen_at: string | null;
-            created_at: string;
-            updated_at: string;
-            targets: components["schemas"]["TunnelTarget"][];
-            in_flight: number;
-        };
-        TunnelTarget: {
-            id: string;
-            target_name: string;
-            concurrency_cap: number;
-        };
-        CreateTunnelBody: {
-            name: string;
-            targets: {
-                name: string;
-                local_base_url: string;
-            }[];
         };
         AuditLogListResponse: {
             items: components["schemas"]["AuditEntry"][];

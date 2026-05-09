@@ -16,7 +16,7 @@
 //
 // Excluded from the live-consumer requirement (documented inline):
 //   - log.level / log.format               — read at boot only via reconfigureLogger
-//   - server.port / server.tunnel_port     — read at boot only by serve()
+//   - server.port                          — read at boot only by serve()
 //   - database.url                         — read by getDb() bootstrap path
 //   - tenants                              — overlay record, walked separately
 //
@@ -39,7 +39,6 @@ const BOOT_ONLY_LEAVES = new Set<string>([
   "log.level",
   "log.format",
   "server.port",
-  "server.tunnel_port",
   "server.public_base_url",
   "database.url",
   "auth.session.secret",

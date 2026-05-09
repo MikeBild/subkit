@@ -78,7 +78,6 @@ const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
   "delete_connector",
   "delete_knowledge_source",
   "delete_subscription",
-  "delete_tunnel",
   "delete_workflow",
   "revoke_api_key",
   "revoke_portal_token",

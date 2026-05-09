@@ -94,7 +94,7 @@ jobs:
         # in parallel. Without this, ~150 of the 612 test files race to
         # spin up tenant-scoped Postgres databases (see
         # `apps/engine/src/db/tests/setup.ts`) and exhaust the pool,
-        # surfacing as 5s timeouts in MCP / chat / tunnel / journey
+        # surfacing as 5s timeouts in MCP / chat / journey
         # tests that are otherwise green in isolation. The CI runner's
         # 4-core sizing makes 4 the natural ceiling.
         #

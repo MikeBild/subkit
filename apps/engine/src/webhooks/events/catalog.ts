@@ -46,16 +46,6 @@ const ApiKeyRotated = z.object({
   actor_id: z.string().uuid().nullable(),
 });
 
-const TunnelConnected = z.object({
-  tunnel_id: z.string().uuid(),
-  connector_id: z.string().uuid().nullable().optional(),
-});
-
-const TunnelDisconnected = z.object({
-  tunnel_id: z.string().uuid(),
-  reason: z.string().optional(),
-});
-
 const ConversationCommitted = z.object({
   conversation_id: z.string().uuid(),
   workflow_id: z.string().uuid(),
@@ -114,19 +104,6 @@ export const EVENT_CATALOG = {
     example: {
       api_key_id: "00000000-0000-0000-0000-000000000006",
       actor_id: null,
-    },
-  },
-  "tunnel.connected": {
-    name: "tunnel.connected",
-    schema: TunnelConnected,
-    example: { tunnel_id: "00000000-0000-0000-0000-000000000007" },
-  },
-  "tunnel.disconnected": {
-    name: "tunnel.disconnected",
-    schema: TunnelDisconnected,
-    example: {
-      tunnel_id: "00000000-0000-0000-0000-000000000007",
-      reason: "client_timeout",
     },
   },
   "conversation.committed": {

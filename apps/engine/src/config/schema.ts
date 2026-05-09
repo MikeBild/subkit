@@ -135,15 +135,6 @@ const ServerSection = z
       .default(3000)
       .describe("HTTP port to bind (1..65535)")
       .meta(global({ requiresRestart: true })),
-    tunnel_port: z
-      .number()
-      .int()
-      .min(1)
-      .max(65535)
-      .nullable()
-      .default(null)
-      .describe("Tunnel WebSocket port (1..65535); null disables tunnels")
-      .meta(global({ requiresRestart: true })),
     public_base_url: optionalUrl
       .default("")
       .describe("External-facing URL the engine resolves at (used by /install + chat link replies)")
@@ -419,13 +410,6 @@ const McpSection = z
   .prefault({})
   .describe("MCP transport");
 
-const TunnelSection = z
-  .object({
-    registry_max: z.number().int().positive().default(100).meta(global()),
-  })
-  .prefault({})
-  .describe("Tunnel registry");
-
 const ErrorsSection = z
   .object({
     ring_size: z.number().int().positive().default(100).meta(global()),
@@ -516,7 +500,6 @@ export const ConfigSchema = z
     observability: ObservabilitySection,
     egress: EgressSection,
     mcp: McpSection,
-    tunnel: TunnelSection,
     errors: ErrorsSection,
     spec: SpecSection,
     queue: QueueSection,
@@ -546,7 +529,6 @@ export const SECTION_ORDER = [
   "observability",
   "egress",
   "mcp",
-  "tunnel",
   "errors",
   "docker",
   "spec",

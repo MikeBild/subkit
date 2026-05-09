@@ -4,7 +4,7 @@
 //
 //   - Counters end in `_total` (`execution_total`, `request_retry_total`).
 //   - Gauges have no suffix and represent a point-in-time value
-//     (`queue_depth`, `tunnel_connected`).
+//     (`queue_depth`).
 //   - Histograms expose `_bucket{le=...}`, `_sum`, and `_count` series;
 //     the base name carries the unit suffix (`execution_duration_ms`).
 //

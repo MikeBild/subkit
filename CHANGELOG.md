@@ -1,5 +1,11 @@
 # Changelog
 
+## [4.3.0] (unreleased)
+
+### Removed
+
+- **tunnel-agent**: removed the tunnel-agent subsystem (engine WS server, agent binary, sk tunnels CLI, tunnel:* RBAC permissions, tunnels DB tables, deploy port 3001 and subkit-tunnel.* DNS).
+
 ## [4.0.0](https://github.com/MikeBild/subkit/compare/subkit-v3.5.1...subkit-v4.0.0) (2026-05-06)
 
 

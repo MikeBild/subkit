@@ -9,7 +9,7 @@ instruction files are compatibility layers or indexes — not competing sources 
 - **subkit is a control layer for enterprise AI integration.** It is not a chat product,
   not an LLM provider, and not a general workflow-automation tool. It owns:
   identity & access (RBAC/ABAC, encrypted credentials, portal tokens, API keys),
-  unified data/tool interfaces (9 typed drivers, 90 connector templates, tunnels),
+  unified data/tool interfaces (9 typed drivers, 90 connector templates),
   governed execution (immutable audit log, human-in-the-loop approvals,
   versioned workflows with full snapshots), observability (Prometheus, structured logs,
   drift detection), and multi-tenant conversation-first surfaces (CLI, `sk`, Slack, Teams,
@@ -44,7 +44,6 @@ High-value references (by task type):
 - **Security & governance** — `docs/07-security-governance.md`
 - **Operations** — `docs/08-operations.md`
 - **Agent-task navigation** — `.claude/docs/agent-navigation.md` (task-oriented index)
-- **Active architecture audit** — `docs/audits/2026-05-architecture-audit.md` (cleanup plan, phases 1–6; every cleanup PR cites this doc)
 
 ## Working Rules
 
@@ -129,14 +128,12 @@ layer, stop and move it.
   webhooks, scheduler, pub/sub, connector drivers, AI flows, self-healing, audit log.
 - **`apps/sk/`** — the `sk` unified CLI (Ink-based TUI + citty subcommands). Persona-aware:
   end-users get the REPL; operators and admins get the full admin surface too. No domain logic.
-- **`apps/agent/`** — the tunnel agent. Outbound WebSocket from a private network into
-  the engine. No domain logic beyond connection management.
 - **`packages/cli-core/`** — shared CLI utilities (updater, version, prompts). Pure,
   reusable, no `apps/*` imports.
 - **`packages/shared/`** — shared domain types & helpers. Pure, deterministic, no
   `apps/*` imports. See `packages/shared/AGENTS.md` for stricter rules.
 
-Subsystem map inside `apps/engine/src/` (41 directories + 5 loose root files):
+Subsystem map inside `apps/engine/src/` (40 directories + 5 loose root files):
 
 | Concern | Directory | Key docs |
 |---|---|---|
@@ -175,7 +172,6 @@ Subsystem map inside `apps/engine/src/` (41 directories + 5 loose root files):
 | Object/blob storage | `storage/` | `docs/06-execution.md` |
 | Engine-internal cross-subsystem fixtures + helpers | `test-helpers/` | (test infrastructure) |
 | Top-level integration suites | `tests/` | (test infrastructure) |
-| Private-network tunnels | `tunnels/` | `docs/05-connectors.md` |
 | Cross-subsystem utilities | `utils/` | (shared helpers) |
 | Inbound + outbound webhooks (incl. transactional outbox dispatch) | `webhooks/` | `docs/03-input-surfaces.md` |
 | DAG versioning + locking + execution | `workflows/` | `docs/06-execution.md` |
@@ -190,7 +186,6 @@ Directory-local overrides:
 
 - `apps/engine/AGENTS.md` — strict rules for engine code.
 - `apps/sk/AGENTS.md` — `sk` unified CLI (Ink REPL + citty admin subcommands).
-- `apps/agent/AGENTS.md` — tunnel agent binary (outbound proxy, no policy).
 - `packages/shared/AGENTS.md` — pure/deterministic code only.
 
 ## Code Quality Enforcement
@@ -279,7 +274,6 @@ Directory-local overrides:
 
 - `apps/engine/AGENTS.md`
 - `apps/sk/AGENTS.md`
-- `apps/agent/AGENTS.md`
 - `packages/shared/AGENTS.md`
 
 When in doubt, start here, then follow the most specific pointer downward.

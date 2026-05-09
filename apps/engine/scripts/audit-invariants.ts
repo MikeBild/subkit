@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 //
-// Audit-invariants — the single CI gate enforcing §6.1 of
-// docs/audits/2026-05-architecture-audit.md.
+// Audit-invariants — the single CI gate enforcing the engine's
+// architectural invariants (file size, tenant filtering, route layering,
+// coverage floors, ...).
 //
-// Runs every check from the audit's invariant list and exits non-zero
+// Runs every check from the invariant list and exits non-zero
 // on any failure. The same script is invoked from:
 //   - .github/workflows/audit-invariants.yml      (PR + nightly CI)
 //   - package.json scripts (`bun run audit:invariants`)            (release gate)
@@ -210,7 +211,6 @@ function checkRouteLayering(): Result {
     "schema-versions",
     "skill-candidates",
     "docs-ingestion",
-    "tunnels",
     "chat",
     "mcp",
     "pubsub",
@@ -535,49 +535,6 @@ function checkRegressionIsolation(): Result {
   };
 }
 
-function checkPrTemplate(): Result {
-  // Only meaningful in PR context; otherwise PASS.
-  const body = process.env.PR_BODY;
-  if (!body) {
-    return {
-      id: "pr_template",
-      status: "SKIP",
-      message: "no PR_BODY env (running outside PR context)",
-    };
-  }
-  // Skip on release-please-generated PRs. release-please composes the
-  // body from conventional-commit messages plus an auto-link to the
-  // release-notes branch when the body would otherwise overflow GitHub's
-  // PR-body cap. Either marker means the PR is automated; the
-  // audit-phase template fields don't apply.
-  const branch = process.env.PR_HEAD_REF ?? "";
-  const isReleasePleasePr =
-    branch.startsWith("release-please--") ||
-    body.includes("release-please--branches--") ||
-    body.startsWith(":robot:");
-  if (isReleasePleasePr) {
-    return {
-      id: "pr_template",
-      status: "SKIP",
-      message: "release-please-generated PR; audit-phase fields not applicable",
-    };
-  }
-  const required = ["Audit phase", "Section reference", "Verification touched"];
-  const missing = required.filter((k) => !body.includes(k));
-  if (missing.length === 0) {
-    return {
-      id: "pr_template",
-      status: "PASS",
-      message: "all required audit-phase fields present in PR body",
-    };
-  }
-  return {
-    id: "pr_template",
-    status: "FAIL",
-    message: `PR body missing fields: ${missing.join(", ")}`,
-  };
-}
-
 function checkSystemdUnitJitFriendly(): Result {
   // Bun's JIT mints W+X memory pages. The systemd unit must NOT
   // enable MemoryDenyWriteExecute=yes — doing so silently breaks
@@ -648,7 +605,7 @@ function checkTestSeamsGated(): Result {
   ] as const;
 
   const offenders: string[] = [];
-  const roots = ["apps/engine/src", "apps/sk/src", "apps/agent/src", "packages"];
+  const roots = ["apps/engine/src", "apps/sk/src", "packages"];
   for (const root of roots) {
     const files = listFiles(
       root,
@@ -712,7 +669,6 @@ const CHECKS: Array<() => Result> = [
   checkRegressionIsolation,
   checkSystemdUnitJitFriendly,
   checkTestSeamsGated,
-  checkPrTemplate,
 ];
 
 const results: Result[] = [];

@@ -21,7 +21,7 @@ import { createDeterministicUuidFactory } from "../../test-helpers/determinism/i
 const uuid = createDeterministicUuidFactory(0xd4af7_c4ed);
 
 import { EngineClient } from "../../engine-client/index.ts";
-import { startLocalTargetServer } from "../../tunnels/tests/setup.ts";
+import { startLocalTargetServer } from "../../test-helpers/local-http.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
@@ -460,7 +460,7 @@ describe("maybeCacheDraftCredentialFromElicitation", () => {
 describe("probe_connector_draft + draft credential", () => {
   test("sends Authorization: Bearer <token> when cache populated", async () => {
     const captured: { auth: string | null } = { auth: null };
-    const server = startLocalTargetServer((req) => {
+    const server = await startLocalTargetServer((req) => {
       captured.auth = req.headers.get("authorization");
       return new Response(JSON.stringify({ projects: [] }), {
         status: 200,
@@ -489,7 +489,7 @@ describe("probe_connector_draft + draft credential", () => {
 
   test("returns credential_required when cache is empty for auth-required draft", async () => {
     let serverHit = false;
-    const server = startLocalTargetServer(() => {
+    const server = await startLocalTargetServer(() => {
       serverHit = true;
       return new Response("should not reach upstream", { status: 200 });
     });
@@ -516,7 +516,7 @@ describe("probe_connector_draft + draft credential", () => {
 
   test("auth_type=none drafts probe without a credential", async () => {
     const captured: { auth: string | null } = { auth: null };
-    const server = startLocalTargetServer((req) => {
+    const server = await startLocalTargetServer((req) => {
       captured.auth = req.headers.get("authorization");
       return new Response("ok", { status: 200 });
     });

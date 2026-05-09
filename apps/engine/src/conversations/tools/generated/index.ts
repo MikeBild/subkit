@@ -23,7 +23,6 @@ export { skillCandidateReadTools } from "./skill-candidates.ts";
 export { skillReadTools } from "./skills.ts";
 export { statusReadTools } from "./status.ts";
 export { subscriptionReadTools } from "./subscriptions.ts";
-export { tunnelReadTools } from "./tunnels.ts";
 export { workflowReadTools } from "./workflows.ts";
 
 import type { ConversationTool } from "../index.ts";
@@ -45,7 +44,6 @@ import { skillCandidateReadTools } from "./skill-candidates.ts";
 import { skillReadTools } from "./skills.ts";
 import { statusReadTools } from "./status.ts";
 import { subscriptionReadTools } from "./subscriptions.ts";
-import { tunnelReadTools } from "./tunnels.ts";
 import { workflowReadTools } from "./workflows.ts";
 
 export const ALL_GENERATED_READ_TOOLS: ConversationTool[] = [
@@ -62,7 +60,6 @@ export const ALL_GENERATED_READ_TOOLS: ConversationTool[] = [
   ...rbacReadTools,
   ...hookReadTools,
   ...subscriptionReadTools,
-  ...tunnelReadTools,
   ...statusReadTools,
   // Discovery read + write: list_ + get_ are tenant_read; approve_ is
   // tenant_write but registered here so the palette sees it.

@@ -136,7 +136,6 @@ export async function createSelfHealingCtx(label: string): Promise<SelfHealingTe
           resolved_environment: "dev",
           auth_method: "none",
           base_url: null,
-          tunnel_target: null,
         },
       },
       error: {

@@ -35,7 +35,6 @@ export function rollupConnectorResolutions(
       requested_environment,
       resolved_environment: resolvedEnv,
       auth_method: normalizeAuthMethod(c.auth_method),
-      tunnel_target: typeof c.tunnel_target === "string" ? c.tunnel_target : null,
       base_url: typeof c.base_url === "string" ? c.base_url : null,
     });
   }
