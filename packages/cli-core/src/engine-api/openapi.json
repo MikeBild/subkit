@@ -29,24 +29,14 @@
           "db_connected": {
             "type": "boolean"
           },
-          "db_schema_drift": {
-            "type": "boolean"
-          },
           "uptime_seconds": {
             "type": "number"
-          },
-          "update_available": {
-            "type": "boolean"
-          },
-          "latest_version": {
-            "type": "string"
           }
         },
         "required": [
           "status",
           "version",
           "db_connected",
-          "db_schema_drift",
           "uptime_seconds"
         ]
       },
@@ -9387,6 +9377,33 @@
           "db_migration_count"
         ]
       },
+      "DiagnosticsVersionResponse": {
+        "type": "object",
+        "properties": {
+          "engine_version": {
+            "type": "string"
+          },
+          "latest_version": {
+            "type": "string"
+          },
+          "update_available": {
+            "type": "boolean"
+          },
+          "schema_drift": {
+            "type": "boolean"
+          },
+          "embedded_migrations_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "engine_version",
+          "update_available",
+          "schema_drift",
+          "embedded_migrations_count"
+        ]
+      },
       "LogTailResponse": {
         "type": "object",
         "properties": {
@@ -17451,6 +17468,51 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DriftReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/diagnostics/version": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "Engine version, update posture, and schema-drift snapshot",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsVersionResponse"
                 }
               }
             }

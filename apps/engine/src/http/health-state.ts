@@ -11,8 +11,9 @@ export interface EngineHealthState {
    * `true` when the boot path observed migration rows on this DB
    * whose hash isn't in this binary's embedded set — i.e. the schema
    * state was set by a different engine lineage. Surfaced in
-   * `/v1/health` as `db_schema_drift` so operators see the alarm on
-   * the dashboard rather than scanning logs (issue #149 / W2 follow-up).
+   * `/v1/diagnostics/version` (gated by `audit:read`) so operators see
+   * the alarm without leaking it to unauthenticated callers
+   * (issue #149; relocated off public `/v1/health` in #151 P0-1).
    */
   schema_drift: boolean;
 }

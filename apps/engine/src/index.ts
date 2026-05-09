@@ -26,6 +26,7 @@ import { setUpdateState } from "./update-state.ts";
 
 const SMOKE_FLAG = "--smoke";
 const SELF_UPDATE_FLAG = "--self-update";
+const ROLLBACK_FLAG = "--rollback";
 const CHECK_UPDATE_FLAG = "--check-update";
 const MIGRATE_FLAG = "--migrate";
 const SEED_FLAG = "--seed";
@@ -510,8 +511,10 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // --self-update: download newer binary, replace, exit.
-  // Checked before smoke/server since it doesn't need DATABASE_URL.
+  // --self-update: download newer binary, replace, exit. Issue #151
+  // P0-2 added audit/log/metric instrumentation, so the path now opens
+  // a short-lived db handle — DATABASE_URL must be set in the shell
+  // environment (sourced from /etc/default/sk-engine on the droplet).
   if (process.argv.includes(SELF_UPDATE_FLAG)) {
     const { runSelfUpdate } = await import("./self-update.ts");
     try {
@@ -520,6 +523,24 @@ async function main(): Promise<void> {
     } catch (err) {
       process.stderr.write(
         `engine: update failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(1);
+    }
+  }
+
+  // --rollback [--to=X.Y.Z]: swap to a previously retained signed
+  // binary. Same env requirement as --self-update (audit row needs db).
+  // Issue #151 P0-4.
+  if (process.argv.includes(ROLLBACK_FLAG)) {
+    const { runRollback } = await import("./self-update.ts");
+    const toArg = process.argv.find((a) => a.startsWith("--to="));
+    const target = toArg ? toArg.slice("--to=".length) : "previous";
+    try {
+      await runRollback(target);
+      process.exit(0);
+    } catch (err) {
+      process.stderr.write(
+        `engine: rollback failed: ${err instanceof Error ? err.message : String(err)}\n`,
       );
       process.exit(1);
     }

@@ -7122,6 +7122,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/diagnostics/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Engine version, update posture, and schema-drift snapshot */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DiagnosticsVersionResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/diagnostics/logs": {
         parameters: {
             query?: never;
@@ -7200,10 +7254,7 @@ export interface components {
             status: "ok";
             version: string;
             db_connected: boolean;
-            db_schema_drift: boolean;
             uptime_seconds: number;
-            update_available?: boolean;
-            latest_version?: string;
         };
         SetupStatusResponse: {
             pending: boolean;
@@ -9582,6 +9633,13 @@ export interface components {
             engine_version: string;
             embedded_migration_count: number;
             db_migration_count: number;
+        };
+        DiagnosticsVersionResponse: {
+            engine_version: string;
+            latest_version?: string;
+            update_available: boolean;
+            schema_drift: boolean;
+            embedded_migrations_count: number;
         };
         LogTailResponse: {
             entries: components["schemas"]["LogRingEntry"][];

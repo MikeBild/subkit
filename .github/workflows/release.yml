@@ -325,6 +325,29 @@ jobs:
           done > SHA256SUMS
           cat SHA256SUMS
 
+      # Issue #151 P0-3: sign the SHA256SUMS file with the project's
+      # Ed25519 release key. `updater.ts::performUpdate` refuses to
+      # install any binary whose SHA256SUMS does not validate against
+      # the embedded `RELEASE_PUBLIC_KEY`. Signature is uploaded as the
+      # `SHA256SUMS.sig` release asset alongside the sums file.
+      - name: Sign SHA256SUMS (Ed25519)
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_SIGNING_KEY:-}" ]; then
+            echo "FATAL: RELEASE_SIGNING_KEY secret is not set — refusing to publish an unsigned release."
+            exit 1
+          fi
+          # Stash the PEM-encoded private key into a tmpfile so openssl
+          # can read it; tmpfile is in the runner's ephemeral storage
+          # and is gone with the runner.
+          tmpkey=$(mktemp)
+          trap 'rm -f "$tmpkey"' EXIT
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$tmpkey"
+          openssl pkeyutl -sign -inkey "$tmpkey" -rawin -in artifacts/SHA256SUMS -out artifacts/SHA256SUMS.sig
+          ls -la artifacts/SHA256SUMS artifacts/SHA256SUMS.sig
+
       - name: Generate SBOM (CycloneDX)
         # Pinned to a commit SHA, not @v0, because anchore frequently
         # republishes major-tagged actions with breaking changes. To
@@ -349,6 +372,7 @@ jobs:
             artifacts/*/sk_*
             artifacts/*/engine_*
             artifacts/SHA256SUMS
+            artifacts/SHA256SUMS.sig
             artifacts/sbom.cdx.json
 
   # ── Docker images ──

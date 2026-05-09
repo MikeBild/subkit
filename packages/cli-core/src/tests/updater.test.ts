@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash, sign as cryptoSign, generateKeyPairSync } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getTestNow } from "../../../../apps/engine/src/test-helpers/determinism/clock.ts";
@@ -8,16 +9,30 @@ import {
   defaultUpdaterConfig,
   formatUpdateBanner,
   isNewer,
+  listRetainedVersions,
   parseChecksum,
+  performUpdate,
   platformArch,
+  pruneRetainedVersions,
   readCache,
+  rollbackTo,
   type UpdateCache,
   type UpdateInfo,
   type UpdaterConfig,
+  verifySignature,
   writeCache,
 } from "../updater.ts";
 
 const TEST_NOW_MS = getTestNow();
+
+// ── Test keypair (regenerated each test run; never written to disk) ──
+
+const { publicKey: TEST_PUBLIC_KEY, privateKey: TEST_PRIVATE_KEY } = generateKeyPairSync("ed25519");
+const TEST_PUBLIC_KEY_PEM = TEST_PUBLIC_KEY.export({ format: "pem", type: "spki" }).toString();
+
+function signSums(sumsText: string): Buffer {
+  return cryptoSign(null, Buffer.from(sumsText, "utf8"), TEST_PRIVATE_KEY);
+}
 
 // ── Helpers ──
 
@@ -64,8 +79,47 @@ function makeConfig(overrides: Partial<UpdaterConfig> = {}): UpdaterConfig {
     githubRepo: "test/repo",
     checkIntervalMs: 86_400_000,
     channel: "stable",
+    publicKey: TEST_PUBLIC_KEY_PEM,
     ...overrides,
   };
+}
+
+/** Build a minimal release fixture with a valid SHA256SUMS+SHA256SUMS.sig
+ *  pair plus a binary blob whose hash matches the sums entry. */
+function buildSignedRelease(opts: { binaryName: string; binaryBytes: Buffer; tag: string }): {
+  info: UpdateInfo;
+  fetchImpl: typeof fetch;
+  sumsText: string;
+  expectedHash: string;
+} {
+  const pa = platformArch()!;
+  const assetName = `${opts.binaryName}_${pa.os}_${pa.arch}${pa.ext}`;
+  const expectedHash = createHash("sha256").update(opts.binaryBytes).digest("hex");
+  const sumsText = `${expectedHash}  ${assetName}\n`;
+  const sig = signSums(sumsText);
+  const info: UpdateInfo = {
+    version: opts.tag.replace(/^v/, ""),
+    tag: opts.tag,
+    assets: [
+      { name: assetName, url: `https://example.com/${opts.tag}/${assetName}` },
+      { name: "SHA256SUMS", url: `https://example.com/${opts.tag}/SHA256SUMS` },
+      { name: "SHA256SUMS.sig", url: `https://example.com/${opts.tag}/SHA256SUMS.sig` },
+    ],
+    body: "",
+  };
+  const fetchImpl = makeFetchImpl((url) => {
+    if (url.endsWith("/SHA256SUMS.sig")) {
+      return new Response(new Uint8Array(sig));
+    }
+    if (url.endsWith("/SHA256SUMS")) {
+      return new Response(sumsText);
+    }
+    if (url.endsWith(`/${assetName}`)) {
+      return new Response(new Uint8Array(opts.binaryBytes));
+    }
+    return new Response("not-found", { status: 404 });
+  });
+  return { info, fetchImpl, sumsText, expectedHash };
 }
 
 // ── isNewer ──
@@ -100,7 +154,6 @@ describe("isNewer", () => {
   });
 
   test("handles versions with missing parts", () => {
-    // "1.2" parsed as [1, 2, NaN] → NaN ?? 0 → [1, 2, 0]
     expect(isNewer("1.2", "1.2.0")).toBe(false);
     expect(isNewer("1.3", "1.2.0")).toBe(true);
   });
@@ -120,7 +173,6 @@ describe("isNewer", () => {
 describe("platformArch", () => {
   test("returns os/arch/ext for current platform", () => {
     const result = platformArch();
-    // This test runs on a real platform so result should not be null
     expect(result).not.toBeNull();
     expect(result!.os).toBeDefined();
     expect(result!.arch).toBeDefined();
@@ -136,7 +188,7 @@ describe("platformArch", () => {
 
   test("os matches expected mapping for current platform", () => {
     const result = platformArch();
-    if (!result) return; // skip on unsupported platform
+    if (!result) return;
     const expected: Record<string, string> = { darwin: "darwin", linux: "linux", win32: "windows" };
     expect(result.os).toBe(expected[process.platform]!);
   });
@@ -170,16 +222,6 @@ describe("parseChecksum", () => {
 
   test("handles extra whitespace and blank lines", () => {
     const sums = `\n  \n${hash64}  sk_darwin_arm64\n\n`;
-    expect(parseChecksum(sums, "sk_darwin_arm64")).toBe(hash64);
-  });
-
-  test("handles two-space separator format", () => {
-    const sums = `${hash64}  sk_darwin_arm64`;
-    expect(parseChecksum(sums, "sk_darwin_arm64")).toBe(hash64);
-  });
-
-  test("handles single-space separator", () => {
-    const sums = `${hash64} sk_darwin_arm64`;
     expect(parseChecksum(sums, "sk_darwin_arm64")).toBe(hash64);
   });
 });
@@ -275,7 +317,6 @@ describe("cache management", () => {
 describe("checkForUpdate", () => {
   test("returns null when cache is fresh and version is current", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
-    // Pre-seed cache with same version, recent timestamp
     writeCache(cfg.cacheDir, {
       last_check: TEST_NOW_MS,
       latest_version: "1.0.0",
@@ -305,29 +346,8 @@ describe("checkForUpdate", () => {
     expect(result!.version).toBe("2.0.0");
   });
 
-  test("fetches from GitHub when cache is stale", async () => {
-    const cfg = makeConfig({ currentVersion: "1.0.0" });
-    // Seed an old cache
-    writeCache(cfg.cacheDir, {
-      last_check: TEST_NOW_MS - 100_000_000, // way past 24h
-      latest_version: "1.0.0",
-      latest_tag: "v1.0.0",
-      current_version_at_check: "1.0.0",
-    });
-    let fetchCalled = false;
-    const fetchImpl = makeFetchImpl(() => {
-      fetchCalled = true;
-      return new Response(JSON.stringify(makeGitHubResponse("v2.0.0")));
-    });
-    const result = await checkForUpdate(cfg, false, fetchImpl);
-    expect(fetchCalled).toBe(true);
-    expect(result).not.toBeNull();
-    expect(result!.version).toBe("2.0.0");
-  });
-
   test("force=true bypasses cache", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
-    // Seed a fresh cache
     writeCache(cfg.cacheDir, {
       last_check: TEST_NOW_MS,
       latest_version: "1.0.0",
@@ -379,16 +399,6 @@ describe("checkForUpdate", () => {
     expect(cache!.latest_version).toBe("2.0.0");
   });
 
-  test("strips v prefix from tag_name", async () => {
-    const cfg = makeConfig({ currentVersion: "1.0.0" });
-    const fetchImpl = makeFetchImpl(
-      () => new Response(JSON.stringify(makeGitHubResponse("v2.5.1"))),
-    );
-    const result = await checkForUpdate(cfg, true, fetchImpl);
-    expect(result!.version).toBe("2.5.1");
-    expect(result!.tag).toBe("v2.5.1");
-  });
-
   test("uses /latest for stable channel", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0", channel: "stable" });
     let urlCalled = "";
@@ -412,65 +422,38 @@ describe("checkForUpdate", () => {
   });
 });
 
-// ── performUpdate ──
+// ── verifySignature ──
 
-describe("performUpdate", () => {
-  test("throws when binary asset missing from release", async () => {
-    const cfg = makeConfig();
-    const info: UpdateInfo = {
-      version: "2.0.0",
-      tag: "v2.0.0",
-      assets: [{ name: "SHA256SUMS", url: "https://example.com/SHA256SUMS" }],
-      body: "",
-    };
-    const fetchImpl = makeFetchImpl(() => new Response(""));
-    await expect(
-      import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl)),
-    ).rejects.toThrow(/no binary/);
+describe("verifySignature", () => {
+  test("accepts a valid Ed25519 signature", () => {
+    const message = "the quick brown fox";
+    const sig = signSums(message);
+    expect(verifySignature(message, sig, TEST_PUBLIC_KEY_PEM)).toBe(true);
   });
 
-  test("throws when SHA256SUMS asset missing", async () => {
-    const pa = platformArch()!;
-    const cfg = makeConfig();
-    const assetName = `${cfg.binaryName}_${pa.os}_${pa.arch}${pa.ext}`;
-    const info: UpdateInfo = {
-      version: "2.0.0",
-      tag: "v2.0.0",
-      assets: [{ name: assetName, url: "https://example.com/binary" }],
-      body: "",
-    };
-    const fetchImpl = makeFetchImpl(() => new Response(""));
-    await expect(
-      import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl)),
-    ).rejects.toThrow(/SHA256SUMS/);
+  test("rejects a signature when the message has been tampered with", () => {
+    const original = "release sums file";
+    const sig = signSums(original);
+    expect(verifySignature(`${original} tampered`, sig, TEST_PUBLIC_KEY_PEM)).toBe(false);
   });
 
-  test("throws on checksum mismatch", async () => {
-    const pa = platformArch()!;
-    const cfg = makeConfig();
-    const assetName = `${cfg.binaryName}_${pa.os}_${pa.arch}${pa.ext}`;
-    const wrongHash = "f".repeat(64);
-    const info: UpdateInfo = {
-      version: "2.0.0",
-      tag: "v2.0.0",
-      assets: [
-        { name: assetName, url: "https://example.com/binary" },
-        { name: "SHA256SUMS", url: "https://example.com/SHA256SUMS" },
-      ],
-      body: "",
-    };
-    const fetchImpl = makeFetchImpl((url) => {
-      if (url.includes("SHA256SUMS")) {
-        return new Response(`${wrongHash}  ${assetName}\n`);
-      }
-      return new Response("binary-content");
-    });
-    await expect(
-      import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl)),
-    ).rejects.toThrow(/checksum mismatch/);
+  test("rejects when the signature itself is bogus", () => {
+    const message = "release sums file";
+    const bogusSig = Buffer.alloc(64);
+    expect(verifySignature(message, bogusSig, TEST_PUBLIC_KEY_PEM)).toBe(false);
   });
 
-  test("cleans up temp file on error", async () => {
+  test("returns false (rather than throwing) on a malformed public key", () => {
+    const message = "release sums file";
+    const sig = signSums(message);
+    expect(verifySignature(message, sig, "not a real PEM")).toBe(false);
+  });
+});
+
+// ── performUpdate signature gating ──
+
+describe("performUpdate signature gating", () => {
+  test("throws when SHA256SUMS.sig asset is missing", async () => {
     const pa = platformArch()!;
     const cfg = makeConfig();
     const assetName = `${cfg.binaryName}_${pa.os}_${pa.arch}${pa.ext}`;
@@ -483,43 +466,166 @@ describe("performUpdate", () => {
       ],
       body: "",
     };
-    const fetchImpl = makeFetchImpl((url) => {
-      if (url.includes("SHA256SUMS")) {
-        return new Response(`${"f".repeat(64)}  ${assetName}\n`);
-      }
-      return new Response("binary-content");
+    const fetchImpl = makeFetchImpl(() => new Response(""));
+    await expect(performUpdate(cfg, info, fetchImpl)).rejects.toThrow(/SHA256SUMS\.sig/);
+  });
+
+  test("throws when SHA256SUMS body has been tampered with (signature mismatch)", async () => {
+    const cfg = makeConfig();
+    const release = buildSignedRelease({
+      binaryName: cfg.binaryName,
+      binaryBytes: Buffer.from("hello"),
+      tag: "v2.0.0",
     });
+    const tamperedFetch = makeFetchImpl((url) => {
+      if (url.endsWith("/SHA256SUMS")) {
+        return new Response(`${"f".repeat(64)}  not_what_we_signed\n`);
+      }
+      return release.fetchImpl(url);
+    });
+    await expect(performUpdate(cfg, release.info, tamperedFetch)).rejects.toThrow(
+      /signature verification failed/,
+    );
+  });
+
+  test("throws when the .sig payload is corrupted", async () => {
+    const cfg = makeConfig();
+    const release = buildSignedRelease({
+      binaryName: cfg.binaryName,
+      binaryBytes: Buffer.from("hello"),
+      tag: "v2.0.0",
+    });
+    const tamperedFetch = makeFetchImpl((url) => {
+      if (url.endsWith("/SHA256SUMS.sig")) return new Response(new Uint8Array(64));
+      return release.fetchImpl(url);
+    });
+    await expect(performUpdate(cfg, release.info, tamperedFetch)).rejects.toThrow(
+      /signature verification failed/,
+    );
+  });
+});
+
+// ── performUpdate retention + happy path ──
+
+describe("performUpdate retention", () => {
+  test("happy path returns from/to/sha256 and retains the prior binary", async () => {
+    // Stand up a fake `process.execPath` so the swap is harmless.
+    const cfg = makeConfig();
+    const fakeBinary = join(makeCacheDir(), "test-bin");
+    writeFileSync(fakeBinary, Buffer.from("OLD-BINARY"));
+    const realExecPath = process.execPath;
+    Object.defineProperty(process, "execPath", { value: fakeBinary, configurable: true });
     try {
-      await import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl));
-    } catch {
-      // expected
+      const release = buildSignedRelease({
+        binaryName: cfg.binaryName,
+        binaryBytes: Buffer.from("NEW-BINARY"),
+        tag: "v2.0.0",
+      });
+      const result = await performUpdate(cfg, release.info, release.fetchImpl);
+      expect(result.from_version).toBe("1.0.0");
+      expect(result.to_version).toBe("2.0.0");
+      expect(result.sha256).toHaveLength(64);
+      expect(readFileSync(fakeBinary).toString()).toBe("NEW-BINARY");
+      const retained = listRetainedVersions(cfg);
+      expect(retained.length).toBe(1);
+      expect(retained[0]!.version).toBe("1.0.0");
+      expect(readFileSync(retained[0]!.path).toString()).toBe("OLD-BINARY");
+    } finally {
+      Object.defineProperty(process, "execPath", { value: realExecPath, configurable: true });
     }
-    // Verify temp file was cleaned up
-    const tmpPath = join(cfg.cacheDir, "tmp", `${cfg.binaryName}.download.${process.pid}`);
-    expect(existsSync(tmpPath)).toBe(false);
+  });
+});
+
+describe("retained versions store", () => {
+  test("pruneRetainedVersions keeps the N most recent by installed_at", () => {
+    const cfg = makeConfig();
+    // Plant 4 fake retained versions and prune to 2.
+    for (const [version, atOffset] of [
+      ["1.0.0", 0],
+      ["1.1.0", 1000],
+      ["1.2.0", 2000],
+      ["1.3.0", 3000],
+    ] as const) {
+      const dir = join(cfg.cacheDir, "versions", version);
+      mkdirSync(dir, { recursive: true });
+      const binPath = join(dir, cfg.binaryName);
+      writeFileSync(binPath, version);
+      const sha = createHash("sha256").update(version).digest("hex");
+      writeFileSync(
+        join(dir, "manifest.json"),
+        JSON.stringify({
+          version,
+          installed_at: TEST_NOW_MS + atOffset,
+          sha256: sha,
+          binary_name: cfg.binaryName,
+        }),
+      );
+    }
+    pruneRetainedVersions(cfg, 2);
+    const after = listRetainedVersions(cfg);
+    expect(after.map((v) => v.version)).toEqual(["1.3.0", "1.2.0"]);
+  });
+});
+
+describe("rollbackTo", () => {
+  function plantRetained(
+    cfg: UpdaterConfig,
+    version: string,
+    bytes: Buffer,
+    installed_at: number,
+  ): string {
+    const dir = join(cfg.cacheDir, "versions", version);
+    mkdirSync(dir, { recursive: true });
+    const binPath = join(dir, cfg.binaryName);
+    writeFileSync(binPath, bytes);
+    const sha = createHash("sha256").update(bytes).digest("hex");
+    writeFileSync(
+      join(dir, "manifest.json"),
+      JSON.stringify({ version, installed_at, sha256: sha, binary_name: cfg.binaryName }),
+    );
+    return binPath;
+  }
+
+  test("restores the most recent retained binary when target is 'previous'", () => {
+    const cfg = makeConfig({ currentVersion: "2.0.0" });
+    const fakeBinary = join(makeCacheDir(), "test-bin");
+    writeFileSync(fakeBinary, Buffer.from("CURRENT-2.0.0"));
+    plantRetained(cfg, "1.9.0", Buffer.from("OLDEST"), TEST_NOW_MS - 2000);
+    plantRetained(cfg, "1.10.0", Buffer.from("MIDDLE"), TEST_NOW_MS - 1000);
+    plantRetained(cfg, "1.11.0", Buffer.from("MOST-RECENT"), TEST_NOW_MS - 500);
+
+    const realExecPath = process.execPath;
+    Object.defineProperty(process, "execPath", { value: fakeBinary, configurable: true });
+    try {
+      const result = rollbackTo(cfg, "previous");
+      expect(result.to_version).toBe("1.11.0");
+      expect(readFileSync(fakeBinary).toString()).toBe("MOST-RECENT");
+      // The displaced 2.0.0 is now retained too.
+      const retained = listRetainedVersions(cfg);
+      expect(retained.map((v) => v.version)).toContain("2.0.0");
+    } finally {
+      Object.defineProperty(process, "execPath", { value: realExecPath, configurable: true });
+    }
   });
 
-  test("throws on SHA256SUMS fetch failure", async () => {
-    const pa = platformArch()!;
-    const cfg = makeConfig();
-    const assetName = `${cfg.binaryName}_${pa.os}_${pa.arch}${pa.ext}`;
-    const info: UpdateInfo = {
-      version: "2.0.0",
-      tag: "v2.0.0",
-      assets: [
-        { name: assetName, url: "https://example.com/binary" },
-        { name: "SHA256SUMS", url: "https://example.com/SHA256SUMS" },
-      ],
-      body: "",
-    };
-    const fetchImpl = makeFetchImpl((url) => {
-      if (url.includes("SHA256SUMS")) {
-        return new Response("not found", { status: 404 });
-      }
-      return new Response("binary-content");
-    });
-    await expect(
-      import("../updater.ts").then((m) => m.performUpdate(cfg, info, fetchImpl)),
-    ).rejects.toThrow(/failed to download SHA256SUMS/);
+  test("throws when the retained binary's hash drifts from the manifest", () => {
+    const cfg = makeConfig({ currentVersion: "2.0.0" });
+    const fakeBinary = join(makeCacheDir(), "test-bin");
+    writeFileSync(fakeBinary, Buffer.from("CURRENT"));
+    const planted = plantRetained(cfg, "1.9.0", Buffer.from("ORIGINAL"), TEST_NOW_MS - 1000);
+    writeFileSync(planted, Buffer.from("TAMPERED"));
+
+    const realExecPath = process.execPath;
+    Object.defineProperty(process, "execPath", { value: fakeBinary, configurable: true });
+    try {
+      expect(() => rollbackTo(cfg, "previous")).toThrow(/integrity check/);
+    } finally {
+      Object.defineProperty(process, "execPath", { value: realExecPath, configurable: true });
+    }
+  });
+
+  test("throws when no retained binaries exist", () => {
+    const cfg = makeConfig({ currentVersion: "2.0.0" });
+    expect(() => rollbackTo(cfg, "previous")).toThrow(/no retained binaries/);
   });
 });

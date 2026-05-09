@@ -21,6 +21,20 @@ function safe(fn: () => void): void {
   }
 }
 
+export function recordEngineUpdate(args: {
+  /** Outcome label — must be one of the values registered for the
+   *  `engine_update_total` counter. */
+  result: "success" | "failure" | "rollback";
+  channel: "stable" | "beta";
+}): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.ENGINE_UPDATE_TOTAL, {
+      result: args.result,
+      channel: args.channel,
+    });
+  });
+}
+
 export function recordExecutionTerminal(args: {
   tenant_id: string;
   workflow_id: string;

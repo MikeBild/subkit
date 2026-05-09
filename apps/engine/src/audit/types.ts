@@ -335,6 +335,20 @@ export const AuditAction = {
   // The audit row makes the read traceable for compliance the same
   // way `DIAGNOSTICS_LOGS_TAILED` does.
   DIAGNOSTICS_DRIFT_READ: "diagnostics.drift_read",
+  // `/v1/diagnostics/version` — emitted on every read of the gated
+  // version diagnostics endpoint. Mirrors `DIAGNOSTICS_DRIFT_READ`:
+  // the response exposes engine version, latest available release,
+  // and schema-drift posture, so compliance teams want a paper trail.
+  // Issue #151 P0-1.
+  DIAGNOSTICS_VERSION_READ: "diagnostics.version_read",
+  // `engine --self-update` lifecycle. The binary self-mutates from a
+  // host shell with no HTTP context; the audit row is the only evidence
+  // a privileged change happened. Tenant: SYSTEM_TENANT_ID. Actor:
+  // system_account `engine-self-update`. Issue #151 P0-2/P0-4.
+  ENGINE_UPDATE_INITIATED: "engine.update.initiated",
+  ENGINE_UPDATE_COMPLETED: "engine.update.completed",
+  ENGINE_UPDATE_FAILED: "engine.update.failed",
+  ENGINE_UPDATE_ROLLED_BACK: "engine.update.rolled_back",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];
@@ -411,6 +425,50 @@ export const DiagnosticsDriftReadMetadataSchema = z.object({
   missing: z.number().int().nonnegative(),
 });
 export type DiagnosticsDriftReadMetadata = z.infer<typeof DiagnosticsDriftReadMetadataSchema>;
+
+/** `diagnostics.version_read` metadata. Emitted on every read of
+ *  `/v1/diagnostics/version`. The response holds engine version + the
+ *  cached "latest from GitHub" pair, so compliance wants the same
+ *  observability window as drift reads. Issue #151. */
+export const DiagnosticsVersionReadMetadataSchema = z.object({
+  /** Engine binary version that served the request. */
+  engine_version: z.string(),
+  /** Cached latest version from the boot-time update probe; absent if
+   *  the probe hasn't run yet (e.g. NO_UPDATE_CHECK=1). */
+  latest_version: z.string().optional(),
+  /** Whether the boot-time check observed a newer release. */
+  update_available: z.boolean(),
+  /** Whether the embedded migration set diverges from `__drizzle_migrations`. */
+  schema_drift: z.boolean(),
+});
+export type DiagnosticsVersionReadMetadata = z.infer<typeof DiagnosticsVersionReadMetadataSchema>;
+
+/** `engine.update.*` metadata. Shared by initiated/completed/failed/
+ *  rolled_back. The binary swap is the prototypical privileged action:
+ *  there is no HTTP context, so the row is the audit story. Issue #151. */
+export const EngineUpdateMetadataSchema = z.object({
+  /** Version the engine was running at the start of the operation. */
+  from_version: z.string(),
+  /** Target version. For INITIATED this is the planned target; for
+   *  COMPLETED/ROLLED_BACK it is the version now active; for FAILED it
+   *  is the version that failed to install (may equal from_version
+   *  if the failure happened pre-download). */
+  to_version: z.string(),
+  /** Release channel the binary came from. */
+  channel: z.enum(["stable", "beta"]),
+  /** SHA256 of the verified binary. Empty for INITIATED (download not
+   *  yet started) and for FAILED if the failure happened before hash
+   *  verification. */
+  sha256: z.string().default(""),
+  /** Always "cli" for now; reserved for a future MCP/HTTP surface
+   *  (anti-goal — see issue #151 §6 — but the column tracks intent). */
+  actor: z.literal("cli"),
+  /** Which CLI path triggered the row. */
+  request_source: z.enum(["self-update", "rollback"]),
+  /** Reason an update failed. Set on FAILED only. */
+  reason: z.string().optional(),
+});
+export type EngineUpdateMetadata = z.infer<typeof EngineUpdateMetadataSchema>;
 
 export type AuditEntry = {
   id: string;

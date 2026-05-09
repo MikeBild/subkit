@@ -107,10 +107,10 @@ export const doctorCommand = defineCommand({
 
     // -------- 2. Reachability --------
     let reachability: CheckResult;
-    let lastHealth: Awaited<ReturnType<EngineClient["health"]>> | null = null;
+    let engineVersion: string | undefined;
     try {
       const h = await client.health();
-      lastHealth = h;
+      engineVersion = h.version;
       reachability = {
         name: "reachability",
         status: h.db_connected ? "ok" : "blocked",
@@ -198,15 +198,11 @@ export const doctorCommand = defineCommand({
         status: "warn",
         detail: "skipped — fix profile + reachability first",
       });
-    } else if (lastHealth && !lastHealth.db_schema_drift) {
-      results.push({
-        name: "schema_drift",
-        status: "ok",
-        detail: "engine reports no schema drift (db journal matches embedded set)",
-      });
     } else {
-      // /v1/health flagged drift OR the field was missing (older engine).
-      // Pull /v1/diagnostics/drift for the actionable detail.
+      // Issue #151 P0-1 moved the `db_schema_drift` flag off `/v1/health`
+      // (it was leaking operational posture to unauthenticated callers).
+      // The `audit:read`-gated `/v1/diagnostics/drift` is the canonical
+      // source of the actionable detail, so always pull it.
       try {
         const report = await client.driftReport();
         const unknown = report.unknown_in_db.length;
@@ -280,8 +276,7 @@ export const doctorCommand = defineCommand({
     }
 
     // -------- 6. Version match --------
-    if (lastHealth?.version) {
-      const engineVersion = lastHealth.version;
+    if (engineVersion) {
       const matches = engineVersion === CLI_VERSION;
       results.push({
         name: "version_match",
