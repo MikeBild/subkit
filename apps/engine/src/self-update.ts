@@ -1,9 +1,9 @@
 // Engine self-update + rollback logic, extracted for testability.
-// Invoked via `engine --self-update` and `engine --rollback`. Neither
-// path requires DATABASE_URL for the binary swap itself, but they DO
-// open a short-lived db handle to land an audit row — the only
-// paper-trail surface for a privileged change that mutates the
-// running binary (issue #151 P0-2 / P0-4).
+// Invoked via `engine --self-update` and `engine --rollback`. Both
+// paths require DATABASE_URL because the audit row is the only paper
+// trail for a privileged change that mutates the running binary —
+// see issue #151 P0-2 / P0-4. Only the no-op "already at latest"
+// branch can run without a database (it returns before the recorder).
 
 import {
   checkForUpdate,
@@ -11,6 +11,7 @@ import {
   listRetainedVersions,
   performUpdate,
   rollbackTo,
+  type UpdaterConfig,
 } from "@cli-core/updater.ts";
 import { VERSION } from "@cli-core/version.ts";
 import {
@@ -19,14 +20,144 @@ import {
   recordEngineUpdateInitiated,
   recordEngineUpdateRolledBack,
 } from "./audit/recorders/index.ts";
+import type { Db } from "./db/client.ts";
 import { getDb } from "./db/client.ts";
 import { logger } from "./logging/index.ts";
 import { recordEngineUpdate } from "./observability/instrumentation.ts";
 
 const CHANNEL = "stable" as const;
 
-export async function runSelfUpdate(fetchImpl?: typeof fetch): Promise<void> {
-  const config = defaultUpdaterConfig("engine", VERSION);
+/** Open the engine db handle for the audit recorders, with a clearer
+ *  error message than the bare `pg.Pool` stack when DATABASE_URL is
+ *  missing. The flag-handler in `index.ts` exits non-zero on this
+ *  error; the message is for the operator on stderr. */
+function openAuditDb(): Db {
+  try {
+    return getDb();
+  } catch (err) {
+    const cause = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `--self-update / --rollback need DATABASE_URL set so the audit row can be written. ` +
+        `On the droplet, source /etc/default/sk-engine first (root cause: ${cause}).`,
+    );
+  }
+}
+
+interface SwapPlan {
+  request_source: "self-update" | "rollback";
+  from_version: string;
+  /** Best-effort target known before the swap. For self-update this is
+   *  the new release; for rollback it's the version of the retained
+   *  binary picked. Used in the INITIATED row + log line. */
+  to_version: string;
+  log_action_initiated: "engine.update.initiated";
+  human_label: string;
+}
+
+interface SwapResultOk {
+  /** Final to_version (same as plan.to_version unless the swap helper
+   *  refines it — e.g. rollbackTo can substitute "previous"). */
+  to_version: string;
+  sha256: string;
+}
+
+/**
+ * Wrap a binary-swap operation in the audit + log + metric envelope.
+ * Both `runSelfUpdate` and `runRollback` share the same skeleton:
+ * INITIATED row + log → run the swap → COMPLETED|ROLLED_BACK row +
+ * log + metric. On throw, FAILED row + log + metric.
+ *
+ * The two complete-vs-rolled-back rows are different audit actions
+ * (compliance treats them separately), so the caller passes a
+ * `recordSuccess` callback rather than the helper hard-coding one.
+ */
+async function instrumentBinarySwap(
+  plan: SwapPlan,
+  swap: (db: Db) => Promise<SwapResultOk>,
+  recordSuccess: (
+    db: Db,
+    fields: { from_version: string; to_version: string; sha256: string },
+  ) => Promise<unknown>,
+  successMetric: "success" | "rollback",
+  successLogAction: "engine.update.completed" | "engine.update.rolled_back",
+): Promise<void> {
+  const db = openAuditDb();
+
+  await recordEngineUpdateInitiated({
+    from_version: plan.from_version,
+    to_version: plan.to_version,
+    channel: CHANNEL,
+    request_source: plan.request_source,
+    executor: db,
+  });
+  logger.info({
+    module: "self-update",
+    action: plan.log_action_initiated,
+    msg: `${plan.human_label} ${plan.from_version} → ${plan.to_version} initiated`,
+    from_version: plan.from_version,
+    to_version: plan.to_version,
+    channel: CHANNEL,
+    request_source: plan.request_source,
+  });
+
+  process.stdout.write(
+    `engine: ${plan.human_label} ${plan.from_version} → ${plan.to_version}...\n`,
+  );
+
+  try {
+    const result = await swap(db);
+    await recordSuccess(db, {
+      from_version: plan.from_version,
+      to_version: result.to_version,
+      sha256: result.sha256,
+    });
+    logger.info({
+      module: "self-update",
+      action: successLogAction,
+      msg: `${plan.human_label} ${plan.from_version} → ${result.to_version} completed`,
+      from_version: plan.from_version,
+      to_version: result.to_version,
+      sha256: result.sha256,
+      channel: CHANNEL,
+      request_source: plan.request_source,
+    });
+    recordEngineUpdate({ result: successMetric, channel: CHANNEL });
+    process.stdout.write(
+      `engine: ${plan.human_label} → ${result.to_version}. Restart the engine to use the new version.\n`,
+    );
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    await recordEngineUpdateFailed({
+      from_version: plan.from_version,
+      to_version: plan.to_version,
+      channel: CHANNEL,
+      request_source: plan.request_source,
+      reason,
+      executor: db,
+    });
+    logger.error({
+      module: "self-update",
+      action: "engine.update.failed",
+      msg: `${plan.human_label} ${plan.from_version} → ${plan.to_version} failed: ${reason}`,
+      from_version: plan.from_version,
+      to_version: plan.to_version,
+      channel: CHANNEL,
+      request_source: plan.request_source,
+      error: reason,
+    });
+    recordEngineUpdate({ result: "failed", channel: CHANNEL });
+    throw err;
+  }
+}
+
+export async function runSelfUpdate(
+  fetchImpl?: typeof fetch,
+  /** Override the default `~/.engine` cache config. Used by integration
+   *  tests so the binary swap doesn't write into the developer's real
+   *  cache dir; production callers omit. */
+  configOverride?: UpdaterConfig,
+): Promise<void> {
+  const config = configOverride ?? defaultUpdaterConfig("engine", VERSION);
   process.stdout.write("engine: checking for updates...\n");
 
   const info = await checkForUpdate(config, true, fetchImpl);
@@ -35,81 +166,38 @@ export async function runSelfUpdate(fetchImpl?: typeof fetch): Promise<void> {
     return;
   }
 
-  const fromVersion = VERSION;
-  const toVersion = info.version;
-  const db = getDb();
-
-  // INITIATED — emit before the download. If the binary swap crashes
-  // the process before COMPLETED lands, the operator still sees the
-  // attempt in audit_log.
-  await recordEngineUpdateInitiated({
-    from_version: fromVersion,
-    to_version: toVersion,
-    channel: CHANNEL,
-    request_source: "self-update",
-    executor: db,
-  });
-  logger.info({
-    module: "self-update",
-    action: "engine.update.initiated",
-    msg: `engine update ${fromVersion} → ${toVersion} initiated`,
-    from_version: fromVersion,
-    to_version: toVersion,
-    channel: CHANNEL,
-  });
-
-  process.stdout.write(`engine: updating ${fromVersion} → ${toVersion}...\n`);
-  try {
-    const result = await performUpdate(config, info, fetchImpl);
-    await recordEngineUpdateCompleted({
-      from_version: result.from_version,
-      to_version: result.to_version,
-      channel: CHANNEL,
-      sha256: result.sha256,
+  await instrumentBinarySwap(
+    {
       request_source: "self-update",
-      executor: db,
-    });
-    logger.info({
-      module: "self-update",
-      action: "engine.update.completed",
-      msg: `engine update ${result.from_version} → ${result.to_version} completed`,
-      from_version: result.from_version,
-      to_version: result.to_version,
-      sha256: result.sha256,
-      channel: CHANNEL,
-    });
-    recordEngineUpdate({ result: "success", channel: CHANNEL });
-    process.stdout.write(
-      `engine: updated to ${result.to_version}. Restart the engine to use the new version.\n`,
-    );
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    await recordEngineUpdateFailed({
-      from_version: fromVersion,
-      to_version: toVersion,
-      channel: CHANNEL,
-      request_source: "self-update",
-      reason,
-      executor: db,
-    });
-    logger.error({
-      module: "self-update",
-      action: "engine.update.failed",
-      msg: `engine update ${fromVersion} → ${toVersion} failed: ${reason}`,
-      from_version: fromVersion,
-      to_version: toVersion,
-      channel: CHANNEL,
-      error: reason,
-    });
-    recordEngineUpdate({ result: "failure", channel: CHANNEL });
-    throw err;
-  }
+      from_version: VERSION,
+      to_version: info.version,
+      log_action_initiated: "engine.update.initiated",
+      human_label: "updating",
+    },
+    async () => {
+      const result = await performUpdate(config, info, fetchImpl);
+      return { to_version: result.to_version, sha256: result.sha256 };
+    },
+    (db, fields) =>
+      recordEngineUpdateCompleted({
+        ...fields,
+        channel: CHANNEL,
+        request_source: "self-update",
+        executor: db,
+      }),
+    "success",
+    "engine.update.completed",
+  );
 }
 
 /** Restore a previously retained signed binary in place of the
  *  currently running one. Issue #151 P0-4. */
-export async function runRollback(target: string | "previous" = "previous"): Promise<void> {
-  const config = defaultUpdaterConfig("engine", VERSION);
+export async function runRollback(
+  target: string | "previous" = "previous",
+  /** See `runSelfUpdate`. */
+  configOverride?: UpdaterConfig,
+): Promise<void> {
+  const config = configOverride ?? defaultUpdaterConfig("engine", VERSION);
   const retained = listRetainedVersions(config);
   if (retained.length === 0) {
     process.stdout.write(
@@ -119,69 +207,31 @@ export async function runRollback(target: string | "previous" = "previous"): Pro
     return;
   }
 
-  const fromVersion = VERSION;
+  // Best-effort target for the INITIATED row; rollbackTo will throw if
+  // the picked binary fails its integrity check, in which case the
+  // FAILED row also carries this version.
   const tentativeTarget = target === "previous" ? retained[0]!.version : target;
-  const db = getDb();
 
-  await recordEngineUpdateInitiated({
-    from_version: fromVersion,
-    to_version: tentativeTarget,
-    channel: CHANNEL,
-    request_source: "rollback",
-    executor: db,
-  });
-  logger.info({
-    module: "self-update",
-    action: "engine.update.initiated",
-    msg: `engine rollback ${fromVersion} → ${tentativeTarget} initiated`,
-    from_version: fromVersion,
-    to_version: tentativeTarget,
-    request_source: "rollback",
-  });
-
-  process.stdout.write(`engine: rolling back ${fromVersion} → ${tentativeTarget}...\n`);
-  try {
-    const result = rollbackTo(config, target);
-    await recordEngineUpdateRolledBack({
-      from_version: result.from_version,
-      to_version: result.to_version,
-      channel: CHANNEL,
-      sha256: result.sha256,
+  await instrumentBinarySwap(
+    {
       request_source: "rollback",
-      executor: db,
-    });
-    logger.info({
-      module: "self-update",
-      action: "engine.update.rolled_back",
-      msg: `engine rolled back ${result.from_version} → ${result.to_version}`,
-      from_version: result.from_version,
-      to_version: result.to_version,
-      sha256: result.sha256,
-    });
-    recordEngineUpdate({ result: "rollback", channel: CHANNEL });
-    process.stdout.write(
-      `engine: rolled back to ${result.to_version}. Restart the engine to use it.\n`,
-    );
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    await recordEngineUpdateFailed({
-      from_version: fromVersion,
+      from_version: VERSION,
       to_version: tentativeTarget,
-      channel: CHANNEL,
-      request_source: "rollback",
-      reason,
-      executor: db,
-    });
-    logger.error({
-      module: "self-update",
-      action: "engine.update.failed",
-      msg: `engine rollback ${fromVersion} → ${tentativeTarget} failed: ${reason}`,
-      from_version: fromVersion,
-      to_version: tentativeTarget,
-      request_source: "rollback",
-      error: reason,
-    });
-    recordEngineUpdate({ result: "failure", channel: CHANNEL });
-    throw err;
-  }
+      log_action_initiated: "engine.update.initiated",
+      human_label: "rolling back",
+    },
+    async () => {
+      const result = rollbackTo(config, target);
+      return { to_version: result.to_version, sha256: result.sha256 };
+    },
+    (db, fields) =>
+      recordEngineUpdateRolledBack({
+        ...fields,
+        channel: CHANNEL,
+        request_source: "rollback",
+        executor: db,
+      }),
+    "rollback",
+    "engine.update.rolled_back",
+  );
 }

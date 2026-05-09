@@ -17,7 +17,7 @@ import { eq, sql } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { AuditAction } from "../types.ts";
+import { AuditAction, SYSTEM_TENANT_ID } from "../types.ts";
 import {
   recordConnectorCreated,
   recordConnectorDeleted,
@@ -28,6 +28,10 @@ import {
   recordCredentialAttached,
   recordCredentialDeleted,
   recordCredentialRotated,
+  recordEngineUpdateCompleted,
+  recordEngineUpdateFailed,
+  recordEngineUpdateInitiated,
+  recordEngineUpdateRolledBack,
   recordKnowledgeSourceCreated,
   recordKnowledgeSourceRefreshed,
   recordToolPolicyConfirmationRequired,
@@ -401,6 +405,108 @@ describe("recorder catalog — policy", () => {
     expect(row?.reason).toBe("confirm_before_execution");
     expect((row?.metadata as Record<string, unknown>).tool).toBe("delete_connector");
     expect((row?.metadata as Record<string, unknown>).resolver_reason).toBe("dangerous_tool");
+  });
+});
+
+describe("recorder catalog — engine_update", () => {
+  // Engine-update rows always land under SYSTEM_TENANT_ID; the recorder
+  // hard-codes tenant + actor so the param shape can't drift into a
+  // remote-mutation surface (#151 §6 anti-goal). Tests assert exactly
+  // that contract.
+  const FIXED_HEX = "a".repeat(64);
+
+  test("recordEngineUpdateInitiated lands under SYSTEM_TENANT_ID with the system actor", async () => {
+    const entry = await recordEngineUpdateInitiated({
+      executor: testDb.db,
+      from_version: "4.2.0",
+      to_version: "4.3.0",
+      channel: "stable",
+      request_source: "self-update",
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.action).toBe(AuditAction.ENGINE_UPDATE_INITIATED);
+    expect(row?.tenant_id).toBe(SYSTEM_TENANT_ID);
+    // Actor is `system` (process-level mutation, no system_accounts row
+    // backing it); `request_source` in metadata is the canonical way
+    // an operator separates self-update vs rollback.
+    expect(row?.actor_type).toBe("system");
+    expect(row?.actor_id).toBeNull();
+    expect(row?.result).toBe("success");
+    expect(row?.reason).toBe("self-update binary swap");
+    const meta = row?.metadata as Record<string, unknown>;
+    expect(meta.from_version).toBe("4.2.0");
+    expect(meta.to_version).toBe("4.3.0");
+    expect(meta.channel).toBe("stable");
+    expect(meta.request_source).toBe("self-update");
+    expect(meta.sha256).toBe("");
+    // The retired `actor: "cli"` literal must not have leaked back in
+    // (it would invite drift into a remote-mutation surface).
+    expect(meta.actor).toBeUndefined();
+  });
+
+  test("recordEngineUpdateCompleted carries the verified sha256", async () => {
+    const entry = await recordEngineUpdateCompleted({
+      executor: testDb.db,
+      from_version: "4.2.0",
+      to_version: "4.3.0",
+      channel: "stable",
+      sha256: FIXED_HEX,
+      request_source: "self-update",
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.action).toBe(AuditAction.ENGINE_UPDATE_COMPLETED);
+    expect(row?.result).toBe("success");
+    const meta = row?.metadata as Record<string, unknown>;
+    expect(meta.sha256).toBe(FIXED_HEX);
+  });
+
+  test("recordEngineUpdateFailed records result=error and a free-form reason", async () => {
+    const entry = await recordEngineUpdateFailed({
+      executor: testDb.db,
+      from_version: "4.2.0",
+      to_version: "4.3.0",
+      channel: "stable",
+      request_source: "self-update",
+      reason: "checksum mismatch for engine_linux_x64",
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.action).toBe(AuditAction.ENGINE_UPDATE_FAILED);
+    expect(row?.result).toBe("error");
+    expect(row?.reason).toBe("checksum mismatch for engine_linux_x64");
+    const meta = row?.metadata as Record<string, unknown>;
+    // Pre-download FAILED → empty sha256 default
+    expect(meta.sha256).toBe("");
+  });
+
+  test("recordEngineUpdateRolledBack pins request_source even if caller passes self-update", async () => {
+    const entry = await recordEngineUpdateRolledBack({
+      executor: testDb.db,
+      from_version: "4.3.0",
+      to_version: "4.2.0",
+      channel: "stable",
+      sha256: FIXED_HEX,
+      // Caller passes "self-update" — the recorder MUST override to
+      // "rollback" since the action is ROLLED_BACK.
+      request_source: "self-update",
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.action).toBe(AuditAction.ENGINE_UPDATE_ROLLED_BACK);
+    expect(row?.result).toBe("success");
+    const meta = row?.metadata as Record<string, unknown>;
+    expect(meta.request_source).toBe("rollback");
+  });
+
+  test("EngineUpdateMetadataSchema rejects almost-hex sha256 values", async () => {
+    await expect(
+      recordEngineUpdateCompleted({
+        executor: testDb.db,
+        from_version: "4.2.0",
+        to_version: "4.3.0",
+        channel: "stable",
+        sha256: "not-hex",
+        request_source: "self-update",
+      }),
+    ).rejects.toThrow();
   });
 });
 

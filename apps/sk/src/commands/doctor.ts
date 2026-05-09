@@ -202,7 +202,13 @@ export const doctorCommand = defineCommand({
       // Issue #151 P0-1 moved the `db_schema_drift` flag off `/v1/health`
       // (it was leaking operational posture to unauthenticated callers).
       // The `audit:read`-gated `/v1/diagnostics/drift` is the canonical
-      // source of the actionable detail, so always pull it.
+      // source of the actionable detail, so always pull it. The
+      // pre-#151 `lastHealth.db_schema_drift === false` short-circuit
+      // is gone; every `sk doctor` run now writes one
+      // `DIAGNOSTICS_DRIFT_READ` audit row, even on a clean DB. That
+      // is intentional — operators searching `audit_log` for drift
+      // reads will see the doctor invocations alongside any genuine
+      // probes.
       try {
         const report = await client.driftReport();
         const unknown = report.unknown_in_db.length;

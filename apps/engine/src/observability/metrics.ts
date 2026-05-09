@@ -351,8 +351,10 @@ export const METRIC_NAMES = {
   // every setConfigKey() commit.
   SETTINGS_OVERRIDE_ACTIVE: "settings_override_active",
   // 4.3.0 (issue #151 P0-2/P0-4) — engine self-update + rollback
-  // outcomes. Cardinality is intentionally bounded: result is one of
-  // success / failure / rollback, channel is stable / beta. Version
+  // outcomes. Cardinality is intentionally bounded: `result` is one of
+  // `success` / `failed` / `rollback` (kept in lockstep with the
+  // `engine.update.*` audit action names so SREs don't have to
+  // remember an off-by-one), `channel` is `stable` / `beta`. Version
   // labels are NOT included — semver is unbounded over time and would
   // explode the series.
   ENGINE_UPDATE_TOTAL: "engine_update_total",

@@ -456,14 +456,18 @@ export const EngineUpdateMetadataSchema = z.object({
   to_version: z.string(),
   /** Release channel the binary came from. */
   channel: z.enum(["stable", "beta"]),
-  /** SHA256 of the verified binary. Empty for INITIATED (download not
-   *  yet started) and for FAILED if the failure happened before hash
-   *  verification. */
-  sha256: z.string().default(""),
-  /** Always "cli" for now; reserved for a future MCP/HTTP surface
-   *  (anti-goal — see issue #151 §6 — but the column tracks intent). */
-  actor: z.literal("cli"),
-  /** Which CLI path triggered the row. */
+  /** SHA256 of the verified binary as a 64-char lowercase hex string,
+   *  or empty for INITIATED (download not yet started) / pre-download
+   *  FAILED. The strict regex prevents almost-hex sentinels (e.g.
+   *  "unknown", truncated) from landing in the audit row, where a
+   *  forensic JOIN against `audit_log.metadata->>'sha256'` would
+   *  silently miss them. */
+  sha256: z.union([z.string().regex(/^[0-9a-f]{64}$/), z.literal("")]),
+  /** Which CLI path triggered the row. The pair `(request_source,
+   *  audit_log.actor_type)` records the dispatch path; we deliberately
+   *  do NOT carry an `actor: "cli"` literal because issue #151 §6
+   *  declares any HTTP / MCP self-update surface an anti-goal — the
+   *  column would invite drift. DO NOT WIDEN. */
   request_source: z.enum(["self-update", "rollback"]),
   /** Reason an update failed. Set on FAILED only. */
   reason: z.string().optional(),

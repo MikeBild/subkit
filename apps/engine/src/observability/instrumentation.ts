@@ -22,9 +22,12 @@ function safe(fn: () => void): void {
 }
 
 export function recordEngineUpdate(args: {
-  /** Outcome label — must be one of the values registered for the
-   *  `engine_update_total` counter. */
-  result: "success" | "failure" | "rollback";
+  /** Outcome label — kept in lockstep with the `engine.update.*` audit
+   *  action vocabulary so an operator joining
+   *  `engine_update_total{result="failed"}` to
+   *  `audit_log.action='engine.update.failed'` doesn't have to remember
+   *  an off-by-one. */
+  result: "success" | "failed" | "rollback";
   channel: "stable" | "beta";
 }): void {
   safe(() => {
