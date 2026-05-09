@@ -217,7 +217,17 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "identity:read",
   },
   {
+    // S3 of PR #161 review round 2: `/install` is a single alias of
+    // `/onboard`, not a second entry. Two registry rows pointing at the
+    // same handler showed up twice in `/help`, doubled the audit
+    // surface for static inventory tools, and made it possible for
+    // future drift (different `requires`, different category) to slip
+    // in unnoticed. The handler still exposes both `case "install":`
+    // and `case "onboard":` because the dispatcher passes the typed
+    // name through — aliases resolve to the same `command`, but the
+    // raw user-typed string is what reaches the switch.
     name: "onboard",
+    aliases: ["install"],
     help: "Launch an interactive onboarding wizard — pick a template, enter credentials, probe, save",
     category: "session",
     requires: "connector:write",
@@ -424,11 +434,16 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     routing: "local",
   },
   // M12 of #159 — mobile / portal connect via QR code.
+  // W1 of PR #161 review (round 2): the engine route at
+  // POST /v1/identity/portal-tokens requires `portal_token:write`,
+  // not `:read`. Declaring the slash with `:read` would let it
+  // appear in /help for read-only operators who would then hit a
+  // 403 from the server.
   {
     name: "session",
     help: "Mint a short-lived portal token + render a QR code — `/session <workflow-id>`",
     category: "auth",
-    requires: "portal_token:read",
+    requires: "portal_token:write",
     argsSchema: z.tuple([z.string().min(1, "workflow id required")]).rest(z.string()),
   },
   // operator list commands
@@ -470,15 +485,13 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "discovery:read",
   },
   // M13/G11 + H4 of #159: per-service install-* slashes were collapsed
-  // into a single `/install` picker that opens the existing onboarding
-  // wizard (template picker → credential prompt → probe → save). Their
-  // guidance redirects live in `dispatcher.ts:REMOVED_SLASH_GUIDANCE`.
-  {
-    name: "install",
-    help: "Pick a connector template and run the install wizard inline (alias for /onboard)",
-    category: "context",
-    requires: "connector:write",
-  },
+  // into a single `/install` slash that opens the existing onboarding
+  // wizard (template picker → credential prompt → probe → save). S3
+  // of PR #161 review round 2 collapsed the second registry row into
+  // an `aliases: ["install"]` entry on `/onboard` above, so this spot
+  // is now intentionally empty. Removed-slash guidance for the old
+  // per-service `install-*` names still lives in
+  // `dispatcher.ts:REMOVED_SLASH_GUIDANCE`.
   // admin list commands
   {
     name: "apikeys",

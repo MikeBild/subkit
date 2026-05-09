@@ -2,6 +2,7 @@ import { Box, render, Text, useApp, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
 import type { EngineClient, SettingLeafEntry } from "../engine-client.ts";
+import { isAdminFromPermissions } from "./lib/admin-gate.ts";
 import { groupBySection, leafToFormField } from "./lib/zod-to-form-fields.ts";
 import { SettingsModal } from "./SettingsModal.tsx";
 
@@ -27,22 +28,12 @@ interface State {
   isAdmin: boolean;
 }
 
-// Admin-tab visibility predicate. Mirrors the issue's
-// "tenant.admin or any of the admin-scoped permissions" rule. Server-side
-// RBAC still enforces every mutation; this gate is purely UX.
-const ADMIN_PERMISSIONS = new Set([
-  "rbac:read",
-  "api_key:read",
-  "audit:read",
-  "identity:read",
-  "portal_token:read",
-]);
-function isAdminFromPermissions(perms: readonly string[]): boolean {
-  for (const p of perms) {
-    if (ADMIN_PERMISSIONS.has(p)) return true;
-  }
-  return false;
-}
+// Admin-tab visibility helper lifted to lib/admin-gate.ts.
+// W3 + S2 of PR #161 review round 2: previous heuristic was too
+// liberal — `api_key:read`, `identity:read`, `portal_token:read` are
+// member-scoped per `apps/engine/src/rbac/seed.ts`, so every tenant
+// member saw the Admin tab. The shared helper now keys on permissions
+// the built-in `member` role is *guaranteed not* to have.
 
 const SettingsApp: React.FC<SettingsAppOptions & { onExit: (code: number) => void }> = ({
   client,

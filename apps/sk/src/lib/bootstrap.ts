@@ -157,9 +157,18 @@ const PersistedSnapshotSchema = z
     // truth for the new shape.
     flags: z.record(z.string(), z.boolean()),
     // H1 of #159 follow-up — `prefs` carries REPL + UI + notification
-    // settings resolved by the engine. Permissive shape on the cache
-    // reader so a future field on the engine doesn't fail older CLIs;
-    // PERSISTED_SNAPSHOT_VERSION bump is the migration boundary.
+    // settings resolved by the engine.
+    //
+    // S4 of PR #161 review round 2: switched from `.passthrough()` to
+    // `.strict()`. The earlier laxness was justified as "future engine
+    // field shouldn't fail older CLIs", but the surrounding contract
+    // already pins shape via `PERSISTED_SNAPSHOT_VERSION` — a new
+    // engine-side prefs field requires a version bump anyway, and
+    // strict rejection on the cache reader is the same fail-closed
+    // posture every other persisted-shape leaf has. Allowing unknown
+    // keys here would silently smuggle a stale-cache field through to
+    // `materialize()` after a downgrade, exactly the failure mode
+    // PERSISTED_SNAPSHOT_VERSION exists to prevent.
     prefs: z
       .object({
         permissionMode: z.enum(["ask", "auto", "plan", "yolo"]),
@@ -172,7 +181,7 @@ const PersistedSnapshotSchema = z
         quietHoursStart: z.string(),
         quietHoursEnd: z.string(),
       })
-      .passthrough(),
+      .strict(),
     fetched_at: z.number().int().nonnegative(),
   })
   .strict();

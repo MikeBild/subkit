@@ -75,9 +75,15 @@ describe("slash dispatcher contract (G11)", () => {
   test("the unified `/install` slash is registered and opens the onboarding wizard", () => {
     const plan = classifySlash("install");
     expect(plan.routing).not.toBe("unknown");
-    // H4 closure: /install opens the existing onboarding wizard pane
-    // — its help text describes the inline template picker flow.
-    expect(plan.command?.help).toMatch(/connector template/i);
-    expect(plan.command?.help).toMatch(/wizard inline/i);
+    // S3 of PR #161 review round 2: `/install` is now an alias of
+    // `/onboard` rather than a duplicate registry entry, so the
+    // resolved command is `/onboard` and its help text is the
+    // single source of truth for the wizard description. The
+    // critical contract — that `/install` resolves and dispatches —
+    // is unchanged; the alias must show up in `aliases`.
+    expect(plan.command?.name).toBe("onboard");
+    expect(plan.command?.aliases ?? []).toContain("install");
+    expect(plan.command?.help).toMatch(/onboarding wizard/i);
+    expect(plan.command?.help).toMatch(/template/i);
   });
 });

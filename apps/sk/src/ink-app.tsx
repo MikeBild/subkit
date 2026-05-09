@@ -3443,11 +3443,16 @@ export const InkApp: React.FC<InkAppProps> = ({
             .map((m) => ({
               // H3 closure of #159 — only persisted messages (carrying
               // an engine-issued id) appear in the rewind timeline.
-              // The synthetic-id fallback was rejected by the fork
-              // route and only confused the operator.
+              // W4 of PR #161 review (round 2): MessageState doesn't
+              // currently carry the engine-side `created_at`, so we
+              // pass an empty string and let `ConversationBrowser`
+              // render `—`. Fabricating `new Date().toISOString()` at
+              // render time stamped every turn with the same "now"
+              // and re-stamped them on every keystroke — operationally
+              // misleading.
               message_id: m.id,
               excerpt: typeof m.content === "string" ? m.content : "(non-text turn)",
-              created_at: new Date().toISOString(),
+              created_at: "",
             }))}
           onForkFromTurn={(message_id) => {
             if (!engineClient || !session.conversationId) return;

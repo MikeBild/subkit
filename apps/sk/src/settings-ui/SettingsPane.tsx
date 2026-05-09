@@ -7,23 +7,11 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
 import type { EngineClient, SettingLeafEntry } from "../engine-client.ts";
+// W3 + S2 of PR #161 review round 2: shared `isAdminFromPermissions`
+// helper, lifted from this file + SettingsApp.tsx.
+import { isAdminFromPermissions } from "./lib/admin-gate.ts";
 import { groupBySection, leafToFormField } from "./lib/zod-to-form-fields.ts";
 import { SettingsModal } from "./SettingsModal.tsx";
-
-const ADMIN_PERMISSIONS = new Set([
-  "rbac:read",
-  "api_key:read",
-  "audit:read",
-  "identity:read",
-  "portal_token:read",
-]);
-
-function isAdminFromPermissions(perms: readonly string[]): boolean {
-  for (const p of perms) {
-    if (ADMIN_PERMISSIONS.has(p)) return true;
-  }
-  return false;
-}
 
 export interface SettingsPaneProps {
   client: EngineClient;

@@ -119,13 +119,18 @@ export async function forkConversation(
     copiedCount = messagesToCopy.length;
   }
 
-  log.conversation.created({
+  // S1 of PR #161 review round 2: log under `conversation.forked`
+  // (not `created`) so structured-log readers can split forks from
+  // greenfield creates the same way the audit row does.
+  log.conversation.forked({
     conversation_id: row.id,
     tenant_id: p.tenant_id,
     actor_id: p.actor_id,
     connector_id: source.target_connector_id ?? null,
     workflow_id: source.target_workflow_id ?? null,
-    has_initial_message: copiedCount > 0,
+    forked_from: p.source_conversation_id,
+    anchor_message_id: p.anchor_message_id,
+    copied_message_count: copiedCount,
     memory_included: Boolean(source.memory),
   });
 

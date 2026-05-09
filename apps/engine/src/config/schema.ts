@@ -458,7 +458,10 @@ const ReplSection = z
       .enum(["ask", "auto", "plan", "yolo"])
       .default("ask")
       .describe(
-        "Default sk REPL permission mode: ask | auto | plan | yolo. Operator can change at any time via /settings → Permissions or Shift-Tab.",
+        // S7 of PR #161 review round 2: keep the description to data
+        // semantics; sk-specific UI hints (slash names, key chords)
+        // belong in the slash registry / docs, not the OpenAPI surface.
+        "Default REPL permission mode for the principal: ask, auto, plan, or yolo.",
       )
       .meta(tenant()),
   })

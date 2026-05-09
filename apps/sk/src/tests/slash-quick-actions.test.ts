@@ -13,7 +13,7 @@ function makeCtx(
   opts: {
     client?: EngineClient;
     conversationId?: string | null;
-    messages?: Array<{ role: string; content: string }>;
+    messages?: Array<{ role: string; content: string; id?: string }>;
     setConversationId?: (id: string | null) => void;
   } = {},
 ): SlashHandlerContext {
@@ -112,21 +112,81 @@ describe("/rename slash (M9)", () => {
   });
 });
 
-describe("/fork slash (M9)", () => {
-  test("calls setConversationId(null) and returns the previous id in the message", async () => {
+describe("/fork slash (M9 + W2 of PR #161 review round 2)", () => {
+  test("calls forkConversationFromMessage with the most recent assistant id and switches sessionId", async () => {
+    const forkConversationFromMessage = mock(async (sourceId: string, msgId: string) => ({
+      conversation: { id: "11111111-1111-1111-1111-111111111111" } as unknown,
+      source_conversation_id: sourceId,
+      anchor_message_id: msgId,
+      copied_message_count: 4,
+    }));
+    const client = { forkConversationFromMessage } as unknown as EngineClient;
+
     let setTo: string | null | undefined;
     const out = await handleSlash(
       "fork",
       [],
       makeCtx({
-        conversationId: "conv-prev",
+        client,
+        conversationId: "source-conv-1",
+        messages: [
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "first reply", id: "msg-1" },
+          { role: "user", content: "more" },
+          { role: "assistant", content: "second reply", id: "msg-2" },
+        ],
         setConversationId: (id) => {
           setTo = id;
         },
       }),
     );
-    expect(setTo).toBeNull();
-    expect(out).toContain("forked from conv-prev");
+    expect(forkConversationFromMessage.mock.calls.length).toBe(1);
+    const args = forkConversationFromMessage.mock.calls[0] as unknown as [string, string];
+    expect(args[0]).toBe("source-conv-1");
+    expect(args[1]).toBe("msg-2"); // most recent assistant turn
+    expect(setTo).toBe("11111111-1111-1111-1111-111111111111");
+    expect(out).toMatch(/forked from source-c at message msg-2/);
+    expect(out).toMatch(/4 messages copied/);
+  });
+
+  test("returns guidance when no persisted assistant turn exists", async () => {
+    const forkConversationFromMessage = mock(async () => {
+      throw new Error("should not be called");
+    });
+    const client = { forkConversationFromMessage } as unknown as EngineClient;
+    const out = await handleSlash(
+      "fork",
+      [],
+      makeCtx({
+        client,
+        conversationId: "source-1",
+        messages: [
+          { role: "user", content: "hi" },
+          // assistant turn without `id` (still streaming, not persisted)
+          { role: "assistant", content: "in progress" },
+        ],
+      }),
+    );
+    expect(out).toMatch(/no persisted assistant turn/);
+    expect(forkConversationFromMessage.mock.calls.length).toBe(0);
+  });
+
+  test("surfaces engine error verbatim", async () => {
+    const forkConversationFromMessage = mock(async () => {
+      throw new Error("forbidden — conversation:write required");
+    });
+    const client = { forkConversationFromMessage } as unknown as EngineClient;
+    const out = await handleSlash(
+      "fork",
+      [],
+      makeCtx({
+        client,
+        conversationId: "source-1",
+        messages: [{ role: "assistant", content: "ok", id: "msg-x" }],
+      }),
+    );
+    expect(out).toContain("/fork failed");
+    expect(out).toContain("forbidden");
   });
 
   test("explains when no session to fork from", async () => {

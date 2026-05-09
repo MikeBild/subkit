@@ -1313,21 +1313,49 @@ export async function handleSlash(
       // Find the most recent assistant message in the in-memory transcript
       // and write it to the operator's clipboard via OSC 52.
       const msgs = ctx.session.messages;
-      let last: (typeof msgs)[number] | null = null;
+      let lastText = "";
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];
         if (m && m.role === "assistant") {
-          last = m;
+          lastText = typeof m.content === "string" ? m.content : "";
           break;
         }
       }
-      if (!last) return "/copy: no assistant message yet";
-      const text = typeof last.content === "string" ? last.content : "";
-      if (!text) return "/copy: last assistant message is empty";
+      // S5 of PR #161 review round 2: when the in-memory transcript
+      // does not contain an assistant turn (resumed session, paged
+      // history scrolled past it, or REPL booted into an existing
+      // conversation), fall back to the engine's persisted messages.
+      // We avoid a network call when the in-memory cache already has
+      // text, so the happy path stays fully local.
+      if (lastText === "" && ctx.session.conversationId) {
+        try {
+          const detail = await ctx.client.getConversation(ctx.session.conversationId);
+          const persisted = detail.messages as Array<{ role?: string; content?: unknown }>;
+          for (let i = persisted.length - 1; i >= 0; i--) {
+            const m = persisted[i];
+            if (m && m.role === "assistant") {
+              lastText = typeof m.content === "string" ? m.content : "";
+              break;
+            }
+          }
+        } catch {
+          // Engine fetch failures fall through to the empty-transcript
+          // hint below; the slash never throws and never deadlocks.
+        }
+      }
+      if (lastText === "") {
+        // Distinguish "no assistant turn at all" from "assistant turn
+        // is empty"; the in-memory transcript is the authoritative
+        // signal for the latter.
+        const haveAnyAssistant = msgs.some((m) => m?.role === "assistant");
+        return haveAnyAssistant
+          ? "/copy: last assistant message is empty"
+          : "/copy: no assistant message yet";
+      }
       const { osc52Copy } = await import("@cli-core/clipboard.ts");
-      const ok = osc52Copy(text);
+      const ok = osc52Copy(lastText);
       return ok
-        ? `copied last assistant message (${text.length} chars) to clipboard`
+        ? `copied last assistant message (${lastText.length} chars) to clipboard`
         : "/copy failed: clipboard not writable on this terminal";
     }
     case "rename": {
@@ -1343,17 +1371,38 @@ export async function handleSlash(
       }
     }
     case "fork": {
-      // The engine has no first-class fork endpoint. The current
-      // conversation is preserved server-side; the local session is
-      // detached so the next prompt starts a fresh conversation, and
-      // the operator can `/resume` back to the original via the
-      // session picker. M10 of #159 will add the deeper "fork from
-      // turn N" flow once the engine grows the dedicated route.
-      const previous = ctx.session.conversationId;
-      ctx.setConversationId(null);
-      return previous
-        ? `forked from ${previous} — original preserved; type the next prompt to start the new branch`
-        : "no session to fork from";
+      // W2 of PR #161 review (round 2): wired to the engine
+      // fork-from-message route. /fork creates a real fork at the
+      // most recent persisted assistant message, copying messages
+      // 0..N into a new conversation, and switches the local
+      // sessionId to the new one. The original conversation stays
+      // resumable via /resume. For the in-conversation timeline
+      // picker (`/resume → t`), see ConversationBrowser.
+      const sourceId = ctx.session.conversationId;
+      if (!sourceId) return "no session to fork from";
+      // Find the most recent assistant message that has a persisted
+      // engine id. Synthetic / streaming-in-progress messages have
+      // no `id` and the fork route refuses unknown anchors.
+      let anchorId: string | null = null;
+      for (let i = ctx.session.messages.length - 1; i >= 0; i--) {
+        const m = ctx.session.messages[i];
+        if (m && m.role === "assistant" && typeof m.id === "string" && m.id.length > 0) {
+          anchorId = m.id;
+          break;
+        }
+      }
+      if (!anchorId) {
+        return "/fork: no persisted assistant turn to fork from yet (waiting for the engine to commit the latest message)";
+      }
+      try {
+        const res = await ctx.client.forkConversationFromMessage(sourceId, anchorId);
+        ctx.setConversationId(res.conversation.id);
+        const short = res.conversation.id.slice(0, 8);
+        return `forked from ${sourceId.slice(0, 8)} at message ${anchorId.slice(0, 8)} — new session ${short} (${res.copied_message_count} messages copied)`;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return `/fork failed: ${msg}`;
+      }
     }
     case "mention": {
       return "tip: type `@` in the composer to open the inline mention picker (file / connector / workflow)";

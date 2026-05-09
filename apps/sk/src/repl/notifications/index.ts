@@ -114,8 +114,30 @@ function parseHHMM(s: string): number | null {
  *
  * Windows: not supported here; the OS itself respects Focus Assist
  *   for OSC9 notifications already.
+ *
+ * S6 of PR #161 review round 2: the result is cached per REPL
+ * lifetime. DND state can change while the REPL runs, but the cost
+ * of `spawnSync` on every notification gate (200 ms timeout per
+ * probe) was disproportionate for a "best-effort, false on error"
+ * helper. Operators who toggle DND mid-REPL re-read the state on
+ * the next REPL boot; an explicit `resetOsDoNotDisturbCacheForTests`
+ * is exported so unit tests can re-probe without leaking state.
  */
+let osDndCache: { value: boolean; cached: true } | null = null;
+
 export function isOsDoNotDisturb(): boolean {
+  if (osDndCache !== null) return osDndCache.value;
+  const value = probeOsDoNotDisturb();
+  osDndCache = { value, cached: true };
+  return value;
+}
+
+/** Reset the in-memory DND cache. Test-only — never call from prod. */
+export function resetOsDoNotDisturbCacheForTests(): void {
+  osDndCache = null;
+}
+
+function probeOsDoNotDisturb(): boolean {
   try {
     const plat = process.platform;
     if (plat === "darwin") {

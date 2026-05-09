@@ -293,6 +293,9 @@ export const log = {
   },
   conversation: {
     created: (ctx: Ctx) => logger.info({ module: "conversation", action: "created", ...ctx }),
+    // S1 of PR #161 review round 2: distinct event so log readers
+    // tailing on `action="created"` don't accidentally bucket forks.
+    forked: (ctx: Ctx) => logger.info({ module: "conversation", action: "forked", ...ctx }),
     appended: (ctx: Ctx) => logger.debug({ module: "conversation", action: "appended", ...ctx }),
     completed: (ctx: Ctx) => logger.info({ module: "conversation", action: "completed", ...ctx }),
     compacted: (ctx: Ctx) => logger.info({ module: "conversation", action: "compacted", ...ctx }),

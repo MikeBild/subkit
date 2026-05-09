@@ -339,6 +339,64 @@ describe("PUT /v1/settings/{path}", () => {
     expect(rows.length).toBe(0);
   });
 
+  // W6 of PR #161 review round 2: cross-tenant guard must cover the
+  // new tenant-scoped overlay sections that #159 introduced —
+  // `repl.permissionMode`, `ui.*`, `notifications.push.*`. Without an
+  // explicit assertion per section, a future refactor that special-
+  // cases one of them risks letting a non-admin tenant flip another
+  // tenant's REPL mode or push-notification settings.
+  test("cross-tenant guard rejects writes to repl/ui/notifications overlays", async () => {
+    const seqTag = nextSeq();
+    const [otherTenant] = await server.db
+      .insert(tenants)
+      .values({ slug: `overlay-${seqTag}`, display_name: "Overlay Tenant" })
+      .returning();
+    const [otherUser] = await server.db
+      .insert(users)
+      .values({
+        tenant_id: otherTenant!.id,
+        email: `overlay-member-${seqTag}@test.local`,
+        role: "member",
+      })
+      .returning();
+    const plaintext = `wf_live_${det(16)}`;
+    await server.db.insert(apiKeys).values({
+      tenant_id: otherTenant!.id,
+      user_id: otherUser!.id,
+      prefix: plaintext.slice(0, 12),
+      token_sha256: createHash("sha256").update(plaintext).digest("hex"),
+      scopes: ["*"],
+    });
+
+    const targets: Array<[string, unknown]> = [
+      ["repl.permissionMode", "yolo"],
+      ["ui.theme", "dark"],
+      ["ui.personality", "verbose"],
+      ["notifications.push.enabled", true],
+      ["notifications.push.thresholdSec", 5],
+    ];
+
+    for (const [path, value] of targets) {
+      const res = await fetch(`${server.baseUrl}/v1/settings/${path}?tenant=${server.tenantId}`, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${plaintext}`,
+        },
+        body: JSON.stringify({ value }),
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { code: string };
+      expect(body.code).toBe("scope_violation");
+    }
+
+    const rows = await server.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, "settings.changed"));
+    expect(rows.length).toBe(0);
+  });
+
   test("source_map and live value reflect every layer of the precedence chain", async () => {
     // 1. Default — fresh boot, no overrides, no writes. ring_size
     //    starts at the schema default (100).

@@ -192,7 +192,15 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
                     </Text>
                   </Box>
                   <Box marginLeft={2}>
-                    <Text color={theme.severity.dim}>{formatRelativeTime(turn.created_at)}</Text>
+                    {/* W4 of PR #161 review round 2: empty `created_at`
+                        renders as `—` rather than fabricating a
+                        relative time. The CLI doesn't currently
+                        propagate the engine-side timestamp through
+                        MessageState; until it does, falsified
+                        "moments ago" labels are worse than honest dashes. */}
+                    <Text color={theme.severity.dim}>
+                      {turn.created_at ? formatRelativeTime(turn.created_at) : "—"}
+                    </Text>
                     <Text color={theme.severity.dim}> · </Text>
                     <Text color={theme.severity.dim}>{turn.message_id.slice(0, 8)}</Text>
                   </Box>
