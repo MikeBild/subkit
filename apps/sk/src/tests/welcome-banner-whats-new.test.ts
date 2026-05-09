@@ -11,6 +11,7 @@ import {
   changelogHead,
   isFresh,
   loadWhatsNew,
+  loadWhatsNewSync,
   readCache,
   whatsNewUrl,
   writeCache,
@@ -178,6 +179,22 @@ describe("loadWhatsNew", () => {
 
   test("changelogHead from bundled CHANGELOG returns a v-prefixed string", () => {
     expect(changelogHead()).toMatch(/^v\d+\.\d+/);
+  });
+
+  test("loadWhatsNewSync returns fresh cache when present", () => {
+    const now = 1_700_000_000_000;
+    writeCache({ headline: "from cache", fetchedAt: now - 1000 }, cachePath());
+    expect(loadWhatsNewSync({ cachePath: cachePath(), now: () => now })).toBe("from cache");
+  });
+
+  test("loadWhatsNewSync returns stale cache when no fresh value", () => {
+    const now = 1_700_000_000_000;
+    writeCache({ headline: "stale", fetchedAt: now - 25 * 3600 * 1000 }, cachePath());
+    expect(loadWhatsNewSync({ cachePath: cachePath(), now: () => now })).toBe("stale");
+  });
+
+  test("loadWhatsNewSync falls back to bundled CHANGELOG when no cache exists", () => {
+    expect(loadWhatsNewSync({ cachePath: cachePath() })).toMatch(/^v\d/);
   });
 
   test("whatsNewUrl honors SK_WHATS_NEW_URL override", () => {

@@ -120,7 +120,7 @@ import {
 import { TaskLauncher } from "./repl/task-launcher.tsx";
 import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { classifyVersionSkew, VersionMismatchBanner } from "./repl/version-mismatch-banner.tsx";
-import { loadWhatsNew } from "./repl/welcome-banner/whats-new.ts";
+import { loadWhatsNew, loadWhatsNewSync } from "./repl/welcome-banner/whats-new.ts";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
 import { SettingsPane } from "./settings-ui/SettingsPane.tsx";
 import { bodyOf, errorToPanel } from "./shell/ErrorPanel.tsx";
@@ -616,7 +616,10 @@ const SetupBanner: React.FC<SetupBannerProps> = memo(({ status, warnings, blocke
     return (
       <Box>
         <Text color={theme.severity.warning} bold>
-          {`⚠ Setup: ${label} — run /setup for details`}
+          {`⚠ Setup: ${label}. Type `}
+        </Text>
+        <Text color={theme.severity.warning} bold>
+          /setup
         </Text>
       </Box>
     );
@@ -626,7 +629,10 @@ const SetupBanner: React.FC<SetupBannerProps> = memo(({ status, warnings, blocke
   return (
     <Box>
       <Text color={theme.severity.error} bold>
-        {`✗ Setup: ${label} — run /setup to resolve`}
+        {`✗ Setup: ${label}. Type `}
+      </Text>
+      <Text color={theme.severity.error} bold>
+        /setup
       </Text>
     </Box>
   );
@@ -1361,7 +1367,12 @@ export const InkApp: React.FC<InkAppProps> = ({
   const YOLO_MAX_DURATION_MS = 10 * 60 * 1000;
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("chat");
   const tip = useRef<string>(pickTip());
-  const [whatsNew, setWhatsNew] = useState<string | null>(null);
+  // Initial value: read cache + bundled CHANGELOG synchronously so the
+  // banner gets a real headline on first paint. The async `loadWhatsNew`
+  // below still runs to refresh the cache for the next session.
+  // The banner sits in Ink's <Static> block which flushes once, so an
+  // async-only update would never reach the rendered banner.
+  const [whatsNew, setWhatsNew] = useState<string | null>(() => loadWhatsNewSync());
   useEffect(() => {
     let cancelled = false;
     loadWhatsNew()

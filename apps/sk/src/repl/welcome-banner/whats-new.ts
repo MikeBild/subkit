@@ -87,6 +87,23 @@ export interface LoadWhatsNewOptions {
   timeoutMs?: number;
 }
 
+/**
+ * Synchronous companion to `loadWhatsNew` — returns the best
+ * already-known headline (fresh cache, then stale cache, then bundled
+ * CHANGELOG head) without ever hitting the network. Designed for
+ * first-paint banner rendering where Ink's `<Static>` flushes once
+ * and won't pick up an async update.
+ */
+export function loadWhatsNewSync(
+  opts: { cachePath?: string; now?: () => number } = {},
+): string | null {
+  const cachePath = opts.cachePath ?? whatsNewCachePath();
+  const now = opts.now ?? Date.now;
+  const cached = readCache(cachePath);
+  if (cached && isFresh(cached, now())) return cached.headline;
+  return cached?.headline ?? changelogHead();
+}
+
 // Returns the headline if a fresh cache or successful remote fetch exists;
 // otherwise tries the stale cache, then falls back to the bundled
 // CHANGELOG.md head. Never throws.
