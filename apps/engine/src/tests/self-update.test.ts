@@ -231,14 +231,14 @@ describe("engine runRollback", () => {
     clearRetained();
   });
 
-  test("no retained binaries — runRollback writes a FAILED audit row and reports the rejection", async () => {
+  test("no retained binaries — runRollback throws AND writes a FAILED audit row", async () => {
     captureWrites();
     clearRetained();
     const before = new Date(getTestNow() - 1);
-    await runRollback("previous", makeConfig());
-    expect(stdoutOutput).toContain("no retained binaries");
+    // Round-3 S1: throw so the CLI flag handler exits non-zero. The
+    // audit row says `result: error`; the process exit must match.
+    await expect(runRollback("previous", makeConfig())).rejects.toThrow(/no retained binaries/);
 
-    // S5: privileged action attempted → audit row even on rejection.
     const failedRows = await testDb.db
       .select()
       .from(auditLog)

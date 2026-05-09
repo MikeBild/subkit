@@ -18,6 +18,16 @@ import {
   VERSION,
 } from "@cli-core/index.ts";
 import { defineCommand } from "citty";
+import { z } from "zod";
+
+// AGENTS.md "Every CLI input — schema first": symmetric with the engine
+// rollback validator at apps/engine/src/index.ts. Reject empty / shell-
+// suspicious values up front instead of letting them surface later as
+// "no retained binaries for '../../etc/passwd'".
+const RollbackTargetSchema = z
+  .string()
+  .min(1, "--to= must not be empty")
+  .regex(/^[A-Za-z0-9._+-]+$/, "--to= must look like a version (e.g. 4.2.0)");
 
 export const updateCommand = defineCommand({
   meta: { name: "update", description: "Update sk CLI to the latest version" },
@@ -53,10 +63,18 @@ export const updateCommand = defineCommand({
     const config = defaultUpdaterConfig("sk", VERSION, channel);
 
     if (args.rollback) {
-      await runRollback(
-        config,
-        typeof args.to === "string" && args.to.length > 0 ? args.to : "previous",
-      );
+      let target: string | "previous" = "previous";
+      if (typeof args.to === "string" && args.to.length > 0) {
+        const parsed = RollbackTargetSchema.safeParse(args.to);
+        if (!parsed.success) {
+          process.stderr.write(
+            `sk: invalid --to= value '${args.to}': ${parsed.error.issues.map((i) => i.message).join("; ")}\n`,
+          );
+          process.exit(2);
+        }
+        target = parsed.data;
+      }
+      await runRollback(config, target);
       return;
     }
 

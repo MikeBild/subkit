@@ -2,8 +2,13 @@
 // Invoked via `engine --self-update` and `engine --rollback`. Both
 // paths require DATABASE_URL because the audit row is the only paper
 // trail for a privileged change that mutates the running binary —
-// see issue #151 P0-2 / P0-4. Only the no-op "already at latest"
-// branch can run without a database (it returns before the recorder).
+// see issue #151 P0-2 / P0-4.
+//
+// DB requirements per branch:
+//   `runSelfUpdate` "already at latest" → no DB (returns before the recorder).
+//   `runSelfUpdate` update path         → needs DB (INITIATED + COMPLETED|FAILED).
+//   `runRollback` retained empty        → needs DB (writes a FAILED row).
+//   `runRollback` retained available    → needs DB (INITIATED + ROLLED_BACK|FAILED).
 
 import {
   checkForUpdate,
@@ -223,11 +228,13 @@ export async function runRollback(
       request_source: "rollback",
     });
     recordEngineUpdate({ result: "failed", channel: CHANNEL });
-    process.stdout.write(
-      "engine: no retained binaries — there is nothing to roll back to. " +
-        "Self-update at least once first.\n",
+    // S1 (round-3 review): the audit row says `result: error`, so the
+    // process exit code must match. Throwing causes the outer
+    // `runRollback` flag handler in `index.ts` to write to stderr and
+    // exit 1, keeping shell wrappers / CI in sync with the audit log.
+    throw new Error(
+      "no retained binaries — there is nothing to roll back to. Self-update at least once first.",
     );
-    return;
   }
 
   // Best-effort target for the INITIATED row; rollbackTo will throw if
