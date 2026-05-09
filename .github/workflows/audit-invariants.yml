@@ -53,10 +53,4 @@ jobs:
         run: bun test tests/contract/subsystem-count.test.ts
 
       - name: Audit invariants
-        env:
-          # Surfaced to the script's pr_template check. PR_HEAD_REF lets
-          # the check skip release-please-generated PRs whose body
-          # template doesn't carry audit-phase fields.
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: bun run audit:invariants
