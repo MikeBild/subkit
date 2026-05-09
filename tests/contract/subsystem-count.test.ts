@@ -53,4 +53,10 @@ describe("subsystem-count parity", () => {
     const claimed = readSubsystemCount(".claude/CLAUDE.md", ".claude/CLAUDE.md");
     expect(claimed).toBe(actual);
   });
+
+  test("apps/engine/AGENTS.md count matches the filesystem", () => {
+    const actual = countEngineSubsystemDirs();
+    const claimed = readSubsystemCount("apps/engine/AGENTS.md", "apps/engine/AGENTS.md");
+    expect(claimed).toBe(actual);
+  });
 });

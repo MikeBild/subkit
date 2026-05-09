@@ -212,6 +212,11 @@ describe("journey 29: subkit rbac CLI", () => {
     expect(names).toContain("member");
     expect(names).toContain("enduser");
     expect(names).toContain("metrics_scraper");
+    // Negative assertion: the migration-driven cleanup in
+    // 0014_drop_tunnels.sql must have removed the legacy `tunnel_agent`
+    // builtin role on upgraded DBs. This trips if the cleanup block
+    // is dropped or the seeder reintroduces the role.
+    expect(names).not.toContain("tunnel_agent");
   });
 
   test("AC3+AC4: roles create + grant permission", async () => {

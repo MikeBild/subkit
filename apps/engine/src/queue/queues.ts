@@ -2,12 +2,11 @@
 //
 // Each entry declares a queue name plus the defaults pg-boss should use
 // when creating the queue and when sending jobs into it. Every queue listed
-// here MUST have a registered handler in `queue/handlers/index.ts`; pass-6
-// of the cleanup audit removed seven dead declarations
-// (`execution.notify`, `workflow.generate`, `schema.extract`, `chat.event`,
-// `chat.deliver`, `conversation.tool-call`) that pg-boss
-// was creating but nothing ever enqueued or consumed. Re-add as needed when
-// the consumer ships.
+// here MUST have a registered handler in `queue/handlers/index.ts`. Past
+// cleanup passes have removed several dead declarations (e.g.
+// `execution.notify`, `workflow.generate`, `schema.extract`, `chat.event`,
+// `chat.deliver`, `conversation.tool-call`) that pg-boss was creating but
+// nothing ever enqueued or consumed. Re-add as needed when the consumer ships.
 
 import type { Queue, SendOptions } from "pg-boss";
 

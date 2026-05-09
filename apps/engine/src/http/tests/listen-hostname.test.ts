@@ -48,8 +48,10 @@ describe("engine bind hostname — defense-in-depth", () => {
     expect(ENGINE_LISTEN_HOSTNAME).toBe("127.0.0.1");
   });
 
-  test("engineServeOptions(port) carries hostname=127.0.0.1", () => {
-    for (const port of [3000, 3001]) {
+  test("engineServeOptions(port) carries hostname=127.0.0.1 across arbitrary ports", () => {
+    // Two distinct ports keep the helper honest — the signature must
+    // echo the input through, not silently substitute a constant.
+    for (const port of [3000, 8080]) {
       const opts = engineServeOptions(port);
       expect(opts.hostname, `hostname for port=${port}`).toBe(ENGINE_LISTEN_HOSTNAME);
       expect(opts.port, `port=${port}`).toBe(port);

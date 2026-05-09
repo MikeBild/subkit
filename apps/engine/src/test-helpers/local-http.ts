@@ -4,11 +4,11 @@
 // occasionally returning the default "Welcome to Bun" response instead of
 // invoking the handler.
 
-export function startLocalTargetServer(handler: (req: Request) => Response | Promise<Response>): {
-  url: string;
-  stop: () => Promise<void>;
-} {
-  const http = require("node:http") as typeof import("node:http");
+import http from "node:http";
+
+export function startLocalTargetServer(
+  handler: (req: Request) => Response | Promise<Response>,
+): Promise<{ url: string; stop: () => Promise<void> }> {
   const server = http.createServer(async (nodeReq, nodeRes) => {
     const chunks: Buffer[] = [];
     for await (const chunk of nodeReq) chunks.push(chunk as Buffer);
@@ -30,27 +30,21 @@ export function startLocalTargetServer(handler: (req: Request) => Response | Pro
     const resText = await res.text();
     nodeRes.end(resText);
   });
-  server.listen(0, "127.0.0.1");
-  const addr = server.address();
-  let port: number;
-  if (addr && typeof addr === "object") {
-    port = addr.port;
-  } else {
-    const start = Date.now();
-    while (Date.now() - start < 1000) {
-      const a = server.address();
-      if (a && typeof a === "object") {
-        port = a.port;
-        break;
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      if (!addr || typeof addr !== "object") {
+        reject(new Error("startLocalTargetServer: server did not bind a TCP address"));
+        return;
       }
-    }
-    port ??= 0;
-  }
-  return {
-    url: `http://127.0.0.1:${port}`,
-    stop: () =>
-      new Promise<void>((resolve) => {
-        server.close(() => resolve());
-      }),
-  };
+      resolve({
+        url: `http://127.0.0.1:${addr.port}`,
+        stop: () =>
+          new Promise<void>((res) => {
+            server.close(() => res());
+          }),
+      });
+    });
+  });
 }
