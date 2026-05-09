@@ -5,7 +5,13 @@
 // up a fresh transport + server instance and stores it under the generated
 // session id. Subsequent requests route back to the same transport so
 // notifications (including `notifications/progress`) land on the right
-// SSE stream.
+// stream.
+//
+// Synchronous request/response (POST /mcp) returns `application/json` with
+// a JSON-RPC envelope directly in the body — required for clients whose
+// streamable-HTTP adapter cannot deserialize an SSE-framed initialize
+// response (e.g. Codex CLI's rmcp adapter). Notifications and progress
+// events still stream over SSE on the long-lived GET /mcp channel.
 //
 // Auth is handled by Hono's `authMiddleware` before this handler runs —
 // `requireAuth(c)` will throw a 401 if the principal is absent.
@@ -46,7 +52,7 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
       const server = createMcpServer({ db, principal, transport: "http" });
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
-        enableJsonResponse: false,
+        enableJsonResponse: true,
         onsessioninitialized: (sid) => {
           sessions.set(sid, { transport, server });
           logger.info({

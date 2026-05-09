@@ -10,6 +10,7 @@
 //   GET /v1/diagnostics/llm           — resolved LLM provider snapshot
 //   GET /v1/diagnostics/setup         — operator-facing setup validation
 //   GET /v1/diagnostics/drift         — schema-drift report (#149)
+//   GET /v1/diagnostics/version       — engine version + update posture (#151)
 //   GET /v1/diagnostics/logs          — paginated log tail
 //   GET /v1/diagnostics/logs/stream   — SSE live log tail
 
@@ -21,12 +22,14 @@ import { registerErrorsRoutes } from "./errors.ts";
 import { registerLlmRoutes } from "./llm.ts";
 import { registerLogsRoutes } from "./logs.ts";
 import { registerSetupRoutes } from "./setup.ts";
+import { registerVersionRoute } from "./version.ts";
 
 export function registerDiagnosticsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/diagnostics/errors", requirePermission("audit:read"));
   app.use("/v1/diagnostics/llm", requirePermission("audit:read"));
   app.use("/v1/diagnostics/setup", requireAnyPermission(["audit:read", "identity:read"]));
   app.use("/v1/diagnostics/drift", requirePermission("audit:read"));
+  app.use("/v1/diagnostics/version", requirePermission("audit:read"));
   app.use("/v1/diagnostics/logs", requirePermission("audit:read"));
   app.use("/v1/diagnostics/logs/stream", requirePermission("audit:read"));
 
@@ -34,5 +37,6 @@ export function registerDiagnosticsRoutes(app: OpenAPIHono<AppEnv>): void {
   registerLlmRoutes(app);
   registerSetupRoutes(app);
   registerDriftRoute(app);
+  registerVersionRoute(app);
   registerLogsRoutes(app);
 }

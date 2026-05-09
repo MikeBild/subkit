@@ -179,6 +179,97 @@ The upgrade script wraps everything in a single transaction. If anything inside 
 
 ---
 
+## Self-update + release signing (issue #151 P0)
+
+The engine and `sk` binaries verify a signed `SHA256SUMS` (Ed25519) on
+every `engine --self-update` / `sk update` before they will replace the
+running binary. The release workflow signs `SHA256SUMS` with the
+`RELEASE_SIGNING_KEY` GitHub secret; the matching public key is
+committed to `packages/cli-core/src/release-public-key.ts` and embedded
+in every binary at build time.
+
+### Audit trail
+
+Every binary swap writes a pair of rows to `audit_log` under
+`tenant_id = 00000000-0000-0000-0000-000000000000` (system tenant) with
+`actor_type = system`, `actor_id = null` (the change is process-level —
+there is no `system_accounts` row backing it). `metadata.request_source`
+distinguishes `self-update` from `rollback`:
+
+| Action | Emitted when | `result` |
+|---|---|---|
+| `engine.update.initiated` | Before download / before retained-binary swap | `success` |
+| `engine.update.completed` | `engine --self-update` succeeded | `success` |
+| `engine.update.rolled_back` | `engine --rollback` succeeded | `success` |
+| `engine.update.failed` | The swap threw at any point after INITIATED | `error` |
+
+`metadata` carries `from_version`, `to_version`, `channel`,
+`sha256` (64-char hex of the verified binary, or empty before
+verification), and `request_source ∈ {self-update, rollback}`.
+
+Both flags also emit a structured log entry under
+`module: "self-update"` and bump
+`engine_update_total{result, channel}` (Prometheus). The `result` label
+is one of `success`, `failed`, `rollback` — kept in lockstep with the
+audit-action vocabulary so a SRE joining the metric to `audit_log`
+doesn't have to remember an off-by-one.
+
+### Rollback
+
+The updater retains the last 3 signed binaries under
+`~/.engine/versions/<version>/` together with a sidecar `manifest.json`
+recording the SHA256 captured at retention time. `rollbackTo` re-hashes
+the retained binary against the manifest and refuses to swap on hash
+drift.
+
+```bash
+engine --rollback              # restore the most recent retained binary
+engine --rollback --to=4.2.0   # restore a specific past version
+```
+
+`sk update --rollback` is the same path. The rolled-back binary is
+itself parked, so re-rollback works.
+
+### Key rotation procedure
+
+The Ed25519 release-signing key is rotated through a transitional
+release that contains the *new* public key signed by the *old* key.
+Any operator who self-updates to that transitional release picks up
+the new public key; from the next release onward the old private key
+is retired.
+
+```bash
+# 1. Generate a fresh keypair. Writes the new public key into the repo;
+#    prints the matching private key once to stdout.
+bun run scripts/generate-release-key.ts
+
+# 2. Paste the printed private key into the GitHub secret.
+gh secret set RELEASE_SIGNING_KEY --repo MikeBild/subkit
+
+# 3. Commit the public-key change.
+git add packages/cli-core/src/release-public-key.ts
+git commit -m "chore: rotate release signing key"
+
+# 4. Cut the transitional release on the BRANCH containing the new
+#    public key, signed with the OLD private key (so existing binaries
+#    still accept it). The release workflow signs with whatever the
+#    secret holds at run time, so rotate the secret only AFTER cutting
+#    the transitional release.
+git tag -a vX.Y.Z -m "transitional release — new public key"
+git push origin vX.Y.Z
+
+# 5. Once the transitional release is in the wild, flip the secret to
+#    the new private key. Subsequent releases sign with the new key,
+#    and only binaries that picked up the transitional release will
+#    accept them.
+```
+
+Losing the private key bricks future updates for any binary that
+hasn't yet picked up a key rotation. Treat it like the database master
+key — back it up, rotate after operator handover.
+
+---
+
 ## What to Read Next
 
 - [AGENTS.md](../AGENTS.md) — the canonical repo-wide contract for contributors: subsystem map, quality gates, and non-negotiables.

@@ -70,7 +70,7 @@ export function registerDriftRoute(app: OpenAPIHono<AppEnv>): void {
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
-        actor_type: principal.kind === "user" ? "user" : "system_account",
+        actor_type: principal.kind,
         actor_id: principal.id,
         action: AuditAction.DIAGNOSTICS_DRIFT_READ,
         resource_type: "migrations_journal",

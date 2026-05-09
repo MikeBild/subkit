@@ -6,28 +6,23 @@ import { sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { getDb } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
-import { getUpdateState } from "../../update-state.ts";
-import { getHealthState } from "../health-state.ts";
 import type { AppEnv } from "../openapi.ts";
 import { OPENAPI_INFO } from "../openapi.ts";
 
 // /v1/health is unauthenticated and reachable from the public internet.
 // It MUST stay minimal — no fields that leak operational posture
-// (which secrets are present, which provider is wired, model names).
-// Detailed LLM-routing diagnostics live behind `audit:read` at
-// `/v1/diagnostics/llm` so probing requires a real API key.
+// (which secrets are present, which provider is wired, model names,
+// schema-drift state, update availability). The fields stripped here
+// for issue #151 P0-1 — `db_schema_drift`, `update_available`,
+// `latest_version` — moved behind `audit:read` at
+// `GET /v1/diagnostics/version`.
 
 const HealthResponse = z
   .object({
     status: z.literal("ok"),
     version: z.string(),
     db_connected: z.boolean(),
-    /** True if the boot path observed migration rows on this DB whose
-     *  hash isn't in the embedded set. See issue #149. */
-    db_schema_drift: z.boolean(),
     uptime_seconds: z.number(),
-    update_available: z.boolean().optional(),
-    latest_version: z.string().optional(),
   })
   .openapi("HealthResponse");
 
@@ -69,20 +64,12 @@ export function registerHealthRoute(app: OpenAPIHono<AppEnv>, deps: HealthDeps =
   app.openapi(route, async (c) => {
     const db = deps.db ?? c.get("db") ?? getDb();
     const db_connected = await pingDb(db);
-    const updateState = getUpdateState();
     return c.json(
       {
         status: "ok" as const,
         version: OPENAPI_INFO.version,
         db_connected,
-        db_schema_drift: getHealthState().schema_drift,
         uptime_seconds: Math.floor((Date.now() - BOOT_AT) / 1000),
-        ...(updateState
-          ? {
-              update_available: updateState.update_available,
-              latest_version: updateState.latest_version,
-            }
-          : {}),
       },
       200,
     );

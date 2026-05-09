@@ -46,14 +46,14 @@ export function runCommand(
 export interface HealthResponse {
   status: string;
   db_connected: boolean;
-  db_schema_drift?: boolean;
   version?: string;
   uptime_seconds?: number;
 }
 
 /** Poll `${BASE_URL}/v1/health` until status=ok + db_connected=true.
- *  Returns the response body so callers can assert on the new
- *  `db_schema_drift` flag without re-fetching. */
+ *  Issue #151 P0-1: the public health response is intentionally minimal
+ *  (no operational posture fields). For drift / version data, hit
+ *  `/v1/diagnostics/version` with an `audit:read` token. */
 export async function waitForHealth(timeoutMs = 120_000): Promise<HealthResponse> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

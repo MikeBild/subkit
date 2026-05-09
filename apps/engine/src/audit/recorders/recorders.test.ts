@@ -17,7 +17,7 @@ import { eq, sql } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { AuditAction } from "../types.ts";
+import { AuditAction, SYSTEM_TENANT_ID } from "../types.ts";
 import {
   recordConnectorCreated,
   recordConnectorDeleted,
@@ -28,6 +28,10 @@ import {
   recordCredentialAttached,
   recordCredentialDeleted,
   recordCredentialRotated,
+  recordEngineUpdateCompleted,
+  recordEngineUpdateFailed,
+  recordEngineUpdateInitiated,
+  recordEngineUpdateRolledBack,
   recordKnowledgeSourceCreated,
   recordKnowledgeSourceRefreshed,
   recordToolPolicyConfirmationRequired,
@@ -404,14 +408,123 @@ describe("recorder catalog — policy", () => {
   });
 });
 
+describe("recorder catalog — engine_update", () => {
+  // Engine-update rows always land under SYSTEM_TENANT_ID; the recorder
+  // hard-codes tenant + actor so the param shape can't drift into a
+  // remote-mutation surface (#151 §6 anti-goal). Tests assert exactly
+  // that contract.
+  const FIXED_HEX = "a".repeat(64);
+
+  test("recordEngineUpdateInitiated lands under SYSTEM_TENANT_ID with the system actor", async () => {
+    const entry = await recordEngineUpdateInitiated({
+      executor: testDb.db,
+      from_version: "4.2.0",
+      to_version: "4.3.0",
+      channel: "stable",
+      request_source: "self-update",
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.action).toBe(AuditAction.ENGINE_UPDATE_INITIATED);
+    expect(row?.tenant_id).toBe(SYSTEM_TENANT_ID);
+    // Actor is `system` (process-level mutation, no system_accounts row
+    // backing it); `request_source` in metadata is the canonical way
+    // an operator separates self-update vs rollback.
+    expect(row?.actor_type).toBe("system");
+    expect(row?.actor_id).toBeNull();
+    expect(row?.result).toBe("success");
+    expect(row?.reason).toBe("self-update binary swap");
+    const meta = row?.metadata as Record<string, unknown>;
+    expect(meta.from_version).toBe("4.2.0");
+    expect(meta.to_version).toBe("4.3.0");
+    expect(meta.channel).toBe("stable");
+    expect(meta.request_source).toBe("self-update");
+    expect(meta.sha256).toBe("");
+    // The retired `actor: "cli"` literal must not have leaked back in
+    // (it would invite drift into a remote-mutation surface).
+    expect(meta.actor).toBeUndefined();
+  });
+
+  test("recordEngineUpdateCompleted carries the verified sha256", async () => {
+    const entry = await recordEngineUpdateCompleted({
+      executor: testDb.db,
+      from_version: "4.2.0",
+      to_version: "4.3.0",
+      channel: "stable",
+      sha256: FIXED_HEX,
+      request_source: "self-update",
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.action).toBe(AuditAction.ENGINE_UPDATE_COMPLETED);
+    expect(row?.result).toBe("success");
+    const meta = row?.metadata as Record<string, unknown>;
+    expect(meta.sha256).toBe(FIXED_HEX);
+  });
+
+  test("recordEngineUpdateFailed records result=error and a free-form reason", async () => {
+    const entry = await recordEngineUpdateFailed({
+      executor: testDb.db,
+      from_version: "4.2.0",
+      to_version: "4.3.0",
+      channel: "stable",
+      request_source: "self-update",
+      reason: "checksum mismatch for engine_linux_x64",
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.action).toBe(AuditAction.ENGINE_UPDATE_FAILED);
+    expect(row?.result).toBe("error");
+    expect(row?.reason).toBe("checksum mismatch for engine_linux_x64");
+    const meta = row?.metadata as Record<string, unknown>;
+    // Pre-download FAILED → empty sha256 default
+    expect(meta.sha256).toBe("");
+  });
+
+  test("recordEngineUpdateRolledBack hard-codes request_source=rollback", async () => {
+    // The param shape Omit<EngineUpdateBase, "request_source">; passing
+    // request_source here is a compile error. The metadata always lands
+    // with `request_source: "rollback"` because that's what the action
+    // name (ENGINE_UPDATE_ROLLED_BACK) means.
+    const entry = await recordEngineUpdateRolledBack({
+      executor: testDb.db,
+      from_version: "4.3.0",
+      to_version: "4.2.0",
+      channel: "stable",
+      sha256: FIXED_HEX,
+    });
+    const row = await fetchRow(entry.id);
+    expect(row?.action).toBe(AuditAction.ENGINE_UPDATE_ROLLED_BACK);
+    expect(row?.result).toBe("success");
+    const meta = row?.metadata as Record<string, unknown>;
+    expect(meta.request_source).toBe("rollback");
+  });
+
+  test("EngineUpdateMetadataSchema rejects almost-hex sha256 values", async () => {
+    await expect(
+      recordEngineUpdateCompleted({
+        executor: testDb.db,
+        from_version: "4.2.0",
+        to_version: "4.3.0",
+        channel: "stable",
+        sha256: "not-hex",
+        request_source: "self-update",
+      }),
+    ).rejects.toThrow();
+  });
+});
+
 describe("recorder catalog — coverage matrix", () => {
   test("every recorder write lands a row with non-null reason and the canonical action", async () => {
     // Aggregate sanity: enumerate every action this PR's recorders
     // emit, fetch the rows we just inserted, and assert the row count
-    // for each (kind, reason) pair is at least 1. This is the
-    // forensic "no silent rows" gate.
+    // for each (kind, reason) pair is at least 1. The query unions
+    // both tenant scopes (the per-suite `tenantId` for tenant-scoped
+    // recorders and `SYSTEM_TENANT_ID` for the engine_update family,
+    // which is process-level not tenant-scoped) so a regression that
+    // drops e.g. `recordEngineUpdateInitiated` is caught here, not in
+    // production.
     const rows = await testDb.db.execute(
-      sql`SELECT action, reason, metadata FROM audit_log WHERE tenant_id = ${tenantId}::uuid`,
+      sql`SELECT action, reason, metadata FROM audit_log
+          WHERE tenant_id = ${tenantId}::uuid
+             OR tenant_id = ${SYSTEM_TENANT_ID}::uuid`,
     );
     const list = (
       rows as unknown as {
@@ -436,6 +549,10 @@ describe("recorder catalog — coverage matrix", () => {
       AuditAction.KNOWLEDGE_SOURCE_CREATED,
       AuditAction.KNOWLEDGE_SOURCE_REFRESHED,
       AuditAction.TOOL_POLICY_CONFIRMATION_REQUIRED,
+      AuditAction.ENGINE_UPDATE_INITIATED,
+      AuditAction.ENGINE_UPDATE_COMPLETED,
+      AuditAction.ENGINE_UPDATE_FAILED,
+      AuditAction.ENGINE_UPDATE_ROLLED_BACK,
     ]);
     const seen = new Set(list.map((r) => r.action));
     for (const expected of expectedActions) {

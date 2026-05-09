@@ -21,6 +21,23 @@ function safe(fn: () => void): void {
   }
 }
 
+export function recordEngineUpdate(args: {
+  /** Outcome label — kept in lockstep with the `engine.update.*` audit
+   *  action vocabulary so an operator joining
+   *  `engine_update_total{result="failed"}` to
+   *  `audit_log.action='engine.update.failed'` doesn't have to remember
+   *  an off-by-one. */
+  result: "success" | "failed" | "rollback";
+  channel: "stable" | "beta";
+}): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.ENGINE_UPDATE_TOTAL, {
+      result: args.result,
+      channel: args.channel,
+    });
+  });
+}
+
 export function recordExecutionTerminal(args: {
   tenant_id: string;
   workflow_id: string;

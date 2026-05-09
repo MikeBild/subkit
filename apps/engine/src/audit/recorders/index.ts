@@ -31,6 +31,16 @@ export {
   recordCredentialRotated,
 } from "./credential.ts";
 export {
+  type RecordEngineUpdateCompletedParams,
+  type RecordEngineUpdateFailedParams,
+  type RecordEngineUpdateInitiatedParams,
+  type RecordEngineUpdateRolledBackParams,
+  recordEngineUpdateCompleted,
+  recordEngineUpdateFailed,
+  recordEngineUpdateInitiated,
+  recordEngineUpdateRolledBack,
+} from "./engine-update.ts";
+export {
   type RecordExecutionCrashRecoveredParams,
   recordExecutionCrashRecovered,
 } from "./execution.ts";

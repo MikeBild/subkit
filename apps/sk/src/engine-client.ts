@@ -545,15 +545,27 @@ export class EngineClient {
   health(): Promise<{
     status: string;
     db_connected: boolean;
-    /** True when the engine observed migration rows on this DB whose
-     *  hash isn't in its embedded set — see issue #149 / `sk doctor`. */
-    db_schema_drift: boolean;
     version?: string;
     uptime_seconds?: number;
-    update_available?: boolean;
-    latest_version?: string;
   }> {
     return this.request("GET", "/v1/health");
+  }
+
+  // --------------------------- Version diagnostics ---------------------------
+  /**
+   * Engine version + update + schema-drift posture. Backed by
+   * `/v1/diagnostics/version`, which requires `audit:read`. Issue #151
+   * P0-1 moved these fields off the public `/v1/health` so the engine
+   * stops leaking operational posture to unauthenticated callers.
+   */
+  diagnosticsVersion(): Promise<{
+    engine_version: string;
+    latest_version?: string;
+    update_available: boolean;
+    schema_drift: boolean;
+    embedded_migrations_count: number;
+  }> {
+    return this.request("GET", "/v1/diagnostics/version");
   }
 
   // --------------------------- Drift diagnostics ---------------------------

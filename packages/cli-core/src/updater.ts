@@ -1,15 +1,23 @@
-// Self-update module for `sk`, `subkit`, and `engine` binaries.
-// Downloads new versions from GitHub Releases, verifies SHA256
-// checksums, and replaces the running binary in-place.
+// Self-update module for `sk` and `engine` binaries.
+// Downloads new versions from GitHub Releases, verifies a signed
+// `SHA256SUMS` (Ed25519 over the file body — issue #151 P0-3) and the
+// per-binary SHA256, then atomically replaces the running binary in
+// place. Retains the prior signed binary under
+// `<cacheDir>/versions/<version>/<binaryName>` so a bad release can be
+// reverted via `rollbackTo()` without internet access (issue #151 P0-4).
 
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
 import {
   chmodSync,
+  copyFileSync,
   createWriteStream,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -17,8 +25,14 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { RELEASE_PUBLIC_KEY } from "./release-public-key.ts";
 
 export const GITHUB_REPO = "mikebild/subkit";
+
+/** How many prior signed binaries to keep on disk for `--rollback`.
+ *  Storage cost is bounded; rollback usefulness scales sub-linearly
+ *  beyond the most recent few. */
+export const RETAINED_VERSIONS_KEEP = 3;
 
 export interface UpdaterConfig {
   binaryName: string;
@@ -27,6 +41,9 @@ export interface UpdaterConfig {
   githubRepo: string;
   checkIntervalMs: number;
   channel: "stable" | "beta";
+  /** Override for tests / rotation transitions. Defaults to the
+   *  baked-in `RELEASE_PUBLIC_KEY` constant. */
+  publicKey?: string;
 }
 
 export interface UpdateInfo {
@@ -41,6 +58,14 @@ export interface UpdateCache {
   latest_version: string;
   latest_tag: string;
   current_version_at_check: string;
+}
+
+/** Returned by `performUpdate()` so the engine-side audit recorder
+ *  has the metadata it needs (#151 P0-2). */
+export interface PerformUpdateResult {
+  from_version: string;
+  to_version: string;
+  sha256: string;
 }
 
 // ── Platform detection ──
@@ -173,17 +198,212 @@ export async function checkForUpdate(
   };
 }
 
+// ── Signature verification ──
+
+/**
+ * Verify an Ed25519 signature over `message` using `publicKeyPem` (PEM
+ * SPKI). Returns `true` only on a valid signature. Issue #151 P0-3:
+ * the only piece of crypto we need at the cli-core layer is "did this
+ * `SHA256SUMS` come from the project key?" — we don't sign or generate
+ * keys here, so the surface stays tiny.
+ */
+export function verifySignature(
+  message: string | Buffer,
+  signature: Buffer,
+  publicKeyPem: string,
+): boolean {
+  try {
+    const key = createPublicKey({ key: publicKeyPem, format: "pem", type: "spki" });
+    const data = typeof message === "string" ? Buffer.from(message, "utf8") : message;
+    return cryptoVerify(null, data, key, signature);
+  } catch {
+    return false;
+  }
+}
+
+// ── Retained-versions store (rollback) ──
+
+function versionsRoot(cacheDir: string): string {
+  return join(cacheDir, "versions");
+}
+
+function versionDir(cacheDir: string, version: string): string {
+  return join(versionsRoot(cacheDir), version);
+}
+
+function sidecarPath(versionDirPath: string): string {
+  return join(versionDirPath, "manifest.json");
+}
+
+export interface RetainedVersion {
+  version: string;
+  /** Path to the binary on disk. */
+  path: string;
+  /** Epoch ms when this version was retained. */
+  installed_at: number;
+  /** SHA256 of the retained binary, captured at retention time. */
+  sha256: string;
+}
+
+interface RetainedManifest {
+  version: string;
+  installed_at: number;
+  sha256: string;
+  binary_name: string;
+}
+
+export function listRetainedVersions(config: UpdaterConfig): RetainedVersion[] {
+  const root = versionsRoot(config.cacheDir);
+  if (!existsSync(root)) return [];
+  const out: RetainedVersion[] = [];
+  for (const entry of readdirSync(root)) {
+    const dir = join(root, entry);
+    if (!statSync(dir).isDirectory()) continue;
+    const manifest = readManifest(dir);
+    if (!manifest) continue;
+    const binPath = join(dir, manifest.binary_name);
+    if (!existsSync(binPath)) continue;
+    out.push({
+      version: manifest.version,
+      path: binPath,
+      installed_at: manifest.installed_at,
+      sha256: manifest.sha256,
+    });
+  }
+  // Most-recent first.
+  out.sort((a, b) => b.installed_at - a.installed_at);
+  return out;
+}
+
+export function pruneRetainedVersions(config: UpdaterConfig, keep = RETAINED_VERSIONS_KEEP): void {
+  const versions = listRetainedVersions(config);
+  if (versions.length <= keep) return;
+  for (const v of versions.slice(keep)) {
+    const dir = join(versionsRoot(config.cacheDir), v.version);
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* non-fatal — a stale dir on next prune cycle is acceptable */
+    }
+  }
+}
+
+function readManifest(dir: string): RetainedManifest | null {
+  const p = sidecarPath(dir);
+  if (!existsSync(p)) return null;
+  try {
+    return JSON.parse(readFileSync(p, "utf8")) as RetainedManifest;
+  } catch {
+    return null;
+  }
+}
+
+function writeManifest(dir: string, manifest: RetainedManifest): void {
+  writeFileSync(sidecarPath(dir), JSON.stringify(manifest, null, 2), { mode: 0o600 });
+}
+
+function hashFile(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+function retainCurrentBinary(config: UpdaterConfig, fromVersion: string, execPath: string): void {
+  const dir = versionDir(config.cacheDir, fromVersion);
+  mkdirSync(dir, { recursive: true });
+  const dest = join(dir, config.binaryName + (process.platform === "win32" ? ".exe" : ""));
+  copyFileSync(execPath, dest);
+  if (process.platform !== "win32") chmodSync(dest, 0o755);
+  writeManifest(dir, {
+    version: fromVersion,
+    installed_at: Date.now(),
+    sha256: hashFile(dest),
+    binary_name: config.binaryName + (process.platform === "win32" ? ".exe" : ""),
+  });
+}
+
+export interface RollbackResult {
+  from_version: string;
+  to_version: string;
+  sha256: string;
+}
+
+/**
+ * Restore a retained binary in place of `process.execPath`. Verifies
+ * the retained binary's hash against its sidecar manifest before the
+ * swap; if the hash drifts, the swap is refused. The binary that was
+ * just displaced is itself moved into the retention dir under its own
+ * version so a re-rollback (rollback the rollback) works.
+ *
+ * `target` is either an explicit version string or the literal
+ * `"previous"` to pick the most recently retained version.
+ */
+export function rollbackTo(config: UpdaterConfig, target: string | "previous"): RollbackResult {
+  const versions = listRetainedVersions(config);
+  if (versions.length === 0) {
+    throw new Error("no retained binaries available — nothing to roll back to");
+  }
+  const picked = target === "previous" ? versions[0]! : versions.find((v) => v.version === target);
+  if (!picked) {
+    throw new Error(
+      `no retained binary for version '${target}' (available: ${versions.map((v) => v.version).join(", ") || "none"})`,
+    );
+  }
+
+  // Re-hash the retained binary and refuse to swap if the bytes drift
+  // from what we recorded at retention time.
+  const onDisk = hashFile(picked.path);
+  if (onDisk !== picked.sha256) {
+    throw new Error(
+      `retained binary for ${picked.version} failed integrity check (expected ${picked.sha256.slice(0, 12)}…, got ${onDisk.slice(0, 12)}…) — refusing to swap`,
+    );
+  }
+
+  const fromVersion = config.currentVersion;
+  const execPath = process.execPath;
+
+  // Park the just-displaced binary so re-rollback can step back to it.
+  retainCurrentBinary(config, fromVersion, execPath);
+
+  // Atomic-ish swap. On Unix `rename` over an open file works; on
+  // Windows we use a `.old` shuffle (the same dance `performUpdate`
+  // does — see the platform branch below).
+  const isWindows = process.platform === "win32";
+  if (isWindows) {
+    const oldPath = `${execPath}.old`;
+    try {
+      unlinkSync(oldPath);
+    } catch {
+      /* ignore */
+    }
+    renameSync(execPath, oldPath);
+    copyFileSync(picked.path, execPath);
+  } else {
+    const tmpPath = `${execPath}.rollback.${process.pid}`;
+    copyFileSync(picked.path, tmpPath);
+    chmodSync(tmpPath, 0o755);
+    renameSync(tmpPath, execPath);
+  }
+
+  return {
+    from_version: fromVersion,
+    to_version: picked.version,
+    sha256: picked.sha256,
+  };
+}
+
 // ── Perform update ──
 
 export async function performUpdate(
   config: UpdaterConfig,
   info: UpdateInfo,
   fetchImpl: typeof fetch = fetch,
-): Promise<void> {
+): Promise<PerformUpdateResult> {
   const pa = platformArch();
   if (!pa) {
     throw new Error(`unsupported platform: ${process.platform}/${process.arch}`);
   }
+
+  const fromVersion = config.currentVersion;
+  const toVersion = info.version;
 
   const assetName = `${config.binaryName}_${pa.os}_${pa.arch}${pa.ext}`;
   const asset = info.assets.find((a) => a.name === assetName);
@@ -193,16 +413,32 @@ export async function performUpdate(
     );
   }
 
-  // Find SHA256SUMS asset
   const sumsAsset = info.assets.find((a) => a.name === "SHA256SUMS");
   if (!sumsAsset) {
     throw new Error("no SHA256SUMS file found in release — cannot verify download");
   }
+  const sigAsset = info.assets.find((a) => a.name === "SHA256SUMS.sig");
+  if (!sigAsset) {
+    throw new Error(
+      "no SHA256SUMS.sig file found in release — refusing to install (issue #151 P0-3)",
+    );
+  }
 
-  // Download SHA256SUMS
   const sumsRes = await fetchImpl(sumsAsset.url);
   if (!sumsRes.ok) throw new Error(`failed to download SHA256SUMS: ${sumsRes.status}`);
   const sumsText = await sumsRes.text();
+
+  const sigRes = await fetchImpl(sigAsset.url);
+  if (!sigRes.ok) throw new Error(`failed to download SHA256SUMS.sig: ${sigRes.status}`);
+  const sigBuf = Buffer.from(await sigRes.arrayBuffer());
+
+  const publicKeyPem = config.publicKey ?? RELEASE_PUBLIC_KEY;
+  if (!verifySignature(sumsText, sigBuf, publicKeyPem)) {
+    throw new Error(
+      "signature verification failed for SHA256SUMS — refusing to install (issue #151 P0-3)",
+    );
+  }
+
   const expectedHash = parseChecksum(sumsText, assetName);
   if (!expectedHash) {
     throw new Error(`no checksum found for '${assetName}' in SHA256SUMS`);
@@ -213,6 +449,7 @@ export async function performUpdate(
   mkdirSync(tmpDir, { recursive: true });
   const tmpPath = join(tmpDir, `${config.binaryName}.download.${process.pid}`);
 
+  let actualHash = "";
   try {
     const binRes = await fetchImpl(asset.url);
     if (!binRes.ok) throw new Error(`failed to download ${assetName}: ${binRes.status}`);
@@ -246,14 +483,13 @@ export async function performUpdate(
       process.stderr.write("\n");
     }
 
-    const actualHash = hash.digest("hex");
+    actualHash = hash.digest("hex");
     if (actualHash !== expectedHash) {
       throw new Error(
         `checksum mismatch for ${assetName}:\n  expected: ${expectedHash}\n  actual:   ${actualHash}`,
       );
     }
 
-    // Platform-specific install
     const execPath = process.execPath;
     const isWindows = process.platform === "win32";
 
@@ -261,23 +497,37 @@ export async function performUpdate(
       chmodSync(tmpPath, 0o755);
     }
 
-    // macOS ad-hoc codesign
+    // macOS ad-hoc codesign. Failures are surfaced — the previous
+    // try/catch swallow could mask permission / spctl issues that the
+    // operator needs to know about. Issue #151 P0-3.
     if (process.platform === "darwin") {
+      const { execSync } = await import("node:child_process");
       try {
-        const { execSync } = await import("node:child_process");
         execSync(`codesign --remove-signature "${tmpPath}" 2>/dev/null || true`, {
           stdio: "ignore",
         });
         execSync(`codesign --sign - --force "${tmpPath}"`, { stdio: "ignore" });
-      } catch {
-        // Non-fatal — binary will still work on most systems
+      } catch (err) {
+        // Wrap the bare `execSync` exit-status error in something a
+        // shell user can act on. The most common cause is missing
+        // command-line tools (`xcode-select --install`); next is
+        // SIP / spctl rejecting the ad-hoc identity. Both surface the
+        // tool's stderr below the wrapper message.
+        const cause = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `macOS codesign failed for ${tmpPath} — install Xcode command-line tools (xcode-select --install) or check spctl: ${cause}`,
+        );
       }
     }
 
-    // Atomic replace
+    // Park the running binary in the retention dir BEFORE the swap so
+    // a crash mid-rename leaves us with either the new binary in place
+    // or a recoverable copy of the old one. Issue #151 P0-4.
+    retainCurrentBinary(config, fromVersion, execPath);
+
+    // Atomic-ish replace. The retention dir is the canonical source of
+    // truth — no `.bak` next to the running exe.
     if (isWindows) {
-      // Windows: rename running exe to .old (Windows allows rename of running exe),
-      // move new binary in, clean up .old on next run
       const oldPath = `${execPath}.old`;
       try {
         unlinkSync(oldPath);
@@ -287,25 +537,18 @@ export async function performUpdate(
       renameSync(execPath, oldPath);
       renameSync(tmpPath, execPath);
     } else {
-      const bakPath = `${execPath}.bak`;
-      renameSync(execPath, bakPath);
       renameSync(tmpPath, execPath);
-      try {
-        unlinkSync(bakPath);
-      } catch {
-        /* non-fatal */
-      }
     }
 
-    // Update cache
+    // Update cache + prune retention to the configured cap.
     writeCache(config.cacheDir, {
       last_check: Date.now(),
       latest_version: info.version,
       latest_tag: info.tag,
       current_version_at_check: info.version,
     });
+    pruneRetainedVersions(config);
   } catch (err) {
-    // Clean up temp file on any error
     try {
       unlinkSync(tmpPath);
     } catch {
@@ -313,6 +556,12 @@ export async function performUpdate(
     }
     throw err;
   }
+
+  return {
+    from_version: fromVersion,
+    to_version: toVersion,
+    sha256: actualHash,
+  };
 }
 
 // ── Helpers ──
