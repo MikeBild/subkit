@@ -138,7 +138,14 @@ export async function recordEngineUpdateFailed(
   );
 }
 
-export interface RecordEngineUpdateRolledBackParams extends EngineUpdateBase {
+/** RolledBack omits `request_source` from the param surface — the row
+ *  is always emitted under `request_source: "rollback"` because that is
+ *  what the action name (ENGINE_UPDATE_ROLLED_BACK) means. Keeping the
+ *  field as a parameter would be dead code and would invite a future
+ *  contributor to pass `"self-update"` here, which the recorder would
+ *  silently override. */
+export interface RecordEngineUpdateRolledBackParams
+  extends Omit<EngineUpdateBase, "request_source"> {
   /** SHA256 of the retained binary that was restored. */
   sha256: string;
   reason?: string;

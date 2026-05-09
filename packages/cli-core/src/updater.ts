@@ -502,10 +502,22 @@ export async function performUpdate(
     // operator needs to know about. Issue #151 P0-3.
     if (process.platform === "darwin") {
       const { execSync } = await import("node:child_process");
-      execSync(`codesign --remove-signature "${tmpPath}" 2>/dev/null || true`, {
-        stdio: "ignore",
-      });
-      execSync(`codesign --sign - --force "${tmpPath}"`, { stdio: "ignore" });
+      try {
+        execSync(`codesign --remove-signature "${tmpPath}" 2>/dev/null || true`, {
+          stdio: "ignore",
+        });
+        execSync(`codesign --sign - --force "${tmpPath}"`, { stdio: "ignore" });
+      } catch (err) {
+        // Wrap the bare `execSync` exit-status error in something a
+        // shell user can act on. The most common cause is missing
+        // command-line tools (`xcode-select --install`); next is
+        // SIP / spctl rejecting the ad-hoc identity. Both surface the
+        // tool's stderr below the wrapper message.
+        const cause = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `macOS codesign failed for ${tmpPath} — install Xcode command-line tools (xcode-select --install) or check spctl: ${cause}`,
+        );
+      }
     }
 
     // Park the running binary in the retention dir BEFORE the swap so

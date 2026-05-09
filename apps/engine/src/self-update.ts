@@ -200,6 +200,29 @@ export async function runRollback(
   const config = configOverride ?? defaultUpdaterConfig("engine", VERSION);
   const retained = listRetainedVersions(config);
   if (retained.length === 0) {
+    // Compliance: an operator *did* invoke a privileged action — the
+    // audit_log should show the attempt even though the binary was not
+    // touched. This row uses `request_source: "rollback"` and a fixed
+    // FAILED reason so a forensic SELECT can distinguish "rollback was
+    // attempted but rejected" from "rollback succeeded". Issue #151
+    // round-2 review S5.
+    const db = openAuditDb();
+    await recordEngineUpdateFailed({
+      from_version: VERSION,
+      to_version: target === "previous" ? "<none>" : target,
+      channel: CHANNEL,
+      request_source: "rollback",
+      reason: "no retained binaries available — nothing to roll back to",
+      executor: db,
+    });
+    logger.warn({
+      module: "self-update",
+      action: "engine.update.failed",
+      msg: "engine rollback rejected — no retained binaries",
+      from_version: VERSION,
+      request_source: "rollback",
+    });
+    recordEngineUpdate({ result: "failed", channel: CHANNEL });
     process.stdout.write(
       "engine: no retained binaries — there is nothing to roll back to. " +
         "Self-update at least once first.\n",
@@ -228,7 +251,6 @@ export async function runRollback(
       recordEngineUpdateRolledBack({
         ...fields,
         channel: CHANNEL,
-        request_source: "rollback",
         executor: db,
       }),
     "rollback",

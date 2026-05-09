@@ -447,12 +447,18 @@ export type DiagnosticsVersionReadMetadata = z.infer<typeof DiagnosticsVersionRe
  *  rolled_back. The binary swap is the prototypical privileged action:
  *  there is no HTTP context, so the row is the audit story. Issue #151. */
 export const EngineUpdateMetadataSchema = z.object({
-  /** Version the engine was running at the start of the operation. */
+  /** Version the engine was running at the start of the operation.
+   *  Deliberately a bare `z.string()` (rather than a semver regex) so
+   *  pre-release tags ("4.3.0-rc.1"), git-describe outputs ("4.2.0+1.gc1d"),
+   *  and the rejected-rollback sentinel "<none>" all land verbatim.
+   *  Forensic value comes from preserving whatever the binary actually
+   *  reported, even if it doesn't match a strict shape. */
   from_version: z.string(),
   /** Target version. For INITIATED this is the planned target; for
    *  COMPLETED/ROLLED_BACK it is the version now active; for FAILED it
    *  is the version that failed to install (may equal from_version
-   *  if the failure happened pre-download). */
+   *  if the failure happened pre-download). Same loose-on-purpose
+   *  rationale as `from_version`. */
   to_version: z.string(),
   /** Release channel the binary came from. */
   channel: z.enum(["stable", "beta"]),

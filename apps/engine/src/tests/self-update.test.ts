@@ -231,11 +231,24 @@ describe("engine runRollback", () => {
     clearRetained();
   });
 
-  test("no retained binaries — runRollback reports nothing to roll back to", async () => {
+  test("no retained binaries — runRollback writes a FAILED audit row and reports the rejection", async () => {
     captureWrites();
     clearRetained();
+    const before = new Date(getTestNow() - 1);
     await runRollback("previous", makeConfig());
     expect(stdoutOutput).toContain("no retained binaries");
+
+    // S5: privileged action attempted → audit row even on rejection.
+    const failedRows = await testDb.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, "engine.update.failed"))
+      .orderBy(desc(auditLog.ts));
+    const recent = failedRows.find((r) => r.ts >= before);
+    expect(recent).toBeDefined();
+    const meta = recent?.metadata as { request_source?: string; reason?: string };
+    expect(meta?.request_source).toBe("rollback");
+    expect(meta?.reason).toContain("no retained binaries");
   });
 
   test("happy path emits INITIATED + ROLLED_BACK rows and bumps the metric", async () => {

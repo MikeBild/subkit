@@ -532,9 +532,29 @@ async function main(): Promise<void> {
   // binary. Same env requirement as --self-update (audit row needs db).
   // Issue #151 P0-4.
   if (process.argv.includes(ROLLBACK_FLAG)) {
+    const { z } = await import("zod");
     const { runRollback } = await import("./self-update.ts");
+    // AGENTS.md "Every CLI input — schema first": even though the
+    // rollback flag is host-shell-only, the `--to=` value is operator
+    // input. Reject empty / whitespace and shell-suspicious characters
+    // up front so a typo can't end up as a forensic surprise.
+    const RollbackTargetSchema = z
+      .string()
+      .min(1, "--to= must not be empty")
+      .regex(/^[A-Za-z0-9._+-]+$/, "--to= must look like a version (e.g. 4.2.0)");
     const toArg = process.argv.find((a) => a.startsWith("--to="));
-    const target = toArg ? toArg.slice("--to=".length) : "previous";
+    let target: string | "previous" = "previous";
+    if (toArg) {
+      const raw = toArg.slice("--to=".length);
+      const parsed = RollbackTargetSchema.safeParse(raw);
+      if (!parsed.success) {
+        process.stderr.write(
+          `engine: invalid --to= value '${raw}': ${parsed.error.issues.map((i) => i.message).join("; ")}\n`,
+        );
+        process.exit(2);
+      }
+      target = parsed.data;
+    }
     try {
       await runRollback(target);
       process.exit(0);

@@ -478,16 +478,17 @@ describe("recorder catalog — engine_update", () => {
     expect(meta.sha256).toBe("");
   });
 
-  test("recordEngineUpdateRolledBack pins request_source even if caller passes self-update", async () => {
+  test("recordEngineUpdateRolledBack hard-codes request_source=rollback", async () => {
+    // The param shape Omit<EngineUpdateBase, "request_source">; passing
+    // request_source here is a compile error. The metadata always lands
+    // with `request_source: "rollback"` because that's what the action
+    // name (ENGINE_UPDATE_ROLLED_BACK) means.
     const entry = await recordEngineUpdateRolledBack({
       executor: testDb.db,
       from_version: "4.3.0",
       to_version: "4.2.0",
       channel: "stable",
       sha256: FIXED_HEX,
-      // Caller passes "self-update" — the recorder MUST override to
-      // "rollback" since the action is ROLLED_BACK.
-      request_source: "self-update",
     });
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.ENGINE_UPDATE_ROLLED_BACK);
@@ -514,10 +515,16 @@ describe("recorder catalog — coverage matrix", () => {
   test("every recorder write lands a row with non-null reason and the canonical action", async () => {
     // Aggregate sanity: enumerate every action this PR's recorders
     // emit, fetch the rows we just inserted, and assert the row count
-    // for each (kind, reason) pair is at least 1. This is the
-    // forensic "no silent rows" gate.
+    // for each (kind, reason) pair is at least 1. The query unions
+    // both tenant scopes (the per-suite `tenantId` for tenant-scoped
+    // recorders and `SYSTEM_TENANT_ID` for the engine_update family,
+    // which is process-level not tenant-scoped) so a regression that
+    // drops e.g. `recordEngineUpdateInitiated` is caught here, not in
+    // production.
     const rows = await testDb.db.execute(
-      sql`SELECT action, reason, metadata FROM audit_log WHERE tenant_id = ${tenantId}::uuid`,
+      sql`SELECT action, reason, metadata FROM audit_log
+          WHERE tenant_id = ${tenantId}::uuid
+             OR tenant_id = ${SYSTEM_TENANT_ID}::uuid`,
     );
     const list = (
       rows as unknown as {
@@ -542,6 +549,10 @@ describe("recorder catalog — coverage matrix", () => {
       AuditAction.KNOWLEDGE_SOURCE_CREATED,
       AuditAction.KNOWLEDGE_SOURCE_REFRESHED,
       AuditAction.TOOL_POLICY_CONFIRMATION_REQUIRED,
+      AuditAction.ENGINE_UPDATE_INITIATED,
+      AuditAction.ENGINE_UPDATE_COMPLETED,
+      AuditAction.ENGINE_UPDATE_FAILED,
+      AuditAction.ENGINE_UPDATE_ROLLED_BACK,
     ]);
     const seen = new Set(list.map((r) => r.action));
     for (const expected of expectedActions) {

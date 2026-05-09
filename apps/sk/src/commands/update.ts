@@ -1,6 +1,22 @@
 // `sk update` — self-update the sk CLI binary from GitHub Releases.
+//
+// `--rollback [--to=<version>]` swaps the running `sk` binary with a
+// previously retained signed binary under `~/.sk/versions/<version>/`.
+// The retention store is populated by every successful `performUpdate`
+// (see `@cli-core/updater::performUpdate`), so rollback only works
+// after at least one self-update has run. The cli-side rollback writes
+// no audit row — `sk` is the operator's CLI, not a server, and has no
+// database. The engine-side `engine --rollback` is the audited path
+// (issue #151 P0-4).
 
-import { checkForUpdate, defaultUpdaterConfig, performUpdate, VERSION } from "@cli-core/index.ts";
+import {
+  checkForUpdate,
+  defaultUpdaterConfig,
+  listRetainedVersions,
+  performUpdate,
+  rollbackTo,
+  VERSION,
+} from "@cli-core/index.ts";
 import { defineCommand } from "citty";
 
 export const updateCommand = defineCommand({
@@ -21,10 +37,28 @@ export const updateCommand = defineCommand({
       description: "Release channel: stable | beta",
       default: "stable",
     },
+    rollback: {
+      type: "boolean",
+      description: "Restore the most recent retained sk binary",
+      default: false,
+    },
+    to: {
+      type: "string",
+      description:
+        "With --rollback, the explicit version to restore (default: most recent retained)",
+    },
   },
   async run({ args }) {
     const channel = args.channel === "beta" ? "beta" : ("stable" as const);
     const config = defaultUpdaterConfig("sk", VERSION, channel);
+
+    if (args.rollback) {
+      await runRollback(
+        config,
+        typeof args.to === "string" && args.to.length > 0 ? args.to : "previous",
+      );
+      return;
+    }
 
     process.stdout.write(`sk: checking for updates (channel: ${channel})...\n`);
 
@@ -74,6 +108,38 @@ async function doUpdate(
   process.stdout.write(
     `sk: updated to ${info.version}. Restart your terminal to use the new version.\n`,
   );
+}
+
+async function runRollback(
+  config: import("@cli-core/index.ts").UpdaterConfig,
+  target: string | "previous",
+): Promise<void> {
+  const retained = listRetainedVersions(config);
+  if (retained.length === 0) {
+    process.stdout.write(
+      "sk: no retained binaries — there is nothing to roll back to. " +
+        "Run `sk update` at least once first.\n",
+    );
+    process.exit(1);
+  }
+  try {
+    process.stdout.write(`sk: rolling back ${VERSION} → ${target}...\n`);
+    const result = rollbackTo(config, target);
+    process.stdout.write(
+      `sk: rolled back to ${result.to_version}. Restart your terminal to use it.\n`,
+    );
+  } catch (err) {
+    if (isPermissionError(err)) {
+      const hint =
+        process.platform === "win32" ? "run as Administrator" : "sudo sk update --rollback";
+      process.stderr.write(`sk: permission denied — ${hint}\n`);
+      process.exit(2);
+    }
+    process.stderr.write(
+      `sk: rollback failed: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exit(1);
+  }
 }
 
 function isPermissionError(err: unknown): boolean {
