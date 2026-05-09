@@ -1,5 +1,12 @@
 // Long-running execution notifications.
 //
+// `spawnSync` is imported at top-level (S6 of PR #161 review) — it's
+// a function reference, not an executable side effect, so the cost
+// is the same whether or not `isOsDoNotDisturb` runs.
+
+import { spawnSync } from "node:child_process";
+
+//
 // Emits two terminal escape sequences in tandem:
 //   - OSC 9 (`\x1b]9;<title>\x07`) — picked up by iTerm2, recent
 //     gnome-terminal, Konsole, Windows Terminal, WezTerm.
@@ -110,12 +117,9 @@ function parseHHMM(s: string): number | null {
  */
 export function isOsDoNotDisturb(): boolean {
   try {
-    // The `node:child_process` import is dynamic so the bundled binary
-    // doesn't pay the eager-import cost on every notify() call.
-    const cp = require("node:child_process") as typeof import("node:child_process");
     const plat = process.platform;
     if (plat === "darwin") {
-      const r = cp.spawnSync(
+      const r = spawnSync(
         "defaults",
         ["read", "com.apple.controlcenter", "NSStatusItem Visible FocusModes"],
         {
@@ -127,11 +131,10 @@ export function isOsDoNotDisturb(): boolean {
       return false;
     }
     if (plat === "linux") {
-      const r = cp.spawnSync(
-        "gsettings",
-        ["get", "org.gnome.desktop.notifications", "show-banners"],
-        { encoding: "utf8", timeout: 200 },
-      );
+      const r = spawnSync("gsettings", ["get", "org.gnome.desktop.notifications", "show-banners"], {
+        encoding: "utf8",
+        timeout: 200,
+      });
       if (r.status === 0 && /false/.test(r.stdout)) return true;
       return false;
     }

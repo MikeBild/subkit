@@ -13,6 +13,7 @@ import {
   loadWhatsNew,
   loadWhatsNewSync,
   readCache,
+  sanitizeHeadline,
   whatsNewUrl,
   writeCache,
 } from "../repl/welcome-banner/whats-new.ts";
@@ -195,6 +196,68 @@ describe("loadWhatsNew", () => {
 
   test("loadWhatsNewSync falls back to bundled CHANGELOG when no cache exists", () => {
     expect(loadWhatsNewSync({ cachePath: cachePath() })).toMatch(/^v\d/);
+  });
+
+  test("sanitizeHeadline strips ANSI escapes (W5 of PR #161)", () => {
+    expect(sanitizeHeadline("[31mred[0m headline")).toBe("red headline");
+    expect(sanitizeHeadline("\x1b]9;notify\x07hello")).toBe("hello");
+  });
+
+  test("sanitizeHeadline strips control bytes", () => {
+    expect(sanitizeHeadline("hi\x07\x08\x1b\nbye")).toBe("hibye");
+  });
+
+  test("sanitizeHeadline truncates at 80 chars", () => {
+    const long = "x".repeat(120);
+    const out = sanitizeHeadline(long);
+    expect(out?.length).toBeLessThanOrEqual(80);
+    expect(out).toMatch(/…$/);
+  });
+
+  test("sanitizeHeadline returns null for empty / non-string / collapse-to-empty", () => {
+    expect(sanitizeHeadline("")).toBeNull();
+    expect(sanitizeHeadline("   ")).toBeNull();
+    expect(sanitizeHeadline("\x1b\x07")).toBeNull();
+    expect(sanitizeHeadline(null)).toBeNull();
+    expect(sanitizeHeadline(42)).toBeNull();
+  });
+
+  test("whatsNewUrl returns null when SK_WHATS_NEW_URL is empty / disabled (W5 of PR #161)", () => {
+    const prev = process.env.SK_WHATS_NEW_URL;
+    try {
+      process.env.SK_WHATS_NEW_URL = "";
+      expect(whatsNewUrl()).toBeNull();
+      process.env.SK_WHATS_NEW_URL = "disabled";
+      expect(whatsNewUrl()).toBeNull();
+      process.env.SK_WHATS_NEW_URL = "off";
+      expect(whatsNewUrl()).toBeNull();
+      process.env.SK_WHATS_NEW_URL = "0";
+      expect(whatsNewUrl()).toBeNull();
+    } finally {
+      if (prev !== undefined) process.env.SK_WHATS_NEW_URL = prev;
+      else delete process.env.SK_WHATS_NEW_URL;
+    }
+  });
+
+  test("loadWhatsNew with disabled URL skips network and falls back", async () => {
+    const prev = process.env.SK_WHATS_NEW_URL;
+    let fetchedCount = 0;
+    try {
+      process.env.SK_WHATS_NEW_URL = "disabled";
+      const out = await loadWhatsNew({
+        cachePath: cachePath(),
+        fetcher: async () => {
+          fetchedCount++;
+          return jsonResponse({ headline: "should-not-be-called" });
+        },
+      });
+      expect(fetchedCount).toBe(0);
+      // Falls back to bundled CHANGELOG since cache is empty.
+      expect(out).toMatch(/^v\d/);
+    } finally {
+      if (prev !== undefined) process.env.SK_WHATS_NEW_URL = prev;
+      else delete process.env.SK_WHATS_NEW_URL;
+    }
   });
 
   test("whatsNewUrl honors SK_WHATS_NEW_URL override", () => {

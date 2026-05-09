@@ -165,6 +165,11 @@ export const AuditAction = {
   DATA_IMPORTED: "data.imported",
 
   CONVERSATION_CREATED: "conversation.created",
+  // W1 of PR #161 review — distinct action so audit-log queries can
+  // separate forks (which clone prior tenant content) from greenfield
+  // creates. Metadata still carries forked_from / anchor_message_id /
+  // copied_message_count.
+  CONVERSATION_FORKED: "conversation.forked",
   CONVERSATION_COMPLETED: "conversation.completed",
   CONVERSATION_CANCELLED: "conversation.cancelled",
   CONVERSATION_COMMITTED: "conversation.committed",

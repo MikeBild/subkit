@@ -3457,9 +3457,14 @@ export const InkApp: React.FC<InkAppProps> = ({
                 setPane(null);
                 void onSelectConversation?.(res.conversation.id);
               })
-              .catch(() => {
-                // Fork errors are surfaced server-side via the standard
-                // error envelope; no special UX here.
+              .catch((err: unknown) => {
+                // W3 of PR #161 review — surface 403/404/5xx from the
+                // fork endpoint (RBAC denial, cross-tenant, server)
+                // into the NoticeStack so the operator sees the
+                // failure instead of a frozen pane.
+                const msg = err instanceof Error ? err.message : String(err);
+                showError(`fork failed: ${msg}`);
+                setPane(null);
               });
           }}
         />

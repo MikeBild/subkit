@@ -36,6 +36,8 @@ Each command's full surface lives next to its handler; this list is the canonica
 
 **Headless mode.** When stdin is not a TTY, the sk CLI operates without interactive prompts. This enables scripted workflows, CI pipeline integration, and automated testing scenarios where a human is not present at the terminal.
 
+**Outbound network from CLI startup (W5 of PR #161).** The welcome banner pulls a one-line "what's new" headline from `SK_WHATS_NEW_URL` (default `https://updates.subkit.dev/whats-new.json`) on REPL start. The fetch is async, 3-second timeout, 24-hour on-disk cache at `~/.sk/whats-new-cache.json`. It carries no auth and no tenant identifier. Air-gapped operators can opt out by setting `SK_WHATS_NEW_URL=` (empty) or `SK_WHATS_NEW_URL=disabled` — the resolver falls back to the bundled `CHANGELOG.md` head. All headline strings (cache, remote, CHANGELOG) pass through `sanitizeHeadline` which strips ANSI escapes and control bytes and truncates to 80 chars before render.
+
 ---
 
 ## The REST API (OpenAPI)

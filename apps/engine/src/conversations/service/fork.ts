@@ -6,10 +6,20 @@
 // G10 closure of #159 M10. Tool calls and elicitations are NOT
 // copied — they're tied to the message ids in the source conversation
 // and re-running them in the fork would duplicate their side effects.
-// The forked conversation starts as a clean session that has the
-// message history but none of the tool-result side-effect markers.
+// The forked conversation IS seeded with the source's `draft`,
+// `memory`, `model`, target_connector_id, target_workflow_id, and
+// `loaded_skills` so the next turn lands in the same authoring state
+// the operator was in when they pressed `t`. (The earlier "clean
+// session" wording was wrong — W2 of PR #161 review.)
+//
+// Caveat: assistant messages whose content text references
+// `tool_call_id` values from the source will keep those references
+// even though the matching tool_call rows are not copied. The CLI
+// renderer treats unknown tool_call_id refs as plain text, so the
+// fork is still readable; it's flagged here for incident-reading
+// audit consumers (S2 of PR #161 review).
 
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
@@ -39,8 +49,13 @@ export async function forkConversation(
   p: ForkConversationParams,
   exec: Db,
 ): Promise<ForkConversationResult | null> {
-  // Look up the source conversation + the anchor message in one trip
-  // so we can validate (a) source exists (b) anchor belongs to it.
+  // Look up the source conversation + ALL its messages in created_at
+  // order. We resolve the anchor by id-match in the in-memory list
+  // rather than by `lte(created_at, anchor.created_at)` because JS
+  // Date is millisecond-precision but Postgres `timestamp with time
+  // zone` is microsecond-precision — round-tripping the anchor's
+  // timestamp through JS truncates to ms and then `lte` excludes the
+  // anchor's own row whenever its µs portion is non-zero.
   const [source] = await exec
     .select()
     .from(conversations)
@@ -48,21 +63,23 @@ export async function forkConversation(
       and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.source_conversation_id)),
     );
   if (!source) return null;
-  const [anchor] = await exec
-    .select({ created_at: conversationMessages.created_at })
+  const allMessages = await exec
+    .select()
     .from(conversationMessages)
     .where(
       and(
         eq(conversationMessages.tenant_id, p.tenant_id),
         eq(conversationMessages.conversation_id, p.source_conversation_id),
-        eq(conversationMessages.id, p.anchor_message_id),
       ),
-    );
-  if (!anchor) return null;
+    )
+    .orderBy(asc(conversationMessages.created_at));
+  const anchorIdx = allMessages.findIndex((m) => m.id === p.anchor_message_id);
+  if (anchorIdx < 0) return null;
 
-  // Copy the source row's connector + workflow + draft + memory + model
-  // verbatim. Status resets to "active". The fork starts with no loaded
-  // skill catalog overrides — let the loop re-derive on next turn.
+  // Copy the source row's connector + workflow + draft + memory + model +
+  // loaded_skills verbatim. Status resets to "active". The fork inherits
+  // the prior loaded-skills set so the next turn doesn't need a fresh
+  // catalog probe; if downstream skills change, the loop re-derives.
   const forkTitle = p.title ?? `fork — ${source.title ?? source.id.slice(0, 8)}`;
   const [row] = await exec
     .insert(conversations)
@@ -81,22 +98,12 @@ export async function forkConversation(
     .returning();
   assertInsertRow(row, "conversations");
 
-  // Copy every message with `created_at <= anchor.created_at`. We use
-  // the timestamp window so concurrent appends to the source past the
-  // anchor are excluded deterministically. New rows get fresh ids; the
-  // `created_at` is set to "now" so the fork's timeline orders cleanly
-  // even when the original messages spanned days.
-  const messagesToCopy = await exec
-    .select()
-    .from(conversationMessages)
-    .where(
-      and(
-        eq(conversationMessages.tenant_id, p.tenant_id),
-        eq(conversationMessages.conversation_id, p.source_conversation_id),
-        lte(conversationMessages.created_at, anchor.created_at),
-      ),
-    )
-    .orderBy(asc(conversationMessages.created_at));
+  // Copy messages [0..anchorIdx] inclusive. Concurrent appends to the
+  // source past the anchor are naturally excluded because they were
+  // not in `allMessages` at fetch time (the SELECT happened before the
+  // INSERT below — read-then-write semantics). New rows get fresh ids;
+  // `created_at` is set to "now" so the fork's timeline orders cleanly.
+  const messagesToCopy = allMessages.slice(0, anchorIdx + 1);
   let copiedCount = 0;
   if (messagesToCopy.length > 0) {
     await exec.insert(conversationMessages).values(
@@ -127,10 +134,15 @@ export async function forkConversation(
       tenant_id: p.tenant_id,
       actor_type: p.actor_id ? "user" : "system",
       actor_id: p.actor_id,
-      action: AuditAction.CONVERSATION_CREATED,
+      // W1 of PR #161 review — distinct fork action for audit-log
+      // incident readers. Metadata still records source + anchor +
+      // count so the previous CONVERSATION_CREATED-style query path
+      // can be reconstructed by joining on `forked_from`.
+      action: AuditAction.CONVERSATION_FORKED,
       resource_type: "conversation",
       resource_id: row.id,
       result: "success",
+      reason: `forked from ${p.source_conversation_id} at message ${p.anchor_message_id}`,
       metadata: {
         forked_from: p.source_conversation_id,
         anchor_message_id: p.anchor_message_id,

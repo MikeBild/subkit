@@ -70,6 +70,18 @@ const forkFromMessageRoute = createRoute({
   path: "/v1/conversations/{id}/fork-from-message/{message_id}",
   tags: ["conversations"],
   summary: "Fork a conversation, copying messages up to and including the anchor",
+  description:
+    "Creates a new conversation owned by the same tenant + actor and copies " +
+    "messages [0..anchor] in created_at order. Tool calls and elicitations are " +
+    "NOT copied — re-running them would duplicate side effects. Caveat (S2 of " +
+    "PR #161 review): assistant message content that references " +
+    "`tool_call_id` values from the source will retain those refs even though " +
+    "the corresponding tool_call rows are not in the fork. The CLI renderer " +
+    "treats unknown ids as plain text, but audit-log readers should be aware. " +
+    "Each copied message gets a fresh `created_at` (set to fork-time) so the " +
+    "fork's timeline orders cleanly; the source's original timestamps are " +
+    "preserved in the source conversation, joinable via `forked_from` in the " +
+    "audit metadata.",
   security: [{ bearerAuth: [] }],
   request: { params: ForkFromMessageParam },
   responses: {

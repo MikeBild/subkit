@@ -1403,7 +1403,12 @@ export async function handleSlash(
         await new Promise<void>((resolve) => {
           qrcode.default.generate(url, { small: true }, () => resolve());
         });
-        return `portal token issued (15 min) — ${url}\nscan the QR above with your phone to connect; expires at ${issued.expires_at}`;
+        // S3 of PR #161 review — explicit do-not-share warning.
+        // The plaintext URL above contains a portal token that grants
+        // mobile/portal-side access for the next 15 minutes; copying
+        // it into chat / commit messages / shared screens leaks the
+        // session.
+        return `portal token issued (15 min, single-use) — ${url}\n⚠ do not share this URL — anyone holding it can attach to your session until ${issued.expires_at}\nscan the QR above with your phone to connect; the QR clears when this pane closes.`;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return `/session failed: ${msg}`;

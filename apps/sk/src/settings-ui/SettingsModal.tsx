@@ -30,19 +30,11 @@ import { StatsTab } from "./tabs/StatsTab.tsx";
 import { StatusTab } from "./tabs/StatusTab.tsx";
 import { UsageTab } from "./tabs/UsageTab.tsx";
 
-export type OuterTabName =
-  | "Settings"
-  | "Status"
-  | "Config"
-  | "Usage"
-  | "Stats"
-  | "Skills"
-  | "Permissions"
-  | "Knowledge"
-  | "Profile"
-  | "Admin";
-
-const ALL_TABS: OuterTabName[] = [
+// S5 of PR #161 review — single source of truth for the tab list.
+// `OuterTabName` is derived from `ALL_TABS` via `(typeof ALL_TABS)[number]`
+// so future additions only touch the array literal, not a parallel
+// string-union.
+const ALL_TABS = [
   "Settings",
   "Status",
   "Config",
@@ -53,7 +45,8 @@ const ALL_TABS: OuterTabName[] = [
   "Knowledge",
   "Profile",
   "Admin",
-];
+] as const;
+export type OuterTabName = (typeof ALL_TABS)[number];
 
 interface Props {
   sections: Map<string, FormField[]>;
@@ -79,11 +72,11 @@ interface Props {
   onProfileAction?: (action: import("./tabs/ProfileTab.tsx").ProfileAction) => void;
 }
 
-function visibleTabs(isAdmin: boolean): OuterTabName[] {
+function visibleTabs(isAdmin: boolean): readonly OuterTabName[] {
   return isAdmin ? ALL_TABS : ALL_TABS.filter((t) => t !== "Admin");
 }
 
-function pickInitialOuter(initialTab: string | undefined, tabs: OuterTabName[]): number {
+function pickInitialOuter(initialTab: string | undefined, tabs: readonly OuterTabName[]): number {
   if (!initialTab) return 0;
   // Match outer tab name exactly first; otherwise default to Settings (idx 0)
   // so a legacy `--tab <engine-section>` argument still reaches the

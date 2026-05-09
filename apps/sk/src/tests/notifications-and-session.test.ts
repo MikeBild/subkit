@@ -178,7 +178,9 @@ describe("/session slash (M12)", () => {
     expect(typeof out).toBe("string");
     expect(out).toContain("portal token issued");
     expect(out).toContain("/portal#token=secret-token-123");
-    expect(out).toContain("expires at 2026-05-09T15:00:00Z");
+    // S3 of PR #161 — wording reworded to "until <ts>" with a do-not-share warning.
+    expect(out).toContain("until 2026-05-09T15:00:00Z");
+    expect(out).toContain("do not share");
     expect(issuePortalToken.mock.calls.length).toBe(1);
     const sent = issuePortalToken.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(sent).toMatchObject({
