@@ -9,7 +9,7 @@
 // so `getDb()` resolves to it.
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -27,6 +27,9 @@ import { closeDb } from "../db/client.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { runRollback, runSelfUpdate } from "../self-update.ts";
+import { createDeterministicHexFactory, getTestNow } from "../test-helpers/determinism/index.ts";
+
+const detHex = createDeterministicHexFactory(151);
 
 // Each test run gets a fresh tmpdir for the updater cache. Bun's
 // `os.homedir()` caches the result at startup, so a runtime
@@ -97,7 +100,7 @@ function makeFetchImpl(handler: (url: string) => Response | Promise<Response>): 
 describe("engine runSelfUpdate", () => {
   test("'already at latest' branch is DB-free and emits no audit row", async () => {
     captureWrites();
-    const before = new Date();
+    const before = new Date(getTestNow() - 1);
     const fetchImpl = makeFetchImpl(
       () =>
         new Response(
@@ -116,7 +119,7 @@ describe("engine runSelfUpdate", () => {
 
   test("update path with a missing binary asset writes INITIATED + FAILED rows", async () => {
     captureWrites();
-    const before = new Date();
+    const before = new Date(getTestNow() - 1);
     const fetchImpl = makeFetchImpl(
       () =>
         new Response(
@@ -192,7 +195,7 @@ describe("engine runRollback", () => {
       join(cacheDir, "versions", version, "manifest.json"),
       JSON.stringify({
         version,
-        installed_at: Date.now(),
+        installed_at: getTestNow(),
         sha256: sha,
         binary_name: "engine",
       }),
@@ -237,10 +240,13 @@ describe("engine runRollback", () => {
 
   test("happy path emits INITIATED + ROLLED_BACK rows and bumps the metric", async () => {
     captureWrites();
-    const r = randomBytes(2);
-    const version = `0.${r[0]}.${r[1]}`;
+    // Deterministic version string — different runs get different
+    // tags only because the seeded factory advances. Avoids real
+    // randomness so the test is reproducible.
+    const versionTag = detHex(2);
+    const version = `0.0.${parseInt(versionTag, 16)}`;
     const { execPath } = plantRetained(version, `retained-bytes-${version}`);
-    const before = new Date();
+    const before = new Date(getTestNow() - 1);
     try {
       await withFakeExecPath(execPath, async () => {
         await runRollback("previous", makeConfig());
