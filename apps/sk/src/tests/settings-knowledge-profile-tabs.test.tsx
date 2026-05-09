@@ -91,7 +91,7 @@ describe("KnowledgeTab — inline ingest (G8 closure)", () => {
         tenant: { id: "t1", slug: "acme", display_name: null },
         recent_sessions: [],
         flags: {},
-        server_time: new Date().toISOString(),
+        server_time: "2024-11-14T22:13:20.000Z",
       })),
       listMcpTools: mock(async () => ({ items: [] })),
       listMcpPrompts: mock(async () => ({ items: [] })),

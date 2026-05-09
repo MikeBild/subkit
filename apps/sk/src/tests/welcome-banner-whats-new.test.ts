@@ -137,14 +137,23 @@ describe("loadWhatsNew", () => {
   });
 
   test("aborts on timeout and falls back to bundled CHANGELOG head", async () => {
+    // Hang until the production-side AbortController fires; no
+    // test-side wall-clock sleep. loadWhatsNew's `timeoutMs:10`
+    // schedules the abort, the listener below rejects with
+    // AbortError, and loadWhatsNew falls back to changelogHead().
     const out = await loadWhatsNew({
       cachePath: cachePath(),
       timeoutMs: 10,
-      fetcher: async (_url, init) => {
-        await new Promise((r) => setTimeout(r, 100));
-        if (init.signal.aborted) throw new DOMException("aborted", "AbortError");
-        return jsonResponse({ headline: "should-not-arrive" });
-      },
+      fetcher: (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          if (init.signal.aborted) {
+            reject(new DOMException("aborted", "AbortError"));
+            return;
+          }
+          init.signal.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        }),
     });
     expect(out).toMatch(/^v\d/);
   });

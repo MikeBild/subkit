@@ -27,7 +27,7 @@ function makeClient(items: Array<Record<string, unknown>>): EngineClient {
       tenant: { id: "t1", slug: "acme", display_name: null },
       recent_sessions: [],
       flags: {},
-      server_time: new Date().toISOString(),
+      server_time: "2024-11-14T22:13:20.000Z",
     })),
     listMcpTools: mock(async () => ({ items: [] })),
     listMcpPrompts: mock(async () => ({ items: [] })),
@@ -61,28 +61,28 @@ describe("UsageTab — token aggregation by flow (M5 + G6 closure)", () => {
       {
         action: "llm.invocation",
         metadata: { flow: "chat", prompt_tokens: 1000, completion_tokens: 500 },
-        created_at: new Date().toISOString(),
+        created_at: "2024-11-14T22:13:20.000Z",
       },
       {
         action: "llm.invocation",
         metadata: { flow: "chat", prompt_tokens: 200, completion_tokens: 100 },
-        created_at: new Date().toISOString(),
+        created_at: "2024-11-14T22:13:20.000Z",
       },
       {
         action: "llm.invocation",
         metadata: { flow: "summarize", prompt_tokens: 800, completion_tokens: 50 },
-        created_at: new Date().toISOString(),
+        created_at: "2024-11-14T22:13:20.000Z",
       },
       {
         action: "llm.invocation",
         metadata: { flow: "tool-chain", prompt_tokens: 50, completion_tokens: 25 },
-        created_at: new Date().toISOString(),
+        created_at: "2024-11-14T22:13:20.000Z",
       },
       // Non-llm.invocation rows must be ignored.
       {
         action: "conversation.completed",
         metadata: { prompt_tokens: 9999 },
-        created_at: new Date().toISOString(),
+        created_at: "2024-11-14T22:13:20.000Z",
       },
     ];
     const ui = await navigateTo(makeClient(items), 3);
@@ -118,7 +118,7 @@ describe("UsageTab — token aggregation by flow (M5 + G6 closure)", () => {
 
 describe("StatsTab — heatmap (M5)", () => {
   test("renders heatmap and totals", async () => {
-    const today = new Date().toISOString();
+    const today = "2024-11-14T22:13:20.000Z";
     const items = Array.from({ length: 12 }, () => ({ created_at: today }));
     const ui = await navigateTo(makeClient(items), 4);
     try {

@@ -68,7 +68,7 @@ function makeClient(opts: {
     tenant: { id: "t1", slug: opts.bootstrapTenant ?? "acme", display_name: null },
     recent_sessions: [],
     flags: {},
-    server_time: new Date().toISOString(),
+    server_time: "2024-11-14T22:13:20.000Z",
   }));
   const listMcpTools = mock(async () => ({
     items: Array.from({ length: opts.toolCount ?? 3 }, (_, i) => ({
@@ -260,7 +260,7 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
         tenant: { id: "t1", slug: "acme", display_name: null },
         recent_sessions: [],
         flags: {},
-        server_time: new Date().toISOString(),
+        server_time: "2024-11-14T22:13:20.000Z",
       })),
       listMcpTools: mock(async () => {
         throw new Error("ECONNREFUSED");

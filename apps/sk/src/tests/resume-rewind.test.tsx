@@ -128,7 +128,10 @@ describe("ConversationBrowser — rewind toggle (M10 + G10)", () => {
       await ui.type("t");
       await ui.waitFor((t) => t.includes("from earlier turn"));
       await ui.press("enter");
-      await new Promise((r) => setTimeout(r, 50));
+      // Two flush cycles drain microtasks + the next macrotask so
+      // any onSelect handler that *would* have fired has a chance.
+      await ui.flush();
+      await ui.flush();
       expect(selected).toBe("");
     } finally {
       ui.unmount();

@@ -66,9 +66,9 @@ describe("notifications — inQuietHoursWindow (H1 closure)", () => {
   });
 
   test("malformed strings are treated as 'no window'", () => {
-    expect(inQuietHoursWindow("not-a-time", "08:00", new Date())).toBe(false);
-    expect(inQuietHoursWindow("25:00", "08:00", new Date())).toBe(false);
-    expect(inQuietHoursWindow("09:60", "08:00", new Date())).toBe(false);
+    expect(inQuietHoursWindow("not-a-time", "08:00", new Date(1_700_000_000_000))).toBe(false);
+    expect(inQuietHoursWindow("25:00", "08:00", new Date(1_700_000_000_000))).toBe(false);
+    expect(inQuietHoursWindow("09:60", "08:00", new Date(1_700_000_000_000))).toBe(false);
   });
 });
 
