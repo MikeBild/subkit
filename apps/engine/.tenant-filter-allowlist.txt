@@ -1,10 +1,9 @@
 # Tables that the tenant-filter AST scan may select from WITHOUT a
 # tenantId predicate, because the table is tenant-agnostic by design.
 #
-# This allowlist exists so the audit-invariants CI check (§6.1 of
-# docs/audits/2026-05-architecture-audit.md) does not flag legitimate
-# system-table reads. Every other table MUST be queried with a tenantId
-# predicate.
+# This allowlist exists so the audit-invariants CI check does not flag
+# legitimate system-table reads. Every other table MUST be queried with
+# a tenantId predicate.
 #
 # Adding to this list is security-sensitive: humans only. The closed-loop
 # audit driver (§10.3) is forbidden from touching this file.

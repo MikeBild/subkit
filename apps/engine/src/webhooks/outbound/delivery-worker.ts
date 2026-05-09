@@ -228,7 +228,6 @@ export async function registerDeliveryWorker(
     try {
       assertEgressAllowed(new URL(loaded.row.target_url), {
         tenant_id: data.tenant_id,
-        tunnel_target: null,
       });
     } catch (err) {
       if (err instanceof EgressBlockedError) {

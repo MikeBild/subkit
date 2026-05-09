@@ -67,18 +67,13 @@ afterEach(async () => {
 });
 
 describe("parseAsset", () => {
-  test("accepts every shipping platform-arch combo for sk + agent", () => {
+  test("accepts every shipping platform-arch combo for sk", () => {
     const valid = [
       "sk-darwin-arm64",
       "sk-darwin-x64",
       "sk-linux-arm64",
       "sk-linux-x64",
       "sk-windows-x64",
-      "agent-darwin-arm64",
-      "agent-darwin-x64",
-      "agent-linux-arm64",
-      "agent-linux-x64",
-      "agent-windows-x64",
     ];
     for (const asset of valid) {
       expect(_internal.parseAsset(asset)).not.toBeNull();
@@ -87,12 +82,10 @@ describe("parseAsset", () => {
 
   test("rejects windows-arm64 (not produced by the release matrix)", () => {
     expect(_internal.parseAsset("sk-windows-arm64")).toBeNull();
-    expect(_internal.parseAsset("agent-windows-arm64")).toBeNull();
   });
 
   test("rejects unknown kinds, platforms, archs, and malformed slugs", () => {
     const invalid = [
-      "tunnel-agent-linux-x64", // wrong kind alias — URL uses `agent`, not `tunnel-agent`
       "engine-linux-x64", // engine is not served via /install
       "sk-windows-aarch64", // aarch64 alias only valid in the install-script side
       "sk_darwin_arm64", // underscore, not hyphen — disk shape, not URL shape
@@ -108,18 +101,12 @@ describe("parseAsset", () => {
 });
 
 describe("diskFilename", () => {
-  test("maps sk → sk_, agent → tunnel-agent_, appends .exe on windows", () => {
+  test("maps sk → sk_, appends .exe on windows", () => {
     expect(_internal.diskFilename({ kind: "sk", platform: "darwin", arch: "arm64" })).toBe(
       "sk_darwin_arm64",
     );
-    expect(_internal.diskFilename({ kind: "agent", platform: "linux", arch: "x64" })).toBe(
-      "tunnel-agent_linux_x64",
-    );
     expect(_internal.diskFilename({ kind: "sk", platform: "windows", arch: "x64" })).toBe(
       "sk_windows_x64.exe",
-    );
-    expect(_internal.diskFilename({ kind: "agent", platform: "windows", arch: "x64" })).toBe(
-      "tunnel-agent_windows_x64.exe",
     );
   });
 });
@@ -144,22 +131,6 @@ describe("GET /install/{asset} — bundled image", () => {
     expect(body.byteLength).toBe(bytes.byteLength);
     const actualSha = createHash("sha256").update(body).digest("hex");
     expect(actualSha).toBe(expectedSha);
-  });
-
-  test("streams agent binary mapping URL `agent` → disk `tunnel-agent`", async () => {
-    const bytes = new TextEncoder().encode("agent-bytes\n");
-    const fixture = await mkBundle({ "tunnel-agent_darwin_arm64": bytes });
-    activeDir = fixture.dir;
-    process.env.SUBKIT_BINARIES_DIR = fixture.dir;
-    _internal.clearCache();
-
-    const res = await buildApp().request("/install/agent-darwin-arm64");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-disposition")).toBe(
-      'attachment; filename="tunnel-agent_darwin_arm64"',
-    );
-    const body = new Uint8Array(await res.arrayBuffer());
-    expect(new TextDecoder().decode(body)).toBe("agent-bytes\n");
   });
 
   test("HEAD request returns the same headers as GET (install-script probe contract)", async () => {
@@ -226,11 +197,9 @@ describe("GET /install/{asset} — 404 paths (pointer body, install-script fallb
     _internal.clearCache();
 
     const app = buildApp();
-    for (const url of ["/install/sk-linux-x64", "/install/agent-darwin-arm64"]) {
-      const res = await app.request(url);
-      expect(res.status).toBe(404);
-      expect(await res.text()).toContain("engine-with-cli");
-    }
+    const res = await app.request("/install/sk-linux-x64");
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain("engine-with-cli");
   });
 
   test("bundle has SHA256SUMS but is missing the requested binary → 404", async () => {
@@ -253,20 +222,16 @@ describe("GET /install/{asset} — 404 paths (pointer body, install-script fallb
 describe("GET /install/sha256sums", () => {
   test("returns the bundled SHA256SUMS verbatim with text/plain content-type", async () => {
     const bytes = new Uint8Array([1, 2, 3]);
-    const fixture = await mkBundle({ sk_linux_x64: bytes, "tunnel-agent_linux_x64": bytes });
+    const fixture = await mkBundle({ sk_linux_x64: bytes });
     activeDir = fixture.dir;
     process.env.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
     const res = await buildApp().request("/install/sha256sums");
     expect(res.status).toBe(200);
-    // Hono's c.text() emits charset=UTF-8 (uppercase); the install
-    // script and curl don't care, but pin the actual shape.
     expect(res.headers.get("content-type")).toMatch(/^text\/plain; charset=utf-?8$/i);
     const body = await res.text();
     expect(body).toContain("sk_linux_x64");
-    expect(body).toContain("tunnel-agent_linux_x64");
-    // Hash entries match what we wrote.
     const expectedSha = createHash("sha256").update(bytes).digest("hex");
     expect(body).toContain(expectedSha);
   });

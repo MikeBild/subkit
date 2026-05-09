@@ -31,9 +31,8 @@ function printRunResult(result: RunExecutionResponse): void {
   process.stderr.write(`\n${pc.dim("connector resolutions:")}\n`);
   for (const r of rs) {
     const env = `${r.requested_environment} → ${r.resolved_environment}`;
-    const tunnel = r.tunnel_target ? `  tunnel=${r.tunnel_target}` : "";
     process.stderr.write(
-      `  ${pc.cyan(r.step_key)}  ${r.connector_slug} (${r.driver})  ${env}  ${pc.yellow(r.auth_method)}${tunnel}\n`,
+      `  ${pc.cyan(r.step_key)}  ${r.connector_slug} (${r.driver})  ${env}  ${pc.yellow(r.auth_method)}\n`,
     );
   }
 }

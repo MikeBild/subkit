@@ -14,15 +14,13 @@ There is no separate message broker to manage, no distributed queue service to o
 
 The standard deployment model is straightforward: one engine service and one PostgreSQL instance. For teams that need higher availability, the engine is horizontally scalable — run multiple instances behind a load balancer. The queue and scheduler subsystems are designed for concurrent execution across multiple engine instances without coordination overhead.
 
-The **Tunnel Agent** is a separate small binary deployed in private networks. When a Connector targets a system behind a firewall or VPN, the Tunnel Agent runs inside that network and opens a persistent outbound WebSocket connection to the engine. No inbound firewall rules are required. The engine routes Connector requests through the open tunnel. The Tunnel Agent is stateless and reconnects automatically on interruption.
-
 ### Deployment layout
 
 4.2.0 retired the docker-compose production deploy. The engine is now a single `bun build --compile` binary deployed under systemd; postgres + caddy are apt-installed system services on the host.
 
 - **Engine** — `/usr/local/bin/engine` managed by `subkit-engine.service` (see [`deploy/systemd/subkit-engine.service`](../deploy/systemd/subkit-engine.service)).
 - **Postgres** — `postgresql-16` apt package, native systemd unit, listening on `127.0.0.1:5432`.
-- **Caddy** — apt package, fronts the engine with always-on Let's Encrypt TLS (see [`deploy/caddy/Caddyfile`](../deploy/caddy/Caddyfile); upstreams `127.0.0.1:3000` for HTTP and `127.0.0.1:3001` for the tunnel WebSocket).
+- **Caddy** — apt package, fronts the engine with always-on Let's Encrypt TLS (see [`deploy/caddy/Caddyfile`](../deploy/caddy/Caddyfile); upstreams `127.0.0.1:3000`).
 - **Local dev** — the repo's `docker-compose.yml` brings up postgres only (and an optional MinIO under `--profile storage`); `bun run dev` runs the engine on the host.
 
 On the host (`scripts/do-bootstrap.sh` provisions the layout), `scripts/release/deploy-body.sh` performs an atomic-binary swap: scp `engine.next` into `/usr/local/bin/`, rename over `engine`, `systemctl restart subkit-engine.service`, poll `/v1/health` for the new version, roll back to `engine.prev` on timeout. The laptop `scripts/deploy.sh` orchestrator pipes the same body file into `bash -s` over SSH so the two paths cannot drift.
@@ -31,7 +29,7 @@ On the host (`scripts/do-bootstrap.sh` provisions the layout), `scripts/release/
 
 ## Installation
 
-sk ships pre-compiled binaries for macOS (Intel and Apple Silicon), Linux (x64 and ARM64), and Windows (x64). The primary binaries are `sk`, the engine, and the Tunnel Agent. Some release channels also publish a `subkit` compatibility alias for the CLI, but contributor docs and operator examples use `sk`.
+sk ships pre-compiled binaries for macOS (Intel and Apple Silicon), Linux (x64 and ARM64), and Windows (x64). The primary binaries are `sk` and the engine. Some release channels also publish a `subkit` compatibility alias for the CLI, but contributor docs and operator examples use `sk`.
 
 A one-line install script covers the common cases for bash and PowerShell environments. The engine is also published as a container image for Kubernetes and cloud-native deployments.
 

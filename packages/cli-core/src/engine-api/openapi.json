@@ -1161,8 +1161,7 @@
                 "rbac:read",
                 "api_key:read",
                 "portal_token:read",
-                "knowledge:read",
-                "tunnel:read"
+                "knowledge:read"
               ]
             },
             "description": "Allowed UX-gating permissions for the principal."
@@ -1195,8 +1194,7 @@
                 "rbac:read",
                 "api_key:read",
                 "portal_token:read",
-                "knowledge:read",
-                "tunnel:read"
+                "knowledge:read"
               ]
             },
             "description": "Stable list of permissions probed; reflects the engine's known UX gating set."
@@ -1709,10 +1707,6 @@
           "bytes_in": {
             "type": "integer"
           },
-          "tunnel_target": {
-            "type": "string",
-            "nullable": true
-          },
           "idempotency_key": {
             "type": "string"
           },
@@ -1797,10 +1791,6 @@
               "oauth2_static",
               "oauth2_refreshed"
             ]
-          },
-          "tunnel_target": {
-            "type": "string",
-            "nullable": true
           },
           "base_url": {
             "type": "string",
@@ -8869,8 +8859,6 @@
               "connector.oauth.refreshed",
               "patch.proposed",
               "apikey.rotated",
-              "tunnel.connected",
-              "tunnel.disconnected",
               "conversation.committed"
             ]
           },
@@ -8887,130 +8875,6 @@
         "required": [
           "type",
           "payload"
-        ]
-      },
-      "TunnelListResponse": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Tunnel"
-            }
-          },
-          "next_cursor": {
-            "type": "string",
-            "nullable": true
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "Tunnel": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "tenant_id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "registered",
-              "connected",
-              "disconnected"
-            ]
-          },
-          "last_seen_at": {
-            "type": "string",
-            "nullable": true
-          },
-          "created_at": {
-            "type": "string"
-          },
-          "updated_at": {
-            "type": "string"
-          },
-          "targets": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TunnelTarget"
-            }
-          },
-          "in_flight": {
-            "type": "integer",
-            "minimum": 0
-          }
-        },
-        "required": [
-          "id",
-          "tenant_id",
-          "name",
-          "state",
-          "last_seen_at",
-          "created_at",
-          "updated_at",
-          "targets",
-          "in_flight"
-        ]
-      },
-      "TunnelTarget": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "target_name": {
-            "type": "string"
-          },
-          "concurrency_cap": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "target_name",
-          "concurrency_cap"
-        ]
-      },
-      "CreateTunnelBody": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1
-          },
-          "targets": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "local_base_url": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "required": [
-                "name",
-                "local_base_url"
-              ]
-            },
-            "minItems": 1
-          }
-        },
-        "required": [
-          "name",
-          "targets"
         ]
       },
       "AuditLogListResponse": {
@@ -9631,7 +9495,7 @@
           "install"
         ],
         "summary": "Bundled SHA256SUMS for the binaries shipped in this image",
-        "description": "Returns the verbatim SHA256SUMS file for the `sk` and `tunnel-agent` binaries bundled in this engine image. 404 when the slim image is in use; clients should fall back to https://github.com/MikeBild/subkit/releases for the matching tag.",
+        "description": "Returns the verbatim SHA256SUMS file for the `sk` binary bundled in this engine image. 404 when the slim image is in use; clients should fall back to https://github.com/MikeBild/subkit/releases for the matching tag.",
         "responses": {
           "200": {
             "description": "SHA256SUMS text",
@@ -9661,18 +9525,18 @@
         "tags": [
           "install"
         ],
-        "summary": "Bundled sk / tunnel-agent binary",
-        "description": "Streams a CLI binary bundled in the engine-with-cli image variant. Returns 404 with a pointer body when the bundle is absent, the asset name is malformed, or the requested platform/arch is not built. Verifies bytes via the `x-subkit-sha256` response header.",
+        "summary": "Bundled sk binary",
+        "description": "Streams the sk CLI binary bundled in the engine-with-cli image variant. Returns 404 with a pointer body when the bundle is absent, the asset name is malformed, or the requested platform/arch is not built. Verifies bytes via the `x-subkit-sha256` response header.",
         "parameters": [
           {
             "schema": {
               "type": "string",
               "minLength": 1,
               "example": "sk-darwin-arm64",
-              "description": "Asset slug. Grammar: `(sk|agent)-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built."
+              "description": "Asset slug. Grammar: `sk-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built."
             },
             "required": true,
-            "description": "Asset slug. Grammar: `(sk|agent)-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built.",
+            "description": "Asset slug. Grammar: `sk-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built.",
             "name": "asset",
             "in": "path"
           }
@@ -17174,146 +17038,6 @@
           },
           "403": {
             "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/tunnels": {
-      "get": {
-        "tags": [
-          "tunnels"
-        ],
-        "summary": "List tunnels",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TunnelListResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "tunnels"
-        ],
-        "summary": "Pre-register a tunnel row (no live socket)",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateTunnelBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Tunnel"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/tunnels/{id}": {
-      "get": {
-        "tags": [
-          "tunnels"
-        ],
-        "summary": "Fetch a tunnel",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Tunnel"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "tunnels"
-        ],
-        "summary": "Delete a tunnel",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Deleted"
-          },
-          "404": {
-            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {

@@ -17,7 +17,7 @@
 //      pg-boss, closes the HTTP server, and drops the database.
 //
 // Each journey reaches the engine through its public contracts only
-// (REST, MCP, chat adapters, webhook ingress, WebSocket tunnel).
+// (REST, MCP, chat adapters, webhook ingress).
 
 import { createHash, randomBytes } from "node:crypto";
 import { type ServerType, serve } from "@hono/node-server";

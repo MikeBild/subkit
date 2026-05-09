@@ -85,18 +85,13 @@ interface FetchAttemptResult {
   bytes_in: number;
 }
 
-interface TunnelRoute {
-  tenant_id: string;
-  target: string;
-}
-
 async function fetchOnce(
   url: string,
   method: string,
   headers: Record<string, string>,
   body: unknown,
   signal: AbortSignal,
-  tunnel?: TunnelRoute,
+  tenant_id: string,
 ): Promise<FetchAttemptResult> {
   // Pagination cursors and `${item.…}` resolution sometimes produce a
   // URL the placeholder validator missed. Without a typed guard,
@@ -114,13 +109,12 @@ async function fetchOnce(
     );
   }
   const execution = await executePlannedHttpRequest({
-    tenant_id: tunnel?.tenant_id ?? "",
+    tenant_id,
     method,
     url: parsedUrl,
     headers,
     body,
     signal,
-    ...(tunnel ? { tunnel_target: tunnel.target } : {}),
   });
   return {
     status: execution.status,
@@ -158,7 +152,7 @@ interface DoOnePageParams {
   signal: AbortSignal;
   retry_total_ms: { value: number };
   retry_counter: { value: number };
-  tunnel?: TunnelRoute;
+  tenant_id: string;
   connector_id?: string | null;
   retry_policy: RetryPolicy;
   /** When set on a non-idempotent method, an `Idempotency-Key` header is
@@ -189,7 +183,7 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
       if (p.last_idempotency_key) p.last_idempotency_key.value = key;
     }
     try {
-      const res = await fetchOnce(p.url, p.method, attemptHeaders, p.body, p.signal, p.tunnel);
+      const res = await fetchOnce(p.url, p.method, attemptHeaders, p.body, p.signal, p.tenant_id);
       if (res.status >= 200 && res.status < 400) return res;
       const is_additional_retry_status = p.retry_policy.additional_retry_statuses.has(res.status);
       // Reference-aligned retry telemetry: every retry emits the
@@ -444,7 +438,6 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   }
   const query: Record<string, string | number | boolean> = { ...resolvedStepQuery };
   let baseUrl: URL;
-  let tunnelRoute: TunnelRoute | undefined;
   // Holds the resolved HTTP connector so circuit state can be updated on
   // success / failure in the outer try/catch block.
   let activeConnector: Awaited<ReturnType<typeof getConnectorForEnvironment>> = null;
@@ -485,7 +478,6 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         // drivers don't do inline oauth2 refresh yet).
         auth_method: deriveAuthMethodFromAuthType(connector.auth_type),
         base_url: connector.base_url ?? null,
-        tunnel_target: null,
       };
       if (connector.driver === "graphql" || p.step.graphql) {
         clearTimeout(timer);
@@ -1051,10 +1043,6 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         // prefer its auth_method over the connector's declared auth_type.
         connectorResolution.auth_method = plan.auth_method;
       }
-      if (plan.tunnel_target) {
-        tunnelRoute = { tenant_id: p.ctx.tenant_id, target: plan.tunnel_target };
-        if (connectorResolution) connectorResolution.tunnel_target = plan.tunnel_target;
-      }
     } else {
       if (!resolvedStepUrl) {
         clearTimeout(timer);
@@ -1301,8 +1289,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           connector_id: p.step.connector_id ?? null,
           retry_policy,
           last_idempotency_key: lastIdempotencyKey,
+          tenant_id: p.ctx.tenant_id,
           ...(idempotencyBase ? { idempotency_key_base: idempotencyBase } : {}),
-          ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
         });
       const res = httpEgressInput
         ? await withEgressAudit(httpEgressInput, callDoOnePage, (out) => ({
@@ -1488,8 +1476,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           connector_id: p.step.connector_id ?? null,
           retry_policy,
           last_idempotency_key: lastIdempotencyKey,
+          tenant_id: p.ctx.tenant_id,
           ...(idempotencyBase ? { idempotency_key_base: idempotencyBase } : {}),
-          ...(tunnelRoute ? { tunnel: tunnelRoute } : {}),
         });
       const pageEgressInput = activeConnector
         ? {

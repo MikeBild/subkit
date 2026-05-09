@@ -53,7 +53,6 @@
     "hooks": { "flags": ["json", "limit"], "positionals": ["sub"] },
     "subscriptions": { "flags": ["json", "name", "event-type", "url"], "positionals": ["sub"] },
     "events": { "flags": [], "positionals": [] },
-    "tunnels": { "flags": ["json"], "positionals": ["sub"] },
     "notifications": { "flags": ["json"], "positionals": [] },
     "diagnostics": { "flags": ["json"], "positionals": [] },
     "install": { "flags": [], "positionals": [] },

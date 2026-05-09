@@ -5,7 +5,7 @@
 // here MUST have a registered handler in `queue/handlers/index.ts`; pass-6
 // of the cleanup audit removed seven dead declarations
 // (`execution.notify`, `workflow.generate`, `schema.extract`, `chat.event`,
-// `chat.deliver`, `conversation.tool-call`, `tunnel.heartbeat`) that pg-boss
+// `chat.deliver`, `conversation.tool-call`) that pg-boss
 // was creating but nothing ever enqueued or consumed. Re-add as needed when
 // the consumer ships.
 

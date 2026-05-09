@@ -112,12 +112,11 @@ describe("journey: rbac can query", () => {
     expect((await can(memberUserId, "connector:delete")).allow).toBe(true);
 
     // Member deny cases — secrets, RBAC mutations, audit reads,
-    // tunnel infra, api_key lifecycle stay admin-only.
+    // api_key lifecycle stay admin-only.
     expect((await can(memberUserId, "credential:delete")).allow).toBe(false);
     expect((await can(memberUserId, "credential:write")).allow).toBe(false);
     expect((await can(memberUserId, "rbac:write")).allow).toBe(false);
     expect((await can(memberUserId, "audit:read")).allow).toBe(false);
-    expect((await can(memberUserId, "tunnel:delete")).allow).toBe(false);
     expect((await can(memberUserId, "api_key:revoke")).allow).toBe(false);
 
     // Bare role deny cases.

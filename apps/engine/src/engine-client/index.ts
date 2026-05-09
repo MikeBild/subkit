@@ -35,7 +35,6 @@ import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import * as rbacRoles from "../rbac/roles.ts";
 import * as skillCandidatesSvc from "../skill-candidates/service.ts";
 import * as skillsSvc from "../skills/service.ts";
-import * as tunnelsSvc from "../tunnels/service.ts";
 import * as inboundSvc from "../webhooks/inbound/service.ts";
 import * as subscriptionsSvc from "../webhooks/outbound/service.ts";
 import {
@@ -329,12 +328,6 @@ export class EngineClient {
         },
         this.db,
       ),
-  };
-
-  tunnels = {
-    list: () => tunnelsSvc.listTunnels(this.tenant_id, this.db),
-    get: (id: string) => tunnelsSvc.getTunnel(this.tenant_id, id, this.db),
-    delete: (id: string) => tunnelsSvc.deleteTunnel(this.tenant_id, id, this.actor_id, this.db),
   };
 
   status = {

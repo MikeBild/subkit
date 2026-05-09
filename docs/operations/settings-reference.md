@@ -25,7 +25,6 @@ HTTP server
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `server.port` | number | `3000` | global | no | yes | HTTP port to bind (1..65535) |
 | `server.public_base_url` | string | `""` | global | no | no | External-facing URL the engine resolves at (used by /install + chat link replies) |
-| `server.tunnel_port` | number | `null` | global | no | yes | Tunnel WebSocket port (1..65535); null disables tunnels |
 
 ## database
 Database connection
@@ -147,13 +146,6 @@ MCP transport
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `mcp.api_key` | string | `""` | global | yes | no |  |
 | `mcp.read_only` | boolean | `false` | global | no | no |  |
-
-## tunnel
-Tunnel registry
-
-| path | type | default | scope | sensitive | requiresRestart | description |
-| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `tunnel.registry_max` | number | `100` | global | no | no |  |
 
 ## errors
 Error ring buffer

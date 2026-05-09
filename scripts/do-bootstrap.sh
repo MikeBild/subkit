@@ -12,7 +12,7 @@
 #   - SSH key upload (subkit-deploy) on Digital Ocean
 #   - Droplet (subkit-engine, $REGION / $SIZE, ubuntu-24-04 image)
 #   - Cloud firewall (ports 22/80/443)
-#   - DNS A records for subkit-api.mikebild.dev and subkit-tunnel.mikebild.dev
+#   - DNS A record for subkit-api.mikebild.dev
 #   - subkit system user/group + /etc/subkit + /var/lib/subkit + /var/log/subkit
 #   - postgres role + database (subkit:<password>) listening on 127.0.0.1
 #   - caddy with the repo's Caddyfile
@@ -31,7 +31,6 @@ set -euo pipefail
 
 DOMAIN_ROOT="${DOMAIN_ROOT:-mikebild.dev}"
 HOST_API="${HOST_API:-subkit-api}"
-HOST_TUNNEL="${HOST_TUNNEL:-subkit-tunnel}"
 REGION="${REGION:-fra1}"
 SIZE="${SIZE:-s-2vcpu-4gb}"
 HOST_NAME="${DROPLET_NAME:-subkit-engine}"
@@ -107,7 +106,6 @@ ensure_a_record() {
   fi
 }
 ensure_a_record "$HOST_API" "$HOST_IP"
-ensure_a_record "$HOST_TUNNEL" "$HOST_IP"
 
 # --------------------------------------------------------------------------
 say "4. Ensure firewall '$FIREWALL_NAME' exists and attached"
@@ -286,7 +284,6 @@ cat <<EOF
 
   Droplet:    $HOST_NAME ($HOST_IP)
   DNS:        $HOST_API.$DOMAIN_ROOT  → $HOST_IP
-              $HOST_TUNNEL.$DOMAIN_ROOT → $HOST_IP
   Services:   postgresql-16, caddy, subkit-engine.service (enabled)
   Engine bin: /usr/local/bin/engine (deployed by scripts/deploy.sh)
   Env file:   /etc/subkit/.env

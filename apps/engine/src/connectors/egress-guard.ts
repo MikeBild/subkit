@@ -8,12 +8,6 @@
 // worker. The same blocklist applies to all three. Pulling it out as
 // `assertEgressAllowed` keeps the policy in one place.
 //
-// Tunnel exemption: when an outbound call is going through a tenant's
-// registered tunnel (the tunnel IS the operator-authorized path to
-// private networks), the guard is a no-op. Without this, every tunnel
-// call would be blocked because tunnels are precisely how subkit
-// reaches `10.x` / `192.168.x` services without exposing them publicly.
-//
 // Per-tenant override: `tenants.egress_guard_mode` (added in 0041) lets
 // an operator opt one tenant into `permissive` while the rest stay on
 // the env-var default. Call sites that have a loaded `Tenant` row
@@ -30,10 +24,6 @@ export interface EgressGuardContext {
   /** Explicit mode override. When unset, falls back to
    *  `getConfig().egress.mode`, then to the NODE_ENV default. */
   mode?: EgressGuardMode;
-  /** When set (non-empty), the guard is skipped entirely — the tunnel
-   *  is the operator-authorized path to private networks. Pass `null`
-   *  or `undefined` for direct egress (the common case). */
-  tunnel_target?: string | null;
 }
 
 export class EgressBlockedError extends Error {
@@ -139,25 +129,10 @@ export function isPrivateOrLoopback(hostname: string): boolean {
  * host under the current mode. In `permissive` mode only the most
  * obvious offenders (`localhost`, `0.0.0.0`) are blocked, so the
  * gate is non-trivial in development.
- *
- * When `ctx.tunnel_target` is set (non-empty), the check is skipped
- * entirely — the tunnel itself is the operator-authorized path into
- * the private network.
  */
 export function assertEgressAllowed(url: URL | string, ctx: EgressGuardContext): void {
   const parsed = typeof url === "string" ? new URL(url) : url;
   const host = stripBrackets(parsed.hostname.toLowerCase());
-
-  if (typeof ctx.tunnel_target === "string" && ctx.tunnel_target.length > 0) {
-    logger.debug({
-      module: "egress_guard",
-      action: "tunnel_exempt",
-      tunnel_target: ctx.tunnel_target,
-      tenant_id: ctx.tenant_id ?? null,
-      host,
-    });
-    return;
-  }
 
   const mode = resolveMode(ctx);
 

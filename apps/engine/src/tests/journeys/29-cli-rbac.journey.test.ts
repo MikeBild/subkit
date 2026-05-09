@@ -4,7 +4,7 @@
 // Acceptance criteria:
 //   - AC1: `subkit rbac permissions list --json` returns >= 50 permissions
 //          including workflow:run, audit:read, rbac:write.
-//   - AC2: `subkit rbac roles list --json` includes the 6 built-in roles.
+//   - AC2: `subkit rbac roles list --json` includes the 5 built-in roles.
 //   - AC3: `subkit rbac roles create <name>` creates a tenant role.
 //   - AC4: `subkit rbac roles grant <role_id> <permission>` attaches a
 //          permission to the role.
@@ -211,7 +211,6 @@ describe("journey 29: subkit rbac CLI", () => {
     expect(names).toContain("admin");
     expect(names).toContain("member");
     expect(names).toContain("enduser");
-    expect(names).toContain("tunnel_agent");
     expect(names).toContain("metrics_scraper");
   });
 

@@ -59,13 +59,10 @@ export class WebhookNotificationAdapter implements NotificationAdapter {
   }
 
   async send(delivery: ChatDelivery): Promise<{ platform_message_id: string }> {
-    // SSRF guard: refuse to deliver to private/loopback/link-local
-    // targets. Webhook adapters have no tunnel concept today, so the
-    // guard always fires in strict mode.
+    // SSRF guard: refuse to deliver to private/loopback/link-local targets.
     try {
       assertEgressAllowed(new URL(this.opts.url), {
         tenant_id: delivery.tenant_id,
-        tunnel_target: null,
       });
     } catch (err) {
       if (err instanceof EgressBlockedError) {

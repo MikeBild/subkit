@@ -29,7 +29,6 @@ describe("self-healing/drift-detector", () => {
             resolved_environment: "dev",
             auth_method: "none",
             base_url: null,
-            tunnel_target: null,
           },
         },
       },

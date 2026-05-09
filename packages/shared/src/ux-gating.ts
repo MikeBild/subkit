@@ -40,7 +40,6 @@ export const UX_GATING_PERMISSIONS = [
   "api_key:read",
   "portal_token:read",
   "knowledge:read",
-  "tunnel:read",
 ] as const;
 
 export type UxGatingPermission = (typeof UX_GATING_PERMISSIONS)[number];

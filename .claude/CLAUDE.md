@@ -2,7 +2,7 @@
 
 **Start with `../AGENTS.md`.** It is the canonical repo-wide contract: product boundaries,
 architecture split, code-quality rules, testing layers, quality gate, and the map of the
-41 engine subsystems.
+40 engine subsystems.
 
 This file is a compatibility shim. It indexes what lives under `.claude/` so you can jump
 to the right helper quickly. It does not override `AGENTS.md`.
@@ -12,8 +12,7 @@ to the right helper quickly. It does not override `AGENTS.md`.
 1. `../AGENTS.md` — the contract.
 2. `../SKILLS.md` — one-line index of project-local skills.
 3. The nearest directory-local `AGENTS.md` for the code you are about to touch:
-   `apps/engine/AGENTS.md`, `apps/sk/AGENTS.md`,
-   `apps/agent/AGENTS.md`, `packages/shared/AGENTS.md`.
+   `apps/engine/AGENTS.md`, `apps/sk/AGENTS.md`, `packages/shared/AGENTS.md`.
 4. `.claude/docs/agent-navigation.md` — maps common tasks → docs + subsystem.
 5. The concept doc(s) that own the concern (see the subsystem table in `AGENTS.md`).
 

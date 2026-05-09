@@ -4,7 +4,6 @@ import type { ResolvedPrincipal } from "../../../../auth/types.ts";
 import { roles, systemAccounts, users } from "../../../../db/schema/index.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { can } from "../../../../rbac/evaluator.ts";
-import { tunnelRegistry } from "../../../../tunnels/registry.ts";
 import { translateAutoPersistError } from "../../../persistence/auto-persist.ts";
 import type { ConversationTool, ToolContext } from "../../index.ts";
 
@@ -396,59 +395,6 @@ export const deleteSubscriptionTool: ConversationTool = {
   },
 };
 
-export const deleteTunnelTool: ConversationTool = {
-  name: "delete_tunnel",
-  description: "Unregister a tunnel by id. Requires confirmation first and records audit.",
-  inputSchema: IdInput,
-  category: "tenant_write",
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
-    const auth = await requirePermission(ctx, "tunnel:delete", {
-      type: "tunnel",
-      id: args.id,
-    });
-    if (!auth.allow) return permissionDenied("tunnel:delete", auth.reason);
-
-    const tunnel = await ctx.engineClient.tunnels.get(args.id);
-    if (!tunnel) return { ok: false, data: { error: "tunnel_not_found" } };
-
-    for (const target of tunnel.targets) {
-      tunnelRegistry.detach(ctx.tenant_id, target.target_name);
-    }
-    const ok = await ctx.engineClient.tunnels.delete(tunnel.id);
-    if (!ok) {
-      const audit_log_id = await ctx.engineClient.audit_write({
-        resource_type: "tunnel",
-        resource_id: tunnel.id,
-        action: "conversation.delete_tunnel",
-        result: "error",
-        reason: "tunnel_not_found",
-        metadata: { conversation_id: ctx.conversation_id, tunnel_name: tunnel.name },
-      });
-      return { ok: false, data: { error: "tunnel_not_found", audit_log_id } };
-    }
-    const audit_log_id = await ctx.engineClient.audit_write({
-      resource_type: "tunnel",
-      resource_id: tunnel.id,
-      action: "conversation.delete_tunnel",
-      result: "success",
-      metadata: {
-        conversation_id: ctx.conversation_id,
-        tunnel_name: tunnel.name,
-        target_count: tunnel.targets.length,
-      },
-    });
-    return {
-      ok: true,
-      data: {
-        deleted: true,
-        tunnel: { id: tunnel.id, name: tunnel.name, target_count: tunnel.targets.length },
-        audit_log_id,
-      },
-    };
-  },
-};
-
 export const revokeApiKeyTool: ConversationTool = {
   name: "revoke_api_key",
   description: "Revoke an API key by id. Requires confirmation first and records audit.",
@@ -552,7 +498,6 @@ export const cleanupWriteTools: ConversationTool[] = [
   deleteConnectorTool,
   deleteKnowledgeSourceTool,
   deleteSubscriptionTool,
-  deleteTunnelTool,
   revokeApiKeyTool,
   revokePortalTokenTool,
 ];

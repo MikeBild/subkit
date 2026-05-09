@@ -16,7 +16,7 @@ Nine architecture-level documents, read in order or by concern.
 | [02-concepts.md](02-concepts.md) | The authoritative glossary: every domain term defined exactly once — Tenant, Workflow, Skill, Connector, Execution, Audit Log, and more. |
 | [03-input-surfaces.md](03-input-surfaces.md) | Every way users and systems reach sk: the CLI, REST API, MCP server, chat platforms, webhooks, and scheduled triggers. |
 | [04-authoring.md](04-authoring.md) | How Conversations produce governed workflows: the AI authoring loop, the human approval gate, Skills, Knowledge Sources, and Discovery. |
-| [05-connectors.md](05-connectors.md) | The integration fabric: Connectors, Drivers, Credentials, the vault, OAuth2 lifecycle, and Tunnels for private networks. |
+| [05-connectors.md](05-connectors.md) | The integration fabric: Connectors, Drivers, Credentials, the vault, and the OAuth2 lifecycle. |
 | [06-execution.md](06-execution.md) | The deterministic execution engine: Workflow DAGs, Step types, Execution records, Schedules, and how self-healing keeps workflows healthy. |
 | [07-security-governance.md](07-security-governance.md) | Multi-tenancy, authentication (OIDC, API keys, portal tokens), RBAC, Before-Request Hooks, the credential vault, and the immutable audit trail. |
 | [08-operations.md](08-operations.md) | Deployment topology, configuration, metrics, structured logging, execution inspection, resource limits, self-healing, and backup. |
@@ -48,8 +48,3 @@ Three persona-specific paths to get running fast.
 
 ---
 
-## Active Audits
-
-| Audit | Scope |
-|---|---|
-| [audits/2026-05-architecture-audit.md](audits/2026-05-architecture-audit.md) | Architecture cleanup plan (phases 1–6, ~9 engineer-weeks). Every cleanup PR cites this doc. |

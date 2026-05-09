@@ -350,7 +350,6 @@ describe("policy table integrity", () => {
       "delete_workflow",
       "delete_knowledge_source",
       "delete_subscription",
-      "delete_tunnel",
       "revoke_api_key",
       "revoke_portal_token",
       "approve_patch_candidate",

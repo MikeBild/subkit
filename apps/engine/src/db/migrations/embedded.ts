@@ -41,6 +41,7 @@ import sql0012WorkflowSignals from "./0012_workflow_signals.sql" with { type: "t
 import sql0013CredentialModeTokenMint from "./0013_credential_mode_token_mint.sql" with {
   type: "text",
 };
+import sql0014DropTunnels from "./0014_drop_tunnels.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -79,6 +80,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0011_workflow_waits": sql0011WorkflowWaits,
   "0012_workflow_signals": sql0012WorkflowSignals,
   "0013_credential_mode_token_mint": sql0013CredentialModeTokenMint,
+  "0014_drop_tunnels": sql0014DropTunnels,
 };
 
 const journal = journalMeta as unknown as Journal;

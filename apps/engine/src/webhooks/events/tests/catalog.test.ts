@@ -17,8 +17,6 @@ describe("events catalog", () => {
       "connector.oauth.refreshed",
       "patch.proposed",
       "apikey.rotated",
-      "tunnel.connected",
-      "tunnel.disconnected",
       "conversation.committed",
     ]);
   });

@@ -2,8 +2,7 @@
 // remote URL at connector-creation time. Results feed docs-ingestion.
 //
 // SSRF guard: private RFC-1918 / link-local addresses are blocked unless
-// SUBKIT_ALLOW_PRIVATE_SPEC_FETCH=1 is set (useful for on-prem connectors
-// running behind the tunnel agent on a private LAN).
+// SUBKIT_ALLOW_PRIVATE_SPEC_FETCH=1 is set.
 
 import { getIntrospectionQuery } from "graphql";
 import { getConfig } from "../config/loader.ts";

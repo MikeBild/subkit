@@ -101,7 +101,6 @@ describe("audit_log ↔ setting.applied bijection", () => {
   test("N successful PUTs produce exactly N audit rows and N applied logs with matching resource_id ↔ leaf", async () => {
     const writes: Array<{ path: string; value: unknown }> = [
       { path: "errors.ring_size", value: 250 },
-      { path: "tunnel.registry_max", value: 50 },
       { path: "queue.concurrency", value: 4 },
       { path: "egress.mode", value: "permissive" },
       { path: "mcp.read_only", value: true },

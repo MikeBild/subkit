@@ -1,6 +1,6 @@
 # Terminology gate banlist for subkit. One term per line.
 # Read by scripts/check-terminology.sh — case-insensitive, word-boundary matched
-# against TypeScript/TSX source under apps/engine, apps/sk, apps/agent, packages.
+# against TypeScript/TSX source under apps/engine, apps/sk, packages.
 # Comments (lines starting with #) and blank lines are ignored.
 #
 # Why each term is banned:

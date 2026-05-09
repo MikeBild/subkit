@@ -304,8 +304,6 @@ export const METRIC_NAMES = {
   QUEUE_DEPTH: "queue_depth",
   QUEUE_LAG_MS: "queue_lag_ms",
   OUTBOX_CURSOR_LAG: "outbox_cursor_lag",
-  TUNNEL_CONNECTED: "tunnel_connected",
-  TUNNEL_REGISTRY_EVICTIONS_TOTAL: "tunnel_registry_evictions_total",
   LLM_QUOTA_EXHAUSTED_TOTAL: "llm_quota_exhausted_total",
   PATCH_CANDIDATES_TOTAL: "patch_candidates_total",
   PROCESS_UPTIME_SECONDS: "process_uptime_seconds",
@@ -402,16 +400,6 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.OUTBOX_CURSOR_LAG,
     help: "Outbox listener cursor lag (rows behind head per channel).",
     labels: ["listener_id", "channel"],
-  });
-  reg.registerGauge({
-    name: METRIC_NAMES.TUNNEL_CONNECTED,
-    help: "1 if a tunnel target socket is connected, 0 otherwise.",
-    labels: ["tenant_id", "target"],
-  });
-  reg.registerCounter({
-    name: METRIC_NAMES.TUNNEL_REGISTRY_EVICTIONS_TOTAL,
-    help: "Tunnel-registry LRU evictions; non-zero indicates the per-process cap was hit.",
-    labels: ["reason"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.LLM_QUOTA_EXHAUSTED_TOTAL,

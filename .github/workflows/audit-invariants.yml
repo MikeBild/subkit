@@ -1,7 +1,7 @@
 name: audit-invariants
 
-# Single CI gate for the §6.1 invariants in
-# docs/audits/2026-05-architecture-audit.md.
+# Single CI gate for the engine's architectural invariants (file size,
+# tenant filtering, route layering, coverage floors, subsystem count).
 #
 # The same script (`bun run audit:invariants`) is invoked from:
 #   - this workflow (PR + nightly)

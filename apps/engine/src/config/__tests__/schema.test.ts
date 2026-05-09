@@ -22,12 +22,10 @@ describe("ConfigSchema", () => {
     expect(result.data.log.level).toBe("info");
     expect(result.data.log.format).toBe("ndjson");
     expect(result.data.server.port).toBe(3000);
-    expect(result.data.server.tunnel_port).toBeNull();
     expect(result.data.llm.provider).toBe("mock");
     expect(result.data.llm.providers.anthropic.api_key).toBe("");
     expect(result.data.egress.mode).toBeNull();
     expect(result.data.egress.provider_hosts_extra).toEqual([]);
-    expect(result.data.tunnel.registry_max).toBe(100);
     expect(result.data.errors.ring_size).toBe(100);
     expect(result.data.queue.concurrency).toBe(8);
     expect(result.data.tokens.monthly_budget).toBe(0);

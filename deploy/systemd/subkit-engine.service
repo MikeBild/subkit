@@ -44,11 +44,10 @@ ExecStart=/usr/local/bin/engine
 ; easier to diagnose. `do-bootstrap.sh` step 9 places the file.
 EnvironmentFile=/etc/subkit/.env
 
-; Hard-pin the listen ports so an operator override in /etc/subkit/.env
-; can't drift the Caddy upstream silently. If the ports ever need to
-; change they move here AND in deploy/caddy/Caddyfile in lockstep.
+; Hard-pin the listen port so an operator override in /etc/subkit/.env
+; can't drift the Caddy upstream silently. If the port ever needs to
+; change it moves here AND in deploy/caddy/Caddyfile in lockstep.
 Environment=PORT=3000
-Environment=TUNNEL_PORT=3001
 
 ; Working dir + state. systemd auto-creates these with mode 0750
 ; under the unit's User/Group when the *Directory= keys are set.
@@ -89,8 +88,8 @@ ReadWritePaths=/etc/subkit /var/lib/subkit
 LimitNOFILE=65536
 LimitNPROC=4096
 
-; Network — engine listens on 3000 (HTTP) + 3001 (tunnel WS).
-; Caddy in front handles 443→3000 and 443→3001 routing.
+; Network — engine listens on 3000 (HTTP).
+; Caddy in front handles 443→3000 routing.
 
 [Install]
 WantedBy=multi-user.target

@@ -38,15 +38,13 @@ Terms are grouped by concern. Read the groups in order for a complete mental mod
 
 ## Group 3: Integration
 
-**Connector** — a configured connection to an external integration boundary. A Connector is built from a template, a driver, and credentials. It represents a specific integration instance — for example, a Stripe production account or a GitHub organization. Connectors are tenant-scoped, versioned, and can be bound to a Tunnel when the target boundary lives in a private network.
+**Connector** — a configured connection to an external integration boundary. A Connector is built from a template, a driver, and credentials. It represents a specific integration instance — for example, a Stripe production account or a GitHub organization. Connectors are tenant-scoped and versioned.
 
 **Connector Template** — a pre-built blueprint for a well-known service. Templates include the driver type, authentication configuration, documentation ingestion setup, and guided setup instructions. sk ships 90 Connector Templates covering services across payments, CRM, DevOps, data, communication, and cloud infrastructure. Templates are the starting point for creating a Connector; they are not Connectors themselves.
 
 **Driver** — the protocol layer that executes Connector requests. sk has nine built-in drivers: HTTP, GraphQL, PostgreSQL, S3, FTP, SFTP, SMB, MSSQL, and Redis. Each driver handles request construction, response parsing, pagination, and error normalization for its protocol. Drivers are not pluggable at runtime — the nine built-in drivers cover the intended integration surface.
 
 **Credential** — an encrypted secret stored in the platform's credential vault. Credentials include API keys, OAuth2 tokens, connection strings, and similar sensitive values. Connectors reference Credentials by identifier; the raw secret value is never exposed outside the vault. All Credentials are encrypted at rest. OAuth2 Credentials refresh automatically.
-
-**Tunnel** — a secure outbound WebSocket connection that allows the sk engine to reach services in private networks without requiring inbound firewall rules. The Tunnel Agent is a small binary that runs inside the private network and opens the persistent outbound connection to the engine. The engine routes specific Connector requests through the open Tunnel. Keepalive, reconnect logic, and per-target concurrency limits are built in.
 
 ---
 

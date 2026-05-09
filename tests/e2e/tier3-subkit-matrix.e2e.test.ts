@@ -18,7 +18,6 @@
 //   hooks         GET + POST + DELETE /v1/webhooks/inbound (alias)
 //   subscriptions GET + POST + DELETE /v1/subscriptions
 //   notifications GET /v1/notifications
-//   tunnels       GET + POST /v1/tunnels
 //   mcp catalog   GET /v1/mcp/catalog
 //   workflows     POST history + restore (gap fill on top of subkit-cli.e2e)
 //   apikeys       POST + DELETE (gap fill)
@@ -101,7 +100,6 @@ describe("Tier 3 — read endpoints (every collection responds)", () => {
     "/v1/notifications/channels",
     "/v1/notifications/rules",
     "/v1/notifications/deliveries?limit=10",
-    "/v1/tunnels?limit=10",
     "/v1/patch-candidates?limit=10",
     "/v1/rbac/permissions",
     "/v1/rbac/roles",

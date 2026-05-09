@@ -287,5 +287,5 @@ The conversational authoring layer is aware of the stdlib and proposes `sk.*` fo
 
 ## What to Read Next
 
-- [docs/05-connectors.md](05-connectors.md) — how Connectors, Drivers, Credentials, and Tunnels form the integration fabric that authoring draws on.
+- [docs/05-connectors.md](05-connectors.md) — how Connectors, Drivers, and Credentials form the integration fabric that authoring draws on.
 - [docs/06-execution.md](06-execution.md) — how approved workflows run deterministically, what governance looks like at execution time, and how self-healing keeps workflows healthy.

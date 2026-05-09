@@ -171,10 +171,8 @@ export async function executeGraphQLRequest(p: {
     url.searchParams.set(k, String(v));
   }
 
-  // SSRF guard: block private/loopback/link-local targets. GraphQL
-  // driver doesn't support tunneling today, so pass tunnel_target=null
-  // — the guard fires unconditionally in strict mode.
-  assertEgressAllowed(url, { tenant_id: p.tenant_id, tunnel_target: null });
+  // SSRF guard: block private/loopback/link-local targets.
+  assertEgressAllowed(url, { tenant_id: p.tenant_id });
 
   logger.debug({
     module: "connector",

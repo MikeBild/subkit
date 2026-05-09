@@ -24,7 +24,7 @@ This guide walks the 4.2.0 systemd-native path: a single `bun build --compile` b
 Prerequisites:
 - `doctl` installed and authenticated (only for the DO host-create branch; skip if the droplet already exists or you're on AWS/GCP/etc.).
 - A registered SSH key on the DO account (or your hosting provider's equivalent).
-- A DNS zone you control on DO nameservers (the script creates `subkit-api.<zone>` + `subkit-tunnel.<zone>` A records).
+- A DNS zone you control on DO nameservers (the script creates a `subkit-api.<zone>` A record).
 
 ```bash
 SSH_KEY_NAME=mikebild-local \

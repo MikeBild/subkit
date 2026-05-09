@@ -105,8 +105,8 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
     case "string":
       return pickStringCandidate(leaf, tag);
     case "number":
-      // Avoid 100 (matches the default for errors.ring_size /
-      // tunnel.registry_max). Pick (salt mod 60) + 5 → 5..64.
+      // Avoid 100 (matches the default for errors.ring_size). Pick
+      // (salt mod 60) + 5 → 5..64.
       return ((salt + 5) % 60) + 5;
     case "boolean":
       // Always flip from the schema default. All boolean leaves in

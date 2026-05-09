@@ -127,7 +127,6 @@ export function referencesProseConfirmation(asstText: string, toolName: string):
     if (toolName === "delete_connector") return /\bconnector/i;
     if (toolName === "delete_knowledge_source") return /\bknowledge/i;
     if (toolName === "delete_subscription") return /\bsubscription/i;
-    if (toolName === "delete_tunnel") return /\btunnel/i;
     if (toolName === "delete_schedule") return /\bschedule/i;
     if (toolName === "revoke_api_key") return /\b(?:api[_ ]?key|key)/i;
     if (toolName === "revoke_portal_token") return /\b(?:portal[_ ]?token|token)/i;

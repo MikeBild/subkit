@@ -22,7 +22,7 @@ Both are exposed on the HTTP API, the MCP surface, and through the sk CLI.
 
 ## Canonical references
 
-- `docs/05-connectors.md` — Connector model, drivers, templates, auth, tunnels, schema versions.
+- `docs/05-connectors.md` — Connector model, drivers, templates, auth, schema versions.
 - `docs/07-security-governance.md` — Credentials, OAuth2, crypto, credential vault.
 - `docs/04-authoring.md` — Documentation ingestion and the connector template catalog context.
 

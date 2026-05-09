@@ -22,7 +22,6 @@ export * from "./notifications.ts";
 export * from "./rbac.ts";
 export * from "./request_hooks.ts";
 export * from "./skills.ts";
-export * from "./tunnels.ts";
 export * from "./webhooks.ts";
 // webhooks-extras is a re-export barrel (same tables); omitted to avoid
 // duplicate symbol exports.

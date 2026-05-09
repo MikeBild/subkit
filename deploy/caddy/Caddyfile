@@ -18,20 +18,3 @@ subkit-api.mikebild.dev {
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:3000
 }
-
-subkit-tunnel.mikebild.dev {
-	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		X-Content-Type-Options nosniff
-		X-Frame-Options DENY
-		Referrer-Policy strict-origin-when-cross-origin
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
-		-Server
-	}
-	handle /v1/tunnels/* {
-		reverse_proxy 127.0.0.1:3001
-	}
-	handle {
-		respond 404
-	}
-}

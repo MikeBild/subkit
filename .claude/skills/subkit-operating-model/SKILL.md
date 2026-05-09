@@ -27,7 +27,6 @@ order them and work the highest-risk (state-mutating, audit-producing) subsystem
 | Inbound webhook (verify signature) | `apps/engine/src/webhooks/` | `http/`, `rbac/` | `docs/03-input-surfaces.md` |
 | Outbound webhook (retry, signed) | `apps/engine/src/webhooks/`, `notifications/` | `outbox/` | `docs/03-input-surfaces.md` |
 | Chat adapter (Slack/Teams/Google) | `apps/engine/src/chat/` | `conversations/`, `rbac/` | `docs/03-input-surfaces.md` |
-| Tunnel / private network | `apps/engine/src/tunnels/`, `apps/agent/` | | `docs/05-connectors.md` |
 | AI flow / prompt assembly / token budget | `apps/engine/src/llm/`, `conversations/` | `skills/`, `knowledge/` | `docs/04-authoring.md` |
 | Curated LLM-context Skill | `apps/engine/src/skills/` | `audit/` | `docs/04-authoring.md` |
 | Skill Candidate detection / promotion | `apps/engine/src/skill-candidates/` | `skills/`, `audit/` | `docs/04-authoring.md` |

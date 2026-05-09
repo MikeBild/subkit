@@ -21,7 +21,6 @@ Only the latest released minor on the current major line receives security fixes
 
 - The engine HTTP/MCP/webhook surfaces under `apps/engine/src/http`, `apps/engine/src/mcp`, `apps/engine/src/webhooks`.
 - The `sk` CLI under `apps/sk/`.
-- The tunnel agent under `apps/agent/`.
 - Engine-side authentication, RBAC, audit logging, credential storage, and OAuth2 flows.
 - The deployment scripts under `scripts/release/` and the published Docker images.
 

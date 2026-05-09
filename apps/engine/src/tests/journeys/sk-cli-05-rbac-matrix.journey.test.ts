@@ -17,8 +17,8 @@
 //   AC4. portal_token_user — allowed conversation:read/write/cancel;
 //        denied conversation:list, conversation:approve,
 //        conversation:commit, memory:write, mcp:read.
-//   AC5. tunnel_agent / metrics_scraper — denied every new perm (they
-//        are machine roles, not chat participants).
+//   AC5. metrics_scraper — denied every new perm (machine role, not a
+//        chat participant).
 //
 // Audit coverage:
 //   - policy.denied rows are not asserted here — the /rbac/can endpoint
@@ -96,16 +96,6 @@ const EXPECTED: Record<string, Record<NewPermission, boolean>> = {
     "memory:write": false,
     "mcp:read": false,
   },
-  tunnel_agent: {
-    "conversation:read": false,
-    "conversation:write": false,
-    "conversation:approve": false,
-    "conversation:cancel": false,
-    "conversation:commit": false,
-    "conversation:list": false,
-    "memory:write": false,
-    "mcp:read": false,
-  },
   metrics_scraper: {
     "conversation:read": false,
     "conversation:write": false,
@@ -128,13 +118,7 @@ describe("journey: sk-cli rbac matrix", () => {
 
     // For every non-admin built-in role, seed a dedicated user row and
     // pin role_id so the evaluator sees the exact role we intend to test.
-    for (const roleName of [
-      "member",
-      "enduser",
-      "portal_token_user",
-      "tunnel_agent",
-      "metrics_scraper",
-    ] as const) {
+    for (const roleName of ["member", "enduser", "portal_token_user", "metrics_scraper"] as const) {
       const [u] = await ctx.db
         .insert(users)
         .values({

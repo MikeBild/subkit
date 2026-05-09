@@ -13,7 +13,6 @@
     "apps/engine/src/**/*.ts",
     "apps/engine/src/**/*.tsx",
     "apps/engine/src/**/*.d.ts",
-    "apps/agent/src/**/*.ts",
     "apps/sk/src/**/*.ts",
     "apps/sk/src/**/*.tsx",
     "packages/shared/src/**/*.ts",

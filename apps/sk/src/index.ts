@@ -44,7 +44,6 @@ import { skillCandidatesCommand } from "./commands/skill-candidates.ts";
 import { skillsCommand } from "./commands/skills.ts";
 import { subscriptionsCommand } from "./commands/subscriptions.ts";
 import { systemAccountsCommand } from "./commands/system-accounts.ts";
-import { tunnelsCommand } from "./commands/tunnels.ts";
 import { updateCommand } from "./commands/update.ts";
 import { usersCommand } from "./commands/users.ts";
 import { workflowsCommand } from "./commands/workflows.ts";
@@ -492,7 +491,6 @@ const mainCommand = defineCommand({
     hooks: hooksCommand,
     subscriptions: subscriptionsCommand,
     events: eventsCommand,
-    tunnels: tunnelsCommand,
     notifications: notificationsCommand,
     diagnostics: diagnosticsCommand,
     init: initCommand,
@@ -601,7 +599,6 @@ const PERM_TIER: Record<string, number> = {
   "execution:read": 3,
   "notification:read": 3,
   "notification:write": 3,
-  "tunnel:read": 3,
   "discovery:read": 3,
   "subscription:read": 3,
   "inbound_hook:read": 3,
@@ -657,7 +654,6 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   hooks: { command: hooksCommand, requires: "inbound_hook:read" },
   subscriptions: { command: subscriptionsCommand, requires: "subscription:read" },
   events: { command: eventsCommand, requires: "audit:read" },
-  tunnels: { command: tunnelsCommand, requires: "tunnel:read" },
   notifications: { command: notificationsCommand, requires: "notification:read" },
   diagnostics: { command: diagnosticsCommand, requires: "audit:read" },
   // `sk init` is the first command an operator runs against a fresh

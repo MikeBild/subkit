@@ -56,7 +56,7 @@ describe("seedAtBoot (development)", () => {
     const perms = await ctx.db.select().from(permissions);
     expect(perms.length).toBeGreaterThan(0);
     const builtinRoles = await ctx.db.select().from(roles).where(isNull(roles.tenant_id));
-    expect(builtinRoles.length).toBe(6);
+    expect(builtinRoles.length).toBe(5);
   });
 });
 

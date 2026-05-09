@@ -5,7 +5,6 @@
   },
   "server": {
     "port": 3000,
-    "tunnel_port": null,
     "public_base_url": ""
   },
   "database": {
@@ -134,9 +133,6 @@
   "mcp": {
     "api_key": "",
     "read_only": false
-  },
-  "tunnel": {
-    "registry_max": 100
   },
   "errors": {
     "ring_size": 100

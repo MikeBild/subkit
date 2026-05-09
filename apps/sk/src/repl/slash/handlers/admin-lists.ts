@@ -121,16 +121,6 @@ export async function dispatchAdminListSlash(
       }
       return panify(ctx, "notifications", lines);
     }
-    case "tunnels": {
-      // Tunnel shape not yet in openapi surface.
-      const r = await ctx.client.listTunnels();
-      if (r.items.length === 0) return "no tunnels";
-      const lines = r.items.map((t) => {
-        const tun = t as Record<string, unknown>;
-        return `${String(tun.id ?? "").slice(0, 8)}  ${String(tun.name ?? "").padEnd(20)}  ${String(tun.status ?? "")}`;
-      });
-      return panify(ctx, "tunnels", lines, `${r.items.length} found`);
-    }
     case "discovery": {
       // Discovery-run shape not yet in openapi surface.
       const r = await ctx.client.listDiscoveryRuns({ limit: 10 });

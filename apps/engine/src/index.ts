@@ -22,7 +22,6 @@ import { startBoss, stopBoss } from "./queue/boss.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
 import { SchedulerReconciler } from "./scheduler/reconciler.ts";
 import { applySkillSeedsForAllTenants, loadEmbeddedSkillSeeds } from "./skills/seed.ts";
-import { startTunnelWsServer, type TunnelWsServerHandle } from "./tunnels/ws-server.ts";
 import { setUpdateState } from "./update-state.ts";
 
 const SMOKE_FLAG = "--smoke";
@@ -390,32 +389,6 @@ async function runServer(): Promise<void> {
   // loader → consumer chain is fully wired.
   await emitBootComplete();
 
-  // Tunnel WebSocket listener — separate Bun.serve listener (Bun runtime
-  // required) so tunnel agents have a place to connect. Defaults to PORT+1
-  // when server.tunnel_port is not set.
-  let tunnelWs: TunnelWsServerHandle | null = null;
-  try {
-    const tunnelOpts = engineServeOptions(getConfig().server.tunnel_port ?? port + 1);
-    tunnelWs = startTunnelWsServer({
-      db,
-      port: tunnelOpts.port,
-      hostname: tunnelOpts.hostname,
-    });
-    logger.info({
-      module: "engine",
-      action: "tunnels.ws.started",
-      msg: `tunnel ws listening on ${tunnelWs.url}`,
-      port: tunnelWs.port,
-    });
-  } catch (err) {
-    logger.warn({
-      module: "engine",
-      action: "tunnels.ws.start_failed",
-      msg: "tunnel ws server failed to start (Bun runtime required)",
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
   // See note above — we skip the audit row for system startup
   // because audit_log.tenant_id is NOT NULL and we intentionally
   // do not pin startup events to any tenant. logger.info above
@@ -445,18 +418,6 @@ async function runServer(): Promise<void> {
       await reconciler.stop();
       await stopBoss(10_000);
       await stopListener();
-      if (tunnelWs) {
-        try {
-          await tunnelWs.stop();
-        } catch (err) {
-          logger.warn({
-            module: "engine",
-            action: "tunnels.ws.stop_failed",
-            msg: "failed to stop tunnel ws server",
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
       await new Promise<void>((resolve) => {
         (server as unknown as { close?: (cb: () => void) => void }).close?.(() => resolve()) ??
           resolve();

@@ -28,7 +28,6 @@ export const BUILTIN_ROLE_NAMES = {
   ADMIN: "admin",
   MEMBER: "member",
   ENDUSER: "enduser",
-  TUNNEL_AGENT: "tunnel_agent",
   METRICS_SCRAPER: "metrics_scraper",
   PORTAL_TOKEN_USER: "portal_token_user",
 } as const;
@@ -43,9 +42,9 @@ export const BUILTIN_ROLE_NAMES = {
 // `permission_denied:workflow:delete` errors when a user tried to
 // remove a connector + workflow they had just created. The fix is to
 // drop the blanket and rely on the targeted prefix denies for the
-// truly admin-only surfaces (rbac, audit, credential, tunnel,
-// api_key, discovery approval). credential:delete and tunnel:delete
-// are already covered by the existing prefix filters above.
+// truly admin-only surfaces (rbac, audit, credential, api_key,
+// discovery approval). credential:delete is already covered by the
+// existing prefix filter above.
 function memberPermissionFilter(name: string): boolean {
   if (name.startsWith("rbac:")) return false;
   if (name === "audit:read") return false;
@@ -53,7 +52,6 @@ function memberPermissionFilter(name: string): boolean {
   if (name === "api_key:rotate") return false;
   if (name === "api_key:revoke") return false;
   if (name.startsWith("credential:") && name !== "credential:read") return false;
-  if (name.startsWith("tunnel:")) return false;
   if (name === "discovery:approve") return false;
   return true;
 }
@@ -68,7 +66,6 @@ const ENDUSER_PERMISSIONS = new Set<string>([
   "conversation:list",
   "knowledge:read",
 ]);
-const TUNNEL_AGENT_PERMISSIONS = new Set<string>(["tunnel:agent", "tunnel:read"]);
 const METRICS_SCRAPER_PERMISSIONS = new Set<string>(["metrics:read"]);
 const PORTAL_TOKEN_USER_PERMISSIONS = new Set<string>([
   "workflow:read",
@@ -82,7 +79,6 @@ export interface SeededRoleIds {
   admin: string;
   member: string;
   enduser: string;
-  tunnel_agent: string;
   metrics_scraper: string;
   portal_token_user: string;
 }
@@ -151,17 +147,12 @@ export async function seedBuiltinRolesAndPermissions(db: Db): Promise<SeededRole
   const memberId = await upsertBuiltinRole(
     db,
     BUILTIN_ROLE_NAMES.MEMBER,
-    "Day-to-day operator access: read + run + author + delete own operational resources (workflows, connectors, skills, schedules, subscriptions, inbound hooks, knowledge sources). NOT permitted: rbac changes, audit reads, secret/credential mutations, tunnel infra, api_key lifecycle, discovery approvals.",
+    "Day-to-day operator access: read + run + author + delete own operational resources (workflows, connectors, skills, schedules, subscriptions, inbound hooks, knowledge sources). NOT permitted: rbac changes, audit reads, secret/credential mutations, api_key lifecycle, discovery approvals.",
   );
   const enduserId = await upsertBuiltinRole(
     db,
     BUILTIN_ROLE_NAMES.ENDUSER,
     "Portal end-user: run approved workflows and view their executions",
-  );
-  const tunnelAgentId = await upsertBuiltinRole(
-    db,
-    BUILTIN_ROLE_NAMES.TUNNEL_AGENT,
-    "Tunnel agent daemon: connect the WebSocket bridge",
   );
   const metricsScraperId = await upsertBuiltinRole(
     db,
@@ -179,12 +170,10 @@ export async function seedBuiltinRolesAndPermissions(db: Db): Promise<SeededRole
     if (memberPermissionFilter(name)) memberPermIds.push(pid);
   }
   const enduserPermIds: string[] = [];
-  const tunnelAgentPermIds: string[] = [];
   const metricsScraperPermIds: string[] = [];
   const portalTokenUserPermIds: string[] = [];
   for (const [name, pid] of permIds) {
     if (ENDUSER_PERMISSIONS.has(name)) enduserPermIds.push(pid);
-    if (TUNNEL_AGENT_PERMISSIONS.has(name)) tunnelAgentPermIds.push(pid);
     if (METRICS_SCRAPER_PERMISSIONS.has(name)) metricsScraperPermIds.push(pid);
     if (PORTAL_TOKEN_USER_PERMISSIONS.has(name)) portalTokenUserPermIds.push(pid);
   }
@@ -192,7 +181,6 @@ export async function seedBuiltinRolesAndPermissions(db: Db): Promise<SeededRole
   await setRolePermissions(db, adminId, allPermIds);
   await setRolePermissions(db, memberId, memberPermIds);
   await setRolePermissions(db, enduserId, enduserPermIds);
-  await setRolePermissions(db, tunnelAgentId, tunnelAgentPermIds);
   await setRolePermissions(db, metricsScraperId, metricsScraperPermIds);
   await setRolePermissions(db, portalTokenUserId, portalTokenUserPermIds);
 
@@ -200,7 +188,6 @@ export async function seedBuiltinRolesAndPermissions(db: Db): Promise<SeededRole
     admin: adminId,
     member: memberId,
     enduser: enduserId,
-    tunnel_agent: tunnelAgentId,
     metrics_scraper: metricsScraperId,
     portal_token_user: portalTokenUserId,
   };
@@ -229,10 +216,6 @@ export async function backfillRoleIds(db: Db, ids: SeededRoleIds): Promise<void>
   // System accounts: name-based heuristic. Everything unknown falls
   // back to `member` (NOT admin — that was the old default and it's
   // exactly the footgun C7 exists to close).
-  await db
-    .update(systemAccounts)
-    .set({ role_id: ids.tunnel_agent })
-    .where(and(isNull(systemAccounts.role_id), sql`${systemAccounts.name} LIKE 'tunnel-agent%'`));
   await db
     .update(systemAccounts)
     .set({ role_id: ids.metrics_scraper })

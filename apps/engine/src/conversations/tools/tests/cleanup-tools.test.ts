@@ -10,16 +10,12 @@ import {
 } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
-import { tunnelRegistry } from "../../../tunnels/registry.ts";
-import { fingerprintAgentToken, getTunnel, upsertTunnel } from "../../../tunnels/service.ts";
-import type { TunnelSocket } from "../../../tunnels/types.ts";
 import { createWorkflow } from "../../../workflows/service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import {
   deleteConnectorTool,
   deleteKnowledgeSourceTool,
   deleteSubscriptionTool,
-  deleteTunnelTool,
   deleteWorkflowTool,
   revokeApiKeyTool,
   revokePortalTokenTool,
@@ -99,14 +95,6 @@ async function seedWorkflow(name: string, slug: string) {
   );
   if ("errors" in result) throw new Error(result.errors.join(", "));
   return result.workflow;
-}
-
-function dummySocket(): TunnelSocket {
-  return {
-    send() {},
-    close() {},
-    readyState: 1,
-  };
 }
 
 describe("cleanup write conversation tools", () => {
@@ -199,38 +187,6 @@ describe("cleanup write conversation tools", () => {
     });
     expect(await countAudit("subscription.deleted", subscription!.id)).toBe(1);
     expect(await countAudit("conversation.delete_subscription", subscription!.id)).toBe(1);
-  });
-
-  test("delete_tunnel unregisters the tunnel and detaches live registry targets", async () => {
-    const { tunnel } = await upsertTunnel(
-      {
-        tenant_id: ctx.tenant_id,
-        name: "cleanup-tunnel",
-        agent_token_sha256: fingerprintAgentToken("cleanup-token"),
-        state: "registered",
-        targets: [{ name: "internal-api", local_base_url: "http://internal" }],
-      },
-      ctx.testDb.db,
-    );
-    tunnelRegistry.attach({
-      tunnel_id: tunnel.id,
-      tenant_id: ctx.tenant_id,
-      tunnel_name: tunnel.name,
-      target: "internal-api",
-      socket: dummySocket(),
-      concurrency_cap: 8,
-    });
-
-    const result = await deleteTunnelTool.execute(makeToolContext(), { id: tunnel.id });
-    expect(result.ok).toBe(true);
-    expect(result.data).toMatchObject({
-      deleted: true,
-      tunnel: { id: tunnel.id, name: tunnel.name, target_count: 1 },
-    });
-    expect(tunnelRegistry.get(ctx.tenant_id, "internal-api")).toBeUndefined();
-    expect(await getTunnel(ctx.tenant_id, tunnel.id, ctx.testDb.db)).toBeNull();
-    expect(await countAudit("tunnel.unregistered", tunnel.id)).toBe(1);
-    expect(await countAudit("conversation.delete_tunnel", tunnel.id)).toBe(1);
   });
 
   test("revoke_api_key revokes a key and records both audit rows", async () => {

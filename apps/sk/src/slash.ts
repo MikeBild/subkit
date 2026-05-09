@@ -427,12 +427,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "notification:read",
   },
   {
-    name: "tunnels",
-    help: "List registered tunnels",
-    category: "admin",
-    requires: "tunnel:read",
-  },
-  {
     name: "discovery",
     help: "List discovery runs and artifacts",
     category: "admin",

@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 //
-// Audit-invariants — the single CI gate enforcing §6.1 of
-// docs/audits/2026-05-architecture-audit.md.
+// Audit-invariants — the single CI gate enforcing the engine's
+// architectural invariants (file size, tenant filtering, route layering,
+// coverage floors, ...).
 //
-// Runs every check from the audit's invariant list and exits non-zero
+// Runs every check from the invariant list and exits non-zero
 // on any failure. The same script is invoked from:
 //   - .github/workflows/audit-invariants.yml      (PR + nightly CI)
 //   - package.json scripts (`bun run audit:invariants`)            (release gate)
@@ -210,7 +211,6 @@ function checkRouteLayering(): Result {
     "schema-versions",
     "skill-candidates",
     "docs-ingestion",
-    "tunnels",
     "chat",
     "mcp",
     "pubsub",
@@ -648,7 +648,7 @@ function checkTestSeamsGated(): Result {
   ] as const;
 
   const offenders: string[] = [];
-  const roots = ["apps/engine/src", "apps/sk/src", "apps/agent/src", "packages"];
+  const roots = ["apps/engine/src", "apps/sk/src", "packages"];
   for (const root of roots) {
     const files = listFiles(
       root,

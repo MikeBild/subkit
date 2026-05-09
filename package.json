@@ -1,6 +1,6 @@
 {
   "name": "subkit",
-  "version": "4.1.0",
+  "version": "4.3.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -12,9 +12,8 @@
     "dev": "bun run --watch apps/engine/src/index.ts",
     "build:engine": "bun build apps/engine/src/index.ts --compile --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/engine && sh scripts/codesign-macos.sh dist/engine",
     "build:engine:linux-x64": "bun build apps/engine/src/index.ts --compile --target=bun-linux-x64 --define \"BUILD_VERSION=\\\"${ENGINE_VERSION:-$(node -p 'require(\"./package.json\").version')}\\\"\" --outfile dist/engine-linux-x64",
-    "build:agent": "bun build apps/agent/src/index.ts --compile --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/tunnel-agent && sh scripts/codesign-macos.sh dist/tunnel-agent",
     "build:sk": "bun build apps/sk/src/index.ts --compile --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/sk && sh scripts/codesign-macos.sh dist/sk",
-    "build:all": "bun run build:engine && bun run build:agent && bun run build:sk",
+    "build:all": "bun run build:engine && bun run build:sk",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

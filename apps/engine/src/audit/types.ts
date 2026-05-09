@@ -157,11 +157,6 @@ export const AuditAction = {
   NOTIFICATION_RULE_DELETED: "notification_rule.deleted",
   NOTIFICATION_RULE_TESTED: "notification_rule.tested",
 
-  TUNNEL_REGISTERED: "tunnel.registered",
-  TUNNEL_UNREGISTERED: "tunnel.unregistered",
-  TUNNEL_DISCONNECTED: "tunnel.disconnected",
-  TUNNEL_REQUEST_FORWARDED: "tunnel.request_forwarded",
-
   AUTH_PROVIDER_ADDED: "auth_provider.added",
   AUTH_PROVIDER_REMOVED: "auth_provider.removed",
   AUTH_PROVIDER_REORDERED: "auth_provider.reordered",

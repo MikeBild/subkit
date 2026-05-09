@@ -43,7 +43,6 @@ const ENDUSER_PERMISSIONS = new Set<string>([
   "conversation:list",
   "knowledge:read",
 ]);
-const TUNNEL_AGENT_PERMISSIONS = new Set<string>(["tunnel:agent", "tunnel:read"]);
 const METRICS_SCRAPER_PERMISSIONS = new Set<string>(["metrics:read"]);
 const PORTAL_TOKEN_USER_PERMISSIONS = new Set<string>([
   "workflow:read",
@@ -60,7 +59,6 @@ function memberAllows(name: string): boolean {
   if (name === "api_key:rotate") return false;
   if (name === "api_key:revoke") return false;
   if (name.startsWith("credential:") && name !== "credential:read") return false;
-  if (name.startsWith("tunnel:")) return false;
   if (name === "discovery:approve") return false;
   return true;
 }
@@ -73,8 +71,6 @@ function expectedAllow(roleName: string, permission: string): boolean {
       return memberAllows(permission);
     case BUILTIN_ROLE_NAMES.ENDUSER:
       return ENDUSER_PERMISSIONS.has(permission);
-    case BUILTIN_ROLE_NAMES.TUNNEL_AGENT:
-      return TUNNEL_AGENT_PERMISSIONS.has(permission);
     case BUILTIN_ROLE_NAMES.METRICS_SCRAPER:
       return METRICS_SCRAPER_PERMISSIONS.has(permission);
     case BUILTIN_ROLE_NAMES.PORTAL_TOKEN_USER:
@@ -131,7 +127,6 @@ describe("rbac matrix", () => {
     const adminRoleId = await findRoleId(BUILTIN_ROLE_NAMES.ADMIN);
     const memberRoleId = await findRoleId(BUILTIN_ROLE_NAMES.MEMBER);
     const enduserRoleId = await findRoleId(BUILTIN_ROLE_NAMES.ENDUSER);
-    const tunnelRoleId = await findRoleId(BUILTIN_ROLE_NAMES.TUNNEL_AGENT);
     const metricsRoleId = await findRoleId(BUILTIN_ROLE_NAMES.METRICS_SCRAPER);
     const portalUserRoleId = await findRoleId(BUILTIN_ROLE_NAMES.PORTAL_TOKEN_USER);
 
@@ -164,7 +159,6 @@ describe("rbac matrix", () => {
     const adminId = await seedUser(tenantA, "admin@a", "admin", adminRoleId);
     const memberId = await seedUser(tenantA, "member@a", "member", memberRoleId);
     const enduserId = await seedUser(tenantA, "enduser@a", "enduser", enduserRoleId);
-    const tunnelAcctId = await seedSystemAccount(tenantA, "tunnel-agent-a", tunnelRoleId);
     const metricsAcctId = await seedSystemAccount(tenantA, "metrics-scraper-a", metricsRoleId);
     const portalUserId = await seedUser(tenantA, "portaluser@a", "enduser", portalUserRoleId);
 
@@ -188,13 +182,6 @@ describe("rbac matrix", () => {
       id: enduserId,
       tenant_id: tenantA,
       roles: [BUILTIN_ROLE_NAMES.ENDUSER],
-    };
-    principals[BUILTIN_ROLE_NAMES.TUNNEL_AGENT] = {
-      provider: "api_key",
-      kind: "system_account",
-      id: tunnelAcctId,
-      tenant_id: tenantA,
-      roles: [BUILTIN_ROLE_NAMES.TUNNEL_AGENT],
     };
     principals[BUILTIN_ROLE_NAMES.METRICS_SCRAPER] = {
       provider: "api_key",
@@ -393,18 +380,18 @@ describe("rbac matrix", () => {
     });
 
     test("grant on system_account subject works the same way", async () => {
-      const tunnelAcct = principals[BUILTIN_ROLE_NAMES.TUNNEL_AGENT]!;
+      const metricsAcct = principals[BUILTIN_ROLE_NAMES.METRICS_SCRAPER]!;
       await grantsSvc.grantResource(db, {
         tenant_id: tenantA,
         subject_type: "system_account",
-        subject_id: tunnelAcct.id,
+        subject_id: metricsAcct.id,
         resource_type: "workflow",
         resource_id: workflowBeta,
         permission: "workflow:run",
       });
       const onTarget = await can(db, {
         tenant_id: tenantA,
-        principal: tunnelAcct,
+        principal: metricsAcct,
         permission: "workflow:run",
         resource: { type: "workflow", id: workflowBeta },
       });

@@ -1,5 +1,4 @@
-# File-size allowlist for the audit-invariants CI check (§6.1 of
-# docs/audits/2026-05-architecture-audit.md).
+# File-size allowlist for the audit-invariants CI check.
 #
 # Files listed here exceed the 1000-LOC ceiling. Each entry needs a
 # written reason. Adding to this list requires PR review.

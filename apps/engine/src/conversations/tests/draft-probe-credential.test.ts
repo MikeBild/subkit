@@ -21,7 +21,7 @@ import { createDeterministicUuidFactory } from "../../test-helpers/determinism/i
 const uuid = createDeterministicUuidFactory(0xd4af7_c4ed);
 
 import { EngineClient } from "../../engine-client/index.ts";
-import { startLocalTargetServer } from "../../tunnels/tests/setup.ts";
+import { startLocalTargetServer } from "../../test-helpers/local-http.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,

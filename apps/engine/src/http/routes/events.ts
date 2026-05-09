@@ -137,8 +137,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
       | "connector.oauth"
       | "conversation.stream"
       | "event.emitted"
-      | "notification.emitted"
-      | "tunnel.state";
+      | "notification.emitted";
     const event_id = await db.transaction(async (tx) => {
       return await writeEvent(tx, {
         tenant_id: principal.tenant_id,
