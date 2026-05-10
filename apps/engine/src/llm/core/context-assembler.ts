@@ -107,7 +107,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // instead — `assembleEnhancedPrompt` calls
 // `generateMainAgentSystemPrompt` and uses the result verbatim.
 
-const BASE_SYSTEM_PROMPTS: Record<Exclude<LlmFlow, "converse">, string> = {
+// `suggest_next` is excluded because it has its own minimal prompt
+// assembler (`llm/core/suggestion-prompt.ts`) that intentionally does
+// NOT load skills / knowledge / docs — adding it here would invite a
+// future refactor that re-routes it through `assembleEnhancedPrompt`
+// and re-introduces the 1M-token empty-turn bug class.
+const BASE_SYSTEM_PROMPTS: Record<Exclude<LlmFlow, "converse" | "suggest_next">, string> = {
   generate: [
     "You are the subkit workflow engine's generate flow.",
     "Turn the user's description into a typed WorkflowDef draft.",
@@ -166,6 +171,13 @@ export async function basePromptFor(
       ...(authoringHint ? { authoring_hint: authoringHint } : {}),
     });
     return result.content;
+  }
+  if (flow === "suggest_next") {
+    // `suggest_next` is intentionally outside this assembler's purview
+    // — see the BASE_SYSTEM_PROMPTS comment above. Callers must use
+    // `llm/core/suggestion-prompt.ts` directly. Throwing here keeps a
+    // future drift towards the heavy assembler from compiling.
+    throw new Error("basePromptFor: suggest_next must use suggestion-prompt.ts");
   }
   return BASE_SYSTEM_PROMPTS[flow];
 }

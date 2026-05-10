@@ -45,6 +45,13 @@ export interface AppendMessageParams {
    *  through. The runLoop fallback that pre-#148 covered missing
    *  controllers has been retired. */
   turn_abort_ctrl: AbortController;
+  /**
+   * Client-side opt-out for the next-message preview frame. When true
+   * the loop emits `{ suggestion: null, reason: "client-suppress" }`
+   * and skips any model call; sk-cli sets this after N consecutive
+   * dismissals.
+   */
+  next_suggestion_suppress?: boolean;
 }
 
 export async function appendUserMessage(
@@ -132,6 +139,9 @@ export async function appendUserMessage(
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
     ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
     ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
+    ...(p.next_suggestion_suppress !== undefined
+      ? { next_suggestion_suppress: p.next_suggestion_suppress }
+      : {}),
   });
   const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!updated) throw new Error("conversation disappeared");

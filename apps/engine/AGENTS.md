@@ -133,6 +133,29 @@ The cost is operational: pg-boss demands Postgres, and step execution can't
 be a pure function of the request anymore. Worth it for production, ignored
 for `sk eval` which runs in-process.
 
+### Conversations · `next_suggestion` SSE event
+
+The converse loop emits one `next_suggestion` frame per turn,
+immediately after `completed` and before the SSE outcome envelope.
+Sk-cli paints it as ghost text in the input composer; other consumers
+ignore it. Generation runs through `conversations/suggest-next.ts`
+which orchestrates a deterministic English offer-parse fast path,
+falling back to a Haiku-class model call.
+
+The suggestion call MUST NOT use `assembleEnhancedPrompt`. It has its
+own minimal `llm/core/suggestion-prompt.ts` assembler that only loads
+the last ≤8 turns of conversation history — no skills, no knowledge,
+no docs, no runtime context. Routing it through the heavy assembler
+re-introduces the 1M-token empty-turn class of bug. Both
+`BASE_SYSTEM_PROMPTS` (compile-time `Record<Exclude<LlmFlow, "converse"
+| "suggest_next">, string>`) and `basePromptFor` (runtime `throw`)
+enforce this at the type level.
+
+The frame is additive — clients that don't know about it ignore it,
+so adding new fields is safe. Do not move the emission point earlier
+in the loop without updating the frame-ordering integration tests in
+`conversations/loop/suggest-next-emitter.test.ts`.
+
 ### `ConnectorSystem` facade (see `connectors/system.ts`)
 
 Mirrors the reference impl's `SystemManager` read-side interface

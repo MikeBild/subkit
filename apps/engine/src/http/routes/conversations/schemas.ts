@@ -3,6 +3,7 @@
 // every per-sub-resource module imports from here.
 
 import { z } from "@hono/zod-openapi";
+import { SUGGEST_NEXT_KINDS, SUGGEST_NEXT_REASONS } from "@shared/suggest-next-reasons.ts";
 import type * as svc from "../../../conversations/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 
@@ -130,8 +131,47 @@ export const AppendMessageBody = z
     message: z.string().min(1),
     memory: z.string().optional(),
     permission_mode: PermissionModeSchema.optional(),
+    /**
+     * Per-conversation opt-out for the next-message suggestion that
+     * normally rides on the SSE response. Sk-cli sets this to `true`
+     * after the user dismisses N suggestions in a row, and clears it
+     * the next time they accept one. Engine honors it by emitting a
+     * `next_suggestion` frame with `suggestion: null, reason:
+     * "client-suppress"` so the client still gets a deterministic
+     * close marker.
+     */
+    client_suppress: z.boolean().optional(),
   })
   .openapi("AppendConversationMessageBody");
+
+/**
+ * Wire schema for the `next_suggestion` SSE frame. The frame is
+ * additive — clients that don't recognize it ignore it. New consumers
+ * import this schema to type the parsed payload. The `reason` and
+ * `kind` enums come from `@shared/suggest-next-reasons` so a new
+ * value lands here automatically (no drift between Zod, the TurnEvent
+ * union, the service return type, and the client mirror).
+ */
+export const NextSuggestionEventSchema = z
+  .object({
+    type: z.literal("next_suggestion"),
+    suggestion: z.string().nullable(),
+    reason: z.enum(SUGGEST_NEXT_REASONS),
+    kind: z.enum(SUGGEST_NEXT_KINDS).nullable(),
+  })
+  .openapi("NextSuggestionEvent");
+
+/**
+ * Body for the lightweight feedback route the client posts after the
+ * user accepts, dismisses, or types over a suggestion. Stored as a
+ * counter only — never persisted with the suggestion text.
+ */
+export const SuggestNextFeedbackBody = z
+  .object({
+    accepted: z.boolean(),
+    source: z.enum(["right-arrow", "tab", "typed-over", "dismissed"]),
+  })
+  .openapi("SuggestNextFeedbackBody");
 
 export const PatchConversationBody = z
   .object({

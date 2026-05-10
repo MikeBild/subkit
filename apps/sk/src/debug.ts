@@ -64,6 +64,13 @@ export type DebugRecordKind =
   // separate "we retried and the engine accepted it" from "we replayed
   // via getConversation".
   | "http.transport_recovery"
+  // suggest_next.feedback_failed — emitted when the fire-and-forget
+  // POST to /v1/conversations/:id/suggest-next/feedback throws (5xx,
+  // network blip). The primary chat flow has already completed by
+  // then, so the user-visible UX is unaffected; this record makes the
+  // breakage observable when SK_DEBUG=1 without leaking it to the
+  // operator.
+  | "suggest_next.feedback_failed"
   | "sse.open"
   | "sse.frame"
   | "sse.close"

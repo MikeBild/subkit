@@ -47,12 +47,21 @@ export interface SkSettings {
   includeMemoryFile?: boolean;
   maxInlineMentionBytes?: number;
   headless?: { maxTurns?: number; maxBudgetTokens?: number };
+  /**
+   * Toggle for the next-message ghost-text preview the engine emits
+   * after every turn. Defaults to `true` — ships on. Operators who
+   * never want a predicted message in their composer set this to
+   * `false`; the Composer then ignores incoming `next_suggestion`
+   * frames entirely.
+   */
+  nextCommandPreviewEnabled?: boolean;
 }
 
 const DEFAULTS: SkSettings = {
   statusLine: { showTokens: true, showPersona: true, showCost: false },
   includeMemoryFile: true,
   maxInlineMentionBytes: 262144,
+  nextCommandPreviewEnabled: true,
 };
 
 export interface LoadSettingsResult {

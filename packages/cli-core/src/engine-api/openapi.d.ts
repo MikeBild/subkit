@@ -5154,6 +5154,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/conversations/{id}/suggest-next/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record an accept / dismiss / typed-over outcome for a suggestion */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["SuggestNextFeedbackBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SuggestNextFeedbackResponse"];
+                    };
+                };
+                /** @description Body failed Zod validation */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unauthenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Missing conversation:read permission */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/conversations/{id}/attachments": {
         parameters: {
             query?: never;
@@ -9126,6 +9204,7 @@ export interface components {
             memory?: string;
             /** @enum {string} */
             permission_mode?: "auto" | "ask" | "plan" | "yolo";
+            client_suppress?: boolean;
         };
         RespondElicitationBody: {
             output?: unknown;
@@ -9279,6 +9358,15 @@ export interface components {
             policies: {
                 [key: string]: "no_confirm" | "confirm_before_execution" | "confirm_after_execution" | null;
             };
+        };
+        SuggestNextFeedbackResponse: {
+            /** @enum {boolean} */
+            ok: true;
+        };
+        SuggestNextFeedbackBody: {
+            accepted: boolean;
+            /** @enum {string} */
+            source: "right-arrow" | "tab" | "typed-over" | "dismissed";
         };
         ConversationAttachment: {
             slug: string;

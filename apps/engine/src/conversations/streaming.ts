@@ -7,6 +7,7 @@
 // implementation dead simple. A later phase can swap in a push-based
 // EventEmitter when the real streaming SDK lands.
 
+import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 import type { RunLoopResult } from "./loop.ts";
 import type { TurnEvent } from "./types.ts";
 
@@ -50,4 +51,23 @@ export function toolResult(call_id: string, tool: string, output: unknown): Turn
  */
 export function dataPart(data_type: string, payload: unknown): TurnEvent {
   return { type: "data_part", data_type, payload };
+}
+
+/**
+ * Frame builder for the next-message suggestion. The loop calls this
+ * after the assistant's terminal `message` event and before the SSE
+ * `outcome` envelope so the client can paint ghost text in the input
+ * composer for the operator's next turn.
+ */
+export function nextSuggestion(args: {
+  suggestion: string | null;
+  reason: SuggestNextReason;
+  kind: SuggestNextKind | null;
+}): TurnEvent {
+  return {
+    type: "next_suggestion",
+    suggestion: args.suggestion,
+    reason: args.reason,
+    kind: args.kind,
+  };
 }

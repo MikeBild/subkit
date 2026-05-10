@@ -792,10 +792,42 @@ export class EngineClient {
       message: string;
       memory?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
+      /** Client-side opt-out for the next-message preview frame. */
+      client_suppress?: boolean;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
     return this.request("POST", `/v1/conversations/${id}/messages`, body, undefined, debugContext);
+  }
+  /**
+   * Record an accept / dismiss / typed-over outcome for a suggestion.
+   * Fire-and-forget — the engine increments a metric and returns
+   * `{ ok: true }`. Errors are routed to the `debugLog` channel only
+   * (a 5xx storm on this telemetry endpoint must not affect the
+   * primary chat flow), so dev / on-call can still observe breakage
+   * when `SK_DEBUG=1` without leaking it to the operator.
+   */
+  async submitSuggestionFeedback(
+    conversationId: string,
+    body: {
+      accepted: boolean;
+      source: "right-arrow" | "tab" | "typed-over" | "dismissed";
+    },
+  ): Promise<void> {
+    try {
+      await this.request("POST", `/v1/conversations/${conversationId}/suggest-next/feedback`, body);
+    } catch (error) {
+      debugLog(
+        "suggest_next.feedback_failed",
+        {
+          conversationId,
+          source: body.source,
+          accepted: body.accepted,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        {},
+      );
+    }
   }
   /** Streaming variant of appendConversationMessage. See
    *  `createConversationStream` for terminal-event semantics. */
@@ -805,6 +837,8 @@ export class EngineClient {
       message: string;
       memory?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
+      /** Client-side opt-out for the next-message preview frame. */
+      client_suppress?: boolean;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<Response> {

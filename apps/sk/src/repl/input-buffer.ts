@@ -15,11 +15,32 @@
 // consumer (it would need grapheme clustering) — the sk REPL's target
 // audience doesn't type them in the composer.
 
+/**
+ * Transient ghost-text hint that rides on top of the buffer. Drives
+ * the next-message preview UX: characters the user types that match
+ * the prefix advance `consumed`; non-matching keystrokes (or any
+ * paste) clear the hint. Right-Arrow / Tab accept the full remainder.
+ *
+ * Holding the ghost on the buffer (rather than in a sibling state
+ * slot) lets the `insert` reducer atomically check-and-update both
+ * fields — the alternative was a coordination dance in ink-app where
+ * "type-over clears ghost" had to fire BEFORE the keystroke landed
+ * in the buffer, opening a one-tick race during fast typing.
+ */
+export interface GhostHint {
+  text: string;
+  /** Code-unit count of the ghost text the user has already typed. */
+  consumed: number;
+  kind: "text" | "slash";
+}
+
 export interface InputBuffer {
   /** The raw text content, multi-line with `\n` separators. */
   value: string;
   /** Cursor offset in code units. 0 <= cursor <= value.length. */
   cursor: number;
+  /** Optional ghost-text hint (next-message preview). */
+  ghost?: GhostHint;
 }
 
 export const EMPTY_BUFFER: InputBuffer = { value: "", cursor: 0 };
@@ -47,11 +68,33 @@ export type InputAction =
   | { type: "moveLineEnd" }
   | { type: "newline" }
   | { type: "clear" }
-  | { type: "set"; value: string; cursor?: number };
+  | { type: "set"; value: string; cursor?: number }
+  /** Set or replace the active ghost-text hint. */
+  | { type: "ghostSet"; text: string; kind: "text" | "slash" }
+  /**
+   * Accept the entire remaining ghost — Right-Arrow / Tab. Replaces
+   * the buffer with the ghost's text and clears the hint. Returns the
+   * untouched state when no ghost is present.
+   */
+  | { type: "ghostAccept" }
+  /** Drop the ghost — Esc, focus loss, or a paste event. */
+  | { type: "ghostClear" };
 
 // ---------- Core reducer ----------
 
 export function apply(state: InputBuffer, action: InputAction): InputBuffer {
+  const next = applyInner(state, action);
+  // Ghost-validity invariant: the ghost can only ride a buffer whose
+  // `value` matches the consumed prefix exactly. Any edit that breaks
+  // that (delete, kill-word, move-left, paste-cleared insert) drops
+  // the hint here so divergent state can't accumulate.
+  if (next.ghost && next.value !== next.ghost.text.slice(0, next.ghost.consumed)) {
+    return { value: next.value, cursor: next.cursor };
+  }
+  return next;
+}
+
+function applyInner(state: InputBuffer, action: InputAction): InputBuffer {
   switch (action.type) {
     case "insert":
       return insert(state, action.text);
@@ -92,6 +135,25 @@ export function apply(state: InputBuffer, action: InputAction): InputBuffer {
         value: action.value,
         cursor: action.cursor ?? action.value.length,
       };
+    case "ghostSet":
+      // Only attach a ghost when the buffer is empty and the cursor is
+      // at the end — anything else is the user mid-edit, and dropping a
+      // ghost on top would surprise them. The check belongs HERE (not
+      // at the consumer) so the reducer is the single source of truth.
+      if (state.value.length > 0 || action.text.length === 0) return state;
+      return {
+        ...state,
+        ghost: { text: action.text, consumed: 0, kind: action.kind },
+      };
+    case "ghostAccept":
+      if (!state.ghost) return state;
+      return {
+        value: state.ghost.text,
+        cursor: state.ghost.text.length,
+      };
+    case "ghostClear":
+      if (!state.ghost) return state;
+      return { value: state.value, cursor: state.cursor };
     default:
       return state;
   }
@@ -102,7 +164,29 @@ export function apply(state: InputBuffer, action: InputAction): InputBuffer {
 function insert(state: InputBuffer, text: string): InputBuffer {
   if (text.length === 0) return state;
   const value = state.value.slice(0, state.cursor) + text + state.value.slice(state.cursor);
-  return { value, cursor: state.cursor + text.length };
+  const cursor = state.cursor + text.length;
+
+  // Ghost coordination — the only path that can advance `ghost.consumed`.
+  // Multi-char inserts (paste) always clear; a single-char insert that
+  // matches the next ghost code unit advances `consumed`; anything else
+  // clears the hint so divergent typing doesn't keep the ghost dangling.
+  if (state.ghost) {
+    const ghost = state.ghost;
+    if (text.length === 1) {
+      const nextChar = ghost.text.charAt(ghost.consumed);
+      if (nextChar.length > 0 && nextChar === text) {
+        const consumed = ghost.consumed + 1;
+        if (consumed >= ghost.text.length) {
+          // User typed the entire suggestion — drop the hint, keep the
+          // buffer the user produced.
+          return { value, cursor };
+        }
+        return { value, cursor, ghost: { ...ghost, consumed } };
+      }
+    }
+    return { value, cursor };
+  }
+  return { value, cursor };
 }
 
 function deletePrev(state: InputBuffer): InputBuffer {

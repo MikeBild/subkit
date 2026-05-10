@@ -12,7 +12,14 @@ import type {
 import type { Skill } from "../skills/types.ts";
 import type { ProviderKind } from "./core/model-init.ts";
 
-export type LlmFlow = "generate" | "extract" | "repair" | "converse" | "discover" | "summarize";
+export type LlmFlow =
+  | "generate"
+  | "extract"
+  | "repair"
+  | "converse"
+  | "discover"
+  | "summarize"
+  | "suggest_next";
 
 export type LlmProviderKind = ProviderKind;
 

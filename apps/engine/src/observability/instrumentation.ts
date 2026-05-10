@@ -125,6 +125,30 @@ export function recordLlmQuotaExhausted(args: { tenant_id: string }): void {
   });
 }
 
+export type SuggestNextOutcome =
+  | "generated"
+  | "accepted"
+  | "dismissed"
+  | "typed_over"
+  | "suppressed"
+  | "budget_pressure"
+  | "error";
+
+export function recordSuggestNextOutcome(args: {
+  tenant_id: string;
+  outcome: SuggestNextOutcome;
+  /** "text" | "slash" | "" — empty when no suggestion was produced. */
+  kind?: string;
+}): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.SK_SUGGEST_NEXT_TOTAL, {
+      tenant_id: args.tenant_id,
+      outcome: args.outcome,
+      kind: args.kind ?? "",
+    });
+  });
+}
+
 export function setQueueDepth(queue: string, depth: number): void {
   safe(() => {
     getMetrics().set(METRIC_NAMES.QUEUE_DEPTH, depth, { queue });

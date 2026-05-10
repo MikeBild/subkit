@@ -905,6 +905,9 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         probe: active.persona.probe,
       },
       ...(settings.merged.statusLine ? { statusLineConfig: settings.merged.statusLine } : {}),
+      ...(settings.merged.nextCommandPreviewEnabled !== undefined
+        ? { nextCommandPreviewEnabled: settings.merged.nextCommandPreviewEnabled }
+        : {}),
       initialConversationId: currentConversationId,
       model: settings.merged.model ?? null,
       cwd: process.cwd(),
