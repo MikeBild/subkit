@@ -180,7 +180,7 @@ sk REPL session preferences
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `repl.permissionMode` | enum("ask" \| "auto" \| "plan" \| "yolo") | `"ask"` | tenant | no | no | Default sk REPL permission mode: ask \| auto \| plan \| yolo. Operator can change at any time via /settings → Permissions or Shift-Tab. |
+| `repl.permissionMode` | enum("ask" \| "auto" \| "plan" \| "yolo") | `"ask"` | tenant | no | no | Default REPL permission mode for the principal: ask, auto, plan, or yolo. |
 
 ## ui
 REPL chrome preferences
@@ -191,3 +191,13 @@ REPL chrome preferences
 | `ui.statusline.format` | enum("minimal" \| "compact" \| "detailed") | `"compact"` | tenant | no | no | Status-line layout: minimal \| compact \| detailed. |
 | `ui.theme` | enum("auto" \| "light" \| "dark" \| "high-contrast") | `"auto"` | tenant | no | no | REPL color theme: auto \| light \| dark \| high-contrast. |
 | `ui.title.format` | enum("session-id" \| "tenant-session" \| "model-tenant-session") | `"session-id"` | tenant | no | no | Window-title format used by the sk REPL. |
+
+## notifications
+sk REPL notification preferences
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `notifications.push.enabled` | boolean | `false` | tenant | no | no | OS push notifications for long-running execution completion. |
+| `notifications.push.quietHoursEnd` | string | `""` | tenant | no | no | Quiet-hours window end (HH:MM, local TZ). Empty disables the window. |
+| `notifications.push.quietHoursStart` | string | `""` | tenant | no | no | Quiet-hours window start (HH:MM, local TZ). Empty disables the window. |
+| `notifications.push.thresholdSec` | number | `30` | tenant | no | no | Minimum elapsed turn seconds before a notification fires. |

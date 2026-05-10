@@ -88,6 +88,81 @@ describe("/copy slash (M9)", () => {
     );
     expect(out).toBe("/copy: last assistant message is empty");
   });
+
+  // S-3 of PR #161 review (round 3): the in-memory transcript may be
+  // empty (resumed session, paged history scrolled past, REPL booted
+  // straight into an existing conversation). In that case /copy falls
+  // back to `client.getConversation`. The 3 tests below pin the
+  // contract: string content is copied; structured content collapses
+  // to empty (and the "no assistant turn" hint still fires); engine
+  // errors fall through to the same hint without throwing.
+  test("falls back to engine getConversation when in-memory transcript has no assistant turn (string content)", async () => {
+    const getConversation = mock(async () => ({
+      conversation: { id: "c-1" },
+      messages: [
+        { role: "user", content: "hi" },
+        { role: "assistant", content: "persisted reply text" },
+      ],
+      tool_calls: [],
+      draft: null,
+    }));
+    const client = { getConversation } as unknown as EngineClient;
+    const out = await handleSlash(
+      "copy",
+      [],
+      makeCtx({ client, conversationId: "c-1", messages: [] }),
+    );
+    expect(getConversation.mock.calls.length).toBe(1);
+    const args = getConversation.mock.calls[0] as unknown as [string];
+    expect(args[0]).toBe("c-1");
+    expect(typeof out).toBe("string");
+    // Two acceptable outputs depending on whether stdout is a TTY:
+    //   - TTY: "copied last assistant message (20 chars) to clipboard"
+    //   - non-TTY: "/copy failed: clipboard not writable on this terminal"
+    expect(out).toMatch(
+      /(copied last assistant message \(20 chars\)|clipboard not writable on this terminal)/,
+    );
+  });
+
+  test("structured (non-string) content collapses to empty and the no-assistant-turn hint fires", async () => {
+    // The in-memory transcript guard only flags "empty" when there's
+    // already an assistant turn locally. With an empty local
+    // transcript and a structured engine response, the slash returns
+    // the no-assistant-turn hint — never throws.
+    const getConversation = mock(async () => ({
+      conversation: { id: "c-2" },
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "structured" }],
+        },
+      ],
+      tool_calls: [],
+      draft: null,
+    }));
+    const client = { getConversation } as unknown as EngineClient;
+    const out = await handleSlash(
+      "copy",
+      [],
+      makeCtx({ client, conversationId: "c-2", messages: [] }),
+    );
+    expect(getConversation.mock.calls.length).toBe(1);
+    expect(out).toBe("/copy: no assistant message yet");
+  });
+
+  test("engine getConversation failure does not throw and falls through to the hint", async () => {
+    const getConversation = mock(async () => {
+      throw new Error("engine offline");
+    });
+    const client = { getConversation } as unknown as EngineClient;
+    const out = await handleSlash(
+      "copy",
+      [],
+      makeCtx({ client, conversationId: "c-3", messages: [] }),
+    );
+    expect(getConversation.mock.calls.length).toBe(1);
+    expect(out).toBe("/copy: no assistant message yet");
+  });
 });
 
 describe("/rename slash (M9)", () => {

@@ -195,4 +195,73 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
     );
     expect(res.status).toBe(404);
   });
+
+  // S-4 of PR #161 review (round 3): the service-layer test at
+  // `apps/engine/src/conversations/service/fork.test.ts` covers the
+  // memory + loaded_skills carry-over, but the HTTP route is the
+  // operator-facing surface. Pin the same contract here so a route-
+  // layer regression that drops either field can't slip past.
+  test("admin → fork carries memory and loaded_skills from the source row", async () => {
+    // Seed a fresh source conversation tagged with both the memory
+    // text and the loaded_skills array. Use a dedicated row so the
+    // earlier "fork-source" conversation's empty defaults aren't
+    // observed.
+    const [src] = await srv.db
+      .insert(conversations)
+      .values({
+        tenant_id: srv.tenantId,
+        status: "active",
+        title: "fork-carryover-source",
+        memory: "carry-this-memory-string",
+        loaded_skills: ["skill.alpha", "skill.beta"],
+      })
+      .returning();
+
+    const [seedAnchor] = await srv.db
+      .insert(conversationMessages)
+      .values({
+        tenant_id: srv.tenantId,
+        conversation_id: src!.id,
+        role: "assistant",
+        content: { text: "anchor" },
+      })
+      .returning();
+
+    const res = await fetch(
+      `${srv.baseUrl}/v1/conversations/${src!.id}/fork-from-message/${seedAnchor!.id}`,
+      { method: "POST", headers: adminHeaders() },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { conversation: { id: string } };
+
+    const [forked] = await srv.db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, body.conversation.id));
+    expect(forked).toBeDefined();
+    expect(forked!.memory).toBe("carry-this-memory-string");
+    expect(forked!.loaded_skills).toEqual(["skill.alpha", "skill.beta"]);
+  });
+
+  test("admin → fork audit row records tool_calls_omitted + elicitations_omitted", async () => {
+    // S-1 of PR #161 review (round 3): the audit row carries the
+    // documented side-effect omissions so log-only incident readers
+    // can reconstruct what the fork did NOT bring across.
+    const res = await fetch(
+      `${srv.baseUrl}/v1/conversations/${conversation_id}/fork-from-message/${anchor_message_id}`,
+      { method: "POST", headers: adminHeaders() },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { conversation: { id: string } };
+    const audits = await srv.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, srv.tenantId), eq(auditLog.resource_id, body.conversation.id)),
+      );
+    expect(audits.length).toBe(1);
+    const meta = audits[0]!.metadata as Record<string, unknown>;
+    expect(meta.tool_calls_omitted).toBe(true);
+    expect(meta.elicitations_omitted).toBe(true);
+  });
 });

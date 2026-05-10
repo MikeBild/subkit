@@ -9,7 +9,7 @@
 // guessed from the file extension; unknown extensions fall back to
 // `application/octet-stream`.
 
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
@@ -124,7 +124,11 @@ export const KnowledgeTab: React.FC<Props> = ({ client, onSearchActiveChange }) 
     setActionFlash(null);
     try {
       const abs = isAbsolute(ingestPath) ? ingestPath : resolve(process.cwd(), ingestPath);
-      const content = readFileSync(abs);
+      // S-2 of PR #161 review (round 3): async read so a multi-MB
+      // knowledge source (PDFs, large docs) doesn't hitch the Ink
+      // render thread while the file is being slurped from disk. The
+      // surrounding state (`ingesting`) already drives the spinner.
+      const content = await readFile(abs);
       const name = abs.split("/").pop() ?? ingestPath;
       const mime = mimeFor(name);
       await client.createKnowledgeSource(

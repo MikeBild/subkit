@@ -152,6 +152,16 @@ export async function forkConversation(
         forked_from: p.source_conversation_id,
         anchor_message_id: p.anchor_message_id,
         copied_message_count: copiedCount,
+        // S-1 of PR #161 review (round 3): make the deliberately
+        // omitted side-effect rows self-describing on the audit row,
+        // so an incident reader reconstructing state from `audit_log`
+        // alone doesn't have to open the source comment to learn what
+        // the fork did NOT carry over. The contract here is documented
+        // both in the route description (`lifecycle.ts`) and in the
+        // service-layer header above; the audit row is now the third
+        // independent home for it.
+        tool_calls_omitted: true,
+        elicitations_omitted: true,
       },
     },
     exec,

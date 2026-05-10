@@ -159,5 +159,13 @@
       "format": "compact"
     }
   },
+  "notifications": {
+    "push": {
+      "enabled": false,
+      "thresholdSec": 30,
+      "quietHoursStart": "",
+      "quietHoursEnd": ""
+    }
+  },
   "tenants": {}
 }
