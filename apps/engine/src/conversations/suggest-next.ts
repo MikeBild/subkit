@@ -27,22 +27,12 @@ import { recordLlmTokens, recordSuggestNextOutcome } from "../observability/inst
 import { filterSuggestion } from "./suggest-next-filter.ts";
 import { type LoadedSkillHint, type ParsedOffer, parseOffer } from "./suggest-next-offer-parse.ts";
 
-/**
- * Outcome reasons carried on the SSE frame. These are stable wire
- * values — the sk-cli client and dashboards both pivot on them.
- */
-export type SuggestNextReason =
-  | "offer-detected"
-  | "offer-skill"
-  | "model"
-  | "early-conversation"
-  | "client-suppress"
-  | "filtered"
-  | "empty"
-  | "budget-pressure"
-  | "error";
+// Outcome reasons carried on the SSE frame. The single source of truth
+// is @shared/suggest-next-reasons — re-exported here for the legacy
+// `import { SuggestNextReason } from "./suggest-next.ts"` pattern.
+export type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 
-export type SuggestNextKind = "text" | "slash";
+import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 
 export interface SuggestNextResult {
   suggestion: string | null;
@@ -219,6 +209,15 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
 }
 
 function finalizeOfferResult(params: SuggestNextParams, offer: ParsedOffer): SuggestNextResult {
+  // Belt-and-braces: the offer regex already constrains the captured
+  // span, so most filter rules cannot fire. We re-run the filter
+  // anyway because some captured spans (e.g. `let me handle the rest`
+  // from "Want me to let me handle the rest?") still trip
+  // claude_voice or evaluative — see `suggest-next.test.ts`
+  // "offer-parse output that fails the filter". Do not remove the
+  // re-filter "for performance"; the offer-parse path is already
+  // dominated by regex cost, and dropping this check would let known
+  // filter-violators leak to the operator.
   const filterReason = filterSuggestion(offer.suggestion);
   if (filterReason !== null) {
     logger.info({

@@ -1,6 +1,7 @@
 // Conversation types shared across the service, loop, tool palette,
 // and HTTP / MCP layers.
 
+import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 import type { AuthType, DriverName, Environment } from "../connectors/types.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 
@@ -606,17 +607,8 @@ export type TurnEvent =
   | {
       type: "next_suggestion";
       suggestion: string | null;
-      reason:
-        | "offer-detected"
-        | "offer-skill"
-        | "model"
-        | "early-conversation"
-        | "client-suppress"
-        | "filtered"
-        | "empty"
-        | "budget-pressure"
-        | "error";
-      kind: "text" | "slash" | null;
+      reason: SuggestNextReason;
+      kind: SuggestNextKind | null;
     };
 
 export interface ConversationResumeSummary {

@@ -3,6 +3,7 @@
 // every per-sub-resource module imports from here.
 
 import { z } from "@hono/zod-openapi";
+import { SUGGEST_NEXT_KINDS, SUGGEST_NEXT_REASONS } from "@shared/suggest-next-reasons.ts";
 import type * as svc from "../../../conversations/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 
@@ -146,24 +147,17 @@ export const AppendMessageBody = z
 /**
  * Wire schema for the `next_suggestion` SSE frame. The frame is
  * additive — clients that don't recognize it ignore it. New consumers
- * import this schema to type the parsed payload.
+ * import this schema to type the parsed payload. The `reason` and
+ * `kind` enums come from `@shared/suggest-next-reasons` so a new
+ * value lands here automatically (no drift between Zod, the TurnEvent
+ * union, the service return type, and the client mirror).
  */
 export const NextSuggestionEventSchema = z
   .object({
     type: z.literal("next_suggestion"),
     suggestion: z.string().nullable(),
-    reason: z.enum([
-      "offer-detected",
-      "offer-skill",
-      "model",
-      "early-conversation",
-      "client-suppress",
-      "filtered",
-      "empty",
-      "budget-pressure",
-      "error",
-    ]),
-    kind: z.enum(["text", "slash"]).nullable(),
+    reason: z.enum(SUGGEST_NEXT_REASONS),
+    kind: z.enum(SUGGEST_NEXT_KINDS).nullable(),
   })
   .openapi("NextSuggestionEvent");
 

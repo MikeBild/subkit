@@ -7,6 +7,7 @@
 // implementation dead simple. A later phase can swap in a push-based
 // EventEmitter when the real streaming SDK lands.
 
+import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 import type { RunLoopResult } from "./loop.ts";
 import type { TurnEvent } from "./types.ts";
 
@@ -60,17 +61,8 @@ export function dataPart(data_type: string, payload: unknown): TurnEvent {
  */
 export function nextSuggestion(args: {
   suggestion: string | null;
-  reason:
-    | "offer-detected"
-    | "offer-skill"
-    | "model"
-    | "early-conversation"
-    | "client-suppress"
-    | "filtered"
-    | "empty"
-    | "budget-pressure"
-    | "error";
-  kind: "text" | "slash" | null;
+  reason: SuggestNextReason;
+  kind: SuggestNextKind | null;
 }): TurnEvent {
   return {
     type: "next_suggestion",

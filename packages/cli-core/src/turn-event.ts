@@ -3,6 +3,8 @@
 // `apps/engine/src/conversations/types.ts`, with the
 // CLI-friendly richer `completed` frame that carries usage.
 
+import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
+
 export interface TurnUsage {
   turn_tokens: number;
   remaining_monthly_budget_tokens: number | null;
@@ -132,23 +134,16 @@ export type TurnEvent =
   /**
    * Next-message preview frame — emitted exactly once per turn, after
    * `completed`, before the SSE outcome envelope. Drives the ghost-text
-   * suggestion in the input composer. Mirrors the engine's
-   * `apps/engine/src/conversations/types.ts` discriminant.
+   * suggestion in the input composer. The `reason` and `kind` enums
+   * come from `@shared/suggest-next-reasons` so this stays in lockstep
+   * with the engine's TurnEvent + Zod schema with no hand-maintained
+   * mirror to drift.
    */
   | {
       type: "next_suggestion";
       suggestion: string | null;
-      reason:
-        | "offer-detected"
-        | "offer-skill"
-        | "model"
-        | "early-conversation"
-        | "client-suppress"
-        | "filtered"
-        | "empty"
-        | "budget-pressure"
-        | "error";
-      kind: "text" | "slash" | null;
+      reason: SuggestNextReason;
+      kind: SuggestNextKind | null;
     };
 
 /**
@@ -288,20 +283,10 @@ export interface SkSessionState {
    */
   nextSuggestion: {
     suggestion: string;
-    kind: "text" | "slash";
+    kind: SuggestNextKind;
   } | null;
   /** Last reason emitted on a `next_suggestion` frame — used by tests + telemetry. */
-  nextSuggestionReason:
-    | "offer-detected"
-    | "offer-skill"
-    | "model"
-    | "early-conversation"
-    | "client-suppress"
-    | "filtered"
-    | "empty"
-    | "budget-pressure"
-    | "error"
-    | null;
+  nextSuggestionReason: SuggestNextReason | null;
 }
 
 export function initialSessionState(conversationId: string | null): SkSessionState {
