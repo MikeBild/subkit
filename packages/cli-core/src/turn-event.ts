@@ -128,6 +128,27 @@ export type TurnEvent =
       language: "json" | "yaml" | "text";
       hunks: Array<{ kind: "+" | "-" | " "; text: string }>;
       parent_message_id?: string;
+    }
+  /**
+   * Next-message preview frame — emitted exactly once per turn, after
+   * `completed`, before the SSE outcome envelope. Drives the ghost-text
+   * suggestion in the input composer. Mirrors the engine's
+   * `apps/engine/src/conversations/types.ts` discriminant.
+   */
+  | {
+      type: "next_suggestion";
+      suggestion: string | null;
+      reason:
+        | "offer-detected"
+        | "offer-skill"
+        | "model"
+        | "early-conversation"
+        | "client-suppress"
+        | "filtered"
+        | "empty"
+        | "budget-pressure"
+        | "error";
+      kind: "text" | "slash" | null;
     };
 
 /**
@@ -258,6 +279,29 @@ export interface SkSessionState {
     hunks: Array<{ kind: "+" | "-" | " "; text: string }>;
     parentMessageId?: string;
   }>;
+  /**
+   * Latest next-message suggestion frame emitted by the engine. The
+   * Composer reads this AFTER the SSE stream closes (in `applyEventStream`)
+   * and dispatches a `ghostSet` action when `suggestion !== null`.
+   * Cleared on every new turn start so a stale suggestion doesn't leak
+   * across turns.
+   */
+  nextSuggestion: {
+    suggestion: string;
+    kind: "text" | "slash";
+  } | null;
+  /** Last reason emitted on a `next_suggestion` frame — used by tests + telemetry. */
+  nextSuggestionReason:
+    | "offer-detected"
+    | "offer-skill"
+    | "model"
+    | "early-conversation"
+    | "client-suppress"
+    | "filtered"
+    | "empty"
+    | "budget-pressure"
+    | "error"
+    | null;
 }
 
 export function initialSessionState(conversationId: string | null): SkSessionState {
@@ -276,6 +320,8 @@ export function initialSessionState(conversationId: string | null): SkSessionSta
     activity: null,
     sessionTotalTokens: 0,
     diffs: [],
+    nextSuggestion: null,
+    nextSuggestionReason: null,
   };
 }
 
@@ -694,6 +740,18 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
             ...(parent ? { parentMessageId: parent } : {}),
           },
         ],
+      };
+    }
+    case "next_suggestion": {
+      // Stash the latest frame so the Composer can dispatch ghostSet
+      // after the SSE stream closes. We deliberately keep the reason
+      // even when the suggestion is null so dashboards / tests can
+      // pivot on suppression cause without re-parsing the stream.
+      return {
+        ...state,
+        nextSuggestion:
+          ev.suggestion && ev.kind ? { suggestion: ev.suggestion, kind: ev.kind } : null,
+        nextSuggestionReason: ev.reason,
       };
     }
     default:

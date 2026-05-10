@@ -792,10 +792,31 @@ export class EngineClient {
       message: string;
       memory?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
+      /** Client-side opt-out for the next-message preview frame. */
+      client_suppress?: boolean;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
     return this.request("POST", `/v1/conversations/${id}/messages`, body, undefined, debugContext);
+  }
+  /**
+   * Record an accept / dismiss / typed-over outcome for a suggestion.
+   * Fire-and-forget — the engine increments a metric and returns
+   * `{ ok: true }`. Errors are not surfaced to the user since the
+   * primary flow has already completed.
+   */
+  async submitSuggestionFeedback(
+    conversationId: string,
+    body: {
+      accepted: boolean;
+      source: "right-arrow" | "tab" | "typed-over" | "dismissed";
+    },
+  ): Promise<void> {
+    try {
+      await this.request("POST", `/v1/conversations/${conversationId}/suggest-next/feedback`, body);
+    } catch {
+      // Telemetry-only endpoint — never let it bubble.
+    }
   }
   /** Streaming variant of appendConversationMessage. See
    *  `createConversationStream` for terminal-event semantics. */
@@ -805,6 +826,8 @@ export class EngineClient {
       message: string;
       memory?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
+      /** Client-side opt-out for the next-message preview frame. */
+      client_suppress?: boolean;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<Response> {
