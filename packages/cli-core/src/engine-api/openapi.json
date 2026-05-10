@@ -6936,6 +6936,9 @@
               "plan",
               "yolo"
             ]
+          },
+          "client_suppress": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -7612,6 +7615,41 @@
         },
         "required": [
           "policies"
+        ]
+      },
+      "SuggestNextFeedbackResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
+      "SuggestNextFeedbackBody": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "right-arrow",
+              "tab",
+              "typed-over",
+              "dismissed"
+            ]
+          }
+        },
+        "required": [
+          "accepted",
+          "source"
         ]
       },
       "ConversationAttachment": {
@@ -15348,6 +15386,61 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ToolPoliciesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/suggest-next/feedback": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Record an accept / dismiss / typed-over outcome for a suggestion",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestNextFeedbackBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestNextFeedbackResponse"
                 }
               }
             }
