@@ -204,6 +204,12 @@ export interface InkAppProps {
    * path so they don't read / mutate the real `~/.sk/history.jsonl`.
    */
   historyPath?: string;
+  /**
+   * Toggle for the next-message ghost-text preview. Defaults to true.
+   * Read from SkSettings.nextCommandPreviewEnabled at REPL boot. When
+   * false, the Composer ignores incoming `next_suggestion` frames.
+   */
+  nextCommandPreviewEnabled?: boolean;
   /** Called when the user submits a plain prompt (non-slash). */
   onPrompt: (
     text: string,
@@ -1327,6 +1333,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   engineClient,
   prefs,
   pushNotifyOverride,
+  nextCommandPreviewEnabled = true,
 }) => {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -1917,8 +1924,10 @@ export const InkApp: React.FC<InkAppProps> = ({
       // suggestion, paint it as ghost text in the composer. The reducer
       // refuses to attach a ghost when the buffer is non-empty (operator
       // is mid-edit), so this is safe to fire unconditionally; it just
-      // no-ops when inappropriate.
-      if (next.nextSuggestion) {
+      // no-ops when inappropriate. The settings gate trumps everything:
+      // operators who disabled the feature in `~/.sk/settings.json`
+      // (`nextCommandPreviewEnabled: false`) never see a ghost.
+      if (nextCommandPreviewEnabled && next.nextSuggestion) {
         const { suggestion, kind } = next.nextSuggestion;
         setInput((prev) => applyInput(prev, { type: "ghostSet", text: suggestion, kind }));
       }
@@ -1952,7 +1961,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           inQuietHoursWindow(prefs?.quietHoursStart ?? "", prefs?.quietHoursEnd ?? "", new Date()),
       });
     },
-    [],
+    [nextCommandPreviewEnabled],
   );
 
   async function submitElicitationResponse(
