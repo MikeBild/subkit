@@ -1687,6 +1687,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // for skills (matched action becomes plain user input). Adding
   // verbs to the skills schema lights up `/skill <slug> <verb>`
   // suggestions without further loop changes.
+  // TODO(suggest-next-skill-verbs): tracked at PR #162 follow-up —
+  // once Skill records carry a `verbs: string[]` field, thread
+  // `loaded_skills: loadedSkills.map(slug => ({ slug, verbs: ... }))`
+  // here. Until then `LoadedSkillHint.verbs` is unused in production
+  // (covered by unit tests only).
   let suggestionFrame: TurnEvent;
   if (completedStatus === "abandoned") {
     suggestionFrame = nextSuggestion({
@@ -1705,6 +1710,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
       events,
+      // Pass `db` so the emitter loads multi-turn persisted history
+      // for the model fallback prompt instead of being limited to
+      // the per-turn events buffer.
+      db: p.db,
       ...(p.next_suggestion_suppress !== undefined
         ? { client_suppress: p.next_suggestion_suppress }
         : {}),

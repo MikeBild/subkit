@@ -13,6 +13,9 @@
 //     reason: "error" }` so the parent turn always closes cleanly.
 
 import { generateText, type LanguageModel, type ModelMessage } from "ai";
+import { and, asc, eq } from "drizzle-orm";
+import type { Db } from "../../db/client.ts";
+import { conversationMessages } from "../../db/schema/index.ts";
 import { initializeModel } from "../../llm/core/model-init.ts";
 import type { RecentMessage } from "../../llm/core/suggestion-prompt.ts";
 import { logger } from "../../logging/logger.ts";
@@ -30,6 +33,14 @@ export interface EmitSuggestNextFrameParams {
   tenant_id: string;
   conversation_id: string;
   events: ReadonlyArray<TurnEvent>;
+  /**
+   * When provided, the emitter loads the last N persisted messages from
+   * the conversation store instead of scanning the per-turn events
+   * buffer. Production callers (loop.ts) pass this so the model
+   * fallback's prompt actually has multi-turn history; unit tests omit
+   * it and the events buffer is used as a fallback.
+   */
+  db?: Db;
   client_suppress?: boolean;
   loaded_skills?: ReadonlyArray<LoadedSkillHint>;
   /** Optional override for the model invoker (used by integration tests). */
@@ -38,7 +49,12 @@ export interface EmitSuggestNextFrameParams {
   budget_guard?: () => Promise<boolean> | boolean;
 }
 
-const SUGGEST_MODEL_DEFAULT = "claude-haiku-4-5";
+// Allow operators on non-Anthropic providers (Bedrock, OpenAI, local
+// mock) to swap the suggestion model without a code change. When
+// `SK_SUGGEST_MODEL` is unset we fall back to the Haiku-class default;
+// the call still no-ops cleanly when the provider can't resolve the
+// model.
+const SUGGEST_MODEL_DEFAULT = process.env.SK_SUGGEST_MODEL ?? "claude-haiku-4-5";
 const SUGGEST_MAX_OUTPUT_TOKENS = 30;
 const SUGGEST_TEMPERATURE = 0.2;
 const SUGGEST_HISTORY_TURNS = 8;
@@ -52,11 +68,22 @@ export async function buildNextSuggestionFrame(
   params: EmitSuggestNextFrameParams,
 ): Promise<TurnEvent> {
   try {
-    const { recent, lastAssistantText } = extractRecentMessages(
-      params.events,
-      SUGGEST_HISTORY_TURNS,
-      { tenant_id: params.tenant_id, conversation_id: params.conversation_id },
-    );
+    // Production path: pull the last 8 persisted messages from the
+    // conversation store. The just-completed assistant message has
+    // already been persisted by the loop before the emitter runs, so
+    // this returns N user+assistant turns (not just the current one).
+    // Tests omit `db` and the events-buffer fallback is used.
+    const { recent, lastAssistantText } = params.db
+      ? await loadPersistedHistory(
+          params.db,
+          params.tenant_id,
+          params.conversation_id,
+          SUGGEST_HISTORY_TURNS,
+        )
+      : extractRecentMessages(params.events, SUGGEST_HISTORY_TURNS, {
+          tenant_id: params.tenant_id,
+          conversation_id: params.conversation_id,
+        });
     const callParams: Parameters<typeof suggestNextMessage>[0] = {
       tenant_id: params.tenant_id,
       conversation_id: params.conversation_id,
@@ -90,6 +117,58 @@ export async function buildNextSuggestionFrame(
 interface ExtractedHistory {
   recent: RecentMessage[];
   lastAssistantText: string;
+}
+
+/**
+ * Production history loader: targeted single-query select against
+ * `conversation_messages` for the most recent N user+assistant rows in
+ * `created_at` order. Lighter than calling `getConversation` (which
+ * also pulls tool calls + drafts + elicitations + resume summaries —
+ * all irrelevant to suggestion generation).
+ */
+async function loadPersistedHistory(
+  db: Db,
+  tenant_id: string,
+  conversation_id: string,
+  maxTurns: number,
+): Promise<ExtractedHistory> {
+  const rows = await db
+    .select({
+      role: conversationMessages.role,
+      content: conversationMessages.content,
+      created_at: conversationMessages.created_at,
+    })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.tenant_id, tenant_id),
+        eq(conversationMessages.conversation_id, conversation_id),
+      ),
+    )
+    .orderBy(asc(conversationMessages.created_at));
+  const collected: RecentMessage[] = [];
+  let lastAssistantText = "";
+  for (const r of rows) {
+    if (r.role !== "user" && r.role !== "assistant") continue;
+    const text = extractText(r.content);
+    if (!text) {
+      if (r.role === "assistant") {
+        logger.warn({
+          module: "conversations",
+          action: "suggest_next.content_shape_unrecognized",
+          msg: "assistant message had no extractable text — offer-parse will miss",
+          tenant_id,
+          conversation_id,
+          content_kind: typeof r.content,
+        });
+      }
+      continue;
+    }
+    collected.push({ role: r.role, text });
+    if (r.role === "assistant") lastAssistantText = text;
+  }
+  const recent = collected.slice(-maxTurns);
+  return { recent, lastAssistantText };
 }
 
 function extractRecentMessages(

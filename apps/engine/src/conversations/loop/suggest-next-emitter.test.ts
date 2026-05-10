@@ -89,6 +89,39 @@ describe("buildNextSuggestionFrame", () => {
     expect(frame.reason).toBe("early-conversation");
   });
 
+  test("frame ordering: appended after `completed` produces message → completed → next_suggestion", async () => {
+    // Pins the SSE wire contract documented in apps/engine/AGENTS.md
+    // and CHANGELOG.md: the next_suggestion frame fires AFTER the
+    // assistant `message` and the per-turn `completed` envelope, never
+    // before. Simulates the exact pattern in loop.ts after the
+    // `events.push({ type: "completed", ... })` call.
+    const stream: TurnEvent[] = [
+      { type: "message", role: "user", content: { text: "should I commit?" } },
+      {
+        type: "message",
+        role: "assistant",
+        content: { text: "All set. Want me to commit and push it?" },
+      },
+      { type: "completed", status: "active" },
+    ];
+    const frame = await buildNextSuggestionFrame({
+      tenant_id: "t",
+      conversation_id: "c",
+      events: stream,
+    });
+    stream.push(frame);
+    expect(stream.map((e) => e.type)).toEqual([
+      "message",
+      "message",
+      "completed",
+      "next_suggestion",
+    ]);
+    // And the suggestion content carries the offer-parse result so a
+    // wire consumer can drive ghost-text without a second round-trip.
+    if (frame.type !== "next_suggestion") throw new Error("unreachable");
+    expect(frame.suggestion).toBe("commit and push it");
+  });
+
   test("budget_guard returning false collapses to 'budget-pressure' (no model call)", async () => {
     const noOfferEvents: ReadonlyArray<TurnEvent> = [
       { type: "message", role: "user", content: { text: "fix the bug" } },
