@@ -12,7 +12,7 @@
 //   - NEVER throws — a swallowed failure becomes `{ suggestion: null,
 //     reason: "error" }` so the parent turn always closes cleanly.
 
-import { generateText } from "ai";
+import { generateText, type LanguageModel, type ModelMessage } from "ai";
 import { initializeModel } from "../../llm/core/model-init.ts";
 import type { RecentMessage } from "../../llm/core/suggestion-prompt.ts";
 import { logger } from "../../logging/logger.ts";
@@ -55,6 +55,7 @@ export async function buildNextSuggestionFrame(
     const { recent, lastAssistantText } = extractRecentMessages(
       params.events,
       SUGGEST_HISTORY_TURNS,
+      { tenant_id: params.tenant_id, conversation_id: params.conversation_id },
     );
     const callParams: Parameters<typeof suggestNextMessage>[0] = {
       tenant_id: params.tenant_id,
@@ -94,6 +95,7 @@ interface ExtractedHistory {
 function extractRecentMessages(
   events: ReadonlyArray<TurnEvent>,
   maxTurns: number,
+  ctx: { tenant_id: string; conversation_id: string },
 ): ExtractedHistory {
   const collected: RecentMessage[] = [];
   let lastAssistantText = "";
@@ -101,7 +103,25 @@ function extractRecentMessages(
     if (ev.type !== "message") continue;
     if (ev.role !== "user" && ev.role !== "assistant") continue;
     const text = extractText(ev.content);
-    if (!text) continue;
+    if (!text) {
+      // Warn (don't fail) when an assistant message comes through with
+      // a content shape extractText doesn't understand. Today the
+      // contract is the `{ text, _violations? }` payload built in
+      // `loop.ts:1128`; future variants (multi-part content, tool-only
+      // turns) would silently degrade the offer-parse to a model
+      // fallback. The warning makes that visible.
+      if (ev.role === "assistant") {
+        logger.warn({
+          module: "conversations",
+          action: "suggest_next.content_shape_unrecognized",
+          msg: "assistant message had no extractable text — offer-parse will miss",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          content_kind: typeof ev.content,
+        });
+      }
+      continue;
+    }
     collected.push({ role: ev.role, text });
     if (ev.role === "assistant") lastAssistantText = text;
   }
@@ -109,6 +129,15 @@ function extractRecentMessages(
   return { recent, lastAssistantText };
 }
 
+/**
+ * Pulls the human-readable text out of the loop's persisted message
+ * `content` shape. Today that's either a plain string (legacy /
+ * synthetic frames) or the `{ text, _violations? }` payload built in
+ * `loop.ts:1128`. The contract is intentionally narrow — adding a
+ * new shape requires updating this function AND the
+ * `suggest_next.content_shape_unrecognized` warning so a silent
+ * regression stays loud.
+ */
 function extractText(content: unknown): string {
   if (typeof content === "string") return content;
   if (content && typeof content === "object" && "text" in content) {
@@ -143,11 +172,18 @@ const defaultSuggestNextModelInvoker: SuggestNextModelInvoker = async (
   }
   if (resolved.provider === "mock") return { text: null };
 
-  // biome-ignore lint/suspicious/noExplicitAny: ai-sdk message shape mirrors SubkitLlmMessage.
-  const messages = call.messages as any;
+  // SubkitLlmMessage and ai-sdk's `ModelMessage` are structurally
+  // compatible — both `{ role, content }` with the same role enum
+  // and a string-or-parts content. The cast goes through `unknown`
+  // to satisfy the no-any rule while documenting the boundary.
+  // `resolved.model` is typed as the engine's wrapper-friendly
+  // `LanguageModel | string` union; here we only land in this branch
+  // when `provider !== "mock"`, so it is always the real
+  // `LanguageModel`.
+  const messages = call.messages as unknown as ModelMessage[];
+  const model = resolved.model as unknown as LanguageModel;
   const result = await generateText({
-    // biome-ignore lint/suspicious/noExplicitAny: LanguageModel typing differs across SDK majors.
-    model: resolved.model as any,
+    model,
     system: call.system,
     messages,
     maxOutputTokens: SUGGEST_MAX_OUTPUT_TOKENS,

@@ -79,6 +79,7 @@ import {
   setToolCallParentMessage,
   updateMessageContent,
 } from "./persist.ts";
+import { nextSuggestion } from "./streaming.ts";
 import { listTools, type ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import { resolveExecutionMode } from "./tools/tool-policies.ts";
@@ -1668,14 +1669,48 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // frame's presence to decide whether to clear ghost state. The
   // emitter is wrapped in its own try/catch so a flaky model can
   // never take down the parent turn.
-  const suggestionFrame = await buildNextSuggestionFrame({
-    tenant_id: p.tenant_id,
-    conversation_id: p.conversation_id,
-    events,
-    ...(p.next_suggestion_suppress !== undefined
-      ? { client_suppress: p.next_suggestion_suppress }
-      : {}),
-  });
+  //
+  // Abandoned turns: short-circuit with a `turn-abandoned` frame
+  // instead of running offer-parse over partial / cancelled
+  // assistant prose. The model fallback would always miss anyway and
+  // burn tokens for nothing.
+  //
+  // budget_guard: when the tenant has a monthly budget, refuse the
+  // model fallback if the post-turn usage is already within
+  // SUGGEST_BUDGET_HEADROOM_TOKENS of the cap. Offer-parse fast path
+  // is unaffected — it costs zero tokens and still fires.
+  //
+  // loaded_skills: production wiring of the skill-aware slash variant
+  // is deferred — the engine stores skill slugs only, and the
+  // offer-skill path needs per-skill verb metadata that doesn't yet
+  // exist in the data model. The text-mode offer-parse still works
+  // for skills (matched action becomes plain user input). Adding
+  // verbs to the skills schema lights up `/skill <slug> <verb>`
+  // suggestions without further loop changes.
+  let suggestionFrame: TurnEvent;
+  if (completedStatus === "abandoned") {
+    suggestionFrame = nextSuggestion({
+      suggestion: null,
+      reason: "turn-abandoned",
+      kind: null,
+    });
+  } else {
+    const SUGGEST_BUDGET_HEADROOM_TOKENS = 200;
+    const monthlyBudget = route.monthly_budget;
+    const budgetGuard =
+      monthlyBudget != null && monthlyBudget > 0
+        ? () => usageAfter + SUGGEST_BUDGET_HEADROOM_TOKENS <= monthlyBudget
+        : undefined;
+    suggestionFrame = await buildNextSuggestionFrame({
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      events,
+      ...(p.next_suggestion_suppress !== undefined
+        ? { client_suppress: p.next_suggestion_suppress }
+        : {}),
+      ...(budgetGuard ? { budget_guard: budgetGuard } : {}),
+    });
+  }
   events.push(suggestionFrame);
 
   // P6: emit a per-turn token-usage log line so the operator can grep
