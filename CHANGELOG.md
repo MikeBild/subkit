@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.4.1] (unreleased)
+
+### Fixed
+
+- **Release pipeline secret-name alignment** — workflow `release.yml`
+  referenced `secrets.DEPLOY_SSH_KEY` / `DEPLOY_HOST` / `DEPLOY_USER`,
+  but the repo secrets were named `DROPLET_*` (the names
+  `do-bootstrap.sh` writes during digitalocean provisioning). The
+  v4.4.0 tag-push deploy job exited 1 — empty SSH key file + empty
+  `ssh-keyscan` host — and the GitHub release was published without
+  the smoke-verified deploy. Renamed every workflow ref to
+  `DROPLET_SSH_KEY` / `DROPLET_HOST` / `DROPLET_USER` so the
+  workflow reads from the existing secrets without operator action.
+  Widened `scripts/deploy.sh` to accept `DROPLET_HOST` /
+  `DROPLET_USER` / `DROPLET_SSH_KEY_PATH` as fallbacks for the
+  matching `DEPLOY_*` names, so the laptop deploy and the CI deploy
+  read from the same variable names without per-operator env-file
+  edits. Re-dispatched the v4.4.0 release; deploy + smoke +
+  publish-release all green, prod confirmed at
+  `subkit-api.mikebild.dev/v1/health → version 4.4.0`.
+
 ## [4.4.0] (2026-05-10)
 
 > Closes [#159](https://github.com/MikeBild/subkit/issues/159) — the full
