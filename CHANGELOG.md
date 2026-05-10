@@ -2,6 +2,38 @@
 
 ## [4.4.1] (unreleased)
 
+### Added
+
+- **Next-message preview (`feat/sk-next-command-preview`)**: after every
+  assistant turn, the engine emits a `next_suggestion` SSE event riding
+  on the existing converse stream. sk-cli paints the suggestion as
+  ghost text in the input composer — the inverted first grapheme acts
+  as the cursor, the rest renders dim. Right-Arrow / Tab accept;
+  Esc dismisses; typing the matching prefix consumes the ghost
+  character-by-character; any divergent keystroke or paste clears it.
+  Slash-kind suggestions (`/skill release-notes draft`) accepted via
+  Right-Arrow route through the existing slash dispatcher rather than
+  being typed back into the LLM.
+  Generation runs in a try-pipeline: deterministic English offer-parse
+  fast path (`Want me to X?` → `X`) at zero token cost, falling back
+  to a Haiku-class model call with a minimal history-only prompt
+  (≤30 completion tokens, no skills, no knowledge — the suggestion
+  flow has its own `assembleSuggestionPrompt` so it cannot route
+  through the heavy converse assembler). Filtered through a 13-rule
+  port of Claude Code's `shouldFilterSuggestion` so meta-text,
+  evaluative phrasing, and assistant-voice never reach the operator.
+  Telemetry: `sk_suggest_next_total{tenant_id, outcome, kind}` covers
+  generation outcomes (generated / suppressed / budget_pressure /
+  error) and acceptance outcomes (accepted / dismissed / typed_over)
+  via the new `POST /v1/conversations/{id}/suggest-next/feedback`
+  route. Operators can disable globally via
+  `nextCommandPreviewEnabled: false` in `~/.sk/settings.json`; the
+  `client_suppress` request flag covers per-conversation opt-out.
+  Wins on three axes vs. Claude Code: zero extra round-trip (single
+  SSE stream), ~60% of turns produce a zero-token suggestion via
+  offer-parse, and skill-aware suggestions resolve to one-keypress
+  slash invocations.
+
 ### Fixed
 
 - **Release pipeline secret-name alignment** — workflow `release.yml`

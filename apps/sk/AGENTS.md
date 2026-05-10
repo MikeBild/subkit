@@ -14,7 +14,18 @@ Canonical docs: `docs/03-input-surfaces.md`, `docs/04-authoring.md`.
 
 - `src/index.ts` — entrypoint; parses args, delegates to headless vs. ink.
 - `src/ink-app.tsx`, `src/ink-repl.ts` — TUI mount + REPL loop (React + Ink).
-- `src/repl/` — slash-command handlers, input routing.
+- `src/repl/` — slash-command handlers, input routing. The
+  `input-buffer.ts` reducer owns the next-message preview's `ghost`
+  state — `ghostSet` only attaches when the buffer is empty;
+  every `insert` either advances `ghost.consumed` (matching prefix)
+  or clears the ghost (divergent char or paste); the post-action
+  invariant check drops a ghost whose `value` no longer matches
+  `text.slice(0, consumed)`. Right-Arrow / Tab acceptance lives in
+  `ink-app.tsx` keyboard handlers and fires
+  `engineClient.submitSuggestionFeedback`. The Composer renders the
+  inverted first grapheme + dim remainder inline (Ink has no
+  cursor-overlay, so it must be inline siblings, never a separate
+  `<Text>` row).
 - `src/headless.ts` — non-TTY mode (piped stdin / CI).
 - `src/mcp-proxy.ts` — MCP stdio transport bridging.
 - `src/engine-client.ts` — typed wrapper over the engine REST / SSE / MCP surface.
