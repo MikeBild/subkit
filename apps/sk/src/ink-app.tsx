@@ -2565,6 +2565,19 @@ export const InkApp: React.FC<InkAppProps> = ({
     prevGhostRef.current = input.ghost ? { text: input.ghost.text } : null;
   }, [input.ghost, input.value, session.conversationId, engineClient]);
 
+  // Drop the ghost-tracking refs when the active conversation switches
+  // (resume / fork / new). Without this, a stale ghost from the prior
+  // conversation could fire a `typed-over` POST against the wrong
+  // conversation_id during fast tab-switching: prevGhostRef holds
+  // text, the user types matching prefix in the new conversation, the
+  // typed-over branch above POSTs against `session.conversationId`
+  // (now the new conversation) with the prior ghost's text. Clearing
+  // here closes that window.
+  useEffect(() => {
+    prevGhostRef.current = null;
+    ghostHandledRef.current = false;
+  }, [session.conversationId]);
+
   useInput(
     (char, key) => {
       // --- Global shortcuts (active even under modal / busy) ----------

@@ -2,7 +2,8 @@
 //
 // Lightweight, fire-and-forget endpoint sk-cli posts after the user
 // accepts, dismisses, or types over a next-message suggestion. The
-// engine emits a `sk_suggest_next_total{outcome}` counter only — the
+// engine increments a `sk_suggest_next_total{outcome}` counter and
+// emits a structured log line — no audit row, no DB mutation. The
 // suggestion text is NEVER persisted, so accepted suggestions cannot
 // leak through this surface.
 //

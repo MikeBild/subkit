@@ -802,8 +802,10 @@ export class EngineClient {
   /**
    * Record an accept / dismiss / typed-over outcome for a suggestion.
    * Fire-and-forget — the engine increments a metric and returns
-   * `{ ok: true }`. Errors are not surfaced to the user since the
-   * primary flow has already completed.
+   * `{ ok: true }`. Errors are routed to the `debugLog` channel only
+   * (a 5xx storm on this telemetry endpoint must not affect the
+   * primary chat flow), so dev / on-call can still observe breakage
+   * when `SK_DEBUG=1` without leaking it to the operator.
    */
   async submitSuggestionFeedback(
     conversationId: string,
@@ -814,8 +816,17 @@ export class EngineClient {
   ): Promise<void> {
     try {
       await this.request("POST", `/v1/conversations/${conversationId}/suggest-next/feedback`, body);
-    } catch {
-      // Telemetry-only endpoint — never let it bubble.
+    } catch (error) {
+      debugLog(
+        "suggest_next.feedback_failed",
+        {
+          conversationId,
+          source: body.source,
+          accepted: body.accepted,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        {},
+      );
     }
   }
   /** Streaming variant of appendConversationMessage. See

@@ -13,7 +13,7 @@
 //     reason: "error" }` so the parent turn always closes cleanly.
 
 import { generateText, type LanguageModel, type ModelMessage } from "ai";
-import { and, asc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
 import { initializeModel } from "../../llm/core/model-init.ts";
@@ -42,6 +42,14 @@ export interface EmitSuggestNextFrameParams {
    */
   db?: Db;
   client_suppress?: boolean;
+  /**
+   * Skill hints that drive the offer-skill slash variant of offer-parse.
+   * Production loop.ts does NOT pass this today — Skill records carry
+   * slugs but no `verbs[]` field, so resolving an offered action to a
+   * slash invocation isn't possible yet. Unit tests use this seam
+   * directly to validate the offer-skill code path. See the
+   * `TODO(suggest-next-skill-verbs)` comment in `loop.ts`.
+   */
   loaded_skills?: ReadonlyArray<LoadedSkillHint>;
   /** Optional override for the model invoker (used by integration tests). */
   model_invoker?: SuggestNextModelInvoker;
@@ -50,10 +58,13 @@ export interface EmitSuggestNextFrameParams {
 }
 
 // Allow operators on non-Anthropic providers (Bedrock, OpenAI, local
-// mock) to swap the suggestion model without a code change. When
-// `SK_SUGGEST_MODEL` is unset we fall back to the Haiku-class default;
-// the call still no-ops cleanly when the provider can't resolve the
-// model.
+// mock) to swap the suggestion model without a code change. The env
+// read is intentionally direct (mirroring `conversations/tools/web-search.ts`'s
+// `TAVILY_API_KEY` precedent) — promoting this to a `llm.suggestion.model`
+// config knob is tracked as a follow-up, but until the suggestion
+// feature has wider operator demand the env override is the lighter
+// surface. When unset we fall back to the Haiku-class default; the
+// call still no-ops cleanly when the provider can't resolve the model.
 const SUGGEST_MODEL_DEFAULT = process.env.SK_SUGGEST_MODEL ?? "claude-haiku-4-5";
 const SUGGEST_MAX_OUTPUT_TOKENS = 30;
 const SUGGEST_TEMPERATURE = 0.2;
@@ -121,10 +132,13 @@ interface ExtractedHistory {
 
 /**
  * Production history loader: targeted single-query select against
- * `conversation_messages` for the most recent N user+assistant rows in
- * `created_at` order. Lighter than calling `getConversation` (which
- * also pulls tool calls + drafts + elicitations + resume summaries —
- * all irrelevant to suggestion generation).
+ * `conversation_messages` for the most recent N user+assistant rows.
+ * Lighter than calling `getConversation` (which also pulls tool calls
+ * + drafts + elicitations + resume summaries — all irrelevant to
+ * suggestion generation) AND bounded — `ORDER BY desc LIMIT (maxTurns
+ * * 3)` keeps the query constant-time even on a 10k-message
+ * conversation. The `* 3` factor accommodates tool / system rows that
+ * get filtered out of the user/assistant pair we actually want.
  */
 async function loadPersistedHistory(
   db: Db,
@@ -132,7 +146,7 @@ async function loadPersistedHistory(
   conversation_id: string,
   maxTurns: number,
 ): Promise<ExtractedHistory> {
-  const rows = await db
+  const rowsDesc = await db
     .select({
       role: conversationMessages.role,
       content: conversationMessages.content,
@@ -145,7 +159,26 @@ async function loadPersistedHistory(
         eq(conversationMessages.conversation_id, conversation_id),
       ),
     )
-    .orderBy(asc(conversationMessages.created_at));
+    .orderBy(desc(conversationMessages.created_at))
+    .limit(maxTurns * 3);
+  // Reverse in-memory so the caller sees oldest-first, matching the
+  // events-buffer fallback path's ordering contract.
+  const rows = rowsDesc.slice().reverse();
+  return collectFromRows(rows, maxTurns, { tenant_id, conversation_id });
+}
+
+/**
+ * Shared collector: filters user/assistant rows, runs the content
+ * shape extractor, warns on assistant rows that yield no text, and
+ * returns the trailing N. Used by both the production
+ * (`loadPersistedHistory`) and the unit-test (`extractRecentMessages`)
+ * paths so they cannot drift.
+ */
+function collectFromRows(
+  rows: ReadonlyArray<{ role: string; content: unknown }>,
+  maxTurns: number,
+  ctx: { tenant_id: string; conversation_id: string },
+): ExtractedHistory {
   const collected: RecentMessage[] = [];
   let lastAssistantText = "";
   for (const r of rows) {
@@ -157,8 +190,8 @@ async function loadPersistedHistory(
           module: "conversations",
           action: "suggest_next.content_shape_unrecognized",
           msg: "assistant message had no extractable text — offer-parse will miss",
-          tenant_id,
-          conversation_id,
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
           content_kind: typeof r.content,
         });
       }
@@ -176,36 +209,15 @@ function extractRecentMessages(
   maxTurns: number,
   ctx: { tenant_id: string; conversation_id: string },
 ): ExtractedHistory {
-  const collected: RecentMessage[] = [];
-  let lastAssistantText = "";
+  // Project events to the `{ role, content }` shape `collectFromRows`
+  // expects; this keeps both history-loaders going through the same
+  // extractor so the content-shape contract has one home.
+  const rows: Array<{ role: string; content: unknown }> = [];
   for (const ev of events) {
     if (ev.type !== "message") continue;
-    if (ev.role !== "user" && ev.role !== "assistant") continue;
-    const text = extractText(ev.content);
-    if (!text) {
-      // Warn (don't fail) when an assistant message comes through with
-      // a content shape extractText doesn't understand. Today the
-      // contract is the `{ text, _violations? }` payload built in
-      // `loop.ts:1128`; future variants (multi-part content, tool-only
-      // turns) would silently degrade the offer-parse to a model
-      // fallback. The warning makes that visible.
-      if (ev.role === "assistant") {
-        logger.warn({
-          module: "conversations",
-          action: "suggest_next.content_shape_unrecognized",
-          msg: "assistant message had no extractable text — offer-parse will miss",
-          tenant_id: ctx.tenant_id,
-          conversation_id: ctx.conversation_id,
-          content_kind: typeof ev.content,
-        });
-      }
-      continue;
-    }
-    collected.push({ role: ev.role, text });
-    if (ev.role === "assistant") lastAssistantText = text;
+    rows.push({ role: ev.role, content: ev.content });
   }
-  const recent = collected.slice(-maxTurns);
-  return { recent, lastAssistantText };
+  return collectFromRows(rows, maxTurns, ctx);
 }
 
 /**
@@ -233,6 +245,16 @@ function extractText(content: unknown): string {
  * tool-loop iteration, or context assembly. Provider misconfiguration
  * collapses to `text: null` so the suggestion service emits
  * `reason: "empty"` and the turn closes cleanly.
+ *
+ * Design note: do NOT route this through `core/invoke.ts` /
+ * `assembleContext`. That path pulls in skills, knowledge, docs,
+ * runtime context, and a full system prompt — exactly the wiring the
+ * `suggestion-prompt.ts` assembler is designed to avoid. Re-routing
+ * would re-introduce the 1M-token empty-turn class of bug we already
+ * fought once. The structural casts on `messages` / `model` below
+ * (lines through `unknown` to `ModelMessage` / `LanguageModel`) are
+ * load-bearing here: they bridge the engine's `SubkitLlmMessage`
+ * shape to the AI SDK's `ModelMessage` without a runtime adapter.
  */
 const defaultSuggestNextModelInvoker: SuggestNextModelInvoker = async (
   call: SuggestNextModelInvocation,

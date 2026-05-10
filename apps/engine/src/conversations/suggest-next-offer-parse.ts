@@ -49,14 +49,16 @@ export interface OfferParseInput {
 //
 // Order matters: longer / more-specific phrasings come first so a
 // generic "want to X?" inside "do you want me to X?" doesn't steal
-// the match.
+// the match. The `g` flag is baked in here (rather than re-cloned
+// per call) so the hot post-turn path doesn't allocate 6 RegExp
+// objects each invocation.
 const OFFER_PATTERNS: ReadonlyArray<RegExp> = [
-  /\bwould you like me to\s+([^?]+?)\??\s*\?/i,
-  /\bdo you want me to\s+([^?]+?)\??\s*\?/i,
-  /\bwant me to\s+([^?]+?)\??\s*\?/i,
-  /\bshall i\s+([^?]+?)\??\s*\?/i,
-  /\bshould i\s+([^?]+?)\??\s*\?/i,
-  /\bwant to\s+([^?]+?)\??\s*\?/i,
+  /\bwould you like me to\s+([^?]+?)\??\s*\?/gi,
+  /\bdo you want me to\s+([^?]+?)\??\s*\?/gi,
+  /\bwant me to\s+([^?]+?)\??\s*\?/gi,
+  /\bshall i\s+([^?]+?)\??\s*\?/gi,
+  /\bshould i\s+([^?]+?)\??\s*\?/gi,
+  /\bwant to\s+([^?]+?)\??\s*\?/gi,
 ];
 
 const FENCE_LINE = /^```/;
@@ -85,11 +87,11 @@ function stripFencedBlocks(text: string): string {
  */
 function findLastOffer(text: string): { action: string } | null {
   let best: { action: string; index: number } | null = null;
-  for (const pattern of OFFER_PATTERNS) {
-    const re = new RegExp(
-      pattern.source,
-      pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`,
-    );
+  for (const re of OFFER_PATTERNS) {
+    // Reset state on the shared regex; the `g` flag means
+    // `re.lastIndex` is mutated by `exec` and would otherwise persist
+    // across calls, breaking the second invocation in a row.
+    re.lastIndex = 0;
     let match: RegExpExecArray | null = re.exec(text);
     while (match !== null) {
       const action = (match[1] ?? "").trim();
