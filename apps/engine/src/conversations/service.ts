@@ -39,6 +39,12 @@ export {
   type RespondElicitationParams,
   respondElicitation,
 } from "./service/elicit.ts";
+export {
+  FORK_COPY_MESSAGE_CAP,
+  type ForkConversationParams,
+  type ForkConversationResult,
+  forkConversation,
+} from "./service/fork.ts";
 export { getConversation } from "./service/get.ts";
 export {
   type ConversationListItem,

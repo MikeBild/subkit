@@ -20,12 +20,33 @@ export interface ConversationItem {
   last_message_excerpt?: string | null;
 }
 
+export interface AssistantTurnRef {
+  message_id: string;
+  excerpt: string;
+  /**
+   * S2 of PR #161 review (round 5): nullable so the host can encode
+   * "engine-side timestamp not propagated yet" explicitly rather
+   * than smuggling that meaning through the empty string. The renderer
+   * still falls back to an em-dash for both `null` and `""`, so
+   * existing call sites that pass `""` keep working — but new call
+   * sites should prefer `null` for "missing".
+   */
+  created_at: string | null;
+}
+
 export interface ConversationBrowserProps {
   items: readonly ConversationItem[];
   onSelect: (id: string) => void;
   onDismiss?: () => void;
   title?: string;
   inputDisabled?: boolean;
+  /**
+   * G10 closure of #159 M10 — when supplied, the rewind sub-mode shows
+   * a real assistant-turn timeline and lets the operator fork a new
+   * conversation from any prior turn.
+   */
+  currentTurns?: readonly AssistantTurnRef[];
+  onForkFromTurn?: (message_id: string) => void;
 }
 
 function containsControlChar(s: string): boolean {
@@ -66,10 +87,18 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
   onDismiss,
   title = "resume conversation",
   inputDisabled,
+  currentTurns,
+  onForkFromTurn,
 }) => {
   const theme = useTheme();
   const [focused, setFocused] = useState(0);
   const [filter, setFilter] = useState("");
+  // M10 + G10 of #159 — `t` toggles between the session-list view and
+  // the current-session turn-timeline. When `currentTurns` is provided,
+  // the timeline lists each assistant turn; selecting one calls
+  // `onForkFromTurn` which posts to the engine fork-from-message route.
+  const [view, setView] = useState<"list" | "turns">("list");
+  const [turnIdx, setTurnIdx] = useState(0);
 
   const visible = useMemo(() => {
     const q = filter.toLowerCase();
@@ -84,16 +113,35 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
 
   useInput(
     (ch, key) => {
+      // Single-char `t` toggles the rewind view BEFORE the filter input
+      // captures it; only react on a one-char input outside the filter.
+      if (ch === "t" && filter.length === 0) {
+        setView((v) => (v === "list" ? "turns" : "list"));
+        return;
+      }
       if (key.return) {
-        const pick = visible[focused];
-        if (pick) onSelect(pick.id);
+        if (view === "list") {
+          const pick = visible[focused];
+          if (pick) onSelect(pick.id);
+        } else if (view === "turns" && currentTurns) {
+          const pick = currentTurns[turnIdx];
+          if (pick && onForkFromTurn) onForkFromTurn(pick.message_id);
+        }
         return;
       }
       if (key.upArrow) {
+        if (view === "turns" && currentTurns && currentTurns.length > 0) {
+          setTurnIdx((i) => (i - 1 + currentTurns.length) % currentTurns.length);
+          return;
+        }
         setFocused((i) => (i - 1 + visible.length) % Math.max(1, visible.length));
         return;
       }
       if (key.downArrow) {
+        if (view === "turns" && currentTurns && currentTurns.length > 0) {
+          setTurnIdx((i) => (i + 1) % currentTurns.length);
+          return;
+        }
         setFocused((i) => (i + 1) % Math.max(1, visible.length));
         return;
       }
@@ -121,13 +169,65 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
     { isActive: !inputDisabled },
   );
 
+  if (view === "turns") {
+    const turns = currentTurns ?? [];
+    return (
+      <Pane
+        title="resume — from earlier turn"
+        subtitle={`${turns.length} assistant turn${turns.length === 1 ? "" : "s"}`}
+        {...(onDismiss ? { onDismiss } : {})}
+        {...(inputDisabled !== undefined ? { inputDisabled } : {})}
+        footer="↑/↓ select · Enter to fork from this turn · t back to session list · Esc to close"
+      >
+        <Box flexDirection="column">
+          {turns.length === 0 ? (
+            <>
+              <Text color={theme.severity.warning}>
+                No assistant turns in the current session yet.
+              </Text>
+              <Text color={theme.severity.dim}>
+                Send a prompt and a turn timeline will appear here.
+              </Text>
+            </>
+          ) : (
+            turns.slice(0, 12).map((turn, i) => {
+              const marker = i === turnIdx ? "▶ " : "  ";
+              return (
+                <Box key={turn.message_id} flexDirection="column" marginBottom={1}>
+                  <Box>
+                    <Text {...(i === turnIdx ? { color: theme.role.user, bold: true } : {})}>
+                      {marker}#{i + 1} · {truncate(turn.excerpt, 64)}
+                    </Text>
+                  </Box>
+                  <Box marginLeft={2}>
+                    {/* W4 of PR #161 review round 2: empty `created_at`
+                        renders as `—` rather than fabricating a
+                        relative time. The CLI doesn't currently
+                        propagate the engine-side timestamp through
+                        MessageState; until it does, falsified
+                        "moments ago" labels are worse than honest dashes. */}
+                    <Text color={theme.severity.dim}>
+                      {turn.created_at ? formatRelativeTime(turn.created_at) : "—"}
+                    </Text>
+                    <Text color={theme.severity.dim}> · </Text>
+                    <Text color={theme.severity.dim}>{turn.message_id.slice(0, 8)}</Text>
+                  </Box>
+                </Box>
+              );
+            })
+          )}
+        </Box>
+      </Pane>
+    );
+  }
+
   return (
     <Pane
       title={title}
       subtitle={`${visible.length} / ${items.length}`}
       {...(onDismiss ? { onDismiss } : {})}
       {...(inputDisabled !== undefined ? { inputDisabled } : {})}
-      footer="↑/↓ to move · Enter to open · filter by title/excerpt/id · Esc to close"
+      footer="↑/↓ to move · Enter to open · t for rewind · filter · Esc to close"
     >
       {filter.length > 0 ? (
         <Box>

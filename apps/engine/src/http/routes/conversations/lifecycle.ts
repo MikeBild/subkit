@@ -4,8 +4,9 @@
 //   POST /v1/conversations/{id}/cancel
 //   GET  /v1/conversations/{id}/context-snapshot
 //   POST /v1/conversations/{id}/compact
+//   POST /v1/conversations/{id}/fork-from-message/{message_id}
 
-import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import * as svc from "../../../conversations/index.ts";
 import { NotFoundError } from "../../errors.ts";
@@ -17,6 +18,27 @@ import {
   ContextSnapshotSchema,
   ConversationSchema,
 } from "./schemas.ts";
+
+const ForkFromMessageParam = z.object({
+  id: z.string().uuid(),
+  message_id: z.string().uuid(),
+});
+
+const ForkFromMessageResponse = z
+  .object({
+    conversation: ConversationSchema,
+    source_conversation_id: z.string().uuid(),
+    anchor_message_id: z.string().uuid(),
+    copied_message_count: z.number().int().nonnegative(),
+    /**
+     * True when the fork hit the per-fork copy cap and only the most
+     * recent N messages up to the anchor were copied. The anchor
+     * message is always preserved. Audit metadata records the
+     * original source-side count alongside this flag.
+     */
+    truncated: z.boolean(),
+  })
+  .openapi("ForkFromMessageResponse");
 
 const cancelRoute = createRoute({
   method: "post",
@@ -45,6 +67,49 @@ const contextSnapshotRoute = createRoute({
     200: {
       description: "OK",
       content: { "application/json": { schema: ContextSnapshotSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const forkFromMessageRoute = createRoute({
+  method: "post",
+  path: "/v1/conversations/{id}/fork-from-message/{message_id}",
+  tags: ["conversations"],
+  summary: "Fork a conversation, copying messages up to and including the anchor",
+  description:
+    "Creates a new conversation owned by the same tenant + actor and copies " +
+    "messages [0..anchor] in created_at order. Tool calls and elicitations are " +
+    "NOT copied — re-running them would duplicate side effects. Caveat: " +
+    "assistant message content that references `tool_call_id` values from the " +
+    "source will retain those refs even though the corresponding tool_call " +
+    "rows are not in the fork; the CLI renderer treats unknown ids as plain " +
+    "text, but audit-log readers should be aware. Each copied message gets a " +
+    "fresh `created_at` (set to fork-time) so the fork's timeline orders " +
+    "cleanly; the source's original timestamps are preserved in the source " +
+    "conversation, joinable via `forked_from` in the audit metadata. The " +
+    `fork is hard-capped at the most recent ${svc.FORK_COPY_MESSAGE_CAP.toLocaleString("en-US")} messages up to and ` +
+    "including the anchor; when the cap fires the response sets " +
+    "`truncated: true` and the audit row records the original source count.",
+  security: [{ bearerAuth: [] }],
+  request: { params: ForkFromMessageParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: ForkFromMessageResponse } },
+    },
+    // W2 of PR #161 review (round 5): document the auth + RBAC error
+    // shapes so generated CLIs see the envelope. 401 fires from
+    // `requireAuth` (no/invalid bearer); 403 fires from
+    // `requireAnyPermission(["conversation:write", "workflow:write"])`
+    // registered alongside the route.
+    401: {
+      description: "Unauthenticated",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "Forbidden — principal lacks conversation:write or workflow:write",
+      content: { "application/json": { schema: ErrorSchema } },
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -102,6 +167,28 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
+    return c.json(result, 200);
+  });
+
+  app.openapi(forkFromMessageRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id, message_id } = c.req.valid("param");
+    const result = await svc.forkConversation(
+      {
+        tenant_id: principal.tenant_id,
+        source_conversation_id: id,
+        anchor_message_id: message_id,
+        actor_id: principal.id,
+        // W1 of PR #161 review (round 5): every HTTP entry into the
+        // fork service tags the audit row as `api`. Other channels
+        // (CLI direct invocation, scheduler) would pass their own
+        // value when they invoke `forkConversation` directly.
+        request_source: "api",
+      },
+      db,
+    );
+    if (!result) throw new NotFoundError("conversation");
     return c.json(result, 200);
   });
 }

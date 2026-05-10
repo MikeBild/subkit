@@ -77,6 +77,15 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/conversations/:id/cancel", async (c, next) => {
     return requireAnyPermission(["conversation:cancel", "workflow:write"])(c, next);
   });
+  // C1 of PR #161 review — fork-from-message inserts a new conversation
+  // row plus copies of N message rows. State-mutating writes require the
+  // same `conversation:write` / `workflow:write` gate as compact /
+  // messages. Without this middleware Hono 4.12's `app.use("/:id", …)`
+  // does not cover sub-paths and the route was reachable by any
+  // authenticated principal.
+  app.use("/v1/conversations/:id/fork-from-message/:message_id", async (c, next) => {
+    return requireAnyPermission(["conversation:write", "workflow:write"])(c, next);
+  });
   app.use("/v1/conversations/:id/stream", async (c, next) => {
     return requireAnyPermission(["conversation:read", "workflow:read"])(c, next);
   });

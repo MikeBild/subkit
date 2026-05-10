@@ -85,7 +85,6 @@ describe("classifySlash", () => {
     const subDispatcherSrcs: string[] = [
       readFileSync("apps/sk/src/repl/slash/handlers/admin-lists.ts", "utf8"),
       readFileSync("apps/sk/src/repl/slash/handlers/inspect.ts", "utf8"),
-      readFileSync("apps/sk/src/repl/slash/handlers/install-wizards.ts", "utf8"),
       readFileSync("apps/sk/src/repl/slash/handlers/auth-redirects.ts", "utf8"),
     ];
     const inkIntercepted = new Set<string>(INK_INTERCEPTED_ENGINE_SLASHES);

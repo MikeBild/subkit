@@ -7,6 +7,7 @@
 // lives here and ships once.
 
 export {
+  type AssistantTurnRef,
   ConversationBrowser,
   type ConversationBrowserProps,
   type ConversationItem,

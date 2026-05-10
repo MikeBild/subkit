@@ -26,8 +26,13 @@ import { type ResolvedPersonaSnapshot, resolvePersonaShared } from "../persona-p
 import type { PersonaProbe } from "../slash.ts";
 
 /** R8-S2: persisted-snapshot schema version. Bump on any
- *  field-shape change; readers reject mismatched versions. */
-export const PERSISTED_SNAPSHOT_VERSION = 1 as const;
+ *  field-shape change; readers reject mismatched versions.
+ *  H1 of #159 follow-up — bumped to 2 when `prefs` was added. */
+// S6 of PR #161 review (round 5): bumped 2 → 3 with the addition of
+// `prefs.portalTokenTtlMin`. Older caches lack the field; `.strict()`
+// rejects them on read so the next bootstrap re-fetches with the new
+// shape.
+export const PERSISTED_SNAPSHOT_VERSION = 3 as const;
 
 /** R8-S1: derive a stable, sha256-fingerprinted cache key from a
  *  profile. Used by both `bootstrapCachePath` and the React
@@ -97,6 +102,9 @@ export interface SkBootstrapSnapshot {
    *  type so a typo on either the engine or CLI side fails to
    *  compile. R4-W1. */
   flags: SkBootstrapFlags;
+  /** REPL + UI + notification preferences resolved by the engine for
+   *  this principal. H1 of #159 follow-up. */
+  prefs: SkBootstrapWireResponse["prefs"];
   /** Wall-clock time the snapshot was produced (ms since epoch). */
   fetchedAt: number;
   /** Whether the snapshot came from the network or from disk cache. */
@@ -152,6 +160,33 @@ const PersistedSnapshotSchema = z
     // is the migration boundary; the wire schema is the source of
     // truth for the new shape.
     flags: z.record(z.string(), z.boolean()),
+    // H1 of #159 follow-up — `prefs` carries REPL + UI + notification
+    // settings resolved by the engine.
+    //
+    // S4 of PR #161 review round 2: switched from `.passthrough()` to
+    // `.strict()`. The earlier laxness was justified as "future engine
+    // field shouldn't fail older CLIs", but the surrounding contract
+    // already pins shape via `PERSISTED_SNAPSHOT_VERSION` — a new
+    // engine-side prefs field requires a version bump anyway, and
+    // strict rejection on the cache reader is the same fail-closed
+    // posture every other persisted-shape leaf has. Allowing unknown
+    // keys here would silently smuggle a stale-cache field through to
+    // `materialize()` after a downgrade, exactly the failure mode
+    // PERSISTED_SNAPSHOT_VERSION exists to prevent.
+    prefs: z
+      .object({
+        permissionMode: z.enum(["ask", "auto", "plan", "yolo"]),
+        theme: z.enum(["auto", "light", "dark", "high-contrast"]),
+        personality: z.enum(["concise", "balanced", "verbose"]),
+        titleFormat: z.enum(["session-id", "tenant-session", "model-tenant-session"]),
+        statuslineFormat: z.enum(["minimal", "compact", "detailed"]),
+        pushNotifyEnabled: z.boolean(),
+        pushNotifyThresholdSec: z.number().int().positive(),
+        quietHoursStart: z.string(),
+        quietHoursEnd: z.string(),
+        portalTokenTtlMin: z.number().int().positive(),
+      })
+      .strict(),
     fetched_at: z.number().int().nonnegative(),
   })
   .strict();
@@ -215,6 +250,7 @@ export async function loadBootstrap(
       email: resp.whoami.email,
       recent_sessions: resp.recent_sessions,
       flags: resp.flags,
+      prefs: resp.prefs,
       fetched_at: now(),
     };
     writeCachedSnapshot(cachePath, persisted);
@@ -264,12 +300,27 @@ function materialize(
     // schema (the typecheck-time invariant in `_FLAG_KEYS_PIN`
     // catches drift).
     flags: filterFlagsToKnown(p.flags),
+    prefs: p.prefs as SkBootstrapWireResponse["prefs"],
     fetchedAt: p.fetched_at,
     source,
   };
 }
 
 function fromLegacy(snap: ResolvedPersonaSnapshot, fetchedAt: number): SkBootstrapSnapshot {
+  // Older engines without /v1/sk/bootstrap have no prefs. Use the
+  // CLI-side defaults so the REPL still has an opinion.
+  const defaultPrefs: SkBootstrapWireResponse["prefs"] = {
+    permissionMode: "ask",
+    theme: "auto",
+    personality: "balanced",
+    titleFormat: "session-id",
+    statuslineFormat: "compact",
+    pushNotifyEnabled: false,
+    pushNotifyThresholdSec: 30,
+    quietHoursStart: "",
+    quietHoursEnd: "",
+    portalTokenTtlMin: 15,
+  };
   return {
     label: snap.label,
     allowed: snap.allowed,
@@ -278,6 +329,7 @@ function fromLegacy(snap: ResolvedPersonaSnapshot, fetchedAt: number): SkBootstr
     email: snap.email,
     recentSessions: [],
     flags: {},
+    prefs: defaultPrefs,
     fetchedAt,
     source: "fallback",
   };

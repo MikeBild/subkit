@@ -1072,7 +1072,8 @@
             "type": "object",
             "properties": {
               "id": {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               "kind": {
                 "type": "string",
@@ -1082,7 +1083,8 @@
                 ]
               },
               "tenant_id": {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               "tenant_slug": {
                 "type": "string",
@@ -1193,7 +1195,8 @@
             "type": "object",
             "properties": {
               "id": {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               "slug": {
                 "type": "string",
@@ -1216,7 +1219,8 @@
               "type": "object",
               "properties": {
                 "id": {
-                  "type": "string"
+                  "type": "string",
+                  "format": "uuid"
                 },
                 "title": {
                   "type": "string",
@@ -1226,7 +1230,8 @@
                   "type": "string"
                 },
                 "tenant_id": {
-                  "type": "string"
+                  "type": "string",
+                  "format": "uuid"
                 }
               },
               "required": [
@@ -1243,6 +1248,95 @@
             "additionalProperties": false,
             "description": "Persona-visible feature flags. Keys are drawn from a typed enum."
           },
+          "prefs": {
+            "type": "object",
+            "properties": {
+              "permissionMode": {
+                "type": "string",
+                "enum": [
+                  "ask",
+                  "auto",
+                  "plan",
+                  "yolo"
+                ],
+                "description": "Default REPL permission mode."
+              },
+              "theme": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "light",
+                  "dark",
+                  "high-contrast"
+                ],
+                "description": "REPL color theme."
+              },
+              "personality": {
+                "type": "string",
+                "enum": [
+                  "concise",
+                  "balanced",
+                  "verbose"
+                ],
+                "description": "Assistant response style."
+              },
+              "titleFormat": {
+                "type": "string",
+                "enum": [
+                  "session-id",
+                  "tenant-session",
+                  "model-tenant-session"
+                ],
+                "description": "Window-title format used by the sk REPL."
+              },
+              "statuslineFormat": {
+                "type": "string",
+                "enum": [
+                  "minimal",
+                  "compact",
+                  "detailed"
+                ],
+                "description": "Status-line layout."
+              },
+              "pushNotifyEnabled": {
+                "type": "boolean",
+                "description": "Push-notify on long-running execution completion."
+              },
+              "pushNotifyThresholdSec": {
+                "type": "integer",
+                "minimum": 0,
+                "exclusiveMinimum": true,
+                "description": "Threshold in seconds before notify() fires."
+              },
+              "quietHoursStart": {
+                "type": "string",
+                "description": "Quiet-hours window start (HH:MM, local TZ). Empty disables."
+              },
+              "quietHoursEnd": {
+                "type": "string",
+                "description": "Quiet-hours window end (HH:MM, local TZ). Empty disables."
+              },
+              "portalTokenTtlMin": {
+                "type": "integer",
+                "minimum": 0,
+                "exclusiveMinimum": true,
+                "description": "TTL in minutes for portal tokens minted by /session."
+              }
+            },
+            "required": [
+              "permissionMode",
+              "theme",
+              "personality",
+              "titleFormat",
+              "statuslineFormat",
+              "pushNotifyEnabled",
+              "pushNotifyThresholdSec",
+              "quietHoursStart",
+              "quietHoursEnd",
+              "portalTokenTtlMin"
+            ],
+            "description": "REPL + UI preferences resolved for this principal."
+          },
           "server_time": {
             "type": "string",
             "description": "Server-side ISO timestamp; lets the CLI sync clocks."
@@ -1255,6 +1349,7 @@
           "tenant",
           "recent_sessions",
           "flags",
+          "prefs",
           "server_time"
         ]
       },
@@ -7448,6 +7543,36 @@
             "maximum": 50
           }
         }
+      },
+      "ForkFromMessageResponse": {
+        "type": "object",
+        "properties": {
+          "conversation": {
+            "$ref": "#/components/schemas/Conversation"
+          },
+          "source_conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "anchor_message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "copied_message_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "conversation",
+          "source_conversation_id",
+          "anchor_message_id",
+          "copied_message_count",
+          "truncated"
+        ]
       },
       "ToolPoliciesResponse": {
         "type": "object",
@@ -15048,6 +15173,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CompactConversationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/fork-from-message/{message_id}": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Fork a conversation, copying messages up to and including the anchor",
+        "description": "Creates a new conversation owned by the same tenant + actor and copies messages [0..anchor] in created_at order. Tool calls and elicitations are NOT copied — re-running them would duplicate side effects. Caveat: assistant message content that references `tool_call_id` values from the source will retain those refs even though the corresponding tool_call rows are not in the fork; the CLI renderer treats unknown ids as plain text, but audit-log readers should be aware. Each copied message gets a fresh `created_at` (set to fork-time) so the fork's timeline orders cleanly; the source's original timestamps are preserved in the source conversation, joinable via `forked_from` in the audit metadata. The fork is hard-capped at the most recent 5,000 messages up to and including the anchor; when the cap fires the response sets `truncated: true` and the audit row records the original source count.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "message_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForkFromMessageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — principal lacks conversation:write or workflow:write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

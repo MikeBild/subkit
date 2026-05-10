@@ -5003,6 +5003,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/conversations/{id}/fork-from-message/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fork a conversation, copying messages up to and including the anchor
+         * @description Creates a new conversation owned by the same tenant + actor and copies messages [0..anchor] in created_at order. Tool calls and elicitations are NOT copied — re-running them would duplicate side effects. Caveat: assistant message content that references `tool_call_id` values from the source will retain those refs even though the corresponding tool_call rows are not in the fork; the CLI renderer treats unknown ids as plain text, but audit-log readers should be aware. Each copied message gets a fresh `created_at` (set to fork-time) so the fork's timeline orders cleanly; the source's original timestamps are preserved in the source conversation, joinable via `forked_from` in the audit metadata. The fork is hard-capped at the most recent 5,000 messages up to and including the anchor; when the cap fires the response sets `truncated: true` and the audit row records the original source count.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    message_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ForkFromMessageResponse"];
+                    };
+                };
+                /** @description Unauthenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden — principal lacks conversation:write or workflow:write */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/conversations/{id}/tool-policies": {
         parameters: {
             query?: never;
@@ -7517,9 +7586,11 @@ export interface components {
         };
         SkBootstrap: {
             whoami: {
+                /** Format: uuid */
                 id: string;
                 /** @enum {string} */
                 kind: "user" | "system_account";
+                /** Format: uuid */
                 tenant_id: string;
                 tenant_slug: string | null;
                 email: string | null;
@@ -7533,18 +7604,59 @@ export interface components {
             /** @description Stable list of permissions probed; reflects the engine's known UX gating set. */
             permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read")[];
             tenant: {
+                /** Format: uuid */
                 id: string;
                 slug: string | null;
                 display_name: string | null;
             };
             recent_sessions: {
+                /** Format: uuid */
                 id: string;
                 title: string | null;
                 updated_at: string;
+                /** Format: uuid */
                 tenant_id: string;
             }[];
             /** @description Persona-visible feature flags. Keys are drawn from a typed enum. */
             flags: Record<string, never>;
+            /** @description REPL + UI preferences resolved for this principal. */
+            prefs: {
+                /**
+                 * @description Default REPL permission mode.
+                 * @enum {string}
+                 */
+                permissionMode: "ask" | "auto" | "plan" | "yolo";
+                /**
+                 * @description REPL color theme.
+                 * @enum {string}
+                 */
+                theme: "auto" | "light" | "dark" | "high-contrast";
+                /**
+                 * @description Assistant response style.
+                 * @enum {string}
+                 */
+                personality: "concise" | "balanced" | "verbose";
+                /**
+                 * @description Window-title format used by the sk REPL.
+                 * @enum {string}
+                 */
+                titleFormat: "session-id" | "tenant-session" | "model-tenant-session";
+                /**
+                 * @description Status-line layout.
+                 * @enum {string}
+                 */
+                statuslineFormat: "minimal" | "compact" | "detailed";
+                /** @description Push-notify on long-running execution completion. */
+                pushNotifyEnabled: boolean;
+                /** @description Threshold in seconds before notify() fires. */
+                pushNotifyThresholdSec: number;
+                /** @description Quiet-hours window start (HH:MM, local TZ). Empty disables. */
+                quietHoursStart: string;
+                /** @description Quiet-hours window end (HH:MM, local TZ). Empty disables. */
+                quietHoursEnd: string;
+                /** @description TTL in minutes for portal tokens minted by /session. */
+                portalTokenTtlMin: number;
+            };
             /** @description Server-side ISO timestamp; lets the CLI sync clocks. */
             server_time: string;
         };
@@ -9148,6 +9260,15 @@ export interface components {
         };
         CompactConversationBody: {
             keep_last?: number;
+        };
+        ForkFromMessageResponse: {
+            conversation: components["schemas"]["Conversation"];
+            /** Format: uuid */
+            source_conversation_id: string;
+            /** Format: uuid */
+            anchor_message_id: string;
+            copied_message_count: number;
+            truncated: boolean;
         };
         ToolPoliciesResponse: {
             policies: {

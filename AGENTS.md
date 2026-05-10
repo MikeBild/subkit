@@ -37,7 +37,13 @@ High-value references (by task type):
 - **Project shape & build** — `package.json`, `biome.json`, `tsconfig.json`, `docker-compose.yml`,
   `.github/workflows/ci.yml`, `release-please-config.json`, `.commitlintrc.json`
 - **Platform & concepts** — `docs/01-platform.md`, `docs/02-concepts.md`
-- **Input surfaces** — `docs/03-input-surfaces.md`
+- **Input surfaces** — `docs/03-input-surfaces.md`. The sk REPL exposes a 10-tab
+  `/settings` palette (`Settings · Status · Config · Usage · Stats · Skills ·
+  Permissions · Knowledge · Profile · Admin`) embedded in-process via the
+  `kind: "settings"` PaneSpec; the Admin tab is hidden unless the principal
+  holds an admin-scoped permission. Slash registry is in
+  `apps/sk/src/slash.ts`; deleted-slash redirects in
+  `apps/sk/src/repl/slash/dispatcher.ts:REMOVED_SLASH_GUIDANCE`.
 - **AI authoring** — `docs/04-authoring.md`
 - **Connectors & integration** — `docs/05-connectors.md`
 - **Execution** — `docs/06-execution.md`

@@ -18,6 +18,7 @@ import {
 } from "@cli-core/diagnostics-paths.ts";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { AUDIT_SOURCE_HEADER, type AuditSource } from "@shared/audit-source.ts";
+import { z } from "zod";
 
 /** The CLI's channel tag on audit_log.metadata.audit_source. The
  *  engine validates against `AUDIT_SOURCE_VALUES` (shared package)
@@ -81,6 +82,35 @@ function synthesizeRecoveredOutcome(detail: ConversationDetail): ConversationRun
 }
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+/**
+ * S7 of PR #161 review (round 4): Zod schema for the fork-from-message
+ * response so a server that breaks the shape (or a future engine that
+ * adds an unknown field interpreted by the wrong path) is rejected at
+ * the CLI boundary instead of smuggled through as TS-shape-only.
+ *
+ * `conversation` is parsed loosely (the engine returns the full
+ * ConversationSummary; we don't re-derive that schema here, that's
+ * the OpenAPI client's job). The fields the CLI actually reads —
+ * `id`, `tenant_id`, `title`, `created_at`, `updated_at`, `status` —
+ * are pinned strictly so a contract drift on those is a parse error.
+ */
+const ForkResponseSchema = z.object({
+  conversation: z
+    .object({
+      id: z.string().uuid(),
+      tenant_id: z.string().uuid(),
+      title: z.string().nullable(),
+      status: z.string(),
+      created_at: z.string(),
+      updated_at: z.string(),
+    })
+    .passthrough(),
+  source_conversation_id: z.string().uuid(),
+  anchor_message_id: z.string().uuid(),
+  copied_message_count: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+});
 
 export interface ClientOptions {
   engine_url: string;
@@ -785,6 +815,41 @@ export class EngineClient {
     body: { model?: string | null; title?: string | null },
   ): Promise<ConversationSummary> {
     return this.request("PATCH", `/v1/conversations/${id}`, body);
+  }
+  /**
+   * Fork a conversation at a specific message id. Creates a new
+   * conversation copying messages up to and including the anchor.
+   * G10 closure of #159 M10.
+   *
+   * S7 of PR #161 review (round 4): the response is parsed through a
+   * Zod schema rather than trusted by TS shape alone. The other
+   * engine-client methods will be migrated incrementally; the fork
+   * route is the first one introduced post-`SkBootstrapPrefsSchema`
+   * and matches that direction.
+   */
+  async forkConversationFromMessage(
+    id: string,
+    message_id: string,
+  ): Promise<{
+    conversation: ConversationSummary;
+    source_conversation_id: string;
+    anchor_message_id: string;
+    copied_message_count: number;
+    truncated: boolean;
+  }> {
+    const raw = await this.request<unknown>(
+      "POST",
+      `/v1/conversations/${encodeURIComponent(id)}/fork-from-message/${encodeURIComponent(
+        message_id,
+      )}`,
+    );
+    return ForkResponseSchema.parse(raw) as unknown as {
+      conversation: ConversationSummary;
+      source_conversation_id: string;
+      anchor_message_id: string;
+      copied_message_count: number;
+      truncated: boolean;
+    };
   }
   compactConversation(
     id: string,

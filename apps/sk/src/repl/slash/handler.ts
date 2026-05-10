@@ -40,11 +40,10 @@ import type {
   OnboardingSaveResult,
   OnboardingTemplate,
 } from "../onboarding-wizard.tsx";
-import { classifySlash } from "./dispatcher.ts";
+import { classifySlash, removedSlashGuidance } from "./dispatcher.ts";
 import { dispatchAdminListSlash } from "./handlers/admin-lists.ts";
 import { dispatchAuthRedirectSlash } from "./handlers/auth-redirects.ts";
 import { dispatchInspectSlash } from "./handlers/inspect.ts";
-import { dispatchInstallWizardSlash } from "./handlers/install-wizards.ts";
 
 /**
  * Rich pane descriptions returned by slash commands that open a modal
@@ -222,6 +221,34 @@ export type PaneSpec =
         tone?: "ok" | "warn" | "fail" | "info";
         rows: ReadonlyArray<readonly [string, string | number | null | undefined]>;
       }>;
+    }
+  | {
+      // /settings opened from the REPL — host renders SettingsModal
+      // in-process with the operator's REPL state piped in so the
+      // Status tab shows real session id / permission mode / tokens.
+      kind: "settings";
+      initialTab?: string;
+      sessionId?: string | null;
+      sessionTitle?: string | null;
+      permissionMode?: "ask" | "auto" | "plan" | "yolo";
+      sessionTokens?: number | null;
+      weekTokens?: number | null;
+    }
+  | {
+      // W1 of PR #161 review (round 6): the portal-token mint flow
+      // never returns the plaintext token through the slash result —
+      // slash returns are persisted into the assistant transcript and
+      // the token is short-lived but bearer-equivalent. Render the
+      // QR + URL inline in a transient pane (mirroring the AdminTab
+      // ApiKeysSubTab "shown once" yellow panel) and dismiss on Esc /
+      // 'y' (copy via OSC 52). The token id (not the secret) is the
+      // only thing we surface back to the transcript.
+      kind: "portal-token";
+      url: string;
+      ttl_minutes: number;
+      token_id: string;
+      expires_at: string;
+      workflow_id: string;
     };
 
 export interface SlashHandlerContext {
@@ -253,6 +280,15 @@ export interface SlashHandlerContext {
     fetchedAt: number;
     source: "network" | "cache" | "fallback";
     label: string;
+  } | null;
+  /**
+   * Engine-resolved REPL preferences. S6 of PR #161 review (round 5)
+   * adds `portalTokenTtlMin` here so `/session` can mint with the
+   * tenant-tuned TTL instead of a magic 15-minute literal.
+   */
+  prefs?: {
+    portalTokenTtlMin?: number;
+    [k: string]: unknown;
   } | null;
   /**
    * Open a modal pane in the Ink host. When omitted (e.g. the readline
@@ -523,6 +559,13 @@ export async function handleSlash(
   const plan = classifySlash(name);
   if (plan.routing === "unknown") {
     debugLog("dialog.warning", { reason: "unknown_slash", slash_name: name }, {});
+    // M13 of #159 — short-circuit removed/never-shipped slashes with
+    // a one-line guidance message pointing at the new home. The
+    // guidance map lives in the dispatcher to keep the registry pure;
+    // entries decay one release after the actual delete pass per
+    // "no backwards-compat shims".
+    const hint = removedSlashGuidance(name);
+    if (hint) return `/${name} ${hint}`;
   } else {
     debugLog("dialog.elicitation_routing", { slash_name: name, routing: plan.routing }, {});
   }
@@ -540,7 +583,18 @@ export async function handleSlash(
       return `/${name}: invalid args — ${where}${issue?.message ?? "schema validation failed"}`;
     }
   }
-  switch (name) {
+  // S6 of PR #161 review (round 6): switch on the canonical command
+  // name (post-alias resolution) rather than the typed string. The
+  // dispatcher's `resolveSlashCommand` already maps `/install` →
+  // `/onboard` (and `/quit` → `/exit`, `/bug` → `/feedback`, etc.)
+  // through `command.aliases`. Switching on `plan.command?.name`
+  // means the handler can drop the `case "install":` fallthrough
+  // mirrors and there's exactly one branch per canonical slash.
+  // When the command isn't in the registry (unknown / removed) the
+  // typed name still flows through so the existing
+  // `/${name}` error / removed-slash guidance branches still work.
+  const dispatchName = plan.command?.name ?? name;
+  switch (dispatchName) {
     case "status": {
       // R3-S4: `/status` is local-only by design — same shape as
       // `/cost`. Reads the Ink host's latest `/v1/status` snapshot
@@ -610,6 +664,7 @@ export async function handleSlash(
       }
       return panify(ctx, "setup", formatSetupLines(setup), formatSetupSummary(setup));
     }
+    case "install":
     case "onboard": {
       // Fetch the template catalog up-front so the wizard mounts with
       // a ready list. Picking a template is the first step; the
@@ -1290,6 +1345,189 @@ export async function handleSlash(
       ctx.setConversationId(null);
       return "session cleared";
     }
+    case "copy": {
+      // Find the most recent assistant message in the in-memory transcript
+      // and write it to the operator's clipboard via OSC 52.
+      const msgs = ctx.session.messages;
+      let lastText = "";
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (m && m.role === "assistant") {
+          lastText = typeof m.content === "string" ? m.content : "";
+          break;
+        }
+      }
+      // S5 of PR #161 review round 2: when the in-memory transcript
+      // does not contain an assistant turn (resumed session, paged
+      // history scrolled past it, or REPL booted into an existing
+      // conversation), fall back to the engine's persisted messages.
+      // We avoid a network call when the in-memory cache already has
+      // text, so the happy path stays fully local.
+      if (lastText === "" && ctx.session.conversationId) {
+        try {
+          const detail = await ctx.client.getConversation(ctx.session.conversationId);
+          const persisted = detail.messages as Array<{ role?: string; content?: unknown }>;
+          for (let i = persisted.length - 1; i >= 0; i--) {
+            const m = persisted[i];
+            if (m && m.role === "assistant") {
+              lastText = typeof m.content === "string" ? m.content : "";
+              break;
+            }
+          }
+        } catch {
+          // Engine fetch failures fall through to the empty-transcript
+          // hint below; the slash never throws and never deadlocks.
+        }
+      }
+      if (lastText === "") {
+        // Distinguish "no assistant turn at all" from "assistant turn
+        // is empty"; the in-memory transcript is the authoritative
+        // signal for the latter.
+        const haveAnyAssistant = msgs.some((m) => m?.role === "assistant");
+        return haveAnyAssistant
+          ? "/copy: last assistant message is empty"
+          : "/copy: no assistant message yet";
+      }
+      const { osc52Copy } = await import("@cli-core/clipboard.ts");
+      const ok = osc52Copy(lastText);
+      return ok
+        ? `copied last assistant message (${lastText.length} chars) to clipboard`
+        : "/copy failed: clipboard not writable on this terminal";
+    }
+    case "rename": {
+      if (!ctx.session.conversationId) return "/rename: no active conversation";
+      const title = rawArgs.join(" ").trim();
+      if (!title) return "/rename: usage `/rename <new-title>`";
+      try {
+        await ctx.client.patchConversation(ctx.session.conversationId, { title });
+        return `session renamed to "${title}"`;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return `/rename failed: ${msg}`;
+      }
+    }
+    case "fork": {
+      // W2 of PR #161 review (round 2): wired to the engine
+      // fork-from-message route. /fork creates a real fork at the
+      // most recent persisted assistant message, copying messages
+      // 0..N into a new conversation, and switches the local
+      // sessionId to the new one. The original conversation stays
+      // resumable via /resume. For the in-conversation timeline
+      // picker (`/resume → t`), see ConversationBrowser.
+      const sourceId = ctx.session.conversationId;
+      if (!sourceId) return "no session to fork from";
+      // Find the most recent assistant message that has a persisted
+      // engine id. Synthetic / streaming-in-progress messages have
+      // no `id` and the fork route refuses unknown anchors.
+      let anchorId: string | null = null;
+      for (let i = ctx.session.messages.length - 1; i >= 0; i--) {
+        const m = ctx.session.messages[i];
+        if (m && m.role === "assistant" && typeof m.id === "string" && m.id.length > 0) {
+          anchorId = m.id;
+          break;
+        }
+      }
+      if (!anchorId) {
+        return "/fork: no persisted assistant turn to fork from yet (waiting for the engine to commit the latest message)";
+      }
+      try {
+        const res = await ctx.client.forkConversationFromMessage(sourceId, anchorId);
+        ctx.setConversationId(res.conversation.id);
+        const short = res.conversation.id.slice(0, 8);
+        // W3 of PR #161 review (round 4): annotate the truncation
+        // outcome inline so the operator notices when older context
+        // was dropped at fork time. The anchor is always preserved;
+        // it's only earlier messages that get clipped.
+        const truncationNote = res.truncated
+          ? " — earlier history was truncated at the per-fork copy cap"
+          : "";
+        return `forked from ${sourceId.slice(0, 8)} at message ${anchorId.slice(0, 8)} — new session ${short} (${res.copied_message_count} messages copied)${truncationNote}`;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return `/fork failed: ${msg}`;
+      }
+    }
+    case "mention": {
+      return "tip: type `@` in the composer to open the inline mention picker (file / connector / workflow)";
+    }
+    case "settings":
+    case "preferences": {
+      if (!ctx.openPane) {
+        return "/settings is only available in the Ink REPL — use `sk settings` for the standalone CLI";
+      }
+      const pane: Extract<PaneSpec, { kind: "settings" }> = { kind: "settings" };
+      if (rawArgs[0]) pane.initialTab = rawArgs[0];
+      if (ctx.session.conversationId) pane.sessionId = ctx.session.conversationId;
+      if (ctx.session.usage && typeof ctx.session.usage.turn_tokens === "number") {
+        pane.sessionTokens = ctx.session.usage.turn_tokens;
+      }
+      ctx.openPane(pane);
+      return null;
+    }
+    case "session": {
+      // Mint a portal token scoped to the workflow id provided in args
+      // and render a terminal QR + URL. TTL is operator-tunable via
+      // `repl.portalTokenTtlMin` (S6 of PR #161 review round 5);
+      // tenant-scoped via the engine's existing
+      // /v1/identity/portal-tokens audit invariants. M12 of #159.
+      //
+      // W1 + W2 of PR #161 review (round 6): the plaintext URL is a
+      // bearer-equivalent secret. Earlier code returned the URL as
+      // the slash result, which the REPL persists into the assistant
+      // transcript. We now route the secret into a dedicated pane
+      // (`kind: "portal-token"`) — the host renders the QR + URL
+      // inline, dismisses on Esc / 'y' (copy via OSC 52), and the
+      // slash return only carries non-secret context (token id,
+      // expiry, ttl). Mirrors the AdminTab API-key flow, which
+      // surfaces the plaintext once and never re-shows it.
+      const workflowId = rawArgs[0];
+      if (!workflowId) {
+        return "/session usage: `/session <workflow-id>` — engine requires at least one workflow scope per portal token";
+      }
+      try {
+        const me = await ctx.client.whoami();
+        const ttlMinutes =
+          typeof ctx.prefs?.portalTokenTtlMin === "number" && ctx.prefs.portalTokenTtlMin > 0
+            ? ctx.prefs.portalTokenTtlMin
+            : 15;
+        const issued = (await ctx.client.issuePortalToken({
+          user_id: me.id,
+          allowed_workflows: [workflowId],
+          ttl_minutes: ttlMinutes,
+        })) as {
+          id: string;
+          plaintext_token?: string;
+          prefix?: string;
+          expires_at: string;
+        };
+        const token = issued.plaintext_token ?? "";
+        if (!token) return "/session: engine did not return a token";
+        const url = `${ctx.profile.engine_url.replace(/\/$/, "")}/portal#token=${token}`;
+        if (ctx.openPane) {
+          ctx.openPane({
+            kind: "portal-token",
+            url,
+            ttl_minutes: ttlMinutes,
+            token_id: issued.id,
+            expires_at: issued.expires_at,
+            workflow_id: workflowId,
+          });
+          // Transcript message contains only the prefix + expiry — no
+          // plaintext token bytes. Operator copies the URL from the
+          // pane via OSC 52 / 'y'.
+          const prefix = issued.prefix ?? issued.id.slice(0, 8);
+          return `portal token issued (token id ${prefix}, ${ttlMinutes} min, single-use) — pane opened with QR + URL; copy the URL there and dismiss on Esc.`;
+        }
+        // Headless / non-Ink fallback: print a redacted summary; never
+        // emit the plaintext URL into the transcript when no pane is
+        // available. Operator-scripted environments should use the
+        // engine route directly.
+        return `/session: issued portal token (id ${issued.id}, expires ${issued.expires_at}) — open an interactive REPL to view the QR + URL.`;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return `/session failed: ${msg}`;
+      }
+    }
     case "export": {
       // Render the current session transcript to a Markdown file in
       // the current working directory. Covers user/assistant messages,
@@ -1631,6 +1869,7 @@ export async function handleSlash(
       }
       return `edit ${join(homedir(), ".sk", "settings.json")} or run /config in the Ink REPL for a guided form`;
     }
+    case "feedback":
     case "bug": {
       return "report issues at https://github.com/subkit/subkit/issues";
     }
@@ -1690,8 +1929,6 @@ export async function handleSlash(
       if (inspectResult !== undefined) return inspectResult;
       const adminListResult = await dispatchAdminListSlash(name, ctx);
       if (adminListResult !== undefined) return adminListResult;
-      const installBanner = dispatchInstallWizardSlash(name);
-      if (installBanner !== undefined) return installBanner;
       const authBanner = dispatchAuthRedirectSlash(name);
       if (authBanner !== undefined) return authBanner;
       return `/${name} is not wired — try /help`;

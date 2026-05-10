@@ -165,6 +165,11 @@ export const AuditAction = {
   DATA_IMPORTED: "data.imported",
 
   CONVERSATION_CREATED: "conversation.created",
+  // W1 of PR #161 review — distinct action so audit-log queries can
+  // separate forks (which clone prior tenant content) from greenfield
+  // creates. Metadata still carries forked_from / anchor_message_id /
+  // copied_message_count.
+  CONVERSATION_FORKED: "conversation.forked",
   CONVERSATION_COMPLETED: "conversation.completed",
   CONVERSATION_CANCELLED: "conversation.cancelled",
   CONVERSATION_COMMITTED: "conversation.committed",
@@ -366,6 +371,36 @@ export type AuditResult = "success" | "denied" | "error";
 // Zod so downstream BI / SIEM consumers have a stable contract.
 // Add a schema here when an action becomes load-bearing for
 // compliance.
+
+/** `conversation.forked` metadata. Emitted from
+ *  `forkConversation` (service) when an operator forks a conversation
+ *  at a specific message id. W1 of PR #161 review (round 5):
+ *  pinning the schema so SIEM/BI consumers can reconstruct the
+ *  truncation outcome and the request channel without joining back
+ *  to the source conversation. The request_source field follows the
+ *  AGENTS.md enum and is the same one used by ToolPolicyChangedMetadata. */
+export const ConversationForkedMetadataSchema = z.object({
+  /** Source conversation id; the fork's `forked_from` join key. */
+  forked_from: z.string().uuid(),
+  /** Message id within the source where the fork was anchored. */
+  anchor_message_id: z.string().uuid(),
+  /** Number of messages copied into the fork (after the cap clamp). */
+  copied_message_count: z.number().int().nonnegative(),
+  /** Always true today — the fork never copies tool-call rows. */
+  tool_calls_omitted: z.boolean(),
+  /** Always true today — the fork never copies elicitation rows. */
+  elicitations_omitted: z.boolean(),
+  /** True when the per-fork message cap fired and earlier history was clipped. */
+  truncated: z.boolean(),
+  /** Original message count in the source (pre-clamp). */
+  source_message_count: z.number().int().nonnegative(),
+  /** The cap in effect when the fork ran; recorded so audit-only
+   *  readers can detect a future cap change without reading source. */
+  copy_cap: z.number().int().positive(),
+  /** AGENTS.md request_source enum: api | cli | scheduler | mcp | webhook | tool-chain | ui */
+  request_source: z.enum(["api", "cli", "scheduler", "mcp", "webhook", "tool-chain", "ui"]),
+});
+export type ConversationForkedMetadata = z.infer<typeof ConversationForkedMetadataSchema>;
 
 /** `tool_policy.changed` metadata. Emitted from the
  *  `PUT /v1/conversations/:id/tool-policies` handler. */

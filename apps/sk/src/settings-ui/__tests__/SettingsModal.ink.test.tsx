@@ -102,7 +102,12 @@ describe("SettingsModal — render shape", () => {
       />,
     );
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("sk settings configure");
+    // M2 of #159 replaced the legacy `sk settings configure` title with
+    // a 10-tab strip header. The contract is the literal `sk settings`
+    // prefix plus the cycle hint — the per-tab content (sections, leaves,
+    // cursor) is what the rest of the assertions cover.
+    expect(frame).toContain("sk settings");
+    expect(frame).toMatch(/cycles? tabs/);
     expect(frame).toContain("log");
     expect(frame).toContain("llm");
     expect(frame).toContain("log.level");

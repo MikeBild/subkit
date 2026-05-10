@@ -44,7 +44,7 @@ import type React from "react";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { debugLog, serializeDebugError } from "./debug.ts";
 import { looksLikeAssistantConfirmRequest } from "./elicitation-intent.ts";
-import type { SetupValidationResponse, StatusSummary } from "./engine-client.ts";
+import type { EngineClient, SetupValidationResponse, StatusSummary } from "./engine-client.ts";
 import {
   detectSecretShape,
   REQUEST_CREDENTIAL_FORM_FALLBACK,
@@ -83,6 +83,12 @@ import {
   MentionPicker,
 } from "./repl/mention-picker.tsx";
 import { MessageContent } from "./repl/message-content.tsx";
+import {
+  inQuietHoursWindow,
+  isOsDoNotDisturb,
+  NOTIFY_DEFAULTS,
+  notify,
+} from "./repl/notifications/index.ts";
 import { OnboardingWizard } from "./repl/onboarding-wizard.tsx";
 import {
   createPasteStore,
@@ -114,7 +120,9 @@ import {
 import { TaskLauncher } from "./repl/task-launcher.tsx";
 import { truncateEnd, truncateMiddle } from "./repl/truncate.ts";
 import { classifyVersionSkew, VersionMismatchBanner } from "./repl/version-mismatch-banner.tsx";
+import { loadWhatsNew, loadWhatsNewSync } from "./repl/welcome-banner/whats-new.ts";
 import { pickTip, WelcomeBanner } from "./repl/welcome-banner.tsx";
+import { SettingsPane } from "./settings-ui/SettingsPane.tsx";
 import { bodyOf, errorToPanel } from "./shell/ErrorPanel.tsx";
 import { type NoticeItem, NoticeStack, type NoticeTone } from "./shell/NoticeStack.tsx";
 import { ResizeBoundary } from "./shell/ResizeBoundary.tsx";
@@ -157,6 +165,39 @@ export interface InkAppProps {
   } | null;
   /** Active permission mode for the status line badge. */
   permissionMode?: PermissionMode;
+  /**
+   * Engine client passed in from the REPL host. Today only the embedded
+   * /settings pane (G2 closure of #159 M4) needs it; all other engine
+   * traffic flows through onPrompt / onSlash / onSelectConversation
+   * callbacks. When absent, the embedded /settings pane is unavailable
+   * and falls back to suggesting the standalone `sk settings` CLI.
+   */
+  engineClient?: EngineClient;
+  /**
+   * Engine-resolved REPL/UI/notification preferences. Drives `notify()`
+   * inside `applyEventStream` (H1 closure of #159 G3) — push fires
+   * when `pushNotifyEnabled` is true and the turn exceeded the
+   * threshold. When omitted, push notifications stay off.
+   */
+  prefs?: {
+    pushNotifyEnabled: boolean;
+    pushNotifyThresholdSec: number;
+    quietHoursStart: string;
+    quietHoursEnd: string;
+  };
+  /**
+   * W3 of PR #161 review (round 5): per-process override for the
+   * push-notify gate, populated from `SK_PUSH_NOTIFY` /
+   * `SK_PUSH_NOTIFY_THRESHOLD_MS` exactly once at REPL boot. Reading
+   * env on every turn made an `export SK_PUSH_NOTIFY=1` mid-REPL
+   * silently change behavior; reading once at boot keeps the gate
+   * aligned with the rest of the boot-time wiring. The fields are
+   * optional so a missing env value cleanly defers to `prefs`.
+   */
+  pushNotifyOverride?: {
+    enabled?: boolean;
+    thresholdMs?: number;
+  };
   /**
    * Override the persistent-history file path. Tests pass a tmpdir
    * path so they don't read / mutate the real `~/.sk/history.jsonl`.
@@ -588,7 +629,10 @@ const SetupBanner: React.FC<SetupBannerProps> = memo(({ status, warnings, blocke
     return (
       <Box>
         <Text color={theme.severity.warning} bold>
-          {`⚠ Setup: ${label} — run /setup for details`}
+          {`⚠ Setup: ${label}. Type `}
+        </Text>
+        <Text color={theme.severity.warning} bold>
+          /setup
         </Text>
       </Box>
     );
@@ -598,7 +642,10 @@ const SetupBanner: React.FC<SetupBannerProps> = memo(({ status, warnings, blocke
   return (
     <Box>
       <Text color={theme.severity.error} bold>
-        {`✗ Setup: ${label} — run /setup to resolve`}
+        {`✗ Setup: ${label}. Type `}
+      </Text>
+      <Text color={theme.severity.error} bold>
+        /setup
       </Text>
     </Box>
   );
@@ -1254,6 +1301,9 @@ export const InkApp: React.FC<InkAppProps> = ({
   onExit,
   onCancelConversation,
   resumeSummary,
+  engineClient,
+  prefs,
+  pushNotifyOverride,
 }) => {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -1331,6 +1381,25 @@ export const InkApp: React.FC<InkAppProps> = ({
   const YOLO_MAX_DURATION_MS = 10 * 60 * 1000;
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("chat");
   const tip = useRef<string>(pickTip());
+  // Initial value: read cache + bundled CHANGELOG synchronously so the
+  // banner gets a real headline on first paint. The async `loadWhatsNew`
+  // below still runs to refresh the cache for the next session.
+  // The banner sits in Ink's <Static> block which flushes once, so an
+  // async-only update would never reach the rendered banner.
+  const [whatsNew, setWhatsNew] = useState<string | null>(() => loadWhatsNewSync());
+  useEffect(() => {
+    let cancelled = false;
+    loadWhatsNew()
+      .then((headline) => {
+        if (!cancelled) setWhatsNew(headline);
+      })
+      .catch(() => {
+        // loadWhatsNew never throws by contract; ignore defensively.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const starterActions = useMemo(() => starterActionsForPersona(persona.label), [persona.label]);
   const starterTaskActions = useMemo(
     () => starterTaskActionsForPersona(persona.label, persona.probe),
@@ -1773,6 +1842,15 @@ export const InkApp: React.FC<InkAppProps> = ({
       conversationId?: string | null,
     ): Promise<void> => {
       if (!events) return;
+      // G3 closure of #159 M12 — record the turn start so we can decide
+      // whether to ring an OS notification when the stream completes.
+      // Opt-in via SK_PUSH_NOTIFY=1; threshold via SK_PUSH_NOTIFY_THRESHOLD_MS
+      // (defaults to NOTIFY_DEFAULTS.thresholdMs = 30s). The env vars
+      // are read once at REPL boot and passed in via `pushNotifyOverride`
+      // (W3 of PR #161 review round 5) — a mid-REPL `export` no longer
+      // changes behavior unexpectedly.
+      const turnStartedAt = Date.now();
+      let notifyTitle = "subkit";
       let next: SkSessionState = {
         ...base,
         ...(conversationId !== undefined ? { conversationId } : {}),
@@ -1803,6 +1881,44 @@ export const InkApp: React.FC<InkAppProps> = ({
         next = applyTurnEvent(next, ev);
         setSession({ ...next });
       }
+      // Stream completed — fire a push notification when the turn took
+      // long enough and the operator opted in. notify() itself no-ops
+      // when stdout isn't a TTY (e.g. piped output, CI), so this is
+      // safe to call unconditionally.
+      // H1 closure of #159 G3 — primary read is the engine-resolved
+      // prefs (notifications.push.*); env vars survive as a per-process
+      // override so tests / one-shot operator switches don't need a
+      // setSetting round-trip.
+      const elapsedMs = Date.now() - turnStartedAt;
+      // Resolution order: per-process override (boot-time env read) →
+      // engine-resolved prefs → built-in defaults. The override is
+      // populated once at REPL start, so a mid-REPL `export
+      // SK_PUSH_NOTIFY=...` does not silently flip behavior.
+      const enabled =
+        pushNotifyOverride?.enabled !== undefined
+          ? pushNotifyOverride.enabled
+          : (prefs?.pushNotifyEnabled ?? false);
+      const thresholdMs =
+        pushNotifyOverride?.thresholdMs !== undefined && pushNotifyOverride.thresholdMs > 0
+          ? pushNotifyOverride.thresholdMs
+          : prefs?.pushNotifyThresholdSec && prefs.pushNotifyThresholdSec > 0
+            ? prefs.pushNotifyThresholdSec * 1000
+            : NOTIFY_DEFAULTS.thresholdMs;
+      const lastAssistant = lastAssistantText(next);
+      if (lastAssistant && lastAssistant.length > 0) {
+        notifyTitle = lastAssistant.length > 80 ? `${lastAssistant.slice(0, 77)}…` : lastAssistant;
+      }
+      notify(`subkit · turn complete`, notifyTitle, elapsedMs, {
+        enabled,
+        thresholdMs,
+        // OS DND wins over the configured quiet-hours window. When DND
+        // can't be probed reliably (other OS, missing tooling), the
+        // probe returns false and we fall back to the time-window
+        // setting alone.
+        quietHours: () =>
+          isOsDoNotDisturb() ||
+          inQuietHoursWindow(prefs?.quietHoursStart ?? "", prefs?.quietHoursEnd ?? "", new Date()),
+      });
     },
     [],
   );
@@ -2468,6 +2584,20 @@ export const InkApp: React.FC<InkAppProps> = ({
       // Keep the guard in case isActive lags one frame behind a
       // freshly-arrived elicit_request event.
       if (elicitOpen) return;
+
+      // W1 of PR #161 review (round 6): when the portal-token pane
+      // is open, 'y' copies the (one-shot) URL to the OS clipboard
+      // via OSC 52. The pane closes after copy so the bytes never
+      // sit on screen longer than necessary.
+      if (pane?.kind === "portal-token" && (char === "y" || char === "Y")) {
+        const url = pane.url;
+        void import("@cli-core/clipboard.ts").then(({ osc52Copy }) => {
+          osc52Copy(url);
+        });
+        showInfo("portal URL copied to clipboard");
+        setPane(null);
+        return;
+      }
 
       // --- Next-best-actions chip shortcut (digits 1..9) -------------
       // Wins over the welcome-action shortcut below: a freshly-failed
@@ -3258,6 +3388,8 @@ export const InkApp: React.FC<InkAppProps> = ({
         targetName={resumeSummary?.active_target.name ?? null}
         environment={resumeSummary?.active_target.environment ?? null}
         tip={tip.current}
+        whatsNew={whatsNew}
+        signedIn={Boolean(statusSnapshot?.user.email) || persona.tenant !== null}
       />
       {starterActions.length > 0 ? <StarterActions actions={starterActions} /> : null}
       {resumeSummary ? (
@@ -3335,6 +3467,42 @@ export const InkApp: React.FC<InkAppProps> = ({
             void onSelectConversation?.(id);
           }}
           onDismiss={() => setPane(null)}
+          currentTurns={session.messages
+            .filter((m): m is typeof m & { id: string } => m.role === "assistant" && Boolean(m.id))
+            .map((m) => ({
+              // H3 closure of #159 — only persisted messages (carrying
+              // an engine-issued id) appear in the rewind timeline.
+              // W4 of PR #161 review (round 2) + S2 of round 5:
+              // MessageState doesn't currently carry the engine-side
+              // `created_at`. Pass `null` so `ConversationBrowser`
+              // renders `—`; fabricating `new Date().toISOString()` at
+              // render time stamped every turn with the same "now"
+              // and re-stamped them on every keystroke. Round 5 widened
+              // the type from `string` to `string | null` so the
+              // missing case is encoded explicitly instead of through
+              // an empty string.
+              message_id: m.id,
+              excerpt: typeof m.content === "string" ? m.content : "(non-text turn)",
+              created_at: null,
+            }))}
+          onForkFromTurn={(message_id) => {
+            if (!engineClient || !session.conversationId) return;
+            void engineClient
+              .forkConversationFromMessage(session.conversationId, message_id)
+              .then((res) => {
+                setPane(null);
+                void onSelectConversation?.(res.conversation.id);
+              })
+              .catch((err: unknown) => {
+                // W3 of PR #161 review — surface 403/404/5xx from the
+                // fork endpoint (RBAC denial, cross-tenant, server)
+                // into the NoticeStack so the operator sees the
+                // failure instead of a frozen pane.
+                const msg = err instanceof Error ? err.message : String(err);
+                showError(`fork failed: ${msg}`);
+                setPane(null);
+              });
+          }}
         />
       ) : null}
       {pane?.kind === "template-picker" ? (
@@ -3366,6 +3534,36 @@ export const InkApp: React.FC<InkAppProps> = ({
       ) : null}
       {pane?.kind === "setup-diagnostics" ? (
         <SetupDiagnosticsPane pane={pane} onDismiss={() => setPane(null)} />
+      ) : null}
+      {pane?.kind === "settings" && engineClient ? (
+        <SettingsPane
+          client={engineClient}
+          {...(pane.initialTab !== undefined ? { initialTab: pane.initialTab } : {})}
+          sessionId={pane.sessionId ?? session.conversationId ?? null}
+          sessionTitle={pane.sessionTitle ?? null}
+          {...(pane.permissionMode !== undefined
+            ? { permissionMode: pane.permissionMode }
+            : { permissionMode: activeMode })}
+          sessionTokens={pane.sessionTokens ?? session.usage?.turn_tokens ?? null}
+          weekTokens={pane.weekTokens ?? null}
+          onDismiss={() => setPane(null)}
+          onProfileAction={(action) => {
+            // G7 closure of #159 M7 — wire ProfileTab actions back into
+            // ink-app session state where applicable.
+            if (action.kind === "new-session") {
+              setSession(initialSessionState(null));
+              return;
+            }
+            if (action.kind === "sign-out") {
+              setPane(null);
+              if (onExit) onExit();
+              else exit();
+              return;
+            }
+            // switch-tenant requires REPL restart; the ProfileTab has
+            // already written the config and surfaced a notice.
+          }}
+        />
       ) : null}
       {pane?.kind === "config-form" ? (
         <ConfigFormPane
@@ -3419,6 +3617,25 @@ export const InkApp: React.FC<InkAppProps> = ({
           {pane.lines.map((line, i) => (
             <Text key={`tp-${i}`}>{line}</Text>
           ))}
+        </Pane>
+      ) : null}
+      {pane?.kind === "portal-token" ? (
+        <Pane
+          title="portal token (shown once)"
+          subtitle={`expires ${pane.expires_at} · ${pane.ttl_minutes} min`}
+          onDismiss={() => setPane(null)}
+        >
+          <Text color="yellow" bold>
+            ⚠ this URL is bearer-equivalent — anyone holding it can attach until expiry
+          </Text>
+          <Text color="gray">workflow: {pane.workflow_id}</Text>
+          <Text color="gray">token id: {pane.token_id}</Text>
+          <Box marginTop={1} flexDirection="column">
+            <Text>{pane.url}</Text>
+          </Box>
+          <Box marginTop={1}>
+            <Text color="gray">press Esc to dismiss · 'y' to copy URL to clipboard</Text>
+          </Box>
         </Pane>
       ) : null}
       {pane?.kind === "structured" ? (

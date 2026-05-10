@@ -89,6 +89,19 @@ export function createFakeEngineClient(opts: FakeEngineClientOptions = {}): Engi
         tenant: { id: whoami.tenant_id, slug: whoami.tenant_slug, display_name: null },
         recent_sessions: recent,
         flags: opts.bootstrap?.flags ?? {},
+        // H1 of #159 follow-up — engine-resolved prefs.
+        prefs: {
+          permissionMode: "ask" as const,
+          theme: "auto" as const,
+          personality: "balanced" as const,
+          titleFormat: "session-id" as const,
+          statuslineFormat: "compact" as const,
+          pushNotifyEnabled: false,
+          pushNotifyThresholdSec: 30,
+          quietHoursStart: "",
+          quietHoursEnd: "",
+          portalTokenTtlMin: 15,
+        },
         server_time: new Date().toISOString(),
       });
     },

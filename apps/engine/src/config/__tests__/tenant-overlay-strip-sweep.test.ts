@@ -106,9 +106,22 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
         case "number":
           value = Math.max(1, Math.min(64, salt++ + 1));
           break;
-        case "string":
-          value = `tenant-${salt++}`;
+        case "string": {
+          // W2 of PR #161 review (round 4): walk a candidate list so
+          // regex-restricted leaves (e.g. notifications.push.quietHours*)
+          // pass without baking path knowledge into this test.
+          const tag = `tenant-${salt++}`;
+          const candidates = [tag, "00:00", ""];
+          value = tag;
+          for (const c of candidates) {
+            const r = leaf.schema.safeParse(c);
+            if (r.success) {
+              value = c;
+              break;
+            }
+          }
           break;
+        }
         case "enum":
           value = leaf.enumValues?.[1] ?? leaf.enumValues?.[0];
           break;
