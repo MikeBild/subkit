@@ -41,10 +41,15 @@ import { HttpError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
+// S1 of PR #161 review (round 5): tighten id + tenant_id to UUIDs so
+// the wire schema matches what the route actually emits + what the
+// `enforceTenantMatch` guard already expects. Bare `z.string()`
+// happily round-tripped values that the rest of the engine assumes
+// are UUIDs.
 const SkBootstrapWhoamiSchema = z.object({
-  id: z.string(),
+  id: z.string().uuid(),
   kind: z.enum(["user", "system_account"]),
-  tenant_id: z.string(),
+  tenant_id: z.string().uuid(),
   tenant_slug: z.string().nullable(),
   email: z.string().nullable(),
   role_name: z.string().nullable(),
@@ -54,13 +59,13 @@ const SkBootstrapWhoamiSchema = z.object({
 });
 
 const SkBootstrapTenantSchema = z.object({
-  id: z.string(),
+  id: z.string().uuid(),
   slug: z.string().nullable(),
   display_name: z.string().nullable(),
 });
 
 const SkBootstrapSessionRefSchema = z.object({
-  id: z.string(),
+  id: z.string().uuid(),
   title: z.string().nullable(),
   updated_at: z.string(),
   // R4-S3 review fix: each row carries its tenant_id so a forensic
@@ -68,7 +73,7 @@ const SkBootstrapSessionRefSchema = z.object({
   // reports) can immediately tell which tenant a session belonged to.
   // Always equal to the parent `tenant.id`; the redundancy is
   // deliberate and load-bearing for incident-response tooling.
-  tenant_id: z.string(),
+  tenant_id: z.string().uuid(),
 });
 
 // Closed object of feature flags the bootstrap response is allowed to
@@ -141,6 +146,14 @@ const SkBootstrapPrefsSchema = z
       .string()
       .describe("Quiet-hours window start (HH:MM, local TZ). Empty disables."),
     quietHoursEnd: z.string().describe("Quiet-hours window end (HH:MM, local TZ). Empty disables."),
+    // S6 of PR #161 review (round 5): operator-tunable portal-token
+    // TTL minted by /session. Tenant overlay → global → built-in
+    // 15-minute default.
+    portalTokenTtlMin: z
+      .number()
+      .int()
+      .positive()
+      .describe("TTL in minutes for portal tokens minted by /session."),
   })
   .describe("REPL + UI preferences resolved for this principal.");
 
@@ -487,6 +500,7 @@ function resolvePrefs(tenantId: string): {
   pushNotifyThresholdSec: number;
   quietHoursStart: string;
   quietHoursEnd: string;
+  portalTokenTtlMin: number;
 } {
   const cfg = getConfig();
   const overlay = cfg.tenants?.[tenantId];
@@ -503,5 +517,7 @@ function resolvePrefs(tenantId: string): {
       overlay?.notifications?.push?.quietHoursStart ?? cfg.notifications.push.quietHoursStart,
     quietHoursEnd:
       overlay?.notifications?.push?.quietHoursEnd ?? cfg.notifications.push.quietHoursEnd,
+    // S6 of PR #161 review (round 5): tenant overlay → global → 15.
+    portalTokenTtlMin: overlay?.repl?.portalTokenTtlMin ?? cfg.repl.portalTokenTtlMin,
   };
 }

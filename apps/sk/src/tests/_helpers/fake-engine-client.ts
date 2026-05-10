@@ -100,6 +100,7 @@ export function createFakeEngineClient(opts: FakeEngineClientOptions = {}): Engi
           pushNotifyThresholdSec: 30,
           quietHoursStart: "",
           quietHoursEnd: "",
+          portalTokenTtlMin: 15,
         },
         server_time: new Date().toISOString(),
       });

@@ -79,6 +79,7 @@ export function bootstrapFixture(persona: PersonaFixture): SkBootstrapSnapshot {
       pushNotifyThresholdSec: 30,
       quietHoursStart: "",
       quietHoursEnd: "",
+      portalTokenTtlMin: 15,
     },
     fetchedAt: 1_700_000_000_000,
     source: "network",

@@ -55,7 +55,13 @@ export function changelogHead(body: string = bundledChangelog): string | null {
     const version = m[1];
     const tail = (m[2] ?? "").trim();
     if (!version) continue;
-    return tail ? `v${version} ${tail}` : `v${version}`;
+    // S7 of PR #161 review (round 5): pass the bundled-CHANGELOG path
+    // through the same sanitizer the cache/remote paths use, so a
+    // future automated changelog merge that smuggles ANSI/control
+    // bytes can't paint over the banner. The earlier code returned
+    // the raw `v${version} ${tail}` and only sanitized cache/remote
+    // — closing that hole here.
+    return sanitizeHeadline(tail ? `v${version} ${tail}` : `v${version}`);
   }
   return null;
 }

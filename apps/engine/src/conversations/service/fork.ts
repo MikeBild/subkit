@@ -21,7 +21,7 @@
 
 import { and, asc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
+import { AuditAction, ConversationForkedMetadataSchema } from "../../audit/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations } from "../../db/schema/index.ts";
@@ -36,6 +36,13 @@ export interface ForkConversationParams {
   actor_id: string | null;
   /** Optional title override; defaults to "fork — <source>". */
   title?: string | null;
+  /**
+   * AGENTS.md request_source enum value identifying the calling channel
+   * (`api`, `cli`, `scheduler`, etc.). Recorded on the audit row so
+   * SIEM/BI consumers can split forks by source without correlating
+   * trace_ids. W1 of PR #161 review (round 5).
+   */
+  request_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui";
 }
 
 export interface ForkConversationResult {
@@ -184,7 +191,14 @@ export async function forkConversation(
       resource_id: row.id,
       result: "success",
       reason: `forked from ${p.source_conversation_id} at message ${p.anchor_message_id}`,
-      metadata: {
+      // W1 of PR #161 review (round 5): metadata is now Zod-validated
+      // against `ConversationForkedMetadataSchema` before audit emit so
+      // a future contributor cannot drop a load-bearing field
+      // (`request_source`, `truncated`, `tool_calls_omitted`, ...)
+      // without a parse-time error. The `.parse()` call throws on
+      // contract drift, which is the right failure mode here — the
+      // audit row is the compliance-of-record for the fork.
+      metadata: ConversationForkedMetadataSchema.parse({
         forked_from: p.source_conversation_id,
         anchor_message_id: p.anchor_message_id,
         copied_message_count: copiedCount,
@@ -205,7 +219,8 @@ export async function forkConversation(
         truncated,
         source_message_count: fullSlice.length,
         copy_cap: FORK_COPY_MESSAGE_CAP,
-      },
+        request_source: p.request_source,
+      }),
     },
     exec,
   );

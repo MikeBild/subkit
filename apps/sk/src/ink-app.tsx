@@ -186,6 +186,19 @@ export interface InkAppProps {
     quietHoursEnd: string;
   };
   /**
+   * W3 of PR #161 review (round 5): per-process override for the
+   * push-notify gate, populated from `SK_PUSH_NOTIFY` /
+   * `SK_PUSH_NOTIFY_THRESHOLD_MS` exactly once at REPL boot. Reading
+   * env on every turn made an `export SK_PUSH_NOTIFY=1` mid-REPL
+   * silently change behavior; reading once at boot keeps the gate
+   * aligned with the rest of the boot-time wiring. The fields are
+   * optional so a missing env value cleanly defers to `prefs`.
+   */
+  pushNotifyOverride?: {
+    enabled?: boolean;
+    thresholdMs?: number;
+  };
+  /**
    * Override the persistent-history file path. Tests pass a tmpdir
    * path so they don't read / mutate the real `~/.sk/history.jsonl`.
    */
@@ -1290,6 +1303,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   resumeSummary,
   engineClient,
   prefs,
+  pushNotifyOverride,
 }) => {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -1831,9 +1845,10 @@ export const InkApp: React.FC<InkAppProps> = ({
       // G3 closure of #159 M12 — record the turn start so we can decide
       // whether to ring an OS notification when the stream completes.
       // Opt-in via SK_PUSH_NOTIFY=1; threshold via SK_PUSH_NOTIFY_THRESHOLD_MS
-      // (defaults to NOTIFY_DEFAULTS.thresholdMs = 30s). When the engine
-      // grows a `notifications.push.*` setting (G4/G5 follow-ups), the
-      // env-var read here flips to a setting read.
+      // (defaults to NOTIFY_DEFAULTS.thresholdMs = 30s). The env vars
+      // are read once at REPL boot and passed in via `pushNotifyOverride`
+      // (W3 of PR #161 review round 5) — a mid-REPL `export` no longer
+      // changes behavior unexpectedly.
       const turnStartedAt = Date.now();
       let notifyTitle = "subkit";
       let next: SkSessionState = {
@@ -1875,17 +1890,17 @@ export const InkApp: React.FC<InkAppProps> = ({
       // override so tests / one-shot operator switches don't need a
       // setSetting round-trip.
       const elapsedMs = Date.now() - turnStartedAt;
-      const envEnabled = process.env.SK_PUSH_NOTIFY;
-      const envThreshold = Number(process.env.SK_PUSH_NOTIFY_THRESHOLD_MS);
+      // Resolution order: per-process override (boot-time env read) →
+      // engine-resolved prefs → built-in defaults. The override is
+      // populated once at REPL start, so a mid-REPL `export
+      // SK_PUSH_NOTIFY=...` does not silently flip behavior.
       const enabled =
-        envEnabled === "1"
-          ? true
-          : envEnabled === "0"
-            ? false
-            : (prefs?.pushNotifyEnabled ?? false);
+        pushNotifyOverride?.enabled !== undefined
+          ? pushNotifyOverride.enabled
+          : (prefs?.pushNotifyEnabled ?? false);
       const thresholdMs =
-        Number.isFinite(envThreshold) && envThreshold > 0
-          ? envThreshold
+        pushNotifyOverride?.thresholdMs !== undefined && pushNotifyOverride.thresholdMs > 0
+          ? pushNotifyOverride.thresholdMs
           : prefs?.pushNotifyThresholdSec && prefs.pushNotifyThresholdSec > 0
             ? prefs.pushNotifyThresholdSec * 1000
             : NOTIFY_DEFAULTS.thresholdMs;
@@ -3443,16 +3458,18 @@ export const InkApp: React.FC<InkAppProps> = ({
             .map((m) => ({
               // H3 closure of #159 — only persisted messages (carrying
               // an engine-issued id) appear in the rewind timeline.
-              // W4 of PR #161 review (round 2): MessageState doesn't
-              // currently carry the engine-side `created_at`, so we
-              // pass an empty string and let `ConversationBrowser`
-              // render `—`. Fabricating `new Date().toISOString()` at
+              // W4 of PR #161 review (round 2) + S2 of round 5:
+              // MessageState doesn't currently carry the engine-side
+              // `created_at`. Pass `null` so `ConversationBrowser`
+              // renders `—`; fabricating `new Date().toISOString()` at
               // render time stamped every turn with the same "now"
-              // and re-stamped them on every keystroke — operationally
-              // misleading.
+              // and re-stamped them on every keystroke. Round 5 widened
+              // the type from `string` to `string | null` so the
+              // missing case is encoded explicitly instead of through
+              // an empty string.
               message_id: m.id,
               excerpt: typeof m.content === "string" ? m.content : "(non-text turn)",
-              created_at: "",
+              created_at: null,
             }))}
           onForkFromTurn={(message_id) => {
             if (!engineClient || !session.conversationId) return;

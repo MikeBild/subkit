@@ -266,6 +266,15 @@ export interface SlashHandlerContext {
     label: string;
   } | null;
   /**
+   * Engine-resolved REPL preferences. S6 of PR #161 review (round 5)
+   * adds `portalTokenTtlMin` here so `/session` can mint with the
+   * tenant-tuned TTL instead of a magic 15-minute literal.
+   */
+  prefs?: {
+    portalTokenTtlMin?: number;
+    [k: string]: unknown;
+  } | null;
+  /**
    * Open a modal pane in the Ink host. When omitted (e.g. the readline
    * fallback REPL), pane-returning commands fall back to a text banner.
    */
@@ -1430,8 +1439,9 @@ export async function handleSlash(
     }
     case "session": {
       // Mint a portal token scoped to the workflow id provided in args
-      // and render a terminal QR + URL. The token is short-lived
-      // (15 min default) and tenant-scoped via the engine's existing
+      // and render a terminal QR + URL. TTL is operator-tunable via
+      // `repl.portalTokenTtlMin` (S6 of PR #161 review round 5);
+      // tenant-scoped via the engine's existing
       // /v1/identity/portal-tokens audit invariants. M12 of #159.
       const workflowId = rawArgs[0];
       if (!workflowId) {
@@ -1439,10 +1449,14 @@ export async function handleSlash(
       }
       try {
         const me = await ctx.client.whoami();
+        const ttlMinutes =
+          typeof ctx.prefs?.portalTokenTtlMin === "number" && ctx.prefs.portalTokenTtlMin > 0
+            ? ctx.prefs.portalTokenTtlMin
+            : 15;
         const issued = (await ctx.client.issuePortalToken({
           user_id: me.id,
           allowed_workflows: [workflowId],
-          ttl_minutes: 15,
+          ttl_minutes: ttlMinutes,
         })) as {
           id: string;
           plaintext_token?: string;

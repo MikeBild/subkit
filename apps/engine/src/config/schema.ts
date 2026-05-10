@@ -464,6 +464,19 @@ const ReplSection = z
         "Default REPL permission mode for the principal: ask, auto, plan, or yolo.",
       )
       .meta(tenant()),
+    // S6 of PR #161 review round 5: surface the `/session` portal-
+    // token TTL as an operator-tunable setting instead of hardcoding
+    // 15 minutes in the slash handler. Tenant-scoped so different
+    // tenants can pick different security/usability tradeoffs without
+    // a CLI release.
+    portalTokenTtlMin: z
+      .number()
+      .int()
+      .positive()
+      .max(60 * 24)
+      .default(15)
+      .describe("TTL in minutes for portal tokens minted by the /session slash (1..1440).")
+      .meta(tenant()),
   })
   .prefault({})
   .describe("sk REPL session preferences");
@@ -593,6 +606,12 @@ const TenantOverlaySchema = z
     repl: z
       .object({
         permissionMode: z.enum(["ask", "auto", "plan", "yolo"]).optional(),
+        portalTokenTtlMin: z
+          .number()
+          .int()
+          .positive()
+          .max(60 * 24)
+          .optional(),
       })
       .optional(),
     notifications: z

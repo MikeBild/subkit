@@ -23,7 +23,15 @@ export interface ConversationItem {
 export interface AssistantTurnRef {
   message_id: string;
   excerpt: string;
-  created_at: string;
+  /**
+   * S2 of PR #161 review (round 5): nullable so the host can encode
+   * "engine-side timestamp not propagated yet" explicitly rather
+   * than smuggling that meaning through the empty string. The renderer
+   * still falls back to an em-dash for both `null` and `""`, so
+   * existing call sites that pass `""` keep working — but new call
+   * sites should prefer `null` for "missing".
+   */
+  created_at: string | null;
 }
 
 export interface ConversationBrowserProps {

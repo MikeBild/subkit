@@ -28,7 +28,11 @@ import type { PersonaProbe } from "../slash.ts";
 /** R8-S2: persisted-snapshot schema version. Bump on any
  *  field-shape change; readers reject mismatched versions.
  *  H1 of #159 follow-up — bumped to 2 when `prefs` was added. */
-export const PERSISTED_SNAPSHOT_VERSION = 2 as const;
+// S6 of PR #161 review (round 5): bumped 2 → 3 with the addition of
+// `prefs.portalTokenTtlMin`. Older caches lack the field; `.strict()`
+// rejects them on read so the next bootstrap re-fetches with the new
+// shape.
+export const PERSISTED_SNAPSHOT_VERSION = 3 as const;
 
 /** R8-S1: derive a stable, sha256-fingerprinted cache key from a
  *  profile. Used by both `bootstrapCachePath` and the React
@@ -180,6 +184,7 @@ const PersistedSnapshotSchema = z
         pushNotifyThresholdSec: z.number().int().positive(),
         quietHoursStart: z.string(),
         quietHoursEnd: z.string(),
+        portalTokenTtlMin: z.number().int().positive(),
       })
       .strict(),
     fetched_at: z.number().int().nonnegative(),
@@ -314,6 +319,7 @@ function fromLegacy(snap: ResolvedPersonaSnapshot, fetchedAt: number): SkBootstr
     pushNotifyThresholdSec: 30,
     quietHoursStart: "",
     quietHoursEnd: "",
+    portalTokenTtlMin: 15,
   };
   return {
     label: snap.label,

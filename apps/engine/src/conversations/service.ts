@@ -40,6 +40,7 @@ export {
   respondElicitation,
 } from "./service/elicit.ts";
 export {
+  FORK_COPY_MESSAGE_CAP,
   type ForkConversationParams,
   type ForkConversationResult,
   forkConversation,

@@ -5037,6 +5037,24 @@ export interface paths {
                         "application/json": components["schemas"]["ForkFromMessageResponse"];
                     };
                 };
+                /** @description Unauthenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden — principal lacks conversation:write or workflow:write */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Not found */
                 404: {
                     headers: {
@@ -7568,9 +7586,11 @@ export interface components {
         };
         SkBootstrap: {
             whoami: {
+                /** Format: uuid */
                 id: string;
                 /** @enum {string} */
                 kind: "user" | "system_account";
+                /** Format: uuid */
                 tenant_id: string;
                 tenant_slug: string | null;
                 email: string | null;
@@ -7584,14 +7604,17 @@ export interface components {
             /** @description Stable list of permissions probed; reflects the engine's known UX gating set. */
             permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read")[];
             tenant: {
+                /** Format: uuid */
                 id: string;
                 slug: string | null;
                 display_name: string | null;
             };
             recent_sessions: {
+                /** Format: uuid */
                 id: string;
                 title: string | null;
                 updated_at: string;
+                /** Format: uuid */
                 tenant_id: string;
             }[];
             /** @description Persona-visible feature flags. Keys are drawn from a typed enum. */
@@ -7631,6 +7654,8 @@ export interface components {
                 quietHoursStart: string;
                 /** @description Quiet-hours window end (HH:MM, local TZ). Empty disables. */
                 quietHoursEnd: string;
+                /** @description TTL in minutes for portal tokens minted by /session. */
+                portalTokenTtlMin: number;
             };
             /** @description Server-side ISO timestamp; lets the CLI sync clocks. */
             server_time: string;

@@ -100,7 +100,15 @@ function pickValue(leaf: ConfigLeaf, salt: number): unknown {
   const tag = `sweep-${dottedPath(leaf).replaceAll(".", "-")}-${salt}`;
   switch (leaf.kind) {
     case "string": {
-      const candidates = [tag, `https://example.com/${tag}`, tag.padEnd(32, "x").slice(0, 32)];
+      const candidates = [
+        tag,
+        `https://example.com/${tag}`,
+        tag.padEnd(32, "x").slice(0, 32),
+        // W2 of PR #161 review (round 4): HH:MM-shaped value for the
+        // notifications.push.quietHours* regex.
+        "00:00",
+        "",
+      ];
       for (const c of candidates) {
         const r = leaf.schema.safeParse(c);
         if (r.success) return c;

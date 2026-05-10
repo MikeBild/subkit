@@ -263,5 +263,7 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
     const meta = audits[0]!.metadata as Record<string, unknown>;
     expect(meta.tool_calls_omitted).toBe(true);
     expect(meta.elicitations_omitted).toBe(true);
+    // W1 of PR #161 review (round 5): HTTP entry tags request_source: "api".
+    expect(meta.request_source).toBe("api");
   });
 });

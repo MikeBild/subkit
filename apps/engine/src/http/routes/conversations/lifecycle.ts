@@ -88,7 +88,7 @@ const forkFromMessageRoute = createRoute({
     "fresh `created_at` (set to fork-time) so the fork's timeline orders " +
     "cleanly; the source's original timestamps are preserved in the source " +
     "conversation, joinable via `forked_from` in the audit metadata. The " +
-    "fork is hard-capped at the most recent 5,000 messages up to and " +
+    `fork is hard-capped at the most recent ${svc.FORK_COPY_MESSAGE_CAP.toLocaleString("en-US")} messages up to and ` +
     "including the anchor; when the cap fires the response sets " +
     "`truncated: true` and the audit row records the original source count.",
   security: [{ bearerAuth: [] }],
@@ -97,6 +97,19 @@ const forkFromMessageRoute = createRoute({
     200: {
       description: "OK",
       content: { "application/json": { schema: ForkFromMessageResponse } },
+    },
+    // W2 of PR #161 review (round 5): document the auth + RBAC error
+    // shapes so generated CLIs see the envelope. 401 fires from
+    // `requireAuth` (no/invalid bearer); 403 fires from
+    // `requireAnyPermission(["conversation:write", "workflow:write"])`
+    // registered alongside the route.
+    401: {
+      description: "Unauthenticated",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "Forbidden — principal lacks conversation:write or workflow:write",
+      content: { "application/json": { schema: ErrorSchema } },
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -167,6 +180,11 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
         source_conversation_id: id,
         anchor_message_id: message_id,
         actor_id: principal.id,
+        // W1 of PR #161 review (round 5): every HTTP entry into the
+        // fork service tags the audit row as `api`. Other channels
+        // (CLI direct invocation, scheduler) would pass their own
+        // value when they invoke `forkConversation` directly.
+        request_source: "api",
       },
       db,
     );

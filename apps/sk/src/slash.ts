@@ -353,10 +353,16 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     routing: "local",
   },
   {
+    // W5 of PR #161 review (round 5): the handler today returns the
+    // GitHub issues URL — log-bundle dispatch is a future feature.
+    // Help string mirrors observed behavior so /help and the slash
+    // don't drift; updating one without the other is the kind of
+    // thing reviewers stop trusting.
     name: "feedback",
     aliases: ["bug"],
-    help: "Send logs + free-text to maintainers",
+    help: "Open the subkit GitHub issues URL for filing a bug or feature request",
     category: "util",
+    routing: "local",
   },
   {
     name: "paste",

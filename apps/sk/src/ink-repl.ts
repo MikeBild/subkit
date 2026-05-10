@@ -741,6 +741,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
           pushNotifyThresholdSec: 30,
           quietHoursStart: "",
           quietHoursEnd: "",
+          portalTokenTtlMin: 15,
         },
       };
     }
@@ -829,6 +830,23 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     }
   };
 
+  // W3 of PR #161 review (round 5): read the per-process push-notify
+  // overrides exactly once at REPL boot. Earlier the env was sampled
+  // inside `applyEventStream` on every turn, which meant an
+  // `export SK_PUSH_NOTIFY=1` mid-REPL silently changed behavior.
+  // Reading once here keeps the override aligned with the rest of
+  // the boot-time wiring; operators who need to flip it without
+  // restarting the REPL should switch the engine-side
+  // `notifications.push.*` setting through `/settings → Notifications`.
+  const pushNotifyOverride: { enabled?: boolean; thresholdMs?: number } = {};
+  const envEnabledRaw = process.env.SK_PUSH_NOTIFY;
+  if (envEnabledRaw === "1") pushNotifyOverride.enabled = true;
+  else if (envEnabledRaw === "0") pushNotifyOverride.enabled = false;
+  const envThreshold = Number(process.env.SK_PUSH_NOTIFY_THRESHOLD_MS);
+  if (Number.isFinite(envThreshold) && envThreshold > 0) {
+    pushNotifyOverride.thresholdMs = envThreshold;
+  }
+
   // Small root wrapper that subscribes to status + persona updates and
   // feeds the latest snapshots into <InkApp> as props. The `key` is
   // bumped on every /profile switch so React fully remounts the app —
@@ -899,6 +917,9 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       // hop. When the engine is older than #159 the snapshot's prefs
       // come from `fromLegacy()` defaults.
       prefs: active.persona.prefs,
+      // W3 of PR #161 review (round 5) — per-process env override
+      // sampled exactly once at REPL boot. See declaration above.
+      pushNotifyOverride,
     });
   };
 

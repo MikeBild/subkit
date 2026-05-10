@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
 import { auditLog, conversationMessages, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { forkConversation } from "./fork.ts";
+import { FORK_COPY_MESSAGE_CAP, forkConversation } from "./fork.ts";
 
 let ctx: TestDb;
 
@@ -77,6 +77,7 @@ describe("forkConversation (C2 of PR #161 review)", () => {
         source_conversation_id: seed.conversation_id,
         anchor_message_id: anchor,
         actor_id: null,
+        request_source: "api",
       },
       ctx.db,
     );
@@ -126,6 +127,8 @@ describe("forkConversation (C2 of PR #161 review)", () => {
     expect(meta.truncated).toBe(false);
     expect(meta.source_message_count).toBe(3);
     expect(result!.truncated).toBe(false);
+    // W1 of PR #161 review (round 5): request_source is recorded.
+    expect(meta.request_source).toBe("api");
   });
 
   test("cross-tenant source conversation returns null (no row leak)", async () => {
@@ -139,6 +142,7 @@ describe("forkConversation (C2 of PR #161 review)", () => {
         source_conversation_id: a.conversation_id,
         anchor_message_id: a.message_ids[0]!,
         actor_id: null,
+        request_source: "api",
       },
       ctx.db,
     );
@@ -163,6 +167,7 @@ describe("forkConversation (C2 of PR #161 review)", () => {
         source_conversation_id: a.conversation_id,
         anchor_message_id: b.message_ids[0]!, // anchor from a different conv
         actor_id: null,
+        request_source: "api",
       },
       ctx.db,
     );
@@ -181,6 +186,7 @@ describe("forkConversation (C2 of PR #161 review)", () => {
         source_conversation_id: seed.conversation_id,
         anchor_message_id: seed.message_ids[0]!,
         actor_id: null,
+        request_source: "api",
       },
       ctx.db,
     );
@@ -204,6 +210,7 @@ describe("forkConversation (C2 of PR #161 review)", () => {
         source_conversation_id: seed.conversation_id,
         anchor_message_id: seed.message_ids[1]!, // fork at message #2 (idx 1)
         actor_id: null,
+        request_source: "api",
       },
       ctx.db,
     );
@@ -228,6 +235,7 @@ describe("forkConversation (C2 of PR #161 review)", () => {
         source_conversation_id: seed.conversation_id,
         anchor_message_id: seed.message_ids[2]!,
         actor_id: null,
+        request_source: "api",
       },
       ctx.db,
     );
@@ -245,6 +253,6 @@ describe("forkConversation (C2 of PR #161 review)", () => {
     const meta = audits[0]!.metadata as Record<string, unknown>;
     expect(meta.truncated).toBe(false);
     expect(meta.source_message_count).toBe(3);
-    expect(meta.copy_cap).toBe(5000);
+    expect(meta.copy_cap).toBe(FORK_COPY_MESSAGE_CAP);
   });
 });
