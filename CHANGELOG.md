@@ -1,6 +1,12 @@
 # Changelog
 
-## [4.3.0] (unreleased)
+## [4.4.0] (2026-05-10)
+
+> Closes [#159](https://github.com/MikeBild/subkit/issues/159) — the full
+> 13-milestone sk-cli surface consolidation. `v4.3.0` was tagged before the
+> #159 merge, so this entry is the first release that ships the work.
+> All M1–M13 deliverables, the G-series follow-ups (G1–G11), and PR #161
+> review rounds 1–6 land here.
 
 ### Added
 
