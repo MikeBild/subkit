@@ -842,9 +842,17 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   const envEnabledRaw = process.env.SK_PUSH_NOTIFY;
   if (envEnabledRaw === "1") pushNotifyOverride.enabled = true;
   else if (envEnabledRaw === "0") pushNotifyOverride.enabled = false;
-  const envThreshold = Number(process.env.SK_PUSH_NOTIFY_THRESHOLD_MS);
-  if (Number.isFinite(envThreshold) && envThreshold > 0) {
-    pushNotifyOverride.thresholdMs = envThreshold;
+  // S5 of PR #161 review (round 6): require pure decimal digits.
+  // `Number("0xff")` returns 255 (silently accepts hex);
+  // `Number("12px")` returns NaN (caught by isFinite, but not the
+  // pattern we want to encode). The /^\d+$/ test rejects both
+  // before we even call parseInt. Empty/missing → no override.
+  const rawThreshold = process.env.SK_PUSH_NOTIFY_THRESHOLD_MS?.trim() ?? "";
+  if (/^\d+$/.test(rawThreshold)) {
+    const envThreshold = Number.parseInt(rawThreshold, 10);
+    if (envThreshold > 0) {
+      pushNotifyOverride.thresholdMs = envThreshold;
+    }
   }
 
   // Small root wrapper that subscribes to status + persona updates and

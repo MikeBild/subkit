@@ -233,6 +233,22 @@ export type PaneSpec =
       permissionMode?: "ask" | "auto" | "plan" | "yolo";
       sessionTokens?: number | null;
       weekTokens?: number | null;
+    }
+  | {
+      // W1 of PR #161 review (round 6): the portal-token mint flow
+      // never returns the plaintext token through the slash result —
+      // slash returns are persisted into the assistant transcript and
+      // the token is short-lived but bearer-equivalent. Render the
+      // QR + URL inline in a transient pane (mirroring the AdminTab
+      // ApiKeysSubTab "shown once" yellow panel) and dismiss on Esc /
+      // 'y' (copy via OSC 52). The token id (not the secret) is the
+      // only thing we surface back to the transcript.
+      kind: "portal-token";
+      url: string;
+      ttl_minutes: number;
+      token_id: string;
+      expires_at: string;
+      workflow_id: string;
     };
 
 export interface SlashHandlerContext {
@@ -567,7 +583,18 @@ export async function handleSlash(
       return `/${name}: invalid args — ${where}${issue?.message ?? "schema validation failed"}`;
     }
   }
-  switch (name) {
+  // S6 of PR #161 review (round 6): switch on the canonical command
+  // name (post-alias resolution) rather than the typed string. The
+  // dispatcher's `resolveSlashCommand` already maps `/install` →
+  // `/onboard` (and `/quit` → `/exit`, `/bug` → `/feedback`, etc.)
+  // through `command.aliases`. Switching on `plan.command?.name`
+  // means the handler can drop the `case "install":` fallthrough
+  // mirrors and there's exactly one branch per canonical slash.
+  // When the command isn't in the registry (unknown / removed) the
+  // typed name still flows through so the existing
+  // `/${name}` error / removed-slash guidance branches still work.
+  const dispatchName = plan.command?.name ?? name;
+  switch (dispatchName) {
     case "status": {
       // R3-S4: `/status` is local-only by design — same shape as
       // `/cost`. Reads the Ink host's latest `/v1/status` snapshot
@@ -1443,6 +1470,16 @@ export async function handleSlash(
       // `repl.portalTokenTtlMin` (S6 of PR #161 review round 5);
       // tenant-scoped via the engine's existing
       // /v1/identity/portal-tokens audit invariants. M12 of #159.
+      //
+      // W1 + W2 of PR #161 review (round 6): the plaintext URL is a
+      // bearer-equivalent secret. Earlier code returned the URL as
+      // the slash result, which the REPL persists into the assistant
+      // transcript. We now route the secret into a dedicated pane
+      // (`kind: "portal-token"`) — the host renders the QR + URL
+      // inline, dismisses on Esc / 'y' (copy via OSC 52), and the
+      // slash return only carries non-secret context (token id,
+      // expiry, ttl). Mirrors the AdminTab API-key flow, which
+      // surfaces the plaintext once and never re-shows it.
       const workflowId = rawArgs[0];
       if (!workflowId) {
         return "/session usage: `/session <workflow-id>` — engine requires at least one workflow scope per portal token";
@@ -1466,19 +1503,26 @@ export async function handleSlash(
         const token = issued.plaintext_token ?? "";
         if (!token) return "/session: engine did not return a token";
         const url = `${ctx.profile.engine_url.replace(/\/$/, "")}/portal#token=${token}`;
-        // Render the QR async; qrcode-terminal logs to stdout. We
-        // await it via a Promise wrapper so the slash response includes
-        // the URL only — the QR is already on stdout when this returns.
-        const qrcode = await import("qrcode-terminal");
-        await new Promise<void>((resolve) => {
-          qrcode.default.generate(url, { small: true }, () => resolve());
-        });
-        // S3 of PR #161 review — explicit do-not-share warning.
-        // The plaintext URL above contains a portal token that grants
-        // mobile/portal-side access for the next 15 minutes; copying
-        // it into chat / commit messages / shared screens leaks the
-        // session.
-        return `portal token issued (15 min, single-use) — ${url}\n⚠ do not share this URL — anyone holding it can attach to your session until ${issued.expires_at}\nscan the QR above with your phone to connect; the QR clears when this pane closes.`;
+        if (ctx.openPane) {
+          ctx.openPane({
+            kind: "portal-token",
+            url,
+            ttl_minutes: ttlMinutes,
+            token_id: issued.id,
+            expires_at: issued.expires_at,
+            workflow_id: workflowId,
+          });
+          // Transcript message contains only the prefix + expiry — no
+          // plaintext token bytes. Operator copies the URL from the
+          // pane via OSC 52 / 'y'.
+          const prefix = issued.prefix ?? issued.id.slice(0, 8);
+          return `portal token issued (token id ${prefix}, ${ttlMinutes} min, single-use) — pane opened with QR + URL; copy the URL there and dismiss on Esc.`;
+        }
+        // Headless / non-Ink fallback: print a redacted summary; never
+        // emit the plaintext URL into the transcript when no pane is
+        // available. Operator-scripted environments should use the
+        // engine route directly.
+        return `/session: issued portal token (id ${issued.id}, expires ${issued.expires_at}) — open an interactive REPL to view the QR + URL.`;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return `/session failed: ${msg}`;

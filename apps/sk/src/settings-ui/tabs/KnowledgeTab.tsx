@@ -16,6 +16,7 @@ import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { EngineClient } from "../../engine-client.ts";
 import { ConsentPrompt } from "../../repl/components/ConsentPrompt.tsx";
+import { checkIngestGuard } from "../lib/knowledge-ingest-guard.ts";
 
 const MIME_BY_EXT: Readonly<Record<string, string>> = Object.freeze({
   ".md": "text/markdown",
@@ -124,32 +125,18 @@ export const KnowledgeTab: React.FC<Props> = ({ client, onSearchActiveChange }) 
     setActionFlash(null);
     try {
       const abs = isAbsolute(ingestPath) ? ingestPath : resolve(process.cwd(), ingestPath);
-      // S-4 of PR #161 review (round 4): refuse OS-internal paths
-      // outright. The Knowledge ingest is operator-driven, but typo
-      // protection is cheap — a path under `/etc`, `/proc`, or
-      // `/sys` is almost never a deliberate Knowledge Source. The
-      // engine would happily accept the bytes and store them
-      // tenant-scoped, so this is a UX guard, not a security
-      // boundary.
-      for (const blocked of ["/etc/", "/proc/", "/sys/"] as const) {
-        if (abs.startsWith(blocked) || abs === blocked.slice(0, -1)) {
-          setActionFlash(
-            `ingest refused: ${blocked.slice(0, -1)} is OS-internal — pick a project path`,
-          );
-          return;
-        }
-      }
-      // S-4 of PR #161 review (round 4): bound the read to 50 MB.
-      // The engine accepts large blobs, but a stray `/var/log/...`
-      // selection on a busy host can OOM the REPL before the user
-      // notices what they pointed at. The size check happens before
-      // `readFile` slurps the file, so the OOM path stays closed.
-      const KNOWLEDGE_INGEST_MAX_BYTES = 50 * 1024 * 1024;
+      // W6 of PR #161 review (round 6): UX guard lifted to
+      // `lib/knowledge-ingest-guard.ts` so the contract is unit-
+      // testable and a future widening of the deny-list cannot
+      // drift past the test suite. The guard covers both Unix
+      // (/etc /proc /sys /var /dev /root + ~/.ssh ~/.aws ~/.gnupg
+      // ~/.kube ~/.docker ~/.config ~/.sk) and Windows
+      // (C:\Windows, C:\Program Files, AppData, ~/.ssh) — earlier
+      // round-4 guard was Linux-only and missed credentials roots.
       const stats = await stat(abs);
-      if (stats.size > KNOWLEDGE_INGEST_MAX_BYTES) {
-        setActionFlash(
-          `ingest refused: file is ${(stats.size / 1024 / 1024).toFixed(1)} MB (max 50 MB) — split or compress first`,
-        );
+      const guard = checkIngestGuard({ absolutePath: abs, sizeBytes: stats.size });
+      if (guard.rejected) {
+        setActionFlash(guard.reason ?? "ingest refused");
         return;
       }
       // S-2 of PR #161 review (round 3): async read so a multi-MB

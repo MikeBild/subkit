@@ -103,7 +103,13 @@ export async function forkConversation(
         eq(conversationMessages.conversation_id, p.source_conversation_id),
       ),
     )
-    .orderBy(asc(conversationMessages.created_at));
+    // W7 of PR #161 review (round 6): tiebreak on id so identical
+    // `created_at` clock-ticks (Postgres `defaultNow()` resolves to
+    // `clock_timestamp()` per insert; bulk inserts can return ties)
+    // produce a deterministic order. The findIndex anchor lookup is
+    // already id-keyed, but the sliced copy and the test assertions
+    // assume insertion order matches `ORDER BY` — this restores that.
+    .orderBy(asc(conversationMessages.created_at), asc(conversationMessages.id));
   const anchorIdx = allMessages.findIndex((m) => m.id === p.anchor_message_id);
   if (anchorIdx < 0) return null;
 

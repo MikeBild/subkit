@@ -2585,6 +2585,20 @@ export const InkApp: React.FC<InkAppProps> = ({
       // freshly-arrived elicit_request event.
       if (elicitOpen) return;
 
+      // W1 of PR #161 review (round 6): when the portal-token pane
+      // is open, 'y' copies the (one-shot) URL to the OS clipboard
+      // via OSC 52. The pane closes after copy so the bytes never
+      // sit on screen longer than necessary.
+      if (pane?.kind === "portal-token" && (char === "y" || char === "Y")) {
+        const url = pane.url;
+        void import("@cli-core/clipboard.ts").then(({ osc52Copy }) => {
+          osc52Copy(url);
+        });
+        showInfo("portal URL copied to clipboard");
+        setPane(null);
+        return;
+      }
+
       // --- Next-best-actions chip shortcut (digits 1..9) -------------
       // Wins over the welcome-action shortcut below: a freshly-failed
       // tool with chips might land in a session that hasn't pushed an
@@ -3603,6 +3617,25 @@ export const InkApp: React.FC<InkAppProps> = ({
           {pane.lines.map((line, i) => (
             <Text key={`tp-${i}`}>{line}</Text>
           ))}
+        </Pane>
+      ) : null}
+      {pane?.kind === "portal-token" ? (
+        <Pane
+          title="portal token (shown once)"
+          subtitle={`expires ${pane.expires_at} · ${pane.ttl_minutes} min`}
+          onDismiss={() => setPane(null)}
+        >
+          <Text color="yellow" bold>
+            ⚠ this URL is bearer-equivalent — anyone holding it can attach until expiry
+          </Text>
+          <Text color="gray">workflow: {pane.workflow_id}</Text>
+          <Text color="gray">token id: {pane.token_id}</Text>
+          <Box marginTop={1} flexDirection="column">
+            <Text>{pane.url}</Text>
+          </Box>
+          <Box marginTop={1}>
+            <Text color="gray">press Esc to dismiss · 'y' to copy URL to clipboard</Text>
+          </Box>
         </Pane>
       ) : null}
       {pane?.kind === "structured" ? (

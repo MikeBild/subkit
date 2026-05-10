@@ -444,7 +444,10 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   {
     name: "settings",
     aliases: ["preferences"],
-    help: "Open the 10-tab settings palette (Status / Config / Usage / Stats / Skills / Permissions / Knowledge / Profile / Admin)",
+    // W3 of PR #161 review (round 6): help string lists every tab in
+    // ALL_TABS order — adding the literal "Settings" tab back to the
+    // front so the count + the names match.
+    help: "Open the 10-tab settings palette (Settings / Status / Config / Usage / Stats / Skills / Permissions / Knowledge / Profile / Admin)",
     category: "util",
     routing: "local",
   },

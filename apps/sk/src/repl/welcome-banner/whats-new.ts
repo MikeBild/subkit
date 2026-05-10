@@ -11,6 +11,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { z } from "zod";
 // Build-time embed of the repo's CHANGELOG.md. Bun's text-import bundles
 // the file into the compiled binary, so this works both at dev time and
 // in the shipped binary (where the source CHANGELOG isn't on disk).
@@ -71,18 +72,41 @@ export interface WhatsNewRemote {
 }
 
 /**
+ * W5 of PR #161 review (round 6): Zod schema for the remote payload
+ * so a hostile or buggy upstream cannot smuggle nested objects /
+ * arrays past `sanitizeHeadline`. `.strict()` rejects unknown keys —
+ * if the contract grows, the engine bumps the schema and the CLI
+ * surfaces the parse failure as a fetch failure (breaker bumps).
+ */
+const WhatsNewRemoteSchema = z.object({ headline: z.string() }).strict();
+
+/**
  * Resolve the remote endpoint URL. Returns null when the operator
- * explicitly disables the lookup via `SK_WHATS_NEW_URL=` (empty) or
- * `SK_WHATS_NEW_URL=disabled` — pairs with the air-gapped policy
- * documented in `docs/03-input-surfaces.md`.
+ * has not explicitly opted in.
+ *
+ * W4 of PR #161 review (round 6): the default posture is **opt-in**.
+ * `SK_WHATS_NEW_URL` unset → no network call (CLI falls back to the
+ * bundled CHANGELOG head). To enable, set the env var to the
+ * upstream JSON URL. The opt-out sentinels (`""`, `"disabled"`,
+ * `"off"`, `"0"`) are kept for compatibility with operators who
+ * inherited a populated default and want to disable it explicitly,
+ * but they're no longer load-bearing — the default is now silent.
+ *
+ * Air-gapped deploys remain documented in `docs/03-input-surfaces.md`
+ * + `docs/07-security-governance.md`; the default posture matches
+ * those docs.
  */
 export function whatsNewUrl(): string | null {
   const fromEnv = process.env.SK_WHATS_NEW_URL;
-  if (fromEnv === undefined) return DEFAULT_URL;
+  if (fromEnv === undefined) return null;
   const v = fromEnv.trim();
   if (v.length === 0 || v === "disabled" || v === "off" || v === "0") return null;
   return v;
 }
+
+/** Hard-coded default upstream — exported so docs / tests can refer
+ *  to it. Operators set `SK_WHATS_NEW_URL=<this>` to opt in. */
+export const RECOMMENDED_WHATS_NEW_URL = DEFAULT_URL;
 
 /**
  * ANSI / OSC strip + control-byte filter. Used by `sanitizeHeadline`.
@@ -252,8 +276,17 @@ export async function loadWhatsNew(opts: LoadWhatsNewOptions = {}): Promise<stri
       recordFailure(cached, cachePath, now());
       return sanitizeHeadline(cached?.headline) ?? changelogHead();
     }
-    const body = (await res.json()) as Partial<WhatsNewRemote>;
-    const sanitized = sanitizeHeadline(body.headline);
+    // W5 of PR #161 review (round 6): Zod-validate the remote payload
+    // before render. `.strict()` rejects unknown keys; failure is
+    // counted as a fetch failure (breaker bumps), not silently
+    // smuggled through `sanitizeHeadline`.
+    const rawBody = (await res.json()) as unknown;
+    const parsed = WhatsNewRemoteSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      recordFailure(cached, cachePath, now());
+      return sanitizeHeadline(cached?.headline) ?? changelogHead();
+    }
+    const sanitized = sanitizeHeadline(parsed.data.headline);
     if (sanitized === null) {
       recordFailure(cached, cachePath, now());
       return sanitizeHeadline(cached?.headline) ?? changelogHead();

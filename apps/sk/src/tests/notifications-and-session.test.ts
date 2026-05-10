@@ -129,7 +129,10 @@ describe("notifications — notify writes OSC 9 + BEL (M12)", () => {
   });
 });
 
-function makeCtx(client: EngineClient): SlashHandlerContext {
+function makeCtx(
+  client: EngineClient,
+  opts: { openPane?: SlashHandlerContext["openPane"] } = {},
+): SlashHandlerContext {
   return {
     client,
     profile: {
@@ -145,6 +148,7 @@ function makeCtx(client: EngineClient): SlashHandlerContext {
     } as unknown as SkSessionState,
     setConversationId: () => {},
     allowedPermissions: ["portal_token:read"],
+    ...(opts.openPane ? { openPane: opts.openPane } : {}),
   };
 }
 
@@ -156,11 +160,11 @@ describe("/session slash (M12)", () => {
     expect(out).toMatch(/invalid args|usage/);
   });
 
-  test("calls issuePortalToken with the workflow scope and 15-min TTL", async () => {
+  test("calls issuePortalToken with the workflow scope and 15-min TTL; routes plaintext URL into a pane (W1 of round 6)", async () => {
     const issuePortalToken = mock(async (body: Record<string, unknown>) => ({
       id: "pt-1",
       plaintext_token: "secret-token-123",
-      prefix: "pt_",
+      prefix: "pt_short",
       expires_at: "2026-05-09T15:00:00Z",
       _body: body,
     }));
@@ -174,13 +178,25 @@ describe("/session slash (M12)", () => {
       provider: "firebase",
     }));
     const client = { issuePortalToken, whoami } as unknown as EngineClient;
-    const out = await handleSlash("session", ["wf-7"], makeCtx(client));
+    const openedPanes: unknown[] = [];
+    const openPane = (spec: unknown): void => {
+      openedPanes.push(spec);
+    };
+    const out = await handleSlash("session", ["wf-7"], makeCtx(client, { openPane }));
+    // W1 of PR #161 review (round 6): the plaintext URL is NEVER in
+    // the slash return value — it goes to the pane spec only.
     expect(typeof out).toBe("string");
+    expect(out ?? "").not.toContain("secret-token-123");
+    expect(out ?? "").not.toContain("/portal#token=");
     expect(out).toContain("portal token issued");
-    expect(out).toContain("/portal#token=secret-token-123");
-    // S3 of PR #161 — wording reworded to "until <ts>" with a do-not-share warning.
-    expect(out).toContain("until 2026-05-09T15:00:00Z");
-    expect(out).toContain("do not share");
+    expect(out).toContain("pt_short");
+    expect(out).toContain("15 min");
+    // The pane spec carries the URL.
+    expect(openedPanes.length).toBe(1);
+    const pane = openedPanes[0] as { kind: string; url: string; ttl_minutes: number };
+    expect(pane.kind).toBe("portal-token");
+    expect(pane.url).toContain("/portal#token=secret-token-123");
+    expect(pane.ttl_minutes).toBe(15);
     expect(issuePortalToken.mock.calls.length).toBe(1);
     const sent = issuePortalToken.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(sent).toMatchObject({
@@ -188,6 +204,30 @@ describe("/session slash (M12)", () => {
       allowed_workflows: ["wf-7"],
       ttl_minutes: 15,
     });
+  });
+
+  test("headless fallback (no openPane) still issues the token but never emits the plaintext URL into the transcript (W1 of round 6)", async () => {
+    const issuePortalToken = mock(async () => ({
+      id: "pt-2",
+      plaintext_token: "secret-token-456",
+      prefix: "pt_h",
+      expires_at: "2026-05-09T16:00:00Z",
+    }));
+    const whoami = mock(async () => ({
+      id: "u2",
+      kind: "user" as const,
+      tenant_id: "t1",
+      tenant_slug: "acme",
+      email: "u@a.test",
+      role_name: "admin",
+      provider: "firebase",
+    }));
+    const client = { issuePortalToken, whoami } as unknown as EngineClient;
+    const out = await handleSlash("session", ["wf-9"], makeCtx(client));
+    expect(typeof out).toBe("string");
+    expect(out ?? "").not.toContain("secret-token-456");
+    expect(out).toContain("pt-2");
+    expect(out).toContain("expires 2026-05-09T16:00:00Z");
   });
 
   test("surfaces engine error verbatim", async () => {

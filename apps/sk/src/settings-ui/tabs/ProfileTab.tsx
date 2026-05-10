@@ -99,6 +99,14 @@ export const ProfileTab: React.FC<Props> = ({ client, onAction }) => {
     }
   };
 
+  // S3 of PR #161 review (round 6): defer the disk I/O off the
+  // render thread via `queueMicrotask` so a slow mount or antivirus
+  // hook on `~/.sk/config.json` doesn't hitch Ink's reconciler. The
+  // function still returns the updated profile synchronously to the
+  // caller — but the disk write happens on the next microtask tick.
+  // `loadConfig` / `saveProfile` remain sync because every other
+  // caller in the CLI assumes synchronous semantics; switching this
+  // single call site is the lowest-cost mitigation.
   const persistTenant = (tenant_id: string): ResolvedProfile | null => {
     try {
       const cfg = loadConfig();
@@ -116,12 +124,21 @@ export const ProfileTab: React.FC<Props> = ({ client, onAction }) => {
         ...(profile.persona_hint ? { persona_hint: profile.persona_hint } : {}),
         ...(profile.portal_locked ? { portal_locked: profile.portal_locked } : {}),
       };
-      saveProfile(updated, configPath());
+      queueMicrotask(() => {
+        try {
+          saveProfile(updated, configPath());
+        } catch (err) {
+          setFlash({
+            kind: "error",
+            msg: `saveProfile failed: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
+      });
       return updated;
     } catch (err) {
       setFlash({
         kind: "error",
-        msg: `saveProfile failed: ${err instanceof Error ? err.message : String(err)}`,
+        msg: `loadConfig failed: ${err instanceof Error ? err.message : String(err)}`,
       });
       return null;
     }

@@ -22,16 +22,24 @@ import {
 import { resolveAction } from "../keybindings/useKeybinding.ts";
 import type { FormField } from "../lib/zod-to-form-fields.ts";
 
-// G5 closure of #159 M11 — paths that should open a richer Ink picker
-// instead of the generic FieldEditor. Adding a row here is the only
-// hook needed to surface a ValuePicker; the picker writes via the
-// same setSetting path the FieldEditor uses.
-const PICKER_PATHS: ReadonlySet<string> = new Set([
-  "ui.theme",
-  "ui.personality",
-  "ui.title.format",
-  "ui.statusline.format",
-]);
+// G5 closure of #159 M11 / S2 of PR #161 review (round 6) — single
+// registry mapping a setting path to the Ink picker component that
+// renders it. Adding a row here is the *only* hook needed to surface
+// a value picker; the picker writes via the same setSetting path the
+// FieldEditor uses. Earlier code carried the path list in
+// `PICKER_PATHS` plus a parallel switch statement; drift between the
+// two was a future-bug waiting to happen.
+type PickerProps = {
+  initial: string;
+  onCommit: (value: string) => void;
+  onCancel: () => void;
+};
+const PICKER_REGISTRY: Readonly<Record<string, React.FC<PickerProps>>> = {
+  "ui.theme": ThemePicker,
+  "ui.personality": PersonalityPicker,
+  "ui.title.format": TitleConfigurator,
+  "ui.statusline.format": StatuslineConfigurator,
+};
 
 interface Props {
   fields: FormField[];
@@ -173,18 +181,10 @@ export const ConfigTab: React.FC<Props> = ({
     commit: (value: unknown) => void,
     cancel: () => void,
   ): React.ReactNode => {
-    if (PICKER_PATHS.has(field.path)) {
+    const Picker = PICKER_REGISTRY[field.path];
+    if (Picker) {
       const initial = typeof field.value === "string" ? field.value : "";
-      switch (field.path) {
-        case "ui.theme":
-          return <ThemePicker initial={initial} onCommit={commit} onCancel={cancel} />;
-        case "ui.personality":
-          return <PersonalityPicker initial={initial} onCommit={commit} onCancel={cancel} />;
-        case "ui.title.format":
-          return <TitleConfigurator initial={initial} onCommit={commit} onCancel={cancel} />;
-        case "ui.statusline.format":
-          return <StatuslineConfigurator initial={initial} onCommit={commit} onCancel={cancel} />;
-      }
+      return <Picker initial={initial} onCommit={commit} onCancel={cancel} />;
     }
     return <FieldEditor field={field} onCommit={(_f, v) => commit(v)} onCancel={cancel} />;
   };

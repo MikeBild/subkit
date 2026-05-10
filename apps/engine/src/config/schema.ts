@@ -486,6 +486,14 @@ const ReplSection = z
 // `quietHoursStart` and `quietHoursEnd` are 24h "HH:MM" wall-clock
 // strings (local timezone) that the CLI uses to suppress emits. An
 // empty string disables the time-window check.
+//
+// S1 of PR #161 review (round 6): single source of truth for the
+// HH:MM-or-empty regex. The base section + the tenant overlay both
+// reuse this — a future change to the format only edits one place.
+const QuietHoursStringSchema = z
+  .string()
+  .regex(/^$|^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM (24h, leading-zero hour) or empty");
+
 const NotificationsSection = z
   .object({
     push: z
@@ -509,17 +517,12 @@ const NotificationsSection = z
         // the CLI's `parseHHMM` then quietly fell back to "no quiet
         // hours". Constraining here makes the OpenAPI surface honest
         // and protects every other consumer (chat adapter, future
-        // workflow steps) from the same trap.
-        quietHoursStart: z
-          .string()
-          .regex(/^$|^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM (24h, leading-zero hour) or empty")
-          .default("")
+        // workflow steps) from the same trap. Pinned shape lives in
+        // `QuietHoursStringSchema` above (S1 of round 6).
+        quietHoursStart: QuietHoursStringSchema.default("")
           .describe("Quiet-hours window start (HH:MM, local TZ). Empty disables the window.")
           .meta(tenant()),
-        quietHoursEnd: z
-          .string()
-          .regex(/^$|^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM (24h, leading-zero hour) or empty")
-          .default("")
+        quietHoursEnd: QuietHoursStringSchema.default("")
           .describe("Quiet-hours window end (HH:MM, local TZ). Empty disables the window.")
           .meta(tenant()),
       })
@@ -621,23 +624,10 @@ const TenantOverlaySchema = z
             enabled: z.boolean().optional(),
             thresholdSec: z.number().int().positive().max(3600).optional(),
             // W2 of PR #161 review (round 4): mirror the regex from
-            // `NotificationsSection` so the tenant-overlay leaves
-            // can't smuggle malformed wall-clock strings past the
-            // base section.
-            quietHoursStart: z
-              .string()
-              .regex(
-                /^$|^([01]\d|2[0-3]):[0-5]\d$/,
-                "expected HH:MM (24h, leading-zero hour) or empty",
-              )
-              .optional(),
-            quietHoursEnd: z
-              .string()
-              .regex(
-                /^$|^([01]\d|2[0-3]):[0-5]\d$/,
-                "expected HH:MM (24h, leading-zero hour) or empty",
-              )
-              .optional(),
+            // `NotificationsSection` via the shared
+            // `QuietHoursStringSchema` constant (S1 of round 6).
+            quietHoursStart: QuietHoursStringSchema.optional(),
+            quietHoursEnd: QuietHoursStringSchema.optional(),
           })
           .optional(),
       })
