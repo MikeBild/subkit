@@ -86,6 +86,9 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         turn_abort_ctrl: turnAbortCtrl,
         ...(body.memory !== undefined ? { memory: body.memory } : {}),
         ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+        ...(body.client_suppress !== undefined
+          ? { next_suggestion_suppress: body.client_suppress }
+          : {}),
         runtime_context: buildRuntimeContextFromRequest(c, principal),
       } as const;
 

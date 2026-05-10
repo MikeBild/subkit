@@ -30,6 +30,7 @@ import { registerElicitationRoutes } from "./elicitations.ts";
 import { registerLifecycleRoutes } from "./lifecycle.ts";
 import { registerMessagesRoutes } from "./messages.ts";
 import { registerStreamRoutes } from "./stream.ts";
+import { registerSuggestNextFeedbackRoute } from "./suggest-next-feedback.ts";
 import { registerToolPoliciesRoutes } from "./tool-policies.ts";
 
 export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -89,6 +90,11 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/conversations/:id/stream", async (c, next) => {
     return requireAnyPermission(["conversation:read", "workflow:read"])(c, next);
   });
+  // The suggest-next feedback route writes only to a metric (no audit
+  // row, no DB mutation), so the read-permission gate is sufficient.
+  app.use("/v1/conversations/:id/suggest-next/feedback", async (c, next) => {
+    return requireAnyPermission(["conversation:read", "workflow:read"])(c, next);
+  });
   // Tool policies are governance state (per-tool confirm/auto/yolo
   // matrix); the PUT mutates it and writes a `tool_policy.changed`
   // audit row, so the surface is RBAC-gated identically to the
@@ -108,6 +114,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   registerLifecycleRoutes(app);
   registerToolPoliciesRoutes(app);
   registerStreamRoutes(app);
+  registerSuggestNextFeedbackRoute(app);
 
   // Touch the helper so the biome unused-import pass does not reject.
   void replayEvents;

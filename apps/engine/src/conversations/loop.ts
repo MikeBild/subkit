@@ -70,6 +70,7 @@ import {
   resolveLanguageModel,
 } from "./loop/model-resolver.ts";
 import { committedStopCondition, pausedStopCondition } from "./loop/stop-conditions.ts";
+import { buildNextSuggestionFrame } from "./loop/suggest-next-emitter.ts";
 import { readStepUsage } from "./loop/usage.ts";
 import {
   appendMessage,
@@ -142,6 +143,14 @@ export interface RunLoopParams {
    * here as a fallback" path was retired.
    */
   turn_abort_ctrl: AbortController;
+  /**
+   * Per-turn opt-out for the next-message preview frame. When set,
+   * the loop still emits a `next_suggestion` event so the SSE close
+   * is deterministic, but with `suggestion: null, reason:
+   * "client-suppress"` and no model call. sk-cli flips this to true
+   * after N consecutive dismissals.
+   */
+  next_suggestion_suppress?: boolean;
 }
 
 export interface RunLoopResult {
@@ -1653,6 +1662,21 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ...(breakdown ? { breakdown } : {}),
     },
   });
+
+  // Next-message suggestion frame. Always emitted (suggestion may be
+  // null) so the SSE close is deterministic — sk-cli relies on the
+  // frame's presence to decide whether to clear ghost state. The
+  // emitter is wrapped in its own try/catch so a flaky model can
+  // never take down the parent turn.
+  const suggestionFrame = await buildNextSuggestionFrame({
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    events,
+    ...(p.next_suggestion_suppress !== undefined
+      ? { client_suppress: p.next_suggestion_suppress }
+      : {}),
+  });
+  events.push(suggestionFrame);
 
   // P6: emit a per-turn token-usage log line so the operator can grep
   // engine logs alone (without enabling client-side debug output) to
