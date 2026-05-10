@@ -58,14 +58,15 @@ export interface EmitSuggestNextFrameParams {
 }
 
 // Allow operators on non-Anthropic providers (Bedrock, OpenAI, local
-// mock) to swap the suggestion model without a code change. The env
-// read is intentionally direct (mirroring `conversations/tools/web-search.ts`'s
-// `TAVILY_API_KEY` precedent) — promoting this to a `llm.suggestion.model`
-// config knob is tracked as a follow-up, but until the suggestion
-// feature has wider operator demand the env override is the lighter
-// surface. When unset we fall back to the Haiku-class default; the
-// call still no-ops cleanly when the provider can't resolve the model.
-const SUGGEST_MODEL_DEFAULT = process.env.SK_SUGGEST_MODEL ?? "claude-haiku-4-5";
+// mock) to swap the suggestion model without a code change. The
+// `SK_SUGGEST_MODEL` env override is read PER-REQUEST inside
+// `defaultSuggestNextModelInvoker` (matching `web-search.ts`'s
+// `TAVILY_API_KEY` precedent), not at module load — that way an
+// operator can `export SK_SUGGEST_MODEL=...` mid-process and the next
+// turn picks it up. Promoting this to a `llm.suggestion.model` config
+// knob is tracked as a follow-up; until the suggestion feature has
+// wider operator demand the env override is the lighter surface.
+const SUGGEST_MODEL_FALLBACK = "claude-haiku-4-5";
 const SUGGEST_MAX_OUTPUT_TOKENS = 30;
 const SUGGEST_TEMPERATURE = 0.2;
 const SUGGEST_HISTORY_TURNS = 8;
@@ -261,7 +262,9 @@ const defaultSuggestNextModelInvoker: SuggestNextModelInvoker = async (
 ): Promise<SuggestNextModelResult> => {
   let resolved: Awaited<ReturnType<typeof initializeModel>>;
   try {
-    resolved = await initializeModel({ defaultModel: SUGGEST_MODEL_DEFAULT });
+    // Per-request env read (see SUGGEST_MODEL_FALLBACK comment).
+    const modelId = process.env.SK_SUGGEST_MODEL ?? SUGGEST_MODEL_FALLBACK;
+    resolved = await initializeModel({ defaultModel: modelId });
   } catch (err) {
     logger.warn({
       module: "conversations",

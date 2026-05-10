@@ -15,6 +15,7 @@
 // failing CI.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 import { tenantLlmSettings } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -47,11 +48,14 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
+// Tightened to import the shared SuggestNextReason / SuggestNextKind
+// unions so a typo in the engine fails this test instead of being
+// accepted as a generic string.
 interface NextSuggestionEvent {
   type: "next_suggestion";
   suggestion: string | null;
-  reason: string;
-  kind: string | null;
+  reason: SuggestNextReason;
+  kind: SuggestNextKind | null;
 }
 
 function adminHeaders(): Record<string, string> {
