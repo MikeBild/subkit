@@ -85,10 +85,15 @@ if [ -f "$REPO_ROOT/.env.deploy" ]; then
   source "$REPO_ROOT/.env.deploy"
 fi
 
-DEPLOY_HOST="${DEPLOY_HOST:-}"
+# `DROPLET_*` is the canonical naming on the GitHub-side secrets
+# (matches the digitalocean-bootstrap script). The `.env.deploy` file
+# typically carries `DROPLET_HOST` / `DROPLET_USER`; accept those as
+# fallbacks so the laptop deploy and the CI deploy read from the same
+# variable names without per-operator env-file edits.
+DEPLOY_HOST="${DEPLOY_HOST:-${DROPLET_HOST:-}}"
+DEPLOY_USER="${DEPLOY_USER:-${DROPLET_USER:-root}}"
 DROPLET_NAME="${DROPLET_NAME:-subkit-engine}"
-DEPLOY_USER="${DEPLOY_USER:-root}"
-SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/id_rsa}"
+SSH_KEY_PATH="${SSH_KEY_PATH:-${DROPLET_SSH_KEY_PATH:-$HOME/.ssh/id_rsa}}"
 DEPLOY_URL="${DEPLOY_URL:-https://subkit-api.mikebild.dev}"
 
 # ---------------------------------------------------------------------------
