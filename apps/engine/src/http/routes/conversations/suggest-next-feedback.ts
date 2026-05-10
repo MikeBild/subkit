@@ -15,9 +15,9 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { getConversation } from "../../../conversations/service.ts";
-import { logger } from "../../../logging/logger.ts";
-import { recordSuggestNextOutcome } from "../../../observability/instrumentation.ts";
+import { getConversation } from "../../../conversations/index.ts";
+import { logger } from "../../../logging/index.ts";
+import { recordSuggestNextOutcome } from "../../../observability/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { SuggestNextFeedbackBody } from "./schemas.ts";
