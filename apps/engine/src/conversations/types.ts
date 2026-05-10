@@ -589,6 +589,34 @@ export type TurnEvent =
         ok: boolean;
         duration_ms: number;
       };
+    }
+  /**
+   * Next-message preview frame. Emitted exactly once per turn, after
+   * the assistant's terminal `message` and before the SSE `outcome` /
+   * `done` envelope. Carries either a non-null suggestion the client
+   * paints as ghost text in the input composer, or `null` with a
+   * `reason` tag explaining why no suggestion was produced (the
+   * client just silently skips render in that case).
+   *
+   * `kind: "text"` → user accepts and the suggestion is inserted as
+   * literal input. `kind: "slash"` → user accepts and the slash
+   * dispatcher routes the command directly. `null` kind always pairs
+   * with a null suggestion.
+   */
+  | {
+      type: "next_suggestion";
+      suggestion: string | null;
+      reason:
+        | "offer-detected"
+        | "offer-skill"
+        | "model"
+        | "early-conversation"
+        | "client-suppress"
+        | "filtered"
+        | "empty"
+        | "budget-pressure"
+        | "error";
+      kind: "text" | "slash" | null;
     };
 
 export interface ConversationResumeSummary {
