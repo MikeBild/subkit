@@ -194,6 +194,7 @@ describe("/fork slash (M9 + W2 of PR #161 review round 2)", () => {
       source_conversation_id: sourceId,
       anchor_message_id: msgId,
       copied_message_count: 4,
+      truncated: false,
     }));
     const client = { forkConversationFromMessage } as unknown as EngineClient;
 

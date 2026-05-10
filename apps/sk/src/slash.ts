@@ -399,10 +399,19 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
   // M9 of #159 — universal chat-REPL muscle-memory slashes.
   {
+    // W1 of PR #161 review (round 4): the in-memory transcript happy
+    // path is local, but S5 of round 2 added a fallback that calls
+    // `client.getConversation` when the local cache is empty
+    // (resumed session, paged history, REPL booted into an existing
+    // conversation). That request fails 403 for any principal lacking
+    // `conversation:read`. Declaring the perm here filters /copy out
+    // of /help for read-denied personas instead of letting them hit a
+    // cryptic engine error mid-keystroke.
     name: "copy",
     help: "Copy the last assistant message (markdown) to the clipboard",
     category: "util",
     routing: "local",
+    requires: "conversation:read",
   },
   {
     name: "rename",

@@ -1398,7 +1398,14 @@ export async function handleSlash(
         const res = await ctx.client.forkConversationFromMessage(sourceId, anchorId);
         ctx.setConversationId(res.conversation.id);
         const short = res.conversation.id.slice(0, 8);
-        return `forked from ${sourceId.slice(0, 8)} at message ${anchorId.slice(0, 8)} — new session ${short} (${res.copied_message_count} messages copied)`;
+        // W3 of PR #161 review (round 4): annotate the truncation
+        // outcome inline so the operator notices when older context
+        // was dropped at fork time. The anchor is always preserved;
+        // it's only earlier messages that get clipped.
+        const truncationNote = res.truncated
+          ? " — earlier history was truncated at the per-fork copy cap"
+          : "";
+        return `forked from ${sourceId.slice(0, 8)} at message ${anchorId.slice(0, 8)} — new session ${short} (${res.copied_message_count} messages copied)${truncationNote}`;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return `/fork failed: ${msg}`;

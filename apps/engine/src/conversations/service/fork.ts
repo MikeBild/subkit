@@ -43,7 +43,31 @@ export interface ForkConversationResult {
   source_conversation_id: string;
   anchor_message_id: string;
   copied_message_count: number;
+  /**
+   * W3 of PR #161 review (round 4): true when the fork hit
+   * `FORK_COPY_MESSAGE_CAP` and copied only the most-recent
+   * `FORK_COPY_MESSAGE_CAP` messages up to the anchor instead of
+   * every message from index 0. Surfaces a deliberate truncation
+   * to operators + audit consumers. The fork is still functional
+   * (the anchor message is always included) — older context is
+   * dropped to bound storage / memory amplification.
+   */
+  truncated: boolean;
 }
+
+/**
+ * W3 of PR #161 review (round 4): hard cap on messages copied per
+ * fork operation. Without it, a multi-thousand-message conversation
+ * fed into `/fork` linearly amplifies storage + memory: the SELECT
+ * pulls every row, the INSERT writes every row, and a malicious
+ * caller with `conversation:write` could repeatedly fork from
+ * second-to-last to amplify storage indefinitely.
+ *
+ * 5,000 chosen as 5x the typical incident-mode authoring loop length
+ * (~1,000 turns × ~3 rows/turn ≈ 3,000) — well above any realistic
+ * working session, well below where the linear ops become noticeable.
+ */
+export const FORK_COPY_MESSAGE_CAP = 5_000;
 
 export async function forkConversation(
   p: ForkConversationParams,
@@ -103,7 +127,17 @@ export async function forkConversation(
   // not in `allMessages` at fetch time (the SELECT happened before the
   // INSERT below — read-then-write semantics). New rows get fresh ids;
   // `created_at` is set to "now" so the fork's timeline orders cleanly.
-  const messagesToCopy = allMessages.slice(0, anchorIdx + 1);
+  //
+  // W3 of PR #161 review (round 4): clamp to FORK_COPY_MESSAGE_CAP to
+  // bound storage amplification on long sessions. When the cap fires
+  // we keep the most recent N messages up to and including the
+  // anchor; older context is dropped. The anchor message is always
+  // preserved (slice end is anchorIdx+1).
+  const fullSlice = allMessages.slice(0, anchorIdx + 1);
+  const truncated = fullSlice.length > FORK_COPY_MESSAGE_CAP;
+  const messagesToCopy = truncated
+    ? fullSlice.slice(fullSlice.length - FORK_COPY_MESSAGE_CAP)
+    : fullSlice;
   let copiedCount = 0;
   if (messagesToCopy.length > 0) {
     await exec.insert(conversationMessages).values(
@@ -132,6 +166,8 @@ export async function forkConversation(
     anchor_message_id: p.anchor_message_id,
     copied_message_count: copiedCount,
     memory_included: Boolean(source.memory),
+    truncated,
+    source_message_count: fullSlice.length,
   });
 
   await auditAwait(
@@ -162,6 +198,13 @@ export async function forkConversation(
         // independent home for it.
         tool_calls_omitted: true,
         elicitations_omitted: true,
+        // W3 of PR #161 review (round 4): record both the cap-hit
+        // flag and the original count so audit-only incident readers
+        // can detect a truncation event without joining back to the
+        // source conversation.
+        truncated,
+        source_message_count: fullSlice.length,
+        copy_cap: FORK_COPY_MESSAGE_CAP,
       },
     },
     exec,
@@ -172,5 +215,6 @@ export async function forkConversation(
     source_conversation_id: p.source_conversation_id,
     anchor_message_id: p.anchor_message_id,
     copied_message_count: copiedCount,
+    truncated,
   };
 }

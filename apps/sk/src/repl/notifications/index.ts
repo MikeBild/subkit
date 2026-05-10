@@ -115,20 +115,30 @@ function parseHHMM(s: string): number | null {
  * Windows: not supported here; the OS itself respects Focus Assist
  *   for OSC9 notifications already.
  *
- * S6 of PR #161 review round 2: the result is cached per REPL
- * lifetime. DND state can change while the REPL runs, but the cost
- * of `spawnSync` on every notification gate (200 ms timeout per
- * probe) was disproportionate for a "best-effort, false on error"
- * helper. Operators who toggle DND mid-REPL re-read the state on
- * the next REPL boot; an explicit `resetOsDoNotDisturbCacheForTests`
- * is exported so unit tests can re-probe without leaking state.
+ * S6 of PR #161 review round 2: the result is cached so that
+ * `spawnSync` (with a 200 ms timeout per probe) doesn't run on every
+ * notification gate.
+ *
+ * W6 of PR #161 review round 4: switched the cache from process-
+ * lifetime to a 5-minute TTL so operators who toggle DND mid-REPL
+ * pick up the new state within at most 5 minutes — without paying
+ * the spawn cost on every gate. An explicit
+ * `resetOsDoNotDisturbCacheForTests` is exported so unit tests can
+ * re-probe without leaking state.
  */
-let osDndCache: { value: boolean; cached: true } | null = null;
+const OS_DND_CACHE_TTL_MS = 5 * 60 * 1000;
 
-export function isOsDoNotDisturb(): boolean {
-  if (osDndCache !== null) return osDndCache.value;
+interface OsDndCacheEntry {
+  value: boolean;
+  expiresAt: number;
+}
+
+let osDndCache: OsDndCacheEntry | null = null;
+
+export function isOsDoNotDisturb(now: number = Date.now()): boolean {
+  if (osDndCache !== null && now < osDndCache.expiresAt) return osDndCache.value;
   const value = probeOsDoNotDisturb();
-  osDndCache = { value, cached: true };
+  osDndCache = { value, expiresAt: now + OS_DND_CACHE_TTL_MS };
   return value;
 }
 

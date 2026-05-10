@@ -9,7 +9,7 @@
 // guessed from the file extension; unknown extensions fall back to
 // `application/octet-stream`.
 
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
@@ -124,6 +124,34 @@ export const KnowledgeTab: React.FC<Props> = ({ client, onSearchActiveChange }) 
     setActionFlash(null);
     try {
       const abs = isAbsolute(ingestPath) ? ingestPath : resolve(process.cwd(), ingestPath);
+      // S-4 of PR #161 review (round 4): refuse OS-internal paths
+      // outright. The Knowledge ingest is operator-driven, but typo
+      // protection is cheap — a path under `/etc`, `/proc`, or
+      // `/sys` is almost never a deliberate Knowledge Source. The
+      // engine would happily accept the bytes and store them
+      // tenant-scoped, so this is a UX guard, not a security
+      // boundary.
+      for (const blocked of ["/etc/", "/proc/", "/sys/"] as const) {
+        if (abs.startsWith(blocked) || abs === blocked.slice(0, -1)) {
+          setActionFlash(
+            `ingest refused: ${blocked.slice(0, -1)} is OS-internal — pick a project path`,
+          );
+          return;
+        }
+      }
+      // S-4 of PR #161 review (round 4): bound the read to 50 MB.
+      // The engine accepts large blobs, but a stray `/var/log/...`
+      // selection on a busy host can OOM the REPL before the user
+      // notices what they pointed at. The size check happens before
+      // `readFile` slurps the file, so the OOM path stays closed.
+      const KNOWLEDGE_INGEST_MAX_BYTES = 50 * 1024 * 1024;
+      const stats = await stat(abs);
+      if (stats.size > KNOWLEDGE_INGEST_MAX_BYTES) {
+        setActionFlash(
+          `ingest refused: file is ${(stats.size / 1024 / 1024).toFixed(1)} MB (max 50 MB) — split or compress first`,
+        );
+        return;
+      }
       // S-2 of PR #161 review (round 3): async read so a multi-MB
       // knowledge source (PDFs, large docs) doesn't hitch the Ink
       // render thread while the file is being slurped from disk. The

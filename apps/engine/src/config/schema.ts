@@ -490,13 +490,22 @@ const NotificationsSection = z
           .default(30)
           .describe("Minimum elapsed turn seconds before a notification fires.")
           .meta(tenant()),
+        // W2 of PR #161 review (round 4): regex-constrain the wall-
+        // clock string at the engine boundary. Bare `z.string()` let
+        // `"99:99"` or `"foo"` round-trip through the API silently;
+        // the CLI's `parseHHMM` then quietly fell back to "no quiet
+        // hours". Constraining here makes the OpenAPI surface honest
+        // and protects every other consumer (chat adapter, future
+        // workflow steps) from the same trap.
         quietHoursStart: z
           .string()
+          .regex(/^$|^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM (24h, leading-zero hour) or empty")
           .default("")
           .describe("Quiet-hours window start (HH:MM, local TZ). Empty disables the window.")
           .meta(tenant()),
         quietHoursEnd: z
           .string()
+          .regex(/^$|^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM (24h, leading-zero hour) or empty")
           .default("")
           .describe("Quiet-hours window end (HH:MM, local TZ). Empty disables the window.")
           .meta(tenant()),
@@ -592,8 +601,24 @@ const TenantOverlaySchema = z
           .object({
             enabled: z.boolean().optional(),
             thresholdSec: z.number().int().positive().max(3600).optional(),
-            quietHoursStart: z.string().optional(),
-            quietHoursEnd: z.string().optional(),
+            // W2 of PR #161 review (round 4): mirror the regex from
+            // `NotificationsSection` so the tenant-overlay leaves
+            // can't smuggle malformed wall-clock strings past the
+            // base section.
+            quietHoursStart: z
+              .string()
+              .regex(
+                /^$|^([01]\d|2[0-3]):[0-5]\d$/,
+                "expected HH:MM (24h, leading-zero hour) or empty",
+              )
+              .optional(),
+            quietHoursEnd: z
+              .string()
+              .regex(
+                /^$|^([01]\d|2[0-3]):[0-5]\d$/,
+                "expected HH:MM (24h, leading-zero hour) or empty",
+              )
+              .optional(),
           })
           .optional(),
       })

@@ -21,9 +21,23 @@ const DEFAULT_URL = "https://updates.subkit.dev/whats-new.json";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 3000;
 
+/**
+ * W5 of PR #161 review (round 4): when the remote fetch fails this
+ * many times in a row, suppress further attempts for
+ * `CIRCUIT_OPEN_MS`. Air-gapped operators get the env-var opt-out;
+ * unreliable-network operators get the breaker so the REPL doesn't
+ * burn 3-second timeouts on every cold-cache boot.
+ */
+const FAILURE_THRESHOLD = 3;
+const CIRCUIT_OPEN_MS = 7 * 24 * 60 * 60 * 1000;
+
 export interface WhatsNewCache {
   headline: string;
   fetchedAt: number;
+  /** W5 of round 4: consecutive remote-fetch failure count. Resets on success. */
+  failureCount?: number;
+  /** W5 of round 4: when the breaker opens, the timestamp it opened at. */
+  circuitOpenedAt?: number;
 }
 
 /**
@@ -111,10 +125,31 @@ export function readCache(path: string = whatsNewCachePath()): WhatsNewCache | n
     const raw = readFileSync(path, "utf8");
     const parsed = JSON.parse(raw) as Partial<WhatsNewCache>;
     if (typeof parsed.headline !== "string" || typeof parsed.fetchedAt !== "number") return null;
-    return { headline: parsed.headline, fetchedAt: parsed.fetchedAt };
+    const out: WhatsNewCache = { headline: parsed.headline, fetchedAt: parsed.fetchedAt };
+    if (typeof parsed.failureCount === "number" && parsed.failureCount >= 0) {
+      out.failureCount = parsed.failureCount;
+    }
+    if (typeof parsed.circuitOpenedAt === "number" && parsed.circuitOpenedAt > 0) {
+      out.circuitOpenedAt = parsed.circuitOpenedAt;
+    }
+    return out;
   } catch {
     return null;
   }
+}
+
+/**
+ * W5 of PR #161 review (round 4): true when the breaker is open —
+ * `failureCount >= FAILURE_THRESHOLD` AND the open timestamp is
+ * within the last `CIRCUIT_OPEN_MS`. While open, `loadWhatsNew`
+ * skips the network call and falls back to cache → bundled
+ * CHANGELOG. The next successful fetch resets the breaker.
+ */
+export function isCircuitOpen(cache: WhatsNewCache | null, now: number): boolean {
+  if (!cache) return false;
+  if ((cache.failureCount ?? 0) < FAILURE_THRESHOLD) return false;
+  if (typeof cache.circuitOpenedAt !== "number") return false;
+  return now - cache.circuitOpenedAt < CIRCUIT_OPEN_MS;
 }
 
 export function writeCache(data: WhatsNewCache, path: string = whatsNewCachePath()): void {
@@ -133,7 +168,10 @@ export function isFresh(cache: WhatsNewCache, now: number = Date.now()): boolean
 export interface LoadWhatsNewOptions {
   url?: string;
   cachePath?: string;
-  fetcher?: (url: string, init: { signal: AbortSignal }) => Promise<Response>;
+  fetcher?: (
+    url: string,
+    init: { signal: AbortSignal; headers?: Record<string, string> },
+  ) => Promise<Response>;
   now?: () => number;
   timeoutMs?: number;
 }
@@ -177,22 +215,68 @@ export async function loadWhatsNew(opts: LoadWhatsNewOptions = {}): Promise<stri
   const cached = readCache(cachePath);
   if (cached && isFresh(cached, now())) return sanitizeHeadline(cached.headline);
 
+  // W5 of PR #161 review (round 4): if the breaker is open we never
+  // touch the network. The cache is served (stale-OK) and the
+  // bundled CHANGELOG covers the empty-cache case.
+  if (isCircuitOpen(cached, now())) {
+    return sanitizeHeadline(cached?.headline) ?? changelogHead();
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  // W5 of PR #161 review (round 4): identify CLI traffic in the
+  // upstream's access log. Operators inspecting `updates.subkit.dev`
+  // logs need to be able to tell sk-cli requests from generic Bun
+  // fetches in case throttling / quota policies need to apply.
+  // `BUILD_VERSION` is bun-`define`d at compile time — fall back to
+  // a literal "unknown" when running under bun test where the define
+  // isn't replaced.
+  // biome-ignore lint/suspicious/noExplicitAny: BUILD_VERSION is a build-time replace
+  const declaredVersion = (globalThis as any).BUILD_VERSION;
+  const skVersion = typeof declaredVersion === "string" ? declaredVersion : "unknown";
+  const userAgent = `sk-cli/${skVersion}`;
+
   try {
-    const res = await fetcher(url, { signal: controller.signal });
-    if (!res.ok) return sanitizeHeadline(cached?.headline) ?? changelogHead();
+    const res = await fetcher(url, {
+      signal: controller.signal,
+      headers: { "user-agent": userAgent },
+    });
+    if (!res.ok) {
+      recordFailure(cached, cachePath, now());
+      return sanitizeHeadline(cached?.headline) ?? changelogHead();
+    }
     const body = (await res.json()) as Partial<WhatsNewRemote>;
     const sanitized = sanitizeHeadline(body.headline);
     if (sanitized === null) {
+      recordFailure(cached, cachePath, now());
       return sanitizeHeadline(cached?.headline) ?? changelogHead();
     }
-    const next: WhatsNewCache = { headline: sanitized, fetchedAt: now() };
+    // Success — reset the breaker counters.
+    const next: WhatsNewCache = {
+      headline: sanitized,
+      fetchedAt: now(),
+      failureCount: 0,
+    };
     writeCache(next, cachePath);
     return sanitized;
   } catch {
+    recordFailure(cached, cachePath, now());
     return sanitizeHeadline(cached?.headline) ?? changelogHead();
   } finally {
     clearTimeout(timer);
   }
+}
+
+function recordFailure(cached: WhatsNewCache | null, cachePath: string, now: number): void {
+  const nextCount = (cached?.failureCount ?? 0) + 1;
+  const next: WhatsNewCache = {
+    headline: cached?.headline ?? "",
+    fetchedAt: cached?.fetchedAt ?? 0,
+    failureCount: nextCount,
+  };
+  if (nextCount >= FAILURE_THRESHOLD) {
+    next.circuitOpenedAt = cached?.circuitOpenedAt ?? now;
+  }
+  writeCache(next, cachePath);
 }

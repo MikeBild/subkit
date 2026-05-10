@@ -11,14 +11,26 @@ import { describe, expect, test } from "bun:test";
 import { isAdminFromPermissions } from "../settings-ui/lib/admin-gate.ts";
 
 describe("isAdminFromPermissions (W-C of PR #161 review round 3)", () => {
-  test("returns true when the principal holds any admin-only permission", () => {
+  test("returns true when the principal holds any admin-only permission (round 4 widened set)", () => {
     // Each of these is a permission the built-in `member` role does
-    // NOT carry per `apps/engine/src/rbac/seed.ts`. The Admin tab must
-    // light up for any one of them.
+    // NOT carry per `apps/engine/src/rbac/seed.ts:memberPermissionFilter`.
+    // The Admin tab must light up for any one of them. Round 4 of PR
+    // #161 review widened the gate to mirror the engine's deny-list.
     expect(isAdminFromPermissions(["rbac:read"])).toBe(true);
+    expect(isAdminFromPermissions(["rbac:write"])).toBe(true); // S1: was missing
     expect(isAdminFromPermissions(["audit:read"])).toBe(true);
     expect(isAdminFromPermissions(["api_key:write"])).toBe(true);
+    expect(isAdminFromPermissions(["api_key:rotate"])).toBe(true); // S1: was missing
+    expect(isAdminFromPermissions(["api_key:revoke"])).toBe(true); // S1: was missing
+    expect(isAdminFromPermissions(["credential:write"])).toBe(true); // S1: was missing
+    expect(isAdminFromPermissions(["credential:delete"])).toBe(true); // prefix match
     expect(isAdminFromPermissions(["discovery:approve"])).toBe(true);
+  });
+
+  test("credential:read stays a member-scoped permission and does NOT light up the Admin tab", () => {
+    // The engine's deny-list excludes the `credential:` prefix
+    // EXCEPT `credential:read`. Mirror that exception here.
+    expect(isAdminFromPermissions(["credential:read"])).toBe(false);
   });
 
   test("returns true when the admin perm is mixed with member-scoped reads", () => {

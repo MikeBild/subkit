@@ -30,6 +30,13 @@ const ForkFromMessageResponse = z
     source_conversation_id: z.string().uuid(),
     anchor_message_id: z.string().uuid(),
     copied_message_count: z.number().int().nonnegative(),
+    /**
+     * True when the fork hit the per-fork copy cap and only the most
+     * recent N messages up to the anchor were copied. The anchor
+     * message is always preserved. Audit metadata records the
+     * original source-side count alongside this flag.
+     */
+    truncated: z.boolean(),
   })
   .openapi("ForkFromMessageResponse");
 
@@ -73,15 +80,17 @@ const forkFromMessageRoute = createRoute({
   description:
     "Creates a new conversation owned by the same tenant + actor and copies " +
     "messages [0..anchor] in created_at order. Tool calls and elicitations are " +
-    "NOT copied — re-running them would duplicate side effects. Caveat (S2 of " +
-    "PR #161 review): assistant message content that references " +
-    "`tool_call_id` values from the source will retain those refs even though " +
-    "the corresponding tool_call rows are not in the fork. The CLI renderer " +
-    "treats unknown ids as plain text, but audit-log readers should be aware. " +
-    "Each copied message gets a fresh `created_at` (set to fork-time) so the " +
-    "fork's timeline orders cleanly; the source's original timestamps are " +
-    "preserved in the source conversation, joinable via `forked_from` in the " +
-    "audit metadata.",
+    "NOT copied — re-running them would duplicate side effects. Caveat: " +
+    "assistant message content that references `tool_call_id` values from the " +
+    "source will retain those refs even though the corresponding tool_call " +
+    "rows are not in the fork; the CLI renderer treats unknown ids as plain " +
+    "text, but audit-log readers should be aware. Each copied message gets a " +
+    "fresh `created_at` (set to fork-time) so the fork's timeline orders " +
+    "cleanly; the source's original timestamps are preserved in the source " +
+    "conversation, joinable via `forked_from` in the audit metadata. The " +
+    "fork is hard-capped at the most recent 5,000 messages up to and " +
+    "including the anchor; when the cap fires the response sets " +
+    "`truncated: true` and the audit row records the original source count.",
   security: [{ bearerAuth: [] }],
   request: { params: ForkFromMessageParam },
   responses: {
