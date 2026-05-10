@@ -20,6 +20,7 @@ import {
 } from "../../../authoring-state.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
+import { truncateStepPreviewForLlm } from "../../truncate.ts";
 
 /**
  * Codes that count toward the repair-loop circuit breaker. Each one
@@ -373,6 +374,21 @@ export const runWorkflowTool: ConversationTool = {
           s.output_preview !== undefined && s.output_preview !== null
             ? buildScopeAtStep(s.output_preview)
             : null;
+        // Per-step LLM-context cap. The persisted step row (consumed
+        // by inspect_execution_step / diagnose_latest_execution) keeps
+        // the full preview; only the LLM-facing envelope is clipped,
+        // because the offload threshold (10 KB) is bigger than the
+        // outer LLM cap (8 KB) and a single inline preview can otherwise
+        // dominate the envelope and force the outer truncate pass to
+        // replace the workflow's `output` field with a marker.
+        const previewForLlm =
+          s.output_preview !== undefined && s.output_preview !== null
+            ? truncateStepPreviewForLlm(s.output_preview)
+            : null;
+        const rawForLlm =
+          s.raw_preview !== undefined && s.raw_preview !== null
+            ? truncateStepPreviewForLlm(s.raw_preview)
+            : null;
         return {
           step_id: s.step_key,
           kind: s.kind,
@@ -381,11 +397,17 @@ export const runWorkflowTool: ConversationTool = {
           ...(s.request_meta !== undefined && s.request_meta !== null
             ? { request_meta: s.request_meta }
             : {}),
-          ...(s.output_preview !== undefined && s.output_preview !== null
-            ? { output_preview: s.output_preview }
+          ...(previewForLlm
+            ? {
+                output_preview: previewForLlm.data,
+                ...(previewForLlm.raw_ref ? { output_preview_ref: previewForLlm.raw_ref } : {}),
+              }
             : {}),
-          ...(s.raw_preview !== undefined && s.raw_preview !== null
-            ? { raw_preview: s.raw_preview }
+          ...(rawForLlm
+            ? {
+                raw_preview: rawForLlm.data,
+                ...(rawForLlm.raw_ref ? { raw_preview_ref: rawForLlm.raw_ref } : {}),
+              }
             : {}),
           ...(scope ? { scope_at_step: scope } : {}),
           ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),

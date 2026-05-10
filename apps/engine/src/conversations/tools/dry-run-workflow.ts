@@ -27,6 +27,7 @@ import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import { buildDryRunCacheKey, readDryRunCache, writeDryRunCache } from "./dry-run-cache.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { truncateStepPreviewForLlm } from "./truncate.ts";
 
 const inputSchema = z
   .object({
@@ -509,6 +510,19 @@ export const dryRunWorkflowTool: ConversationTool = {
         s.output_preview !== undefined && s.output_preview !== null
           ? buildScopeAtStep(s.output_preview)
           : null;
+      // Per-step LLM-context cap. The persisted dry-run preview keeps
+      // the full output_preview (next-turn `inspect_workflow_draft`
+      // sees the full shape via persistedStepTraces above); only the
+      // returned envelope is clipped. Restores the contract documented
+      // a few lines above ("output_preview is already capped").
+      const previewForLlm =
+        s.output_preview !== undefined && s.output_preview !== null
+          ? truncateStepPreviewForLlm(s.output_preview)
+          : null;
+      const rawForLlm =
+        s.raw_preview !== undefined && s.raw_preview !== null
+          ? truncateStepPreviewForLlm(s.raw_preview)
+          : null;
       return {
         step_id: s.step_key,
         kind: s.kind,
@@ -517,11 +531,17 @@ export const dryRunWorkflowTool: ConversationTool = {
         ...(s.request_meta !== undefined && s.request_meta !== null
           ? { request_meta: s.request_meta }
           : {}),
-        ...(s.output_preview !== undefined && s.output_preview !== null
-          ? { output_preview: s.output_preview }
+        ...(previewForLlm
+          ? {
+              output_preview: previewForLlm.data,
+              ...(previewForLlm.raw_ref ? { output_preview_ref: previewForLlm.raw_ref } : {}),
+            }
           : {}),
-        ...(s.raw_preview !== undefined && s.raw_preview !== null
-          ? { raw_preview: s.raw_preview }
+        ...(rawForLlm
+          ? {
+              raw_preview: rawForLlm.data,
+              ...(rawForLlm.raw_ref ? { raw_preview_ref: rawForLlm.raw_ref } : {}),
+            }
           : {}),
         ...(scope ? { scope_at_step: scope } : {}),
         ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
@@ -570,18 +590,34 @@ export const dryRunWorkflowTool: ConversationTool = {
         ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
         step_trace: stepTrace,
         ...(lastStep
-          ? {
-              last_step: {
-                step_id: lastStep.step_id,
-                kind: lastStep.kind,
-                classification: lastStep.classification,
-                duration_ms: lastStep.duration_ms,
-                ...(lastStep.output_preview !== undefined
-                  ? { output_preview: lastStep.output_preview }
-                  : {}),
-                ...(lastStep.error ? { error: lastStep.error } : {}),
-              },
-            }
+          ? (() => {
+              // Same per-step LLM cap as the step_trace assembler
+              // above. Without this, last_step.output_preview is the
+              // second LLM-visible copy of the final step's full
+              // output and would re-introduce the same envelope-bloat
+              // path step_trace just stopped causing.
+              const lastPreviewForLlm =
+                lastStep.output_preview !== undefined && lastStep.output_preview !== null
+                  ? truncateStepPreviewForLlm(lastStep.output_preview)
+                  : null;
+              return {
+                last_step: {
+                  step_id: lastStep.step_id,
+                  kind: lastStep.kind,
+                  classification: lastStep.classification,
+                  duration_ms: lastStep.duration_ms,
+                  ...(lastPreviewForLlm
+                    ? {
+                        output_preview: lastPreviewForLlm.data,
+                        ...(lastPreviewForLlm.raw_ref
+                          ? { output_preview_ref: lastPreviewForLlm.raw_ref }
+                          : {}),
+                      }
+                    : {}),
+                  ...(lastStep.error ? { error: lastStep.error } : {}),
+                },
+              };
+            })()
           : {}),
       }),
     };

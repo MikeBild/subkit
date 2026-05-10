@@ -249,21 +249,33 @@ else
   MASTER_KEY=$(openssl rand -hex 32)
   cat <<EOF | $SSH 'cat > /etc/subkit/.env && chown subkit:subkit /etc/subkit/.env && chmod 600 /etc/subkit/.env'
 # Bootstrap-only env. EVERY non-bootstrap setting (LLM provider, model,
-# observability exporters, etc.) is settable via the sk CLI:
+# observability exporters, server.public_base_url, etc.) is settable via
+# the sk CLI:
 #   sk settings set llm.provider '"anthropic"'
 #   sk settings set llm.providers.anthropic.api_key '"sk-ant-..."'
+#   sk settings set server.public_base_url '"https://api.example.dev"'
 # The engine auto-creates /etc/subkit/subkit.config.json on first boot;
 # sk settings set hot-reloads via pubsub.
 
 DATABASE_URL=postgres://subkit:${PGPASS}@127.0.0.1:5432/subkit
 MASTER_KEY=${MASTER_KEY}
-PUBLIC_BASE_URL=https://${HOST_API}.${DOMAIN_ROOT}
 EOF
+  # PUBLIC_BASE_URL was retired in 4.2.0 (see RETIRED_ENV_KEYS in
+  # apps/engine/src/env.ts). Shipping it here would make every fresh
+  # bootstrap raise the `public-base-url` warning in
+  # /v1/diagnostics/setup the first time the operator opens sk
+  # (the diagnostic only reads getConfig(), which doesn't see env).
+  # The tenant-write seeding below now PUTs server.public_base_url
+  # via the engine API, the same path `sk settings set` uses.
   warn "Seeded /etc/subkit/.env. Mint an admin API key after first deploy:"
   warn "   ssh -i $SSH_KEY_PATH root@$HOST_IP \\"
   warn "     \"sudo -u subkit -H bash -c 'set -a; . /etc/subkit/.env; set +a; cd /etc/subkit && /usr/local/bin/engine --issue-admin-key'\""
   warn "   (the -H + sourced .env + cd are required so the CLI finds DATABASE_URL/MASTER_KEY"
   warn "    and persists subkit.config.json under /etc/subkit, not /root.)"
+  warn "Then publish the public base URL via:"
+  warn "   sk settings set server.public_base_url '\"https://${HOST_API}.${DOMAIN_ROOT}\"'"
+  warn "   (the diagnostic reads getConfig(), not env — setting it via sk audits the change."
+  warn "    Substitute with a real domain if HOST_API/DOMAIN_ROOT differ from your DNS.)"
 fi
 
 # --------------------------------------------------------------------------

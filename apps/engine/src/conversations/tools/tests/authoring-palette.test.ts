@@ -102,6 +102,27 @@ describe("filterByAuthoringPalette — cleanup tools always reachable", () => {
     expect(names).toContain("delete_workflow");
     expect(names).toContain("revoke_api_key");
   });
+
+  // Schedule writes were the original missing-tool case behind the
+  // "yes do daily 10am" turn that silently dropped the schedule:
+  // turn-routing.ts told the LLM to call create_schedule, but the
+  // palette didn't carry it. Locking visibility here so the contract
+  // between routing and palette can't drift again.
+  test("schedule writes visible in any state with no skills loaded", () => {
+    const draft: DraftDocument = {
+      workflow: { name: "", steps: [] } as never,
+    };
+    const tools = [
+      { name: "create_schedule" },
+      { name: "update_schedule" },
+      { name: "delete_schedule" },
+    ] as const;
+    const filtered = filterByAuthoringPalette(tools, draft, NO_SKILLS);
+    const names = filtered.map((t) => t.name);
+    expect(names).toContain("create_schedule");
+    expect(names).toContain("update_schedule");
+    expect(names).toContain("delete_schedule");
+  });
 });
 
 describe("filterByAuthoringPalette — skill-gated authoring tools", () => {

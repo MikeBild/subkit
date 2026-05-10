@@ -73,18 +73,28 @@ const RELEVANT_READS: ReadonlySet<string> = new Set([
  * `tool-policies.ts`; visibility is unconditional so the user can
  * always say "lösche dummy-http" mid-conversation regardless of the
  * authoring stage.
+ *
+ * Schedule writes live here too. `turn-routing.ts` answers "schedule a
+ * workflow" with `create_schedule` / `update_schedule` / `delete_schedule`;
+ * keeping them out of the allow-set was the same contract drift the
+ * file header warns against — the LLM would name a tool the SDK
+ * palette didn't carry, then fail with "tool not in palette" mid-turn.
+ * `list_schedules` reaches the LLM via the `tenant_read` clause below.
  */
 const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
+  "create_schedule",
   "delete_connector",
   "delete_knowledge_source",
+  "delete_schedule",
   "delete_subscription",
   "delete_workflow",
   "revoke_api_key",
   "revoke_portal_token",
-  "update_workflow",
   "update_connector",
   "update_knowledge_source",
+  "update_schedule",
   "update_subscription",
+  "update_workflow",
 ]);
 
 /** Connector authoring tools — exposed once `connector-creation-guidance` is loaded. */

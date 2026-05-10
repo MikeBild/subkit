@@ -24,6 +24,19 @@
 const MAX_JSON_CHARS = 8000;
 const MAX_ARRAY_LEN = 20;
 const MAX_NESTED_ARRAY_LEN = 10;
+// Per-step cap for `step_trace[i].output_preview` in run_workflow /
+// dry_run_workflow envelopes. Sized well below MAX_JSON_CHARS so the
+// outer envelope (workflow `output`, `warnings_banner`, every other
+// step's preview) still fits comfortably under the LLM cap. Without
+// this, a single inline step preview at the 10 KB offload threshold
+// (apps/engine/src/execution/offload.ts STEP_RESULT_DB_BYTES) was
+// enough to push the envelope over MAX_JSON_CHARS, at which point the
+// outer pass would replace the workflow's actual `output` field with
+// an `__omitted_chars` / `__raw_ref` marker — exactly the cascade the
+// run_workflow that produced "output keys: omitted_chars, raw_ref"
+// went through. dry_run_workflow.ts already documents the contract
+// ("output_preview is already capped"); this is the missing cap.
+const MAX_STEP_PREVIEW_CHARS = 1500;
 
 const rawStore = new Map<string, unknown>();
 
@@ -125,10 +138,15 @@ function shrinkToCap(data: unknown, refId: string, cap: number): unknown {
  * Truncate a tool's output to fit LLM context. Stores the full payload
  * under an in-memory ref; callers surface `raw_ref` in the tool result
  * so the model can fetch the untruncated form via `get_raw_result`.
+ *
+ * `cap` overrides MAX_JSON_CHARS. Used by step-trace assembly to clip
+ * each `output_preview` against the smaller MAX_STEP_PREVIEW_CHARS
+ * budget before the outer envelope is itself passed through this same
+ * function with the default cap.
  */
-export function truncateForLlm(output: unknown): TruncatedOutput {
+export function truncateForLlm(output: unknown, cap: number = MAX_JSON_CHARS): TruncatedOutput {
   const originalLen = approxJsonLength(output);
-  if (originalLen <= MAX_JSON_CHARS) {
+  if (originalLen <= cap) {
     return { truncated: false, data: output };
   }
   const refId = `raw_${crypto.randomUUID().slice(0, 8)}`;
@@ -139,7 +157,7 @@ export function truncateForLlm(output: unknown): TruncatedOutput {
     if (firstKey !== undefined) rawStore.delete(firstKey);
   }
   const pass1 = truncateNode(output);
-  const shortened = shrinkToCap(pass1, refId, MAX_JSON_CHARS);
+  const shortened = shrinkToCap(pass1, refId, cap);
   const shortenedLen = approxJsonLength(shortened);
   return {
     truncated: true,
@@ -147,6 +165,17 @@ export function truncateForLlm(output: unknown): TruncatedOutput {
     raw_ref: refId,
     note: `tool output truncated from ${originalLen} → ${shortenedLen} chars; call get_raw_result(ref="${refId}") for the full payload`,
   };
+}
+
+/**
+ * Per-step preview cap for `step_trace[i].output_preview`. Wraps
+ * `truncateForLlm` with the smaller MAX_STEP_PREVIEW_CHARS budget so
+ * a single inline step preview can't dominate the envelope. The full
+ * preview remains in the engine's persisted step row and is reachable
+ * via `inspect_execution_step` / `diagnose_latest_execution`.
+ */
+export function truncateStepPreviewForLlm(value: unknown): TruncatedOutput {
+  return truncateForLlm(value, MAX_STEP_PREVIEW_CHARS);
 }
 
 export function getRawResult(ref: string): unknown | undefined {
@@ -177,4 +206,5 @@ export const TRUNCATE_INTERNALS = {
   MAX_JSON_CHARS,
   MAX_ARRAY_LEN,
   MAX_NESTED_ARRAY_LEN,
+  MAX_STEP_PREVIEW_CHARS,
 };

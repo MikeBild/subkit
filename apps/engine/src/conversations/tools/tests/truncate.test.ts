@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { clearRawStore, getRawResult, TRUNCATE_INTERNALS, truncateForLlm } from "../truncate.ts";
+import {
+  clearRawStore,
+  getRawResult,
+  TRUNCATE_INTERNALS,
+  truncateForLlm,
+  truncateStepPreviewForLlm,
+} from "../truncate.ts";
 
 describe("truncateForLlm", () => {
   it("passes small outputs through unchanged", () => {
@@ -76,5 +82,61 @@ describe("truncateForLlm", () => {
     const padded = { ...fixture, pad: "z".repeat(TRUNCATE_INTERNALS.MAX_JSON_CHARS) };
     const r = truncateForLlm(padded);
     expect(r.truncated).toBe(true);
+  });
+});
+
+describe("truncateStepPreviewForLlm", () => {
+  // Regression: the cascade behind "Execution complete · awaiting confirmation
+  // → run_workflow → output keys: omitted_chars, raw_ref" started here.
+  // A single inline `output_preview` (≤ STEP_RESULT_DB_BYTES = 10 KB) was
+  // enough to push the run_workflow envelope past MAX_JSON_CHARS = 8 KB.
+  // Capping per-step at MAX_STEP_PREVIEW_CHARS keeps the envelope budget
+  // available for the workflow's actual `output` field.
+  it("clips a step preview that fits below the offload threshold but blows the LLM cap", () => {
+    clearRawStore();
+    // 16 GitHub-repo-sized objects (~6 fields × ~80 chars each ≈ 500 B/repo
+    // ≈ 8 KB total) — under the 10 KB offload threshold so the engine
+    // stores it inline as `output_preview`, but enough to dominate the
+    // 8 KB LLM envelope when combined with `output`, `warnings_banner`,
+    // etc.
+    const repos = Array.from({ length: 16 }, (_, i) => ({
+      name: `repo-${i}`,
+      full_name: `MikeBild/repo-${i}`,
+      private: true,
+      html_url: `https://github.com/MikeBild/repo-${i}`,
+      description: "x".repeat(120),
+      updated_at: "2026-05-09T15:00:00Z",
+    }));
+    const r = truncateStepPreviewForLlm(repos);
+    expect(r.truncated).toBe(true);
+    // Capped well under the LLM envelope cap so envelope overhead fits.
+    const outLen = JSON.stringify(r.data).length;
+    expect(outLen).toBeLessThanOrEqual(TRUNCATE_INTERNALS.MAX_STEP_PREVIEW_CHARS);
+    // Raw still reachable via get_raw_result(ref).
+    expect(r.raw_ref).toMatch(/^raw_/);
+    expect((getRawResult(r.raw_ref!) as unknown[]).length).toBe(16);
+  });
+
+  it("passes a small preview through unchanged", () => {
+    const small = { city: "Berlin, Germany", date: "2026-05-10", temperature_max_c: 20.5 };
+    const r = truncateStepPreviewForLlm(small);
+    expect(r.truncated).toBe(false);
+    expect(r.data).toEqual(small);
+    expect(r.raw_ref).toBeUndefined();
+  });
+
+  it("uses the step-preview cap, not the envelope cap", () => {
+    // Sanity-check the wrapper: an input sized between
+    // MAX_STEP_PREVIEW_CHARS and MAX_JSON_CHARS must be clipped by
+    // truncateStepPreviewForLlm but pass through truncateForLlm.
+    const between = {
+      pad: "z".repeat(
+        Math.floor(
+          (TRUNCATE_INTERNALS.MAX_STEP_PREVIEW_CHARS + TRUNCATE_INTERNALS.MAX_JSON_CHARS) / 2,
+        ),
+      ),
+    };
+    expect(truncateStepPreviewForLlm(between).truncated).toBe(true);
+    expect(truncateForLlm(between).truncated).toBe(false);
   });
 });
