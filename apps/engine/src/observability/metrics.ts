@@ -358,6 +358,13 @@ export const METRIC_NAMES = {
   // labels are NOT included — semver is unbounded over time and would
   // explode the series.
   ENGINE_UPDATE_TOTAL: "engine_update_total",
+  // Next-message suggestion outcomes — `outcome` is one of `generated`,
+  // `accepted`, `dismissed`, `typed_over`, `suppressed`, `budget_pressure`,
+  // `error`. The single counter covers both the generation side (engine
+  // emits `generated` / `suppressed` / `error`) and the acceptance side
+  // (sk-cli posts feedback that lands as `accepted` / `dismissed` /
+  // `typed_over`). Cardinality is bounded — no suggestion text label.
+  SK_SUGGEST_NEXT_TOTAL: "sk_suggest_next_total",
 } as const;
 
 function buildRegistry(): MetricsRegistry {
@@ -372,6 +379,11 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.ENGINE_UPDATE_TOTAL,
     help: "Engine self-update + rollback outcomes (issue #151).",
     labels: ["result", "channel"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.SK_SUGGEST_NEXT_TOTAL,
+    help: "Next-message suggestion outcomes — generation + acceptance.",
+    labels: ["tenant_id", "outcome", "kind"],
   });
   reg.registerHistogram({
     name: METRIC_NAMES.EXECUTION_DURATION_MS,
