@@ -36,7 +36,19 @@ const feedbackRoute = createRoute({
   },
   responses: {
     200: { description: "OK", content: { "application/json": { schema: FeedbackResponse } } },
+    401: {
+      description: "Unauthenticated",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "Missing conversation:read permission",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    400: {
+      description: "Body failed Zod validation",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
