@@ -1347,6 +1347,16 @@ export const InkApp: React.FC<InkAppProps> = ({
 
   const [input, setInput] = useState<InputBuffer>(EMPTY_BUFFER);
   const [busy, setBusy] = useState(false);
+  // Tracks the ghost across renders so we can detect the
+  // "user typed the entire suggestion" transition. The reducer drops
+  // the ghost once `consumed === text.length` (input-buffer.ts:181).
+  // `ghostHandledRef` is set true by the explicit Right-Arrow / Tab /
+  // Esc handlers below before they call setInput, so the post-render
+  // effect knows that branch already fired feedback and skips the
+  // implicit `typed-over` emission. Without this we'd double-count
+  // every right-arrow accept as both "accepted" and "typed-over".
+  const prevGhostRef = useRef<{ text: string } | null>(null);
+  const ghostHandledRef = useRef(false);
   // Input-side credential filter (PR5). When the user pastes a
   // token-shaped string, the composer suppresses the send, replaces
   // the input field with a redirect hint, and arms this state. The
@@ -2531,6 +2541,30 @@ export const InkApp: React.FC<InkAppProps> = ({
   );
   const showWelcomeActions =
     session.messages.length === 0 && input.value.length === 0 && pane === null && !launcherOpen;
+
+  // Detect the "user typed the entire suggestion" transition. The
+  // input-buffer reducer drops the ghost the moment `consumed`
+  // reaches `text.length`; without this effect the matching feedback
+  // outcome (`typed_over`) would never fire and the dashboard pivot
+  // would stay flat. Right-Arrow / Tab / Esc set `ghostHandledRef`
+  // so we don't double-count an explicit accept as also typed-over.
+  useEffect(() => {
+    const prev = prevGhostRef.current;
+    if (prev && !input.ghost) {
+      if (!ghostHandledRef.current && input.value === prev.text && input.value.length > 0) {
+        const cid = session.conversationId;
+        if (cid && engineClient) {
+          void engineClient.submitSuggestionFeedback(cid, {
+            accepted: true,
+            source: "typed-over",
+          });
+        }
+      }
+      ghostHandledRef.current = false;
+    }
+    prevGhostRef.current = input.ghost ? { text: input.ghost.text } : null;
+  }, [input.ghost, input.value, session.conversationId, engineClient]);
+
   useInput(
     (char, key) => {
       // --- Global shortcuts (active even under modal / busy) ----------
@@ -2571,7 +2605,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       if (input.ghost) {
         const cid = session.conversationId;
         if (key.rightArrow && input.cursor === input.value.length) {
-          const ghostKind = input.ghost.kind;
+          ghostHandledRef.current = true;
           setInput((prev) => applyInput(prev, { type: "ghostAccept" }));
           if (cid && engineClient) {
             void engineClient.submitSuggestionFeedback(cid, {
@@ -2579,14 +2613,13 @@ export const InkApp: React.FC<InkAppProps> = ({
               source: "right-arrow",
             });
           }
-          // Slash-kind: route through the slash dispatcher instead of
-          // sending the literal text. The accepted buffer (`/skill ...`)
-          // becomes the user message — the existing slash handler
-          // recognizes the leading `/` on submit.
-          void ghostKind;
+          // Slash-kind suggestions land in the buffer as `/skill ...`
+          // and the existing slash dispatcher picks them up on the
+          // next Enter — no special-case routing needed here.
           return;
         }
         if (key.tab && (!slashNavigable || slashMatches.length === 0)) {
+          ghostHandledRef.current = true;
           setInput((prev) => applyInput(prev, { type: "ghostAccept" }));
           if (cid && engineClient) {
             void engineClient.submitSuggestionFeedback(cid, { accepted: true, source: "tab" });
@@ -2594,6 +2627,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           return;
         }
         if (key.escape) {
+          ghostHandledRef.current = true;
           setInput((prev) => applyInput(prev, { type: "ghostClear" }));
           if (cid && engineClient) {
             void engineClient.submitSuggestionFeedback(cid, {
