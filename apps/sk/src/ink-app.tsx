@@ -64,6 +64,7 @@ import {
   summarizeToolFailure,
 } from "./repl/error-humanize.ts";
 import { Footer } from "./repl/footer.tsx";
+import { firstGrapheme } from "./repl/grapheme.ts";
 import { appendHistory, defaultHistoryPath, loadPromptRing } from "./repl/history-store.ts";
 import { InlineHistorySearch } from "./repl/inline-history-search.tsx";
 import {
@@ -795,6 +796,20 @@ const Composer: React.FC<ComposerProps> = memo(({ input, busy, placeholder }) =>
   const cursorColor = cursorOn ? theme.role.assistant : theme.severity.dim;
   const prefixColor = busy ? theme.severity.warning : theme.role.assistant;
 
+  // Ghost text rides the LAST line only, and only when the cursor sits
+  // at the end of input. Anywhere else (mid-edit, multi-line authoring)
+  // we don't want a dimmed sibling stealing visual attention.
+  const ghost = input.ghost;
+  const showGhost = Boolean(
+    ghost &&
+      ghost.consumed < ghost.text.length &&
+      row === lines.length - 1 &&
+      column === (lines[row]?.length ?? 0),
+  );
+  const ghostRemainder = showGhost && ghost ? ghost.text.slice(ghost.consumed) : "";
+  const ghostFirst = showGhost ? firstGrapheme(ghostRemainder) : "";
+  const ghostRest = showGhost ? ghostRemainder.slice(ghostFirst.length) : "";
+
   return (
     <Box flexDirection="column">
       <Text color={theme.severity.dim}>{rule}</Text>
@@ -802,17 +817,25 @@ const Composer: React.FC<ComposerProps> = memo(({ input, busy, placeholder }) =>
         const prefix = i === 0 ? `${glyph} ` : "  ";
         const before = i === row ? line.slice(0, column) : line;
         const after = i === row ? line.slice(column) : "";
+        const isGhostRow = showGhost && i === row;
         return (
           <Box key={`composer-row-${i}`}>
             <Text color={prefixColor} bold>
               {prefix}
             </Text>
-            {i === 0 && isEmpty && placeholder ? (
+            {i === 0 && isEmpty && !showGhost && placeholder ? (
               <Text color={theme.severity.dim}>{placeholder}</Text>
             ) : (
               <>
                 <Text>{before}</Text>
-                {i === row ? <Text color={cursorColor}>{cursorChar}</Text> : null}
+                {isGhostRow ? (
+                  <>
+                    <Text inverse>{ghostFirst}</Text>
+                    <Text color={theme.severity.dim}>{ghostRest}</Text>
+                  </>
+                ) : i === row ? (
+                  <Text color={cursorColor}>{cursorChar}</Text>
+                ) : null}
                 <Text>{after}</Text>
               </>
             )}
@@ -1890,6 +1913,15 @@ export const InkApp: React.FC<InkAppProps> = ({
       // override so tests / one-shot operator switches don't need a
       // setSetting round-trip.
       const elapsedMs = Date.now() - turnStartedAt;
+      // Stream finished — if the engine emitted a non-null next-message
+      // suggestion, paint it as ghost text in the composer. The reducer
+      // refuses to attach a ghost when the buffer is non-empty (operator
+      // is mid-edit), so this is safe to fire unconditionally; it just
+      // no-ops when inappropriate.
+      if (next.nextSuggestion) {
+        const { suggestion, kind } = next.nextSuggestion;
+        setInput((prev) => applyInput(prev, { type: "ghostSet", text: suggestion, kind }));
+      }
       // Resolution order: per-process override (boot-time env read) →
       // engine-resolved prefs → built-in defaults. The override is
       // populated once at REPL start, so a mid-REPL `export
@@ -2519,6 +2551,49 @@ export const InkApp: React.FC<InkAppProps> = ({
           return next;
         });
         return;
+      }
+      // --- Ghost-text accept / dismiss --------------------------------
+      // The next-message preview rides on `input.ghost`. Right-Arrow at
+      // end-of-input accepts the full remainder; Tab does the same when
+      // no slash-suggest popover is showing (slash-suggest's own Tab
+      // handler runs lower down and wins precedence). Esc dismisses.
+      // Each branch fires a fire-and-forget feedback POST so dashboards
+      // can pivot accept-rate per tenant.
+      if (input.ghost) {
+        const cid = session.conversationId;
+        if (key.rightArrow && input.cursor === input.value.length) {
+          const ghostKind = input.ghost.kind;
+          setInput((prev) => applyInput(prev, { type: "ghostAccept" }));
+          if (cid && engineClient) {
+            void engineClient.submitSuggestionFeedback(cid, {
+              accepted: true,
+              source: "right-arrow",
+            });
+          }
+          // Slash-kind: route through the slash dispatcher instead of
+          // sending the literal text. The accepted buffer (`/skill ...`)
+          // becomes the user message — the existing slash handler
+          // recognizes the leading `/` on submit.
+          void ghostKind;
+          return;
+        }
+        if (key.tab && (!slashNavigable || slashMatches.length === 0)) {
+          setInput((prev) => applyInput(prev, { type: "ghostAccept" }));
+          if (cid && engineClient) {
+            void engineClient.submitSuggestionFeedback(cid, { accepted: true, source: "tab" });
+          }
+          return;
+        }
+        if (key.escape) {
+          setInput((prev) => applyInput(prev, { type: "ghostClear" }));
+          if (cid && engineClient) {
+            void engineClient.submitSuggestionFeedback(cid, {
+              accepted: false,
+              source: "dismissed",
+            });
+          }
+          return;
+        }
       }
       // Ctrl-R opens inline history-search (Claude-Code-style
       // above-composer widget). The modal pane is still reachable
