@@ -34,18 +34,22 @@ describe("issue #166 W2 — reserved audit-action constants", () => {
     expect(AuditAction.EXTERNAL_PROVIDER_CALL_FAILED).toBe("external_provider.call_failed");
   });
 
-  // mcp-server writers land with #171. Each `todo` is a slot for the
-  // matching integration test once the writer module exists.
-  it.todo("mcp-server registry writer emits MCP_SERVER_REGISTERED on insert (#171)", () => {});
-  it.todo("mcp-server registry writer emits MCP_SERVER_CONFIG_UPDATED on update (#171)", () => {});
-  it.todo("mcp-server registry writer emits MCP_SERVER_DELETED on delete (#171)", () => {});
-  it.todo("mcp-client pool emits MCP_SERVER_HANDSHAKE_OK on successful handshake (#171)", () => {});
-  it.todo("mcp-client pool emits MCP_SERVER_ERRORED on handshake failure (#171)", () => {});
-  // EXTERNAL_PROVIDER_CALL_* writers are reserved for the first opt-in,
-  // connector-shaped external-call site that lands under a per-tenant
-  // budget — not for engine-baseline integrations. Engine-baseline
-  // proposals (Cohere rerank, Firecrawl, Exa) were dropped under the
-  // runtime-independence policy.
-  it.todo("connector-shaped external-provider writer emits EXTERNAL_PROVIDER_CALL_SUCCEEDED on ok", () => {});
-  it.todo("connector-shaped external-provider writer emits EXTERNAL_PROVIDER_CALL_FAILED on error", () => {});
+  // The reserved constants above are the only assertions in this file.
+  // Future writers (one per reserved action) replace this comment block
+  // with a real integration test asserting the writer emits exactly the
+  // reserved action plus the expected metadata fields:
+  //
+  //   - MCP_SERVER_REGISTERED          — #171 mcp-client registry insert
+  //   - MCP_SERVER_CONFIG_UPDATED      — #171 mcp-client registry update
+  //   - MCP_SERVER_DELETED             — #171 mcp-client registry delete
+  //   - MCP_SERVER_HANDSHAKE_OK        — #171 mcp-client pool, successful handshake
+  //   - MCP_SERVER_ERRORED             — #171 mcp-client pool, handshake failure
+  //   - EXTERNAL_PROVIDER_CALL_SUCCEEDED — first opt-in connector-shaped writer
+  //   - EXTERNAL_PROVIDER_CALL_FAILED   — first opt-in connector-shaped writer
+  //
+  // Previously these slots were `it.todo(...)` stubs; the green
+  // checkmarks gave no real signal so they were collapsed (#178 review
+  // S-4). The presence-check above is the actual guard — a future
+  // cleanup that removes a reserved constant fails THAT test, not a
+  // todo slot.
 });

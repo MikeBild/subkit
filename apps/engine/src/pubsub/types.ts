@@ -4,7 +4,14 @@ import type { OutboxChannel } from "../db/events.ts";
 
 export type { OutboxChannel };
 
-export const LISTENER_CHANNELS: OutboxChannel[] = [
+/**
+ * Channels the listener fans out to in-process subscribers. The literal
+ * list is `satisfies`-typed against `readonly OutboxChannel[]` so the
+ * compiler rejects any drift from the union in `db/events.ts` — a
+ * channel added there but missing here (or vice versa) is a compile
+ * error, not a silent runtime gap. Mirrors #178 review S-2.
+ */
+export const LISTENER_CHANNELS = [
   "execution.status",
   "workflow.chain",
   "workflow.lifecycle",
@@ -12,7 +19,7 @@ export const LISTENER_CHANNELS: OutboxChannel[] = [
   "conversation.stream",
   "event.emitted",
   "notification.emitted",
-];
+] as const satisfies readonly OutboxChannel[];
 
 /** Full event envelope delivered to local subscribers. */
 export interface EventEnvelope<P = unknown> {

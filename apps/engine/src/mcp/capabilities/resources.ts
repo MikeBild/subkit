@@ -15,8 +15,18 @@
 // failed `sendResourceUpdated` is the only retry. Clients that need
 // strict consistency on a `workflow://<id>` / `connector://<id>` /
 // `knowledge://<id>` resource should poll `readResource` on critical
-// paths. Two defenses keep cross-tenant / cross-scope notifications
-// from leaking via this channel:
+// paths.
+//
+// Notification payload is empty by MCP spec. `sendResourceUpdated`
+// carries only the URI; the lifecycle event's `type` discriminator
+// (`workflow.deleted` vs `workflow.updated` vs `workflow.metadata_updated`
+// vs `workflow.version_restored`) is dropped on the floor. Clients that
+// need to distinguish delete from rename must re-fetch via `readResource`
+// — or, for workflows specifically, observe the lifecycle audit row
+// directly through the `/v1/audit-log` HTTP surface.
+//
+// Two defenses keep cross-tenant / cross-scope notifications from
+// leaking via this channel:
 //   1. Every forwarder enters through `forwardIfSubscribed`, which
 //      checks `event.tenant_id === principal.tenant_id` before doing
 //      anything else.
@@ -26,7 +36,15 @@
 //      pass an `rbacCheck` callback to `forwardIfSubscribed`. The
 //      callback runs the same `can()` decision the read handler uses,
 //      so a portal token narrowed to one workflow cannot piggy-back on
-//      a subscription URI it learned out-of-band.
+//      a subscription URI it learned out-of-band. The check only runs
+//      for portal-scoped principals (`allowed_workflows` is an array);
+//      role-based principals skip it because the role gate already
+//      authorises every workflow in the tenant (#178 W-5).
+//
+// Subscribe DoS defenses (#178 W-1): the subscribe handler rejects URIs
+// outside the four known prefixes (so a client can't trick the
+// lifecycle forwarder into a `can()` lookup for nonsense) and caps the
+// per-session subscribed-Set at `SUBSCRIBE_CAP`.
 
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
@@ -68,6 +86,25 @@ function workflowUri(id: string): string {
   return `workflow://${id}`;
 }
 
+/** Prefix set the subscribe handler accepts. Anything else is dropped at
+ *  subscribe time so a misbehaving client can't grow `subscribed` with
+ *  garbage (#178 review W-1). Keep this in sync with the URI helpers
+ *  above. */
+const SUBSCRIBE_URI_PREFIXES: readonly string[] = [
+  "connector://",
+  "knowledge://",
+  "skill-candidate://",
+  "workflow://",
+];
+
+/** Cap per-session subscribed-URI tracking so a malicious or buggy
+ *  client cannot grow the in-process Set unboundedly via a subscribe
+ *  loop. 256 is well above any realistic legitimate client subscribing
+ *  to every workflow and connector in a large tenant. Excess
+ *  subscriptions are rejected with a logged warn — the legitimate
+ *  client sees no behavioural change. */
+const SUBSCRIBE_CAP = 256;
+
 export function registerResourcesCapability(p: RegisterResourcesParams): void {
   const { server, db, principal } = p;
   const emitter = p.emitter ?? globalEmitter;
@@ -95,16 +132,26 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
   }): Promise<void> {
     if (args.event.tenant_id !== principal.tenant_id) return;
     if (!subscribed.has(args.uri)) return;
-    if (args.rbacCheck) {
+    // W-5: skip the DB-bound `can()` round-trip on the majority path.
+    // A principal without a portal-scope narrowing (admins, operators,
+    // and any system_account) is already authorised by role for every
+    // workflow in the tenant; the `rbacCheck` would always return
+    // `true`. Running it anyway makes every lifecycle event cost one
+    // permissions lookup per open MCP session — N×M scaling that
+    // shows up under load.
+    const needsRbacCheck =
+      args.rbacCheck !== undefined && Array.isArray(principal.allowed_workflows);
+    if (needsRbacCheck && args.rbacCheck) {
       const allow = await args.rbacCheck();
       if (!allow) {
-        logger.debug({
+        logger.info({
           module: "mcp",
           action: "mcp.resource.updated.rbac_denied",
           msg: "lifecycle forward suppressed by rbac re-check",
           uri: args.uri,
           event_type: args.event.type,
           principal_id: principal.id,
+          principal_provider: principal.provider,
         });
         return;
       }
@@ -254,7 +301,12 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     // the same tenant via `listResources()`. `readResource` is already
     // gated by `workflow:read` RBAC; this is the matching list-side
     // narrowing.
-    const workflowList = await workflowSvc.listWorkflows(
+    //
+    // Uses `listWorkflowSummaries` (not `listWorkflows`) so each row is
+    // a single Postgres-side projection — no `dag` parse per workflow
+    // (#178 W-2). The MCP list view only needs name / slug / version /
+    // step_count anyway.
+    const workflowList = await workflowSvc.listWorkflowSummaries(
       principal.tenant_id,
       { status: "active" },
       db,
@@ -266,7 +318,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       resources.push({
         uri: workflowUri(wf.id),
         name: wf.name,
-        description: `Workflow (${wf.slug}) — v${wf.current_version ?? 0}, ${wf.steps.length} steps`,
+        description: `Workflow (${wf.slug}) — v${wf.current_version ?? 0}, ${wf.step_count} steps`,
         mimeType: "application/json",
       });
     }
@@ -446,7 +498,37 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
   });
 
   server.setRequestHandler(SubscribeRequestSchema, async (req) => {
-    subscribed.add(req.params.uri);
+    const uri = req.params.uri;
+    // W-1: only accept URIs we actually forward. An unrecognised
+    // prefix would burn a `can()` call on every lifecycle event for
+    // nothing — silent free-DoS surface across sibling sessions of
+    // the same tenant.
+    if (!SUBSCRIBE_URI_PREFIXES.some((p) => uri.startsWith(p))) {
+      logger.debug({
+        module: "mcp",
+        action: "mcp.resource.subscribe.rejected",
+        msg: "subscribe rejected — unsupported uri prefix",
+        uri,
+        principal_id: principal.id,
+      });
+      return {};
+    }
+    // W-1: cap the per-session subscribed-URI Set. Beyond the cap we
+    // refuse silently so a legitimate client at the boundary still
+    // works for the URIs it added first; a misbehaving client just
+    // stops growing memory.
+    if (!subscribed.has(uri) && subscribed.size >= SUBSCRIBE_CAP) {
+      logger.warn({
+        module: "mcp",
+        action: "mcp.resource.subscribe.capped",
+        msg: "subscribe rejected — per-session cap reached",
+        uri,
+        cap: SUBSCRIBE_CAP,
+        principal_id: principal.id,
+      });
+      return {};
+    }
+    subscribed.add(uri);
     return {};
   });
   server.setRequestHandler(UnsubscribeRequestSchema, async (req) => {

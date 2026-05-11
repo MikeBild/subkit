@@ -91,11 +91,21 @@ describe("tool example_input ↔ inputSchema round-trip (regression #167+ post-i
     // strict channel.
     expect(compatible).toContain("propose_skill");
 
-    // Future-proofing: when upstream record projection is fixed (or
-    // every offending tool drops `z.record(...)` from its input
-    // schema) AND `toInputExamples()` is re-enabled, swap this for
-    // `expect(incompatible).toEqual([])` so a misaligned example
-    // fails the gate at boot instead of silently breaking production.
-    void incompatible;
+    // Pin the *exact* set of tools that cannot ship `inputExamples`
+    // today. Adding a new offending tool, OR fixing one of the three
+    // listed, both fail this assertion — the failure message points
+    // at the projection / record-mismatch problem so the engineer can
+    // either tighten the example or update the snapshot. When all
+    // three drop off (upstream projection fix OR each tool drops
+    // `z.record(...)`), flip the assertion to `toEqual([])` and
+    // re-enable `toInputExamples()` in sdk-wrap/invoke.ts.
+    //
+    // #178 W-3: replaces the prior `void incompatible` discard so a
+    // NEW offender lights up CI instead of slipping through silently.
+    expect(incompatible.map((t) => t.name).sort()).toEqual([
+      "build_workflow",
+      "call_connector",
+      "probe_connector",
+    ]);
   });
 });

@@ -236,7 +236,7 @@ export async function createWorkflow(
       tenant_id: input.tenant_id,
       channel: "workflow.lifecycle",
       type: "workflow.created",
-      payload: { workflow_id: wf.id, slug, version: 1 },
+      payload: { workflow_id: wf.id, slug, version: 1, actor_id: input.actor_id ?? null },
     });
     await applyTriggerBindings(tx, input.tenant_id, wf.id, slug, def, input.actor_id);
     return wf.id;
@@ -344,7 +344,12 @@ export async function updateWorkflow(
       tenant_id: input.tenant_id,
       channel: "workflow.lifecycle",
       type: "workflow.updated",
-      payload: { workflow_id: wf.id, slug: wf.slug, version: next },
+      payload: {
+        workflow_id: wf.id,
+        slug: wf.slug,
+        version: next,
+        actor_id: input.actor_id ?? null,
+      },
     });
     log.workflow.committed({
       workflow_id: wf.id,
@@ -510,6 +515,7 @@ export async function updateWorkflowMetadata(
           workflow_id: wf.id,
           slug: patch.slug ?? wf.slug,
           lifecycle: patch.lifecycle ?? wf.lifecycle,
+          actor_id: input.actor_id ?? null,
         },
       });
       // Metadata-only update — no new version row, no step count.
@@ -610,6 +616,59 @@ export async function listWorkflows(
   return out;
 }
 
+export interface WorkflowSummary {
+  id: string;
+  slug: string;
+  name: string;
+  lifecycle: "draft" | "active" | "archived";
+  current_version: number | null;
+  step_count: number;
+}
+
+/**
+ * Lightweight list path for callers that only need the metadata
+ * displayed in a picker, the MCP `resources/list` view, or a
+ * dashboard summary — no `WorkflowDefSchema.parse` per row, no full
+ * `dag` payload over the wire. Uses Postgres' `jsonb_array_length`
+ * to count steps server-side. Mirrors `listWorkflows` filtering
+ * surface (status, name_contains, limit, offset) and ordering
+ * (newest first). #178 review W-2.
+ */
+export async function listWorkflowSummaries(
+  tenant_id: string,
+  opts: ListWorkflowsOptions = {},
+  exec?: Executor,
+): Promise<WorkflowSummary[]> {
+  const db = exec ?? getDb();
+  const limit = Math.min(opts.limit ?? 50, 200);
+  const tenantConds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
+  if (opts.status) tenantConds.push(eq(workflows.lifecycle, opts.status));
+  if (opts.name_contains) tenantConds.push(like(workflows.name, `%${opts.name_contains}%`));
+  const rows = await db
+    .select({
+      id: workflows.id,
+      slug: workflows.slug,
+      name: workflows.name,
+      lifecycle: workflows.lifecycle,
+      current_version: workflowVersions.version,
+      step_count: sql<number>`coalesce(jsonb_array_length(${workflowVersions.dag} -> 'steps'), 0)::int`,
+    })
+    .from(workflows)
+    .leftJoin(workflowVersions, eq(workflowVersions.id, workflows.current_version_id))
+    .where(and(...tenantConds))
+    .orderBy(desc(workflows.created_at))
+    .limit(limit)
+    .offset(opts.offset ?? 0);
+  return rows.map((r) => ({
+    id: r.id,
+    slug: r.slug,
+    name: r.name,
+    lifecycle: r.lifecycle as "draft" | "active" | "archived",
+    current_version: r.current_version,
+    step_count: Number(r.step_count ?? 0),
+  }));
+}
+
 export async function getWorkflow(
   tenant_id: string,
   id: string,
@@ -684,7 +743,7 @@ export async function deleteWorkflow(
       tenant_id,
       channel: "workflow.lifecycle",
       type: "workflow.deleted",
-      payload: { workflow_id: row.id, slug: row.slug },
+      payload: { workflow_id: row.id, slug: row.slug, actor_id: actor_id ?? null },
     });
     return true;
   });
@@ -776,7 +835,12 @@ export async function restoreWorkflowVersion(
       tenant_id,
       channel: "workflow.lifecycle",
       type: "workflow.version_restored",
-      payload: { workflow_id: id, restored_from: version, new_version: next },
+      payload: {
+        workflow_id: id,
+        restored_from: version,
+        new_version: next,
+        actor_id: actor_id ?? null,
+      },
     });
     log.workflow.restored({
       workflow_id: id,
