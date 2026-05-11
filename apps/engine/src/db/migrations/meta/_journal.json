@@ -113,6 +113,13 @@
       "when": 1778700000000,
       "tag": "0015_ai_sdk_6_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1778800000000,
+      "tag": "0016_external_call_metering_provider_slug",
+      "breakpoints": true
     }
   ]
 }

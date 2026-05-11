@@ -118,6 +118,11 @@ export function wrapOne(
     inputSchema,
     // issue #165: opt-in provider-native strict mode + inputExamples.
     ...(inner.strict ? { strict: true as const } : {}),
+    // toInputExamples is intentionally a no-op since v4.6.0 — see the
+    // helper's header for the AI SDK 6 / Anthropic strict-validation
+    // regression that motivated suppressing this channel. The model
+    // still receives the example via the `<example>` block
+    // compileDescription appends to the description above.
     ...toInputExamples(inner.example_input),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
       // Serialize against other tool executions in this turn — see

@@ -37,7 +37,9 @@ export const externalCallMetering = pgTable(
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     // Provider slug — opaque, set by the writer (e.g. the operator's chosen
     // managed scraping or reranking service when wired via an opt-in
-    // connector template).
+    // connector template). Constrained server-side to the slug grammar
+    // `^[a-z][a-z0-9_]*$` via migration 0016 so operator-facing
+    // per-provider roll-ups join on a consistent value.
     provider: text("provider").notNull(),
     // Optional operation name — e.g. "rerank", "crawl", "search", "scrape".
     operation: text("operation"),
@@ -69,5 +71,10 @@ export const externalCallMetering = pgTable(
       t.month_bucket,
     ),
     check("external_call_metering_result_check", sql`${t.result} IN ('ok','error')`),
+    // Pin `provider` to a slug grammar (#178 review S4, migration 0016).
+    // Operator-facing roll-ups join on this column; an unconstrained
+    // free-string field would drift into typo soup before any writer
+    // ships.
+    check("external_call_metering_provider_slug_check", sql`${t.provider} ~ '^[a-z][a-z0-9_]*$'`),
   ],
 );

@@ -499,6 +499,19 @@ export async function updateWorkflowMetadata(
         },
         tx,
       );
+      // Emit on the same channel as definition-level updates — a rename
+      // / lifecycle flip changes what `readResource("workflow://<id>")`
+      // would return, so MCP subscribers must see it (#169 W1).
+      await writeEvent(tx, {
+        tenant_id: input.tenant_id,
+        channel: "workflow.lifecycle",
+        type: "workflow.metadata_updated",
+        payload: {
+          workflow_id: wf.id,
+          slug: patch.slug ?? wf.slug,
+          lifecycle: patch.lifecycle ?? wf.lifecycle,
+        },
+      });
       // Metadata-only update — no new version row, no step count.
       // Reuse the workflow.committed log line so dashboards see the
       // event without inventing a separate "metadata-only" topic.
@@ -757,6 +770,14 @@ export async function restoreWorkflowVersion(
       },
       tx,
     );
+    // A version restore replaces what `readResource("workflow://<id>")`
+    // returns; MCP subscribers must be notified (#169 W1).
+    await writeEvent(tx, {
+      tenant_id,
+      channel: "workflow.lifecycle",
+      type: "workflow.version_restored",
+      payload: { workflow_id: id, restored_from: version, new_version: next },
+    });
     log.workflow.restored({
       workflow_id: id,
       tenant_id,

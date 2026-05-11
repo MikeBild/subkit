@@ -85,20 +85,17 @@ describe("tool example_input ↔ inputSchema round-trip (regression #167+ post-i
       else incompatible.push({ name: t.name, reasons: result.errors.slice(0, 3) });
     }
 
-    // Snapshot diagnostic — never asserted, but logged for visibility
-    // so a regression-fixing engineer can confirm whether their
-    // schema-tightening eliminated the projection mismatch.
-    if (incompatible.length > 0) {
-      console.warn(
-        `[#regression] ${incompatible.length} tool(s) cannot ship inputExamples today:`,
-        incompatible.map((t) => `${t.name} (${t.reasons[0] ?? "unknown"})`).join("; "),
-      );
-    }
-
     // Hard assertion: at minimum, the strict-opted-in tool
     // (propose_skill) must round-trip — it's the only tool whose
     // schema is fully concrete and was specifically chosen for the
     // strict channel.
     expect(compatible).toContain("propose_skill");
+
+    // Future-proofing: when upstream record projection is fixed (or
+    // every offending tool drops `z.record(...)` from its input
+    // schema) AND `toInputExamples()` is re-enabled, swap this for
+    // `expect(incompatible).toEqual([])` so a misaligned example
+    // fails the gate at boot instead of silently breaking production.
+    void incompatible;
   });
 });
