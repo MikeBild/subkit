@@ -114,14 +114,34 @@ afterAll(async () => {
   await testDb.cleanup();
 });
 
+const PORTAL_PRINCIPAL_ID = "00000000-0000-0000-0000-00000000a001";
+const METRICS_PRINCIPAL_ID = "00000000-0000-0000-0000-00000000a002";
+
 function portalPrincipal(allowedWorkflows: string[] | "all"): ResolvedPrincipal {
   return {
-    id: "portal-test-principal",
+    id: PORTAL_PRINCIPAL_ID,
     tenant_id: tenantId,
     provider: "portal_token",
     kind: "user",
     roles: ["enduser"],
     allowed_workflows: allowedWorkflows,
+  };
+}
+
+/**
+ * Principal with a built-in role that does NOT include `workflow:read`.
+ * Used to prove the round-3 W1 fix: lifecycle dispatcher must
+ * re-check RBAC even for non-portal principals, because a tenant can
+ * mint a role that omits workflow:read and observe lifecycle timing
+ * out of the URI alone.
+ */
+function nonPortalPrincipalWithoutWorkflowRead(): ResolvedPrincipal {
+  return {
+    id: METRICS_PRINCIPAL_ID,
+    tenant_id: tenantId,
+    provider: "api_key",
+    kind: "user",
+    roles: ["metrics_scraper"],
   };
 }
 
@@ -234,5 +254,41 @@ describe("PR #178 W2 — lifecycle dispatcher re-checks RBAC", () => {
       await new Promise((r) => setTimeout(r, 25)); // allow-wall-clock: pub/sub propagation cadence
     }
     expect(stub.notifications).toContain(`workflow://${scopedWorkflowId}`);
+  });
+});
+
+describe("PR #178 round-3 W1 — RBAC re-check runs for non-portal principals too", () => {
+  it("custom-role principal lacking workflow:read does NOT receive lifecycle pings", async () => {
+    const stub = newStubServer();
+    const emitter = new PubSubEmitter();
+    registerResourcesCapability({
+      server: stub as unknown as Parameters<typeof registerResourcesCapability>[0]["server"],
+      db: testDb.db as unknown as Db,
+      // metrics_scraper is a built-in role with `metrics:read` only —
+      // explicitly lacks `workflow:read`. Per round-3 W1 the lifecycle
+      // dispatcher must still re-check `can()` even though this
+      // principal has NO `allowed_workflows` array — otherwise it
+      // would observe timing of every workflow state change.
+      principal: nonPortalPrincipalWithoutWorkflowRead(),
+      emitter,
+    });
+
+    const subscribeHandler = handlerFor(stub, "resources/subscribe");
+    await subscribeHandler({
+      method: "resources/subscribe",
+      params: { uri: `workflow://${scopedWorkflowId}` },
+    } as SubscribeRequest);
+
+    await emitter.dispatch({
+      id: 3,
+      tenant_id: tenantId,
+      channel: "workflow.lifecycle",
+      type: "workflow.updated",
+      payload: { workflow_id: scopedWorkflowId, slug: "w178-scoped", version: 3 },
+      created_at: new Date(TEST_NOW_MS),
+    });
+
+    await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: pub/sub propagation cadence
+    expect(stub.notifications).toHaveLength(0);
   });
 });

@@ -32,14 +32,14 @@
 //      anything else.
 //   2. Forwarders that carry RBAC-sensitive payloads (today: the
 //      workflow lifecycle channel, which can push lifecycle pings for
-//      workflows a portal-scoped principal cannot `readResource`)
-//      pass an `rbacCheck` callback to `forwardIfSubscribed`. The
-//      callback runs the same `can()` decision the read handler uses,
-//      so a portal token narrowed to one workflow cannot piggy-back on
-//      a subscription URI it learned out-of-band. The check only runs
-//      for portal-scoped principals (`allowed_workflows` is an array);
-//      role-based principals skip it because the role gate already
-//      authorises every workflow in the tenant (#178 W-5).
+//      workflows a principal cannot `readResource`) pass an
+//      `rbacCheck` callback to `forwardIfSubscribed`. The callback
+//      runs the same `can()` decision the read handler uses, so
+//      neither a portal token narrowed to one workflow nor a
+//      custom-role principal lacking `workflow:read` can piggy-back
+//      on a subscription URI it learned out-of-band. Always-on by
+//      design — the prior portal-only short-circuit was a latent
+//      timing-leak surface for custom roles (#178 round-3 W1).
 //
 // Subscribe DoS defenses (#178 W-1): the subscribe handler rejects URIs
 // outside the four known prefixes (so a client can't trick the
@@ -132,16 +132,16 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
   }): Promise<void> {
     if (args.event.tenant_id !== principal.tenant_id) return;
     if (!subscribed.has(args.uri)) return;
-    // W-5: skip the DB-bound `can()` round-trip on the majority path.
-    // A principal without a portal-scope narrowing (admins, operators,
-    // and any system_account) is already authorised by role for every
-    // workflow in the tenant; the `rbacCheck` would always return
-    // `true`. Running it anyway makes every lifecycle event cost one
-    // permissions lookup per open MCP session — N×M scaling that
-    // shows up under load.
-    const needsRbacCheck =
-      args.rbacCheck !== undefined && Array.isArray(principal.allowed_workflows);
-    if (needsRbacCheck && args.rbacCheck) {
+    // Always run the rbacCheck when wired. The earlier optimisation
+    // (skip for principals without a portal-scope narrowing) was a
+    // latent leak vector: a tenant can mint a custom role that omits
+    // `workflow:read` and that principal would still observe the
+    // existence + timing of lifecycle events for any guessed
+    // `workflow://<id>`. The MCP notification carries no payload —
+    // only the URI — but timing alone is signal. The conservative
+    // choice is to run `can()` every time and let the permissions
+    // cache absorb the cost (#178 round-3 W1).
+    if (args.rbacCheck) {
       const allow = await args.rbacCheck();
       if (!allow) {
         logger.info({

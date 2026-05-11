@@ -35,21 +35,7 @@ describe("issue #166 W2 — reserved audit-action constants", () => {
   });
 
   // The reserved constants above are the only assertions in this file.
-  // Future writers (one per reserved action) replace this comment block
-  // with a real integration test asserting the writer emits exactly the
-  // reserved action plus the expected metadata fields:
-  //
-  //   - MCP_SERVER_REGISTERED          — #171 mcp-client registry insert
-  //   - MCP_SERVER_CONFIG_UPDATED      — #171 mcp-client registry update
-  //   - MCP_SERVER_DELETED             — #171 mcp-client registry delete
-  //   - MCP_SERVER_HANDSHAKE_OK        — #171 mcp-client pool, successful handshake
-  //   - MCP_SERVER_ERRORED             — #171 mcp-client pool, handshake failure
-  //   - EXTERNAL_PROVIDER_CALL_SUCCEEDED — first opt-in connector-shaped writer
-  //   - EXTERNAL_PROVIDER_CALL_FAILED   — first opt-in connector-shaped writer
-  //
-  // Previously these slots were `it.todo(...)` stubs; the green
-  // checkmarks gave no real signal so they were collapsed (#178 review
-  // S-4). The presence-check above is the actual guard — a future
-  // cleanup that removes a reserved constant fails THAT test, not a
-  // todo slot.
+  // The writers that will eventually emit each action are tracked on
+  // their owning issues (#171 for mcp_server.*; per-connector issues
+  // for external_provider.*). #178 round-3 S3.
 });

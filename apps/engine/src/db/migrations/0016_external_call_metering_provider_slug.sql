@@ -20,6 +20,15 @@
 -- shipped). If a writer lands before this migration is applied in
 -- prod, the INSERT will be rejected by the CHECK, which is the
 -- intended failure mode.
+--
+-- Snapshot convention. The repo only commits `meta/0000_snapshot.json`
+-- (the baseline); subsequent migrations are hand-written SQL with a
+-- `_journal.json` entry only — 0015 follows the same convention. So
+-- there is no `meta/0016_snapshot.json` paired with this file by
+-- design. The runner consumes `_journal.json` + the embedded SQL,
+-- never the per-migration snapshots. If a future change re-introduces
+-- snapshot-driven generation, the baseline + every subsequent migration
+-- needs a snapshot — not just this one.
 
 ALTER TABLE "external_call_metering"
   ADD CONSTRAINT "external_call_metering_provider_slug_check"

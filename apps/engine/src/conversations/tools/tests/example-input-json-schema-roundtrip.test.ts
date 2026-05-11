@@ -102,6 +102,14 @@ describe("tool example_input ↔ inputSchema round-trip (regression #167+ post-i
     //
     // #178 W-3: replaces the prior `void incompatible` discard so a
     // NEW offender lights up CI instead of slipping through silently.
+    //
+    // MAINTENANCE RULE (#178 round-3 W3): if you are tightening one
+    // of these tools' `example_input` or its `inputSchema` and the
+    // snapshot test fails, REMOVE the corresponding entry from this
+    // array. DO NOT append a new tool to make the test pass — the
+    // whole point of pinning the set is to force a new offender to be
+    // discussed (either tighten its example or accept the regression
+    // explicitly).
     expect(incompatible.map((t) => t.name).sort()).toEqual([
       "build_workflow",
       "call_connector",

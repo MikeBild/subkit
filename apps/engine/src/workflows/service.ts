@@ -11,6 +11,7 @@ import { type Db, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { skills as skillsTable, workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
+import { type WorkflowLifecyclePayload, WorkflowLifecyclePayloadSchema } from "../pubsub/types.ts";
 import * as scheduleRepo from "../scheduler/repo.ts";
 import * as inboundService from "../webhooks/inbound/service.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
@@ -18,6 +19,36 @@ import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateOutputSchemaSuperset, validateWorkflowDef } from "./validator.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/**
+ * Emit a `workflow.lifecycle` outbox event after Zod-validating the
+ * payload (#178 round-3 S1). Every state-changing entry point in this
+ * file flows through this helper so the channel can't drift into
+ * untyped object literals over time. The schema lives in
+ * `pubsub/types.ts` so subscribers (today: the MCP forwarder) can
+ * share a single source of truth.
+ */
+async function emitWorkflowLifecycle(
+  tx: Executor,
+  args: {
+    tenant_id: string;
+    type:
+      | "workflow.created"
+      | "workflow.updated"
+      | "workflow.metadata_updated"
+      | "workflow.deleted"
+      | "workflow.version_restored";
+    payload: WorkflowLifecyclePayload;
+  },
+): Promise<void> {
+  const parsed = WorkflowLifecyclePayloadSchema.parse(args.payload);
+  await writeEvent(tx, {
+    tenant_id: args.tenant_id,
+    channel: "workflow.lifecycle",
+    type: args.type,
+    payload: parsed as Record<string, unknown>,
+  });
+}
 
 export interface WorkflowView {
   id: string;
@@ -232,9 +263,8 @@ export async function createWorkflow(
       },
       tx,
     );
-    await writeEvent(tx, {
+    await emitWorkflowLifecycle(tx, {
       tenant_id: input.tenant_id,
-      channel: "workflow.lifecycle",
       type: "workflow.created",
       payload: { workflow_id: wf.id, slug, version: 1, actor_id: input.actor_id ?? null },
     });
@@ -340,9 +370,8 @@ export async function updateWorkflow(
       },
       tx,
     );
-    await writeEvent(tx, {
+    await emitWorkflowLifecycle(tx, {
       tenant_id: input.tenant_id,
-      channel: "workflow.lifecycle",
       type: "workflow.updated",
       payload: {
         workflow_id: wf.id,
@@ -507,14 +536,13 @@ export async function updateWorkflowMetadata(
       // Emit on the same channel as definition-level updates — a rename
       // / lifecycle flip changes what `readResource("workflow://<id>")`
       // would return, so MCP subscribers must see it (#169 W1).
-      await writeEvent(tx, {
+      await emitWorkflowLifecycle(tx, {
         tenant_id: input.tenant_id,
-        channel: "workflow.lifecycle",
         type: "workflow.metadata_updated",
         payload: {
           workflow_id: wf.id,
           slug: patch.slug ?? wf.slug,
-          lifecycle: patch.lifecycle ?? wf.lifecycle,
+          lifecycle: (patch.lifecycle ?? wf.lifecycle) as "draft" | "active" | "archived",
           actor_id: input.actor_id ?? null,
         },
       });
@@ -591,6 +619,19 @@ export interface ListWorkflowsOptions {
   name_contains?: string;
 }
 
+/**
+ * Build the WHERE conditions shared by `listWorkflows` and
+ * `listWorkflowSummaries` (#178 round-3 S5). Centralising the
+ * predicate avoids drift the next time the list surface gains a
+ * filter (e.g. an `owner_id` knob).
+ */
+function buildWorkflowListConds(tenant_id: string, opts: ListWorkflowsOptions) {
+  const conds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
+  if (opts.status) conds.push(eq(workflows.lifecycle, opts.status));
+  if (opts.name_contains) conds.push(like(workflows.name, `%${opts.name_contains}%`));
+  return conds;
+}
+
 export async function listWorkflows(
   tenant_id: string,
   opts: ListWorkflowsOptions = {},
@@ -598,9 +639,7 @@ export async function listWorkflows(
 ): Promise<WorkflowView[]> {
   const db = exec ?? getDb();
   const limit = Math.min(opts.limit ?? 50, 200);
-  const tenantConds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
-  if (opts.status) tenantConds.push(eq(workflows.lifecycle, opts.status));
-  if (opts.name_contains) tenantConds.push(like(workflows.name, `%${opts.name_contains}%`));
+  const tenantConds = buildWorkflowListConds(tenant_id, opts);
   const rows = await db
     .select()
     .from(workflows)
@@ -641,9 +680,7 @@ export async function listWorkflowSummaries(
 ): Promise<WorkflowSummary[]> {
   const db = exec ?? getDb();
   const limit = Math.min(opts.limit ?? 50, 200);
-  const tenantConds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
-  if (opts.status) tenantConds.push(eq(workflows.lifecycle, opts.status));
-  if (opts.name_contains) tenantConds.push(like(workflows.name, `%${opts.name_contains}%`));
+  const tenantConds = buildWorkflowListConds(tenant_id, opts);
   const rows = await db
     .select({
       id: workflows.id,
@@ -739,9 +776,8 @@ export async function deleteWorkflow(
       },
       tx,
     );
-    await writeEvent(tx, {
+    await emitWorkflowLifecycle(tx, {
       tenant_id,
-      channel: "workflow.lifecycle",
       type: "workflow.deleted",
       payload: { workflow_id: row.id, slug: row.slug, actor_id: actor_id ?? null },
     });
@@ -831,9 +867,8 @@ export async function restoreWorkflowVersion(
     );
     // A version restore replaces what `readResource("workflow://<id>")`
     // returns; MCP subscribers must be notified (#169 W1).
-    await writeEvent(tx, {
+    await emitWorkflowLifecycle(tx, {
       tenant_id,
-      channel: "workflow.lifecycle",
       type: "workflow.version_restored",
       payload: {
         workflow_id: id,
