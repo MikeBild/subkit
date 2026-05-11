@@ -10,10 +10,10 @@
 //
 // The critic does NOT patch the draft. The verdict is hints only.
 //
-// Routing: `flow: "critic_authoring"` so `applyFlowEnvOverrides` picks
-// up `CRITIC_AUTHORING_MODEL` / `CRITIC_AUTHORING_LLM_PROVIDER` when
-// operators want to pin a cheaper Sonnet-tier model for this flow
-// without changing the tenant's primary route.
+// Routing: the critic uses the tenant's primary `llm.*` route. To pin
+// a cheaper model just for critic runs, operators set `llm.model` /
+// `llm.provider` at the tenant scope; the critic call shares it with
+// the rest of the authoring loop.
 
 import type { Db } from "../../db/client.ts";
 import { invoke } from "../../llm/core/invoke.ts";

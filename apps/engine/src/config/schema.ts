@@ -632,6 +632,13 @@ const TenantOverlaySchema = z
             ai_gateway: z.object({}).optional(),
           })
           .optional(),
+        critic: z
+          .object({
+            enabled: z.boolean().optional(),
+            min_steps: z.number().int().min(1).optional(),
+            max_consecutive_rejections: z.number().int().min(1).optional(),
+          })
+          .optional(),
       })
       .optional(),
     queue: z.object({ concurrency: z.number().int().positive().max(64).optional() }).optional(),

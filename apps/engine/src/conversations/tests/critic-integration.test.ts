@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import {
+  auditLog,
   connectors,
   conversations,
   conversationToolCalls,
@@ -24,6 +25,7 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { getMetrics } from "../../observability/metrics.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { buildWorkflowTool } from "../tools/build-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
@@ -330,5 +332,94 @@ describe("build_workflow + authoring-critic — replay-determinism", () => {
     const r2 = await buildWorkflowTool.execute(ctx2, threeStepDraftArgs());
 
     expect(JSON.stringify(r1)).toBe(JSON.stringify(r2));
+  });
+});
+
+describe("build_workflow + authoring-critic — audit trail", () => {
+  test("each critic invocation writes an LLM_INVOCATION audit row tagged flow=critic_authoring", async () => {
+    await enableCritic();
+    getMockProvider().generateOverrides.critic_authoring = () => ({
+      passed: false,
+      repairs: ["fix"],
+      rationale: "audit test",
+    });
+
+    const ctx = makeCtx();
+    await buildWorkflowTool.execute(ctx, threeStepDraftArgs());
+
+    const rows = await testDb.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.action, "llm.invocation")));
+    const criticAudits = rows.filter(
+      (r) => (r.metadata as { flow?: string } | null)?.flow === "critic_authoring",
+    );
+    expect(criticAudits.length).toBeGreaterThanOrEqual(1);
+    const sample = criticAudits[criticAudits.length - 1]!;
+    expect(sample.result).toBe("success");
+    expect((sample.metadata as { provider?: string }).provider).toBe("mock");
+  });
+});
+
+describe("build_workflow + authoring-critic — cross-tenant isolation", () => {
+  test("anti-loop counter is tenant-scoped — tenant B's rejections do not gate tenant A", async () => {
+    await enableCritic({ maxConsecutiveRejections: 2 });
+    getMockProvider().generateOverrides.critic_authoring = () => ({
+      passed: false,
+      repairs: ["fix"],
+      rationale: "different tenant",
+    });
+
+    // Seed a SECOND tenant (B) with two critic_rejected rows. If the
+    // counter scan ever drops the tenant_id predicate, tenant A's gate
+    // will see consecutiveRejections=2 from B's rows and skip the critic
+    // when it shouldn't.
+    const [tenantB] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "t-critic-b", display_name: "T-critic-B" })
+      .returning();
+    const tenant_b_id = tenantB!.id;
+    const conv_b = crypto.randomUUID(); // allow-random: tests
+    await testDb.db
+      .insert(conversations)
+      .values({ id: conv_b, tenant_id: tenant_b_id, title: "B convo", status: "active" });
+    for (let i = 0; i < 2; i++) {
+      await testDb.db.insert(conversationToolCalls).values({
+        tenant_id: tenant_b_id,
+        conversation_id: conv_b,
+        tool: "build_workflow",
+        input: {},
+        output: { ok: false, error_code: "critic_rejected" },
+      });
+    }
+
+    // Now run as tenant A (the seeded `tenant_id`) — anti-loop must
+    // NOT trip because A has zero recent rejections.
+    const ctx = makeCtx();
+    const result = await buildWorkflowTool.execute(ctx, threeStepDraftArgs());
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error_code).toBe("critic_rejected");
+  });
+});
+
+describe("build_workflow + authoring-critic — metrics", () => {
+  test("subkit_critic_runs_total{result=rejected} is incremented on a rejected verdict", async () => {
+    await enableCritic();
+    getMockProvider().generateOverrides.critic_authoring = () => ({
+      passed: false,
+      repairs: ["fix"],
+      rationale: "metric test",
+    });
+
+    const ctx = makeCtx();
+    await buildWorkflowTool.execute(ctx, threeStepDraftArgs());
+
+    const snapshot = getMetrics().snapshot();
+    const counter = snapshot.find((s) => s.name === "subkit_critic_runs_total");
+    expect(counter).toBeDefined();
+    const rejectedSamples = counter!.samples.filter((s) => s.labels.result === "rejected");
+    expect(rejectedSamples.length).toBeGreaterThanOrEqual(1);
+    expect(rejectedSamples.reduce((sum, s) => sum + s.value, 0)).toBeGreaterThanOrEqual(1);
   });
 });

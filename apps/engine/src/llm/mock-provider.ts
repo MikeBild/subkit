@@ -82,6 +82,10 @@ class MockProvider {
    * provider.
    */
   cacheSeenKey: Set<string> = new Set();
+  /** One-shot guard so the critic_authoring default-pass warning fires
+   *  at most once per process. Reset alongside the rest of the mock
+   *  state in `reset()` so per-test isolation still works. */
+  defaultCriticPassWarned = false;
 
   reset(): void {
     this.calls = [];
@@ -90,6 +94,7 @@ class MockProvider {
     this.conversePlans = new Map();
     this.converseCursors = new Map();
     this.cacheSeenKey = new Set();
+    this.defaultCriticPassWarned = false;
   }
 
   setConversePlan(conversation_id: string, plan: ConverseMockStep[]): void {
@@ -205,9 +210,25 @@ class MockProvider {
         return { text, object: { summary: text } };
       }
       case "critic_authoring": {
-        // Default: pass with no repairs. Tests that exercise the failure
-        // path install an override via `generateOverrides.critic_authoring`.
-        const obj = { passed: true, repairs: [], rationale: "mock: no semantic drift" };
+        // Default: pass with no repairs. Tests that exercise critic
+        // behaviour install an override via
+        // `generateOverrides.critic_authoring`. Without that, a test
+        // that intended to assert on the critic silently sees a pass —
+        // emit a one-time `console.warn` (the loop's only safe sink
+        // here; the mock provider is intentionally logger-free) the
+        // first time the default fires per process so missed overrides
+        // surface in CI output. Real-LLM code never hits this branch.
+        if (!this.defaultCriticPassWarned) {
+          this.defaultCriticPassWarned = true;
+          console.warn(
+            "[mock-provider] critic_authoring default pass returned — tests that intend to assert critic behaviour must install generateOverrides.critic_authoring",
+          );
+        }
+        const obj = {
+          passed: true,
+          repairs: [],
+          rationale: "mock_default_pass: no override installed",
+        };
         return { text: JSON.stringify(obj), object: obj };
       }
       default:

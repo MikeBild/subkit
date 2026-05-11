@@ -646,6 +646,11 @@ export const buildWorkflowTool: ConversationTool = {
     }
     let priorDraftWarnings = 0;
     for (const row of recentBuildOutputs) {
+      // Only `build_workflow` outputs carry a `preview.warnings` shape
+      // we own — warnings from `dry_run_workflow` / `dry_run_step` use a
+      // different envelope and must not inflate the critic's drift
+      // signal (review WARN #1: cross-tool drift bleed).
+      if (row.tool !== "build_workflow") continue;
       const out = row.output as Record<string, unknown> | null;
       if (!out) continue;
       const data = (out.data ?? {}) as Record<string, unknown>;
@@ -659,6 +664,7 @@ export const buildWorkflowTool: ConversationTool = {
       stepCount: workflowDraft.steps.length,
       recentDriftCount,
       consecutiveRejections,
+      tenantId: ctx.tenant_id,
     });
     let criticVerdict: AuthoringCriticVerdict | undefined;
     if (gating.run) {

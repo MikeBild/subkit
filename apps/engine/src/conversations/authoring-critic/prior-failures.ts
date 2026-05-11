@@ -8,6 +8,7 @@
 // in one shot — and so a focused unit test can exercise the contract
 // end-to-end without spinning the full loop.
 
+import { logger } from "../../logging/logger.ts";
 import { CriticRejectedDetailsSchema } from "./types.ts";
 
 export interface RecentToolCallRow {
@@ -59,6 +60,18 @@ export function expandPriorFailuresFromToolCalls(
     if (code === "critic_rejected") {
       hadCriticReject = true;
       const parsed = CriticRejectedDetailsSchema.safeParse(output.details);
+      if (!parsed.success) {
+        // Producer drift: a critic_rejected row with a malformed
+        // `details` shape. The next turn loses the repair hints but
+        // the signal still flips, so we surface a warn so production
+        // drift away from the contract is visible.
+        logger.warn({
+          module: "conversations",
+          action: "critic.details_malformed",
+          msg: "critic_rejected tool output failed CriticRejectedDetailsSchema; repairs dropped",
+          error: parsed.error.issues.map((i) => i.path.join(".")).join(","),
+        });
+      }
       const repairs = parsed.success ? parsed.data.repairs : [];
       for (const repair of repairs) {
         entries.push({ step_id: "critic", error: repair });

@@ -173,6 +173,29 @@ describe("shouldRunCritic — gating truth table (runtime config)", () => {
     expect(stuck.run).toBe(false);
     expect(stuck.reason).toBe("anti_loop");
   });
+
+  test("per-tenant overlay flips the gate for one tenant only", async () => {
+    // Global stays disabled; tenant A gets an explicit overlay = true.
+    await setConfigKey(["llm", "critic", "enabled"], false);
+    const tenantA = "11111111-1111-4111-8111-111111111111";
+    const tenantB = "22222222-2222-4222-8222-222222222222";
+    await setConfigKey(["llm", "critic", "enabled"], true, { tenantId: tenantA });
+
+    const inputs = { stepCount: 3, recentDriftCount: 0, consecutiveRejections: 0 };
+    const decisionA = shouldRunCritic({ ...inputs, tenantId: tenantA });
+    const decisionB = shouldRunCritic({ ...inputs, tenantId: tenantB });
+    const decisionGlobal = shouldRunCritic(inputs);
+
+    expect(decisionA.run).toBe(true);
+    expect(decisionA.reason).toBe("step_count");
+    expect(decisionB.run).toBe(false);
+    expect(decisionB.reason).toBe("disabled");
+    expect(decisionGlobal.run).toBe(false);
+    expect(decisionGlobal.reason).toBe("disabled");
+
+    // Reset the overlay so adjacent tests don't inherit it.
+    await setConfigKey(["llm", "critic", "enabled"], false, { tenantId: tenantA });
+  });
 });
 
 describe("Critic system prompt — invariant snapshot", () => {

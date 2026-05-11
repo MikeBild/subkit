@@ -16,6 +16,7 @@
 //   (b) draft step count >= `min_steps` OR there was drift in recent drafts.
 
 import { getConfig } from "../../config/loader.ts";
+import { logger } from "../../logging/logger.ts";
 
 interface CriticConfig {
   enabled: boolean;
@@ -23,15 +24,36 @@ interface CriticConfig {
   max_consecutive_rejections: number;
 }
 
-function readConfig(): CriticConfig {
+// Warn once per process when the config loader is unreachable. Without
+// this signal a production misconfig that throws inside `getConfig()`
+// silently makes the critic look disabled — operators would lose time
+// debugging "critic isn't running" against a config that visibly says
+// `enabled:true`.
+let configMissWarned = false;
+
+function readConfig(tenantId?: string): CriticConfig {
   try {
-    const cfg = getConfig().llm.critic;
+    // Pass `tenantId` so the loader applies any per-tenant overlay on
+    // the `llm.critic.*` leaves — the schema marks them `tenant()`
+    // scope, and operators flip them via
+    // `sk settings configure --tenant <id>`. Without the tenant id,
+    // the global value wins and the overlay is silently ignored.
+    const cfg = getConfig(tenantId).llm.critic;
     return {
       enabled: cfg.enabled,
       min_steps: cfg.min_steps,
       max_consecutive_rejections: cfg.max_consecutive_rejections,
     };
-  } catch {
+  } catch (err) {
+    if (!configMissWarned) {
+      configMissWarned = true;
+      logger.warn({
+        module: "conversations",
+        action: "critic.config_unavailable",
+        msg: "authoring critic config could not be read; defaulting to disabled",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     // Loader not initialised (unit tests that don't bootstrap config).
     // Default off — same as the schema default — so the critic is
     // never silently active in a test that forgot to wire config.
@@ -47,6 +69,10 @@ export interface GatingInput {
   /** Count of consecutive `critic_rejected` results in the conversation's
    *  recent tool calls. Used to short-circuit a stuck re-author loop. */
   consecutiveRejections: number;
+  /** Tenant id — required to honour per-tenant overlays on the
+   *  `llm.critic.*` config block. When omitted, the global value
+   *  wins (the schema default is `enabled:false`). */
+  tenantId?: string;
 }
 
 export interface GatingDecision {
@@ -61,7 +87,7 @@ export interface GatingDecision {
  * from inside tool execution.
  */
 export function shouldRunCritic(input: GatingInput): GatingDecision {
-  const cfg = readConfig();
+  const cfg = readConfig(input.tenantId);
   if (!cfg.enabled) {
     return { run: false, reason: "disabled" };
   }
