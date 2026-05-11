@@ -25,8 +25,12 @@ import {
   withConnectorValidation,
 } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
-import { appendSnapshot } from "../draft.ts";
+import { appendSnapshot, loadDraft } from "../draft.ts";
 import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist.ts";
+import {
+  _resetDraftCredentialCacheForTests,
+  getDraftCredential,
+} from "../persistence/draft-credential-cache.ts";
 import type { DraftDocument } from "../types.ts";
 
 let ctx: TestDb;
@@ -204,5 +208,187 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     expect(toolMsg).toBeDefined();
     const toolMsgContent = toolMsg!.content as Record<string, unknown>;
     expect(toolMsgContent._harness_auto_persist).toBe(true);
+  });
+
+  test("ask_user_form submit with oauth2 BYO commit_intent persists connector + writes client_id/client_secret to config.oauth (gmail flow)", async () => {
+    // Reproduces the gmail/google-* BYO authorization_code flow that
+    // pre-fix returned `credential_required` for every retry (session
+    // 48eb113f-fe3b-48b6-a640-68836ec1e05e). The fix wires the
+    // extractor + cache so a single form submit lands the connector
+    // with client_id/client_secret in config.oauth and no
+    // credential row — ready for authenticate_oauth.
+    _resetDraftCredentialCacheForTests();
+
+    // Build a gmail-shape draft. Note: probe checkpoint is intentionally
+    // green (latest_probe.ok=true) because gmail's template has
+    // probe_endpoint=null in production; the auto-persist path would
+    // otherwise hit the probe gate. The integration test focuses on the
+    // credential-extraction → persistCredential contract.
+    const slug = "google-gmail";
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "awaiting_input" })
+      .returning();
+    const conversation_id = conv!.id;
+    const oauth2Draft: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "Gmail API",
+        slug,
+        driver: "http",
+        environment: "dev",
+        auth_type: "oauth2",
+        base_url: "https://gmail.googleapis.com/gmail/v1",
+        template_slug: "google-gmail",
+        config: { oauth: { grant_type: "authorization_code" } },
+      },
+      workflow: { name: "", steps: [] },
+    };
+    const validated = withConnectorValidation(
+      withConnectorInspection(oauth2Draft),
+      {
+        ...oauth2Draft.connector,
+        validation: validateConnectorDraft(oauth2Draft.connector ?? null),
+      },
+      true,
+      "Connector draft validated.",
+    );
+    const draft = withConnectorProbe(
+      validated,
+      {
+        ...validated.connector,
+        latest_probe: {
+          ok: true,
+          method: "GET",
+          path: "/",
+          environment: "dev",
+          status_code: 200,
+          summary: "ok",
+        },
+      },
+      true,
+      "ok",
+    );
+    await appendSnapshot(tenant_id, conversation_id, draft, ctx.db);
+
+    const elicitation = await createCarrierElicitation({
+      conversation_id,
+      tool_name: "ask_user_form",
+      input: {
+        question: "Provide your Google OAuth2 client credentials.",
+        fields: [
+          { name: "client_id", label: "OAuth Client ID", type: "text", sensitive: false },
+          {
+            name: "client_secret",
+            label: "OAuth Client Secret",
+            type: "password",
+            sensitive: true,
+          },
+        ],
+        commit_intent: {
+          kind: "save_connector_draft",
+          payload: {
+            credential: {
+              mode: "oauth2",
+              // LLM-authored mustache placeholders — the form output
+              // must win. SECRET_SEED_FIELDS strips client_secret, and
+              // seedString rejects the mustache pattern for client_id.
+              client_id: "{{client_id}}",
+              client_secret: "{{client_secret}}",
+            },
+            environment: "dev",
+          },
+          description: "Persist Gmail OAuth2 connector with BYO client credentials",
+        },
+      },
+      output: {
+        values: { client_id: "my-google-client", client_secret: "GOCSPX-real" },
+      },
+    });
+
+    const dispatch = await maybeAutoPersistFromElicitation({
+      tenant_id,
+      conversation_id,
+      actor_id: null,
+      elicitation_output: {
+        values: { client_id: "my-google-client", client_secret: "GOCSPX-real" },
+      },
+      elicitation,
+      db: ctx.db,
+    });
+
+    expect(dispatch.dispatched).toBe(true);
+    expect(dispatch.synthetic_result?.ok).toBe(true);
+    expect(dispatch.synthetic_result?.tool).toBe("save_connector_draft");
+    expect(dispatch.synthetic_result?.source).toBe("harness_auto_persist");
+
+    // Connector row exists exactly once.
+    const conn = await ctx.db
+      .select()
+      .from(connectors)
+      .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.slug, slug)));
+    expect(conn).toHaveLength(1);
+
+    // config.oauth populated with the operator-typed values.
+    const savedConfig = (conn[0]!.config ?? {}) as {
+      oauth?: { client_id?: string; client_secret?: string };
+    };
+    expect(savedConfig.oauth?.client_id).toBe("my-google-client");
+    expect(savedConfig.oauth?.client_secret).toBe("GOCSPX-real");
+
+    // ZERO credential rows — the credential lands later via OAuth callback.
+    const cred = await ctx.db
+      .select()
+      .from(credentials)
+      .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, conn[0]!.id)));
+    expect(cred).toHaveLength(0);
+
+    // Audit row exists with `result: "success"` and metadata source
+    // tagged. The metadata MUST NOT carry the literal client_secret —
+    // scrubSecrets in audit.ts strips it; this assertion locks that
+    // contract in.
+    const audit = await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, tenant_id));
+    const approval = audit.find(
+      (r) =>
+        r.action === "approval.approved" &&
+        r.resource_type === "conversation_elicitation" &&
+        r.resource_id === elicitation.id,
+    );
+    expect(approval).toBeDefined();
+    expect(approval!.result).toBe("success");
+    const approvalMeta = (approval!.metadata ?? {}) as Record<string, unknown>;
+    expect(approvalMeta.commit_intent_kind).toBe("save_connector_draft");
+    expect(approvalMeta.tool).toBe("save_connector_draft");
+    expect(approvalMeta.ok).toBe(true);
+    // Secret redaction safety net — neither the audit row itself nor
+    // any other audit row for this tenant should carry the literal
+    // client_secret string. Pre-PR the LLM-authored commit_intent
+    // (with `{{client_secret}}` placeholder) would have been the
+    // closest leak risk; this guard locks the contract in.
+    const auditAsJson = JSON.stringify(audit);
+    expect(auditAsJson).not.toContain("GOCSPX-real");
+
+    // Synthetic tool-call row.
+    const calls = await ctx.db
+      .select()
+      .from(conversationToolCalls)
+      .where(eq(conversationToolCalls.conversation_id, conversation_id));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.tool).toBe("save_connector_draft");
+    const callOutput = calls[0]!.output as Record<string, unknown>;
+    expect(callOutput.source).toBe("harness_auto_persist");
+    expect(callOutput.ok).toBe(true);
+
+    // Draft cache cleared by saveConnectorAtomic on success.
+    expect(getDraftCredential(conversation_id)).toBeNull();
+
+    // connector_authenticated checkpoint MUST stay open until
+    // authenticate_oauth — saving the seed does not bind a credential.
+    const liveDraft = await loadDraft(tenant_id, conversation_id, ctx.db);
+    const checkpoints = liveDraft.summary?.checkpoints ?? [];
+    const authCheckpoint = checkpoints.find((cp) => cp.key === "connector_authenticated");
+    expect(authCheckpoint?.status === "fresh").toBe(false);
+    const persistedCheckpoint = checkpoints.find((cp) => cp.key === "connector_persisted");
+    expect(persistedCheckpoint?.status).toBe("fresh");
   });
 });

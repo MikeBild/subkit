@@ -94,17 +94,17 @@ export function extractCredentialFromFormOutput(
   output: unknown,
 ): AtomicCredentialInput | null {
   // The LLM frequently emits `mode: "oauth2"` in the commit_intent —
-  // it sees the connector's `auth_type: "oauth2"` and copies it. But
-  // there is no concrete "oauth2" credential ROW shape — only the
-  // grant-specific bootstrap shapes (cognito_user_password, …) and the
-  // post-exchange `mode: "oauth2"` row that the engine produces
-  // internally. Pre-fix this fell through to `default → null` and the
-  // form output silently produced no credential, leading to a saved
-  // connector with no auth → 401 on every call (session bab50df1).
-  // Promote `oauth2` to the matching grant-specific bootstrap based on
-  // the seed override hints (or, when no hint is present, fall back to
-  // RFC 6749 password-grant which uses the same {username,password}
-  // shape).
+  // it sees the connector's `auth_type: "oauth2"` and copies it. The
+  // engine has two concrete shapes for an oauth2 form submission:
+  //   1. Cognito user/password bootstrap (AppSync, API Gateway Cognito) —
+  //      the form provides {username, password}; promote `seedMode` to
+  //      `cognito_user_password` so the switch builds the right shape.
+  //   2. BYO OAuth client (Google, Microsoft, Slack, Salesforce, …) —
+  //      the form provides {client_id, client_secret?}; `seedMode` stays
+  //      `"oauth2"` and the `case "oauth2":` branch below builds the
+  //      AtomicCredentialInput.oauth2 seed that
+  //      `saveConnectorAtomic.persistCredential` writes into
+  //      `connectors.config.oauth`.
   if (seedMode === "oauth2") {
     const grantHint =
       typeof seedOverrides.grant_type === "string" ? seedOverrides.grant_type : null;
@@ -115,11 +115,6 @@ export function extractCredentialFromFormOutput(
     ) {
       seedMode = "cognito_user_password";
     }
-    // Other grant_types (authorization_code, client_credentials) don't go
-    // through the form-submit credential path — authorization_code is run
-    // by `authenticate_oauth`, client_credentials runs in the refresh
-    // worker. Falling through to default returns null which surfaces as
-    // `credential_required` to the caller.
   }
   const out = (output ?? {}) as Record<string, unknown>;
   const values =
@@ -224,6 +219,34 @@ export function extractCredentialFromFormOutput(
       if (session_token) out.session_token = session_token;
       return out;
     }
+    case "oauth2": {
+      // BYO OAuth client. The operator types client_id (and optionally
+      // client_secret + token_endpoint + authorization_endpoint + scopes)
+      // into a masked ask_user_form; saveConnectorAtomic.persistCredential
+      // writes them into connectors.config.oauth so authenticate_oauth
+      // can run the authorization-code dance. NO credential row is
+      // written here — the OAuth callback route creates it after the
+      // browser exchange. Matches AtomicCredentialInput.oauth2 in
+      // save-connector.ts. client_secret is optional because PKCE
+      // public-client flows legitimately omit it.
+      const client_id = seedString("client_id") ?? pick(["client_id"]);
+      if (!client_id) return null;
+      const out: Extract<AtomicCredentialInput, { mode: "oauth2" }> = {
+        mode: "oauth2",
+        client_id,
+      };
+      const client_secret = seedString("client_secret") ?? pick(["client_secret"]);
+      if (client_secret) out.client_secret = client_secret;
+      const token_endpoint = seedString("token_endpoint") ?? pick(["token_endpoint", "token_url"]);
+      if (token_endpoint) out.token_endpoint = token_endpoint;
+      const authorization_endpoint =
+        seedString("authorization_endpoint") ??
+        pick(["authorization_endpoint", "auth_url", "authorize_url"]);
+      if (authorization_endpoint) out.authorization_endpoint = authorization_endpoint;
+      const scopes = seedString("scopes") ?? pick(["scopes", "scope"]);
+      if (scopes) out.scopes = scopes;
+      return out;
+    }
     default:
       return null;
   }
@@ -313,7 +336,19 @@ export async function maybeCacheDraftCredentialFromElicitation(p: {
     } else if (authType === "oauth2") {
       const grantType = draftOauthCfg.grant_type ?? templateOauth?.grant_type ?? null;
       if (grantType === "cognito_user_password") seedMode = "cognito_user_password";
-      else if (grantType === "password") seedMode = "basic"; // RFC 6749 §4.3 reuses basic shape
+      else if (grantType === "password")
+        seedMode = "basic"; // RFC 6749 §4.3 reuses basic shape
+      else if (grantType === "authorization_code" || grantType === "client_credentials") {
+        // BYO oauth2 — operator-supplied client_id + optional client_secret
+        // flow into config.oauth via saveConnectorAtomic.persistCredential.
+        // Cached for the LLM's credential-less re-save retry; the actual
+        // access_token/refresh_token row is written by the OAuth callback,
+        // never by extractCredentialFromFormOutput.
+        seedMode = "oauth2";
+      }
+      // Any other grantType (jwt-bearer, device_code, …) still hits the
+      // cache_skipped forensic log below so the next addition is
+      // debuggable from logs alone.
     } else if (authType === "aws_sigv4") {
       seedMode = "aws_sigv4";
     }

@@ -69,6 +69,20 @@ import {
   type WrappedToolOutput,
 } from "./state.ts";
 
+// issue #165: surface a tool's `example_input` (single object) as the
+// SDK's `inputExamples` array, in one place so the `as` cast doesn't
+// proliferate. Currently no provider Anthropic / OpenAI / Gemini reads
+// this field server-side; it stays as forward-compatible metadata
+// alongside the `<example>` block compileDescription appends to the
+// tool description (the channel models actually see today). Exported
+// for the test suite (propose-skill-strict.test.ts).
+export function toInputExamples(
+  example: Readonly<Record<string, unknown>> | undefined,
+): { inputExamples: Array<{ input: Record<string, unknown> }> } | Record<string, never> {
+  if (!example) return {};
+  return { inputExamples: [{ input: example as Record<string, unknown> }] };
+}
+
 export function wrapOne(
   inner: ConversationTool,
   ctx: ToolContext,
@@ -93,6 +107,9 @@ export function wrapOne(
   return tool<Record<string, unknown>, WrappedToolOutput>({
     description: compileDescription(inner),
     inputSchema,
+    // issue #165: opt-in provider-native strict mode + inputExamples.
+    ...(inner.strict ? { strict: true as const } : {}),
+    ...toInputExamples(inner.example_input),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
       // Serialize against other tool executions in this turn — see
       // TurnSignals.toolChain for rationale.

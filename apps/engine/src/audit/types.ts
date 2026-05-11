@@ -354,6 +354,32 @@ export const AuditAction = {
   ENGINE_UPDATE_COMPLETED: "engine.update.completed",
   ENGINE_UPDATE_FAILED: "engine.update.failed",
   ENGINE_UPDATE_ROLLED_BACK: "engine.update.rolled_back",
+
+  // ---------------------------------------------------------------------
+  // External MCP servers (issue #171 writer; schema landed with #166).
+  // Reserve the typed constants here so the writer cannot mint
+  // free-string action values. Vocabulary mirrors the doc-block at the
+  // top of apps/engine/src/db/schema/mcp_servers.ts.
+  // ---------------------------------------------------------------------
+  MCP_SERVER_REGISTERED: "mcp_server.registered",
+  MCP_SERVER_CONFIG_UPDATED: "mcp_server.config_updated",
+  MCP_SERVER_DISABLED: "mcp_server.disabled",
+  MCP_SERVER_RE_ENABLED: "mcp_server.re_enabled",
+  MCP_SERVER_ERRORED: "mcp_server.errored",
+  MCP_SERVER_DELETED: "mcp_server.deleted",
+  MCP_SERVER_HANDSHAKE_OK: "mcp_server.handshake_ok",
+
+  // ---------------------------------------------------------------------
+  // External non-LLM provider calls (Cohere rerank, Firecrawl, Exa,
+  // Browserbase, ...). The metering ledger
+  // (apps/engine/src/db/schema/external_call_metering.ts) deliberately
+  // does NOT carry an `audit_id` pointer (parity with `llm_usage`); the
+  // *originating* state change still needs an audit row, and consumers
+  // join via `(tenant_id, created_at)`. Constants reserved for the
+  // first writer (issues #167 / #168 / #174).
+  // ---------------------------------------------------------------------
+  EXTERNAL_PROVIDER_CALL_SUCCEEDED: "external_provider.call_succeeded",
+  EXTERNAL_PROVIDER_CALL_FAILED: "external_provider.call_failed",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

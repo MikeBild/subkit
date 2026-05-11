@@ -26,6 +26,23 @@ export const proposeSkillTool: ConversationTool = {
     "Use this when you identify operational rules, best practices, or conventions.",
   inputSchema,
   category: "draft_write" as const,
+  // Strict mode safe here: schema is all concrete types (issue #165).
+  strict: true,
+  example_input: {
+    scope: "global",
+    title: "Always idempotency-key POST requests against the payments provider",
+    body: "When calling payments-provider POST endpoints, include an Idempotency-Key header derived from the workflow run id so retries don't double-charge.",
+    examples: [
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: placeholder grammar surfaced to the LLM as few-shot text.
+      'curl -X POST https://payments.example.test/v1/charges -H "Idempotency-Key: ${run_id}"',
+    ],
+    best_practices: [
+      "Use a stable per-run id, not a fresh uuid per attempt.",
+      "Combine the run id with the step id for granular idempotency.",
+    ],
+    pitfalls: ["Don't reuse keys across runs — Stripe will return the prior response."],
+    reason: "Observed two duplicate-charge incidents in support tickets.",
+  },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
 

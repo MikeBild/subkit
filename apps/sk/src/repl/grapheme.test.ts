@@ -13,12 +13,12 @@ describe("firstGrapheme", () => {
   test("treats a ZWJ emoji as a single grapheme", () => {
     // family emoji: man + ZWJ + woman + ZWJ + boy
     const family = "\u{1F468}‍\u{1F469}‍\u{1F466}";
-    expect(firstGrapheme(family + " party")).toBe(family);
+    expect(firstGrapheme(`${family} party`)).toBe(family);
   });
 
   test("treats a flag emoji as a single grapheme", () => {
     const flag = "\u{1F1E9}\u{1F1EA}"; // German flag
-    expect(firstGrapheme(flag + "ploy")).toBe(flag);
+    expect(firstGrapheme(`${flag}ploy`)).toBe(flag);
   });
 
   test("treats a CJK character as one grapheme", () => {

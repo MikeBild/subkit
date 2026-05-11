@@ -78,17 +78,107 @@ describe("extractCredentialFromFormOutput — oauth2 → cognito routing", () =>
     expect(out?.mode).toBe("cognito_user_password");
   });
 
-  it("returns null for plain oauth2 without any cognito hint (caller surfaces credential_required)", () => {
-    // Authorization-code and client-credentials grants don't go through
-    // the form-submit path — authentication runs through
-    // `authenticate_oauth` and the refresh worker. Plain oauth2 with no
-    // Cognito hint should NOT silently land as some other mode.
+  it("falls through to the BYO oauth2 branch when form provides client_id (no cognito hint)", () => {
+    // Without cognito hints + with client_id present, the extractor
+    // builds the AtomicCredentialInput.oauth2 seed — NOT cognito.
+    // {username,password} values without a client_id mean the form
+    // doesn't carry the right shape for the BYO oauth2 branch either,
+    // so the result is null. See the "oauth2 BYO authorization_code"
+    // describe block below for the positive case.
     const out = extractCredentialFromFormOutput(
       "oauth2",
       {},
       { values: { username: "u@x.com", password: "pw" } },
     );
     expect(out).toBeNull();
+  });
+});
+
+describe("extractCredentialFromFormOutput — oauth2 BYO authorization_code", () => {
+  it("returns oauth2 seed with client_id + client_secret from form values (gmail / google-* / msgraph BYO)", () => {
+    const out = extractCredentialFromFormOutput(
+      "oauth2",
+      {},
+      { values: { client_id: "client-abc", client_secret: "secret-xyz" } },
+    );
+    expect(out).toEqual({
+      mode: "oauth2",
+      client_id: "client-abc",
+      client_secret: "secret-xyz",
+    });
+  });
+
+  it("returns oauth2 seed with client_id only (PKCE public client, no secret)", () => {
+    const out = extractCredentialFromFormOutput(
+      "oauth2",
+      {},
+      { values: { client_id: "public-app-id" } },
+    );
+    expect(out).toEqual({ mode: "oauth2", client_id: "public-app-id" });
+    if (out?.mode === "oauth2") {
+      expect(out.client_secret).toBeUndefined();
+    }
+  });
+
+  it("accepts client_id from seedOverrides + client_secret from form (template-provided client_id)", () => {
+    const out = extractCredentialFromFormOutput(
+      "oauth2",
+      { client_id: "template-shared-id" },
+      { values: { client_secret: "shh" } },
+    );
+    expect(out).toEqual({
+      mode: "oauth2",
+      client_id: "template-shared-id",
+      client_secret: "shh",
+    });
+  });
+
+  it("threads optional token_endpoint, authorization_endpoint, scopes through to the seed", () => {
+    const out = extractCredentialFromFormOutput(
+      "oauth2",
+      {},
+      {
+        values: {
+          client_id: "abc",
+          client_secret: "shh",
+          token_endpoint: "https://example.com/token",
+          authorization_endpoint: "https://example.com/authorize",
+          scopes: "read write",
+        },
+      },
+    );
+    expect(out?.mode).toBe("oauth2");
+    if (out?.mode === "oauth2") {
+      expect(out.token_endpoint).toBe("https://example.com/token");
+      expect(out.authorization_endpoint).toBe("https://example.com/authorize");
+      expect(out.scopes).toBe("read write");
+    }
+  });
+
+  it("returns null when neither form nor seed provide client_id", () => {
+    const out = extractCredentialFromFormOutput(
+      "oauth2",
+      {},
+      { values: { client_secret: "orphan" } },
+    );
+    expect(out).toBeNull();
+  });
+
+  it("rejects mustache placeholder client_secret in seedOverrides; form value wins", () => {
+    // The LLM authors `{{client_secret}}` into the commit_intent payload
+    // to mark "fill from form". The seed-side scrub in mergeFormIntoCredential
+    // strips the secret key, but `seedString` here also rejects any
+    // embedded placeholder so a leak through any path cannot poison
+    // the real form value.
+    const out = extractCredentialFromFormOutput(
+      "oauth2",
+      { client_id: "id", client_secret: "{{client_secret}}" },
+      { values: { client_secret: "real-secret" } },
+    );
+    expect(out?.mode).toBe("oauth2");
+    if (out?.mode === "oauth2") {
+      expect(out.client_secret).toBe("real-secret");
+    }
   });
 });
 
@@ -237,4 +327,43 @@ describe("extractCredentialFromFormOutput — defensive", () => {
     );
     expect(out).toEqual({ mode: "basic", username: "alice", password: "pw" });
   });
+});
+
+describe("extractCredentialFromFormOutput — schema coverage cross-check", () => {
+  // Guard against the next "we forgot to wire a new auth mode" latent
+  // prod trip (which is exactly what bit gmail/google-*/msgraph for
+  // four engine versions). Every variant of AtomicCredentialInput must
+  // round-trip through extractCredentialFromFormOutput when given a
+  // minimal happy-path form output. If you add a new credential mode
+  // to AtomicCredentialInput, add it here AND wire the switch arm in
+  // credential-cache.ts in the same commit.
+  const minimalInputs = [
+    { seedMode: "bearer", output: { values: { token: "t" } } },
+    { seedMode: "basic", output: { values: { username: "u", password: "p" } } },
+    {
+      seedMode: "header",
+      output: { values: { header_name: "X-K", header_value: "v" } },
+    },
+    { seedMode: "query", output: { values: { param: "k", value: "v" } } },
+    {
+      seedMode: "cognito_user_password",
+      output: { values: { username: "u@x.com", password: "p" } },
+    },
+    {
+      seedMode: "aws_sigv4",
+      output: { values: { access_key_id: "AKIA...", secret_access_key: "s..." } },
+    },
+    {
+      seedMode: "oauth2",
+      output: { values: { client_id: "abc", client_secret: "xyz" } },
+    },
+  ] as const;
+
+  for (const tc of minimalInputs) {
+    it(`covers ${tc.seedMode}`, () => {
+      const out = extractCredentialFromFormOutput(tc.seedMode, {}, tc.output);
+      expect(out).not.toBeNull();
+      expect(out?.mode).toBe(tc.seedMode);
+    });
+  }
 });
