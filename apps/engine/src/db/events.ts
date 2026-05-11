@@ -11,6 +11,7 @@ type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 export type OutboxChannel =
   | "execution.status"
   | "workflow.chain"
+  | "workflow.lifecycle"
   | "connector.oauth"
   | "conversation.stream"
   | "event.emitted"

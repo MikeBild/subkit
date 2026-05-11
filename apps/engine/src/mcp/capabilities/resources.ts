@@ -1,9 +1,11 @@
-// Connectors, Knowledge Sources, and Skill Candidates → MCP resources.
+// Connectors, Knowledge Sources, Skill Candidates, and Workflows → MCP
+// resources.
 //
 // Each domain object becomes a resource at its respective URI:
-//   - `connector://<id>` — connector metadata (no credentials)
-//   - `knowledge://<id>` — knowledge source metadata + chunk count
+//   - `connector://<id>`       — connector metadata (no credentials)
+//   - `knowledge://<id>`       — knowledge source metadata + chunk count
 //   - `skill-candidate://<id>` — proposed skill improvement
+//   - `workflow://<id>`        — committed workflow definition (issue #169)
 //
 // `resources/subscribe` is wired to outbox pub/sub: events for
 // subscribed resources push `notifications/resources/updated`.
@@ -25,6 +27,7 @@ import { globalEmitter, type PubSubEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { can } from "../../rbac/evaluator.ts";
 import * as skillCandidateSvc from "../../skill-candidates/service.ts";
+import * as workflowSvc from "../../workflows/service.ts";
 
 export interface RegisterResourcesParams {
   server: Server;
@@ -42,6 +45,9 @@ function knowledgeUri(id: string): string {
 }
 function skillCandidateUri(id: string): string {
   return `skill-candidate://${id}`;
+}
+function workflowUri(id: string): string {
+  return `workflow://${id}`;
 }
 
 export function registerResourcesCapability(p: RegisterResourcesParams): void {
@@ -78,6 +84,43 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       });
     }
   });
+
+  // Issue #169 — subscribe to the workflow.lifecycle channel. Every
+  // committed create/update/delete in workflows/service.ts emits one
+  // event here; we forward `notifications/resources/updated` to any
+  // session that subscribed to the matching `workflow://<id>` URI. The
+  // tenant-id check (line below) is the same tenant-isolation pattern
+  // used by every other listener in this file — required because
+  // emitters fan out to every active MCP session in the process.
+  const offWorkflowLifecycle = emitter.on(
+    "workflow.lifecycle",
+    async (event: EventEnvelope<unknown>) => {
+      if (event.tenant_id !== principal.tenant_id) return;
+      const payload = (event.payload ?? {}) as { workflow_id?: string };
+      const workflowId = payload.workflow_id;
+      if (!workflowId) return;
+      const uri = workflowUri(workflowId);
+      if (!subscribed.has(uri)) return;
+      try {
+        await server.sendResourceUpdated({ uri });
+        logger.debug({
+          module: "mcp",
+          action: "mcp.resource.updated",
+          msg: "mcp resource update notification sent",
+          uri,
+          event_type: event.type,
+        });
+      } catch (err) {
+        logger.warn({
+          module: "mcp",
+          action: "mcp.resource.updated.failed",
+          msg: "failed to send mcp resource update",
+          uri,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+  );
 
   // Subscribe to notification.emitted for knowledge + skill-candidate events.
   // Both event types flow through the generic notification channel.
@@ -121,6 +164,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
   server.onclose = (): void => {
     offConnectorOauth();
     offNotification();
+    offWorkflowLifecycle();
     subscribed.clear();
     if (typeof priorOnClose === "function") {
       try {
@@ -174,6 +218,21 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         uri: skillCandidateUri(sc.id),
         name: `Suggestion: ${sc.title}`,
         description: `${sc.pattern_kind} (${sc.confidence}) — ${sc.body.slice(0, 120)}`,
+        mimeType: "application/json",
+      });
+    }
+
+    // Workflows (active only, tenant-scoped). Issue #169.
+    const workflowList = await workflowSvc.listWorkflows(
+      principal.tenant_id,
+      { status: "active" },
+      db,
+    );
+    for (const wf of workflowList) {
+      resources.push({
+        uri: workflowUri(wf.id),
+        name: wf.name,
+        description: `Workflow (${wf.slug}) — v${wf.current_version ?? 0}, ${wf.steps.length} steps`,
         mimeType: "application/json",
       });
     }
@@ -254,6 +313,46 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
                 evidence_count: sc.evidence_count,
                 scope: sc.scope,
                 status: sc.status,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    }
+
+    // Workflows (issue #169)
+    if (uri.startsWith("workflow://")) {
+      const id = uri.slice("workflow://".length);
+      const wf = await workflowSvc.getWorkflow(principal.tenant_id, id, db);
+      if (!wf) throw new Error(`workflow not found: ${id}`);
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "workflow:read",
+        resource: { type: "workflow", id: wf.id },
+      });
+      if (!decision.allow) {
+        const err = new Error(decision.reason ?? "permission_denied") as Error & {
+          code?: number;
+        };
+        err.code = -32001;
+        throw err;
+      }
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(
+              {
+                id: wf.id,
+                slug: wf.slug,
+                name: wf.name,
+                lifecycle: wf.lifecycle,
+                current_version: wf.current_version,
+                definition: wf.definition,
               },
               null,
               2,

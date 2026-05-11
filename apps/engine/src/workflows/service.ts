@@ -8,6 +8,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, getDb } from "../db/client.ts";
+import { writeEvent } from "../db/events.ts";
 import { skills as skillsTable, workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import * as scheduleRepo from "../scheduler/repo.ts";
@@ -231,6 +232,12 @@ export async function createWorkflow(
       },
       tx,
     );
+    await writeEvent(tx, {
+      tenant_id: input.tenant_id,
+      channel: "workflow.lifecycle",
+      type: "workflow.created",
+      payload: { workflow_id: wf.id, slug, version: 1 },
+    });
     await applyTriggerBindings(tx, input.tenant_id, wf.id, slug, def, input.actor_id);
     return wf.id;
   });
@@ -333,6 +340,12 @@ export async function updateWorkflow(
       },
       tx,
     );
+    await writeEvent(tx, {
+      tenant_id: input.tenant_id,
+      channel: "workflow.lifecycle",
+      type: "workflow.updated",
+      payload: { workflow_id: wf.id, slug: wf.slug, version: next },
+    });
     log.workflow.committed({
       workflow_id: wf.id,
       tenant_id: input.tenant_id,
@@ -654,6 +667,12 @@ export async function deleteWorkflow(
       },
       tx,
     );
+    await writeEvent(tx, {
+      tenant_id,
+      channel: "workflow.lifecycle",
+      type: "workflow.deleted",
+      payload: { workflow_id: row.id, slug: row.slug },
+    });
     return true;
   });
 }

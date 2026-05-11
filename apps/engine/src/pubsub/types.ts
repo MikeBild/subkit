@@ -7,6 +7,7 @@ export type { OutboxChannel };
 export const LISTENER_CHANNELS: OutboxChannel[] = [
   "execution.status",
   "workflow.chain",
+  "workflow.lifecycle",
   "connector.oauth",
   "conversation.stream",
   "event.emitted",

@@ -1,9 +1,12 @@
 // Audit-contract guard for the reserved `mcp_server.*` and
 // `external_provider.*` constants (issue #166 review W2).
 //
-// The constants live in `apps/engine/src/audit/types.ts` ahead of the
-// writers landing in issues #167 / #168 / #171 / #174. Until the
-// writers exist there is nothing to integration-test, but the
+// `mcp_server.*` constants land their writers with #171 (MCP client
+// pool + registry). `external_provider.*` constants stay reserved for
+// the first opt-in, connector-shaped external-call writer that lands
+// under a per-tenant budget — not for engine-baseline integrations
+// (the runtime-independence policy closed #167 / #168 / #174). Until
+// those writers exist there is nothing to integration-test, but the
 // presence-check below fails-fast if a future cleanup removes the
 // reserved entries before the writers have switched to them — which
 // would silently allow the writer to mint free-string action values.
@@ -31,16 +34,18 @@ describe("issue #166 W2 — reserved audit-action constants", () => {
     expect(AuditAction.EXTERNAL_PROVIDER_CALL_FAILED).toBe("external_provider.call_failed");
   });
 
-  // The writers will land with issues #167 / #168 / #171 / #174 (see
-  // the AuditAction header in types.ts). Each `todo` is a slot for the
+  // mcp-server writers land with #171. Each `todo` is a slot for the
   // matching integration test once the writer module exists.
   it.todo("mcp-server registry writer emits MCP_SERVER_REGISTERED on insert (#171)", () => {});
   it.todo("mcp-server registry writer emits MCP_SERVER_CONFIG_UPDATED on update (#171)", () => {});
   it.todo("mcp-server registry writer emits MCP_SERVER_DELETED on delete (#171)", () => {});
   it.todo("mcp-client pool emits MCP_SERVER_HANDSHAKE_OK on successful handshake (#171)", () => {});
   it.todo("mcp-client pool emits MCP_SERVER_ERRORED on handshake failure (#171)", () => {});
-  it.todo("cohere-rerank wrapper emits EXTERNAL_PROVIDER_CALL_SUCCEEDED on ok (#167)", () => {});
-  it.todo("cohere-rerank wrapper emits EXTERNAL_PROVIDER_CALL_FAILED on error (#167)", () => {});
-  it.todo("firecrawl driver emits EXTERNAL_PROVIDER_CALL_SUCCEEDED on ok (#168)", () => {});
-  it.todo("exa driver emits EXTERNAL_PROVIDER_CALL_FAILED on error (#168)", () => {});
+  // EXTERNAL_PROVIDER_CALL_* writers are reserved for the first opt-in,
+  // connector-shaped external-call site that lands under a per-tenant
+  // budget — not for engine-baseline integrations. Engine-baseline
+  // proposals (Cohere rerank, Firecrawl, Exa) were dropped under the
+  // runtime-independence policy.
+  it.todo("connector-shaped external-provider writer emits EXTERNAL_PROVIDER_CALL_SUCCEEDED on ok", () => {});
+  it.todo("connector-shaped external-provider writer emits EXTERNAL_PROVIDER_CALL_FAILED on error", () => {});
 });

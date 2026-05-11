@@ -1,5 +1,7 @@
 // External-provider call metering — cost tracking for non-LLM providers
-// (Cohere rerank, Firecrawl, Exa, Browserbase, etc.).
+// invoked by opt-in, connector-shaped writers under a per-tenant budget.
+// The engine's own runtime hot paths (discovery, ranking, scraping) stay
+// local by policy and never write to this ledger.
 //
 // Mirrors the `llm_usage` ledger: append-only, per-tenant, month-bucketed
 // for cheap `sum(...)` budget queries. Unlike `llm_usage` we do not weight
@@ -33,7 +35,9 @@ export const externalCallMetering = pgTable(
   {
     id: bigserial("id", { mode: "number" }).primaryKey(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    // Provider slug — "cohere", "firecrawl", "exa", "browserbase", ...
+    // Provider slug — opaque, set by the writer (e.g. the operator's chosen
+    // managed scraping or reranking service when wired via an opt-in
+    // connector template).
     provider: text("provider").notNull(),
     // Optional operation name — e.g. "rerank", "crawl", "search", "scrape".
     operation: text("operation"),
