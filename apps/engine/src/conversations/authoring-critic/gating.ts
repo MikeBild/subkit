@@ -24,12 +24,15 @@ interface CriticConfig {
   max_consecutive_rejections: number;
 }
 
-// Warn once per process when the config loader is unreachable. Without
-// this signal a production misconfig that throws inside `getConfig()`
-// silently makes the critic look disabled — operators would lose time
-// debugging "critic isn't running" against a config that visibly says
-// `enabled:true`.
-let configMissWarned = false;
+// Warn on a 60 s throttle when the config loader is unreachable.
+// Without this signal a production misconfig that throws inside
+// `getConfig()` silently makes the critic look disabled — operators
+// would lose time debugging "critic isn't running" against a config
+// that visibly says `enabled:true`. A throttle (vs. one-shot) lets a
+// hot-reload that briefly loses and regains the config refire the
+// warning instead of staying mute for the rest of the process.
+const CONFIG_MISS_WARN_THROTTLE_MS = 60_000;
+let lastConfigMissWarnedAt = 0;
 
 function readConfig(tenantId?: string): CriticConfig {
   try {
@@ -45,8 +48,9 @@ function readConfig(tenantId?: string): CriticConfig {
       max_consecutive_rejections: cfg.max_consecutive_rejections,
     };
   } catch (err) {
-    if (!configMissWarned) {
-      configMissWarned = true;
+    const now = Date.now();
+    if (now - lastConfigMissWarnedAt >= CONFIG_MISS_WARN_THROTTLE_MS) {
+      lastConfigMissWarnedAt = now;
       logger.warn({
         module: "conversations",
         action: "critic.config_unavailable",

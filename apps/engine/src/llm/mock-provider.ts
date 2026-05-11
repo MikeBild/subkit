@@ -15,6 +15,7 @@
 // flag lets the routing test simulate `rate_limit` / `overloaded`
 // errors on the primary model.
 
+import { logger } from "../logging/logger.ts";
 import { LlmProviderError } from "./errors.ts";
 import type { EnhancedPrompt, LlmFlow } from "./types.ts";
 
@@ -214,15 +215,16 @@ class MockProvider {
         // behaviour install an override via
         // `generateOverrides.critic_authoring`. Without that, a test
         // that intended to assert on the critic silently sees a pass —
-        // emit a one-time `console.warn` (the loop's only safe sink
-        // here; the mock provider is intentionally logger-free) the
-        // first time the default fires per process so missed overrides
-        // surface in CI output. Real-LLM code never hits this branch.
+        // emit a one-time `logger.warn` the first time the default
+        // fires per process so missed overrides surface in CI output.
+        // Real-LLM code never hits this branch.
         if (!this.defaultCriticPassWarned) {
           this.defaultCriticPassWarned = true;
-          console.warn(
-            "[mock-provider] critic_authoring default pass returned — tests that intend to assert critic behaviour must install generateOverrides.critic_authoring",
-          );
+          logger.warn({
+            module: "llm",
+            action: "mock.critic.default_pass",
+            msg: "mock-provider critic_authoring default pass returned — tests that intend to assert critic behaviour must install generateOverrides.critic_authoring",
+          });
         }
         const obj = {
           passed: true,

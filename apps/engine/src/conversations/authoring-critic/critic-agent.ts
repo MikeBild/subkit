@@ -10,10 +10,13 @@
 //
 // The critic does NOT patch the draft. The verdict is hints only.
 //
-// Routing: the critic uses the tenant's primary `llm.*` route. To pin
-// a cheaper model just for critic runs, operators set `llm.model` /
-// `llm.provider` at the tenant scope; the critic call shares it with
-// the rest of the authoring loop.
+// Routing: the critic shares the tenant's primary `llm.*` route — there
+// is no per-flow model knob. Cost control happens at the gate
+// (`llm.critic.{enabled,min_steps,max_consecutive_rejections}`) and at
+// the prompt cap (`RENDERED_DRAFT_CAP`). Operators wanting a cheaper
+// model for the critic can lower the tenant's primary model — which
+// affects every flow — or leave the critic off until a per-flow knob
+// lands.
 
 import type { Db } from "../../db/client.ts";
 import { invoke } from "../../llm/core/invoke.ts";
@@ -53,9 +56,13 @@ export interface RunCriticAgentParams {
 
 /**
  * Invoke the authoring critic. Returns the parsed verdict, or a
- * fail-open `passed:true` placeholder when the LLM call itself errored
- * (the critic is an opt-in enhancement; transient provider errors must
- * never block the build_workflow result).
+ * fail-open `passed:true` placeholder when:
+ *   - the LLM call itself errored (transient provider failure),
+ *   - the provider returned text without a structured object, OR
+ *   - the structured object failed `AuthoringCriticVerdictSchema`.
+ *
+ * The critic is an opt-in enhancement; transient provider errors and
+ * contract drift must never block the build_workflow result.
  */
 export async function runCriticAgent(
   params: RunCriticAgentParams,
@@ -87,7 +94,25 @@ export async function runCriticAgent(
       recordCriticRun({ result: "fail_open" });
       return { passed: true, repairs: [], rationale: "critic returned no structured verdict" };
     }
-    const verdict = result.object;
+    // Re-parse through `AuthoringCriticVerdictSchema` so the preprocess
+    // clamp (slice repairs to 5, truncate rationale to 800 chars) runs
+    // on EVERY path. `invoke()` ships the schema to the provider as JSON
+    // Schema; the preprocess function never executes on that path, so a
+    // provider that returns more/longer entries than the contract allows
+    // would otherwise slip through with the clamp silently inactive.
+    const parsed = AuthoringCriticVerdictSchema.safeParse(result.object);
+    if (!parsed.success) {
+      logger.warn({
+        module: "conversations",
+        action: "critic.verdict_invalid",
+        msg: "critic returned structured output that failed schema validation; passing",
+        tenant_id: params.tenant_id,
+        error: parsed.error.issues.map((i) => i.path.join(".")).join(","),
+      });
+      recordCriticRun({ result: "fail_open" });
+      return { passed: true, repairs: [], rationale: "critic verdict failed schema validation" };
+    }
+    const verdict = parsed.data;
     logger.info({
       module: "conversations",
       action: "critic.verdict",

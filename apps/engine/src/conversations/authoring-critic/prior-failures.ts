@@ -23,8 +23,15 @@ export interface PriorFailure {
 
 export interface ExpandResult {
   entries: PriorFailure[];
-  /** True when at least one critic_rejected row was seen — caller flips
-   *  `stepRouterSignals.priorCriticFail` to escalate the next turn. */
+  /** True when at least one critic_rejected row was seen AND its
+   *  `details.repairs[]` survived schema validation. Caller flips
+   *  `stepRouterSignals.priorCriticFail` to escalate the next turn.
+   *
+   *  A rejection with malformed `details` does NOT flip the signal:
+   *  the next turn would only see escalation with no actionable hint,
+   *  which pushes the model to retry without context. Better to log
+   *  the producer drift, drop the row entirely, and let the normal
+   *  routing decide. */
   hadCriticReject: boolean;
 }
 
@@ -34,14 +41,15 @@ const MAX_ENTRIES = 5;
  * Expand recent failing tool-call output rows into `prior_failures`
  * entries the next conversation turn can fold into its prompt.
  *
- *   - `error_code === "critic_rejected"` → one row per `details.repairs[i]`
- *     tagged `step_id:"critic"`. Verdict shape is validated against
- *     `CriticRejectedDetailsSchema`; malformed details produce no rows
- *     (the rejection itself is dropped silently rather than re-surfacing
- *     a garbled hint).
+ *   - `error_code === "critic_rejected"` with non-empty, schema-valid
+ *     `details.repairs[]` → one row per repair tagged `step_id:"critic"`;
+ *     `hadCriticReject` flips so step-router escalates the next turn.
+ *   - `error_code === "critic_rejected"` with malformed or empty
+ *     `details.repairs[]` → row dropped, signal suppressed (producer
+ *     drift / empty-but-valid case). Producer drift is logged.
  *   - any other `ok:false`/`error_code` row → a single row
- *     `${tool} failed (${code}): ${message} — try next: ...` keyed by the
- *     producing tool name.
+ *     `${tool} failed (${code}): ${message} — try next: ...` keyed by
+ *     the producing tool name.
  *
  * Capped at MAX_ENTRIES so the prompt budget cannot blow up from a
  * conversation that has been flailing for a while.
@@ -58,21 +66,30 @@ export function expandPriorFailuresFromToolCalls(
     if (output.ok !== false && typeof output.error_code !== "string") continue;
     const code = typeof output.error_code === "string" ? output.error_code : "tool_failed";
     if (code === "critic_rejected") {
-      hadCriticReject = true;
       const parsed = CriticRejectedDetailsSchema.safeParse(output.details);
       if (!parsed.success) {
         // Producer drift: a critic_rejected row with a malformed
-        // `details` shape. The next turn loses the repair hints but
-        // the signal still flips, so we surface a warn so production
-        // drift away from the contract is visible.
+        // `details` shape. Drop the row AND suppress the signal: a
+        // bare escalation with no repair hint just pushes the model
+        // to retry without context, which makes the next turn worse
+        // not better. Surface the producer drift in the log so the
+        // contract divergence is visible in production.
         logger.warn({
           module: "conversations",
           action: "critic.details_malformed",
-          msg: "critic_rejected tool output failed CriticRejectedDetailsSchema; repairs dropped",
+          msg: "critic_rejected tool output failed CriticRejectedDetailsSchema; row dropped + signal suppressed",
           error: parsed.error.issues.map((i) => i.path.join(".")).join(","),
         });
+        continue;
       }
-      const repairs = parsed.success ? parsed.data.repairs : [];
+      const repairs = parsed.data.repairs;
+      if (repairs.length === 0) {
+        // Well-formed details but empty repairs[] — schema permits it.
+        // No hint to inject; without a hint the escalation has no
+        // content for the next turn, so suppress the signal too.
+        continue;
+      }
+      hadCriticReject = true;
       for (const repair of repairs) {
         entries.push({ step_id: "critic", error: repair });
         if (entries.length >= MAX_ENTRIES) break;

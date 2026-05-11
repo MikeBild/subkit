@@ -614,10 +614,13 @@ export const buildWorkflowTool: ConversationTool = {
     // Fail-open by design: provider errors / parse failures yield a
     // pass with an explanatory rationale rather than blocking the build.
     //
-    // Drift signal: union of the current draft's most recent preview
-    // warnings AND warnings from prior build_workflow calls on this
-    // conversation — a re-author of a previously-drifted workflow
-    // should still trigger the critic.
+    // Drift signal: current draft's `latest_preview.warnings` plus
+    // warnings from prior build_workflow calls on OTHER drafts in this
+    // conversation (different slug). A re-author of a previously-drifted
+    // workflow still triggers the critic via the prior-draft term;
+    // re-authoring the SAME slug doesn't double-count because
+    // `currentDraft.latest_preview` already reflects that draft's most
+    // recent preview.
     //
     // Anti-loop: count consecutive `critic_rejected` outputs in the
     // recent tool-call window and skip the critic once
@@ -644,16 +647,23 @@ export const buildWorkflowTool: ConversationTool = {
       }
       break;
     }
+    // Sum warnings from PRIOR build_workflow outputs on OTHER drafts
+    // (different slug) only. A re-author of the current draft would
+    // produce a row whose preview matches `currentDraft.latest_preview`;
+    // counting both would double-count the same warning set. Filtering
+    // by slug keeps the union-with-the-current-preview semantics
+    // truthful: "did a different draft in this conversation also
+    // drift" plus "did the current draft's preview drift".
     let priorDraftWarnings = 0;
     for (const row of recentBuildOutputs) {
-      // Only `build_workflow` outputs carry a `preview.warnings` shape
-      // we own — warnings from `dry_run_workflow` / `dry_run_step` use a
-      // different envelope and must not inflate the critic's drift
-      // signal (review WARN #1: cross-tool drift bleed).
       if (row.tool !== "build_workflow") continue;
       const out = row.output as Record<string, unknown> | null;
       if (!out) continue;
       const data = (out.data ?? {}) as Record<string, unknown>;
+      const draftSummary = (data.draft ?? {}) as Record<string, unknown>;
+      // Drop rows for the current slug — the current draft's warnings
+      // are already counted via `currentDraft.latest_preview` below.
+      if (typeof draftSummary.slug === "string" && draftSummary.slug === args.slug) continue;
       const previewWarnings = (data.preview ?? {}) as Record<string, unknown>;
       const warnings = previewWarnings.warnings;
       if (Array.isArray(warnings)) priorDraftWarnings += warnings.length;

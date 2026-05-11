@@ -49,9 +49,11 @@ describe("authoring-critic — producer/consumer contract", () => {
     expect(r.entries[0]!.error).toContain("Move `shape`");
   });
 
-  test("malformed details on a critic_rejected row do NOT crash and do NOT inject hints", () => {
-    // If a producer ever drifts away from the schema, the loop should
-    // tolerate the row (fail-open) rather than crash the turn.
+  test("malformed details on a critic_rejected row do NOT crash, do NOT inject hints, AND suppress the signal", () => {
+    // Producer drift: the loop tolerates the row (fail-open) and
+    // ALSO suppresses `priorCriticFail`. A bare escalation with no
+    // hint just pushes the model to retry without context — worse
+    // than no escalation. Suppression is logged at the source.
     const row = {
       tool: "build_workflow",
       output: {
@@ -61,7 +63,7 @@ describe("authoring-critic — producer/consumer contract", () => {
       },
     };
     const r = expandPriorFailuresFromToolCalls([row]);
-    expect(r.hadCriticReject).toBe(true);
+    expect(r.hadCriticReject).toBe(false);
     expect(r.entries).toHaveLength(0);
   });
 
@@ -122,17 +124,17 @@ describe("authoring-critic — producer/consumer contract", () => {
     expect(r.hadCriticReject).toBe(false);
   });
 
-  test("critic rejection with empty repairs[] still flips the priorCriticFail signal", () => {
-    // The LLM has the schema's minimum-length constraint, but a
-    // malformed verdict could still produce zero entries. The
-    // signal must fire so step-router escalates regardless — the
-    // important behaviour is the escalation, not the repair text.
+  test("critic rejection with empty repairs[] suppresses the priorCriticFail signal", () => {
+    // Well-formed verdict but zero repairs (schema permits it). With
+    // no hint to inject, the escalation has no content for the next
+    // turn — suppress the signal so the router doesn't push to the
+    // top tier without a reason the model can act on.
     const row = makeCriticRejectedToolCallRow({
       repairs: [],
       rationale: "empty repairs",
     });
     const r = expandPriorFailuresFromToolCalls([row]);
-    expect(r.hadCriticReject).toBe(true);
+    expect(r.hadCriticReject).toBe(false);
     expect(r.entries).toHaveLength(0);
   });
 });

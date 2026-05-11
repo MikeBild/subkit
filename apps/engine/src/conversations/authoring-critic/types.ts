@@ -63,10 +63,12 @@ export type AuthoringCriticVerdict = z.infer<typeof AuthoringCriticVerdictSchema
  * Shape of `details` on the `ok:false {error_code:"critic_rejected"}`
  * tool result. Single source of truth: build_workflow produces with
  * this shape, the conversation loop parses it for `prior_failures`.
+ * Bounds mirror `AuthoringCriticVerdictSchema` so the producer/
+ * consumer contracts cannot drift apart.
  */
 export const CriticRejectedDetailsSchema = z.object({
-  repairs: z.array(z.string()).max(REPAIRS_CAP),
-  rationale: z.string(),
+  repairs: z.array(z.string().min(1).max(REPAIR_LENGTH_CAP)).max(REPAIRS_CAP),
+  rationale: z.string().min(1).max(RATIONALE_LENGTH_CAP),
   gating_reason: z.string().optional(),
 });
 

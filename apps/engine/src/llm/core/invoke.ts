@@ -643,23 +643,28 @@ async function dispatchReal<T>(
     cache_read_tokens: usage.cache_read_tokens,
     cache_creation_tokens: usage.cache_creation_tokens,
   });
-  audit({
-    tenant_id: params.tenant_id,
-    actor_type: "system",
-    action: AuditAction.LLM_INVOCATION,
-    resource_type: "llm",
-    result: "success",
-    metadata: {
-      model: modelUsed,
-      provider: route.provider,
-      flow: params.flow,
-      prompt_tokens: usage.input_tokens,
-      completion_tokens: usage.output_tokens,
-      cache_read_tokens: usage.cache_read_tokens,
-      fell_back,
-      latency_ms: latency,
+  // Pass `db` so the row participates in the caller-provided executor
+  // (test DBs, in-flight transactions). Matches the mock dispatch.
+  audit(
+    {
+      tenant_id: params.tenant_id,
+      actor_type: "system",
+      action: AuditAction.LLM_INVOCATION,
+      resource_type: "llm",
+      result: "success",
+      metadata: {
+        model: modelUsed,
+        provider: route.provider,
+        flow: params.flow,
+        prompt_tokens: usage.input_tokens,
+        completion_tokens: usage.output_tokens,
+        cache_read_tokens: usage.cache_read_tokens,
+        fell_back,
+        latency_ms: latency,
+      },
     },
-  });
+    db,
+  );
 
   return {
     ...(object !== undefined ? { object } : {}),
