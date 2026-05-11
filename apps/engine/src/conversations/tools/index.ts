@@ -235,6 +235,13 @@ export interface ConversationTool {
   /** A realistic example argument object. Rendered as `<example>` and
    *  parsed by some clients (MCP) to prefill inputs. */
   readonly example_input?: Readonly<Record<string, unknown>>;
+  /** Enable provider-native strict mode (issue #165). Anthropic JSON-mode
+   *  and OpenAI structured outputs enforce the input schema server-side,
+   *  drastically reducing malformed tool calls and `repairToolCall`
+   *  roundtrips. Opt-in per tool because strict mode imposes JSON-Schema
+   *  draft-07 limits (no anyOf with unrestricted properties, etc.) that
+   *  not every input schema satisfies. */
+  readonly strict?: boolean;
 }
 
 const registry: Map<string, ConversationTool> = new Map();

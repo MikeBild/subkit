@@ -47,6 +47,7 @@ import { AiSdkModel } from "./ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "./base-types.ts";
 import { toSystemMessages } from "./cache-blocks.ts";
 import { type AssembledContext, assembleContext } from "./context-assembler.ts";
+import { maybeWrapForDevtools } from "./devtools-wrap.ts";
 import { detectConfiguredProvider, initializeModel } from "./model-init.ts";
 import { safeParseJson } from "./safe-json.ts";
 
@@ -70,7 +71,7 @@ export async function resolveLanguageModel(
     defaultModel: bare,
     modelOverride: bare,
   });
-  return resolved.model;
+  return maybeWrapForDevtools(resolved.model);
 }
 
 function zodToJson(schema: ZodType): Record<string, unknown> {

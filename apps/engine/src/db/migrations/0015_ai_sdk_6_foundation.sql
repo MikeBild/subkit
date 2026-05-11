@@ -1,0 +1,59 @@
+-- AI SDK 6 / Tools Registry foundation tables (issue #166).
+--
+-- Two additive tables, no existing-data migration:
+--
+-- 1. external_call_metering — append-only ledger for non-LLM provider
+--    costs (Cohere rerank, Firecrawl, Exa, Browserbase, ...). Mirrors
+--    `llm_usage` shape with provider-specific `units` instead of weighted
+--    tokens. Drives cost rollups for the new authoring tools added in
+--    issues #167–#174.
+--
+-- 2. mcp_servers — per-tenant configuration for external MCP servers
+--    consumed by subkit's MCP client (issue #171). `namespace` is a
+--    URL-safe slug used as the tool-name prefix in the merged tool
+--    palette: `mcp_<namespace>__<remote_tool_name>`. `auth_config` is
+--    opaque jsonb because MCP auth_provider shapes (PKCE flows, dynamic
+--    client registration) do not match the static credential rows.
+
+CREATE TABLE IF NOT EXISTS "external_call_metering" (
+  "id" bigserial PRIMARY KEY,
+  "tenant_id" uuid NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "provider" text NOT NULL,
+  "operation" text,
+  "units" integer NOT NULL DEFAULT 0,
+  "cost_usd" numeric(12, 6),
+  "latency_ms" integer NOT NULL DEFAULT 0,
+  "result" text NOT NULL,
+  "error" text,
+  "audit_id" uuid,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "month_bucket" bigint NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "external_call_metering_tenant_created_idx"
+  ON "external_call_metering" ("tenant_id", "created_at");
+
+CREATE INDEX IF NOT EXISTS "external_call_metering_tenant_provider_month_idx"
+  ON "external_call_metering" ("tenant_id", "provider", "month_bucket");
+
+CREATE TABLE IF NOT EXISTS "mcp_servers" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "tenant_id" uuid NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "name" text NOT NULL,
+  "namespace" text NOT NULL,
+  "transport" text NOT NULL,
+  "url" text NOT NULL,
+  "auth_config" jsonb,
+  "status" text NOT NULL DEFAULT 'active',
+  "last_handshake_at" timestamptz,
+  "last_error" text,
+  "tools_manifest_hash" text,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "mcp_servers_tenant_namespace_uq"
+  ON "mcp_servers" ("tenant_id", "namespace");
+
+CREATE INDEX IF NOT EXISTS "mcp_servers_tenant_status_idx"
+  ON "mcp_servers" ("tenant_id", "status");

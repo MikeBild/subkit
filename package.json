@@ -153,6 +153,7 @@
     "zod-validation-error": "^5.0.0"
   },
   "devDependencies": {
+    "@ai-sdk/devtools": "^0.0.17",
     "@anatine/zod-mock": "^3.14.0",
     "@biomejs/biome": "^2.4.11",
     "@electric-sql/pglite": "^0.4.4",

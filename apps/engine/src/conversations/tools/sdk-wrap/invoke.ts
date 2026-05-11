@@ -93,6 +93,18 @@ export function wrapOne(
   return tool<Record<string, unknown>, WrappedToolOutput>({
     description: compileDescription(inner),
     inputSchema,
+    // Opt-in provider-native strict mode (issue #165). The provider
+    // (Anthropic JSON-mode, OpenAI structured outputs) enforces the
+    // input schema server-side so the model cannot emit a malformed
+    // call; cuts `repairToolCall` roundtrips on the targeted tools.
+    ...(inner.strict ? { strict: true as const } : {}),
+    // Surface `example_input` as the SDK's `inputExamples` array so
+    // providers that support input examples (Anthropic, OpenAI) anchor
+    // the model on a known-good shape — complementary to the
+    // <example>…</example> block already rendered into the description.
+    ...(inner.example_input
+      ? { inputExamples: [{ input: inner.example_input as Record<string, unknown> }] }
+      : {}),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
       // Serialize against other tool executions in this turn — see
       // TurnSignals.toolChain for rationale.

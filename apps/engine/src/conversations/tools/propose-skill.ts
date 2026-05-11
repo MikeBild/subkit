@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: example_input renders placeholder grammar for the LLM.
 // propose_skill — draft a Skill from file evidence or detected patterns.
 // Pauses on an `ask_user_confirm` elicitation so the operator can review
 // before creation.
@@ -26,6 +27,26 @@ export const proposeSkillTool: ConversationTool = {
     "Use this when you identify operational rules, best practices, or conventions.",
   inputSchema,
   category: "draft_write" as const,
+  // Provider-native strict mode (issue #165). All fields are concrete
+  // typed strings/enums/arrays — no `z.record(z.unknown())` — so
+  // Anthropic JSON-mode and OpenAI structured outputs can enforce the
+  // schema server-side. The two sibling authoring tools
+  // (build_workflow, propose_step) keep strict off because their
+  // inputs include `z.record(z.unknown())` schemas (the workflow
+  // body / step config) that strict mode does not accept.
+  strict: true,
+  example_input: {
+    scope: "global",
+    title: "Always idempotency-key POST requests against Stripe",
+    body: "When calling Stripe POST endpoints, include an Idempotency-Key header derived from the workflow run id so retries don't double-charge.",
+    examples: ['curl -X POST https://api.stripe.com/v1/charges -H "Idempotency-Key: ${run_id}"'],
+    best_practices: [
+      "Use a stable per-run id, not a fresh uuid per attempt.",
+      "Combine the run id with the step id for granular idempotency.",
+    ],
+    pitfalls: ["Don't reuse keys across runs — Stripe will return the prior response."],
+    reason: "Observed two duplicate-charge incidents in support tickets.",
+  },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
 
