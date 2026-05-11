@@ -455,6 +455,32 @@ async function dispatchMock<T>(
     cache_read_tokens: res.cache_read_tokens ?? 0,
     cache_creation_tokens: res.cache_creation_tokens ?? 0,
   });
+  // Mock + real dispatch parity: emit the same `LLM_INVOCATION` audit
+  // row dispatchReal writes (below) so integration tests running against
+  // the mock can still assert the audit trail. Without this, a future
+  // refactor that drops the audit write inside `invoke()` would only
+  // fail in production, not in CI. The optional executor routes the
+  // insert to the test DB so disposable-DB tests see it.
+  audit(
+    {
+      tenant_id: params.tenant_id,
+      actor_type: "system",
+      action: AuditAction.LLM_INVOCATION,
+      resource_type: "llm",
+      result: "success",
+      metadata: {
+        model: modelUsed,
+        provider: route.provider,
+        flow: params.flow,
+        prompt_tokens: res.prompt_tokens,
+        completion_tokens: res.completion_tokens,
+        cache_read_tokens: res.cache_read_tokens ?? 0,
+        fell_back,
+        latency_ms: latency,
+      },
+    },
+    db,
+  );
   return {
     ...(res.object !== undefined ? { object: res.object } : {}),
     text: res.text,
@@ -617,23 +643,28 @@ async function dispatchReal<T>(
     cache_read_tokens: usage.cache_read_tokens,
     cache_creation_tokens: usage.cache_creation_tokens,
   });
-  audit({
-    tenant_id: params.tenant_id,
-    actor_type: "system",
-    action: AuditAction.LLM_INVOCATION,
-    resource_type: "llm",
-    result: "success",
-    metadata: {
-      model: modelUsed,
-      provider: route.provider,
-      flow: params.flow,
-      prompt_tokens: usage.input_tokens,
-      completion_tokens: usage.output_tokens,
-      cache_read_tokens: usage.cache_read_tokens,
-      fell_back,
-      latency_ms: latency,
+  // Pass `db` so the row participates in the caller-provided executor
+  // (test DBs, in-flight transactions). Matches the mock dispatch.
+  audit(
+    {
+      tenant_id: params.tenant_id,
+      actor_type: "system",
+      action: AuditAction.LLM_INVOCATION,
+      resource_type: "llm",
+      result: "success",
+      metadata: {
+        model: modelUsed,
+        provider: route.provider,
+        flow: params.flow,
+        prompt_tokens: usage.input_tokens,
+        completion_tokens: usage.output_tokens,
+        cache_read_tokens: usage.cache_read_tokens,
+        fell_back,
+        latency_ms: latency,
+      },
     },
-  });
+    db,
+  );
 
   return {
     ...(object !== undefined ? { object } : {}),

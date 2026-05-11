@@ -19,8 +19,12 @@
 // the next turn.
 
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { connectors as connectorsTable, conversations } from "../../db/schema/index.ts";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  connectors as connectorsTable,
+  conversations,
+  conversationToolCalls,
+} from "../../db/schema/index.ts";
 import { describeConnectorPlaceholders, parsePlaceholders } from "../../llm/substitution/index.ts";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
@@ -31,6 +35,9 @@ import {
 } from "../../workflows/reference-validator.ts";
 import { sampleToSchema } from "../../workflows/sample-to-schema.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
+import { runCriticAgent } from "../authoring-critic/critic-agent.ts";
+import { shouldRunCritic } from "../authoring-critic/gating.ts";
+import type { AuthoringCriticVerdict, CriticRejectedDetails } from "../authoring-critic/types.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
 import { canonicalJson } from "../text-line-diff.ts";
 import type { DraftDocument, WorkflowDraftDocument } from "../types.ts";
@@ -599,6 +606,100 @@ export const buildWorkflowTool: ConversationTool = {
       }
     }
 
+    // Second-stage LLM critic. Gated by `llm.critic.*` config
+    // (`enabled`, `min_steps`, `max_consecutive_rejections`).
+    // Critic NEVER mutates the draft; a failed verdict becomes
+    // `ok:false {error_code:"critic_rejected", repairs}` so the next
+    // conversation turn picks the hints up via prior_failures.
+    // Fail-open by design: provider errors / parse failures yield a
+    // pass with an explanatory rationale rather than blocking the build.
+    //
+    // Drift signal: current draft's `latest_preview.warnings` plus
+    // warnings from prior build_workflow calls on OTHER drafts in this
+    // conversation (different slug). A re-author of a previously-drifted
+    // workflow still triggers the critic via the prior-draft term;
+    // re-authoring the SAME slug doesn't double-count because
+    // `currentDraft.latest_preview` already reflects that draft's most
+    // recent preview.
+    //
+    // Anti-loop: count consecutive `critic_rejected` outputs in the
+    // recent tool-call window and skip the critic once
+    // `max_consecutive_rejections` is reached, otherwise a stuck LLM
+    // would burn tokens re-running the critic indefinitely.
+    const recentBuildOutputs = await ctx.db
+      .select({ tool: conversationToolCalls.tool, output: conversationToolCalls.output })
+      .from(conversationToolCalls)
+      .where(
+        and(
+          eq(conversationToolCalls.tenant_id, ctx.tenant_id),
+          eq(conversationToolCalls.conversation_id, ctx.conversation_id),
+        ),
+      )
+      .orderBy(desc(conversationToolCalls.created_at))
+      .limit(16);
+    let consecutiveRejections = 0;
+    for (const row of recentBuildOutputs) {
+      if (row.tool !== "build_workflow") continue;
+      const out = row.output as Record<string, unknown> | null;
+      if (out && out.error_code === "critic_rejected") {
+        consecutiveRejections += 1;
+        continue;
+      }
+      break;
+    }
+    // Sum warnings from PRIOR build_workflow outputs on OTHER drafts
+    // (different slug) only. A re-author of the current draft would
+    // produce a row whose preview matches `currentDraft.latest_preview`;
+    // counting both would double-count the same warning set. Filtering
+    // by slug keeps the union-with-the-current-preview semantics
+    // truthful: "did a different draft in this conversation also
+    // drift" plus "did the current draft's preview drift".
+    let priorDraftWarnings = 0;
+    for (const row of recentBuildOutputs) {
+      if (row.tool !== "build_workflow") continue;
+      const out = row.output as Record<string, unknown> | null;
+      if (!out) continue;
+      const data = (out.data ?? {}) as Record<string, unknown>;
+      const draftSummary = (data.draft ?? {}) as Record<string, unknown>;
+      // Drop rows for the current slug — the current draft's warnings
+      // are already counted via `currentDraft.latest_preview` below.
+      if (typeof draftSummary.slug === "string" && draftSummary.slug === args.slug) continue;
+      const previewWarnings = (data.preview ?? {}) as Record<string, unknown>;
+      const warnings = previewWarnings.warnings;
+      if (Array.isArray(warnings)) priorDraftWarnings += warnings.length;
+    }
+    const recentDriftCount =
+      (currentDraft.latest_preview?.warnings?.length ?? 0) + priorDraftWarnings;
+    const gating = shouldRunCritic({
+      stepCount: workflowDraft.steps.length,
+      recentDriftCount,
+      consecutiveRejections,
+      tenantId: ctx.tenant_id,
+    });
+    let criticVerdict: AuthoringCriticVerdict | undefined;
+    if (gating.run) {
+      criticVerdict = await runCriticAgent({
+        draft: workflowDraft,
+        tenant_id: ctx.tenant_id,
+        db: ctx.db,
+      });
+      if (!criticVerdict.passed) {
+        recordAuthoringGateBlock({ code: "critic_rejected", tool: "build_workflow" });
+        const rejectedDetails: CriticRejectedDetails = {
+          repairs: criticVerdict.repairs,
+          rationale: criticVerdict.rationale,
+          gating_reason: gating.reason,
+        };
+        return {
+          ok: false,
+          error_code: "critic_rejected",
+          message: `LLM critic found ${criticVerdict.repairs.length} issue(s): ${criticVerdict.rationale}`,
+          details: rejectedDetails,
+          next_best_actions: ["inspect_workflow_draft", "update_param", "edit_workflow_patch"],
+        };
+      }
+    }
+
     // Pre-mutation snapshot for the inline diff cell (codex pattern):
     // emit a unified diff of the workflow DAG so the operator sees
     // exactly what changed structurally vs. the previous draft state.
@@ -633,6 +734,9 @@ export const buildWorkflowTool: ConversationTool = {
     }
 
     const infos = verdict.infos.map((info) => `${info.code}:${info.path}`);
+    if (criticVerdict) {
+      infos.push(`critic_passed:${gating.reason}`);
+    }
     const warningCodes = [
       ...warnings,
       ...verdict.warnings.map((warning) => `${warning.code}:${warning.path}`),
