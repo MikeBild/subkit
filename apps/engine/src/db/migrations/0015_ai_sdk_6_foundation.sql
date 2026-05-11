@@ -60,7 +60,12 @@ CREATE TABLE IF NOT EXISTS "mcp_servers" (
   CONSTRAINT "mcp_servers_transport_check"
     CHECK ("transport" IN ('http', 'sse', 'stdio')),
   CONSTRAINT "mcp_servers_status_check"
-    CHECK ("status" IN ('active', 'disabled', 'error'))
+    CHECK ("status" IN ('active', 'disabled', 'error')),
+  -- Defence-in-depth: HTTP/MCP boundaries Zod-validate this, but
+  -- internal writers could bypass that — a malformed slug breaks AI
+  -- SDK's tool-name regex silently. See schema header.
+  CONSTRAINT "mcp_servers_namespace_shape_check"
+    CHECK ("namespace" ~ '^[a-zA-Z0-9_-]+$' AND length("namespace") BETWEEN 1 AND 64)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "mcp_servers_tenant_namespace_uq"

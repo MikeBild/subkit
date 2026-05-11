@@ -12,6 +12,7 @@ import { z } from "@hono/zod-openapi";
 import { buildWorkflowTool } from "../build-workflow.ts";
 import { proposeSkillTool } from "../propose-skill.ts";
 import { proposeStepTool } from "../propose-step.ts";
+import { toInputExamples } from "../sdk-wrap/invoke.ts";
 
 // Walk a JSON-Schema-7 object tree and return true iff any subschema is
 // an `object` whose `additionalProperties` admits anything — i.e. `true`,
@@ -43,8 +44,8 @@ function hasUnrestrictedObject(node: unknown): boolean {
   return false;
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: zod v4 toJSONSchema surface
 const toJsonSchema = (schema: unknown) =>
+  // biome-ignore lint/suspicious/noExplicitAny: zod v4 toJSONSchema surface
   (z as any).toJSONSchema(schema, { target: "jsonSchema7" }) as unknown;
 
 describe("issue #165 — strict + inputExamples opt-in", () => {
@@ -86,5 +87,29 @@ describe("issue #165 — strict + inputExamples opt-in", () => {
 
   it("propose_skill inputSchema is fully restricted (strict-compatible)", () => {
     expect(hasUnrestrictedObject(toJsonSchema(proposeSkillTool.inputSchema))).toBe(false);
+  });
+
+  // W6: prove the inputExamples passthrough preserves the example shape
+  // verbatim, so the helper that lives one line away from the wrap
+  // boundary doesn't silently drop or rewrite it on a future refactor.
+  it("toInputExamples wraps example_input in the SDK-expected shape", () => {
+    const out = toInputExamples({ scope: "global", title: "x" });
+    expect(out).toEqual({
+      inputExamples: [{ input: { scope: "global", title: "x" } }],
+    });
+  });
+
+  it("toInputExamples returns an empty spread for undefined", () => {
+    expect(toInputExamples(undefined)).toEqual({});
+  });
+
+  it("propose_skill example_input round-trips through toInputExamples", () => {
+    const out = toInputExamples(proposeSkillTool.example_input);
+    expect("inputExamples" in out).toBe(true);
+    if ("inputExamples" in out) {
+      expect(out.inputExamples[0]?.input).toEqual(
+        proposeSkillTool.example_input as Record<string, unknown>,
+      );
+    }
   });
 });

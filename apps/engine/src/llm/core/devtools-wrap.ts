@@ -25,7 +25,10 @@ const REDACTED = "[REDACTED]";
 const AUTH_HEADER_PATTERN =
   /^(authorization|x-api-key|api-key|x-auth-token|x-amz-security-token)$/i;
 
-const scrubAuthHeadersMiddleware: LanguageModelV3Middleware = {
+// Exported for the test suite (devtools-wrap.test.ts) so the redaction
+// guarantee load-bearing on the design comment above can be asserted
+// directly. Not part of the module's intended public API.
+export const scrubAuthHeadersMiddleware: LanguageModelV3Middleware = {
   specificationVersion: "v3",
   transformParams: async ({ params }) => {
     if (!params.headers) return params;
@@ -64,6 +67,15 @@ async function loadDevtoolsMiddleware(): Promise<LanguageModelV3Middleware | nul
     });
   }
   return cachedDevtoolsMiddleware;
+}
+
+/**
+ * Reset the module-scoped middleware cache. Tests that flip `NODE_ENV`
+ * between cases need this so a previously-cached load decision doesn't
+ * leak between cases. Not part of the public API.
+ */
+export function __resetDevtoolsCacheForTests(): void {
+  cachedDevtoolsMiddleware = undefined;
 }
 
 /**

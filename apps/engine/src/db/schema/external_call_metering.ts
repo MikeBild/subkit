@@ -46,8 +46,9 @@ export const externalCallMetering = pgTable(
     // Latency in milliseconds — mirrors llm_usage shape.
     latency_ms: integer("latency_ms").notNull().default(0),
     // "ok" | "error" — same convention as llm_usage.result; enforced
-    // server-side by the CHECK constraint below.
-    result: text("result").notNull(),
+    // server-side by the CHECK constraint below, mirrored on the TS
+    // surface so insert call-sites can't drift.
+    result: text("result").$type<"ok" | "error">().notNull(),
     error: text("error"),
     created_at: timestamps.created_at,
     // YYYYMM bucket for cheap budget rollups. Use the shared helper

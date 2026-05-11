@@ -74,8 +74,9 @@ import {
 // proliferate. Currently no provider Anthropic / OpenAI / Gemini reads
 // this field server-side; it stays as forward-compatible metadata
 // alongside the `<example>` block compileDescription appends to the
-// tool description (the channel models actually see today).
-function toInputExamples(
+// tool description (the channel models actually see today). Exported
+// for the test suite (propose-skill-strict.test.ts).
+export function toInputExamples(
   example: Readonly<Record<string, unknown>> | undefined,
 ): { inputExamples: Array<{ input: Record<string, unknown> }> } | Record<string, never> {
   if (!example) return {};

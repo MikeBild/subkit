@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: example_input renders placeholder grammar for the LLM.
 // propose_skill — draft a Skill from file evidence or detected patterns.
 // Pauses on an `ask_user_confirm` elicitation so the operator can review
 // before creation.
@@ -33,6 +32,7 @@ export const proposeSkillTool: ConversationTool = {
     scope: "global",
     title: "Always idempotency-key POST requests against Stripe",
     body: "When calling Stripe POST endpoints, include an Idempotency-Key header derived from the workflow run id so retries don't double-charge.",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: placeholder grammar surfaced to the LLM as few-shot text.
     examples: ['curl -X POST https://api.stripe.com/v1/charges -H "Idempotency-Key: ${run_id}"'],
     best_practices: [
       "Use a stable per-run id, not a fresh uuid per attempt.",

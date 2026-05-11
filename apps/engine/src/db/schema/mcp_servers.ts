@@ -80,5 +80,13 @@ export const mcpServers = pgTable(
     index("mcp_servers_tenant_status_idx").on(t.tenant_id, t.status),
     check("mcp_servers_transport_check", sql`${t.transport} IN ('http','sse','stdio')`),
     check("mcp_servers_status_check", sql`${t.status} IN ('active','disabled','error')`),
+    // Defence-in-depth shape gate. The HTTP/MCP boundaries Zod-validate
+    // namespace inputs, but internal writers (admin tools, seeds,
+    // repair flows) could bypass that — a malformed slug would produce
+    // tool names that fail AI SDK's `^[a-zA-Z0-9_-]+$` regex silently.
+    check(
+      "mcp_servers_namespace_shape_check",
+      sql`${t.namespace} ~ '^[a-zA-Z0-9_-]+$' AND length(${t.namespace}) BETWEEN 1 AND 64`,
+    ),
   ],
 );
