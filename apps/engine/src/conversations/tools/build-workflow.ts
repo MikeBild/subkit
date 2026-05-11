@@ -19,8 +19,12 @@
 // the next turn.
 
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import { connectors as connectorsTable, conversations } from "../../db/schema/index.ts";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  connectors as connectorsTable,
+  conversations,
+  conversationToolCalls,
+} from "../../db/schema/index.ts";
 import { describeConnectorPlaceholders, parsePlaceholders } from "../../llm/substitution/index.ts";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
@@ -31,10 +35,10 @@ import {
 } from "../../workflows/reference-validator.ts";
 import { sampleToSchema } from "../../workflows/sample-to-schema.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
+import { runCriticAgent } from "../authoring-critic/critic-agent.ts";
+import { shouldRunCritic } from "../authoring-critic/gating.ts";
+import type { AuthoringCriticVerdict, CriticRejectedDetails } from "../authoring-critic/types.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
-import { runCriticAgent } from "../critic/critic-agent.ts";
-import { shouldRunCritic } from "../critic/gating.ts";
-import type { AuthoringCriticVerdict } from "../critic/types.ts";
 import { canonicalJson } from "../text-line-diff.ts";
 import type { DraftDocument, WorkflowDraftDocument } from "../types.ts";
 import { verifyWorkflow } from "../verifier.ts";
@@ -602,17 +606,59 @@ export const buildWorkflowTool: ConversationTool = {
       }
     }
 
-    // Second-stage LLM critic. Gated — runs only when (a) the draft has
-    // at least N steps or (b) the most recent dry-run preview surfaced
-    // drift warnings. Critic NEVER mutates the draft; a failed verdict
-    // becomes `ok:false {error_code:"critic_rejected", repairs}` so the
-    // next conversation turn picks the hints up via prior_failures.
+    // Second-stage LLM critic. Gated by `llm.critic.*` config
+    // (`enabled`, `min_steps`, `max_consecutive_rejections`).
+    // Critic NEVER mutates the draft; a failed verdict becomes
+    // `ok:false {error_code:"critic_rejected", repairs}` so the next
+    // conversation turn picks the hints up via prior_failures.
     // Fail-open by design: provider errors / parse failures yield a
     // pass with an explanatory rationale rather than blocking the build.
-    const recentDriftCount = currentDraft.latest_preview?.warnings?.length ?? 0;
+    //
+    // Drift signal: union of the current draft's most recent preview
+    // warnings AND warnings from prior build_workflow calls on this
+    // conversation — a re-author of a previously-drifted workflow
+    // should still trigger the critic.
+    //
+    // Anti-loop: count consecutive `critic_rejected` outputs in the
+    // recent tool-call window and skip the critic once
+    // `max_consecutive_rejections` is reached, otherwise a stuck LLM
+    // would burn tokens re-running the critic indefinitely.
+    const recentBuildOutputs = await ctx.db
+      .select({ tool: conversationToolCalls.tool, output: conversationToolCalls.output })
+      .from(conversationToolCalls)
+      .where(
+        and(
+          eq(conversationToolCalls.tenant_id, ctx.tenant_id),
+          eq(conversationToolCalls.conversation_id, ctx.conversation_id),
+        ),
+      )
+      .orderBy(desc(conversationToolCalls.created_at))
+      .limit(16);
+    let consecutiveRejections = 0;
+    for (const row of recentBuildOutputs) {
+      if (row.tool !== "build_workflow") continue;
+      const out = row.output as Record<string, unknown> | null;
+      if (out && out.error_code === "critic_rejected") {
+        consecutiveRejections += 1;
+        continue;
+      }
+      break;
+    }
+    let priorDraftWarnings = 0;
+    for (const row of recentBuildOutputs) {
+      const out = row.output as Record<string, unknown> | null;
+      if (!out) continue;
+      const data = (out.data ?? {}) as Record<string, unknown>;
+      const previewWarnings = (data.preview ?? {}) as Record<string, unknown>;
+      const warnings = previewWarnings.warnings;
+      if (Array.isArray(warnings)) priorDraftWarnings += warnings.length;
+    }
+    const recentDriftCount =
+      (currentDraft.latest_preview?.warnings?.length ?? 0) + priorDraftWarnings;
     const gating = shouldRunCritic({
       stepCount: workflowDraft.steps.length,
       recentDriftCount,
+      consecutiveRejections,
     });
     let criticVerdict: AuthoringCriticVerdict | undefined;
     if (gating.run) {
@@ -623,15 +669,16 @@ export const buildWorkflowTool: ConversationTool = {
       });
       if (!criticVerdict.passed) {
         recordAuthoringGateBlock({ code: "critic_rejected", tool: "build_workflow" });
+        const rejectedDetails: CriticRejectedDetails = {
+          repairs: criticVerdict.repairs,
+          rationale: criticVerdict.rationale,
+          gating_reason: gating.reason,
+        };
         return {
           ok: false,
           error_code: "critic_rejected",
           message: `LLM critic found ${criticVerdict.repairs.length} issue(s): ${criticVerdict.rationale}`,
-          details: {
-            repairs: criticVerdict.repairs,
-            rationale: criticVerdict.rationale,
-            gating_reason: gating.reason,
-          },
+          details: rejectedDetails,
           next_best_actions: ["inspect_workflow_draft", "update_param", "edit_workflow_patch"],
         };
       }

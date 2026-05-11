@@ -335,6 +335,11 @@ export const METRIC_NAMES = {
   // dashboard show flapping tools the same way the connector
   // circuit metric shows flapping connectors.
   TOOL_CIRCUIT_OPEN_TOTAL: "subkit_tool_circuit_open_total",
+  // Authoring-time LLM critic runs. `result` is one of
+  // passed / rejected / fail_open. Operators chart passed:rejected
+  // to estimate signal quality, and (passed+rejected):fail_open to
+  // spot provider instability.
+  CRITIC_RUNS_TOTAL: "subkit_critic_runs_total",
   // G15 (lock the LLM-token-accountant lead): the token accountant
   // reconciles tiktoken estimates against SDK-reported usage already;
   // exporting the absolute drift percentage as a histogram surfaces
@@ -518,6 +523,11 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.TOOL_CIRCUIT_OPEN_TOTAL,
     help: "Per-tool circuit-breaker opens. `reason` is `tool_loop_detected` (3× identical args) or `consecutive_failures_cap` (5 consecutive fails). High counts on a specific tool point at flapping behaviour or a brittle skill prompt.",
     labels: ["tool", "reason"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.CRITIC_RUNS_TOTAL,
+    help: "Authoring-critic invocations. `result` is `passed` (critic approved), `rejected` (critic returned passed:false; tool emits critic_rejected), or `fail_open` (LLM error / no structured output; treated as passed).",
+    labels: ["result"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.LLM_CACHE_HIT_TOTAL,

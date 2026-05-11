@@ -40,6 +40,9 @@ LLM configuration
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `llm.api_key` | string | `""` | tenant | yes | no | Primary LLM API key |
 | `llm.context_1m` | boolean | `false` | tenant | no | no | Enable 1M context window where supported |
+| `llm.critic.enabled` | boolean | `false` | tenant | no | no | Run the second-stage LLM critic on workflow drafts after every static gate passes |
+| `llm.critic.max_consecutive_rejections` | number | `3` | tenant | no | no | After this many consecutive critic_rejected results in a conversation, skip the critic to avoid an infinite re-author loop |
+| `llm.critic.min_steps` | number | `3` | tenant | no | no | Minimum step count for the critic to run on a draft (drift in recent drafts also triggers a run) |
 | `llm.fallback_model` | string | `""` | tenant | no | no | Fallback model identifier |
 | `llm.fallback_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Fallback provider on primary failure |
 | `llm.model` | string | `""` | tenant | no | no | Primary model identifier |

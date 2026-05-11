@@ -201,6 +201,36 @@ const LlmSection = z
       })
       .prefault({})
       .describe("Per-provider connection details"),
+    critic: z
+      .object({
+        enabled: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Run the second-stage LLM critic on workflow drafts after every static gate passes",
+          )
+          .meta(tenant()),
+        min_steps: z
+          .number()
+          .int()
+          .min(1)
+          .default(3)
+          .describe(
+            "Minimum step count for the critic to run on a draft (drift in recent drafts also triggers a run)",
+          )
+          .meta(tenant()),
+        max_consecutive_rejections: z
+          .number()
+          .int()
+          .min(1)
+          .default(3)
+          .describe(
+            "After this many consecutive critic_rejected results in a conversation, skip the critic to avoid an infinite re-author loop",
+          )
+          .meta(tenant()),
+      })
+      .prefault({})
+      .describe("Authoring-time LLM critic — second-stage verifier for workflow drafts"),
   })
   .prefault({})
   .describe("LLM configuration");

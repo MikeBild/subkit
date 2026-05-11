@@ -18,13 +18,19 @@
 import type { Db } from "../../db/client.ts";
 import { invoke } from "../../llm/core/invoke.ts";
 import { logger } from "../../logging/logger.ts";
+import { recordCriticRun } from "../../observability/instrumentation.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
 import { type AuthoringCriticVerdict, AuthoringCriticVerdictSchema } from "./types.ts";
 
 type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
+/** Hard cap on the rendered draft string. Anthropic counts ~4 chars/token,
+ *  so 4 KB ≈ 1 KTok of pure draft content — enough for ~30 medium steps
+ *  but small enough to keep critic calls cheap even on pathological inputs. */
+const RENDERED_DRAFT_CAP = 4096;
+
 function renderDraftForCritic(draft: WorkflowDraftDocument): string {
-  return [
+  const body = [
     `Workflow: ${draft.name} (slug: ${draft.slug})`,
     draft.description ? `Description: ${draft.description}` : "",
     `Steps (${draft.steps.length}):`,
@@ -34,6 +40,8 @@ function renderDraftForCritic(draft: WorkflowDraftDocument): string {
   ]
     .filter((s) => s.length > 0)
     .join("\n\n");
+  if (body.length <= RENDERED_DRAFT_CAP) return body;
+  return `${body.slice(0, RENDERED_DRAFT_CAP)}\n…[truncated; original ${body.length} chars]`;
 }
 
 export interface RunCriticAgentParams {
@@ -76,9 +84,20 @@ export async function runCriticAgent(
         msg: "critic returned text without a structured verdict; passing",
         tenant_id: params.tenant_id,
       });
+      recordCriticRun({ result: "fail_open" });
       return { passed: true, repairs: [], rationale: "critic returned no structured verdict" };
     }
-    return result.object;
+    const verdict = result.object;
+    logger.info({
+      module: "conversations",
+      action: "critic.verdict",
+      msg: `authoring critic verdict: ${verdict.passed ? "passed" : "rejected"}`,
+      tenant_id: params.tenant_id,
+      passed: verdict.passed,
+      repair_count: verdict.repairs.length,
+    });
+    recordCriticRun({ result: verdict.passed ? "passed" : "rejected" });
+    return verdict;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.warn({
@@ -88,6 +107,7 @@ export async function runCriticAgent(
       tenant_id: params.tenant_id,
       error: message,
     });
+    recordCriticRun({ result: "fail_open" });
     return { passed: true, repairs: [], rationale: `critic call failed: ${message}` };
   }
 }

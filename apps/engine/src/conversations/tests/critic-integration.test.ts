@@ -1,19 +1,26 @@
 // Authoring-critic — integration with build_workflow.
 //
 // Covers the rejected-by-critic path end-to-end:
-//   - CRITIC_ENABLED=true gates on, 3+ steps satisfies the step-count rule.
+//   - Runtime config enables the critic (no env var feature flags).
 //   - Mock provider canned to return `{passed:false, repairs:[...]}`.
 //   - build_workflow returns ok:false {error_code:"critic_rejected"}.
 //   - The draft is NOT persisted (setDraft never fires).
 //   - A usage row is written under flow="critic_authoring".
+//   - Anti-loop: ≥ max_consecutive_rejections short-circuits.
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
-import { getConfig, loadConfig } from "../../config/loader.ts";
-import { connectors, llmUsage, tenants } from "../../db/schema/index.ts";
+import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
+import {
+  connectors,
+  conversations,
+  conversationToolCalls,
+  llmUsage,
+  tenants,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
@@ -32,15 +39,35 @@ async function ensureConfigLoaded(): Promise<void> {
   } catch {
     /* fall through */
   }
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-critic-test-"));
+  // Bootstrap config with `LLM_PROVIDER=mock` so the provider registry
+  // selects the in-process mock. This is the *bootstrap* env channel
+  // documented in env.ts, not a feature flag — the critic itself is
+  // gated only by runtime config.
+  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-critic-int-"));
   await loadConfig({
-    env: { DATABASE_URL: "postgres://placeholder/critic-test", NODE_ENV: "test" },
+    env: {
+      DATABASE_URL: "postgres://placeholder/critic-int",
+      NODE_ENV: "test",
+      LLM_PROVIDER: "mock",
+    },
     configPathOverride: join(dir, "subkit.config.json"),
   });
 }
 
+async function enableCritic(opts: { maxConsecutiveRejections?: number } = {}): Promise<void> {
+  await setConfigKey(["llm", "critic", "enabled"], true);
+  await setConfigKey(["llm", "critic", "min_steps"], 3);
+  await setConfigKey(
+    ["llm", "critic", "max_consecutive_rejections"],
+    opts.maxConsecutiveRejections ?? 3,
+  );
+}
+
+async function disableCritic(): Promise<void> {
+  await setConfigKey(["llm", "critic", "enabled"], false);
+}
+
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
   await ensureConfigLoaded();
   testDb = await createTestDb("critic_integration");
   const [t] = await testDb.db
@@ -48,8 +75,6 @@ beforeAll(async () => {
     .values({ slug: "t-critic", display_name: "T-critic" })
     .returning();
   tenant_id = t!.id;
-  // Seed a no-auth connector so the steps that reference its slug pass
-  // the placeholder gate even though they use a fully-qualified URL.
   await testDb.db
     .insert(connectors)
     .values({
@@ -66,29 +91,33 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Always restore the disabled default — neighbouring suites in the
+  // same Bun process must not inherit a hot critic.
+  await disableCritic();
   await testDb.cleanup();
 });
 
 beforeEach(() => {
   resetMockProvider();
-  process.env.CRITIC_ENABLED = "true";
-});
-
-afterEach(() => {
-  delete process.env.CRITIC_ENABLED;
-  delete process.env.CRITIC_MIN_STEPS;
 });
 
 interface TestCtxWithDraft extends ToolContext {
   readonly draft: DraftDocument | null;
 }
 
-function makeCtx(): TestCtxWithDraft {
+async function seedConversation(conversation_id: string): Promise<void> {
+  await testDb.db
+    .insert(conversations)
+    .values({ id: conversation_id, tenant_id, title: "critic test", status: "active" })
+    .onConflictDoNothing();
+}
+
+function makeCtx(conversation_id?: string): TestCtxWithDraft {
   const state: { draft: DraftDocument | null } = { draft: null };
   const base: ToolContext = {
     db: testDb.db,
     tenant_id,
-    conversation_id: crypto.randomUUID(), // allow-random: tests
+    conversation_id: conversation_id ?? crypto.randomUUID(), // allow-random: tests
     actor_id: null,
     connector_id: null,
     workflow_id: null,
@@ -136,6 +165,7 @@ function threeStepDraftArgs() {
 
 describe("build_workflow + authoring-critic — rejected path", () => {
   test("failed critic returns ok:false with critic_rejected and does NOT persist draft", async () => {
+    await enableCritic();
     getMockProvider().generateOverrides.critic_authoring = () => ({
       passed: false,
       repairs: [
@@ -158,11 +188,11 @@ describe("build_workflow + authoring-critic — rejected path", () => {
     expect(details.repairs).toHaveLength(2);
     expect(details.repairs[0]).toContain("Step `tag`");
     expect(details.rationale).toContain("third step");
-    // Draft must NOT have been persisted.
     expect(ctx.draft).toBeNull();
   });
 
   test("critic records a usage row tagged flow=critic_authoring", async () => {
+    await enableCritic();
     getMockProvider().generateOverrides.critic_authoring = () => ({
       passed: false,
       repairs: ["fix it"],
@@ -181,13 +211,44 @@ describe("build_workflow + authoring-critic — rejected path", () => {
     expect(last.result).toBe("success");
     expect(last.completion_tokens).toBeGreaterThan(0);
   });
+
+  test("anti-loop: after N consecutive rejections the critic stops running", async () => {
+    // Lower the cap so the test doesn't have to spin five times.
+    await enableCritic({ maxConsecutiveRejections: 2 });
+    getMockProvider().generateOverrides.critic_authoring = () => ({
+      passed: false,
+      repairs: ["fix"],
+      rationale: "still bad",
+    });
+
+    const conversation_id = crypto.randomUUID(); // allow-random: tests
+    await seedConversation(conversation_id);
+
+    // Pre-seed two prior `critic_rejected` tool-call rows so the
+    // third invocation hits the anti-loop cap. The build_workflow tool
+    // scans conversationToolCalls; we don't need the rows to be
+    // real build outputs — only `tool` + `output.error_code` matter.
+    for (let i = 0; i < 2; i++) {
+      await testDb.db.insert(conversationToolCalls).values({
+        tenant_id,
+        conversation_id,
+        tool: "build_workflow",
+        input: {},
+        output: { ok: false, error_code: "critic_rejected" },
+      });
+    }
+
+    const ctx = makeCtx(conversation_id);
+    const result = await buildWorkflowTool.execute(ctx, threeStepDraftArgs());
+    // Critic skipped → draft proceeds normally to setDraft.
+    expect(result.ok).toBe(true);
+    expect(ctx.draft).not.toBeNull();
+  });
 });
 
 describe("build_workflow + authoring-critic — gated off", () => {
-  test("CRITIC_ENABLED unset → no critic call, draft persists normally", async () => {
-    delete process.env.CRITIC_ENABLED;
-    // If the gating were broken and the critic fired, this override would
-    // make it return passed:false — so a persisted draft proves gating.
+  test("config llm.critic.enabled=false → no critic call, draft persists normally", async () => {
+    await disableCritic();
     getMockProvider().generateOverrides.critic_authoring = () => ({
       passed: false,
       repairs: ["should not be applied"],
@@ -202,8 +263,8 @@ describe("build_workflow + authoring-critic — gated off", () => {
     expect(ctx.draft!.workflow?.slug).toBe("three-step-demo");
   });
 
-  test("two-step draft + no recent drift → critic skipped even with CRITIC_ENABLED", async () => {
-    process.env.CRITIC_ENABLED = "true";
+  test("two-step draft + no recent drift → critic skipped even when enabled", async () => {
+    await enableCritic();
     getMockProvider().generateOverrides.critic_authoring = () => ({
       passed: false,
       repairs: ["should not fire"],
@@ -238,6 +299,7 @@ describe("build_workflow + authoring-critic — gated off", () => {
 
 describe("build_workflow + authoring-critic — passed path", () => {
   test("critic passes → success payload carries critic_passed info tag", async () => {
+    await enableCritic();
     // Default mock returns passed:true.
     const ctx = makeCtx();
     const result = await buildWorkflowTool.execute(ctx, threeStepDraftArgs());
@@ -245,5 +307,28 @@ describe("build_workflow + authoring-critic — passed path", () => {
     if (!result.ok) return;
     const data = result.data as { infos: string[] };
     expect(data.infos.some((i) => i.startsWith("critic_passed:"))).toBe(true);
+  });
+});
+
+describe("build_workflow + authoring-critic — replay-determinism", () => {
+  test("two identical runs against the same canned plan produce byte-identical tool payloads", async () => {
+    await enableCritic();
+    const canned = () => ({
+      passed: false,
+      repairs: ["fix the third step", "drop the redundant transform"],
+      rationale: "duplicate projection",
+    });
+    getMockProvider().generateOverrides.critic_authoring = canned;
+
+    const ctx1 = makeCtx();
+    const r1 = await buildWorkflowTool.execute(ctx1, threeStepDraftArgs());
+
+    resetMockProvider();
+    getMockProvider().generateOverrides.critic_authoring = canned;
+
+    const ctx2 = makeCtx();
+    const r2 = await buildWorkflowTool.execute(ctx2, threeStepDraftArgs());
+
+    expect(JSON.stringify(r1)).toBe(JSON.stringify(r2));
   });
 });

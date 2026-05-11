@@ -282,6 +282,7 @@ const AUTHORING_GATE_CODES = new Set<string>([
   "workflow_unresolved_step_reference",
   "loop_authoring_requires_inspect",
   "repair_loop_detected",
+  "critic_rejected",
 ]);
 /** Allow-list for `tool` label values. */
 const AUTHORING_GATE_TOOLS = new Set<string>([
@@ -327,6 +328,26 @@ export function recordAuthoringGateBlock(args: { code: string; tool: string }): 
     getMetrics().inc(METRIC_NAMES.AUTHORING_GATE_BLOCKS_TOTAL, {
       code: AUTHORING_GATE_CODES.has(args.code) ? args.code : "other",
       tool: AUTHORING_GATE_TOOLS.has(args.tool) ? args.tool : "other",
+    });
+  });
+}
+
+/** Allow-list for `result` label on subkit_critic_runs_total. */
+const CRITIC_RUN_RESULTS = new Set<string>(["passed", "rejected", "fail_open"]);
+
+/**
+ * Counter for authoring-critic runs. Three buckets:
+ *   - passed: critic ran and approved the draft.
+ *   - rejected: critic ran and returned passed:false; tool emits critic_rejected.
+ *   - fail_open: critic call errored or returned no structured object; treated as passed.
+ *
+ * Operators compare passed:rejected ratio to estimate signal quality, and
+ * compare (passed+rejected):fail_open to spot provider instability.
+ */
+export function recordCriticRun(args: { result: string }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.CRITIC_RUNS_TOTAL, {
+      result: CRITIC_RUN_RESULTS.has(args.result) ? args.result : "other",
     });
   });
 }

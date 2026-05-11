@@ -65,6 +65,11 @@
         "api_key": "",
         "model": ""
       }
+    },
+    "critic": {
+      "enabled": false,
+      "min_steps": 3,
+      "max_consecutive_rejections": 3
     }
   },
   "auth": {
@@ -147,7 +152,8 @@
     "monthly_budget": 0
   },
   "repl": {
-    "permissionMode": "ask"
+    "permissionMode": "ask",
+    "portalTokenTtlMin": 15
   },
   "ui": {
     "theme": "auto",

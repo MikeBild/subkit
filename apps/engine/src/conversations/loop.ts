@@ -55,6 +55,7 @@ import { recordLlmQuotaExhausted, recordLlmTokens } from "../observability/instr
 import { now } from "../utils/clock.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
+import { expandPriorFailuresFromToolCalls } from "./authoring-critic/prior-failures.ts";
 import { startNewWorkflowDraft } from "./authoring-state.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import { createElicitation, setElicitationParentMessage } from "./elicitations.ts";
@@ -446,51 +447,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     )
     .orderBy(desc(conversationToolCalls.created_at))
     .limit(8);
-  const priorFailuresFromTools: Array<{ step_id: string; error: string }> = [];
-  for (const row of recentToolCalls) {
-    const output = row.output as Record<string, unknown> | null;
-    if (!output || typeof output !== "object") continue;
-    if (output.ok === false || typeof output.error_code === "string") {
-      const code = typeof output.error_code === "string" ? output.error_code : "tool_failed";
-      // Authoring-critic rejections carry a `repairs[]` list under
-      // `details`. Expand each repair into its own prior_failures row
-      // tagged `step_id:"critic"` so the next turn sees actionable,
-      // self-contained hints instead of a single bundled message. The
-      // signal `priorCriticFail` is also flipped so step-router
-      // escalates the next turn to the top tier.
-      if (code === "critic_rejected") {
-        stepRouterSignals.priorCriticFail = true;
-        const details = (output.details ?? {}) as Record<string, unknown>;
-        const repairsRaw = details.repairs;
-        const repairs = Array.isArray(repairsRaw)
-          ? repairsRaw.filter((r): r is string => typeof r === "string")
-          : [];
-        for (const repair of repairs) {
-          priorFailuresFromTools.push({ step_id: "critic", error: repair });
-          if (priorFailuresFromTools.length >= 5) break;
-        }
-        if (priorFailuresFromTools.length >= 5) break;
-        continue;
-      }
-      const nbaRaw = output.next_best_actions;
-      const nba = Array.isArray(nbaRaw)
-        ? nbaRaw.filter((x): x is string => typeof x === "string")
-        : [];
-      const message =
-        typeof output.message === "string"
-          ? output.message
-          : typeof (output as { error?: unknown }).error === "string"
-            ? (output as { error: string }).error
-            : "";
-      const nbaSuffix = nba.length > 0 ? ` — try next: ${nba.join(", ")}` : "";
-      priorFailuresFromTools.push({
-        step_id: row.tool,
-        error: `${row.tool} failed (${code}): ${message}${nbaSuffix}`,
-      });
-      if (priorFailuresFromTools.length >= 5) break;
-    }
+  // Expand recent failing tool-call rows into per-turn prior_failures
+  // entries. Critic rejections fan out into one row per repair tagged
+  // `step_id:"critic"`; every other rejection becomes one row keyed by
+  // the producing tool name. Pure function — see
+  // `authoring-critic/prior-failures.ts` for the contract and unit tests.
+  const expanded = expandPriorFailuresFromToolCalls(recentToolCalls);
+  if (expanded.hadCriticReject) {
+    stepRouterSignals.priorCriticFail = true;
   }
-  const combinedPriorFailures = [...priorFailuresFromPreview, ...priorFailuresFromTools];
+  const combinedPriorFailures = [...priorFailuresFromPreview, ...expanded.entries];
 
   const prompt = await assembleEnhancedPrompt(
     {
