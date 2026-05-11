@@ -286,6 +286,45 @@ export const probeConnectorDraftTool: ConversationTool = {
       };
     }
 
+    // OAuth2 seed credentials cannot drive a probe — they update
+    // config.oauth only; the access token is minted later by
+    // authenticate_oauth + the OAuth callback. Surface a structured
+    // envelope instead of letting toDecryptedCredential throw.
+    if (draftCredential?.mode === "oauth2") {
+      const nextDraft = withConnectorProbe(
+        currentDraft,
+        {
+          ...connector,
+          validation,
+          latest_probe: {
+            ok: false,
+            method: args.method,
+            path: args.path,
+            environment: draftView.environment,
+            duration_ms: 0,
+            summary:
+              "Probe blocked: OAuth2 draft has no access token yet. Save the draft, then run authenticate_oauth and complete the browser exchange before probing.",
+            failure_code: "authenticate_oauth_required",
+            probed_at: new Date().toISOString(),
+          },
+        },
+        false,
+        "authenticate_oauth_required: oauth2 dance not completed",
+        "connector_probe_failed",
+      );
+      await ctx.setDraft(nextDraft);
+      return {
+        ok: false,
+        data: buildLifecyclePayload(nextDraft, {
+          error_code: "authenticate_oauth_required",
+          error:
+            "Cannot probe an OAuth2 draft before authenticate_oauth completes. Save the draft, run authenticate_oauth, finish the browser exchange, then probe.",
+          latest_probe: nextDraft.connector?.latest_probe ?? null,
+          recommended_next: ["save_connector_draft", "authenticate_oauth"],
+        }),
+      };
+    }
+
     const started = Date.now();
     let status = 0;
     let responseBody: unknown = null;

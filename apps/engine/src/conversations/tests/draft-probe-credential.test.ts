@@ -455,6 +455,144 @@ describe("maybeCacheDraftCredentialFromElicitation", () => {
       session_token: "FwoGZXIvYXdz...",
     });
   });
+
+  test("populates cache from oauth2 + authorization_code draft (gmail BYO flow)", async () => {
+    // Reproduces the gmail/google-*/msgraph BYO flow that pre-fix hit
+    // `cache_skipped` for every form submission. The operator supplies
+    // client_id + client_secret via ask_user_form; the seed lands in
+    // the cache so a credential-less re-save reads it back.
+    const conversation_id = await seedConversation();
+    const gmailDraft: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "Gmail API",
+        slug: "gmail-api",
+        driver: "http",
+        environment: "dev",
+        auth_type: "oauth2",
+        base_url: "https://gmail.googleapis.com/gmail/v1",
+        config: { oauth: { grant_type: "authorization_code" } },
+      },
+      workflow: { name: "", steps: [] },
+    };
+    await appendSnapshot(tenant_id, conversation_id, gmailDraft, ctx.db);
+
+    await maybeCacheDraftCredentialFromElicitation({
+      tenant_id,
+      conversation_id,
+      elicitation: { tool_name: "ask_user_form" },
+      elicitation_output: {
+        values: { client_id: "my-google-client", client_secret: "GOCSPX-real" },
+      },
+      db: ctx.db,
+    });
+
+    expect(getDraftCredential(conversation_id)).toEqual({
+      mode: "oauth2",
+      client_id: "my-google-client",
+      client_secret: "GOCSPX-real",
+    });
+  });
+
+  test("falls back to template snapshot for oauth2 + authorization_code when draft.config.oauth absent", async () => {
+    // First-save case: the draft is bound to the google-gmail template
+    // but config.oauth.grant_type isn't enriched yet (that runs at
+    // saveConnectorAtomic time). The cache function must look up
+    // grant_type from the resolved template metadata.
+    const conversation_id = await seedConversation();
+    const draftBeforeEnrichment: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "Gmail API",
+        slug: "gmail-api",
+        driver: "http",
+        environment: "dev",
+        auth_type: "oauth2",
+        base_url: "https://gmail.googleapis.com/gmail/v1",
+        template_slug: "google-gmail",
+        config: {},
+      },
+      workflow: { name: "", steps: [] },
+    };
+    await appendSnapshot(tenant_id, conversation_id, draftBeforeEnrichment, ctx.db);
+
+    await maybeCacheDraftCredentialFromElicitation({
+      tenant_id,
+      conversation_id,
+      elicitation: { tool_name: "ask_user_form" },
+      elicitation_output: { values: { client_id: "abc", client_secret: "xyz" } },
+      db: ctx.db,
+    });
+
+    const cached = getDraftCredential(conversation_id);
+    expect(cached?.mode).toBe("oauth2");
+    if (cached?.mode === "oauth2") {
+      expect(cached.client_id).toBe("abc");
+      expect(cached.client_secret).toBe("xyz");
+    }
+  });
+
+  test("populates cache from oauth2 + client_credentials draft (machine-to-machine)", async () => {
+    const conversation_id = await seedConversation();
+    const ccDraft: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "service-account",
+        slug: "service-account",
+        driver: "http",
+        environment: "dev",
+        auth_type: "oauth2",
+        base_url: "https://api.example.test",
+        config: { oauth: { grant_type: "client_credentials" } },
+      },
+      workflow: { name: "", steps: [] },
+    };
+    await appendSnapshot(tenant_id, conversation_id, ccDraft, ctx.db);
+
+    await maybeCacheDraftCredentialFromElicitation({
+      tenant_id,
+      conversation_id,
+      elicitation: { tool_name: "ask_user_form" },
+      elicitation_output: { values: { client_id: "svc-id", client_secret: "svc-secret" } },
+      db: ctx.db,
+    });
+
+    expect(getDraftCredential(conversation_id)).toEqual({
+      mode: "oauth2",
+      client_id: "svc-id",
+      client_secret: "svc-secret",
+    });
+  });
+
+  test("skips cache for unrecognised grant_type (e.g. jwt-bearer) — forensic log path stays exercised", async () => {
+    const conversation_id = await seedConversation();
+    const jwtBearerDraft: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "jwt-bearer",
+        slug: "jwt-bearer",
+        driver: "http",
+        environment: "dev",
+        auth_type: "oauth2",
+        base_url: "https://api.example.test",
+        config: { oauth: { grant_type: "jwt-bearer" } },
+      },
+      workflow: { name: "", steps: [] },
+    };
+    await appendSnapshot(tenant_id, conversation_id, jwtBearerDraft, ctx.db);
+
+    await maybeCacheDraftCredentialFromElicitation({
+      tenant_id,
+      conversation_id,
+      elicitation: { tool_name: "ask_user_form" },
+      elicitation_output: { values: { client_id: "abc" } },
+      db: ctx.db,
+    });
+
+    // The cache stays empty; the engine log line `cache_skipped` is the
+    // forensic signal for the next person adding a grant type.
+    expect(getDraftCredential(conversation_id)).toBeNull();
+  });
 });
 
 describe("probe_connector_draft + draft credential", () => {
@@ -509,6 +647,70 @@ describe("probe_connector_draft + draft credential", () => {
       const data = result.data as { error_code?: string; recommended_next?: string[] };
       expect(data.error_code).toBe("credential_required");
       expect(data.recommended_next).toContain("ask_user_form");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("returns authenticate_oauth_required envelope for an oauth2 BYO cache hit (no HTTP request)", async () => {
+    // After the gmail/google-* BYO fix the draft credential cache can
+    // legitimately hold an `{mode:"oauth2"}` seed. Probing that draft
+    // BEFORE authenticate_oauth completes the browser exchange can't
+    // succeed — the access token doesn't exist yet. The probe MUST
+    // surface a typed `authenticate_oauth_required` envelope rather
+    // than letting `toDecryptedCredential` throw the cryptic
+    // "oauth2 seed updates config.oauth only" Error string into
+    // turn-context. Also verifies no HTTP request reaches the
+    // upstream — the gate fires server-side before the connector
+    // call.
+    let serverHit = false;
+    const server = await startLocalTargetServer(() => {
+      serverHit = true;
+      return new Response("should not reach upstream", { status: 200 });
+    });
+    try {
+      const conversation_id = await seedConversation();
+      const gmailDraft: DraftDocument = {
+        mode: "connector_authoring",
+        connector: {
+          name: "Gmail API",
+          slug: "gmail-api",
+          driver: "http",
+          environment: "dev",
+          auth_type: "oauth2",
+          base_url: server.url,
+          config: { oauth: { grant_type: "authorization_code" } },
+        },
+        workflow: { name: "", steps: [] },
+      };
+      const validated = withConnectorValidation(
+        withConnectorInspection(gmailDraft),
+        {
+          ...gmailDraft.connector,
+          validation: validateConnectorDraft(gmailDraft.connector ?? null),
+        },
+        true,
+        "validated",
+      );
+      const toolCtx = await buildToolCtx(conversation_id, validated);
+
+      setDraftCredential(conversation_id, {
+        mode: "oauth2",
+        client_id: "client-abc",
+        client_secret: "secret-xyz",
+      });
+
+      const result = await probeConnectorDraftTool.execute(toolCtx, {
+        method: "GET",
+        path: "/users/me/profile",
+        timeout_ms: 5_000,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(serverHit).toBe(false);
+      const data = result.data as { error_code?: string; recommended_next?: string[] };
+      expect(data.error_code).toBe("authenticate_oauth_required");
+      expect(data.recommended_next).toContain("authenticate_oauth");
     } finally {
       await server.stop();
     }
