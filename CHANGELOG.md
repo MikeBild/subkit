@@ -1,5 +1,68 @@
 # Changelog
 
+## [4.6.0] (2026-05-11)
+
+### Added
+
+- **AI SDK 6 / Tools Registry foundation (PR #176)** — three landing
+  zones, all additive, no breaking changes.
+  - **DB schema** (issue #166): two new tables shipped in migration
+    `0015_ai_sdk_6_foundation.sql`. `external_call_metering` mirrors
+    `llm_usage` for non-LLM provider costs (Cohere rerank, Firecrawl,
+    Exa, Browserbase, …): append-only, per-tenant, month-bucketed for
+    cheap `sum(...)` budget rollups. `mcp_servers` holds per-tenant
+    configuration for external MCP servers the conversation loop will
+    consume (issue #171 writer): `namespace` is unique per tenant and
+    used as the tool-name prefix in the merged palette
+    (`mcp_<namespace>__<remote_tool_name>`). Both tables carry
+    `tenant_id` cascades, tenant-prefixed indexes, and server-side
+    CHECK constraints for stringly-typed columns (`transport`,
+    `status`, `result`) plus a namespace shape gate and a
+    secret-by-reference fence on `auth_config` (rejects root-level
+    `client_secret`, `password`, `api_key`, `access_token`,
+    `refresh_token`, … — writers MUST reference the `credentials`
+    table). Nine `mcp_server.*` / `external_provider.*` audit-action
+    constants reserved ahead of the writers landing in #167 / #168 /
+    #171 / #174; presence-asserted by
+    `audit/tests/mcp-writer-audit-contract.test.ts` with `it.todo`
+    slots for the future integration tests.
+  - **DevTools wrap** (issue #164): `LanguageModel` is wrapped with
+    `@ai-sdk/devtools` middleware when `NODE_ENV !== "production"`.
+    Composition order `[scrubAuthHeaders, devtools]` redacts
+    `Authorization` / `x-api-key` / `api-key` / `x-auth-token` /
+    `x-amz-security-token` *before* the devtools sink writes them to
+    `.devtools/generations.json`. The devtools package is loaded via
+    `await import(...)` so a production-pruned `node_modules` falls
+    back to the unwrapped model. Asserted by unit tests for the scrub
+    middleware itself plus a middleware-order regression test that
+    fails fast if a future SDK bump flips `wrapLanguageModel`'s
+    `reverse().reduce(...)` contract.
+  - **Strict-mode tool opt-in** (issue #165): adds an opt-in
+    `strict?: boolean` field on `ConversationTool` and threads it
+    (plus `example_input` → `inputExamples`) through to AI SDK's
+    `tool()` factory. `propose_skill` opts in because its input
+    schema is all concrete types; `build_workflow` and `propose_step`
+    stay non-strict because their inputs include `z.record(z.unknown())`
+    which provider strict mode does not accept. A structural test
+    walks each tool's JSON-Schema-7 projection and asserts the
+    presence (or absence) of an unrestricted-object node, so a future
+    schema tightening on the strict-off tools will fail the test and
+    remind the next agent that strict mode is now an option.
+
+### Fixed
+
+- **BYO OAuth2 credential persistence** — Gmail / Google-* / MS Graph
+  / Slack drafts that the operator authored via the
+  `ask_user_form(type: password, sensitive: true)` flow correctly
+  persist `client_id` and `client_secret` through
+  `save_connector_draft`. Prior to this fix the form output was
+  cached in memory but discarded on save, so the next probe fell
+  through to anonymous and surfaced an "auth required" error
+  indistinguishable from a real provider 401. Schema-coverage
+  cross-check at `extract-credential-from-form-output.test.ts`
+  iterates every `AtomicCredentialInput` variant — the test layer
+  that would have caught this bug class.
+
 ## [4.5.0] (2026-05-11)
 
 ### Added
