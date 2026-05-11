@@ -137,9 +137,16 @@ describe("scrubAuthHeadersMiddleware", () => {
       middleware: [scrubAuthHeadersMiddleware, probe("inner")],
     });
     const inner = wrapped as unknown as {
-      doGenerate: (opts: { headers: Record<string, string> }) => Promise<unknown>;
+      doGenerate: (opts: {
+        prompt: unknown[];
+        headers: Record<string, string>;
+      }) => Promise<unknown>;
     };
-    await inner.doGenerate({ headers: { Authorization: "Bearer sk-secret" } });
+    // Pass a minimal-but-valid LanguageModelV3CallOptions shape so the
+    // SDK never has reason to short-circuit `transformParams` — keeps
+    // the regression signal sharp if SDK ever guards against malformed
+    // params upstream.
+    await inner.doGenerate({ prompt: [], headers: { Authorization: "Bearer sk-secret" } });
     expect(observed).toHaveLength(1);
     expect(observed[0]?.which).toBe("inner");
     expect(observed[0]?.auth).toBe("[REDACTED]");

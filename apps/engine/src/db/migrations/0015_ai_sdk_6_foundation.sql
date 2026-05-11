@@ -63,9 +63,29 @@ CREATE TABLE IF NOT EXISTS "mcp_servers" (
     CHECK ("status" IN ('active', 'disabled', 'error')),
   -- Defence-in-depth: HTTP/MCP boundaries Zod-validate this, but
   -- internal writers could bypass that — a malformed slug breaks AI
-  -- SDK's tool-name regex silently. See schema header.
+  -- SDK's tool-name regex silently. Forbids `__` runs so the
+  -- `mcp_<namespace>__<tool>` split stays deterministic, and forces
+  -- alphanumeric leading/trailing chars. See schema header.
   CONSTRAINT "mcp_servers_namespace_shape_check"
-    CHECK ("namespace" ~ '^[a-zA-Z0-9_-]+$' AND length("namespace") BETWEEN 1 AND 64)
+    CHECK ("namespace" ~ '^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$' AND "namespace" !~ '__'),
+  -- SECRET-BY-REFERENCE: reject root-level secret keys in
+  -- auth_config. Writers must persist secrets in the `credentials`
+  -- table and reference them via `token_ref` or `credential_id`.
+  -- PostgreSQL forbids subqueries in CHECK so we maintain an explicit
+  -- allowlist of denied key names. See schema header for the full
+  -- contract.
+  CONSTRAINT "mcp_servers_auth_config_no_inline_secrets_check"
+    CHECK ("auth_config" IS NULL OR NOT (
+      "auth_config" ? 'client_secret' OR
+      "auth_config" ? 'password' OR
+      "auth_config" ? 'passphrase' OR
+      "auth_config" ? 'api_key' OR
+      "auth_config" ? 'apikey' OR
+      "auth_config" ? 'access_token' OR
+      "auth_config" ? 'refresh_token' OR
+      "auth_config" ? 'bearer_token' OR
+      "auth_config" ? 'secret'
+    ))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "mcp_servers_tenant_namespace_uq"

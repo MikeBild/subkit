@@ -241,6 +241,70 @@ export const probeConnectorDraftTool: ConversationTool = {
       };
     }
 
+    // Single helper for the gate-denial envelopes below. Builds the
+    // failing probe payload, persists it to the draft snapshot, and
+    // emits a `CONVERSATION_PROBE_CONNECTOR` audit row with
+    // result:"error" so operators can see the denial in the audit
+    // stream alongside successful probes.
+    const buildProbeGateEnvelope = async (params: {
+      failure_code: "credential_required" | "authenticate_oauth_required";
+      summary: string;
+      error_message: string;
+      recommended_next: string[];
+    }): Promise<ToolResult> => {
+      const nextDraft = withConnectorProbe(
+        currentDraft,
+        {
+          ...connector,
+          validation,
+          latest_probe: {
+            ok: false,
+            method: args.method,
+            path: args.path,
+            environment: draftView.environment,
+            duration_ms: 0,
+            summary: params.summary,
+            failure_code: params.failure_code,
+            probed_at: new Date().toISOString(),
+          },
+        },
+        false,
+        `${params.failure_code}: ${params.error_message}`,
+        "connector_probe_failed",
+      );
+      await ctx.setDraft(nextDraft);
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: ctx.actor_id ? "user" : "system",
+          actor_id: ctx.actor_id,
+          action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
+          resource_type: "conversation",
+          resource_id: ctx.conversation_id,
+          result: "error",
+          metadata: {
+            connector_name: connector.name ?? null,
+            connector_slug: connector.slug ?? null,
+            environment: draftView.environment,
+            driver: connector.driver,
+            duration_ms: 0,
+            draft_only: true,
+            failure_code: params.failure_code,
+          },
+        },
+        ctx.db,
+      );
+      return {
+        ok: false,
+        data: buildLifecyclePayload(nextDraft, {
+          error_code: params.failure_code,
+          error: params.error_message,
+          latest_probe: nextDraft.connector?.latest_probe ?? null,
+          recommended_next: params.recommended_next,
+        }),
+      };
+    };
+
     // Auth-required drafts need a credential before the probe can be
     // meaningful. The connector hasn't been inserted yet, so
     // `connector_credentials` will not have a row keyed by the
@@ -252,38 +316,14 @@ export const probeConnectorDraftTool: ConversationTool = {
     const draftCredential =
       draftView.auth_type !== "none" ? getDraftCredential(ctx.conversation_id) : null;
     if (draftView.auth_type !== "none" && !draftCredential) {
-      const nextDraft = withConnectorProbe(
-        currentDraft,
-        {
-          ...connector,
-          validation,
-          latest_probe: {
-            ok: false,
-            method: args.method,
-            path: args.path,
-            environment: draftView.environment,
-            duration_ms: 0,
-            summary:
-              "Probe blocked: no credential collected yet for this draft. Run ask_user_form(type: password, sensitive: true) to collect the secret, then re-probe.",
-            failure_code: "credential_required",
-            probed_at: new Date().toISOString(),
-          },
-        },
-        false,
-        "credential_required: no draft credential cached",
-        "connector_probe_failed",
-      );
-      await ctx.setDraft(nextDraft);
-      return {
-        ok: false,
-        data: buildLifecyclePayload(nextDraft, {
-          error_code: "credential_required",
-          error:
-            "Cannot probe an auth-required draft without a credential. Collect it via ask_user_form(type: password, sensitive: true) — the harness caches the secret in memory and the next probe will use it.",
-          latest_probe: nextDraft.connector?.latest_probe ?? null,
-          recommended_next: ["ask_user_form"],
-        }),
-      };
+      return buildProbeGateEnvelope({
+        failure_code: "credential_required",
+        summary:
+          "Probe blocked: no credential collected yet for this draft. Run ask_user_form(type: password, sensitive: true) to collect the secret, then re-probe.",
+        error_message:
+          "Cannot probe an auth-required draft without a credential. Collect it via ask_user_form(type: password, sensitive: true) — the harness caches the secret in memory and the next probe will use it.",
+        recommended_next: ["ask_user_form"],
+      });
     }
 
     // OAuth2 seed credentials cannot drive a probe — they update
@@ -291,38 +331,14 @@ export const probeConnectorDraftTool: ConversationTool = {
     // authenticate_oauth + the OAuth callback. Surface a structured
     // envelope instead of letting toDecryptedCredential throw.
     if (draftCredential?.mode === "oauth2") {
-      const nextDraft = withConnectorProbe(
-        currentDraft,
-        {
-          ...connector,
-          validation,
-          latest_probe: {
-            ok: false,
-            method: args.method,
-            path: args.path,
-            environment: draftView.environment,
-            duration_ms: 0,
-            summary:
-              "Probe blocked: OAuth2 draft has no access token yet. Save the draft, then run authenticate_oauth and complete the browser exchange before probing.",
-            failure_code: "authenticate_oauth_required",
-            probed_at: new Date().toISOString(),
-          },
-        },
-        false,
-        "authenticate_oauth_required: oauth2 dance not completed",
-        "connector_probe_failed",
-      );
-      await ctx.setDraft(nextDraft);
-      return {
-        ok: false,
-        data: buildLifecyclePayload(nextDraft, {
-          error_code: "authenticate_oauth_required",
-          error:
-            "Cannot probe an OAuth2 draft before authenticate_oauth completes. Save the draft, run authenticate_oauth, finish the browser exchange, then probe.",
-          latest_probe: nextDraft.connector?.latest_probe ?? null,
-          recommended_next: ["save_connector_draft", "authenticate_oauth"],
-        }),
-      };
+      return buildProbeGateEnvelope({
+        failure_code: "authenticate_oauth_required",
+        summary:
+          "Probe blocked: OAuth2 draft has no access token yet. Save the draft, then run authenticate_oauth and complete the browser exchange before probing.",
+        error_message:
+          "Cannot probe an OAuth2 draft before authenticate_oauth completes. Save the draft, run authenticate_oauth, finish the browser exchange, then probe.",
+        recommended_next: ["save_connector_draft", "authenticate_oauth"],
+      });
     }
 
     const started = Date.now();

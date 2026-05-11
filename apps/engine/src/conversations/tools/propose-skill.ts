@@ -30,10 +30,12 @@ export const proposeSkillTool: ConversationTool = {
   strict: true,
   example_input: {
     scope: "global",
-    title: "Always idempotency-key POST requests against Stripe",
-    body: "When calling Stripe POST endpoints, include an Idempotency-Key header derived from the workflow run id so retries don't double-charge.",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: placeholder grammar surfaced to the LLM as few-shot text.
-    examples: ['curl -X POST https://api.stripe.com/v1/charges -H "Idempotency-Key: ${run_id}"'],
+    title: "Always idempotency-key POST requests against the payments provider",
+    body: "When calling payments-provider POST endpoints, include an Idempotency-Key header derived from the workflow run id so retries don't double-charge.",
+    examples: [
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: placeholder grammar surfaced to the LLM as few-shot text.
+      'curl -X POST https://payments.example.test/v1/charges -H "Idempotency-Key: ${run_id}"',
+    ],
     best_practices: [
       "Use a stable per-run id, not a fresh uuid per attempt.",
       "Combine the run id with the step id for granular idempotency.",

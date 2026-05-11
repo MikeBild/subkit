@@ -17,6 +17,14 @@
 // because MCP auth_provider shapes (PKCE flows, dynamic client
 // registration) do not match the static credential rows.
 //
+// SECRET-BY-REFERENCE CONTRACT: writers MUST store secret material
+// (client_secret, bearer tokens, api keys, passwords) in the
+// `credentials` table (AES-256-GCM encrypted) and reference it from
+// `auth_config` via `token_ref` / `credential_id`. Never inline
+// secrets at the top level — the `mcp_servers_auth_config_no_inline_secrets_check`
+// CHECK constraint below fails the INSERT/UPDATE if it sees a key
+// matching the known-secret pattern at the root of `auth_config`.
+//
 // Audit-action vocabulary (issue #171 will land the writers). The
 // configuration table is tenant-mutable state, so every write MUST
 // emit an `audit_log` row via the standard audit recorder. The
@@ -84,9 +92,33 @@ export const mcpServers = pgTable(
     // namespace inputs, but internal writers (admin tools, seeds,
     // repair flows) could bypass that — a malformed slug would produce
     // tool names that fail AI SDK's `^[a-zA-Z0-9_-]+$` regex silently.
+    // Namespace must start + end with alphanumeric, allow `_`/`-`
+    // inside, and forbid `__` runs so the `mcp_<ns>__<tool>` split
+    // convention stays deterministic.
     check(
       "mcp_servers_namespace_shape_check",
-      sql`${t.namespace} ~ '^[a-zA-Z0-9_-]+$' AND length(${t.namespace}) BETWEEN 1 AND 64`,
+      sql`${t.namespace} ~ '^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$' AND ${t.namespace} !~ '__'`,
+    ),
+    // SECRET-BY-REFERENCE gate. Reject INSERT / UPDATE that puts the
+    // canonical secret keys at the root of `auth_config`. Writers
+    // must reference the `credentials` table via `token_ref` /
+    // `credential_id` instead. PostgreSQL forbids subqueries in CHECK
+    // so this is an explicit allowlist of denied keys (the `?`
+    // operator on jsonb is immutable and allowed). Add to the list
+    // when a new secret key-name convention appears.
+    check(
+      "mcp_servers_auth_config_no_inline_secrets_check",
+      sql`${t.auth_config} IS NULL OR NOT (
+        ${t.auth_config} ? 'client_secret' OR
+        ${t.auth_config} ? 'password' OR
+        ${t.auth_config} ? 'passphrase' OR
+        ${t.auth_config} ? 'api_key' OR
+        ${t.auth_config} ? 'apikey' OR
+        ${t.auth_config} ? 'access_token' OR
+        ${t.auth_config} ? 'refresh_token' OR
+        ${t.auth_config} ? 'bearer_token' OR
+        ${t.auth_config} ? 'secret'
+      )`,
     ),
   ],
 );

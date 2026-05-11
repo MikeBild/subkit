@@ -59,7 +59,11 @@ async function loadDevtoolsMiddleware(): Promise<LanguageModelV3Middleware | nul
     cachedDevtoolsMiddleware = mod.devToolsMiddleware();
   } catch (err) {
     cachedDevtoolsMiddleware = null;
-    logger.debug({
+    // First-time dev wonders why the viewer is empty — `info` so it
+    // shows up in the default log stream without flipping to debug.
+    // Path is dev-only (guarded above by isDevEnv()), so this never
+    // fires in production.
+    logger.info({
       module: "llm.devtools",
       action: "load_failed",
       msg: "@ai-sdk/devtools not loadable; continuing unwrapped",
