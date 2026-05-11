@@ -189,20 +189,35 @@ describe.skipIf(!SHOULD_RUN)(
 
       const detail = await getConversation(conversation_id);
       const tools = detail.tool_calls.map((t) => t.tool);
-      // Floor: the LLM dispatch reached start_connector_from_description — the engine's
-      // tool palette + Zod validators + draft snapshotting all ran.
-      expect(tools).toContain("start_connector_from_description");
+      // Floor: the LLM dispatch reached one of the connector-creation
+      // entry-point tools — the engine's tool palette + Zod validators
+      // + draft snapshotting all ran. We accept either tool because
+      // `apps/engine/src/conversations/agent/skills/content/conversational-authoring.md`
+      // lists them as peers (`start_connector_from_template` /
+      // `start_connector_from_description`); the model legitimately
+      // picks `from_template` when a matching template exists, and the
+      // engine guarantees both paths converge on `connectors` row
+      // creation. Asserting one specific tool name was a brittle proxy
+      // that broke when the skill expanded the palette (commit 629bb82,
+      // 2026-04-26).
+      const CONNECTOR_ENTRY_TOOLS = [
+        "start_connector_from_description",
+        "start_connector_from_template",
+      ] as const;
+      const usedEntry = CONNECTOR_ENTRY_TOOLS.find((t) => tools.includes(t));
+      expect(usedEntry).toBeDefined();
 
-      // Connector-existence gate. The floor above enforces that
-      // start_connector_from_description was dispatched; the prompt then
-      // tells the LLM to "continue through the normal probe/save path",
-      // so a fresh row in `connectors` must exist by end-of-conversation.
-      // The previous gate (`save_workflow_draft` ∈ tools) was incoherent
-      // for a connector test — it deferred the existence check to whether
-      // the LLM happened to also build a workflow on top, which let an
-      // actual no-op connector save (the failure mode we're guarding) go
-      // undetected on every run where the model skipped the workflow.
-      if (tools.includes("start_connector_from_description")) {
+      // Connector-existence gate. The floor above enforces that a
+      // draft-creation tool was dispatched; the prompt then tells the
+      // LLM to "continue through the normal probe/save path", so a
+      // fresh row in `connectors` must exist by end-of-conversation.
+      // The previous gate (`save_workflow_draft` ∈ tools) was
+      // incoherent for a connector test — it deferred the existence
+      // check to whether the LLM happened to also build a workflow on
+      // top, which let an actual no-op connector save (the failure
+      // mode we're guarding) go undetected on every run where the
+      // model skipped the workflow.
+      if (usedEntry) {
         const after = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
           headers: adminAuth(),
         }).then((r) => r.json() as Promise<{ items: Array<{ slug: string; name: string }> }>);
@@ -234,10 +249,20 @@ describe.skipIf(!SHOULD_RUN)(
       const tools = detail.tool_calls.map((t) => t.tool);
 
       // Engine assertion: the LLM dispatch path actually exercised the
-      // draft tool palette. propose_step is the floor — without it
-      // nothing useful happened. validate_draft proves the validator
-      // ran end-to-end through the engine.
-      expect(tools).toContain("propose_step");
+      // draft tool palette. We accept either `propose_step` (the
+      // step-at-a-time path) or `build_workflow` (the whole-draft
+      // path) — the
+      // `apps/engine/src/conversations/agent/skills/content/conversational-authoring.md`
+      // skill lists them as peers, and `build_workflow`'s own tool
+      // description ("Write an entire workflow draft in a single
+      // call") is a strong steer toward the one-call path for a
+      // 1-step workflow like this test's prompt. The engine
+      // guarantees both routes flow through the same validator +
+      // draft snapshotting. Asserting only `propose_step` was a
+      // brittle proxy that broke when the skill expanded the palette
+      // (commit 629bb82, 2026-04-26).
+      const STEP_AUTHORING_TOOLS = ["propose_step", "build_workflow"] as const;
+      expect(STEP_AUTHORING_TOOLS.some((t) => tools.includes(t))).toBe(true);
 
       // Functional assertion (best effort): if the LLM completed the
       // approval round-trip and called save_workflow_draft, a workflow row
